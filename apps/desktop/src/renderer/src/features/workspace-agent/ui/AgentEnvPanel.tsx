@@ -61,7 +61,6 @@ export function AgentEnvPanel({
     <Button
       size="dialog"
       type="button"
-      variant="ghost"
       disabled={redetectDisabled}
       onClick={actions.redetect}
     >
@@ -137,15 +136,8 @@ export function AgentEnvPanel({
           />
         ) : null}
 
-        <DialogFooter className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-1)] px-5 py-4">
+        <DialogFooter className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-1)] px-5 py-4">
           {redetectControl}
-          <Button
-            size="dialog"
-            type="button"
-            onClick={() => closeAgentEnvPanel()}
-          >
-            {t("workspace.agentEnv.actionClose")}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

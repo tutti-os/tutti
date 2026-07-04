@@ -11,6 +11,7 @@ import {
   parseAgentCapabilityToken,
   type AgentCapabilityTokenOption
 } from "./agentCapabilityTokenExtension";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 export interface AgentRichTextDocumentOptions {
   capabilities?: readonly AgentCapabilityTokenOption[];
@@ -22,6 +23,10 @@ function createEmptyDocument(): JSONContent {
     type: "doc",
     content: [{ type: "paragraph" }]
   };
+}
+
+function isVisualLineStart(content: readonly JSONContent[]): boolean {
+  return content.length === 0 || content.at(-1)?.type === "hardBreak";
 }
 
 function createParagraphFromText(
@@ -52,6 +57,9 @@ function createParagraphFromText(
     const parsedMention = parseAgentMentionMarkdown(text, index);
     if (parsedMention) {
       flushTextBuffer();
+      if (isVisualLineStart(content)) {
+        content.push({ type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR });
+      }
       content.push({
         type: "agentFileMention",
         // 转成规范 node attrs(如 workspace-reference 的 source/groupId/fileCount),
@@ -150,7 +158,7 @@ function isBlockPromptNode(node: JSONContent): boolean {
 
 function nodeToPromptText(node: JSONContent): string {
   if (node.type === "text") {
-    return node.text ?? "";
+    return (node.text ?? "").replaceAll(AGENT_RICH_TEXT_CARET_ANCHOR, "");
   }
   if (node.type === "agentFileMention") {
     return formatAgentMentionMarkdown(attrsToMentionItem(node.attrs ?? {}));

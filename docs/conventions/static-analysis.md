@@ -26,6 +26,7 @@ Repository entrypoints:
 - `pnpm lint:ts`
 - `pnpm lint:go`
 - `pnpm typecheck`
+- `pnpm check:codexproto-generated`
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
@@ -39,6 +40,16 @@ The current baseline includes:
 - `noUncheckedIndexedAccess` in the shared TypeScript base config
 
 Generated TypeScript is not linted by the human-authored TypeScript rule set. Generated output should be controlled through its generator and generation checks instead of hand-edited to satisfy repository lint style.
+
+Generated Codex app-server protocol artifacts under
+`packages/agent/daemon/runtime/codexproto` are checked by
+`pnpm check:codexproto-generated`. The check fetches the pinned Codex source
+commit, compares the committed upstream schema snapshot as canonical JSON,
+reruns the local Go generator, and fails when generated files drift. The schema
+comparison intentionally ignores JSON formatting differences so vendored
+upstream artifacts can coexist with repository Prettier formatting. Do not
+hand-edit generated `*_gen.go` files; update the vendored schema or generator,
+then regenerate.
 
 Historical or ported-source snapshots that are intentionally kept outside a
 package's active `tsconfig.json` during migration should also stay out of the
@@ -154,6 +165,11 @@ During the migration, selected historical files carry file-local
 `revive:disable:file-length-limit` comments. New tutti-owned daemon
 service/API code should stay outside those exceptions and must continue to
 satisfy the normal Go lint baseline.
+
+Changed-aware Go validation includes the nested `packages/agent/daemon` module.
+Codex app-server protocol changes should also run
+`pnpm check:codexproto-generated` when schema, generator, or generated protocol
+files are touched.
 
 Local runs expect a `golangci-lint` binary on `PATH`. The repository pins the CI version through `services/tuttid/.golangci-lint-version`.
 

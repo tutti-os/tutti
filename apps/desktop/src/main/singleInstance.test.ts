@@ -25,7 +25,8 @@ test("quits and reports non-primary when the lock is not acquired", () => {
 test("reports primary and focuses the window on a second-instance event", () => {
   let quitCalls = 0;
   let focusCalls = 0;
-  let registeredHandler: (() => void) | undefined;
+  let handledArgv: readonly string[] | undefined;
+  let registeredHandler: ((argv: readonly string[]) => void) | undefined;
 
   const isPrimary = ensureSingleInstance({
     requestSingleInstanceLock: () => true,
@@ -34,6 +35,9 @@ test("reports primary and focuses the window on a second-instance event", () => 
     },
     onSecondInstance: (handler) => {
       registeredHandler = handler;
+    },
+    handleSecondInstanceArgv: (argv) => {
+      handledArgv = argv;
     },
     focusPrimaryWindow: () => {
       focusCalls += 1;
@@ -44,6 +48,7 @@ test("reports primary and focuses the window on a second-instance event", () => 
   assert.equal(quitCalls, 0);
   assert.ok(registeredHandler, "second-instance handler should be registered");
 
-  registeredHandler?.();
+  registeredHandler?.(["tutti-dev://login/callback"]);
   assert.equal(focusCalls, 1);
+  assert.deepEqual(handledArgv, ["tutti-dev://login/callback"]);
 });

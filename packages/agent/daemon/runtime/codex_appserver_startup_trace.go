@@ -94,7 +94,7 @@ func (t *codexAppServerStartupTrace) Log(event string, fields map[string]any) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	_, _ = file.Write(append(line, '\n'))
 }
 
@@ -183,5 +183,49 @@ func (t *codexAppServerStartupTrace) CallNoHandler(
 		return nil, err
 	}
 	t.Log("background_rpc.succeeded", fields)
+	return result, nil
+}
+
+func (t *codexAppServerStartupTrace) TypedCall(
+	timeout time.Duration,
+	method string,
+	call func() (json.RawMessage, error),
+) (json.RawMessage, error) {
+	return t.logTypedCall("rpc", timeout, method, call)
+}
+
+func (t *codexAppServerStartupTrace) TypedCallNoHandler(
+	timeout time.Duration,
+	method string,
+	call func() (json.RawMessage, error),
+) (json.RawMessage, error) {
+	return t.logTypedCall("background_rpc", timeout, method, call)
+}
+
+func (t *codexAppServerStartupTrace) logTypedCall(
+	prefix string,
+	timeout time.Duration,
+	method string,
+	call func() (json.RawMessage, error),
+) (json.RawMessage, error) {
+	t.Log(prefix+".begin", map[string]any{
+		"method":     method,
+		"timeout_ms": timeout.Milliseconds(),
+	})
+	startedAt := time.Now()
+	result, err := call()
+	fields := map[string]any{
+		"method":      method,
+		"duration_ms": time.Since(startedAt).Milliseconds(),
+	}
+	if result != nil {
+		fields["result_size"] = len(result)
+	}
+	if err != nil {
+		fields["error"] = err.Error()
+		t.Log(prefix+".failed", fields)
+		return nil, err
+	}
+	t.Log(prefix+".succeeded", fields)
 	return result, nil
 }

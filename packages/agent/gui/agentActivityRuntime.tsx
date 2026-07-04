@@ -49,6 +49,60 @@ export interface AgentActivityRuntimeListGeneratedFilesInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeListSessionsPageInput {
+  limit?: number;
+  searchQuery?: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionPageResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeListSessionSectionsInput {
+  agentTargetId?: string | null;
+  limitPerSection?: number;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeListSessionSectionPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
+  limit?: number;
+  sectionKey: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeUserProject {
+  createdAtUnixMs: number;
+  id: string;
+  label: string;
+  lastUsedAtUnixMs?: number;
+  path: string;
+  sectionKey: string;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentActivityRuntimeSessionSection {
+  kind: "conversations" | "project";
+  sectionKey: string;
+  userProject?: AgentActivityRuntimeUserProject;
+  sessions: AgentActivitySession[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export interface AgentActivityRuntimeSessionSectionsResult {
+  sections: AgentActivityRuntimeSessionSection[];
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeGeneratedFile {
   label: string;
   path: string;
@@ -88,6 +142,7 @@ export interface AgentActivityRuntimeGetSessionControlStateInput {
 }
 
 export interface AgentActivityRuntimeGetComposerOptionsInput {
+  agentTargetId?: string | null;
   cwd?: string | null;
   force?: boolean;
   provider?: string;
@@ -122,6 +177,7 @@ export interface AgentActivityRuntimeDiagnosticInput {
 
 export interface AgentActivityRuntimeActivateSessionInput {
   agentSessionId: string;
+  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
@@ -206,6 +262,10 @@ export interface AgentActivityRuntimePromptAsset {
 }
 
 export interface AgentActivityRuntime {
+  promptContentUploadSupport?: {
+    file?: boolean;
+    image?: boolean;
+  };
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;
@@ -241,6 +301,15 @@ export interface AgentActivityRuntime {
   listAgentGeneratedFiles?(
     input: AgentActivityRuntimeListGeneratedFilesInput
   ): Promise<AgentActivityRuntimeGeneratedFileList>;
+  listSessionsPage?(
+    input: AgentActivityRuntimeListSessionsPageInput
+  ): Promise<AgentActivityRuntimeSessionPageResult>;
+  listSessionSections?(
+    input: AgentActivityRuntimeListSessionSectionsInput
+  ): Promise<AgentActivityRuntimeSessionSectionsResult>;
+  listSessionSectionPage?(
+    input: AgentActivityRuntimeListSessionSectionPageInput
+  ): Promise<AgentActivityRuntimeSessionSection>;
   load(
     workspaceId: string,
     signal?: AbortSignal

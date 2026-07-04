@@ -32,10 +32,10 @@ function parseArgs(argv) {
 function printUsage() {
   process.stderr.write(
     [
-      "Usage: node scripts/reserve-release-tag.mjs --strategy <patch|minor|major|patch_rc|minor_rc|major_rc|explicit_version|explicit_tag> --target <commit-ish> [options]",
+      "Usage: node scripts/reserve-release-tag.mjs --strategy <patch|minor|major|patch_rc|minor_rc|major_rc|patch_beta|minor_beta|major_beta|explicit_version|explicit_tag> --target <commit-ish> [options]",
       "",
       "Options:",
-      "  --version <x.y.z[-rc.n]>  Release version when using explicit_version",
+      "  --version <x.y.z[-rc.n|-beta.n]>  Release version when using explicit_version",
       "  --tag <tag>               Full release tag when using explicit_tag",
       "  --target <commit-ish>     Commit that the reserved tag should point to",
       "  --max-attempts <n>        Retry budget for auto-calculated versions (default: 20)",

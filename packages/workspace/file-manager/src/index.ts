@@ -31,6 +31,7 @@ export {
 export {
   findWorkspaceFileLocationById,
   flattenWorkspaceFileLocations,
+  isWorkspaceFileExternalLocation,
   isWorkspaceFileRecentLocation,
   resolveWorkspaceFileLocationDefaultId
 } from "./services/workspaceFileManagerLocations.ts";
@@ -46,6 +47,7 @@ export {
   type WorkspaceFileLocationKind,
   type WorkspaceFileLocationSection,
   type WorkspaceFileDirectoryLocation,
+  type WorkspaceFileExternalLocation,
   type WorkspaceFileRecentLocation,
   type WorkspaceFileManagerCapabilities,
   type WorkspaceFileOpenWithApplication,
@@ -65,6 +67,8 @@ export {
   WorkspaceFileManagerContextMenu,
   type WorkspaceFileManagerContextMenuProps
 } from "./ui/WorkspaceFileManagerContextMenu.tsx";
+export { WorkspaceFileEntryIcon } from "./ui/WorkspaceFileEntryIcon.tsx";
+export { useWorkspaceFileEntryIconUrls } from "./ui/useWorkspaceFileEntryIconUrls.ts";
 export type { WorkspaceFileManagerEntryDragMode } from "./ui/WorkspaceFileManagerPanels.tsx";
 export type {
   WorkspaceFileManagerFileActivationRequest,

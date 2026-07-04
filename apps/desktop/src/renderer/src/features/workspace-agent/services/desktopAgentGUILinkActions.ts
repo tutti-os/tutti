@@ -140,6 +140,10 @@ export async function runDesktopAgentGUILinkAction(
         workspaceId: dependencies.workspaceId
       });
     }
+    case "open-custom-mention":
+      // 宿主注册的自定义 mention 的点击动作:desktop 宿主目前未注册任何自定义 kind,
+      // 统一不处理(具体 kind 的注册与落地都由各宿主自行实现)。
+      return false;
   }
 }
 

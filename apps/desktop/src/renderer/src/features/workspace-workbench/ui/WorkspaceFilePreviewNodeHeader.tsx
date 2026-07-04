@@ -10,6 +10,7 @@ import {
   resolveWorkspaceFilePreviewTextHeaderState,
   type WorkspaceFilePreviewTextHeaderState
 } from "./workspaceFilePreviewNodeState";
+import { WorkspaceWorkbenchTrafficLights } from "./WorkspaceWorkbenchTrafficLights.ts";
 
 export function WorkspaceFilePreviewNodeHeader({
   context,
@@ -34,7 +35,13 @@ export function WorkspaceFilePreviewNodeHeader({
   };
 
   return (
-    <div className="flex h-full min-h-0 items-center gap-2 bg-[var(--background-panel)] px-2 pl-3">
+    <div className="flex h-full min-h-0 items-center gap-3 bg-[var(--background-fronted)] px-3 pl-4">
+      <WorkspaceWorkbenchTrafficLights
+        className="nodrag"
+        displayMode={context.displayMode}
+        i18n={i18n}
+        windowActions={context.windowActions}
+      />
       <div
         {...context.dragHandleProps}
         className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-2 active:cursor-grabbing"
@@ -51,9 +58,6 @@ export function WorkspaceFilePreviewNodeHeader({
           nodeId={context.node.id}
         />
       ) : null}
-      <div className="nodrag flex shrink-0 items-center gap-1.5">
-        {context.defaultActions}
-      </div>
     </div>
   );
 }

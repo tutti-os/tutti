@@ -22,12 +22,12 @@
   flex: none;
   height: var(--workbench-header-height);
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   border-bottom: 1px solid var(--border-1);
   background: var(--background-panel);
   color: var(--text-primary);
-  padding: 0 8px 0 12px;
+  padding: 0 12px 0 16px;
   font-size: 13px;
   user-select: none;
 }
@@ -59,6 +59,7 @@
   flex: none;
   align-items: center;
   gap: 4px;
+  margin-left: auto;
 }
 
 .workspace-terminal__icon-button {

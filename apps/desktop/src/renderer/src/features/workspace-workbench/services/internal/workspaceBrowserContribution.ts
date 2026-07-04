@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   createBrowserNodeFeature,
   type BrowserNodeEvent
@@ -8,7 +9,10 @@ import {
   createBrowserWorkbenchContribution
 } from "@tutti-os/browser-node/workbench";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import type { WorkbenchContribution } from "@tutti-os/workbench-surface";
+import type {
+  WorkbenchContribution,
+  WorkbenchHostNodeHeaderContext
+} from "@tutti-os/workbench-surface";
 import type { DesktopBrowserApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { createWorkspaceBrowserAnalyticsTracker } from "./workspaceBrowserAnalytics.ts";
@@ -27,6 +31,7 @@ export function createWorkspaceBrowserContribution(input: {
   browserService: WorkspaceBrowserService;
   dockIconUrl?: string;
   i18n?: I18nRuntime<string>;
+  renderTrafficLights?: (context: WorkbenchHostNodeHeaderContext) => ReactNode;
   runtimeApi: Pick<DesktopRuntimeApi, "logRendererDiagnostic">;
   reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceId: string;
@@ -72,6 +77,9 @@ export function createWorkspaceBrowserContribution(input: {
       runtimeStore: feature.runtimeStore
     }),
     feature,
+    node: {
+      renderTrafficLights: input.renderTrafficLights
+    },
     typeId: workspaceBrowserNodeID
   });
 

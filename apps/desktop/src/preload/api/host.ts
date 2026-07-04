@@ -132,6 +132,12 @@ export function createHostDesktopApi(): DesktopHostApi {
           path
         );
       },
+      archiveAgentPromptFile(input) {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.files.archiveAgentPromptFile,
+          input
+        );
+      },
       readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array> {
         return invokeDesktopApi(desktopIpcChannels.host.files.readPreviewFile, {
           path,

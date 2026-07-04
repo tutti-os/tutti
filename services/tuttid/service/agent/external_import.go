@@ -16,10 +16,15 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
 type ExternalImportScanInput struct {
 	Providers []string
+	// Days limits the scan window to conversations updated within the last N
+	// days. 0 keeps the default 30-day window; a negative value scans all
+	// available history.
+	Days int
 }
 
 type ExternalImportInput struct {
@@ -125,7 +130,7 @@ type externalScanData struct {
 }
 
 func (*Service) ScanExternalImports(ctx context.Context, input ExternalImportScanInput) (ExternalImportScanResult, error) {
-	data := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers))
+	data := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days)
 	return data.result, nil
 }
 
@@ -141,7 +146,10 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 	if len(selections) == 0 {
 		return ExternalImportResult{}, ErrInvalidArgument
 	}
-	data := scanExternalAgentSessions(ctx, providersFromExternalImportSelections(selections))
+	// Scan all available history when importing: the request already filters by
+	// explicit project paths and session ids, and the picker may surface
+	// conversations older than the default 30-day window.
+	data := scanExternalAgentSessions(ctx, providersFromExternalImportSelections(selections), -1)
 	result := ExternalImportResult{
 		SkippedSessions: data.result.SkippedSessions,
 		Errors:          append([]ExternalImportError(nil), data.result.Errors...),
@@ -253,10 +261,21 @@ func providersFromExternalImportSelections(selections []ExternalImportProjectSel
 	return out
 }
 
-func scanExternalAgentSessions(ctx context.Context, providers []string) externalScanData {
+func externalImportAgentTargetID(provider string) string {
+	switch agentproviderbiz.Normalize(provider) {
+	case agentproviderbiz.Codex:
+		return agenttargetbiz.IDLocalCodex
+	case agentproviderbiz.ClaudeCode:
+		return agenttargetbiz.IDLocalClaudeCode
+	default:
+		return ""
+	}
+}
+
+func scanExternalAgentSessions(ctx context.Context, providers []string, days int) externalScanData {
 	data := externalScanData{}
 	projects := map[string]*ExternalImportProject{}
-	cutoffUnixMS := time.Now().Add(-30 * 24 * time.Hour).UnixMilli()
+	cutoffUnixMS := externalScanCutoffUnixMS(days)
 	for _, provider := range normalizeExternalImportProviders(providers) {
 		if ctx.Err() != nil {
 			break
@@ -294,6 +313,20 @@ func scanExternalAgentSessions(ctx context.Context, providers []string) external
 		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
 	})
 	return data
+}
+
+// externalScanCutoffUnixMS resolves the "updated since" cutoff for a scan
+// window expressed in days. 0 keeps the historical 30-day default; a negative
+// value disables the cutoff so all available history is scanned (used by the
+// import path, which filters by explicit selections instead).
+func externalScanCutoffUnixMS(days int) int64 {
+	if days < 0 {
+		return 0
+	}
+	if days == 0 {
+		days = 30
+	}
+	return time.Now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
 }
 
 func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]externalImportedSession, ExternalImportProvider, []ExternalImportError) {
@@ -445,6 +478,7 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    agentSessionID,
 		Origin:            WorkspaceAgentSessionOriginImported,
+		AgentTargetID:     externalImportAgentTargetID(session.Provider),
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		RuntimeContext: map[string]any{

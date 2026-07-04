@@ -27,6 +27,7 @@ import {
   stripReviewProcessSummaryTitle,
   thinkingStatusKind
 } from "./workspaceAgentTimelineMessageHelpers";
+import { timelineItemOwnerThreadId } from "./agentConversation/projection/subAgentTimelinePartition";
 
 export function buildCanonicalWorkspaceAgentDetailView({
   activity,
@@ -44,8 +45,19 @@ export function buildCanonicalWorkspaceAgentDetailView({
   const sortedTimelineItems = [...timelineItems].sort(
     compareTimelineItemsAscending
   );
+  const suppressedToolCallIds = suppressedClaudeAskUserQuestionCallIds(
+    session,
+    sortedTimelineItems
+  );
 
   for (const item of sortedTimelineItems) {
+    // Sub-agent child-thread rows (payload.ownerThreadId) belong to the
+    // delegated thread, not the parent transcript. They surface through the
+    // parent's collab tool card lanes instead of interleaving here — even
+    // when no matching card has arrived yet.
+    if (timelineItemOwnerThreadId(item)) {
+      continue;
+    }
     const role = messageRole(item);
     const body = messageBody(item);
     const explicitTurnId = item.turnId?.trim();
@@ -86,7 +98,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const turn = getTurn(turns, turnId);
 
     if (isWorkspaceAgentToolCallItem(item)) {
-      if (shouldSuppressToolCall(session, item)) {
+      if (shouldSuppressToolCall(item, suppressedToolCallIds)) {
         continue;
       }
       upsertToolCall(turn, item);
@@ -269,18 +281,75 @@ function upsertToolCall(
   upsertToolCallAgentItem(turn, call, itemId(item));
 }
 
-function shouldSuppressToolCall(
+function suppressedClaudeAskUserQuestionCallIds(
   session: WorkspaceAgentActivitySession,
+  items: readonly WorkspaceAgentActivityTimelineItem[]
+): Set<string> {
+  const provider = session.provider?.trim().toLowerCase() ?? "";
+  if (provider !== "claude-code") {
+    return new Set();
+  }
+  const suppressed = new Set<string>();
+  for (const item of items) {
+    if (
+      normalizeToolName(toolNameFromItem(item)) !== "askuserquestion" ||
+      !isUnavailableAskUserQuestionFailure(item)
+    ) {
+      continue;
+    }
+    const callId = toolCallSuppressionId(item);
+    if (callId) {
+      suppressed.add(callId);
+    }
+  }
+  return suppressed;
+}
+
+function shouldSuppressToolCall(
+  item: WorkspaceAgentActivityTimelineItem,
+  suppressedToolCallIds: ReadonlySet<string>
+): boolean {
+  const callId = toolCallSuppressionId(item);
+  return callId ? suppressedToolCallIds.has(callId) : false;
+}
+
+function toolCallSuppressionId(
+  item: WorkspaceAgentActivityTimelineItem
+): string | null {
+  return firstPresentString(
+    item.callId,
+    stringRecordValue(item.payload, "callId"),
+    stringRecordValue(item.payload, "toolCallId")
+  );
+}
+
+function isUnavailableAskUserQuestionFailure(
   item: WorkspaceAgentActivityTimelineItem
 ): boolean {
-  // Claude ACP currently cannot execute AskUserQuestion. The model may still emit the
-  // synthetic tool call before ACP rejects it, so suppress it from the transcript UI
-  // instead of surfacing a guaranteed-noise failure card.
-  const provider = session.provider?.trim().toLowerCase() ?? "";
-  return (
-    provider === "claude-code" &&
-    normalizeToolName(toolNameFromItem(item)) === "askuserquestion"
+  const status = firstPresentString(
+    item.status,
+    stringRecordValue(item.payload, "status")
   );
+  if (status !== "failed") {
+    return false;
+  }
+  const payload = normalizedPayload(item.payload);
+  const output = normalizedPayload(
+    payload?.output as WorkspaceAgentActivityTimelineItem["payload"]
+  );
+  const error = normalizedPayload(
+    payload?.error as WorkspaceAgentActivityTimelineItem["payload"]
+  );
+  const message = firstPresentString(
+    stringRecordValue(output, "output"),
+    stringRecordValue(output, "text"),
+    stringRecordValue(output, "message"),
+    stringRecordValue(error, "error"),
+    stringRecordValue(error, "message"),
+    stringRecordValue(payload, "error"),
+    stringRecordValue(payload, "message")
+  );
+  return message?.includes("No such tool available: AskUserQuestion") ?? false;
 }
 
 function upsertToolCallAgentItem(
@@ -1009,13 +1078,30 @@ function shouldShowProcessingIndicator(
   const lastAgentItem = lastTurn.agentItems.at(-1);
   if (
     lastAgentItem?.kind === "message" &&
-    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind)
+    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind) &&
+    !hasActiveRunningTurnLifecycle(session)
   ) {
     return false;
   }
   return !lastTurn.toolCalls.some(
     (call) => call.statusKind === "working" || call.statusKind === "waiting"
   );
+}
+
+// A completed assistant message usually means the turn is about to settle, so
+// the indicator is suppressed to avoid trailing dots after the final answer.
+// Providers can also emit completed interim messages mid-turn (e.g. codex
+// narration between tool phases); when the turn lifecycle still reports an
+// active, non-settling turn, keep the indicator visible.
+function hasActiveRunningTurnLifecycle(
+  session: BuildWorkspaceAgentSessionDetailInput["session"]
+): boolean {
+  const lifecycle = session.turnLifecycle;
+  if (!lifecycle?.activeTurnId || lifecycle.settling === true) {
+    return false;
+  }
+  const phase = lifecycle.phase?.trim().toLowerCase() ?? "";
+  return phase === "submitted" || phase === "running" || phase === "waiting";
 }
 
 function isTerminalAgentMessageStatus(

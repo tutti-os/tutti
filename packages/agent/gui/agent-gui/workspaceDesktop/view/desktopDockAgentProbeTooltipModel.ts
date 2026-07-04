@@ -289,6 +289,10 @@ function appendDockProbeUsageLines(
   t: TranslateFn
 ): void {
   if (probe.lastError?.code === "unsupported") {
+    lines.push({
+      label: t("agentHost.workspaceAgentProbeDetailQuota"),
+      primary: t("agentHost.workspaceAgentProbeUsageUnsupported")
+    });
     return;
   }
 
@@ -299,6 +303,12 @@ function appendDockProbeUsageLines(
 
   const quotas = probe.usage?.quotas ?? [];
   if (quotas.length === 0) {
+    if (probe.usage) {
+      lines.push({
+        label: t("agentHost.workspaceAgentProbeDetailQuota"),
+        primary: t("agentHost.workspaceAgentProbeUsageUnsupported")
+      });
+    }
     return;
   }
 

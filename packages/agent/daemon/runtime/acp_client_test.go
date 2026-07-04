@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -217,6 +218,107 @@ func TestACPClientDispatchesNotificationWithoutActiveCall(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("idle notification was not dispatched")
+	}
+}
+
+func TestACPClientDispatchLineIgnoresEmptyStdoutLine(t *testing.T) {
+	t.Parallel()
+
+	client := newTestACPClientForDispatchLine()
+	client.dispatchLine([]byte("  \t  "))
+	assertACPClientNotDone(t, client)
+}
+
+func TestACPClientDispatchLineIgnoresBenignProviderStdoutLogs(t *testing.T) {
+	t.Parallel()
+
+	client := newTestACPClientForDispatchLine()
+	client.dispatchLine([]byte("WARNING: provider emitted a startup banner"))
+	client.dispatchLine([]byte("Codex App Server ready"))
+	assertACPClientNotDone(t, client)
+}
+
+func TestACPClientDispatchLineToleratesIsolatedNonObjectJSON(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan acpMessage, 1)
+	client := newTestACPClientForDispatchLine()
+	client.SetMessageHandler(func(_ context.Context, message acpMessage) error {
+		received <- message
+		return nil
+	})
+
+	client.dispatchLine([]byte(`"provider banner encoded as json string"`))
+	assertACPClientNotDone(t, client)
+
+	client.dispatchLine([]byte(`{"jsonrpc":"2.0","method":"session/update","params":{"ok":true}}`))
+	select {
+	case message := <-received:
+		if message.Method != "session/update" {
+			t.Fatalf("method = %q, want session/update", message.Method)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("valid ACP message after non-object JSON was not dispatched")
+	}
+	assertACPClientNotDone(t, client)
+}
+
+func TestACPClientDispatchLineFinishesAfterConsecutiveProtocolErrorsWithOutputTails(t *testing.T) {
+	t.Parallel()
+
+	client := newTestACPClientForDispatchLine()
+	client.setStdoutTail([]byte("WARNING: first line\n{broken"))
+	client.setStderrTail([]byte("provider stderr tail"))
+
+	for i := 1; i < acpClientStdoutProtocolErrorLimit; i++ {
+		client.dispatchLine([]byte("{broken"))
+		assertACPClientNotDone(t, client)
+	}
+
+	client.dispatchLine([]byte("{broken"))
+	select {
+	case <-client.Done():
+	case <-time.After(time.Second):
+		t.Fatal("client did not finish after consecutive malformed ACP stdout lines")
+	}
+
+	err := client.Err()
+	if err == nil {
+		t.Fatal("Err() = nil, want protocol error")
+	}
+	message := err.Error()
+	for _, want := range []string{
+		"invalid acp stdout protocol",
+		"stdout tail: WARNING: first line",
+		"stderr tail: provider stderr tail",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("Err() = %q, missing %q", message, want)
+		}
+	}
+
+	diag := client.Diagnostics()
+	if !strings.Contains(diag.StdoutTail, "WARNING: first line") {
+		t.Fatalf("StdoutTail = %q, want retained stdout tail", diag.StdoutTail)
+	}
+	if diag.StderrTail != "provider stderr tail" {
+		t.Fatalf("StderrTail = %q, want provider stderr tail", diag.StderrTail)
+	}
+}
+
+func newTestACPClientForDispatchLine() *acpClient {
+	return &acpClient{
+		pending: make(map[int64]*acpPendingCall),
+		done:    make(chan struct{}),
+	}
+}
+
+func assertACPClientNotDone(t *testing.T, client *acpClient) {
+	t.Helper()
+	select {
+	case <-client.Done():
+		t.Fatalf("client finished unexpectedly: %v", client.Err())
+	default:
 	}
 }
 

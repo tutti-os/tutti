@@ -5,7 +5,7 @@ import {
   createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity
 } from "./workspaceIssueManagerRichTextTriggerProviderRequest.ts";
 
-test("workspace issue manager rich text at provider request only enables app mentions", () => {
+test("workspace issue manager rich text at provider request enables agent and app mentions", () => {
   assert.deepEqual(
     createWorkspaceIssueManagerRichTextTriggerProviderRequest({
       currentUserId: "user-1",
@@ -13,7 +13,7 @@ test("workspace issue manager rich text at provider request only enables app men
       workspaceId: "workspace-1"
     }),
     {
-      capabilities: ["workspace-app"],
+      capabilities: ["agent-target", "workspace-app"],
       metadata: {
         currentUserId: "user-1"
       },
@@ -34,7 +34,7 @@ test("workspace issue manager rich text at provider request reads current user m
       workspaceId: "workspace-2"
     }),
     {
-      capabilities: ["workspace-app"],
+      capabilities: ["agent-target", "workspace-app"],
       metadata: {
         currentUserId: "user-2"
       },

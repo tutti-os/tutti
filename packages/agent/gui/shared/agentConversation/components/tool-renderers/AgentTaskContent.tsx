@@ -14,6 +14,11 @@ export function AgentTaskContent({
 }: AgentToolRendererProps): JSX.Element {
   "use memo";
   const task = getTaskRenderData(call);
+  const failureMarkdown =
+    task.errorMarkdown ??
+    (isFailedTaskStatus(call.statusKind, task.status, call.status)
+      ? translate("agentHost.agentTool.details.missingFailureDetails")
+      : null);
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -67,6 +72,24 @@ export function AgentTaskContent({
           />
         </ToolSection>
       ) : null}
+      {failureMarkdown ? (
+        <ToolSection title={translate("agentHost.agentTool.details.error")}>
+          <ToolMarkdownBlock
+            content={failureMarkdown}
+            onLinkClick={onLinkClick}
+            collapsible
+          />
+        </ToolSection>
+      ) : null}
     </div>
   );
+}
+
+function isFailedTaskStatus(
+  ...values: Array<string | null | undefined>
+): boolean {
+  return values.some((value) => {
+    const normalized = (value ?? "").trim().toLowerCase();
+    return normalized === "failed" || normalized === "error";
+  });
 }

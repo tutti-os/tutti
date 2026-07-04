@@ -30,7 +30,17 @@ type acpClient struct {
 	stderrSink          func([]byte)
 	done                chan struct{}
 	doneErr             error
+	exitCode            *int
+	stderrTail          []byte
+	stdoutTail          []byte
+	stdoutProtocolErrs  int
 	doneOnce            sync.Once
+}
+
+type acpClientDiagnostics struct {
+	ExitCode   *int
+	StderrTail string
+	StdoutTail string
 }
 
 type acpMessage struct {
@@ -81,10 +91,6 @@ func (e *acpCallError) AuthRequired() bool {
 	return strings.Contains(haystack, "auth")
 }
 
-func newACPClient(conn ProcessConnection) *acpClient {
-	return newACPClientWithStderrMessageMapper(conn, nil)
-}
-
 func newACPClientWithStderrMessageMapper(conn ProcessConnection, mapper acpStderrMessageMapper) *acpClient {
 	c := &acpClient{
 		conn:                conn,
@@ -95,6 +101,11 @@ func newACPClientWithStderrMessageMapper(conn ProcessConnection, mapper acpStder
 	go c.readLoop()
 	return c
 }
+
+const (
+	acpClientOutputTailLimit          = 8192
+	acpClientStdoutProtocolErrorLimit = 5
+)
 
 // newAppServerJSONRPCClient creates a JSON-RPC client for the codex
 // app-server wire format, which omits the "jsonrpc" version header.
@@ -149,6 +160,23 @@ func (c *acpClient) Done() <-chan struct{} {
 // Err reports why the connection terminated; valid after Done is closed.
 func (c *acpClient) Err() error {
 	return c.finishError()
+}
+
+func (c *acpClient) Diagnostics() acpClientDiagnostics {
+	if c == nil {
+		return acpClientDiagnostics{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	diag := acpClientDiagnostics{
+		StderrTail: strings.TrimSpace(string(c.stderrTail)),
+		StdoutTail: strings.TrimSpace(string(c.stdoutTail)),
+	}
+	if c.exitCode != nil {
+		exitCode := *c.exitCode
+		diag.ExitCode = &exitCode
+	}
+	return diag
 }
 
 func (c *acpClient) Notify(ctx context.Context, method string, params any) error {
@@ -384,6 +412,7 @@ func (c *acpClient) sendJSON(ctx context.Context, value any) error {
 func (c *acpClient) readLoop() {
 	var pending []byte
 	var stderrTail []byte
+	var stdoutTail []byte
 	for {
 		frame, err := c.conn.Recv()
 		if err != nil {
@@ -392,9 +421,10 @@ func (c *acpClient) readLoop() {
 		}
 		if len(frame.Stderr) > 0 {
 			stderrTail = append(stderrTail, frame.Stderr...)
-			if len(stderrTail) > 8192 {
-				stderrTail = stderrTail[len(stderrTail)-8192:]
+			if len(stderrTail) > acpClientOutputTailLimit {
+				stderrTail = stderrTail[len(stderrTail)-acpClientOutputTailLimit:]
 			}
+			c.setStderrTail(stderrTail)
 			c.mu.Lock()
 			stderrSink := c.stderrSink
 			c.mu.Unlock()
@@ -413,6 +443,7 @@ func (c *acpClient) readLoop() {
 			continue
 		}
 		if frame.ExitCode != nil {
+			c.setExitCode(*frame.ExitCode)
 			message := strings.TrimSpace(frame.Message)
 			if stderr := strings.TrimSpace(string(stderrTail)); stderr != "" {
 				message = firstNonEmpty(message, "process exited") + ": " + stderr
@@ -423,6 +454,11 @@ func (c *acpClient) readLoop() {
 		if len(frame.Stdout) == 0 {
 			continue
 		}
+		stdoutTail = append(stdoutTail, frame.Stdout...)
+		if len(stdoutTail) > acpClientOutputTailLimit {
+			stdoutTail = stdoutTail[len(stdoutTail)-acpClientOutputTailLimit:]
+		}
+		c.setStdoutTail(stdoutTail)
 		pending = append(pending, frame.Stdout...)
 		for {
 			line, rest, ok := bytes.Cut(pending, []byte("\n"))
@@ -435,16 +471,51 @@ func (c *acpClient) readLoop() {
 	}
 }
 
+func (c *acpClient) setStderrTail(tail []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stderrTail = append(c.stderrTail[:0], tail...)
+}
+
+func (c *acpClient) setStdoutTail(tail []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.stdoutTail = append(c.stdoutTail[:0], tail...)
+}
+
+func (c *acpClient) setExitCode(exitCode int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.exitCode = &exitCode
+}
+
 func (c *acpClient) dispatchLine(line []byte) {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 {
 		return
 	}
-	var message acpMessage
-	if err := json.Unmarshal(line, &message); err != nil {
-		c.finish(fmt.Errorf("invalid acp json: %w", err))
+	if !bytes.HasPrefix(line, []byte("{")) {
+		if json.Valid(line) {
+			c.recordStdoutProtocolError("non_object_json", line, nil)
+			return
+		}
+		if benignACPStdoutLine(line) {
+			c.resetStdoutProtocolErrors()
+			slog.Warn("agent session ACP stdout ignored provider log line",
+				"event", "agent_session.acp.stdout.provider_log",
+				"message", truncateACPLogValue(string(line), 1200),
+			)
+			return
+		}
+		c.recordStdoutProtocolError("invalid_json", line, nil)
 		return
 	}
+	var message acpMessage
+	if err := json.Unmarshal(line, &message); err != nil {
+		c.recordStdoutProtocolError("invalid_json", line, err)
+		return
+	}
+	c.resetStdoutProtocolErrors()
 	slog.Info("agent session ACP stdout",
 		"event", "agent_session.acp.stdout",
 		"method", message.Method,
@@ -456,6 +527,92 @@ func (c *acpClient) dispatchLine(line []byte) {
 		"error_data", acpErrorData(message.Error),
 	)
 	c.dispatchMessage(message)
+}
+
+func (c *acpClient) resetStdoutProtocolErrors() {
+	c.mu.Lock()
+	c.stdoutProtocolErrs = 0
+	c.mu.Unlock()
+}
+
+func (c *acpClient) recordStdoutProtocolError(kind string, line []byte, cause error) {
+	c.mu.Lock()
+	c.stdoutProtocolErrs++
+	count := c.stdoutProtocolErrs
+	stdoutTail := strings.TrimSpace(string(c.stdoutTail))
+	stderrTail := strings.TrimSpace(string(c.stderrTail))
+	c.mu.Unlock()
+
+	message := truncateACPLogValue(string(line), 1200)
+	if count < acpClientStdoutProtocolErrorLimit {
+		slog.Warn("agent session ACP stdout ignored malformed protocol line",
+			"event", "agent_session.acp.stdout.protocol_line_ignored",
+			"kind", kind,
+			"consecutive_count", count,
+			"limit", acpClientStdoutProtocolErrorLimit,
+			"message", message,
+			"error", acpProtocolErrorMessage(cause),
+		)
+		return
+	}
+
+	errText := fmt.Sprintf("invalid acp stdout protocol after %d consecutive malformed lines: %s", count, kind)
+	if cause != nil {
+		errText += ": " + cause.Error()
+	}
+	errText += ": " + message
+	if stdoutTail != "" {
+		errText += "; stdout tail: " + truncateACPLogValue(stdoutTail, 1200)
+	}
+	if stderrTail != "" {
+		errText += "; stderr tail: " + truncateACPLogValue(stderrTail, 1200)
+	}
+	c.finish(errors.New(errText))
+}
+
+func acpProtocolErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func benignACPStdoutLine(line []byte) bool {
+	text := strings.TrimSpace(string(line))
+	if text == "" {
+		return true
+	}
+	lower := strings.ToLower(text)
+	prefixes := []string{
+		"warn ",
+		"warn:",
+		"warning ",
+		"warning:",
+		"[warn]",
+		"[warning]",
+		"npm warn",
+		"info ",
+		"info:",
+		"[info]",
+		"debug ",
+		"debug:",
+		"[debug]",
+		"trace ",
+		"trace:",
+		"[trace]",
+		"(node:",
+		"experimentalwarning:",
+		"codex ",
+		"codex-",
+		"claude ",
+		"gemini ",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(lower, "deprecated")
 }
 
 func (c *acpClient) dispatchMessage(message acpMessage) {

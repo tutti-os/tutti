@@ -92,6 +92,7 @@ export function RichTextTriggerTextarea({
   const [textareaPresentationStyle, setTextareaPresentationStyle] =
     useState<CSSProperties | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
+  const suppressPastedAtQueryRef = useRef(false);
   const registry = useMemo(
     () => createRichTextTriggerRegistry(triggerProviders),
     [triggerProviders]
@@ -112,9 +113,15 @@ export function RichTextTriggerTextarea({
         : null,
     [activeTriggerConfigs, isFocused, selectionStart, value]
   );
+  const visibleQuery =
+    suppressPastedAtQueryRef.current &&
+    query?.trigger === "@" &&
+    query.keyword.length > 0
+      ? null
+      : query;
   const shouldQuery =
-    query !== null &&
-    query.keyword.length >= minQueryLength &&
+    visibleQuery !== null &&
+    visibleQuery.keyword.length >= minQueryLength &&
     activeTriggerConfigs.length > 0;
   const isMenuOpen =
     isFocused && shouldQuery && (isLoading || matches.length > 0);
@@ -129,7 +136,7 @@ export function RichTextTriggerTextarea({
   }, [value]);
 
   useEffect(() => {
-    if (!shouldQuery || !query) {
+    if (!shouldQuery || !visibleQuery) {
       setMatches([]);
       setActiveIndex(0);
       setIsLoading(false);
@@ -141,9 +148,9 @@ export function RichTextTriggerTextarea({
 
     void queryRichTextTriggerMatches(registry, {
       abortSignal: abortController.signal,
-      keyword: query.keyword,
+      keyword: visibleQuery.keyword,
       maxResults,
-      trigger: query.trigger,
+      trigger: visibleQuery.trigger,
       context: {
         documentText: value,
         blockText: value
@@ -169,7 +176,7 @@ export function RichTextTriggerTextarea({
     return () => {
       abortController.abort();
     };
-  }, [maxResults, query, registry, shouldQuery, value]);
+  }, [maxResults, registry, shouldQuery, value, visibleQuery]);
 
   useLayoutEffect(() => {
     if (!textareaRef.current || !hasDecorations) {
@@ -186,14 +193,14 @@ export function RichTextTriggerTextarea({
   }, [hasDecorations, textareaClassName, value]);
 
   useLayoutEffect(() => {
-    if (!isMenuOpen || !query || !textareaRef.current) {
+    if (!isMenuOpen || !visibleQuery || !textareaRef.current) {
       setMenuPoint(null);
       return;
     }
 
     const caretPoint = getTextareaCaretViewportPoint(
       textareaRef.current,
-      query.to
+      visibleQuery.to
     );
     const textareaRect = textareaRef.current.getBoundingClientRect();
 
@@ -209,16 +216,19 @@ export function RichTextTriggerTextarea({
       x: caretPoint.x,
       y: caretPoint.y + caretPoint.lineHeight + menuOffset
     });
-  }, [isMenuOpen, menuOffset, query, selectionStart, value]);
+  }, [isMenuOpen, menuOffset, selectionStart, value, visibleQuery]);
 
   useEffect(() => {
-    if (!isMenuOpen || !query || !textareaRef.current) {
+    if (!isMenuOpen || !visibleQuery || !textareaRef.current) {
       return;
     }
 
     const textarea = textareaRef.current;
     const updateMenuPoint = () => {
-      const caretPoint = getTextareaCaretViewportPoint(textarea, query.to);
+      const caretPoint = getTextareaCaretViewportPoint(
+        textarea,
+        visibleQuery.to
+      );
       const textareaRect = textarea.getBoundingClientRect();
 
       setMenuPoint(
@@ -254,7 +264,7 @@ export function RichTextTriggerTextarea({
       window.removeEventListener("resize", updateMenuPoint);
       window.removeEventListener("scroll", updateMenuPoint, true);
     };
-  }, [isMenuOpen, menuOffset, query]);
+  }, [isMenuOpen, menuOffset, visibleQuery]);
 
   const closeMenu = () => {
     setMatches([]);
@@ -399,6 +409,16 @@ export function RichTextTriggerTextarea({
             setIsFocused(false);
             closeMenu();
           }, 100);
+        }}
+        onPaste={(event) => {
+          const pastedText = event.clipboardData.getData("text/plain");
+          suppressPastedAtQueryRef.current =
+            pastedText.includes("@") && !pastedText.endsWith("@");
+          if (suppressPastedAtQueryRef.current) {
+            window.setTimeout(() => {
+              suppressPastedAtQueryRef.current = false;
+            }, 0);
+          }
         }}
         onChange={(event) => {
           const rawSelectionStart = event.target.selectionStart ?? 0;

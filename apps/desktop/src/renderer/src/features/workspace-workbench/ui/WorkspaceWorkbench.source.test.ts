@@ -9,6 +9,12 @@ const source = readFileSync(
   ),
   "utf8"
 );
+const agentGuiContributionSource = readFileSync(
+  resolve(
+    "src/renderer/src/features/workspace-workbench/services/internal/workspaceAgentGuiContribution.ts"
+  ),
+  "utf8"
+);
 
 test("WorkspaceWorkbench does not render a global agent install pending overlay", () => {
   assert.doesNotMatch(source, /WorkspaceAgentConnectingCard/);
@@ -60,5 +66,12 @@ test("WorkspaceWorkbench opens manage agents dialog from agent-manage feature re
   assert.match(
     source,
     /setAgentProviderManageFocusedProvider\(\s*isDesktopAgentGUIProvider\(request\.provider\) \? request\.provider : null\s*\)/s
+  );
+});
+
+test("agent gui rail external action opens an internal agent session window", () => {
+  assert.match(
+    agentGuiContributionSource,
+    /onOpenAgentConversationWindow:\s*async \(request\) => \{\s*await requestWorkspaceAgentGuiLaunch\(\{\s*\.\.\.request,\s*openInNewWindow: true\s*\}\);[\s\S]*?\}/
   );
 });

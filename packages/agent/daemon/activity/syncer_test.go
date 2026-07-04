@@ -123,8 +123,8 @@ func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 		t.Fatalf("notify count after remote echo sync = %d, want unchanged", notifyCount)
 	}
 	reply, ok := svc.ListSessionMessages("room-1", "agent-session-1", 0, 10)
-	if !ok || reply.LatestVersion != 7 || len(reply.Messages) != 1 || reply.Messages[0].Version != 7 {
-		t.Fatalf("messages reply = %#v, ok=%v, want remote cursor metadata applied", reply, ok)
+	if !ok || reply.LatestVersion != 1 || len(reply.Messages) != 1 || reply.Messages[0].Version != 1 {
+		t.Fatalf("messages reply = %#v, ok=%v, want local cursor metadata preserved", reply, ok)
 	}
 }
 

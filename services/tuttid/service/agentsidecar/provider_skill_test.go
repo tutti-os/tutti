@@ -1,7 +1,9 @@
 package agentsidecar
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -37,7 +39,8 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 		"Do not derive a command path from the skill slug",
 		"The actual CLI prefix is `tutti-dev`",
 		"App id: <appId>",
-		"use the injected `tutti-cli` command reference",
+		"use injected `$tutti-cli`",
+		"command-guide.md",
 		"call the exact visible skill name with no arguments",
 		"`tutti-cli:tutti-cli`",
 		"Do not derive filesystem paths from the plugin directory, plugin name, or skill slug",
@@ -79,35 +82,36 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
-		"When image context may be useful",
-		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
-		"discover candidate turn ids",
-		"inspect the active turn and any recent user turns",
-		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
-		"`--image <localPath>`",
+		"tutti-dev agent session-summary",
+		"tutti-dev agent turn-resources",
+		"--image <localPath>",
 		"tutti-dev app open --app-id <appId> --json",
-		"Built-in app ids include",
-		"tutti-onboarding",
-		"Do not use `app open` or app-specific open commands",
-		"do not ask for a missing model",
-		"If it is `issue-manager` and the user asks issue/task work",
-		"The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions",
-		"prefer one self-contained Bash command or script",
-		"checks the CLI first",
-		"polls with bounded sleeps",
-		"public web URL points directly to an image",
-		"returns an image URL on `127.0.0.1`, `localhost`, or another machine-local host",
-		"download it to a readable local image file first",
-		"app-specific open commands such as `tutti-dev <scope> open`",
-		"render it inline with Markdown instead of opening the app",
-		"`workspace-app`: workspace app mention routing and app-id-to-command-guide mapping",
-		"it is not a CLI scope",
-		"Do not invent `tutti-dev workspace-app ...` unless that exact command is listed",
-		"match command guide entries by `App id: <appId>`",
+		"Ask for task prompt, not model.",
+		"download to readable local file",
+		"Do not invent `tutti-dev workspace-app ...`.",
+		"match `App id: <appId>` in command guide",
+		"### Rules",
+		"Do not skip skill because CLI command is listed.",
+		"## Execution Environment",
+		"`tutti-dev` talks to local daemon over localhost/IPC.",
+		"Do not change global sandbox settings yourself.",
+		"Codex: `tutti-dev` needs localhost/IPC.",
+		"sandbox_permissions=require_escalated",
+		"rerun once with `sandbox_permissions=require_escalated`",
+		"## CLI Reference",
+		"`tutti-dev <scope> --help`",
+		"App id mapping: read `command-guide.md` from visible `$tutti-cli` skill files.",
 	} {
 		if !strings.Contains(policy, want) {
 			t.Fatalf("tutti CLI policy missing %q: %q", want, policy)
 		}
+	}
+	if strings.Contains(policy, "tutti-dev issue list --topic-id <topic-id>") {
+		t.Fatalf("tutti CLI policy should not inline full command guide: %q", policy)
+	}
+	if strings.Contains(policy, "Claude Code `Monitor` tool is disabled") ||
+		strings.Contains(policy, "bounded shell/script") {
+		t.Fatalf("codex Tutti CLI policy should not include Claude Code Monitor guidance: %q", policy)
 	}
 	if strings.Contains(policy, "{{CLI_COMMAND}}") || strings.Contains(policy, "tutti codex start") {
 		t.Fatalf("tutti CLI policy used unresolved or production CLI command: %q", policy)
@@ -122,8 +126,35 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		t.Fatalf("tutti CLI policy should avoid command-scope wording: %q", policy)
 	}
 	if !strings.Contains(policy, "# Host App Context") ||
-		!strings.Contains(policy, "The app displays images and videos using standard Markdown syntax") {
+		!strings.Contains(policy, "Images/videos: use Markdown") ||
+		!strings.Contains(policy, "use `[filename](/abs/path)` Markdown links") ||
+		!strings.Contains(policy, "No relative paths, line suffixes") {
 		t.Fatalf("tutti CLI policy missing host app context: %q", policy)
+	}
+
+	claudePolicy := tuttiCLIPolicy(PrepareInput{
+		AgentSessionID: "session-1",
+		CLICommand:     "tutti-dev",
+		Provider:       "claude-code",
+	})
+	if !strings.Contains(claudePolicy, "Claude Code `Monitor` tool is disabled") ||
+		!strings.Contains(claudePolicy, "bounded shell/script") ||
+		!strings.Contains(claudePolicy, "do not invent Codex `sandbox_permissions`") ||
+		!strings.Contains(claudePolicy, "localhost/IPC") {
+		t.Fatalf("claude Tutti CLI policy missing Monitor guidance: %q", claudePolicy)
+	}
+	if strings.Contains(claudePolicy, "sandbox_permissions=require_escalated") {
+		t.Fatalf("claude Tutti CLI policy should not include Codex escalation syntax: %q", claudePolicy)
+	}
+
+	geminiPolicy := tuttiCLIPolicy(PrepareInput{
+		AgentSessionID: "session-1",
+		CLICommand:     "tutti-dev",
+		Provider:       "gemini",
+	})
+	if !strings.Contains(geminiPolicy, "execution environment with localhost/IPC access") ||
+		strings.Contains(geminiPolicy, "sandbox_permissions=require_escalated") {
+		t.Fatalf("gemini Tutti CLI policy should use generic daemon environment guidance: %q", geminiPolicy)
 	}
 }
 
@@ -169,25 +200,20 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		t.Fatalf("recommended system prompt = %#v", bundle.RecommendedSystemPrompt)
 	}
 	for _, want := range []string{
-		"do not treat this dynamic skill bundle by itself as routing intent",
-		"unless the user explicitly asks for Tutti",
-		"Do not choose Tutti routing, Tutti skills, or a shell-mediated Tutti CLI call merely because this bundle or command guide is present.",
-		"This guidance does not restrict host-application tools that are needed for the user's non-Tutti task.",
-		"agent session id: `run-1`",
-		"provider: `codex`",
-		"tutti-dev issue list --topic-id <topic-id>",
-		"`mention://workspace-app/<appId>?workspaceId=...` -> use `workspace-app`.",
-		"`group-chat`; do not look for a `group-chat` skill",
-		"If provider-native Skill tools are available",
-		"using the exact skill name exposed by the provider",
-		"If no exact provider-native Skill tool is available",
-		"first read the materialized `SKILL.md` for the matching skill slug",
-		"Do not infer a fixed filesystem path from the skill slug",
-		"Do not read app `AGENTS.md`, `COMMANDS.md`, source files, or run shell commands before following the matching Tutti skill.",
-		"`workspace-app`: workspace app mention routing and app-id-to-command-guide mapping",
-		"it is not a CLI scope",
-		"Do not invent `tutti-dev workspace-app ...` unless that exact command is listed",
-		"match command guide entries by `App id: <appId>`",
+		"Without `mention://...`, do not treat this bundle alone as intent.",
+		"Use Tutti only when user explicitly asks for Tutti",
+		"Runtime context: session `run-1`, provider `codex`.",
+		"`mention://workspace-app/<appId>?workspaceId=...` -> `$workspace-app`",
+		"`<appId>` is not a skill name",
+		"If provider-native Skill tools exist",
+		"read materialized `SKILL.md`",
+		"Do not infer fixed filesystem paths from slugs",
+		"Do not read app `AGENTS.md`, `COMMANDS.md`, source files, or run shell before matching Tutti skill.",
+		"Do not invent `tutti-dev workspace-app ...`.",
+		"match `App id: <appId>` in `command-guide.md`",
+		"CLI reference:",
+		"`tutti-dev <scope> --help`",
+		"App id mapping: read `command-guide.md` from visible `$tutti-cli` skill files.",
 	} {
 		if !strings.Contains(bundle.RecommendedSystemPrompt.Content, want) {
 			t.Fatalf("recommended system prompt missing %q: %q", want, bundle.RecommendedSystemPrompt.Content)
@@ -205,8 +231,11 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		t.Fatalf("recommended system prompt should avoid command-scope wording: %q", bundle.RecommendedSystemPrompt.Content)
 	}
 	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "# Host App Context") ||
-		strings.Contains(bundle.RecommendedSystemPrompt.Content, "The app displays images and videos using standard Markdown syntax") {
+		strings.Contains(bundle.RecommendedSystemPrompt.Content, "standard Markdown syntax") {
 		t.Fatalf("recommended system prompt should not include host app context: %q", bundle.RecommendedSystemPrompt.Content)
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "tutti-dev issue list --topic-id <topic-id>") {
+		t.Fatalf("recommended system prompt should not inline full command guide: %q", bundle.RecommendedSystemPrompt.Content)
 	}
 	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "{{") {
 		t.Fatalf("recommended system prompt has unresolved placeholder: %q", bundle.RecommendedSystemPrompt.Content)
@@ -218,15 +247,16 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 		t.Fatalf("tutti skill record = %#v", tuttiSkill)
 	}
 	for _, want := range []string{
-		"tutti-dev issue list --topic-id <topic-id>",
 		"## Dynamic Command Snapshot",
 		"not a stable inventory of every command",
 		"tutti-dev <scope> --help",
 		"preserves `App id:` metadata",
 		"older materialized command guide",
-		"`workspace-app` is a skill and mention kind, not a CLI scope",
+		"`$workspace-app` is a skill and mention kind, not a CLI scope",
 		"The current AgentGUI session is `run-1`.",
 		"The current AgentGUI provider is `codex`.",
+		"`tutti-dev <scope> --help`",
+		"this skill's `command-guide.md`",
 	} {
 		if !strings.Contains(tuttiSkill.Content, want) {
 			t.Fatalf("tutti skill content missing %q: %q", want, tuttiSkill.Content)
@@ -235,11 +265,22 @@ func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {
 	if strings.Contains(tuttiSkill.Content, "{{") {
 		t.Fatalf("tutti skill content has unresolved placeholder: %q", tuttiSkill.Content)
 	}
+	commandGuideReference, ok := skillBundleFileContent(tuttiSkill, commandGuideReferencePath)
+	if !ok {
+		t.Fatalf("tutti skill missing command guide reference: %#v", tuttiSkill.Files)
+	}
+	if !strings.Contains(commandGuideReference, "tutti-dev issue list --topic-id <topic-id>") {
+		t.Fatalf("command guide reference = %q", commandGuideReference)
+	}
+	if strings.Contains(tuttiSkill.Content, "tutti-dev issue list --topic-id <topic-id>") {
+		t.Fatalf("tutti skill content should not inline full command guide: %q", tuttiSkill.Content)
+	}
 }
 
 func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 	t.Setenv(browserUseSwitchEnv, "")
 	t.Setenv(computerUseSwitchEnv, "")
+	computerAvailable := setComputerUseAvailableForTest(t)
 
 	withoutOptional := renderProviderSkillBundle(PrepareInput{
 		AgentSessionID: "run-1",
@@ -257,12 +298,19 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		ComputerUse:    true,
 		Provider:       "codex",
 	})
-	if got := strings.Join(skillBundleSlugs(withOptional.Skills), ","); got != "tutti-cli,issue-manager,workspace-app,reference,browser-use,computer-use" {
+	wantSlugs := "tutti-cli,issue-manager,workspace-app,reference,browser-use"
+	if computerAvailable {
+		wantSlugs += ",computer-use"
+	}
+	if got := strings.Join(skillBundleSlugs(withOptional.Skills), ","); got != wantSlugs {
 		t.Fatalf("skill slugs with optional = %q", got)
 	}
+	wantPromptFragments := []string{"tutti-dev browser"}
+	if computerAvailable {
+		wantPromptFragments = append(wantPromptFragments, "tutti-dev computer")
+	}
 	if withOptional.RecommendedSystemPrompt == nil ||
-		!strings.Contains(withOptional.RecommendedSystemPrompt.Content, "tutti-dev browser") ||
-		!strings.Contains(withOptional.RecommendedSystemPrompt.Content, "tutti-dev computer") {
+		!containsAll(withOptional.RecommendedSystemPrompt.Content, wantPromptFragments...) {
 		t.Fatalf("recommended system prompt = %#v", withOptional.RecommendedSystemPrompt)
 	}
 	browserSkill := skillBundleRecord(withOptional.Skills, "browser-use")
@@ -271,12 +319,59 @@ func TestRenderProviderSkillBundleGatesOptionalSkills(t *testing.T) {
 		strings.Contains(browserSkill.Content, "tutti browser") {
 		t.Fatalf("browser skill content = %q", browserSkill.Content)
 	}
-	computerSkill := skillBundleRecord(withOptional.Skills, "computer-use")
-	if !strings.Contains(computerSkill.Content, "tutti-dev computer screenshot") ||
-		strings.Contains(computerSkill.Content, "{{CLI_COMMAND}}") ||
-		strings.Contains(computerSkill.Content, "tutti computer") {
-		t.Fatalf("computer skill content = %q", computerSkill.Content)
+	if computerAvailable {
+		computerSkill := skillBundleRecord(withOptional.Skills, "computer-use")
+		if !strings.Contains(computerSkill.Content, "tutti-dev computer screenshot") ||
+			strings.Contains(computerSkill.Content, "{{CLI_COMMAND}}") ||
+			strings.Contains(computerSkill.Content, "tutti computer") {
+			t.Fatalf("computer skill content = %q", computerSkill.Content)
+		}
 	}
+}
+
+func TestRenderProviderSkillBundleOmitsComputerUseWhenUnavailable(t *testing.T) {
+	t.Setenv(browserUseSwitchEnv, "")
+	t.Setenv(computerUseSwitchEnv, "")
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
+
+	bundle := renderProviderSkillBundle(PrepareInput{
+		AgentSessionID: "run-1",
+		BrowserUse:     true,
+		CLICommand:     "tutti-dev",
+		ComputerUse:    true,
+		Provider:       "codex",
+	})
+
+	if got := strings.Join(skillBundleSlugs(bundle.Skills), ","); strings.Contains(got, "computer-use") {
+		t.Fatalf("skill slugs with unavailable computer-use = %q", got)
+	}
+	if bundle.RecommendedSystemPrompt != nil && strings.Contains(bundle.RecommendedSystemPrompt.Content, "tutti-dev computer") {
+		t.Fatalf("recommended system prompt = %#v, want no computer policy", bundle.RecommendedSystemPrompt)
+	}
+}
+
+func setComputerUseAvailableForTest(t *testing.T) bool {
+	t.Helper()
+	// CheckReady executes the resolved command, so the override must be a
+	// hermetic stub that answers `permissions status --json`. Pointing it at
+	// the test binary itself would re-run the whole test suite recursively.
+	stub := filepath.Join(t.TempDir(), "cua-driver-stub")
+	script := "#!/bin/sh\n" +
+		"printf '%s' '{\"accessibility\":true,\"screen_recording\":true,\"screen_recording_capturable\":true}'\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatalf("write cua-driver stub: %v", err)
+	}
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", stub)
+	return runtime.GOOS == "darwin"
+}
+
+func containsAll(content string, fragments ...string) bool {
+	for _, fragment := range fragments {
+		if !strings.Contains(content, fragment) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
@@ -294,7 +389,7 @@ func TestRenderProviderSkillBundleIncludesClaudeRoutingForAlias(t *testing.T) {
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not pass arguments to Skill") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "the skill reads the mention URI from the current user turn") ||
-		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Call the exact visible Skill tool for `workspace-app`") ||
+		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Call the exact visible Skill tool when available") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "fall back to that materialized skill file") ||
 		!strings.Contains(bundle.RecommendedSystemPrompt.Content, "Do not guess a directory from the plain skill slug") {
 		t.Fatalf("recommended system prompt = %#v", bundle.RecommendedSystemPrompt)
@@ -321,4 +416,13 @@ func skillBundleRecord(skills []SkillMaterializationRecord, slug string) SkillMa
 		}
 	}
 	return SkillMaterializationRecord{}
+}
+
+func skillBundleFileContent(skill SkillMaterializationRecord, path string) (string, bool) {
+	for _, file := range skill.Files {
+		if file.Path == path {
+			return file.Content, true
+		}
+	}
+	return "", false
 }

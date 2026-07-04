@@ -16,6 +16,7 @@ interface RequestOptions {
 
 export function createDesktopDaemonFetch(
   getEndpoint: () => DesktopDaemonEndpoint
+  // oxlint-disable-next-line no-restricted-globals -- fetch-shaped transport to the local daemon, not outbound
 ): typeof fetch {
   return async (
     input: URL | RequestInfo,

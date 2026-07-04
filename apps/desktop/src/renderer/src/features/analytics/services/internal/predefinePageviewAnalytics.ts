@@ -1,76 +1,49 @@
-import { PredefinePageviewReporter } from "../../reporters/predefine-pageview/predefinePageviewReporter.ts";
+import { AppPageviewReporter } from "../../reporters/app-pageview/appPageviewReporter.ts";
 import type { IReporterService } from "../reporterService.interface.ts";
-
-const reportedDayStorageKey = "tutti.analytics.predefine_pageview.reported_day";
 
 export interface PredefinePageviewAnalyticsController {
   dispose(): void;
-  reportToday(): void;
+  reportAppOpen(): void;
+  reportFocus(): void;
 }
 
 export interface PredefinePageviewAnalyticsRuntime {
-  addVisibilityChangeListener(listener: () => void): () => void;
-  clearTimeout(handle: unknown): void;
-  getVisibilityState(): DocumentVisibilityState;
-  setTimeout(task: () => void, delayMs: number): unknown;
-}
-
-export interface PredefinePageviewAnalyticsStorage {
-  getReportedDay(): string | null;
-  setReportedDay(dayKey: string): void;
+  addFocusListener(listener: () => void): () => void;
 }
 
 export function startPredefinePageviewAnalytics(input: {
   reporterNow?: () => number;
   reporterService: Pick<IReporterService, "trackEvents">;
   runtime?: PredefinePageviewAnalyticsRuntime;
-  storage?: PredefinePageviewAnalyticsStorage;
 }): PredefinePageviewAnalyticsController {
   const runtime = input.runtime ?? createDocumentPredefinePageviewRuntime();
-  const storage = input.storage ?? createLocalStoragePredefinePageviewStorage();
   const now = input.reporterNow ?? Date.now;
   let disposed = false;
-  let nextDayTimer: unknown = null;
 
-  const reportToday = () => {
-    if (disposed || runtime.getVisibilityState() !== "visible") {
+  const reportPageview = () => {
+    if (disposed) {
       return;
     }
-    const dayKey = toLocalDayKey(now());
-    if (storage.getReportedDay() === dayKey) {
-      return;
-    }
-    storage.setReportedDay(dayKey);
-    void new PredefinePageviewReporter({
+    void new AppPageviewReporter({
       now,
       reporterService: input.reporterService
     }).report();
   };
 
-  const scheduleNextDayReport = () => {
-    clearNextDayReport();
+  const reportAppOpen = () => {
+    reportPageview();
+  };
+
+  const reportFocus = () => {
     if (disposed) {
       return;
     }
-    nextDayTimer = runtime.setTimeout(
-      () => {
-        nextDayTimer = null;
-        reportToday();
-        scheduleNextDayReport();
-      },
-      Math.max(1, nextLocalDayStart(now()) - now())
-    );
+    reportPageview();
   };
 
-  const unsubscribeVisibility = runtime.addVisibilityChangeListener(() => {
-    if (runtime.getVisibilityState() === "visible") {
-      reportToday();
-      scheduleNextDayReport();
-    }
-  });
+  const unsubscribeFocus = runtime.addFocusListener(reportFocus);
 
-  reportToday();
-  scheduleNextDayReport();
+  reportAppOpen();
 
   return {
     dispose() {
@@ -78,76 +51,20 @@ export function startPredefinePageviewAnalytics(input: {
         return;
       }
       disposed = true;
-      unsubscribeVisibility();
-      clearNextDayReport();
+      unsubscribeFocus();
     },
-    reportToday
+    reportAppOpen,
+    reportFocus
   };
-
-  function clearNextDayReport(): void {
-    if (nextDayTimer === null) {
-      return;
-    }
-    runtime.clearTimeout(nextDayTimer);
-    nextDayTimer = null;
-  }
-}
-
-function toLocalDayKey(timestamp: number): string {
-  const date = new Date(timestamp);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
-}
-
-function nextLocalDayStart(timestamp: number): number {
-  const date = new Date(timestamp);
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + 1
-  ).getTime();
 }
 
 function createDocumentPredefinePageviewRuntime(): PredefinePageviewAnalyticsRuntime {
   return {
-    addVisibilityChangeListener(listener) {
-      document.addEventListener("visibilitychange", listener);
+    addFocusListener(listener) {
+      window.addEventListener("focus", listener);
       return () => {
-        document.removeEventListener("visibilitychange", listener);
+        window.removeEventListener("focus", listener);
       };
-    },
-    clearTimeout(handle) {
-      globalThis.clearTimeout(
-        handle as ReturnType<typeof globalThis.setTimeout>
-      );
-    },
-    getVisibilityState() {
-      return document.visibilityState;
-    },
-    setTimeout(task, delayMs) {
-      return globalThis.setTimeout(task, delayMs);
-    }
-  };
-}
-
-function createLocalStoragePredefinePageviewStorage(): PredefinePageviewAnalyticsStorage {
-  return {
-    getReportedDay() {
-      try {
-        return globalThis.localStorage.getItem(reportedDayStorageKey);
-      } catch {
-        return null;
-      }
-    },
-    setReportedDay(dayKey) {
-      try {
-        globalThis.localStorage.setItem(reportedDayStorageKey, dayKey);
-      } catch {
-        // Storage is only a dedupe aid; analytics remains best-effort.
-      }
     }
   };
 }

@@ -212,8 +212,9 @@ export function resolveEffectiveComposerSettings(input: {
         input.settings.speed
       ) as AgentSessionSpeed | null) ?? null,
     planMode: Boolean(input.settings.planMode),
-    // Browser use defaults on; preserve an explicit opt-out, default unset to on.
+    // Browser/computer use default on; preserve explicit opt-outs.
     browserUse: input.settings.browserUse ?? true,
+    computerUse: input.settings.computerUse ?? true,
     permissionModeId: normalizePermissionModeId(input.settings.permissionModeId)
   };
 }
@@ -354,6 +355,7 @@ export function sameComposerSettings(
     (left?.speed ?? null) === (right?.speed ?? null) &&
     Boolean(left?.planMode) === Boolean(right?.planMode) &&
     (left?.browserUse ?? true) === (right?.browserUse ?? true) &&
+    (left?.computerUse ?? true) === (right?.computerUse ?? true) &&
     (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null)
   );
 }
@@ -384,6 +386,7 @@ export function buildNodeDefaultComposerSettings(
       null,
     planMode: Boolean(composerOverrides.planMode),
     browserUse: composerOverrides.browserUse ?? true,
+    computerUse: composerOverrides.computerUse ?? true,
     permissionModeId: normalizePermissionModeId(
       composerOverrides.permissionModeId
     )
@@ -393,6 +396,10 @@ export function buildNodeDefaultComposerSettings(
 export function nodeComposerOverridesForProvider(
   data: AgentGUINodeData
 ): AgentSessionComposerSettings | null {
+  const agentTargetId = normalizeOptionalText(data.agentTargetId);
+  if (agentTargetId) {
+    return data.composerOverridesByAgentTargetId?.[agentTargetId] ?? null;
+  }
   return (
     data.composerOverridesByProvider?.[data.provider] ??
     data.composerOverrides ??
@@ -458,8 +465,19 @@ export function nodeDataFromComposerSettings(
     // Raw passthrough (no Boolean coercion): undefined means "default on", so
     // only an explicit false persists as an opt-out.
     browserUse: settings.browserUse,
+    computerUse: settings.computerUse,
     permissionModeId: normalizePermissionModeId(settings.permissionModeId)
   };
+  const agentTargetId = normalizeOptionalText(current.agentTargetId);
+  if (agentTargetId) {
+    return {
+      ...current,
+      composerOverridesByAgentTargetId: {
+        ...(current.composerOverridesByAgentTargetId ?? {}),
+        [agentTargetId]: composerOverrides
+      }
+    };
+  }
   return {
     ...current,
     composerOverrides,
@@ -522,15 +540,21 @@ export function removeQueuedPromptById(
 export const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";
 
 export function nodeDefaultDraftKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
+  const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+  if (normalizedAgentTargetId) {
+    return `${NODE_DEFAULT_DRAFT_KEY}:target:${normalizedAgentTargetId}`;
+  }
   return `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}`;
 }
 
 export function nodeDefaultDraftPromptKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
-  return nodeDefaultDraftKey(agentProvider);
+  return nodeDefaultDraftKey(agentProvider, agentTargetId);
 }
 
 export function normalizeProjectDraftPath(
@@ -545,6 +569,9 @@ export function readNodeDefaultDraftPrompt(input: {
   drafts: Record<string, string>;
 }): string {
   return (
+    input.drafts[
+      nodeDefaultDraftPromptKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftPromptKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     ""
@@ -557,6 +584,16 @@ export function readNodeDefaultDraftSettings(input: {
   defaultSpeed?: AgentSessionSpeed | null;
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
+  const agentTargetId = normalizeOptionalText(input.data.agentTargetId);
+  if (agentTargetId) {
+    return (
+      input.drafts[nodeDefaultDraftKey(input.data.provider, agentTargetId)] ??
+      buildNodeDefaultComposerSettings(input.data, {
+        defaultReasoningEffort: input.defaultReasoningEffort,
+        defaultSpeed: input.defaultSpeed
+      })
+    );
+  }
   return (
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??

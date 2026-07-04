@@ -447,6 +447,7 @@ export function WorkbenchHostDock({
   } = useDockMagnification({
     dockPlacement,
     dockRootRef: dockMeasureRef,
+    dockViewportRef: dockItemsRef,
     slotRefs
   });
   const clearSlotMagnificationRef = useRef<(anchorKey: string) => void>(() => {
@@ -1502,6 +1503,9 @@ export function WorkbenchHostDock({
                     className="desktop-dock__btn"
                     data-interactive={
                       clickResolution.kind === "blocked" ? "false" : "true"
+                    }
+                    data-dock-hover-panel-trigger={
+                      hasHoverPanel ? "true" : undefined
                     }
                     type="button"
                     onPointerDown={(event) => {
@@ -2952,9 +2956,46 @@ function WorkbenchHostDockHoverPanel({
   setPendingActionKeys: Dispatch<SetStateAction<Set<string>>>;
   state: WorkbenchHostDockHoverPanelState;
 }) {
+  const lastPointerActionAtRef = useRef<Map<string, number>>(new Map());
   if (!entry) {
     return null;
   }
+  const hoverPanelEntry = entry;
+
+  const runHoverAction = (
+    actionKey: string,
+    actionId: string,
+    disabled: boolean
+  ): void => {
+    if (disabled || pendingActionKeys.has(actionKey)) {
+      return;
+    }
+    setPendingActionKeys((current) => {
+      const next = new Set(current);
+      next.add(actionKey);
+      return next;
+    });
+    void (async () => {
+      try {
+        await onDockEntryAction?.({
+          actionId,
+          entryId: hoverPanelEntry.id,
+          host
+        });
+      } catch {
+        // Keep dock action failures contained.
+      } finally {
+        setPendingActionKeys((current) => {
+          if (!current.has(actionKey)) {
+            return current;
+          }
+          const next = new Set(current);
+          next.delete(actionKey);
+          return next;
+        });
+      }
+    })();
+  };
 
   return (
     <div
@@ -2997,40 +3038,48 @@ function WorkbenchHostDockHoverPanel({
                 className="desktop-dock__hover-action"
                 disabled={action.disabled || isLocallyPending}
                 type="button"
+                onPointerDown={(event) => {
+                  // The dock hover panel can be torn down between pointerdown
+                  // and the synthetic click — a re-render race, or the
+                  // overlapping workspace-app webview swallowing the pointerup —
+                  // which silently drops the click and makes the button look
+                  // dead. Act on pointerdown (primary button), the event proven
+                  // to reliably reach this button; keyboard activation still
+                  // flows through onClick below.
+                  if (event.button !== 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  lastPointerActionAtRef.current.set(
+                    actionKey,
+                    performance.now()
+                  );
+                  runHoverAction(
+                    actionKey,
+                    action.id,
+                    action.disabled === true
+                  );
+                }}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
+                  // A mouse activation already ran on pointerdown; skip its
+                  // trailing click. Only the keyboard path (Enter/Space, with no
+                  // preceding pointerdown) should trigger the action here.
+                  const lastPointerAt =
+                    lastPointerActionAtRef.current.get(actionKey);
                   if (
-                    action.disabled === true ||
-                    pendingActionKeys.has(actionKey)
+                    lastPointerAt !== undefined &&
+                    performance.now() - lastPointerAt < 700
                   ) {
                     return;
                   }
-                  setPendingActionKeys((current) => {
-                    const next = new Set(current);
-                    next.add(actionKey);
-                    return next;
-                  });
-                  void (async () => {
-                    try {
-                      await onDockEntryAction?.({
-                        actionId: action.id,
-                        entryId: entry.id,
-                        host
-                      });
-                    } catch {
-                      // Keep dock action failures contained.
-                    } finally {
-                      setPendingActionKeys((current) => {
-                        if (!current.has(actionKey)) {
-                          return current;
-                        }
-                        const next = new Set(current);
-                        next.delete(actionKey);
-                        return next;
-                      });
-                    }
-                  })();
+                  runHoverAction(
+                    actionKey,
+                    action.id,
+                    action.disabled === true
+                  );
                 }}
               >
                 {isPending

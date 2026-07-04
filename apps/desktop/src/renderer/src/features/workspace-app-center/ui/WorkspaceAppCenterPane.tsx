@@ -62,14 +62,20 @@ const designReviewAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/design-review.png",
   import.meta.url
 ).href;
-const documentSummarizerAppIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
-  import.meta.url
-).href;
 const tuttiDeveloperIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/tutti.png",
   import.meta.url
 ).href;
+
+const communityAppDeveloperOverrides: Record<
+  string,
+  NonNullable<WorkspaceAppManifest["authors"]>[number]
+> = {
+  "group-chat": {
+    name: "svenzeng",
+    url: "https://github.com/tutti-os/tutti"
+  }
+};
 
 const comingSoonWorkspaceAppDefinitions = [
   {
@@ -113,13 +119,6 @@ const comingSoonWorkspaceAppDefinitions = [
     iconUrl: designReviewAppIconUrl,
     nameKey: "appCenter.comingSoonApps.designReview.name",
     tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "document-summarizer",
-    descriptionKey: "appCenter.comingSoonApps.documentSummarizer.description",
-    iconUrl: documentSummarizerAppIconUrl,
-    nameKey: "appCenter.comingSoonApps.documentSummarizer.name",
-    tags: ["coming-soon", "productivity", "summary", "document"]
   }
 ] as const;
 
@@ -204,6 +203,7 @@ export function WorkspaceAppCenterPane({
       openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
       openAppPackageFolder: (appId) =>
         service.openAppPackageFolder({ appId, workspaceId }),
+      openExternalUrl: (url) => service.openExternalUrl(url),
       openFactoryJobAgentSession: async (agentSessionId, provider) => {
         await requestWorkspaceAgentGuiLaunch({
           agentSessionId,
@@ -472,7 +472,10 @@ function resolveWorkspaceAppCategory(
     case "issue-manager":
     case "workspace-issue":
     case "workspace-issue-manager":
-    case "document-summarizer":
+    case "draw-topic-app":
+    case "answer-book":
+    case "app_answer_book":
+    case "idea-draw":
       return labels.tools;
     default:
       return null;
@@ -576,7 +579,20 @@ function toWorkspaceAppManifest(
 function normalizeWorkspaceAppManifestAuthors(
   app: WorkspaceAppCenterApp
 ): NonNullable<WorkspaceAppManifest["authors"]> {
-  return (app.authors ?? [])
+  const developerOverride =
+    communityAppDeveloperOverrides[app.appId.trim().toLowerCase()];
+  const authors = developerOverride
+    ? [
+        developerOverride,
+        ...(app.authors ?? []).filter(
+          (author) =>
+            author.name.trim().toLowerCase() !==
+            developerOverride.name.toLowerCase()
+        )
+      ]
+    : (app.authors ?? []);
+
+  return authors
     .map((author) => {
       const name = author.name.trim();
       const avatarUrl = author.avatarUrl?.trim();

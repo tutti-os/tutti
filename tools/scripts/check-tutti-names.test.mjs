@@ -9,6 +9,15 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const scriptPath = resolve(scriptDirectory, "check-tutti-names.mjs");
 const workspaceRoot = resolve(scriptDirectory, "..", "..");
 
+test("allows legacy OAuth app id compatibility constants", () => {
+  const result = spawnSync("node", [scriptPath], {
+    cwd: workspaceRoot,
+    encoding: "utf8"
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("rejects legacy product tokens in file paths", async () => {
   const forbiddenPathSegment = ["n", "e", "x", "t", "o", "p"].join("");
   const fixtureDir = join(

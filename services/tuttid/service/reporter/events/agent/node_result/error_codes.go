@@ -1,0 +1,27 @@
+package node_result
+
+const (
+	ErrorCodeNone                       = "agent_error_none"
+	ErrorCodeProviderStatusFailed       = "agent_provider_status_failed"
+	ErrorCodeInstallFailed              = "agent_install_failed"
+	ErrorCodeInstallTimeout             = "agent_install_timeout"
+	ErrorCodeInstallCanceled            = "agent_install_canceled"
+	ErrorCodeInstallProbeFailed         = "agent_install_probe_failed"
+	ErrorCodeLoginLaunchFailed          = "agent_login_launch_failed"
+	ErrorCodeLoginTimeout               = "agent_login_timeout"
+	ErrorCodeLoginAuthFailed            = "agent_login_auth_failed"
+	ErrorCodeSessionCreateFailed        = "agent_session_create_failed"
+	ErrorCodeSessionResumeFailed        = "agent_session_resume_failed"
+	ErrorCodeRuntimePrepareFailed       = "agent_runtime_prepare_failed"
+	ErrorCodeRuntimeStartFailed         = "agent_runtime_start_failed"
+	ErrorCodeRuntimeExecFailed          = "agent_runtime_exec_failed"
+	ErrorCodeRuntimeNetworkDisconnected = "agent_runtime_network_disconnected"
+	ErrorCodeRuntimeProcessExited       = "agent_runtime_process_exited"
+	ErrorCodeRuntimeCanceled            = "agent_runtime_canceled"
+	ErrorCodePromptNormalizeFailed      = "agent_prompt_normalize_failed"
+	ErrorCodePromptValidateFailed       = "agent_prompt_validate_failed"
+	ErrorCodePromptPrepareFailed        = "agent_prompt_prepare_failed"
+	ErrorCodeActivityEventStreamFailed  = "agent_activity_event_stream_failed"
+	ErrorCodeActivityReconcileFailed    = "agent_activity_reconcile_failed"
+	ErrorCodeUnknown                    = "agent_unknown_error"
+)

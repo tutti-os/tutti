@@ -4,6 +4,15 @@ export {
   projectCoreSessionStatus,
   type AgentActivitySnapshotProjection
 } from "./shared/agentActivitySnapshotProjection";
+export {
+  getAgentCustomMentionKind,
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests,
+  type AgentCustomMentionChipContext,
+  type AgentCustomMentionIdentity,
+  type AgentCustomMentionKindDefinition,
+  type AgentCustomMentionPresentation
+} from "./shared/agentCustomMentionKinds";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export {
@@ -16,6 +25,9 @@ export {
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderReadinessGateAction,
+  AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
   AgentGUIProviderTargetRef
 } from "./types";
@@ -60,8 +72,26 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeWarmupOpenclawGatewayInput
 } from "./agentActivityRuntime";
+export {
+  AgentQueuedPromptRuntimeProvider,
+  createAgentQueuedPromptRuntime,
+  resetAgentQueuedPromptRuntimeForTests,
+  setAgentQueuedPromptRuntimeForTests,
+  useAgentQueuedPromptRuntime,
+  useAgentQueuedPromptSessionSnapshot
+} from "./agentQueuedPromptRuntime";
+export type {
+  AgentQueuedPromptClaim,
+  AgentQueuedPromptClaimResult,
+  AgentQueuedPromptQueueSnapshot,
+  AgentQueuedPromptRetryBlock,
+  AgentQueuedPromptRuntime,
+  AgentQueuedPromptRuntimeProviderProps,
+  AgentQueuedPromptSnapshot
+} from "./agentQueuedPromptRuntime";
 export type {
   AgentHostApi,
+  AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,

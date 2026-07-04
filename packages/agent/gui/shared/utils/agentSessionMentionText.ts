@@ -1,5 +1,5 @@
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
-import { normalizeAgentTitleText } from "./agentTitleText";
+import { normalizeAgentTitleText } from "./agentTitleText.ts";
 import {
   isRichTextMentionHref,
   parseRichTextMentionHref

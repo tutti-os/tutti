@@ -184,6 +184,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
+		AgentTargetID:      strings.TrimSpace(patch.AgentTargetID),
 		Provider:           strings.TrimSpace(patch.Provider),
 		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
 		Model:              strings.TrimSpace(patch.Model),
@@ -191,6 +192,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		RuntimeContext:     clonePayloadMap(patch.RuntimeContext),
 		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
 		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
+		PendingInteractive: cloneInteractivePrompt(patch.PendingInteractive),
 		CWD:                strings.TrimSpace(patch.CWD),
 		Title:              strings.TrimSpace(patch.Title),
 		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
@@ -260,6 +262,22 @@ func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnL
 		Settling:         value.Settling,
 		Outcome:          cloneStringPointer(value.Outcome),
 		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
+	}
+}
+
+func cloneInteractivePrompt(value *WorkspaceAgentInteractivePrompt) *WorkspaceAgentInteractivePrompt {
+	if value == nil {
+		return nil
+	}
+	return &WorkspaceAgentInteractivePrompt{
+		Kind:      strings.TrimSpace(value.Kind),
+		RequestID: strings.TrimSpace(value.RequestID),
+		ToolName:  strings.TrimSpace(value.ToolName),
+		Status:    strings.TrimSpace(value.Status),
+		Input:     clonePayloadMap(value.Input),
+		Output:    clonePayloadMap(value.Output),
+		Error:     clonePayloadMap(value.Error),
+		Metadata:  clonePayloadMap(value.Metadata),
 	}
 }
 

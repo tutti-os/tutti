@@ -523,6 +523,13 @@ function createHostFilesApi(
     async readLocalPreviewFile() {
       return new Uint8Array();
     },
+    async archiveAgentPromptFile(input) {
+      return {
+        name: input.displayName ?? "attachment",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/attachment",
+        sizeBytes: 1
+      };
+    },
     async readPreviewFile() {
       return new Uint8Array();
     },

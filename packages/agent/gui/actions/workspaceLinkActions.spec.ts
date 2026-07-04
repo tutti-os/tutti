@@ -6,6 +6,10 @@ import {
   resolveWorkspaceFileLinkAction,
   resolveWorkspaceFilePathCandidate
 } from "./workspaceLinkActions";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../shared/agentCustomMentionKinds";
 
 describe("resolveWorkspaceFileLinkAction", () => {
   it("opens local absolute paths without remapping workspace-prefixed paths", () => {
@@ -306,6 +310,55 @@ describe("resolveWorkspaceMentionLinkAction", () => {
       outputDir: "/workspace/issues/issue-1",
       source: "agent-markdown"
     });
+  });
+
+  it("resolves clickable registered custom mentions to open-custom-mention", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      clickable: true,
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1",
+          source: "agent-markdown"
+        })
+      ).toEqual({
+        type: "open-custom-mention",
+        kind: "external-note",
+        href: "mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1",
+        source: "agent-markdown"
+      });
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("does not resolve non-clickable registered custom mentions", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://external-note/note-a?spaceId=space-1",
+          source: "agent-markdown"
+        })
+      ).toBeNull();
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("does not resolve unregistered custom mention kinds", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://external-note/note-a?spaceId=space-1",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
   });
 
   it("parses workspace-app mention context", () => {

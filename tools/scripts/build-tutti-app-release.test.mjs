@@ -353,6 +353,55 @@ test("validateCLIManifest accepts the app CLI HTTP bridge contract", () => {
   );
 });
 
+test("validateCLIManifest accepts typed input enum values", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    description: "Run mode",
+    enum: ["fast", "safe"],
+    default: "safe"
+  };
+  manifest.commands[0].inputSchema.properties.priority = {
+    type: "integer",
+    enum: [1, 2],
+    default: 1
+  };
+  manifest.commands[0].inputSchema.properties.enabled = {
+    type: "boolean",
+    enum: [true],
+    default: true
+  };
+
+  assert.doesNotThrow(() => validateCLIManifest(manifest, "tutti.cli.json"));
+});
+
+test("validateCLIManifest rejects enum values that do not match property type", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    enum: ["fast", 1]
+  };
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /inputSchema\.properties\.mode\.enum\[1\] must be string/
+  );
+});
+
+test("validateCLIManifest rejects defaults outside declared enum values", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].inputSchema.properties.mode = {
+    type: "string",
+    enum: ["fast", "safe"],
+    default: "slow"
+  };
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /inputSchema\.properties\.mode\.default must be one of the declared enum values/
+  );
+});
+
 test("validateCLIManifest rejects invalid command visibility", () => {
   const manifest = cliManifestForTest();
   manifest.commands[0].visibility = "private";

@@ -17,7 +17,7 @@ func validPublishFrameJSON(t *testing.T, eventOverrides string) []byte {
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
 		"emittedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `",
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`
 	if eventOverrides != "" {
 		event = eventOverrides
@@ -38,7 +38,7 @@ func TestParseEventStreamClientPublishFrameRejectsUnknownEnvelopeFields(t *testi
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
 		"emittedAt":"`+time.Now().UTC().Format(time.RFC3339Nano)+`",
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}},
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}},
 		"unexpected":"value"
 	}`)
 
@@ -57,7 +57,7 @@ func TestParseEventStreamClientPublishFrameRejectsUnknownPayloadFields(t *testin
 		"version":1,
 		"emittedAt":"`+time.Now().UTC().Format(time.RFC3339Nano)+`",
 		"payload":{
-			"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en",
+			"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","defaultAgentProvider":"codex","dockIconStyle":"default","locale":"en",
 				"themeSource":"system",
 				"updateChannel":"stable",
 				"updatePolicy":"prompt",
@@ -79,7 +79,7 @@ func TestParseEventStreamClientPublishFrameRejectsMissingEventID(t *testing.T) {
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
 		"emittedAt":"`+time.Now().UTC().Format(time.RFC3339Nano)+`",
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`)
 
 	_, _, err := parseEventStreamClientPublishFrame(payload)
@@ -96,7 +96,7 @@ func TestParseEventStreamClientPublishFrameRejectsEmptyEventID(t *testing.T) {
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
 		"emittedAt":"`+time.Now().UTC().Format(time.RFC3339Nano)+`",
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`)
 
 	_, _, err := parseEventStreamClientPublishFrame(payload)
@@ -112,7 +112,7 @@ func TestParseEventStreamClientPublishFrameRejectsMissingEmittedAt(t *testing.T)
 		"id":"evt-1",
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`)
 
 	_, _, err := parseEventStreamClientPublishFrame(payload)
@@ -129,7 +129,7 @@ func TestParseEventStreamClientPublishFrameRejectsInvalidEmittedAt(t *testing.T)
 		"topic":"preferences.desktop.update.requested",
 		"version":1,
 		"emittedAt":"not-a-timestamp",
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`)
 
 	_, _, err := parseEventStreamClientPublishFrame(payload)
@@ -147,7 +147,7 @@ func TestParseEventStreamClientPublishFrameRejectsInvalidWorkspaceScope(t *testi
 		"version":1,
 		"emittedAt":"`+time.Now().UTC().Format(time.RFC3339Nano)+`",
 		"scope":{"workspaceId":"   "},
-		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
+		"payload":{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{},"agentConversationDetailMode":"coding","appCatalogChannel":"production","defaultAgentProvider":"codex","dockIconStyle":"default","dockPlacement":"bottom","locale":"en","sleepPreventionMode":"never","themeSource":"system","updateChannel":"stable","updatePolicy":"prompt","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}
 	}`)
 
 	_, _, err := parseEventStreamClientPublishFrame(payload)
@@ -184,13 +184,14 @@ func TestParseEventStreamClientPublishFrameReturnsValidatedClientEvent(t *testin
 	}
 	rawPayload, err := json.Marshal(eventprotocol.PreferencesDesktopUpdateRequestedPayload{
 		Preferences: eventprotocol.PreferencesDesktopPreferences{
-			DockPlacement:           "bottom",
-			Locale:                  "en",
-			SleepPreventionMode:     "never",
-			ThemeSource:             "system",
-			UpdateChannel:           "stable",
-			UpdatePolicy:            "prompt",
-			WorkbenchWindowSnapping: &windowSnapping,
+			AgentConversationDetailMode: "coding",
+			DockPlacement:               "bottom",
+			Locale:                      "en",
+			SleepPreventionMode:         "never",
+			ThemeSource:                 "system",
+			UpdateChannel:               "stable",
+			UpdatePolicy:                "prompt",
+			WorkbenchWindowSnapping:     &windowSnapping,
 		},
 	})
 	if err != nil {

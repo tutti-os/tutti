@@ -909,6 +909,100 @@ test("controller preserves runtime context from inline state patches", async () 
   );
 });
 
+test("controller preserves pending interactive prompts from inline state patches", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              status: "working",
+              updatedAtUnixMs: 100
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 200,
+      pendingInteractive: {
+        kind: "ask-user",
+        requestId: "request-1",
+        toolName: "AskUserQuestion",
+        status: "waiting",
+        input: { questions: [{ id: "scope", question: "Scope?" }] }
+      }
+    }
+  });
+
+  assert.equal(result.applied, true);
+  assert.deepEqual(controller.getSnapshot().sessions[0]?.pendingInteractive, {
+    kind: "ask-user",
+    requestId: "request-1",
+    toolName: "AskUserQuestion",
+    status: "waiting",
+    input: { questions: [{ id: "scope", question: "Scope?" }] }
+  });
+
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 201,
+      pendingInteractive: null
+    }
+  });
+
+  assert.equal(controller.getSnapshot().sessions[0]?.pendingInteractive, null);
+});
+
+test("controller keeps existing agent target id when state patch omits it", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              agentSessionId: "session-1",
+              agentTargetId: "local:codex",
+              status: "working",
+              updatedAtUnixMs: 100
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      agentSessionId: "session-1",
+      occurredAtUnixMs: 200,
+      lifecycleStatus: "completed"
+    }
+  });
+
+  assert.equal(
+    controller.getSnapshot().sessions[0]?.agentTargetId,
+    "local:codex"
+  );
+});
+
 test("controller uses cached latest message version when retaining events", async () => {
   let retainedAfterVersion: number | undefined;
   const adapter = fakeAdapter({
@@ -1032,6 +1126,64 @@ test("controller preserves inline state patch turn metadata", async () => {
   });
 });
 
+test("controller clears active turn and submit block from settled inline state patch", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+              submitAvailability: {
+                state: "blocked",
+                reason: "active_turn"
+              },
+              currentPhase: "working",
+              lastEventUnixMs: 1000,
+              updatedAtUnixMs: 1000
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "state_patch",
+      currentPhase: "idle",
+      lastEventUnixMs: 2000,
+      submitAvailability: { state: "available" },
+      turn: {
+        turnId: "turn-1",
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed",
+        submitAvailability: { state: "available" },
+        completedAtUnixMs: 2000
+      }
+    }
+  });
+
+  assert.equal(result.applied, true);
+  const session = controller.getSnapshot().sessions[0];
+  assert.deepEqual(session?.turnLifecycle, {
+    activeTurnId: null,
+    phase: "settled",
+    settling: undefined,
+    outcome: "completed",
+    completedCommand: null
+  });
+  assert.deepEqual(session?.submitAvailability, { state: "available" });
+  assert.equal(session?.currentPhase, "idle");
+});
+
 test("controller maps session update events into complete session snapshots", () => {
   const controller = createAgentActivityController({
     adapter: fakeAdapter(),
@@ -1113,6 +1265,73 @@ test("controller caches composer options by provider and clones snapshots", asyn
     controller.getSnapshot().composerOptionsByProvider?.codex?.permissionConfig
       ?.defaultValue,
     "auto"
+  );
+});
+
+test("controller caches composer options by agent target without mutating provider cache", async () => {
+  const adapterCalls: Array<{
+    agentTargetId: string | null | undefined;
+    provider: string;
+  }> = [];
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        adapterCalls.push({
+          agentTargetId: input.agentTargetId,
+          provider: input.provider
+        });
+        return createComposerOptions({
+          provider: input.provider,
+          models: [
+            {
+              value: input.agentTargetId
+                ? `${input.agentTargetId}-model`
+                : `${input.provider}-model`,
+              label: "Model"
+            }
+          ]
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({ provider: "codex" });
+  const targetA = await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "target-a"
+  });
+  const targetB = await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "target-b"
+  });
+  const targetAAgain = await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "target-a"
+  });
+
+  assert.equal(adapterCalls.length, 3);
+  assert.deepEqual(adapterCalls, [
+    { agentTargetId: null, provider: "codex" },
+    { agentTargetId: "target-a", provider: "codex" },
+    { agentTargetId: "target-b", provider: "codex" }
+  ]);
+  assert.equal(targetA.models[0]?.value, "target-a-model");
+  assert.equal(targetB.models[0]?.value, "target-b-model");
+  assert.equal(targetAAgain.models[0]?.value, "target-a-model");
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex?.models[0]?.value,
+    "codex-model"
+  );
+  assert.equal(
+    controller.getSnapshot().composerOptionsByAgentTargetId?.["target-a"]
+      ?.models[0]?.value,
+    "target-a-model"
+  );
+  assert.equal(
+    controller.getSnapshot().composerOptionsByAgentTargetId?.["target-b"]
+      ?.models[0]?.value,
+    "target-b-model"
   );
 });
 

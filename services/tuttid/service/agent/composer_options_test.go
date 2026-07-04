@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -35,6 +36,17 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
+	}
+}
+
+func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
+	t.Setenv("TUTTI_COMPUTER_USE", "")
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
+
+	for _, provider := range []string{"claude-code", "codex", "gemini", "openclaw"} {
+		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
+			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
+		}
 	}
 }
 

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode
+} from "react";
 import { cn } from "@tutti-os/ui-system";
 import { useTranslation } from "../i18n/index";
 import type { WorkspaceLinkAction } from "../actions/workspaceLinkActions";
@@ -14,6 +21,9 @@ export interface WorkspaceAgentMessageCenterAttentionDeckProps {
   highlightedItemId?: string | null;
   submittingPromptKey: string | null;
   registerNode?: (itemId: string, node: HTMLElement | null) => void;
+  renderCard?: (
+    input: WorkspaceAgentMessageCenterAttentionDeckRenderCardInput
+  ) => ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
   onSubmitPrompt: (
@@ -27,11 +37,26 @@ export interface WorkspaceAgentMessageCenterAttentionDeckProps {
   ) => void;
 }
 
+export interface WorkspaceAgentMessageCenterAttentionDeckRenderCardInput {
+  cardRef?: (node: HTMLElement | null) => void;
+  highlighted: boolean;
+  interactive: boolean;
+  isSubmitting: boolean;
+  item: WorkspaceAgentMessageCenterItem;
+  onSubmitPrompt: (input: {
+    action?: string;
+    optionId?: string;
+    payload?: Record<string, unknown>;
+    requestId: string;
+  }) => void;
+}
+
 export function WorkspaceAgentMessageCenterAttentionDeck({
   items,
   highlightedItemId = null,
   submittingPromptKey,
   registerNode,
+  renderCard,
   onLinkAction,
   onOpenChat,
   onSubmitPrompt
@@ -152,13 +177,23 @@ export function WorkspaceAgentMessageCenterAttentionDeck({
               }
             }}
           >
-            <WorkspaceAgentMessageCenterCard
-              interactive={false}
-              isSubmitting={false}
-              item={leavingItem}
-              onOpenChat={onOpenChat}
-              onSubmitPrompt={() => {}}
-            />
+            {renderCard ? (
+              renderCard({
+                highlighted: false,
+                interactive: false,
+                isSubmitting: false,
+                item: leavingItem,
+                onSubmitPrompt: () => {}
+              })
+            ) : (
+              <WorkspaceAgentMessageCenterCard
+                interactive={false}
+                isSubmitting={false}
+                item={leavingItem}
+                onOpenChat={onOpenChat}
+                onSubmitPrompt={() => {}}
+              />
+            )}
           </div>
         ) : null}
         <div
@@ -171,20 +206,33 @@ export function WorkspaceAgentMessageCenterAttentionDeck({
                   "shadow-[0_7px_0_-4px_var(--background-fronted),0_7px_0_-3px_var(--line-2)]"
           )}
         >
-          <WorkspaceAgentMessageCenterCard
-            cardRef={
-              registerNode
+          {renderCard ? (
+            renderCard({
+              cardRef: registerNode
                 ? (node) => registerNode(topItem.id, node)
-                : undefined
-            }
-            highlighted={topItem.id === highlightedItemId}
-            interactive
-            isSubmitting={topIsSubmitting || isTopCoolingDown}
-            item={topItem}
-            onLinkAction={onLinkAction}
-            onOpenChat={onOpenChat}
-            onSubmitPrompt={(input) => onSubmitPrompt(topItem, input)}
-          />
+                : undefined,
+              highlighted: topItem.id === highlightedItemId,
+              interactive: true,
+              isSubmitting: topIsSubmitting || isTopCoolingDown,
+              item: topItem,
+              onSubmitPrompt: (input) => onSubmitPrompt(topItem, input)
+            })
+          ) : (
+            <WorkspaceAgentMessageCenterCard
+              cardRef={
+                registerNode
+                  ? (node) => registerNode(topItem.id, node)
+                  : undefined
+              }
+              highlighted={topItem.id === highlightedItemId}
+              interactive
+              isSubmitting={topIsSubmitting || isTopCoolingDown}
+              item={topItem}
+              onLinkAction={onLinkAction}
+              onOpenChat={onOpenChat}
+              onSubmitPrompt={(input) => onSubmitPrompt(topItem, input)}
+            />
+          )}
         </div>
       </div>
     </section>

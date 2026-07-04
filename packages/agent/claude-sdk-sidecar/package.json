@@ -1,0 +1,20 @@
+{
+  "name": "@tutti-os/claude-sdk-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types ./src/main.ts",
+    "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.201",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "typescript": "^5.8.3"
+  }
+}

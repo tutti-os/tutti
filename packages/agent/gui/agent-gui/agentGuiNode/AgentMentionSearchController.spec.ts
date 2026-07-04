@@ -28,6 +28,15 @@ interface TestWorkspaceAppMentionItem {
   workspaceId: string;
 }
 
+interface TestAgentTargetMentionItem {
+  description?: string;
+  iconUrl?: string;
+  name: string;
+  provider: string;
+  targetId: string;
+  workspaceId: string;
+}
+
 interface TestSessionMentionItem {
   agentName: string;
   id: string;
@@ -44,6 +53,7 @@ interface TestSessionMentionItem {
 const {
   agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID,
   agentSession: AGENT_SESSION_PROVIDER_ID,
+  agentTarget: AGENT_TARGET_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
@@ -53,6 +63,7 @@ interface TestContextMentionProviderOptions {
   queryAgentGeneratedFiles?: (input: any) => Promise<any>;
   queryFiles?: (input: any) => Promise<any>;
   queryIssues?: (input: any) => Promise<any>;
+  queryAgentTargets?: (input: any) => Promise<any>;
   queryWorkspaceApps?: (input: any) => Promise<any>;
   querySessions?: (input: any) => Promise<any>;
   loadSessionSummary?: (input: any) => Promise<any>;
@@ -93,6 +104,7 @@ function createTestContextMentionProviders(
   return [
     createTestFileProvider(options),
     createTestAgentGeneratedFileProvider(options),
+    createTestAgentTargetProvider(options),
     createTestWorkspaceAppProvider(options),
     createTestIssueProvider(options),
     createTestSessionProvider(options)
@@ -189,6 +201,44 @@ function createTestIssueProvider(
         presentation: {
           description: issuePreviewText(item.content),
           status: item.status
+        }
+      }
+    })
+  };
+}
+
+function createTestAgentTargetProvider(
+  options: TestContextMentionProviderOptions
+): AgentContextMentionProvider<TestAgentTargetMentionItem> {
+  return {
+    id: AGENT_TARGET_PROVIDER_ID,
+    trigger: "@",
+    async query({ context, keyword, maxResults }) {
+      if (!options.queryAgentTargets) {
+        return [];
+      }
+      const result = await options.queryAgentTargets({
+        workspaceId: context?.metadata?.workspaceId,
+        query: keyword,
+        limit: maxResults
+      });
+      return result.targets ?? [];
+    },
+    getItemKey: (item) => item.targetId,
+    getItemLabel: (item) => item.name,
+    getItemSubtitle: (item) => item.description,
+    getItemIconUrl: (item) => item.iconUrl,
+    toInsertResult: (item) => ({
+      kind: "mention",
+      mention: {
+        entityId: item.targetId,
+        label: item.name,
+        scope: { workspaceId: item.workspaceId },
+        presentation: {
+          agentProviderId: item.provider,
+          description: item.description,
+          iconUrl: item.iconUrl,
+          subtitle: item.description
         }
       }
     })
@@ -431,11 +481,13 @@ describe("AgentMentionSearchController", () => {
       "session",
       "file",
       "issue",
+      "agent",
       "app"
     ]);
     expect(labelById.get("app")).toBe("应用");
     expect(labelById.get("session")).toBe("会话");
     expect(labelById.get("issue")).toBe("任务");
+    expect(labelById.get("agent")).toBe("智能体");
   });
 
   it("uses Tasks for the English issue browse category label", () => {
@@ -511,6 +563,16 @@ describe("AgentMentionSearchController", () => {
         }
       ]
     });
+    const queryAgentTargets = vi.fn().mockResolvedValue({
+      targets: [
+        {
+          name: "Codex",
+          provider: "codex",
+          targetId: "local:codex",
+          workspaceId: "room-1"
+        }
+      ]
+    });
     const queryFiles = vi.fn().mockResolvedValue({
       workspaceId: "room-1",
       root: "/workspace",
@@ -528,6 +590,7 @@ describe("AgentMentionSearchController", () => {
       queryFiles,
       queryIssues,
       querySessions,
+      queryAgentTargets,
       queryWorkspaceApps,
       loadSessionMessages: vi
         .fn()
@@ -578,7 +641,98 @@ describe("AgentMentionSearchController", () => {
     });
     expect(queryFiles).not.toHaveBeenCalled();
     expect(queryIssues).not.toHaveBeenCalled();
+    expect(queryAgentTargets).not.toHaveBeenCalled();
     expect(querySessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads agent targets from the agent tab and inserts agent-target mentions", async () => {
+    const queryAgentTargets = vi.fn().mockResolvedValue({
+      targets: [
+        {
+          description: "Run Codex locally",
+          iconUrl: "tutti://agent/codex.svg",
+          name: "Codex",
+          provider: "codex",
+          targetId: "local:codex",
+          workspaceId: "room-1"
+        },
+        {
+          description: "Run Claude Code locally",
+          iconUrl: "tutti://agent/claude-code.svg",
+          name: "Claude Code",
+          provider: "claude-code",
+          targetId: "local:claude-code",
+          workspaceId: "room-1"
+        }
+      ]
+    });
+    const queryWorkspaceApps = vi.fn().mockResolvedValue({
+      apps: [
+        {
+          appId: "vibe-design",
+          name: "Vibe Design",
+          workspaceId: "room-1"
+        }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      queryAgentTargets,
+      queryWorkspaceApps,
+      queryFiles: vi.fn().mockResolvedValue({
+        workspaceId: "room-1",
+        root: "/workspace",
+        entries: []
+      }),
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] })
+    });
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("agent");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "agent",
+        groups: [
+          expect.objectContaining({
+            id: "agents",
+            items: [
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:codex",
+                href: "mention://agent-target/local:codex?workspaceId=room-1",
+                agentProviderId: "codex"
+              }),
+              expect.objectContaining({
+                kind: "agent-target",
+                targetId: "local:claude-code",
+                href: "mention://agent-target/local:claude-code?workspaceId=room-1",
+                agentProviderId: "claude-code"
+              })
+            ]
+          })
+        ]
+      })
+    );
+    expect(queryAgentTargets).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      query: "",
+      limit: undefined
+    });
+    expect(queryWorkspaceApps).not.toHaveBeenCalled();
   });
 
   it("renders all workspace apps without mention pagination", async () => {

@@ -327,6 +327,7 @@ function ReadyWorkspaceWorkbench({
             agentSessionId,
             autoSubmit,
             draftPrompt,
+            openInNewWindow,
             provider,
             userProjectPath
           }) => {
@@ -341,6 +342,7 @@ function ReadyWorkspaceWorkbench({
                   })
                 : createWorkspaceAgentGuiSessionLaunchRequest({
                     agentSessionId,
+                    openInNewWindow,
                     provider
                   })
             );

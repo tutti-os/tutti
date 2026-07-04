@@ -711,6 +711,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       );
       if (
         exactExisting &&
+        !launchResult.preserveExistingNodeFrame &&
         launchResult.framePolicy === "cascade-same-type-centered"
       ) {
         const currentState = this.controller.getSnapshot();
@@ -1002,7 +1003,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     result: WorkbenchHostLaunchResult
   ): WorkbenchHostLaunchResult {
     const dockEntryId = result.dockEntryId?.trim();
-    if (!dockEntryId) {
+    if (!dockEntryId || result.reuseDockEntryNode === false) {
       return result;
     }
 

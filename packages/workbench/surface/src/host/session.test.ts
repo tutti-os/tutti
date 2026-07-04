@@ -13,6 +13,7 @@ import {
 import { createWorkbenchHostSession } from "./session.ts";
 import {
   COMPACT_LAUNCH_FRAME_SCALE,
+  closedDockWindowFramesMetadataKey,
   resolveCompactWorkbenchPreferredFrame
 } from "./sessionState.ts";
 import type { WorkbenchHostNodeDefinition } from "./types.ts";
@@ -2324,6 +2325,197 @@ test("launchNode offsets later same-type-centered cascade windows by same type",
     .nodes.find((entry) => entry.id === nodeId);
   assert.notDeepEqual(node?.frame, centeredPreferredFrame);
   assert.deepEqual(node?.frame, expectedFrame);
+
+  session.dispose();
+});
+
+test("launchNode applies custom same-type cascade offsets", async () => {
+  const firstAgentFrame = { x: 140, y: 48, width: 1040, height: 538 };
+  const session = createWorkbenchHostSession({
+    nodes: [agentGuiNodeDefinition],
+    onLaunchRequest() {
+      return {
+        cascadeOffset: { x: 180, y: 88 },
+        defaultFrame: firstAgentFrame,
+        instanceId: "agent-gui:codex:panel:new",
+        framePolicy: "cascade-same-type-centered",
+        typeId: "agent-gui"
+      };
+    },
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: ["agent-gui:agent-gui:codex:panel:existing"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "agent-gui:codex:panel:existing",
+                  typeId: "agent-gui"
+                },
+                displayMode: "floating",
+                frame: firstAgentFrame,
+                id: "agent-gui:agent-gui:codex:panel:existing",
+                isMinimized: false,
+                kind: "agent-gui",
+                restoreFrame: null,
+                title: "Codex"
+              }
+            ]
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1440, height: 900 });
+  const nodeId = await session.launchNode({
+    reason: "host",
+    typeId: "agent-gui"
+  });
+
+  const node = session.controller
+    .getSnapshot()
+    .nodes.find((entry) => entry.id === nodeId);
+  assert.deepEqual(node?.frame, { x: 320, y: 136, width: 1040, height: 538 });
+
+  session.dispose();
+});
+
+test("launchNode skips closed dock frames when dock entry reuse is disabled", async () => {
+  const closedDockFrame = { x: 657, y: 126, width: 884, height: 476 };
+  const preferredFrame = { x: 140, y: 48, width: 1040, height: 538 };
+  const session = createWorkbenchHostSession({
+    nodes: [agentGuiNodeDefinition],
+    onLaunchRequest() {
+      return {
+        cascadeOffset: { x: 180, y: 88 },
+        defaultFrame: preferredFrame,
+        dockEntryId: "agent-gui",
+        instanceId: "agent-gui:codex:panel:new",
+        framePolicy: "cascade-same-type-centered",
+        reuseDockEntryNode: false,
+        typeId: "agent-gui"
+      };
+    },
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: [],
+            nodes: []
+          },
+          {
+            metadata: {
+              [closedDockWindowFramesMetadataKey]: {
+                version: 1,
+                entries: [
+                  {
+                    dockEntryId: "agent-gui",
+                    frame: closedDockFrame,
+                    typeId: "agent-gui"
+                  }
+                ]
+              },
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  session.controller.commands.setSurfaceSize({ width: 1440, height: 900 });
+  const nodeId = await session.launchNode({
+    reason: "host",
+    typeId: "agent-gui"
+  });
+
+  const node = session.controller
+    .getSnapshot()
+    .nodes.find((entry) => entry.id === nodeId);
+  assert.notDeepEqual(node?.frame, closedDockFrame);
+  assert.deepEqual(node?.frame, { x: 200, y: 163, width: 1040, height: 538 });
+
+  session.dispose();
+});
+
+test("launchNode preserves a resized existing window's frame when the host asks to preserve it", async () => {
+  const customAgentFrame = { x: 28, y: 64, width: 1200, height: 820 };
+  const session = createWorkbenchHostSession({
+    nodes: [filesNodeDefinition, agentGuiNodeDefinition],
+    onLaunchRequest() {
+      return {
+        defaultFrame: agentGuiNodeDefinition.frame,
+        instanceId: "agent-gui:codex",
+        framePolicy: "cascade-same-type-centered",
+        preserveExistingNodeFrame: true,
+        typeId: "agent-gui"
+      };
+    },
+    snapshotRepository: {
+      async load() {
+        return createWorkbenchSnapshotFromState(
+          {
+            nodeStack: ["agent-gui:agent-gui:codex"],
+            nodes: [
+              {
+                data: {
+                  instanceId: "agent-gui:codex",
+                  typeId: "agent-gui"
+                },
+                displayMode: "floating",
+                frame: customAgentFrame,
+                id: "agent-gui:agent-gui:codex",
+                isMinimized: false,
+                kind: "agent-gui",
+                restoreFrame: null,
+                title: "Codex"
+              }
+            ]
+          },
+          {
+            metadata: {
+              workbenchHostInitialized: true
+            }
+          }
+        );
+      },
+      async save(_workspaceId, snapshot) {
+        return snapshot;
+      }
+    },
+    workspaceId: "workspace-1"
+  });
+
+  await session.load();
+  const nodeId = await session.launchNode({
+    reason: "host",
+    typeId: "agent-gui"
+  });
+
+  const node = session.controller
+    .getSnapshot()
+    .nodes.find((entry) => entry.id === nodeId);
+  // Regression test for a bug where clicking a completion notification to
+  // focus an already-open conversation window reset it back to the default
+  // frame instead of leaving the user's current size/position alone.
+  assert.deepEqual(node?.frame, customAgentFrame);
 
   session.dispose();
 });

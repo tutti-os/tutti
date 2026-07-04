@@ -61,14 +61,24 @@ func isACPProviderSessionNotFound(method string, callErr *acpCallError) bool {
 		return false
 	}
 	switch strings.TrimSpace(method) {
-	case acpMethodLoadSession, acpMethodResume:
+	case acpMethodLoadSession, acpMethodResume, appServerMethodThreadResume:
 	default:
 		return false
 	}
-	if callErr.Err.Code != -32002 {
-		return false
-	}
 	message := strings.TrimSpace(callErr.Err.Message)
-	return strings.EqualFold(message, "Resource not found") ||
-		strings.HasPrefix(strings.ToLower(message), "resource not found:")
+	lower := strings.ToLower(message)
+	// Codex app server reports a missing rollout file (conversation imported from
+	// another device, rollout pruned by retention, ...) as -32600 "no rollout
+	// found for thread id …". JSON-RPC -32600 is the generic "invalid request"
+	// code, so key off the distinctive message rather than the code here.
+	if strings.Contains(lower, "no rollout found") {
+		return true
+	}
+	// Standard ACP session/load and session/resume report a vanished provider
+	// session as -32002 "Resource not found".
+	if callErr.Err.Code == -32002 {
+		return strings.EqualFold(message, "Resource not found") ||
+			strings.HasPrefix(lower, "resource not found:")
+	}
+	return false
 }

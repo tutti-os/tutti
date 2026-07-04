@@ -272,6 +272,197 @@ test("createElectronUpdaterLogger defers no published versions errors during pre
   ]);
 });
 
+test("createAppUpdateService marks update install pending before quitAndInstall", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  let quitAndInstallCalls = 0;
+  driver.quitAndInstall = () => {
+    quitAndInstallCalls += 1;
+    events.push(
+      `quit-and-install:pending:${service.isQuitAndInstallPending()}`
+    );
+  };
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+    assert.equal(service.getState().status, "downloaded");
+
+    await service.installUpdate();
+
+    assert.deepEqual(events, ["quit-and-install:pending:true"]);
+    assert.equal(quitAndInstallCalls, 1);
+    assert.equal(service.isQuitAndInstallPending(), true);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService ignores duplicate install requests while quitAndInstall is pending", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+  };
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    const firstInstall = service.installUpdate();
+    const secondInstall = service.installUpdate();
+    await Promise.resolve();
+
+    assert.equal(service.isQuitAndInstallPending(), true);
+    assert.deepEqual(events, ["updater:quit-and-install"]);
+    await Promise.all([firstInstall, secondInstall]);
+
+    assert.deepEqual(events, ["updater:quit-and-install"]);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService clears pending install when quitAndInstall emits an updater error", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+  };
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    await service.installUpdate();
+    assert.equal(service.isQuitAndInstallPending(), true);
+
+    driver.emitError(new Error("Squirrel failed to install update"));
+    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(events, ["updater:quit-and-install"]);
+  } finally {
+    service.dispose();
+  }
+});
+
+test("createAppUpdateService clears pending install when quitAndInstall throws synchronously", async () => {
+  const events: string[] = [];
+  const listeners: {
+    available?: (info: UpdateInfo) => void;
+    downloaded?: (info: UpdateDownloadedEvent) => void;
+  } = {};
+  const driver = createFakeDriver({
+    async downloadUpdate() {
+      listeners.downloaded?.(createUpdateDownloadedInfoFixture("1.1.0"));
+    },
+    onUpdateAvailable(listener) {
+      listeners.available = listener;
+      return noop;
+    },
+    onUpdateDownloaded(listener) {
+      listeners.downloaded = listener;
+      return noop;
+    }
+  });
+  driver.quitAndInstall = () => {
+    events.push("updater:quit-and-install");
+    throw new Error("native quit failed");
+  };
+  const service = createAppUpdateService(driver, {
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({
+      channel: "stable",
+      policy: "prompt"
+    });
+    listeners.available?.(createUpdateInfoFixture("1.1.0"));
+    await service.downloadUpdate();
+
+    await assert.rejects(service.installUpdate(), /native quit failed/);
+
+    assert.equal(service.isQuitAndInstallPending(), false);
+    assert.equal(service.getState().status, "error");
+    assert.deepEqual(events, ["updater:quit-and-install"]);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService skips identical consecutive download progress states", async () => {
   const progressListeners = new Set<(progress: ProgressInfo) => void>();
   let stateChangeCount = 0;

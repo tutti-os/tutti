@@ -21,10 +21,12 @@ const storyboardBaseThemeVars = {
 } as const;
 
 const storyboardLightThemeVars = {
-  "--background-1": "rgb(245, 245, 245)",
+  "--background-1": "rgb(244, 245, 247)",
   "--storyboard-canvas": "rgb(233, 229, 218)",
   "--storyboard-ink": "rgb(26, 26, 26)",
   "--background-panel": "rgb(248, 250, 252)",
+  "--background-session-flow": "rgb(252, 253, 255)",
+  "--background-session-sidepanel": "rgb(244, 245, 247)",
   "--background-fronted": "rgb(255, 255, 255)",
   "--text-primary": "rgb(60, 60, 60)",
   "--text-primary-hover": "rgba(60, 60, 60, 0.9)",
@@ -64,7 +66,7 @@ const storyboardLightThemeVars = {
   "--on-danger": "rgb(255, 238, 242)",
   "--on-danger-hover":
     "color-mix(in srgb, var(--on-danger) 92%, var(--state-danger))",
-  "--backdrop": "rgba(255, 255, 255, 0.60)",
+  "--backdrop": "rgba(0, 0, 0, 0.60)",
   "--backdrop-dark": "rgba(0, 0, 0, 0.60)",
   "--rich-text-mention-app": "rgb(191, 90, 242)",
   "--rich-text-mention-issue": "var(--tutti-purple)",
@@ -79,6 +81,8 @@ const storyboardDarkThemeVars = {
   "--storyboard-canvas": "rgb(30, 30, 29)",
   "--storyboard-ink": "rgb(255, 255, 255)",
   "--background-panel": "rgb(42, 42, 43)",
+  "--background-session-flow": "rgb(24, 24, 24)",
+  "--background-session-sidepanel": "rgb(42, 42, 43)",
   "--background-fronted": "rgb(51, 51, 51)",
   "--text-primary": "rgb(255, 255, 255)",
   "--text-primary-hover": "rgba(255, 255, 255, 0.9)",

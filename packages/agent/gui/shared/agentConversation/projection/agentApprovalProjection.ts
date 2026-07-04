@@ -4,6 +4,7 @@ import type {
   AgentApprovalItemVM,
   AgentApprovalOptionVM
 } from "../contracts/agentApprovalItemVM";
+import { isExitPlanSwitchModeInput } from "../exitPlanOptions";
 
 export function projectAgentApprovalItem(
   call: WorkspaceAgentSessionDetailToolCall,
@@ -25,7 +26,7 @@ export function projectAgentApprovalItem(
   const options = normalizeApprovalOptions(
     arrayValue(input?.options) ?? arrayValue(call.payload?.options) ?? []
   );
-  if (isExitPlanApprovalInput(input, options)) {
+  if (isExitPlanSwitchModeInput(input)) {
     return null;
   }
   const mcpTarget = extractAgentMcpToolTarget({
@@ -48,18 +49,6 @@ export function projectAgentApprovalItem(
     output,
     occurredAtUnixMs: call.occurredAtUnixMs ?? null
   };
-}
-
-function isExitPlanApprovalInput(
-  input: Record<string, unknown> | null,
-  options: readonly AgentApprovalOptionVM[]
-): boolean {
-  const toolCall = objectValue(input?.toolCall);
-  const kind = normalizeToken(stringValue(toolCall?.kind));
-  if (kind !== "switch_mode") {
-    return false;
-  }
-  return options.some((option) => option.id === "plan");
 }
 
 function normalizeApprovalOptions(

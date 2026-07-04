@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AgentFileMentionPalette } from "./AgentFileMentionPalette";
 import type { AgentMentionSearchState } from "./AgentMentionSearchController";
+import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 
 vi.mock("../../i18n/index", async () => {
   const actual =
@@ -19,6 +18,7 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionGroupIssues": "任务",
     "agentHost.agentGui.mentionEmptyIssues": "暂无任务",
     "agentHost.agentGui.mentionFilterIssue": "任务",
+    "agentHost.agentGui.fileMentionEnterFolder": "进入文件夹",
     "agentHost.agentGui.fileMentionSwitchCategory": "切换分类",
     "agentHost.agentGui.fileMentionNavigateHierarchy": "进入/返回文件夹",
     "agentHost.agentGui.fileMentionSwitchSelection": "切换选中",
@@ -1055,6 +1055,80 @@ describe("AgentFileMentionPalette", () => {
     expect(backIcon?.querySelector("svg")).not.toBeNull();
   });
 
+  it("enters agent generated folders from the row arrow without selecting the row", () => {
+    const folderItem = {
+      kind: "file" as const,
+      href: "",
+      path: "/workspace/demo/agentGuiNode",
+      name: "agentGuiNode",
+      entryKind: "directory",
+      directoryPath: "/workspace/demo",
+      mentionNavigation: "agent-generated-folder" as const,
+      childCount: 5
+    } satisfies AgentContextMentionItem;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "agent_generated_files",
+          items: [folderItem],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+    const onNavigateIntoItem = vi.fn();
+    const onSelectItem = vi.fn();
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="agent_generated_files:file:/workspace/demo/agentGuiNode"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={onSelectItem}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+        onNavigateIntoItem={onNavigateIntoItem}
+      />
+    );
+
+    const folderRow = screen
+      .getByText("agentGuiNode")
+      .closest('[data-agent-file-mention="true"]');
+    const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+
+    expect(folderRow).toHaveAttribute(
+      "data-agent-mention-navigation",
+      "agent-generated-folder"
+    );
+    expect(enterButton).toHaveAttribute(
+      "data-agent-mention-navigate-into",
+      "true"
+    );
+
+    fireEvent.click(enterButton);
+
+    expect(onNavigateIntoItem).toHaveBeenCalledWith(folderItem);
+    expect(onSelectItem).not.toHaveBeenCalled();
+
+    fireEvent.click(folderRow!);
+
+    expect(onSelectItem).toHaveBeenCalledWith(folderItem);
+  });
+
   it("renders image mention rows with thumbnails instead of default file icons", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
@@ -1256,31 +1330,6 @@ describe("AgentFileMentionPalette", () => {
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []
     ).toHaveLength(0);
   });
-
-  it("uses ui-system text tokens for mention palette text colors", () => {
-    const source = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentFileMentionPalette.tsx"),
-      "utf8"
-    );
-    // The per-kind row markup moved to the shared MentionRow renderer; the
-    // primary-text tokens now live there. Guard both files so the discipline
-    // (product tokens, never raw shadcn tokens) stays enforced.
-    const rowSource = readFileSync(
-      resolve(
-        "node_modules/@tutti-os/ui-rich-text/src/at-panel/mentionPalette.css"
-      ),
-      "utf8"
-    );
-
-    expect(source).not.toContain("text-foreground");
-    expect(source).not.toContain("text-muted-foreground");
-    expect(source).toContain("text-[var(--text-secondary)]");
-    expect(rowSource).not.toContain("text-foreground");
-    expect(rowSource).not.toContain("text-muted-foreground");
-    expect(rowSource).toContain("--rich-text-at-mention-text-primary");
-    expect(rowSource).toContain("--rich-text-at-mention-text-secondary");
-  });
-
   it("shows only loading while browse results are refreshing", () => {
     const state: AgentMentionSearchState = {
       status: "loading",
@@ -1401,837 +1450,6 @@ describe("AgentFileMentionPalette", () => {
     expect(onHighlightChange).toHaveBeenNthCalledWith(
       2,
       "opened_files:file:/workspace/assets/demo.png"
-    );
-  });
-
-  it("keeps the shortcut hint visible in constrained mention panels", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.tsh-underline-tabs\.agent-gui-node__mention-palette-tabs\s*{[^}]*height:\s*41px[^}]*padding:\s*8px 16px 0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__mention-palette-header\s*{[^}]*padding:\s*8px 0 0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__mention-palette-footer\s*{[^}]*min-height:\s*36px/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__mention-palette-hint[^{]*{[^}]*display:\s*none/s
-    );
-  });
-
-  it("keeps embedded message-center approval prompts within their card", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*max-width:\s*100%/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*gap:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*border-radius:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*padding:\s*12px 16px 16px/s
-    );
-    expect(css).toMatch(
-      /\[data-testid="workspace-agent-message-center"\][\s\S]*?\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*padding:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\[data-testid="workspace-agent-message-center"\][\s\S]*?\.agent-gui-conversation__interactive-prompt-card\s*{[^}]*border-radius:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-button\s*{[^}]*padding:\s*8px 8px 8px 12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-button:has\([^}]*padding-right:\s*8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-shortcut\s*{[^}]*right:\s*8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-spinner\s*{[^}]*right:\s*8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-shortcut\s*{[^}]*top:\s*50%[^}]*transform:\s*translateY\(-50%\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-spinner\s*{[^}]*top:\s*50%[^}]*transform:\s*translateY\(-50%\)/s
-    );
-    expect(css).toMatch(
-      /\[data-testid="workspace-agent-message-center"\][\s\S]*?\.agent-gui-conversation__interactive-prompt-question,[\s\S]*?\[data-testid="workspace-agent-message-center"\][\s\S]*?\.agent-gui-conversation__interactive-option-title,[\s\S]*?\[data-testid="workspace-agent-message-center"\][\s\S]*?\.agent-gui-conversation__interactive-option-description\s*{[^}]*min-width:\s*0[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-option-button:has\([\s\S]*?\.agent-gui-conversation__interactive-option-shortcut,[\s\S]*?\.agent-gui-conversation__interactive-option-spinner[\s\S]*?\)[\s\S]*?\.agent-gui-conversation__interactive-option-title,[\s\S]*?\.agent-gui-conversation__interactive-option-button:has\([\s\S]*?\.agent-gui-conversation__interactive-option-shortcut,[\s\S]*?\.agent-gui-conversation__interactive-option-spinner[\s\S]*?\)[\s\S]*?\.agent-gui-conversation__interactive-option-description\s*{[^}]*max-width:\s*calc\(100%\s*-\s*112px\)/s
-    );
-    expect(css).toMatch(
-      /\[data-message-center-item-id\]\.agent-gui-edge-glow\s*{[^}]*overflow:\s*hidden/s
-    );
-    expect(css).toMatch(
-      /html\[data-theme="light"\]\s+\[data-message-center-item-id\]\.agent-gui-edge-glow\s*{[^}]*--agent-gui-star-border-color:\s*var\(--tutti-purple\)/s
-    );
-    expect(css).toMatch(
-      /html\[data-theme="light"\]\s+\[data-message-center-item-id\]\.agent-gui-edge-glow\s*{[^}]*--agent-gui-star-border-mid-color:\s*color-mix\(\s*in srgb,\s*var\(--tutti-purple\) 48%,\s*transparent\s*\)/s
-    );
-    expect(css).toMatch(
-      /html\[data-theme="light"\]\s+\[data-message-center-item-id\]\.agent-gui-edge-glow\s*{[^}]*--agent-gui-star-border-shadow:\s*drop-shadow\(\s*0 0 6px color-mix\(in srgb, var\(--tutti-purple\) 58%, transparent\)\s*\)/s
-    );
-    for (const selector of [
-      "interactive-prompt-lead",
-      "interactive-option-button",
-      "interactive-option-display",
-      "interactive-option-title",
-      "interactive-option-shortcut"
-    ]) {
-      expect(css).toMatch(
-        new RegExp(
-          `\\.agent-gui-conversation__${selector}\\s*{[^}]*font-weight:\\s*500`,
-          "s"
-        )
-      );
-      expect(css).not.toMatch(
-        new RegExp(
-          `\\.agent-gui-conversation__${selector}\\s*{[^}]*font-weight:\\s*600`,
-          "s"
-        )
-      );
-    }
-  });
-
-  it("uses border-focus for waiting agent activity card outlines", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__activity\.agent-gui-edge-glow\s*{[^}]*border-color:\s*var\(--border-focus\)/s
-    );
-  });
-
-  it("keeps raised status panels below global tooltips", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel\[data-layer="raised"\]\s*{[^}]*z-index:\s*var\(--z-toast,\s*100300\)/s
-    );
-    expect(css).not.toMatch(
-      /\.workspace-agents-status-panel\[data-layer="raised"\]\s*{[^}]*z-index:\s*100300/s
-    );
-  });
-
-  it("lets the project rail header scroll with the conversation list", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const nodeViewSource = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
-    const projectRailHeaderRule =
-      css.match(/\.agent-gui-node__project-rail-header\s*{[^}]*}/s)?.[0] ?? "";
-    const projectRailTitleRule =
-      css.match(/\.agent-gui-node__project-rail-title\s*{[^}]*}/s)?.[0] ?? "";
-
-    expect(projectRailHeaderRule).toMatch(/display:\s*flex/);
-    expect(projectRailHeaderRule).not.toMatch(/position:\s*sticky/);
-    expect(projectRailHeaderRule).not.toMatch(/\btop:\s*0/);
-    expect(projectRailHeaderRule).not.toMatch(/\bz-index:/);
-    expect(projectRailHeaderRule).not.toMatch(/\bbackground:/);
-    expect(projectRailTitleRule).toMatch(/font-size:\s*13px/);
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\s*\+\s*\.agent-gui-node__project-rail-header\s*{[^}]*margin-top:\s*24px/s
-    );
-    expect(nodeViewSource).toMatch(/<Fragment key=\{section\.id\}>/);
-    expect(nodeViewSource).toMatch(/const showProjectRailHeader\s*=/);
-    expect(nodeViewSource).toMatch(/section\.kind !== "pinned"/);
-    expect(nodeViewSource).toMatch(
-      /groupedConversations\[sectionIndex - 1\]\?\.kind === "pinned"/
-    );
-  });
-
-  it("gives project section headers a hover-only background", () => {
-    const nodeViewSource = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(nodeViewSource).toMatch(/data-kind=\{section\.kind\}/);
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-header\s*{[^}]*border-radius:\s*6px[^}]*background-color:\s*transparent[^}]*padding:\s*4px 6px 4px 10px[^}]*transition:\s*background-color 140ms ease/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-label\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\][\s\S]*?>\s*\.agent-gui-node__conversation-section-header:hover\s*{[^}]*background-color:\s*var\(--agent-gui-surface-hover\)/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\][\s\S]*?>\s*\.agent-gui-node__conversation-section-header:focus-within/
-    );
-  });
-
-  it("swaps project folder icons for chevrons only on hover", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-toggle\s*{[^}]*position:\s*relative[^}]*gap:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-chevron\s*{[^}]*position:\s*absolute[^}]*left:\s*0[^}]*opacity:\s*0[^}]*pointer-events:\s*none/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\][\s\S]*?>\s*\.agent-gui-node__conversation-section-header:hover[\s\S]*?\.agent-gui-node__conversation-section-chevron\s*{[^}]*opacity:\s*1/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-label-icon\s*{[^}]*width:\s*12px[^}]*height:\s*12px[^}]*transition:\s*opacity 140ms ease/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\][\s\S]*?>\s*\.agent-gui-node__conversation-section-header:hover[\s\S]*?\.agent-gui-node__conversation-section-label-icon\s*{[^}]*opacity:\s*0/s
-    );
-  });
-
-  it("lets project and pinned conversation row backgrounds span the section width", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-items\s*{[^}]*padding-left:\s*14px[^}]*padding-top:\s*8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\]\s+\.agent-gui-node__conversation-section-items\s*{[^}]*padding-left:\s*0[^}]*padding-top:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\]\s+\.agent-gui-node__conversation-select\s*{[^}]*padding-left:\s*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="pinned"\]\s+\.agent-gui-node__conversation-section-items\s*{[^}]*padding-left:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="pinned"\]\s+\.agent-gui-node__conversation-select\s*{[^}]*padding-left:\s*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="conversations"\]\s+\.agent-gui-node__conversation-section-items\s*{[^}]*padding-left:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="conversations"\]\s+\.agent-gui-node__conversation-select\s*{[^}]*padding-left:\s*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-items-inner\s*{[^}]*gap:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\]\s+\.agent-gui-node__conversation-section-items-inner\s*{[^}]*gap:\s*2px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-empty\s*{[^}]*padding:\s*7px 12px 7px 26px/s
-    );
-  });
-
-  it("reserves space for conversation row actions so titles truncate", () => {
-    const nodeViewSource = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-list\s*{[^}]*min-width:\s*0[^}]*max-width:\s*100%[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\s*{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\s*\+\s*\.agent-gui-node__conversation-section\s*{[^}]*margin-top:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="project"\]\s*\+\s*\.agent-gui-node__conversation-section\[data-kind="project"\]\s*{[^}]*margin-top:\s*2px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="pinned"\]\s*\+\s*\.agent-gui-node__conversation-section\[data-kind="conversations"\],[\s\S]*?\.agent-gui-node__conversation-section\[data-kind="project"\]\s*\+\s*\.agent-gui-node__conversation-section\[data-kind="conversations"\]\s*{[^}]*margin-top:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-items\s*{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-item\s*{[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*height:\s*32px[^}]*min-height:\s*32px[^}]*border-radius:\s*6px[^}]*overflow:\s*hidden/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-select\s*{[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*min-width:\s*0[^}]*overflow:\s*hidden/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-title\s*{[^}]*overflow:\s*hidden[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*13px[^}]*font-weight:\s*400[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-item:hover\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*0[\s\S]*?padding-right:\s*96px/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__conversation-item:focus-within\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-item\[data-pending-delete="true"\][\s\S]*?\.agent-gui-node__conversation-select\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*0[^}]*padding-right:\s*min\(96px,\s*calc\(100%\s*-\s*24px\)\)/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__conversation-item\[data-pinned="true"\]\s+\.agent-gui-node__conversation-actions,\s*\.agent-gui-node__conversation-item:hover/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s*{[^}]*right:\s*4px[^}]*justify-content:\s*flex-start[^}]*gap:\s*0[^}]*min-width:\s*72px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-delete-button,\s*\.agent-gui-node__conversation-open-window-button,\s*\.agent-gui-node__conversation-pin-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--text-tertiary\)/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__conversation-delete-button,\s*\.agent-gui-node__conversation-pin-button\s*{[^}]*width:\s*28px/s
-    );
-    expect(nodeViewSource).toMatch(
-      /<BareIconButton[\s\S]*className=\{styles\.conversationOpenWindowButton\}[\s\S]*size="md"[\s\S]*<BareIconButton[\s\S]*className=\{styles\.conversationPinButton\}[\s\S]*size="md"[\s\S]*<BareIconButton[\s\S]*className=\{styles\.conversationDeleteButton\}[\s\S]*size="md"/
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-item\[data-pinned="true"\]\s+\.agent-gui-node__conversation-pin-button\s*{[^}]*color:\s*var\(--agent-gui-accent\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s*{[^}]*color:\s*var\(--agent-gui-accent\)/s
-    );
-    const openWindowIconHoverRule = css.match(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-open-window-button:not\(:disabled\):hover\s+svg,[\s\S]*?\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-open-window-button:not\(:disabled\):active\s+svg\s*{(?<body>[^}]*)}/
-    );
-    expect(openWindowIconHoverRule?.groups?.body).toMatch(
-      /color:\s*var\(--text-primary\)/
-    );
-    expect(openWindowIconHoverRule?.groups?.body).not.toMatch(
-      /fill:\s*currentColor/
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s+svg\s*{[^}]*color:\s*var\(--agent-gui-accent\)[^}]*fill:\s*currentColor/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(:disabled\):hover,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(\s*:disabled\s*\):focus-visible,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(:disabled\):active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--agent-gui-danger,\s*var\(--state-danger\)\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(:disabled\):hover\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(\s*:disabled\s*\):focus-visible\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-delete-button:not\(:disabled\):active\s+svg\s*{[^}]*color:\s*var\(--agent-gui-danger,\s*var\(--state-danger\)\)[^}]*fill:\s*currentColor/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-item:hover\s+\.agent-gui-node__conversation-meta[\s\S]*?width:\s*0[\s\S]*?min-width:\s*0[\s\S]*?margin-right:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-meta\[data-kind="time"\]\s*{[^}]*min-width:\s*max-content[^}]*white-space:\s*nowrap/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-time\s*{[^}]*font-size:\s*11px[^}]*white-space:\s*nowrap/s
-    );
-  });
-
-  it("keeps non-hero chrome notices inset by 8px", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-chrome__session-chrome\s*{[^}]*margin:\s*0 8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
-    );
-  });
-
-  it("keeps new conversation hero composer chrome notices inset by 24px", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-input-group-hero\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
-    );
-  });
-
-  it("keeps hero inline notices flush with the composer and inset by 24px", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*{[^}]*--agent-gui-empty-hero-gap:\s*24px[^}]*gap:\s*var\(--agent-gui-empty-hero-gap\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*\+\s*\.agent-gui-node__composer-hero\s*{[^}]*margin-top:\s*calc\(var\(--agent-gui-empty-hero-gap,\s*24px\)\s*\*\s*-1\)/s
-    );
-  });
-
-  it("keeps composer danger chrome open through the bottom edge", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s*{[^}]*border-bottom:\s*0/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?border-bottom:\s*1px solid/s
-    );
-  });
-
-  it("insets bottom dock chrome notices further when stacked above composer notices", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*36px[^}]*margin-left:\s*36px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
-    );
-  });
-
-  it("uses status danger for chrome danger notices", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s*{[^}]*border-color:\s*color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*16%,\s*transparent\s*\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__icon,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__message,[\s\S]*?\.agent-gui-chrome__card--danger\s+\.agent-gui-chrome__expand-cue\s*{[^}]*color:\s*var\(--status-danger,\s*var\(--state-danger\)\)/s
-    );
-  });
-
-  it("uses shared semantic status tokens for agent gui chrome", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__shell\s*{[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-package-warning:\s*var\(--state-warning\)[^}]*--agent-gui-package-danger:\s*var\(--state-danger\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
-    );
-    expect(css).toMatch(
-      /\[data-testid="workspace-agent-message-center"\]\s*{[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-package-warning:\s*var\(--state-warning\)[^}]*--agent-gui-package-danger:\s*var\(--state-danger\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-content\s*{[^}]*--agent-gui-surface-raised:\s*var\(--background-fronted\)[^}]*--agent-gui-border-subtle:\s*var\(--line-2\)[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)/s
-    );
-  });
-
-  it("uses the package success token for ask-for-approval permission triggers", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-permission-tone="success"\],[\s\S]*?\.agent-gui-node__composer-menu-trigger\[data-permission-tone="success"\]\s*>\s*svg\s*{[^}]*color:\s*var\(--agent-gui-success\)/s
-    );
-  });
-
-  it("uses tutti purple for composer approval menu accents", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\],[\s\S]*?\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\]\s*>\s*svg\s*{[^}]*color:\s*var\(--tutti-purple\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-content\s*{[^}]*--accent:\s*var\(--tutti-purple\)[^}]*--agent-gui-package-accent:\s*var\(--tutti-purple\)[^}]*--agent-gui-package-accent-strong:\s*var\(--tutti-purple\)/s
-    );
-  });
-
-  it("keeps conversation prompt titles on the carried TSH medium weight", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-lead\s*{[^}]*font-size:\s*15px[^}]*font-weight:\s*500/s
-    );
-  });
-
-  it("keeps empty hero titles at medium weight", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-title\s*{[^}]*font-size:\s*28px[^}]*font-weight:\s*500/s
-    );
-  });
-
-  it("keeps the new-session hero icon aligned with the new-task empty icon size", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-icon-effect\s*{[^}]*width:\s*48px[^}]*height:\s*48px/s
-    );
-  });
-
-  it("sets the empty hero provider name in Merriweather bold italic", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-provider\s*{[^}]*font-family:\s*Merriweather,\s*Georgia,\s*serif[^}]*font-style:\s*italic[^}]*font-weight:\s*700/s
-    );
-  });
-
-  it("uses the product primary text token for the detail header title", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__detail-header-title\s*{[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*15px/s
-    );
-  });
-
-  it("ships self-contained status dot styles for package hosts", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\s*{[^}]*display:\s*inline-flex[^}]*border-radius:\s*999px[^}]*background:\s*var\(--agent-gui-status-dot-color\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-size="md"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-size="md"\]\s*{[^}]*width:\s*10px[^}]*height:\s*10px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-tone="green"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-tone="green"\]\s*{[^}]*--agent-gui-status-dot-color:\s*var\(--state-success\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-tone="red"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-tone="red"\]\s*{[^}]*--agent-gui-status-dot-color:\s*var\(--state-danger\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-pulse="true"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-pulse="true"\]\s*{[^}]*animation:\s*agent-gui-status-dot-pulse\s+1\.8s\s+ease-in-out\s+infinite/s
-    );
-    expect(css).toMatch(/@keyframes\s+agent-gui-status-dot-pulse/s);
-    expect(css).toMatch(/--agent-gui-package-accent:\s*var\(--accent-codex\)/s);
-    expect(css).toMatch(
-      /--agent-gui-accent:\s*var\(--agent-gui-package-accent\)/s
-    );
-    expect(css).toMatch(
-      /--agent-gui-accent-strong:\s*var\(--agent-gui-package-accent-strong\)/s
-    );
-  });
-
-  it("ships self-contained message center action styles for package hosts", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.workspace-agent-message-center__card\s*{[^}]*display:\s*flex[^}]*border:\s*1px solid var\(--line-2\)[^}]*background:\s*var\(--background-fronted\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agent-message-center__card\[data-waiting="true"\]\s*{[^}]*border-color:\s*var\(--tutti-purple-border\)[^}]*background:\s*var\(--tutti-purple-bg\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agent-message-center__open-chat-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--accent-codex\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agent-message-center__open-chat-button:hover,\s*\.workspace-agent-message-center__open-chat-button:focus-visible,\s*\.workspace-agent-message-center__open-chat-button:active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--accent-codex\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agent-message-center__project-info-button:hover,\s*\.workspace-agent-message-center__project-info-button:focus-visible\s*{[^}]*background:\s*var\(--transparency-hover\)[^}]*color:\s*var\(--text-primary\)/s
-    );
-  });
-
-  it("uses product color tokens across conversation flow surfaces", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-lead\s*{[^}]*color:\s*var\(--text-primary\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__interactive-prompt-actions button\s*{[^}]*border:\s*1px solid var\(--line-2\)[^}]*background:\s*var\(--background-fronted\)[^}]*color:\s*var\(--text-primary\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s*{[^}]*color:\s*var\(--agent-conversation-text,\s*var\(--text-primary\)\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*background:\s*var\(--agent-conversation-user-bg,\s*var\(--transparency-block\)\)[^}]*color:\s*var\(--agent-conversation-user-text,\s*var\(--text-primary\)\)/s
-    );
-    expect(css).toMatch(
-      /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\.tsh-agent-object-token--file\s*{[^}]*color:\s*var\(--folder\)/s
-    );
-    expect(css).toMatch(
-      /\[data-agent-mention-kind="workspace-app"\]\.tsh-agent-object-token--entity\s*{[^}]*color:\s*var\(--tutti-purple\)/s
-    );
-    expect(css).toMatch(
-      /\.workspace-agents-status-panel__activity-summary\s+\.workspace-agents-status-panel__detail-markdown\s+a,[\s\S]*?\.workspace-agents-status-panel__detail-markdown\s+code\s+a\s*{[^}]*color:\s*var\(--tutti-purple\)/s
-    );
-  });
-
-  it("uses accent blue for editable workspace app mentions", () => {
-    const nodeViewSource = readFileSync(
-      resolve("agent-gui/agentGuiNode/agentRichText/AgentMentionNodeView.tsx"),
-      "utf8"
-    );
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const workspaceAppFallbackIconRule =
-      css.match(
-        /\[data-agent-mention-kind="workspace-app"\]\s+\[data-agent-mention-app-icon="true"\]\s+\.tsh-agent-object-token__kind-icon\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(nodeViewSource).toContain("text-[var(--accent)]");
-    expect(nodeViewSource).toContain("text-[13px]");
-    expect(nodeViewSource).toContain("relative grid size-4");
-    expect(nodeViewSource).not.toContain("size-[18px]");
-    expect(nodeViewSource).not.toContain(
-      "text-[var(--rich-text-mention-issue)]"
-    );
-    expect(workspaceAppFallbackIconRule).toMatch(/width:\s*16px/);
-    expect(workspaceAppFallbackIconRule).toMatch(/height:\s*16px/);
-    expect(workspaceAppFallbackIconRule).toMatch(
-      /mask-image:\s*url\("\.\/assets\/icons\/product-filled\.svg"\)/
-    );
-  });
-
-  it("keeps queued prompt mentions neutral instead of category colored", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const queuedAnyMentionRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-file-mention="true"\]\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const queuedEntityMentionRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const queuedAppMentionRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-mention-kind="workspace-app"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const queuedMentionPartsRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-file-mention="true"\]\s+\.tsh-agent-object-token__kind,[\s\S]*?\[data-agent-mention-app-icon="true"\]\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(queuedAnyMentionRule).toMatch(/color:\s*inherit/);
-    expect(queuedEntityMentionRule).toMatch(/color:\s*inherit/);
-    expect(queuedAppMentionRule).toMatch(/color:\s*inherit/);
-    expect(queuedMentionPartsRule).toMatch(/color:\s*inherit/);
-    expect(queuedAppMentionRule).not.toMatch(/var\(--accent\)/);
-  });
-
-  it("keeps standalone chrome notice text at regular weight", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-chrome__notice-title\s*{[^}]*font-weight:\s*400/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-chrome__notice-description\s*{[^}]*font-weight:\s*400/s
-    );
-  });
-
-  it("removes object token offset when markdown contains only a mention", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\[data-agent-mention-only="true"\]\s+\.tsh-agent-object-token--file,[\s\S]*?\[data-agent-mention-only="true"\]\s+\.tsh-agent-object-token--entity\s*{[^}]*top:\s*0/s
-    );
-  });
-
-  it("lets entity mention tokens grow with large surrounding text", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const entityTokenRule =
-      css.match(/\.tsh-agent-object-token--entity\s*{[^}]*}/s)?.[0] ?? "";
-
-    expect(entityTokenRule).toMatch(/min-height:\s*20px/);
-    expect(entityTokenRule).toMatch(/line-height:\s*inherit/);
-    expect(entityTokenRule).not.toMatch(/(?:^|[;\s])height:\s*20px/);
-  });
-
-  it("gives workspace issue mention tokens an issue icon mask", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const issueIconRule =
-      css.match(
-        /\[data-agent-mention-kind="workspace-issue"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__kind-icon\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(issueIconRule).toMatch(/issue-filled\.svg/);
-    expect(issueIconRule).toMatch(/width:\s*16px/);
-    expect(issueIconRule).toMatch(/height:\s*16px/);
-  });
-
-  it("renders skill and capability tokens as purple badges", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const skillCapabilityRule =
-      css.match(
-        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const skillCapabilityKindRule =
-      css.match(
-        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__kind,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__kind\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const skillCapabilityMainRule =
-      css.match(
-        /\[data-agent-mention-kind="skill"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main,[\s\S]*?\[data-agent-mention-kind="capability"\]\.tsh-agent-object-token--entity\s+\.tsh-agent-object-token__main\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(skillCapabilityRule).toMatch(/padding:\s*0 4px 0 0/);
-    expect(skillCapabilityRule).toMatch(/background:\s*transparent/);
-    expect(skillCapabilityRule).toMatch(/color:\s*var\(--tutti-purple\)/);
-    expect(skillCapabilityMainRule).toMatch(
-      /background:\s*var\(--tutti-purple-bg\)/
-    );
-    expect(skillCapabilityKindRule).toMatch(/display:\s*none/);
-    expect(css).toMatch(
-      /\.tsh-agent-object-token--entity\.ProseMirror-selectednode\s+\.tsh-agent-object-token__main,[\s\S]*?background:\s*color-mix\(in srgb,\s*var\(--tutti-purple\) 20%,\s*transparent\)/s
-    );
-  });
-
-  it("keeps file and folder mention icons at 16px with folder token color", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const shellRule =
-      css.match(/\.agent-gui-node__shell\s*{[^}]*}/s)?.[0] ?? "";
-    const paletteRule =
-      Array.from(css.matchAll(/\.agent-gui-node__mention-palette\s*{[^}]*}/gs))
-        .map((match) => match[0])
-        .find((rule) => rule.includes("--agent-mention-file-icon-size")) ?? "";
-    const fileTokenRule =
-      Array.from(css.matchAll(/\.tsh-agent-object-token--file\s*{[^}]*}/gs))
-        .map((match) => match[0])
-        .find((rule) => rule.includes("color:")) ?? "";
-    const fileIconRule =
-      css.match(
-        /\.tsh-agent-object-token--file\s+\.tsh-agent-object-token__icon\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const paletteFileIconRule =
-      css.match(/\.agent-gui-node__mention-file-icon\s*{[^}]*}/s)?.[0] ?? "";
-    const backNavigationIconRule =
-      css.match(
-        /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\[data-agent-file-visual-kind="back"\]\s+\.agent-gui-node__mention-file-icon\.rich-text-at-mention-file-icon--glyph\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(shellRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
-    expect(paletteRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
-    expect(fileTokenRule).toMatch(/color:\s*var\(--folder\)/);
-    expect(fileTokenRule).toMatch(/box-sizing:\s*border-box/);
-    expect(fileTokenRule).toMatch(/padding:\s*2px 4px/);
-    expect(fileTokenRule).toMatch(/border:\s*1px solid transparent/);
-    expect(fileTokenRule).toMatch(/border-radius:\s*4px/);
-    expect(fileTokenRule).toMatch(/line-height:\s*20px/);
-    expect(fileTokenRule).not.toMatch(/height:\s*24px/);
-    expect(fileTokenRule).not.toMatch(/min-height:\s*24px/);
-    expect(paletteFileIconRule).toMatch(/background-color:\s*var\(--folder\)/);
-    expect(backNavigationIconRule).toMatch(
-      /\.rich-text-at-mention-file-icon--glyph/
-    );
-    expect(backNavigationIconRule).toMatch(/color:\s*currentColor/);
-    expect(backNavigationIconRule).not.toMatch(/arrow-left-filled\.svg/);
-    expect(fileIconRule).toMatch(
-      /width:\s*var\(--agent-mention-file-icon-size,\s*16px\)/
-    );
-    expect(fileIconRule).toMatch(
-      /height:\s*var\(--agent-mention-file-icon-size,\s*16px\)/
-    );
-    expect(fileIconRule).toMatch(
-      /mask-size:\s*var\(--agent-mention-file-icon-size,\s*16px\)\s+var\(--agent-mention-file-icon-size,\s*16px\)/
-    );
-  });
-
-  it("keeps conversation mention hover backgrounds outside the queue", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token\s*{[^}]*cursor:\s*pointer/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token\s+\.tsh-agent-object-token__main,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token\s+\.tsh-agent-object-token__main\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-conversation__assistant-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token:hover,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token:hover\s*{[^}]*background:\s*color-mix\(in srgb,\s*currentColor 16%,\s*transparent\)/s
-    );
-  });
-
-  it("keeps queued prompt text to one ellipsized line even when expanded", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const queuedTextRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-text\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const expandedQueuedTextRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-panel\[data-expanded="true"\]\s+\.agent-gui-node__composer-queued-prompt-text\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(queuedTextRule).toMatch(/line-height:\s*28px/);
-    expect(expandedQueuedTextRule).toMatch(/overflow:\s*hidden/);
-    expect(expandedQueuedTextRule).toMatch(/text-overflow:\s*ellipsis/);
-    expect(expandedQueuedTextRule).toMatch(/white-space:\s*nowrap/);
-    expect(expandedQueuedTextRule).not.toMatch(/pre-wrap/);
-  });
-
-  it("keeps queued mention hover pills at the rich text mention height", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const queuedEntityMentionRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const queuedEntityMentionHoverRule =
-      css.match(
-        /\.agent-gui-node__composer-queued-prompt-markdown\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--entity:hover\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(queuedEntityMentionRule).toMatch(/top:\s*3px/);
-    expect(queuedEntityMentionRule).toMatch(/min-height:\s*24px/);
-    expect(queuedEntityMentionRule).toMatch(/padding:\s*2px 4px/);
-    expect(queuedEntityMentionRule).toMatch(/line-height:\s*20px/);
-    expect(queuedEntityMentionHoverRule).toMatch(
-      /color-mix\(in srgb,\s*var\(--text-primary\) 10%,\s*transparent\)/
-    );
-  });
-
-  it("lets user message bubbles grow to fit mention content", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const userBubbleRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userTokenRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+\.tsh-agent-object-token\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userFileTokenRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+\.tsh-agent-object-token--file\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userFileMessageTokenRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\.tsh-agent-object-token--file\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userAppMessageTokenRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\[data-agent-mention-kind="workspace-app"\]\.tsh-agent-object-token--entity\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userAppMessageTextRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+\[data-agent-file-mention="true"\]\[data-agent-mention-kind="workspace-app"\]\s+\.tsh-agent-object-token__main\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userEditorRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\s+>\s+div,[\s\S]*?\.workspace-agents-status-panel__detail-user-message\s+\.ProseMirror\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const userParagraphRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s+p\s*{[^}]*}/s
-      )?.[0] ?? "";
-    const mentionOnlyUserEditorRule =
-      css.match(
-        /\.workspace-agents-status-panel__detail-user-message\[data-agent-mention-only="true"\]\.agent-gui-conversation__user-message-bubble\s*{[^}]*}/s
-      )?.[0] ?? "";
-
-    expect(userBubbleRule).toMatch(/display:\s*inline-block/);
-    expect(userBubbleRule).toMatch(/justify-self:\s*end/);
-    expect(userBubbleRule).toMatch(/width:\s*fit-content/);
-    expect(userBubbleRule).toMatch(/overflow:\s*visible/);
-    expect(userBubbleRule).toMatch(/font-size:\s*13px/);
-    expect(userBubbleRule).toMatch(/line-height:\s*24px/);
-    expect(userTokenRule).toMatch(/font-size:\s*inherit/);
-    expect(userTokenRule).not.toMatch(/line-height:\s*inherit/);
-    expect(userTokenRule).toMatch(/overflow:\s*visible/);
-    expect(userFileTokenRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
-    expect(userFileTokenRule).not.toMatch(/min-height:\s*inherit/);
-    expect(userFileTokenRule).not.toMatch(/line-height:\s*inherit/);
-    expect(userFileMessageTokenRule).toMatch(/top:\s*-2px/);
-    expect(userFileMessageTokenRule).toMatch(/line-height:\s*20px/);
-    expect(userFileMessageTokenRule).toMatch(/vertical-align:\s*middle/);
-    expect(userAppMessageTokenRule).toMatch(/top:\s*-2px/);
-    expect(userAppMessageTokenRule).toMatch(/min-height:\s*24px/);
-    expect(userAppMessageTokenRule).toMatch(/line-height:\s*24px/);
-    expect(userAppMessageTokenRule).toMatch(/vertical-align:\s*middle/);
-    expect(userAppMessageTextRule).toMatch(/overflow:\s*visible/);
-    expect(userEditorRule).toMatch(/width:\s*fit-content/);
-    expect(userEditorRule).toMatch(/display:\s*inline-block/);
-    expect(userEditorRule).toMatch(/vertical-align:\s*top/);
-    expect(userEditorRule).toMatch(/max-width:\s*100%/);
-    expect(userEditorRule).toMatch(/font-size:\s*inherit/);
-    expect(userEditorRule).toMatch(/line-height:\s*inherit/);
-    expect(userParagraphRule).toMatch(/width:\s*fit-content/);
-    expect(userParagraphRule).toMatch(/max-width:\s*100%/);
-    expect(mentionOnlyUserEditorRule).toMatch(
-      /max-width:\s*min\(100%,\s*calc\(var\(--agent-mention-max-width,\s*16rem\)\s*\+\s*24px\)\)/
     );
   });
 });

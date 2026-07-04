@@ -242,6 +242,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/agent/claude-sdk-sidecar:
+    dependencies:
+      "@anthropic-ai/claude-agent-sdk":
+        specifier: 0.3.201
+        version: 0.3.201(@anthropic-ai/sdk@0.109.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      "@tutti-os/config-tsconfig":
+        specifier: workspace:*
+        version: link:../../configs/tsconfig
+      "@types/node":
+        specifier: ^24.0.1
+        version: 24.12.4
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/agent/gui:
     dependencies:
       "@monaco-editor/react":
@@ -377,6 +396,18 @@ importers:
       vitest:
         specifier: ^4.0.13
         version: 4.1.7(@types/node@24.12.4)(jsdom@27.4.0)(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/auth/bridge:
+    devDependencies:
+      "@types/node":
+        specifier: ^24.12.2
+        version: 24.12.4
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/browser/workbench-node:
     dependencies:
@@ -1123,6 +1154,93 @@ packages:
       {
         integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==
       }
+
+  "@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-8Mcb3BDyKUGfJWFFTWwt+at37lbDH3ZwVtUNPWGG1toZ75RDCJry5U4kXRvQ2xokvJQlA0E+eNp6keWe5ZH22Q==
+      }
+    cpu: [arm64]
+    os: [darwin]
+
+  "@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-TFR2bu0+ml3RHoMrtsgD0qDK5Oknw8kYGBV7qpQHn+IWmE96gnHhogG1LpJwpHtni08XkJIjfWk1DdlsUYtRkQ==
+      }
+    cpu: [x64]
+    os: [darwin]
+
+  "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.201":
+    resolution:
+      {
+        integrity: sha512-EiqbpfJIpChfkn+8Uj061Qjyw0eaRcOXtdrvVuHANyj8ZErVOr8HlH6op9PSeIUa9TX0m2+tNgKPQvOGseQckA==
+      }
+    cpu: [arm64]
+    os: [linux]
+
+  "@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-mShTo3MwF0gkN4dDw78wWJiB6aBDVRkl81cnApvoBofpdyUBYgm9Gw16CCjDTgelMKeBFqN6ErJpwjI3wbP00A==
+      }
+    cpu: [arm64]
+    os: [linux]
+
+  "@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.201":
+    resolution:
+      {
+        integrity: sha512-IbxnzO5UCbqbm2TnzCHkSyJorAFw2isdKdIsFCTxJJjSs3ZC+v3LC1QSUiVCx0qi+CV6w3MKx6mLI11mrvhbbQ==
+      }
+    cpu: [x64]
+    os: [linux]
+
+  "@anthropic-ai/claude-agent-sdk-linux-x64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-jrJBrRWrSuoFKIgjyqxHqmfd6Pb3Bs5Bvakg0knXCTC4fbUXGnC9Q6u7gdDwgXohUNP6/DD+s8U7bivvvVv0dg==
+      }
+    cpu: [x64]
+    os: [linux]
+
+  "@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-UsoytRJ/037uHpb3ATrIoe+AgwTf+PwKuFLGjddHAV/11wERJs0hlrnSmcnp43kf0PFxoSNinngme96YYASmQg==
+      }
+    cpu: [arm64]
+    os: [win32]
+
+  "@anthropic-ai/claude-agent-sdk-win32-x64@0.3.201":
+    resolution:
+      {
+        integrity: sha512-PhalN/0cWcqDfbx7iwoLNR2gurjTiqhBk1G6K+NRScxEcQjWuu5xKXCcdbX8ePVpT+nbEMmFEFpn2y+8V8hIdA==
+      }
+    cpu: [x64]
+    os: [win32]
+
+  "@anthropic-ai/claude-agent-sdk@0.3.201":
+    resolution:
+      {
+        integrity: sha512-InT1XLmf2QpldWdtznKDWEoGJT4p+sXh24yxbeBQ++lMJCzMrI0W27MEmmmDWx0otpa+ubdHCF5YQ6oiNt7cmg==
+      }
+    engines: { node: ">=18.0.0" }
+    peerDependencies:
+      "@anthropic-ai/sdk": ">=0.93.0"
+      "@modelcontextprotocol/sdk": ^1.29.0
+      zod: ^4.0.0
+
+  "@anthropic-ai/sdk@0.109.0":
+    resolution:
+      {
+        integrity: sha512-y7P4eLyW5uNut4fXpOUEHqhJwx7dnxrWAfCQE4Lcgm0hSFQuIeHa7CWEKE5dFolEjQJE/RFKkppjri05r2OK/Q==
+      }
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
   "@asamuzakjp/css-color@4.1.2":
     resolution:
@@ -4169,6 +4287,12 @@ packages:
       }
     engines: { node: ">=18" }
 
+  "@stablelib/base64@1.0.1":
+    resolution:
+      {
+        integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==
+      }
+
   "@standard-schema/spec@1.1.0":
     resolution:
       {
@@ -6649,6 +6773,12 @@ packages:
         integrity: sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==
       }
 
+  fast-sha256@1.3.0:
+    resolution:
+      {
+        integrity: sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==
+      }
+
   fast-uri@3.1.2:
     resolution:
       {
@@ -7530,6 +7660,13 @@ packages:
       {
         integrity: sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==
       }
+
+  json-schema-to-ts@3.1.1:
+    resolution:
+      {
+        integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==
+      }
+    engines: { node: ">=16" }
 
   json-schema-traverse@0.4.1:
     resolution:
@@ -9740,6 +9877,12 @@ packages:
         integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==
       }
 
+  standardwebhooks@1.0.0:
+    resolution:
+      {
+        integrity: sha512-BbHGOQK9olHPMvQNHWul6MYlrRTAOKn03rOe4A8O3CLWhNf4YHBqq2HJKKC+sfqpxiBY52pNeesD6jIiLDz8jg==
+      }
+
   stat-mode@1.0.0:
     resolution:
       {
@@ -10132,6 +10275,12 @@ packages:
     resolution:
       {
         integrity: sha512-95Pu1QXQvruGEhv62XCMO3Mm90GscOCClvrIUwCM0PYOXK3kaF3l3sIHxx71ThJfcbM2O5Au6SO3AWCSEfW4mQ==
+      }
+
+  ts-algebra@2.0.0:
+    resolution:
+      {
+        integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==
       }
 
   ts-interface-checker@0.1.13:
@@ -10817,6 +10966,12 @@ packages:
         integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==
       }
 
+  zod@4.4.3:
+    resolution:
+      {
+        integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==
+      }
+
   zustand@5.0.14:
     resolution:
       {
@@ -10850,6 +11005,52 @@ snapshots:
   "@acemir/cssom@0.9.31": {}
 
   "@adobe/css-tools@4.5.0": {}
+
+  "@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-linux-x64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk-win32-x64@0.3.201":
+    optional: true
+
+  "@anthropic-ai/claude-agent-sdk@0.3.201(@anthropic-ai/sdk@0.109.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)":
+    dependencies:
+      "@anthropic-ai/sdk": 0.109.0(zod@4.4.3)
+      "@modelcontextprotocol/sdk": 1.29.0(zod@4.4.3)
+      zod: 4.4.3
+    optionalDependencies:
+      "@anthropic-ai/claude-agent-sdk-darwin-arm64": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-darwin-x64": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-linux-arm64": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-linux-x64": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-linux-x64-musl": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-win32-arm64": 0.3.201
+      "@anthropic-ai/claude-agent-sdk-win32-x64": 0.3.201
+
+  "@anthropic-ai/sdk@0.109.0(zod@4.4.3)":
+    dependencies:
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.0.0
+    optionalDependencies:
+      zod: 4.4.3
 
   "@asamuzakjp/css-color@4.1.2":
     dependencies:
@@ -11816,6 +12017,28 @@ snapshots:
       raw-body: 3.0.2
       zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@3.25.76)
+    transitivePeerDependencies:
+      - supports-color
+
+  "@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)":
+    dependencies:
+      "@hono/node-server": 1.19.14(hono@4.12.26)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.0
+      express: 5.2.1
+      express-rate-limit: 8.5.2(express@5.2.1)
+      hono: 4.12.26
+      jose: 6.2.3
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.1
+      raw-body: 3.0.2
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -12809,6 +13032,8 @@ snapshots:
   "@sindresorhus/is@4.6.0": {}
 
   "@sindresorhus/merge-streams@4.0.0": {}
+
+  "@stablelib/base64@1.0.1": {}
 
   "@standard-schema/spec@1.1.0": {}
 
@@ -14408,6 +14633,8 @@ snapshots:
 
   fast-json-stable-stringify@2.1.0: {}
 
+  fast-sha256@1.3.0: {}
+
   fast-uri@3.1.2: {}
 
   fastq@1.20.1:
@@ -14913,6 +15140,11 @@ snapshots:
   json-buffer@3.0.1: {}
 
   json-parse-even-better-errors@2.3.1: {}
+
+  json-schema-to-ts@3.1.1:
+    dependencies:
+      "@babel/runtime": 7.29.2
+      ts-algebra: 2.0.0
 
   json-schema-traverse@0.4.1: {}
 
@@ -16498,6 +16730,11 @@ snapshots:
 
   stackback@0.0.2: {}
 
+  standardwebhooks@1.0.0:
+    dependencies:
+      "@stablelib/base64": 1.0.1
+      fast-sha256: 1.3.0
+
   stat-mode@1.0.0: {}
 
   state-local@1.0.7: {}
@@ -16692,6 +16929,8 @@ snapshots:
   truncate-utf8-bytes@1.0.2:
     dependencies:
       utf8-byte-length: 1.0.5
+
+  ts-algebra@2.0.0: {}
 
   ts-interface-checker@0.1.13: {}
 
@@ -17101,7 +17340,13 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
+  zod-to-json-schema@3.25.2(zod@4.4.3):
+    dependencies:
+      zod: 4.4.3
+
   zod@3.25.76: {}
+
+  zod@4.4.3: {}
 
   zustand@5.0.14(@types/react@19.2.15)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6)):
     optionalDependencies:

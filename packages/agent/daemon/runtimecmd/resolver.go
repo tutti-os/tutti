@@ -41,12 +41,12 @@ func (r Resolver) Env(overrides []string) []string {
 	pathGroups := [][]string{}
 	if overridePathGroups := pathGroupsFromEnv(overrides, pathKey, envValue(baseEnv, pathKey)); len(overridePathGroups) > 0 {
 		pathGroups = append(pathGroups, overridePathGroups...)
-		pathGroups = append(pathGroups, r.preferredExecutableDirs(env))
-		pathGroups = append(pathGroups, r.fallbackExecutableDirs(env))
+		pathGroups = append(pathGroups, preferredExecutableDirs(env))
+		pathGroups = append(pathGroups, r.fallbackExecutableDirs())
 	} else {
-		pathGroups = append(pathGroups, r.preferredExecutableDirs(env))
+		pathGroups = append(pathGroups, preferredExecutableDirs(env))
 		pathGroups = append(pathGroups, filepath.SplitList(envValue(baseEnv, pathKey)))
-		pathGroups = append(pathGroups, r.fallbackExecutableDirs(env))
+		pathGroups = append(pathGroups, r.fallbackExecutableDirs())
 	}
 	pathDirs := mergePathDirs(pathGroups...)
 	if len(pathDirs) > 0 {
@@ -108,7 +108,7 @@ func (r Resolver) UserBinInstallDirs(overrides []string) []string {
 	return mergePathDirs(candidates...)
 }
 
-func (r Resolver) preferredExecutableDirs(env []string) []string {
+func preferredExecutableDirs(env []string) []string {
 	dirs := []string{}
 	if nPrefix := strings.TrimSpace(envValue(env, "N_PREFIX")); nPrefix != "" {
 		dirs = append([]string{filepath.Join(nPrefix, "bin")}, dirs...)
@@ -131,7 +131,7 @@ func (r Resolver) preferredExecutableDirs(env []string) []string {
 	return dirs
 }
 
-func (r Resolver) fallbackExecutableDirs(env []string) []string {
+func (r Resolver) fallbackExecutableDirs() []string {
 	dirs := []string{
 		"/opt/homebrew/bin",
 		"/usr/local/bin",

@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { getAgentEnvPanelStore } from "../../agentEnv/agentEnvPanelStore";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
@@ -18,6 +24,7 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../i18n/index", () => ({
+  getActiveUiLanguage: () => "en",
   useTranslation: () => ({
     t: (key: string) => key
   }),
@@ -267,10 +274,10 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.agent-gui-conversation__message-group::after\s*{[^}]*top:\s*100%[^}]*right:\s*0[^}]*left:\s*0[^}]*height:\s*26px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*26px/s
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*26px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
+      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-footer,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-footer\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-conversation__message-group::after\s*{[^}]*height:\s*10px/s
@@ -281,7 +288,10 @@ describe("AgentTranscriptItemView render stability", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 4px\)[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
+      /\.agent-gui-conversation__message-footer\s*{[^}]*top:\s*calc\(100% \+ 4px\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-conversation__message-copy-button\s*{[^}]*width:\s*28px/s
@@ -290,7 +300,7 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 8px\)/s
     );
     expect(css).not.toMatch(
-      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*36px/s
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-footer\s*\)\s*{[^}]*margin-bottom:\s*36px/s
     );
   });
 
@@ -299,6 +309,12 @@ describe("AgentTranscriptItemView render stability", () => {
 
     expect(css).toMatch(
       /\.agent-gui-conversation__user-message-flow\s*{[^}]*row-gap:\s*14px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__user-image-grid\s*{[^}]*justify-self:\s*end/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__user-image-thumbnail\s*{[^}]*border:\s*1px solid var\(--line-2\)[^}]*border-radius:\s*8px/s
     );
   });
 
@@ -355,9 +371,11 @@ describe("AgentTranscriptItemView render stability", () => {
       expect(image).toHaveClass("cursor-zoom-in", "max-h-20", "object-contain");
       const imageBlock = image.closest("div");
       expect(imageBlock).toBeInstanceOf(HTMLElement);
-      expect(imageBlock).toHaveClass("max-h-20", "overflow-hidden");
+      expect(imageBlock).toHaveClass(
+        "agent-gui-conversation__user-image-thumbnail"
+      );
       const imageGrid = imageBlock?.parentElement;
-      expect(imageGrid).toHaveClass("grid", "justify-self-end");
+      expect(imageGrid).toHaveClass("agent-gui-conversation__user-image-grid");
       expect(imageGrid).toHaveStyle({
         gridTemplateColumns: "repeat(1, 160px)"
       });
@@ -516,7 +534,7 @@ describe("AgentTranscriptItemView render stability", () => {
       /\.workspace-agents-status-panel__detail-user-message\.agent-gui-conversation__user-message-bubble\s*{[^}]*font-size:\s*13px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*absolute[^}]*opacity:\s*0/s
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*position:\s*static[^}]*opacity:\s*0/s
     );
     expect(messageBlockSource).toContain("CanvasNodeGhostIconButton");
     expect(css).toMatch(
@@ -568,6 +586,21 @@ describe("AgentTranscriptItemView render stability", () => {
     );
     expect(css).toMatch(
       /\.workspace-agents-status-panel__detail-tool-diff-removed\s*{[^}]*color:\s*var\(--state-danger\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-turn-summary-card__path-directory\s*{[^}]*flex:\s*0 1 auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-turn-summary-card__path-file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label\s*{[^}]*display:\s*flex[^}]*overflow:\s*hidden[^}]*white-space:\s*nowrap/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label__directory\s*{[^}]*flex:\s*0 1 auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-path-tail-label__file\s*{[^}]*flex:\s*0 0 auto[^}]*max-width:\s*100%/s
     );
   });
 
@@ -633,6 +666,72 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
+  it("renders transport fallback notices with danger chrome", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-transport-fallback",
+          turnId: "turn-1",
+          body: "Falling back from WebSockets to HTTPS transport.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "transport_fallback",
+            severity: "warning",
+            title: "Falling back from WebSockets to HTTPS transport.",
+            detail:
+              "stream disconnected before completion: websocket closed by server before response.completed",
+            retryable: true
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
+    expect(notice.className).toContain("bg-[var(--on-danger)]");
+    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(
+      getByText("agentHost.agentGui.systemNoticeTransportFallback")
+    ).toBeTruthy();
+  });
+
+  it("renders fallback warning notices with danger chrome", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-warning-fallback",
+          turnId: "turn-1",
+          body: "Falling back from WebSockets to HTTPS transport.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "warning",
+            severity: "warning",
+            title: "Falling back from WebSockets to HTTPS transport.",
+            detail:
+              "stream disconnected before completion: websocket closed by server before response.completed",
+            retryable: true
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
+    expect(notice.className).toContain("bg-[var(--on-danger)]");
+    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(
+      getByText("Falling back from WebSockets to HTTPS transport.")
+    ).toBeTruthy();
+  });
+
   it("renders context compaction notices as an inline divider", () => {
     const { getByRole, getByText, queryByText } = render(
       <AgentMessageBlock
@@ -666,8 +765,85 @@ describe("AgentTranscriptItemView render stability", () => {
     for (const divider of dividers) {
       expect(divider.className).toContain("bg-[var(--line-1)]");
     }
-    expect(getByText("Context compacted.")).toBeTruthy();
+    expect(
+      getByText("agentHost.agentGui.contextCompactionCompleted")
+    ).toBeTruthy();
     expect(queryByText("agentHost.agentGui.systemNoticeDefault")).toBeNull();
+  });
+
+  it("renders in-progress compaction notices as a divider with a ticking timer", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(66_000);
+      const { getByRole, getByText } = render(
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow({
+            kind: "message-content",
+            id: "assistant-notice-compacting",
+            turnId: "turn-1",
+            body: "Compacting context.",
+            occurredAtUnixMs: 61_000,
+            systemNotice: {
+              noticeKind: "system_notice",
+              severity: null,
+              title: "Compacting context.",
+              detail: "",
+              retryable: null
+            }
+          })}
+          thinkingLabel="Thought process"
+        />
+      );
+
+      const notice = getByRole("status");
+      expect(notice.className).toContain("items-center");
+      expect(notice.className).not.toContain("rounded-[8px]");
+      const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
+      expect(dividers).toHaveLength(2);
+      expect(
+        getByText(/agentHost\.agentGui\.contextCompactionInProgress/)
+      ).toBeTruthy();
+      expect(getByText(/· 5s/)).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(getByText(/· 8s/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders interrupted compaction notices as a static divider", () => {
+    const { getByRole, getByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-compaction-interrupted",
+          turnId: "turn-1",
+          body: "Context compaction interrupted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            title: "Context compaction interrupted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
+    expect(
+      getByText("agentHost.agentGui.contextCompactionInterrupted")
+    ).toBeTruthy();
   });
 
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {

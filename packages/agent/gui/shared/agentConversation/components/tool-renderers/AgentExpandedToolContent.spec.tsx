@@ -4,6 +4,7 @@ import { setAgentGuiI18nTestLocale } from "../../../../i18n/testUtils";
 import { type WorkspaceAgentSessionDetailToolCall } from "../../../workspaceAgentSessionDetailViewModel";
 import { projectAgentToolCall } from "../../projection/agentToolProjection";
 import { AgentExpandedToolContent } from "./AgentExpandedToolContent";
+import { AgentSubAgentCard } from "../AgentSubAgentCards";
 import { ToolMarkdownBlock } from "./agentToolContentShared";
 
 describe("AgentExpandedToolContent", () => {
@@ -89,6 +90,43 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.queryByText("Allow once")).toBeNull();
   });
 
+  it("renders approval file previews from nested toolCall direct input payloads", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                options: [{ id: "allow_once", label: "Allow once" }],
+                toolCall: {
+                  input: {
+                    file_path: "/workspace/generated.md",
+                    old_string: "const ready = false",
+                    new_string: "const ready = true"
+                  },
+                  name: "Edit",
+                  title: "Edit",
+                  toolName: "Edit"
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("Approval options")).toBeNull();
+    expect(screen.getByText("generated.md")).toBeTruthy();
+    expect(screen.getByText("const ready = true")).toBeTruthy();
+    expect(screen.queryByText("Allow once")).toBeNull();
+  });
+
   it("renders ask-user options and selected answer from the typed ask-user vm", async () => {
     setAgentGuiI18nTestLocale("en");
 
@@ -167,9 +205,13 @@ describe("AgentExpandedToolContent", () => {
     fireEvent.click(stepButton);
     await flushCollapsibleRevealFrames();
 
+    const pathLabel = screen.getByTitle("/workspace/src/agent.ts");
     expect(
-      screen.getAllByText("/workspace/src/agent.ts").length
-    ).toBeGreaterThan(0);
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("agent.ts");
     expect(
       screen.getAllByText("Loaded agent conversation contract.").length
     ).toBeGreaterThan(0);
@@ -250,9 +292,13 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getAllByText("/workspace/src/app.ts").length).toBeGreaterThan(
-      0
-    );
+    const pathLabel = screen.getByTitle("/workspace/src/app.ts");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("app.ts");
     expect(screen.getByText(/typescript/i)).toBeTruthy();
     expect(screen.getByText(/1 lines/i)).toBeTruthy();
     expect(screen.getByText("const app = true")).toBeTruthy();
@@ -277,7 +323,13 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getByText("/workspace/src/app.ts")).toBeTruthy();
+    const pathLabel = screen.getByTitle("/workspace/src/app.ts");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__directory")?.textContent
+    ).toBe("/workspace/src/");
+    expect(
+      pathLabel.querySelector(".agent-path-tail-label__file")?.textContent
+    ).toBe("app.ts");
     expect(screen.getByText(/L2-4/i)).toBeTruthy();
     expect(screen.getByText(/10 lines/i)).toBeTruthy();
     expect(screen.queryByText("const app = true")).toBeNull();
@@ -1195,6 +1247,77 @@ describe("AgentExpandedToolContent", () => {
 
     expect(screen.getByText("MCP")).toBeTruthy();
     expect(screen.getByText("Found issue TSH-456")).toBeTruthy();
+  });
+
+  it("renders a named standalone sub-agent card with an activity log", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentSubAgentCard
+        subAgent={{
+          ownerThreadId: "child-thread-1",
+          status: "running",
+          name: "Repo smell analyst",
+          task: "inspect the repository",
+          laneIndex: 1,
+          laneCount: 1,
+          latestActivity: "Run command",
+          latestActivityKind: "tool",
+          activityLog: [
+            { kind: "message", text: "Scanning layout", atUnixMs: 50_000 },
+            { kind: "tool", text: "Run command", atUnixMs: 101_000 }
+          ],
+          activityOmittedCount: 3,
+          failureDetail: null,
+          startedAtUnixMs: 1_000,
+          latestActivityAtUnixMs: 101_000,
+          terminalAtUnixMs: null
+        }}
+      />
+    );
+
+    // Identity comes from the sub-agent's own thread name, never the tool name.
+    expect(screen.getByText("Repo smell analyst")).toBeTruthy();
+    expect(screen.queryByText("spawnAgent")).toBeNull();
+    expect(screen.getByText(/1m 40s · Running/)).toBeTruthy();
+    // Bash-block layout: task strip on top, latest progress line below - no
+    // section labels.
+    expect(screen.getByText("inspect the repository")).toBeTruthy();
+    expect(screen.getByText("Run command")).toBeTruthy();
+    expect(screen.queryByText("TASK")).toBeNull();
+    expect(screen.queryByText("PROGRESS")).toBeNull();
+    expect(screen.queryByText("Scanning layout")).toBeNull();
+    expect(screen.queryByText("3 earlier steps omitted")).toBeNull();
+  });
+
+  it("titles an unnamed sub-agent with the localized fallback and starting label", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentSubAgentCard
+        subAgent={{
+          ownerThreadId: "child-thread-1",
+          status: "running",
+          name: null,
+          task: "inspect the repository",
+          laneIndex: 2,
+          laneCount: 3,
+          latestActivity: null,
+          latestActivityKind: null,
+          activityLog: [],
+          activityOmittedCount: 0,
+          failureDetail: null,
+          startedAtUnixMs: 1_000,
+          latestActivityAtUnixMs: 1_000,
+          terminalAtUnixMs: null
+        }}
+      />
+    );
+
+    // Tool-row-aligned header: label + per-lane index as the name slot.
+    expect(screen.getByText("Sub-agent")).toBeTruthy();
+    expect(screen.getByText("#2")).toBeTruthy();
+    expect(screen.getByText("Starting…")).toBeTruthy();
   });
 });
 

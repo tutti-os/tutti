@@ -9,7 +9,8 @@ import {
   desktopManagedAgentProviders,
   ensureDesktopManagedAgentProviderStatuses,
   isDesktopManagedAgentProvider,
-  projectDesktopManagedAgentsState
+  projectDesktopManagedAgentsState,
+  projectDesktopManagedAgentsStateForAgentGUI
 } from "./desktopManagedAgentProviders.ts";
 
 test("ensureDesktopManagedAgentProviderStatuses delegates managed provider loading to the status service", async () => {
@@ -56,6 +57,39 @@ test("projectDesktopManagedAgentsState derives AgentGUI managed state from provi
   assert.equal(state.items[0]?.agentId, "claude-code");
   assert.equal(state.items[1]?.agentId, "codex");
   assert.equal(state.items[1]?.decisionReason, "auth_required");
+});
+
+test("projectDesktopManagedAgentsStateForAgentGUI keeps provider readiness unknown before first snapshot", () => {
+  const state = projectDesktopManagedAgentsStateForAgentGUI({
+    capturedAt: null,
+    defaultProvider: null,
+    error: null,
+    isLoading: true,
+    pendingActions: [],
+    statuses: []
+  });
+
+  assert.equal(state, null);
+});
+
+test("projectDesktopManagedAgentsStateForAgentGUI projects captured provider status", () => {
+  const state = projectDesktopManagedAgentsStateForAgentGUI({
+    capturedAt: "2026-06-02T08:00:00.000Z",
+    defaultProvider: "codex",
+    error: null,
+    isLoading: false,
+    pendingActions: [],
+    statuses: [
+      createProviderStatus({
+        adapterInstalled: true,
+        availability: "ready",
+        cliInstalled: true,
+        provider: "codex"
+      })
+    ]
+  });
+
+  assert.deepEqual(state?.readyAgentIds, ["codex"]);
 });
 
 test("isDesktopManagedAgentProvider accepts only desktop managed providers", () => {

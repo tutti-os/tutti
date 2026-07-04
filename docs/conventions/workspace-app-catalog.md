@@ -38,6 +38,22 @@ TUTTI_APP_CATALOG_FILE=/tmp/tutti-app-catalog/catalog.json pnpm dev:desktop
 
 App Center opening should call `POST /v1/workspaces/{workspaceID}/apps/catalog/refresh`. The refresh request is in-flight deduplicated by `tuttid`, keeps local and previously loaded apps visible while loading, and retries retryable network or 5xx failures for a total of three attempts.
 
+## App Center Grouping
+
+App Center uses the same daemon catalog snapshot for recommended and community
+apps. `tuttid` should not add a separate community source enum for this
+presentation split. The reusable App Center UI keeps "My apps" for local and
+local-dev apps, and splits non-local catalog apps between "Official apps"
+and "Community apps" by app id in
+`packages/workspace/app-center/src/core/appCenterAppOrdering.ts`.
+
+When moving an app between recommended and community presentation, update the
+central app id list and the App Center ordering tests in the same change.
+Community app cards show a developer entry first in the card action menu when
+the app metadata has an author URL. Prefer publishing author metadata through
+the app catalog; desktop-local app id overrides are acceptable only as a
+temporary bridge for community apps whose catalog metadata has not caught up.
+
 ## Catalog Shape
 
 ```json

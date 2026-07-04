@@ -90,6 +90,7 @@ func messageReport(messageID string, seq uint64, status string, content string) 
 			AgentSessionID: "agent-session-1",
 			MessageID:      messageID,
 			Seq:            seq,
+			TurnID:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 			Status:         status,

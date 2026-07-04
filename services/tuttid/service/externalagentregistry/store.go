@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -204,7 +205,7 @@ func (s Store) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient
 	}
-	return http.DefaultClient
+	return httpx.Default()
 }
 
 func (s Store) now() time.Time {

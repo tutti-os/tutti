@@ -171,6 +171,7 @@ func generatedUserProject(project userprojectbiz.Project) tuttigenerated.UserPro
 		Label:            project.Label,
 		LastUsedAtUnixMs: int64Pointer(project.LastUsedAtUnixMS),
 		Path:             project.Path,
+		SectionKey:       userprojectbiz.SectionKeyFromPath(project.Path),
 		UpdatedAtUnixMs:  project.UpdatedAtUnixMS,
 	}
 }

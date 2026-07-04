@@ -30,6 +30,8 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/daemon/go.mod
+            packages/agent/daemon/go.sum
             packages/appcli/core/go.mod
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
@@ -199,6 +201,8 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/daemon/go.mod
+            packages/agent/daemon/go.sum
             packages/workbench/service/go.mod
             packages/workspace/files/go.mod
             packages/workspace/issues/go.mod
@@ -210,6 +214,9 @@ jobs:
 
       - name: Generate builtin apps
         run: pnpm generate:builtin-apps
+
+      - name: Check Codex app-server protocol generation
+        run: pnpm check:codexproto-generated
 
       - name: Run App CLI core tests
         working-directory: packages/appcli/core

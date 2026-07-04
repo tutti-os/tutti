@@ -41,3 +41,23 @@ test("parseAllowedUserShellEnv keeps only runtime environment keys", () => {
     PATH: "/custom/bin:/usr/bin"
   });
 });
+
+test("parseAllowedUserShellEnv forwards proxy variables in both cases", () => {
+  const output = [
+    "__TUTTI_USER_SHELL_ENV_START__\0",
+    "HTTPS_PROXY=http://127.0.0.1:7890\0",
+    "https_proxy=http://127.0.0.1:7890\0",
+    "http_proxy=http://127.0.0.1:7890\0",
+    "ALL_PROXY=socks5://127.0.0.1:7891\0",
+    "no_proxy=localhost,.internal\0",
+    "PROXY_TOKEN=hidden\0"
+  ].join("");
+
+  assert.deepEqual(parseAllowedUserShellEnv(output), {
+    ALL_PROXY: "socks5://127.0.0.1:7891",
+    HTTPS_PROXY: "http://127.0.0.1:7890",
+    http_proxy: "http://127.0.0.1:7890",
+    https_proxy: "http://127.0.0.1:7890",
+    no_proxy: "localhost,.internal"
+  });
+});

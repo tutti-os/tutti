@@ -12,6 +12,7 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -61,6 +62,32 @@ type fakeAgentSessions struct {
 	availability    []agentservice.ProviderAvailability
 	availabilityErr error
 	availabilityIn  []agentservice.ProviderAvailabilityInput
+}
+
+func newTestCodexStartCommand(provider Provider) cliservice.Command {
+	return provider.newProviderStartCommand(providerStartCommandSpec{
+		AppID:         codexAgentAppID,
+		AppName:       "Codex",
+		CommandID:     appID + ".codex.start",
+		Description:   "Start a Codex agent session in the current workspace.",
+		Path:          []string{"codex", "start"},
+		Provider:      "codex",
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Summary:       "Start a Codex agent session",
+	})
+}
+
+func newTestClaudeStartCommand(provider Provider) cliservice.Command {
+	return provider.newProviderStartCommand(providerStartCommandSpec{
+		AppID:         claudeCodeAgentAppID,
+		AppName:       "Claude Code",
+		CommandID:     appID + ".claude.start",
+		Description:   "Start a Claude Code agent session in the current workspace.",
+		Path:          []string{"claude", "start"},
+		Provider:      "claude-code",
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Summary:       "Start a Claude Code agent session",
+	})
 }
 
 func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
@@ -206,7 +233,7 @@ func (f *fakeAgentSessions) ListActivePeers(_ context.Context, workspaceID strin
 	title := "Work"
 	return agentservice.ActivePeers{
 		Agents: []agentservice.ActivePeer{{
-			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
+			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Cwd: "/workspace/repo", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
 			SelfRelation: "unknown",
 		}},
 		SelfKnown:      false,
@@ -584,11 +611,10 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 
 func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"provider":       "codex",
 			"model":          "gpt-5",
 			"prompt":         "real automation prompt",
 			"display-prompt": "Run Automation",
@@ -602,6 +628,9 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 	if sessions.createInput.InitialDisplayPrompt != "Run Automation" {
 		t.Fatalf("initial display prompt = %q", sessions.createInput.InitialDisplayPrompt)
+	}
+	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
 	}
 }
 
@@ -629,39 +658,54 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
 	}
 
-	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"provider": "codex", "prompt": "do work"},
-	}); err != nil {
-		t.Fatalf("Handler without model: %v", err)
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
 	}
-	if sessions.createCallCount != 1 {
-		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
+	if !strings.Contains(err.Error(), "tutti codex start") || !strings.Contains(err.Error(), "tutti claude start") {
+		t.Fatalf("err = %v, want provider command guidance", err)
 	}
-	if sessions.createInput.Model != nil {
-		t.Fatalf("Model = %#v, want nil when omitted", sessions.createInput.Model)
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
 	}
 }
 
-func TestStartCommandUsesComposerDefaultModel(t *testing.T) {
+func TestStartCommandUsesComposerDefaults(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProviderWithLaunchPublisher(
+	command := newTestCodexStartCommand(NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
+			AgentConversationDetailMode: preferencesbiz.DesktopAgentConversationDetailModeGeneral,
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {Model: "gpt-5.5"},
+				"codex": {
+					Model:            "gpt-5.5",
+					PermissionModeID: "full-access",
+					ReasoningEffort:  "high",
+				},
 			},
 		}},
-	).newStartCommand()
+	))
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex", "prompt": "do work"},
+		Input: map[string]any{"prompt": "do work"},
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
 	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
 		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	}
+	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
+		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	}
+	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.ConversationDetailMode != preferencesbiz.DesktopAgentConversationDetailModeGeneral {
+		t.Fatalf("ConversationDetailMode = %q, want general", sessions.createInput.ConversationDetailMode)
 	}
 }
 
@@ -794,6 +838,7 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 						ReasoningEffort:  "high",
 					},
 				},
+				AgentConversationDetailMode: preferencesbiz.DesktopAgentConversationDetailModeGeneral,
 			},
 		},
 	).newComposerOptionsCommand()
@@ -808,7 +853,8 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 	}
 	if sessions.composerInput.Settings.Model != "gpt-5" ||
 		sessions.composerInput.Settings.PermissionModeID != "full-access" ||
-		sessions.composerInput.Settings.ReasoningEffort != "high" {
+		sessions.composerInput.Settings.ReasoningEffort != "high" ||
+		sessions.composerInput.Settings.ConversationDetailMode != "" {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
 }
@@ -899,10 +945,10 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 		sessions,
 		publisher,
 	)
-	command := provider.newStartCommand()
+	command := newTestCodexStartCommand(provider)
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex", "model": "gpt-5", "prompt": "do work"},
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work"},
 		Context: cliservice.InvokeContext{
 			Source: "cli",
 		},
@@ -917,7 +963,7 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 	}
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex", "model": "gpt-5", "prompt": "do work", "show": "true"},
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work", "show": "true"},
 		Context: cliservice.InvokeContext{
 			Source: "cli",
 		},
@@ -934,14 +980,13 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 
 func TestStartCommandPassesComposerSettings(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
 			"model":            "gpt-5",
 			"permission-mode":  "ask",
 			"prompt":           "do work",
-			"provider":         "codex",
 			"reasoning-effort": "high",
 			"speed":            "fast",
 		},
@@ -964,7 +1009,7 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 
 func TestStartCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	imagePath := filepath.Join(t.TempDir(), "shot.png")
 	if err := os.WriteFile(imagePath, []byte("png-bytes"), 0o600); err != nil {
 		t.Fatalf("write image: %v", err)
@@ -972,10 +1017,9 @@ func TestStartCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"image":    imagePath,
-			"model":    "gpt-5",
-			"prompt":   "describe this",
-			"provider": "codex",
+			"image":  imagePath,
+			"model":  "gpt-5",
+			"prompt": "describe this",
 		},
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -999,14 +1043,13 @@ func TestStartCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 
 func TestStartCommandRejectsUnsupportedImageExtension(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"image":    filepath.Join(t.TempDir(), "notes.txt"),
-			"model":    "gpt-5",
-			"prompt":   "describe this",
-			"provider": "codex",
+			"image":  filepath.Join(t.TempDir(), "notes.txt"),
+			"model":  "gpt-5",
+			"prompt": "describe this",
 		},
 	})
 	if !errors.Is(err, cliservice.ErrInvalidInput) {
@@ -1019,7 +1062,7 @@ func TestStartCommandRejectsUnsupportedImageExtension(t *testing.T) {
 
 func TestStartCommandPreservesCommaInImagePath(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	imagePath := filepath.Join(t.TempDir(), "shot,one.png")
 	if err := os.WriteFile(imagePath, []byte("comma-path-bytes"), 0o600); err != nil {
 		t.Fatalf("write image: %v", err)
@@ -1027,10 +1070,9 @@ func TestStartCommandPreservesCommaInImagePath(t *testing.T) {
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"image":    imagePath,
-			"model":    "gpt-5",
-			"prompt":   "describe this",
-			"provider": "codex",
+			"image":  imagePath,
+			"model":  "gpt-5",
+			"prompt": "describe this",
 		},
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -1050,15 +1092,7 @@ func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
 	}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
-		AppID:       claudeCodeAgentAppID,
-		AppName:     "Claude Code",
-		CommandID:   appID + ".claude.start",
-		Description: "Start a Claude Code agent session in the current workspace.",
-		Path:        []string{"claude", "start"},
-		Provider:    "claude-code",
-		Summary:     "Start a Claude Code agent session",
-	})
+	command := newTestClaudeStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"model": "sonnet", "prompt": "do work"},
@@ -1081,14 +1115,13 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
 	}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
-			"cwd":      "/workspace/other",
-			"model":    "gpt-5",
-			"prompt":   "do work",
-			"provider": "codex",
+			"cwd":    "/workspace/other",
+			"model":  "gpt-5",
+			"prompt": "do work",
 		},
 		Context: cliservice.InvokeContext{
 			AgentSessionID: "CALLER-1",
@@ -1107,10 +1140,10 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 
 func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"model": "gpt-5", "prompt": "do work", "provider": "codex"},
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work"},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -1122,10 +1155,10 @@ func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
 
 func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	sessions := &fakeAgentSessions{getErr: agentservice.ErrSessionNotFound}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"model": "gpt-5", "prompt": "do work", "provider": "codex"},
+		Input: map[string]any{"model": "gpt-5", "prompt": "do work"},
 		Context: cliservice.InvokeContext{
 			AgentSessionID: "CALLER-1",
 		},
@@ -1162,11 +1195,12 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 	}
 
 	for name, tc := range map[string]struct {
-		commandID string
-		want      string
+		commandID  string
+		want       string
+		wantTarget string
 	}{
-		"codex":  {commandID: "agent-context.codex.start", want: "codex"},
-		"claude": {commandID: "agent-context.claude.start", want: "claude-code"},
+		"codex":  {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
+		"claude": {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
 	} {
 		sessions := &fakeAgentSessions{}
 		command := commandByID(t, NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
@@ -1178,6 +1212,9 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		}
 		if sessions.createInput.Provider != tc.want {
 			t.Fatalf("%s provider = %q, want %q", name, sessions.createInput.Provider, tc.want)
+		}
+		if sessions.createInput.AgentTargetID != tc.wantTarget {
+			t.Fatalf("%s agent target id = %q, want %s", name, sessions.createInput.AgentTargetID, tc.wantTarget)
 		}
 	}
 }
@@ -1330,6 +1367,9 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 	if sessions.createInput.Provider != "codex" {
 		t.Fatalf("created provider = %q, want codex", sessions.createInput.Provider)
 	}
+	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("created agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 	if sessions.createInput.Speed == nil || *sessions.createInput.Speed != "fast" {
 		t.Fatalf("created speed = %#v, want fast", sessions.createInput.Speed)
 	}
@@ -1337,15 +1377,7 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 
 func TestProviderStartCommandRequiresPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
-		AppID:       codexAgentAppID,
-		AppName:     "Codex",
-		CommandID:   appID + ".codex.start",
-		Description: "Start a Codex agent session in the current workspace.",
-		Path:        []string{"codex", "start"},
-		Provider:    "codex",
-		Summary:     "Start a Codex agent session",
-	})
+	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	required, ok := command.Capability.InputSchema["required"].([]string)
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
@@ -1372,28 +1404,28 @@ func TestProviderStartCommandRequiresPrompt(t *testing.T) {
 	if sessions.createInput.Model != nil {
 		t.Fatalf("Model = %#v, want nil when omitted", sessions.createInput.Model)
 	}
+	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("agent target id = %q, want %s", sessions.createInput.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 }
 
-func TestProviderStartCommandUsesComposerDefaultModel(t *testing.T) {
+func TestProviderStartCommandUsesComposerDefaults(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProviderWithLaunchPublisher(
+	command := newTestCodexStartCommand(NewProviderWithLaunchPublisher(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
 		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{
+			AgentConversationDetailMode: preferencesbiz.DesktopAgentConversationDetailModeGeneral,
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {Model: "gpt-5.5"},
+				"codex": {
+					Model:            "gpt-5.5",
+					PermissionModeID: "full-access",
+					ReasoningEffort:  "high",
+				},
 			},
 		}},
-	).newProviderStartCommand(providerStartCommandSpec{
-		AppID:       codexAgentAppID,
-		AppName:     "Codex",
-		CommandID:   appID + ".codex.start",
-		Description: "Start a Codex agent session in the current workspace.",
-		Path:        []string{"codex", "start"},
-		Provider:    "codex",
-		Summary:     "Start a Codex agent session",
-	})
+	))
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"prompt": "do work"},
@@ -1402,6 +1434,15 @@ func TestProviderStartCommandUsesComposerDefaultModel(t *testing.T) {
 	}
 	if sessions.createInput.Model == nil || *sessions.createInput.Model != "gpt-5.5" {
 		t.Fatalf("Model = %#v, want composer default", sessions.createInput.Model)
+	}
+	if sessions.createInput.PermissionModeID == nil || *sessions.createInput.PermissionModeID != "full-access" {
+		t.Fatalf("PermissionModeID = %#v, want composer default", sessions.createInput.PermissionModeID)
+	}
+	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
+		t.Fatalf("ReasoningEffort = %#v, want composer default", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.ConversationDetailMode != preferencesbiz.DesktopAgentConversationDetailModeGeneral {
+		t.Fatalf("ConversationDetailMode = %q, want general", sessions.createInput.ConversationDetailMode)
 	}
 }
 
@@ -1555,6 +1596,9 @@ func TestActivePeersReturnsServiceProjection(t *testing.T) {
 	}
 	agents := output.Value["agents"].([]any)
 	if len(agents) != 1 || agents[0].(map[string]any)["agentSessionId"] != "SESSION-1" {
+		t.Fatalf("agents = %#v", agents)
+	}
+	if agents[0].(map[string]any)["cwd"] != "/workspace/repo" {
 		t.Fatalf("agents = %#v", agents)
 	}
 	if agents[0].(map[string]any)["selfRelation"] != "unknown" {

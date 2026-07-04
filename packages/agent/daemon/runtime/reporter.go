@@ -239,6 +239,7 @@ func sessionStateUpdateFromStatePatch(patch agentsessionstore.WorkspaceAgentStat
 		RuntimeContext:     clonePayload(patch.RuntimeContext),
 		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
 		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
+		PendingInteractive: cloneInteractivePrompt(patch.PendingInteractive),
 		CWD:                strings.TrimSpace(patch.CWD),
 		Title:              strings.TrimSpace(patch.Title),
 		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
@@ -356,6 +357,7 @@ func textMessageUpdateFromSessionEvent(
 	payload := map[string]any{
 		"source": "runtime",
 	}
+	payload = withOwnerThreadID(payload, event)
 	if event.Payload.Content != "" {
 		payload["content"] = event.Payload.Content
 		payload["text"] = event.Payload.Content
@@ -387,6 +389,15 @@ func textMessageUpdateFromSessionEvent(
 	// GUI can render dedicated treatments instead of a plain assistant bubble.
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
+		// Sub-agent lane markers ride hidden ownerThreadId rows; the GUI
+		// settles lane status/identity from these fields.
+		if messageKind == "subAgentLifecycle" || messageKind == "subAgentName" {
+			for _, key := range []string{"subAgentLifecycleStatus", "subAgentName", "detail"} {
+				if value := stringFromPayload(event.Payload.Metadata, key); value != "" {
+					update.Payload[key] = value
+				}
+			}
+		}
 	}
 	update.Semantics = messageSemanticsFromMetadata(event.Payload.Metadata)
 	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
@@ -462,6 +473,7 @@ func callMessageUpdateFromSessionEvent(
 	payload := map[string]any{
 		"source": "runtime",
 	}
+	payload = withOwnerThreadID(payload, event)
 	rawName := callMessageUpdateDisplayName(event, callID)
 	toolName := callMessageUpdateToolName(event, callID, rawName)
 	name := firstNonEmptyString(toolName, rawName)
@@ -487,7 +499,12 @@ func callMessageUpdateFromSessionEvent(
 	}
 	for _, key := range []string{"input", "output", "error", "content", "locations"} {
 		if value, ok := event.Payload.Metadata[key]; ok && !payloadValueIsEmpty(value) {
-			payload[key] = clonePayloadValue(value)
+			switch key {
+			case "output", "error":
+				payload[key] = canonicalToolBodyPayload(value)
+			default:
+				payload[key] = clonePayloadValue(value)
+			}
 		}
 	}
 	switch event.Type {
@@ -497,11 +514,14 @@ func callMessageUpdateFromSessionEvent(
 		}
 	case activityshared.EventCallCompleted:
 		if len(event.Payload.Output) > 0 {
-			payload["output"] = clonePayload(event.Payload.Output)
+			payload["output"] = canonicalToolBodyPayload(event.Payload.Output)
 		}
 	case activityshared.EventCallFailed:
+		if len(event.Payload.Output) > 0 {
+			payload["output"] = canonicalToolBodyPayload(event.Payload.Output)
+		}
 		if len(event.Payload.Error) > 0 {
-			payload["error"] = clonePayload(event.Payload.Error)
+			payload["error"] = canonicalToolBodyPayload(event.Payload.Error)
 		}
 	}
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
@@ -527,6 +547,28 @@ func callMessageUpdateFromSessionEvent(
 		update.CompletedAtUnixMS = timestamp
 	}
 	return update, true
+}
+
+func canonicalToolBodyPayload(value any) any {
+	body, ok := clonePayloadValue(value).(map[string]any)
+	if !ok || len(body) == 0 {
+		return clonePayloadValue(value)
+	}
+	if strings.TrimSpace(asString(body["text"])) == "" {
+		if text := canonicalToolBodyText(body); text != "" {
+			body["text"] = text
+		}
+	}
+	return body
+}
+
+func canonicalToolBodyText(body map[string]any) string {
+	for _, key := range []string{"text", "output", "stdout", "aggregated_output", "formatted_output", "stderr", "message"} {
+		if text := strings.TrimSpace(asString(body[key])); text != "" {
+			return text
+		}
+	}
+	return strings.TrimSpace(acpContentText(body["content"]))
 }
 
 func callMessageUpdateDisplayName(event activityshared.Event, callID string) string {
@@ -733,6 +775,9 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		LastError:         statePatchLastError(event),
 		OccurredAtUnixMS:  timestamp,
 	}
+	if runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext"); len(runtimeContext) > 0 {
+		patch.RuntimeContext = clonePayload(runtimeContext)
+	}
 	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
 			TurnID:  turnID,
@@ -771,7 +816,8 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
 		}
 	case activityshared.EventTurnFailed:
-		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseFailed))
+		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
+		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseIdle))
 		if patch.Turn != nil {
 			patch.Turn.CompletedAtUnixMS = timestamp
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
@@ -829,8 +875,24 @@ func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *a
 	}
 }
 
+func cloneInteractivePrompt(value *agentsessionstore.WorkspaceAgentInteractivePrompt) *agentsessionstore.WorkspaceAgentInteractivePrompt {
+	if value == nil {
+		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentInteractivePrompt{
+		Kind:      strings.TrimSpace(value.Kind),
+		RequestID: strings.TrimSpace(value.RequestID),
+		ToolName:  strings.TrimSpace(value.ToolName),
+		Status:    strings.TrimSpace(value.Status),
+		Input:     clonePayload(value.Input),
+		Output:    clonePayload(value.Output),
+		Error:     clonePayload(value.Error),
+		Metadata:  clonePayload(value.Metadata),
+	}
+}
+
 func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
-	if patch == nil || strings.TrimSpace(patch.Provider) != ProviderCodex {
+	if patch == nil || !providerUsesExplicitTurnLifecyclePatch(patch.Provider) {
 		return
 	}
 	turnID := strings.TrimSpace(event.Payload.TurnID)
@@ -847,6 +909,7 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 	if lifecyclePhase == "settled" {
 		turnActive = nil
 		outcome = codexLifecycleOutcomeFromActivityEvent(event)
+		patch.CurrentPhase = string(activityshared.TurnPhaseIdle)
 	}
 	if patch.Turn == nil {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{TurnID: turnID}
@@ -867,6 +930,15 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 	}
 	if outcome != "" {
 		patch.TurnLifecycle.Outcome = &outcome
+	}
+}
+
+func providerUsesExplicitTurnLifecyclePatch(provider string) bool {
+	switch strings.TrimSpace(provider) {
+	case ProviderClaudeCode, ProviderCodex:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1018,6 +1090,7 @@ func timelineItemFromSessionEvent(
 		if item.Payload == nil {
 			item.Payload = map[string]any{}
 		}
+		item.Payload = withOwnerThreadID(item.Payload, event)
 		if event.Payload.Content != "" {
 			if _, exists := item.Payload["content"]; !exists {
 				item.Payload["content"] = event.Payload.Content
@@ -1036,6 +1109,7 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusRunning), "running")
 		item.Payload = payloadWithCallBody("input", event.Payload.Input, event.Payload.Metadata)
+		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
 	case activityshared.EventCallCompleted:
 		item.ItemType = "call.completed"
@@ -1045,6 +1119,7 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusCompleted), "completed")
 		item.Payload = payloadWithCallBody("output", event.Payload.Output, event.Payload.Metadata)
+		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
 	case activityshared.EventCallFailed:
 		item.ItemType = "call.errored"
@@ -1054,9 +1129,49 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusFailed), "failed")
 		item.Payload = payloadWithCallBody("error", event.Payload.Error, event.Payload.Metadata)
+		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
+	case activityshared.EventActivityStarted,
+		activityshared.EventActivityUpdated,
+		activityshared.EventActivityCompleted,
+		activityshared.EventActivityFailed:
+		item.ItemType = string(event.Type)
+		item.CallID = strings.TrimSpace(event.Payload.ActivityKey)
+		item.CallType = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "kind"), "activity")
+		item.Name = firstNonEmptyString(
+			stringFromPayload(event.Payload.Metadata, "title"),
+			stringFromPayload(event.Payload.Metadata, "description"),
+			item.CallID,
+		)
+		item.Status = activityTimelineStatus(event)
+		item.Payload = clonePayload(event.Payload.Metadata)
+		if item.Payload == nil {
+			item.Payload = map[string]any{}
+		}
+		item.Payload["activityKey"] = strings.TrimSpace(event.Payload.ActivityKey)
+		return item, nil, true
 	default:
 		return agentsessionstore.WorkspaceAgentTimelineItem{}, nil, false
+	}
+}
+
+func activityTimelineStatus(event activityshared.Event) string {
+	return firstNonEmptyString(
+		event.Payload.ActivityStatus,
+		stringFromPayload(event.Payload.Metadata, "status"),
+		event.Payload.Status,
+		activityTimelineDefaultStatus(event.Type),
+	)
+}
+
+func activityTimelineDefaultStatus(eventType activityshared.EventType) string {
+	switch eventType {
+	case activityshared.EventActivityCompleted:
+		return string(activityshared.ActivityStatusCompleted)
+	case activityshared.EventActivityFailed:
+		return string(activityshared.ActivityStatusFailed)
+	default:
+		return string(activityshared.ActivityStatusRunning)
 	}
 }
 
@@ -1137,6 +1252,24 @@ func payloadWithCallBody(key string, payload map[string]any, metadata map[string
 		return nil
 	}
 	return out
+}
+
+func withOwnerThreadID(payload map[string]any, event activityshared.Event) map[string]any {
+	ownerThreadID := strings.TrimSpace(event.OwnerThreadID)
+	if ownerThreadID == "" {
+		return payload
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["ownerThreadId"] = ownerThreadID
+	// The spawn call that created the owning child thread. The GUI attaches
+	// sub-agent lanes to their collab card by this id alone (ADR 0007); a
+	// child row without it never attaches by guesswork.
+	if ownerCallID := strings.TrimSpace(event.OwnerCallID); ownerCallID != "" {
+		payload["ownerCallId"] = ownerCallID
+	}
+	return payload
 }
 
 func collapseReportTimelineItems(items []agentsessionstore.WorkspaceAgentTimelineItem) []agentsessionstore.WorkspaceAgentTimelineItem {

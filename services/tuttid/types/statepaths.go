@@ -31,3 +31,10 @@ func DefaultStateDir() string {
 func IsDevelopmentEnv() bool {
 	return ResolveDefaultsFromEnv().Runtime.Env == "development"
 }
+
+func DesktopLoginCallbackURL() string {
+	if IsDevelopmentEnv() {
+		return "tutti-dev://login/callback"
+	}
+	return "tutti://login/callback"
+}

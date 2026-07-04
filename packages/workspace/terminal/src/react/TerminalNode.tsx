@@ -159,6 +159,7 @@ export function TerminalNodeHeader({
       {...headerProps}
       className={joinClassName("workspace-terminal__header", className)}
     >
+      {defaultActions}
       <div className="workspace-terminal__header-main">
         <span className="workspace-terminal__title">
           {externalState?.title?.trim() || feature.i18n.t("title")}
@@ -185,7 +186,6 @@ export function TerminalNodeHeader({
           event.stopPropagation();
         }}
       >
-        {defaultActions}
         {onCloseRequest && !hasDefaultActions ? (
           <button
             aria-label={feature.i18n.t("actions.close")}

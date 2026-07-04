@@ -88,6 +88,12 @@ export type AgentHostPersistenceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<PersistWriteResult>;
 };
 
+export type AgentHostToastApi = AgentHostRecord & {
+  error: (title: string, description?: string) => void;
+  info?: (title: string, description?: string) => void;
+  success?: (title: string, description?: string) => void;
+};
+
 export interface AgentHostSelectedFile {
   name?: string;
   path: string;
@@ -97,10 +103,51 @@ export interface AgentHostSelectFilesInput {
   allowDirectories?: boolean;
 }
 
+export interface AgentHostApplyWorkspaceGitPatchInput {
+  allowBinary?: boolean;
+  atomic?: boolean;
+  cwd: string;
+  diff: string;
+  revert?: boolean;
+  target?: "unstaged" | "staged" | "staged-and-unstaged";
+}
+
+export interface AgentHostApplyWorkspaceGitPatchResult {
+  status: "success" | "partial-success" | "error";
+  appliedPaths: string[];
+  skippedPaths: string[];
+  conflictedPaths: string[];
+  errorCode?: "not-git-repo" | string;
+  execOutput?: {
+    command: string;
+    stdout: string;
+    stderr: string;
+  };
+}
+
+export interface AgentHostResolveWorkspaceGitPatchSupportInput {
+  cwd: string;
+}
+
+export interface AgentHostResolveWorkspaceGitPatchSupportResult {
+  supported: boolean;
+  root?: string;
+  errorCode?: "not-git-repo" | string;
+}
+
 export type AgentHostWorkspaceApi = AgentHostRecord & {
+  applyGitPatch?: (
+    input: AgentHostApplyWorkspaceGitPatchInput
+  ) => AgentHostAsyncResult<AgentHostApplyWorkspaceGitPatchResult>;
+  resolveGitPatchSupport?: (
+    input: AgentHostResolveWorkspaceGitPatchSupportInput
+  ) => AgentHostAsyncResult<AgentHostResolveWorkspaceGitPatchSupportResult>;
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
-  getPathForFile: (file: File) => string;
+  getReferenceForFile?: (file: File) => {
+    kind: "file" | "folder";
+    path: string;
+  };
   readFile: (input: {
     path: string;
   }) => AgentHostAsyncResult<AgentHostReadWorkspaceFileResult>;
@@ -126,6 +173,7 @@ export interface AgentHostInputApi {
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
   runtime?: AgentHostEnvironmentApi;
+  toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
   workspaceAgentProbes?: AgentHostWorkspaceAgentProbesApi;
@@ -294,6 +342,7 @@ export interface AgentHostRuntimeApi {
   onHostEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
   persistence?: AgentHostPersistenceApi;
   runtime?: AgentHostEnvironmentApi;
+  toast?: AgentHostToastApi;
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
   workspaceAgentProbes?: AgentHostWorkspaceAgentProbesApi;
@@ -312,6 +361,7 @@ export function toAgentHostRuntimeApi(
     onHostEvent: hostApi.onHostEvent,
     persistence: hostApi.persistence,
     runtime: hostApi.runtime,
+    toast: hostApi.toast,
     userProjects: hostApi.userProjects,
     workspace: hostApi.workspace,
     workspaceAgentProbes: hostApi.workspaceAgentProbes

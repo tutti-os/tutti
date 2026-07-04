@@ -11,6 +11,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -21,6 +22,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(session.Visible),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 
@@ -28,6 +30,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -38,18 +41,23 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(visibleFromRuntimeContext(session.RuntimeContext, true)),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 
 const WorkspaceAgentSessionOriginImported = "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED"
 
 func persistedSessionCanResume(controller RuntimeController, session PersistedSession) bool {
-	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported {
-		return false
-	}
 	if controller == nil {
 		return false
 	}
+	// Imported sessions used to be hard-marked non-resumable, which dead-ended
+	// the user into starting a brand new conversation. They carry the provider
+	// session id captured at import time (codex thread id / claude sessionId), so
+	// they can resume in place on the same device; when the underlying provider
+	// session is missing, the runtime recreates a fresh one on send instead of
+	// blocking (see Controller.ensureLiveAdapterSession). Either way the
+	// conversation is continuable, so defer to the adapter's CanResume.
 	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
 }
 
@@ -70,6 +78,7 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 	)
 	return Session{
 		ID:                 strings.TrimSpace(session.ID),
+		AgentTargetID:      strings.TrimSpace(session.AgentTargetID),
 		Provider:           normalizedProvider,
 		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                strings.TrimSpace(session.Cwd),
@@ -113,6 +122,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	return serviceSession(RuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -142,6 +152,9 @@ func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {
+	if strings.TrimSpace(session.AgentTargetID) == "" {
+		session.AgentTargetID = strings.TrimSpace(persisted.AgentTargetID)
+	}
 	if session.Settings == nil {
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}

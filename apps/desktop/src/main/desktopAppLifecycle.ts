@@ -113,9 +113,14 @@ export function createDesktopAppLifecycleHandlers(
         return;
       }
 
+      const isUpdateInstall = deps.updateService.isQuitAndInstallPending();
       isStoppingDaemon = true;
       event.preventDefault();
-      deps.logger.info("desktop app before quit");
+      deps.logger.info(
+        isUpdateInstall
+          ? "desktop app before quit for update install"
+          : "desktop app before quit"
+      );
       void (async () => {
         try {
           await deps.tuttid.stop();

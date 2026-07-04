@@ -6,6 +6,7 @@ type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
 	DeleteSession(context.Context, string, string) (bool, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
+	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
 	ListWorkspaceGeneratedFiles(context.Context, ListWorkspaceGeneratedFilesInput) (GeneratedFileList, bool, error)
 	ListSessionMessages(context.Context, ListSessionMessagesInput) (MessagePage, bool, error)
@@ -54,10 +55,29 @@ type GeneratedFileList struct {
 	Files       []GeneratedFile
 }
 
+type ListSessionSectionInput struct {
+	WorkspaceID       string
+	SectionKey        string
+	AgentTargetID     string
+	CursorUpdatedAtMS int64
+	CursorSessionID   string
+	Limit             int
+}
+
+type SessionSectionPage struct {
+	WorkspaceID   string
+	SectionKey    string
+	Sessions      []Session
+	HasMore       bool
+	NextCursor    string
+	NextUpdatedAt int64
+}
+
 type Session struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -81,6 +101,7 @@ type SessionStateReport struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string

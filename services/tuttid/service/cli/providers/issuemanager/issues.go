@@ -11,7 +11,7 @@ import (
 
 type issueListInput struct {
 	TopicID   string `cli:"topic-id" validate:"required" description:"Required topic id. Use issue topic list --json to discover workspace topics before listing issues." hint:"Use issue topic list --json to discover workspace topics."`
-	Status    string `cli:"status"`
+	Status    string `cli:"status" description:"Issue status filter." enum:"all,not_started,running,pending_acceptance,completed,failed,canceled"`
 	Search    string `cli:"search"`
 	PageSize  int    `cli:"page-size" validate:"min=1,max=100"`
 	PageToken string `cli:"page-token"`
@@ -32,7 +32,7 @@ type issueUpdateInput struct {
 	IssueID string  `cli:"issue-id" validate:"required" description:"Issue to update."`
 	Title   *string `cli:"title" description:"Replace the issue title."`
 	Content *string `cli:"content" description:"Replace the issue content."`
-	Status  *string `cli:"status" description:"Issue status: not_started, running, pending_acceptance, completed, failed, or canceled."`
+	Status  *string `cli:"status" description:"Issue status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
 }
 
 func (p Provider) newIssueListCommand() cliservice.Command {

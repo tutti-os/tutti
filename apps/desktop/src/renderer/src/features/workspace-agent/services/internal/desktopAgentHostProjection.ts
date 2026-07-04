@@ -160,6 +160,7 @@ export function toAgentHostAgentSessionFromCore(
 ): AgentHostAgentSession {
   return {
     agentSessionId: session.agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     createdAtUnixMs: session.createdAtUnixMs ?? 0,
     cwd: options.cwd ?? session.cwd ?? "/",
     permissionModeId: options.permissionModeId ?? undefined,
@@ -188,13 +189,12 @@ export function toAgentHostAgentSessionState(
   } = {}
 ) {
   const agentSessionId = options.agentSessionId?.trim() || session.id;
-  const settings = session.settings
-    ? normalizeComposerSettings(session.settings)
-    : options.defaults?.settings;
+  const settings = agentSessionStateSettings(session, options.defaults);
   const runtimeContext =
     session.runtimeContext ?? options.defaults?.runtimeContext;
   return {
     agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     ...(settings ? { settings } : {}),
     ...(session.permissionConfig
       ? { permissionConfig: session.permissionConfig }
@@ -202,7 +202,7 @@ export function toAgentHostAgentSessionState(
     ...(runtimeContext ? { runtimeContext } : {}),
     permissionModeId: resolveComposerPermissionMode(settings) ?? undefined,
     provider: session.provider,
-    providerSessionId: session.id,
+    providerSessionId: session.providerSessionId ?? session.id,
     resumable: session.resumable ?? false,
     status: toAgentHostAgentSessionStatus(session.status),
     ...(session.turnLifecycle ? { turnLifecycle: session.turnLifecycle } : {}),
@@ -215,6 +215,28 @@ export function toAgentHostAgentSessionState(
   };
 }
 
+function agentSessionStateSettings(
+  session: WorkspaceAgentSession,
+  defaults: AgentHostAgentSessionStateDefaults | undefined
+): AgentHostAgentSessionComposerSettings | undefined {
+  if (!session.settings) {
+    return defaults?.settings;
+  }
+  const settings = normalizeComposerSettings(session.settings);
+  if (
+    session.provider === "claude-code" &&
+    settings.model === "default" &&
+    normalizedOptionalString(defaults?.settings?.model) !== null &&
+    defaults?.settings?.model !== "default"
+  ) {
+    return {
+      ...settings,
+      model: defaults.settings.model
+    };
+  }
+  return settings;
+}
+
 export function agentHostWorkspaceSessionFromCore(
   workspaceId: string,
   session: AgentActivitySession,
@@ -225,6 +247,7 @@ export function agentHostWorkspaceSessionFromCore(
     options.agentSessionId?.trim() || session.agentSessionId;
   return {
     agentSessionId,
+    agentTargetId: session.agentTargetId ?? null,
     createdAtUnixMs: session.createdAtUnixMs,
     cwd: session.cwd ?? "/",
     endedAtUnixMs: session.endedAtUnixMs,

@@ -14,10 +14,24 @@ import {
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
   type CliCapabilitiesResponse,
+  type CreateWorkspaceAgentSessionRequest,
   type IssueManagerReferenceSearchResponse,
+  type ListAgentTargetsResponse,
   type ListWorkspacesResponse,
-  type WorkspaceFilePreviewResponse
+  type WorkspaceFilePreviewResponse,
+  type WorkspaceGitPatchSupportResponse,
+  type WorkspaceGitPatchResponse
 } from "./index.ts";
+
+test("create workspace agent session request supports target-only authority", () => {
+  const request = {
+    agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
+    initialContent: [{ type: "text", text: "hello" }]
+  } satisfies CreateWorkspaceAgentSessionRequest;
+
+  assert.equal(request.agentTargetId, "local:codex");
+});
 
 test("generated tuttid client returns parsed health response", async () => {
   const client = createClient({
@@ -109,6 +123,62 @@ test("shared tuttid client unwraps workspace list responses", async () => {
     totalCount: 1,
     workspaces: [{ id: "ws-1", name: "One", lastOpenedAt: null }]
   } satisfies ListWorkspacesResponse);
+});
+
+test("shared tuttid client unwraps agent target responses", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(new URL(request.url).pathname, "/v1/agent-targets");
+
+      return new Response(
+        JSON.stringify({
+          targets: [
+            {
+              id: "local:codex",
+              provider: "codex",
+              launchRef: {
+                type: "local_cli",
+                provider: "codex"
+              },
+              name: "Codex",
+              iconKey: "codex",
+              enabled: true,
+              source: "system",
+              sortOrder: 10,
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  assert.deepEqual(await client.listAgentTargets(), {
+    targets: [
+      {
+        id: "local:codex",
+        provider: "codex",
+        launchRef: {
+          type: "local_cli",
+          provider: "codex"
+        },
+        name: "Codex",
+        iconKey: "codex",
+        enabled: true,
+        source: "system",
+        sortOrder: 10,
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1
+      }
+    ]
+  } satisfies ListAgentTargetsResponse);
 });
 
 test("shared tuttid client forwards bearer auth tokens", async () => {
@@ -237,6 +307,7 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
     "ws-1",
     {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
+      agentTargetId: "local:codex",
       initialContent: [{ type: "text", text: "hello" }],
       planMode: true,
       provider: "codex"
@@ -251,6 +322,7 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
   assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestBody, {
     agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
     initialContent: [{ type: "text", text: "hello" }],
     planMode: true,
     provider: "codex"
@@ -269,6 +341,8 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
 test("shared tuttid client lists workspace agent sessions with query params", async () => {
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};
+  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+  const abortController = new AbortController();
 
   const client = createTuttidClient({
     fetch: async (input, init) => {
@@ -277,9 +351,11 @@ test("shared tuttid client lists workspace agent sessions with query params", as
       const url = new URL(request.url);
       requestPath = url.pathname;
       requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+      capturedRequest.signal = request.signal;
 
       return new Response(
         JSON.stringify({
+          hasMore: false,
           sessions: [],
           workspaceId: "ws-1"
         }),
@@ -291,17 +367,26 @@ test("shared tuttid client lists workspace agent sessions with query params", as
     }
   });
 
-  await client.listWorkspaceAgentSessions("ws-1", {
-    limit: 30,
-    searchQuery: "mention",
-    visibleOnly: true
-  });
+  await client.listWorkspaceAgentSessionSectionPage(
+    "ws-1",
+    {
+      agentTargetId: "claude-target",
+      cursor: "1000|session-1",
+      limit: 30,
+      sectionKey: "project:/workspace/project"
+    },
+    { signal: abortController.signal }
+  );
 
-  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-session-sections/page");
+  assert.notEqual(capturedRequest.signal, null);
+  abortController.abort();
+  assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestQueryEntries, {
+    agentTargetId: "claude-target",
+    cursor: "1000|session-1",
     limit: "30",
-    searchQuery: "mention",
-    visibleOnly: "true"
+    sectionKey: "project:/workspace/project"
   });
 });
 
@@ -705,6 +790,96 @@ test("shared tuttid client reads workspace file preview bytes", async () => {
   assert.equal(requestQuery, "/workspace/docs/todo.md");
   assert.equal(preview.bytesBase64, "aGVsbG8=");
   assert.equal(preview.sizeBytes, 5);
+});
+
+test("shared tuttid client applies a workspace git patch", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestBody: unknown;
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestMethod = request.method;
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+
+      return new Response(
+        JSON.stringify({
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        } satisfies WorkspaceGitPatchResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.applyWorkspaceGitPatch("ws-1", {
+    cwd: "/workspace",
+    diff: "diff --git a/src/app.ts b/src/app.ts\n",
+    revert: true
+  });
+
+  assert.equal(requestMethod, "POST");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/git-patch");
+  assert.deepEqual(requestBody, {
+    cwd: "/workspace",
+    diff: "diff --git a/src/app.ts b/src/app.ts\n",
+    revert: true
+  });
+  assert.deepEqual(response, {
+    appliedPaths: ["src/app.ts"],
+    conflictedPaths: [],
+    skippedPaths: [],
+    status: "success"
+  });
+});
+
+test("shared tuttid client resolves workspace git patch support", async () => {
+  let requestMethod = "";
+  let requestPath = "";
+  let requestQueryEntries: Record<string, string> = {};
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requestMethod = request.method;
+      requestPath = url.pathname;
+      requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+
+      return new Response(
+        JSON.stringify({
+          root: "/workspace",
+          supported: true
+        } satisfies WorkspaceGitPatchSupportResponse),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.resolveWorkspaceGitPatchSupport(
+    "ws-1",
+    "/workspace"
+  );
+
+  assert.equal(requestMethod, "GET");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/git-patch-support");
+  assert.deepEqual(requestQueryEntries, { cwd: "/workspace" });
+  assert.deepEqual(response, {
+    root: "/workspace",
+    supported: true
+  });
 });
 
 test("shared tuttid client loads agent provider composer options", async () => {

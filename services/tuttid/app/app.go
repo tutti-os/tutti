@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 )
 
 type App struct {
@@ -37,6 +39,13 @@ func (a *App) Run(ctx context.Context) error {
 
 	logger := a.logger()
 	logger.Info("tuttid listening", "event", "tutti.listen", "addr", a.Server.Addr, "log_file", a.LogFilePath)
+
+	proxySource, proxyHost := runtimecmd.EffectiveProxySummary()
+	logger.Info("tuttid outbound proxy resolved",
+		"event", "tutti.proxy.resolved",
+		"source", proxySource,
+		"https_proxy_host", proxyHost,
+	)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)

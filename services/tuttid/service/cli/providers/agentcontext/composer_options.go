@@ -98,9 +98,10 @@ func (p Provider) composerDefaultsForProvider(ctx context.Context, provider stri
 	}
 	defaults := preferences.AgentComposerDefaultsByProvider[agentproviderbiz.Normalize(provider)]
 	return agentservice.ComposerSettings{
-		Model:            defaults.Model,
-		PermissionModeID: defaults.PermissionModeID,
-		ReasoningEffort:  defaults.ReasoningEffort,
+		Model:                  defaults.Model,
+		PermissionModeID:       defaults.PermissionModeID,
+		ReasoningEffort:        defaults.ReasoningEffort,
+		ConversationDetailMode: preferences.AgentConversationDetailMode,
 	}
 }
 

@@ -6,10 +6,12 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type FormEvent
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
+import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -21,8 +23,7 @@ import type {
 import {
   Popover,
   PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger
+  PopoverContent
 } from "../../app/renderer/components/ui/popover";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
 import {
@@ -35,8 +36,16 @@ import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
-import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
-import { ListChecks, X } from "lucide-react";
+import {
+  AddIcon,
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@tutti-os/ui-system";
+import { ListChecks, Target, X } from "lucide-react";
 import {
   createMentionPaletteStateAdapter,
   makeAtPanelKeyDown,
@@ -99,6 +108,8 @@ import {
 } from "./agentRichText/AgentRichTextEditor";
 import {
   imageFilesFromDataTransfer,
+  nonImageFilesFromDataTransfer,
+  systemFileDragInfoFromDataTransfer,
   readAgentRichTextPromptImages
 } from "./agentRichText/agentRichTextPromptImages";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
@@ -141,16 +152,31 @@ import {
   USAGE_CRITICAL_PERCENT,
   USAGE_WARN_PERCENT
 } from "./model/agentUsageThresholds";
+import atLinedIconUrl from "../../app/renderer/assets/icons/@-lined-14px.svg";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
+import { useOptionalAgentHostApi } from "../../agentActivityHost";
+import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
+import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
+import {
+  MANAGED_AGENT_ICON_FALLBACK_URL,
+  MANAGED_AGENT_ICON_URLS
+} from "../../shared/managedAgentIcons";
+import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
 
 export { formatSlashStatusTokenCount };
 
 const USAGE_POPOVER_HOVER_DELAY_MS = 120;
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
-const DOCK_COMPOSER_INPUT_MAX_HEIGHT = 120;
+const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
+const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
+const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
+const DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT =
+  DOCK_COMPOSER_TEXT_LINE_HEIGHT * DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES;
+const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
+  DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT +
+  DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
 const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
-const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
 
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
@@ -166,6 +192,9 @@ export interface AgentComposerProps {
   workspacePath?: string | null;
   currentUserId?: string | null;
   provider: string;
+  selectedProviderTarget?: AgentGUIProviderTarget | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  providerSelectReadonly?: boolean;
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
@@ -184,13 +213,16 @@ export interface AgentComposerProps {
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
+  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
+  uiLanguage?: UiLanguage;
   isActive?: boolean;
   previewMode?: boolean;
+  workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
@@ -235,6 +267,7 @@ export interface AgentComposerProps {
     planModeOnLabel: string;
     planModeOffLabel: string;
     planUnavailable: string;
+    goalLabel: string;
     browserUseCapabilityLabel: string;
     browserUseCapabilityDescription: string;
     browserUseCapabilityDescriptionAutoConnect: string;
@@ -264,6 +297,24 @@ export interface AgentComposerProps {
     slashPalettePluginsGroup: string;
     slashPaletteConnectorsGroup: string;
     slashPaletteMcpGroup: string;
+    slashCommandCompactLabel: string;
+    slashCommandContextLabel: string;
+    slashCommandFastLabel: string;
+    slashCommandGoalLabel: string;
+    slashCommandInitLabel: string;
+    slashCommandPlanLabel: string;
+    slashCommandReviewLabel: string;
+    slashCommandStatusLabel: string;
+    slashCommandUsageLabel: string;
+    slashCommandCompactDescription: string;
+    slashCommandContextDescription: string;
+    slashCommandFastDescription: string;
+    slashCommandGoalDescription: string;
+    slashCommandInitDescription: string;
+    slashCommandPlanDescription: string;
+    slashCommandReviewDescription: string;
+    slashCommandStatusDescription: string;
+    slashCommandUsageDescription: string;
     slashStatusTitle: string;
     slashStatusSession: string;
     slashStatusBaseUrl: string;
@@ -305,9 +356,12 @@ export interface AgentComposerProps {
     fileMentionEmpty: string;
     fileMentionError: string;
     fileMentionTabHint: string;
+    mentionPalette: string;
     removeMention: string;
     addReference: string;
+    addContent: string;
     referenceWorkspaceFiles: string;
+    providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
@@ -345,6 +399,10 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
+  onProviderSelect?: (input: {
+    provider: AgentGUIProvider;
+    providerTargetId?: string | null;
+  }) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
@@ -374,6 +432,7 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
+  resolveDroppedFileReferences?: AgentDroppedFileReferenceResolver | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -492,6 +551,7 @@ function AgentUsageChip({
   const usagePopoverHoverTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const usagePopoverContentRef = useRef<HTMLDivElement | null>(null);
   const clampedPercent = Math.max(0, Math.min(100, percentUsed));
   const chipLabel = labels.usageChipLabel({ percent: clampedPercent });
   const showTokens = usedTokens !== null && totalTokens !== null;
@@ -548,6 +608,25 @@ function AgentUsageChip({
     },
     [closeUsagePopover, openUsagePopover]
   );
+  const handleUsageTriggerBlur = useCallback(
+    (event: ReactFocusEvent<HTMLButtonElement>) => {
+      const nextFocusTarget = event.relatedTarget;
+      if (
+        nextFocusTarget instanceof Node &&
+        usagePopoverContentRef.current?.contains(nextFocusTarget)
+      ) {
+        clearUsagePopoverHoverTimer();
+        clearUsagePopoverCloseTimer();
+        return;
+      }
+      closeUsagePopover();
+    },
+    [
+      clearUsagePopoverCloseTimer,
+      clearUsagePopoverHoverTimer,
+      closeUsagePopover
+    ]
+  );
 
   useEffect(
     () => () => {
@@ -566,8 +645,7 @@ function AgentUsageChip({
       )}
       data-testid="agent-gui-usage-chip"
       data-usage-level={usageLevel}
-      onBlur={tooltipsEnabled ? closeUsagePopover : undefined}
-      onClick={tooltipsEnabled ? openUsagePopover : undefined}
+      onBlur={tooltipsEnabled ? handleUsageTriggerBlur : undefined}
       onFocus={tooltipsEnabled ? openUsagePopoverAfterHoverDelay : undefined}
       onPointerEnter={(event) => {
         if (tooltipsEnabled && event.pointerType !== "touch") {
@@ -596,9 +674,10 @@ function AgentUsageChip({
       open={usagePopoverOpen}
       onOpenChange={handleUsagePopoverOpenChange}
     >
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverAnchor asChild>{trigger}</PopoverAnchor>
       {usagePopoverOpen ? (
         <PopoverContent
+          ref={usagePopoverContentRef}
           side="bottom"
           align="end"
           className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
@@ -621,15 +700,17 @@ function AgentUsageChip({
               />
             ) : null}
             {compactSupported && onCompact ? (
-              <button
+              <Button
                 type="button"
                 data-testid="agent-gui-compact-button"
                 disabled={compactDisabled}
-                className="nodrag inline-flex items-center justify-center rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
+                className="nodrag w-full font-medium [-webkit-app-region:no-drag]"
+                size="sm"
+                variant="secondary"
                 onClick={onCompact}
               >
                 {labels.usageCompactAction}
-              </button>
+              </Button>
             ) : null}
           </div>
         </PopoverContent>
@@ -642,7 +723,7 @@ const composerStyles = {
   footerGroup: styles.composerFooterLeft,
   footerGroupRight: styles.composerFooterRight,
   dropdownSurface:
-    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
+    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--shadow-panel)] [-webkit-app-region:no-drag]"
 };
 
 const workspaceReferenceSelectValue = "__tutti_workspace_reference_idle__";
@@ -664,6 +745,7 @@ const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
 const EMPTY_PROVIDER_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const GOAL_MODE_SLASH_COMMAND = "/goal";
 const PROMPT_TIP_CYCLE_STEP_MS = 5_200;
 const MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR = [
   "[data-node-drag-handle]",
@@ -721,11 +803,30 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+function resolveComposerProviderIconUrl(provider: string): string {
+  const normalizedProvider = normalizeManagedAgentProvider(provider);
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
+}
+
+function resolveComposerProviderTargetIconUrl(
+  target: AgentGUIProviderTarget
+): string {
+  return (
+    target.iconUrl?.trim() || resolveComposerProviderIconUrl(target.provider)
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
   currentUserId,
   provider,
+  selectedProviderTarget = null,
+  providerTargets = [],
+  providerSelectReadonly = false,
   slashStatus = null,
   usage = null,
   draftContent,
@@ -744,13 +845,16 @@ export function AgentComposer({
   canQueueWhileBusy,
   showStopButton,
   activePrompt,
+  backgroundAgentStatusText = null,
   activePromptKeyboardShortcutsEnabled = true,
   promptTips = EMPTY_PROMPT_TIPS,
   isInterrupting,
   isSendingTurn,
   isSubmittingPrompt,
+  uiLanguage = "en",
   isActive = true,
   previewMode = false,
+  workspaceReferencePickerOpen = false,
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
@@ -759,6 +863,7 @@ export function AgentComposer({
   onDraftContentChange,
   onProjectPathChange = () => {},
   onSettingsChange,
+  onProviderSelect,
   capabilityMenuState,
   onSubmit,
   onSubmitGuidance,
@@ -771,15 +876,27 @@ export function AgentComposer({
   onCapabilitySettingsRequest,
   onLinkAction,
   onRequestWorkspaceReferences = null,
+  resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches = null,
   contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
   const draftPrompt = draftContent.prompt;
+  const goalDraftObjective = goalDraftObjectiveFromPrompt(draftPrompt);
+  const isGoalModeActive = goalDraftObjective !== null;
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
+  const agentHostApi = useOptionalAgentHostApi();
+  const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
+  const promptFileUploadSupported = Boolean(
+    agentActivityRuntime?.uploadPromptContent &&
+    (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
+  );
+  const promptFilesSupported = Boolean(
+    resolveDroppedFileReferences && promptFileUploadSupported
+  );
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -792,7 +909,9 @@ export function AgentComposer({
     shouldResetMentionHighlightToFilter,
     setShouldResetMentionHighlightToFilter
   ] = useState(false);
-  const [paletteDraftPrompt, setPaletteDraftPrompt] = useState(draftPrompt);
+  const [paletteDraftPrompt, setPaletteDraftPrompt] = useState(
+    goalDraftObjective ?? draftPrompt
+  );
   const [fileMentionSuggestion, setFileMentionSuggestion] =
     useState<AgentFileMentionSuggestionState | null>(null);
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
@@ -842,7 +961,9 @@ export function AgentComposer({
   const [dockComposerTextHeight, setDockComposerTextHeight] = useState(
     DOCK_COMPOSER_INPUT_MIN_HEIGHT
   );
-  const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
+  const slashQuery = isGoalModeActive
+    ? null
+    : getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
   const skillQueryDraft = promptBeforeSelection || paletteDraftPrompt;
@@ -962,11 +1083,16 @@ export function AgentComposer({
           };
           return [capabilityEntry];
         }
+        const commandDescription = slashCommandDescriptionForDisplay(
+          command,
+          labels
+        );
         const commandEntry: AgentSlashPaletteEntry = {
           type: "command",
           key: `command:${command.name}`,
           label: labelForSlashCommand(command),
-          ...(command.description ? { description: command.description } : {}),
+          ...slashCommandLabelForDisplay(command, labels, uiLanguage),
+          ...(commandDescription ? { description: commandDescription } : {}),
           command
         };
         return [commandEntry];
@@ -1004,6 +1130,25 @@ export function AgentComposer({
     labels.computerUseCapabilitySetupRequiredDescription,
     labels.computerUseCapabilityLabel,
     labels.computerUseCapabilitySettingsLabel,
+    labels.slashCommandCompactLabel,
+    labels.slashCommandContextLabel,
+    labels.slashCommandFastLabel,
+    labels.slashCommandGoalLabel,
+    labels.slashCommandInitLabel,
+    labels.slashCommandPlanLabel,
+    labels.slashCommandReviewLabel,
+    labels.slashCommandStatusLabel,
+    labels.slashCommandUsageLabel,
+    labels.slashCommandCompactDescription,
+    labels.slashCommandContextDescription,
+    labels.slashCommandFastDescription,
+    labels.slashCommandGoalDescription,
+    labels.slashCommandInitDescription,
+    labels.slashCommandPlanDescription,
+    labels.slashCommandReviewDescription,
+    labels.slashCommandStatusDescription,
+    labels.slashCommandUsageDescription,
+    uiLanguage,
     skillQueryMatch?.prefix
   ]);
   const showFileMentionPalette =
@@ -1086,7 +1231,7 @@ export function AgentComposer({
   useEffect(() => {
     const isExternalDraftReplacement = draftPromptRef.current !== draftPrompt;
     draftPromptRef.current = draftPrompt;
-    setPaletteDraftPrompt(draftPrompt);
+    setPaletteDraftPrompt(goalDraftObjective ?? draftPrompt);
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
@@ -1094,7 +1239,7 @@ export function AgentComposer({
         });
       });
     }
-  }, [draftPrompt]);
+  }, [draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
     draftImagesRef.current = draftImages;
@@ -1127,6 +1272,10 @@ export function AgentComposer({
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
+  const composerControlsHardDisabled =
+    isSelectedProjectMissing ||
+    isSubmittingPrompt ||
+    (disabled && !isSendingTurn && !showStopButton);
 
   const closeReviewPicker = useCallback((): void => {
     setIsReviewPickerOpen(false);
@@ -1191,6 +1340,18 @@ export function AgentComposer({
         clearSlashCommandDraft();
         setIsSlashStatusPanelOpen(false);
         setIsReviewPickerOpen(true);
+        return;
+      }
+      if (effect.kind === "activateGoalMode") {
+        draftPromptRef.current = GOAL_MODE_SLASH_COMMAND;
+        setPaletteDraftPrompt("");
+        setIsSlashStatusPanelOpen(false);
+        setIsReviewPickerOpen(false);
+        setIsPaletteOpen(false);
+        onDraftContentChange({
+          ...draftContent,
+          prompt: GOAL_MODE_SLASH_COMMAND
+        });
         return;
       }
       if (effect.kind === "togglePlanMode") {
@@ -1592,6 +1753,13 @@ export function AgentComposer({
     [createFileMentionPaletteAdapter]
   );
 
+  const navigateIntoFileMentionItem = useCallback(
+    (item: AgentContextMentionItem): void => {
+      mentionControllerRef.current?.selectAgentGeneratedMentionItem(item);
+    },
+    []
+  );
+
   const handleFileMentionKeyDown = useCallback(
     (event: KeyboardEvent): boolean => {
       if (!showFileMentionPalette) {
@@ -1665,7 +1833,7 @@ export function AgentComposer({
   );
 
   useEffect(() => {
-    if (!showPalette) {
+    if (!showPalette || workspaceReferencePickerOpen) {
       return;
     }
     const handleDocumentKeyDown = (event: KeyboardEvent): void => {
@@ -1696,7 +1864,7 @@ export function AgentComposer({
         capture: true
       });
     };
-  }, [handlePaletteKeyDown, showPalette]);
+  }, [handlePaletteKeyDown, showPalette, workspaceReferencePickerOpen]);
 
   const handleFileMentionSuggestionChange = useCallback(
     (state: AgentFileMentionSuggestionState | null): void => {
@@ -1779,12 +1947,44 @@ export function AgentComposer({
 
   const handleDraftChange = useStableEventCallback(
     (nextDraft: string): void => {
+      if (isGoalModeActive) {
+        const nextGoalPrompt = buildGoalModePrompt(nextDraft);
+        draftPromptRef.current = nextGoalPrompt;
+        setPaletteDraftPrompt(nextDraft);
+        setIsPaletteOpen(true);
+        onDraftContentChange({ ...draftContent, prompt: nextGoalPrompt });
+        return;
+      }
+      const nextGoalObjective = goalDraftObjectiveFromPrompt(nextDraft);
+      if (nextGoalObjective !== null) {
+        const nextGoalPrompt = buildGoalModePrompt(nextGoalObjective);
+        draftPromptRef.current = nextGoalPrompt;
+        setPaletteDraftPrompt(nextGoalObjective);
+        setIsPaletteOpen(true);
+        onDraftContentChange({ ...draftContent, prompt: nextGoalPrompt });
+        return;
+      }
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
       setIsPaletteOpen(true);
       onDraftContentChange({ ...draftContent, prompt: nextDraft });
     }
   );
+
+  const clearGoalModeBadge = useCallback((): void => {
+    if (!isGoalModeActive) {
+      return;
+    }
+    const nextPrompt = goalDraftObjective ?? "";
+    draftPromptRef.current = nextPrompt;
+    setPaletteDraftPrompt(nextPrompt);
+    onDraftContentChange({ ...draftContent, prompt: nextPrompt });
+  }, [
+    draftContent,
+    goalDraftObjective,
+    isGoalModeActive,
+    onDraftContentChange
+  ]);
 
   const addDraftImages = useCallback(
     (images: AgentRichTextPastedImage[]): void => {
@@ -1803,7 +2003,11 @@ export function AgentComposer({
       if (remainingSlots === 0) {
         return;
       }
-      const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+      const uploadPromptContent =
+        agentActivityRuntime?.uploadPromptContent &&
+        (agentActivityRuntime.promptContentUploadSupport?.image ?? true)
+          ? agentActivityRuntime.uploadPromptContent
+          : undefined;
       const nextImages = images.slice(0, remainingSlots).map((image) => ({
         id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
         name: image.name,
@@ -1924,7 +2128,9 @@ export function AgentComposer({
   const applyReferencePickResult = useCallback(
     async (result: WorkspaceReferencePickResult) => {
       if (result.files.length > 0) {
-        const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+        const uploadPromptContent = promptFileUploadSupported
+          ? agentActivityRuntime?.uploadPromptContent
+          : undefined;
         const uploadedFiles = await Promise.all(
           result.files.map(async (file) => {
             const hostPath = file.hostPath?.trim() ?? "";
@@ -1974,7 +2180,7 @@ export function AgentComposer({
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
     },
-    [agentActivityRuntime, workspaceId]
+    [agentActivityRuntime, promptFileUploadSupported, workspaceId]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
@@ -1983,23 +2189,62 @@ export function AgentComposer({
     }
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
+  const providerSwitchTargets = useMemo(
+    () => providerTargets.filter((target) => target.disabled !== true),
+    [providerTargets]
+  );
+  const showProviderSelect = providerSwitchTargets.length > 1;
+  const selectedProviderTargetId =
+    selectedProviderTarget?.targetId ?? `local:${provider}`;
+  const selectedProviderSwitchTarget =
+    providerSwitchTargets.find(
+      (target) => target.targetId === selectedProviderTargetId
+    ) ??
+    selectedProviderTarget ??
+    providerSwitchTargets.find((target) => target.provider === provider) ??
+    null;
+  const selectedProviderLabel = selectedProviderSwitchTarget?.label ?? provider;
+  const providerSelectDisabled =
+    previewMode || providerSelectReadonly || !onProviderSelect;
 
-  // @ 面板里点任务/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
+  const applyDroppedFileReferences = useCallback(
+    async (files: readonly File[]) => {
+      if (
+        !promptFilesSupported ||
+        !resolveDroppedFileReferences ||
+        files.length === 0
+      ) {
+        return;
+      }
+      const references = await resolveDroppedFileReferences(files);
+      if (references.length === 0) {
+        return;
+      }
+      await applyReferencePickResult({ files: references, mentionItems: [] });
+    },
+    [
+      applyReferencePickResult,
+      promptFilesSupported,
+      resolveDroppedFileReferences
+    ]
+  );
+
+  // @ 面板里点任务/应用行的「查看产物」入口:保留面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
   const handleOpenReferencesForEntity = useCallback(
     (entity: AgentContextMentionItem): void => {
-      clearActiveFileMentionTrigger();
-      closeFileMentionPalette();
       if (!onRequestWorkspaceReferences) {
         return;
       }
-      void onRequestWorkspaceReferences(entity).then((result) =>
-        applyReferencePickResult(result)
-      );
+      void onRequestWorkspaceReferences(entity).then((result) => {
+        if (result.files.length > 0 || result.mentionItems.length > 0) {
+          flushSync(clearActiveFileMentionTrigger);
+        }
+        return applyReferencePickResult(result);
+      });
     },
     [
       clearActiveFileMentionTrigger,
-      closeFileMentionPalette,
       applyReferencePickResult,
       onRequestWorkspaceReferences
     ]
@@ -2107,6 +2352,12 @@ export function AgentComposer({
   );
   const inputDisabled =
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const handleMentionPaletteButton = useCallback((): void => {
+    if (composerControlsHardDisabled || inputDisabled) {
+      return;
+    }
+    editorHandleRef.current?.openMentionPalette();
+  }, [composerControlsHardDisabled, inputDisabled]);
   const scheduleComposerFocus = useCallback(() => {
     if (inputDisabled) {
       return;
@@ -2140,27 +2391,63 @@ export function AgentComposer({
       return target instanceof Node && dropTarget.contains(target);
     };
 
-    const hasPromptImageFiles = (event: DragEvent): boolean => {
+    const systemFileDrag = (
+      event: DragEvent
+    ): { hasImageFiles: boolean; hasRegularFiles: boolean } | null => {
       if (
         event.defaultPrevented ||
         inputDisabled ||
         !containsEventTarget(event) ||
         hasWorkspaceFileDropData(event.dataTransfer)
       ) {
-        return false;
+        return null;
       }
-      return imageFilesFromDataTransfer(event.dataTransfer).length > 0;
+      const dragInfo = systemFileDragInfoFromDataTransfer(event.dataTransfer);
+      const hasRegularFiles = dragInfo.hasRegularFiles && promptFilesSupported;
+      if (!dragInfo.hasImageFiles && !hasRegularFiles) {
+        return null;
+      }
+      return { hasImageFiles: dragInfo.hasImageFiles, hasRegularFiles };
+    };
+
+    const systemFileDrop = (
+      event: DragEvent
+    ): { imageFiles: File[]; regularFiles: File[] } | null => {
+      if (
+        event.defaultPrevented ||
+        inputDisabled ||
+        !containsEventTarget(event) ||
+        hasWorkspaceFileDropData(event.dataTransfer)
+      ) {
+        return null;
+      }
+      const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
+      const imageFileSet = new Set(imageFiles);
+      const regularFiles = promptFilesSupported
+        ? nonImageFilesFromDataTransfer(event.dataTransfer).filter(
+            (file) => !imageFileSet.has(file)
+          )
+        : [];
+      if (imageFiles.length === 0 && regularFiles.length === 0) {
+        return null;
+      }
+      return { imageFiles, regularFiles };
     };
 
     const handleDragOver: EventListener = (event): void => {
       if (!isDragEvent(event)) {
         return;
       }
-      if (!hasPromptImageFiles(event)) {
+      const drag = systemFileDrag(event);
+      if (!drag) {
         return;
       }
       event.preventDefault();
-      if (!promptImagesSupported) {
+      if (
+        !drag.hasRegularFiles &&
+        drag.hasImageFiles &&
+        !promptImagesSupported
+      ) {
         return;
       }
       if (event.dataTransfer) {
@@ -2172,17 +2459,28 @@ export function AgentComposer({
       if (!isDragEvent(event)) {
         return;
       }
-      if (!hasPromptImageFiles(event)) {
+      const drop = systemFileDrop(event);
+      if (!drop) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
+      if (drop.regularFiles.length > 0) {
+        editorHandleRef.current?.focusAtEnd();
+        void applyDroppedFileReferences(drop.regularFiles).then(() => {
+          if (!isDisposed) {
+            scheduleComposerFocus();
+          }
+        });
+      }
+      if (drop.imageFiles.length === 0) {
+        return;
+      }
       if (!promptImagesSupported) {
         onPromptImagesUnsupported?.();
         return;
       }
-      const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
-      void readAgentRichTextPromptImages(imageFiles).then((images) => {
+      void readAgentRichTextPromptImages(drop.imageFiles).then((images) => {
         if (isDisposed || images.length === 0) {
           return;
         }
@@ -2200,8 +2498,10 @@ export function AgentComposer({
     };
   }, [
     addDraftImages,
+    applyDroppedFileReferences,
     inputDisabled,
     onPromptImagesUnsupported,
+    promptFilesSupported,
     promptImagesSupported,
     scheduleComposerFocus
   ]);
@@ -2434,7 +2734,10 @@ export function AgentComposer({
             "--agent-gui-composer-attachment-height": `${dockComposerAttachmentHeight}px`,
             "--agent-gui-composer-input-height": `${dockComposerInputHeight}px`,
             "--agent-gui-composer-input-max-height": `${dockComposerInputMaxHeight}px`,
-            "--agent-gui-composer-text-height": `${dockComposerTextHeight}px`
+            "--agent-gui-composer-text-height": `${dockComposerTextHeight}px`,
+            "--agent-gui-composer-text-line-height": `${DOCK_COMPOSER_TEXT_LINE_HEIGHT}px`,
+            "--agent-gui-composer-text-max-visible-lines": `${DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES}`,
+            "--agent-gui-composer-text-viewport-height": `${DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT}px`
           } as CSSProperties),
     [
       dockComposerAttachmentHeight,
@@ -2672,6 +2975,15 @@ export function AgentComposer({
         )}
         data-edge-glow={showEdgeGlow ? "true" : undefined}
       >
+        {backgroundAgentStatusText ? (
+          <AgentChromeNotice
+            tone="muted"
+            role="status"
+            testId="agent-gui-composer-background-agent-status"
+            title={backgroundAgentStatusText}
+            icon={<Spinner className="h-3.5 w-3.5" />}
+          />
+        ) : null}
         {isSelectedProjectMissing ? (
           <AgentChromeNotice
             tone="danger"
@@ -2804,6 +3116,12 @@ export function AgentComposer({
                     promptImagesSupported={promptImagesSupported}
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
+                    getReferenceForFile={getReferenceForFile}
+                    onDropFiles={
+                      promptFilesSupported
+                        ? applyDroppedFileReferences
+                        : undefined
+                    }
                   />
                   {!isHeroLayout ? composerActionButton : null}
                 </div>
@@ -2842,6 +3160,7 @@ export function AgentComposer({
                         mentionControllerRef.current?.expandGroup(groupId)
                       }
                       onNavigateHierarchy={navigateFileMentionHierarchy}
+                      onNavigateIntoItem={navigateIntoFileMentionItem}
                       onOpenReferences={
                         onRequestWorkspaceReferences
                           ? handleOpenReferencesForEntity
@@ -2935,63 +3254,163 @@ export function AgentComposer({
           </Popover>
           <div className={styles.composerFooter}>
             <div className={composerStyles.footerGroup}>
-              {previewMode ? (
+              <div className="inline-flex shrink-0 items-center gap-1">
+                {previewMode ? (
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={labels.referenceWorkspaceFiles}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerReferenceTrigger,
+                            "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
+                          )}
+                        >
+                          <AddIcon
+                            aria-hidden
+                            className="size-3.5"
+                            data-agent-reference-add-icon="true"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <Select
+                        open={false}
+                        value={workspaceReferenceSelectValue}
+                        disabled={
+                          !onRequestWorkspaceReferences ||
+                          composerControlsHardDisabled
+                        }
+                        onOpenChange={(isOpen) => {
+                          if (isOpen) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                        onValueChange={(nextValue) => {
+                          if (nextValue === workspaceReferenceOptionValue) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                      >
+                        <TooltipTrigger asChild>
+                          <SelectTrigger
+                            size="sm"
+                            aria-label={labels.referenceWorkspaceFiles}
+                            className={cn(
+                              styles.composerMenuTrigger,
+                              styles.composerReferenceTrigger,
+                              "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                            )}
+                          >
+                            <AddIcon
+                              aria-hidden
+                              className="size-3.5"
+                              data-agent-reference-add-icon="true"
+                            />
+                          </SelectTrigger>
+                        </TooltipTrigger>
+                      </Select>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 <button
                   type="button"
-                  aria-label={labels.referenceWorkspaceFiles}
-                  title={labels.referenceWorkspaceFiles}
+                  aria-label={labels.mentionPalette}
+                  title={labels.mentionPalette}
+                  disabled={composerControlsHardDisabled || inputDisabled}
                   className={cn(
                     styles.composerMenuTrigger,
                     styles.composerReferenceTrigger,
-                    "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
+                    "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
                   )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={handleMentionPaletteButton}
                 >
-                  <AddIcon
+                  <span
                     aria-hidden
-                    className="size-3.5"
-                    data-agent-reference-add-icon="true"
+                    className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                    style={{
+                      WebkitMaskImage: `url("${atLinedIconUrl}")`,
+                      WebkitMaskPosition: "center",
+                      WebkitMaskRepeat: "no-repeat",
+                      WebkitMaskSize: "contain",
+                      maskImage: `url("${atLinedIconUrl}")`,
+                      maskPosition: "center",
+                      maskRepeat: "no-repeat",
+                      maskSize: "contain"
+                    }}
                   />
                 </button>
-              ) : (
+              </div>
+              {showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
-                  open={false}
-                  value={workspaceReferenceSelectValue}
-                  disabled={
-                    isSelectedProjectMissing ||
-                    isSendingTurn ||
-                    isSubmittingPrompt ||
-                    !onRequestWorkspaceReferences ||
-                    (disabled && !canQueueWhileBusy)
-                  }
-                  onOpenChange={(isOpen) => {
-                    if (isOpen) {
-                      void handleWorkspaceReferencePicker();
+                  value={selectedProviderTargetId}
+                  disabled={providerSelectDisabled}
+                  onValueChange={(nextTargetId) => {
+                    const target = providerSwitchTargets.find(
+                      (candidate) => candidate.targetId === nextTargetId
+                    );
+                    if (!target) {
+                      return;
                     }
-                  }}
-                  onValueChange={(nextValue) => {
-                    if (nextValue === workspaceReferenceOptionValue) {
-                      void handleWorkspaceReferencePicker();
-                    }
+                    onProviderSelect?.({
+                      provider: target.provider,
+                      providerTargetId: target.targetId
+                    });
                   }}
                 >
                   <SelectTrigger
                     size="sm"
-                    aria-label={labels.referenceWorkspaceFiles}
-                    title={labels.referenceWorkspaceFiles}
+                    aria-label={labels.providerSwitchLabel}
+                    title={labels.providerSwitchLabel}
                     className={cn(
                       styles.composerMenuTrigger,
-                      styles.composerReferenceTrigger,
-                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      styles.composerProviderSelect,
+                      "max-w-[160px] text-[var(--agent-gui-text-secondary)]"
                     )}
                   >
-                    <AddIcon
-                      aria-hidden
-                      className="size-3.5"
-                      data-agent-reference-add-icon="true"
-                    />
+                    <span className="min-w-0 truncate">
+                      <SelectValue placeholder={selectedProviderLabel} />
+                    </span>
                   </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className={cn(styles.composerMenuContent, "min-w-[190px]")}
+                  >
+                    {providerSwitchTargets.map((target) => (
+                      <SelectItem
+                        key={`${target.provider}:${target.targetId}`}
+                        value={target.targetId}
+                        className={cn(styles.composerMenuItem, "gap-2")}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="size-4 shrink-0 rounded-[4px]"
+                            src={resolveComposerProviderTargetIconUrl(target)}
+                          />
+                          <span className="min-w-0 truncate">
+                            {target.label}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
-              )}
+              ) : null}
               {composerSettings.supportsPlanMode &&
               composerSettings.draftSettings.planMode ? (
                 <button
@@ -3002,16 +3421,64 @@ export function AgentComposer({
                   data-agent-plan-mode-badge="true"
                   className={cn(
                     styles.composerMenuTrigger,
-                    "w-auto",
+                    "group w-auto",
                     "disabled:cursor-not-allowed disabled:opacity-60"
                   )}
                   onClick={() => onSettingsChange({ planMode: false })}
                 >
                   <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                    <ListChecks aria-hidden className="size-3.5 shrink-0" />
+                    <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+                      <ListChecks
+                        aria-hidden
+                        className="size-3.5 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+                      />
+                      <span
+                        aria-hidden
+                        className="absolute inset-0 flex items-center justify-center rounded-full bg-[var(--text-secondary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+                      >
+                        <X
+                          className="size-2.5 text-[var(--background-fronted)]"
+                          strokeWidth={3}
+                        />
+                      </span>
+                    </span>
                     <span className="min-w-0 truncate">
                       {labels.planModeLabel}
                     </span>
+                  </span>
+                </button>
+              ) : null}
+              {isGoalModeActive ? (
+                <button
+                  type="button"
+                  disabled={settingsControlsDisabled}
+                  aria-label={labels.goalLabel}
+                  title={labels.goalLabel}
+                  data-agent-goal-badge="true"
+                  className={cn(
+                    styles.composerMenuTrigger,
+                    "group w-auto",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                  onClick={clearGoalModeBadge}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+                      <Target
+                        aria-hidden
+                        className="size-3.5 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0"
+                      />
+                      <span
+                        aria-hidden
+                        className="absolute inset-0 flex items-center justify-center rounded-full bg-[var(--text-secondary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0"
+                      >
+                        <X
+                          className="size-2.5 text-[var(--background-fronted)]"
+                          strokeWidth={3}
+                        />
+                      </span>
+                    </span>
+                    <span className="min-w-0 truncate">{labels.goalLabel}</span>
                   </span>
                 </button>
               ) : null}
@@ -3025,9 +3492,7 @@ export function AgentComposer({
                   tooltipsEnabled={!previewMode}
                   compactSupported={compactSupported ?? false}
                   compactDisabled={
-                    !hasCompactableContext ||
-                    settingsControlsDisabled ||
-                    inputDisabled
+                    !hasCompactableContext || composerControlsHardDisabled
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
@@ -3225,6 +3690,121 @@ function AgentComposerDraftImagePreview({
       </button>
     </div>
   );
+}
+
+function slashCommandDescriptionForDisplay(
+  command: AgentSessionCommand,
+  labels: Pick<
+    AgentComposerProps["labels"],
+    | "slashCommandCompactDescription"
+    | "slashCommandContextDescription"
+    | "slashCommandFastDescription"
+    | "slashCommandGoalDescription"
+    | "slashCommandInitDescription"
+    | "slashCommandPlanDescription"
+    | "slashCommandReviewDescription"
+    | "slashCommandStatusDescription"
+    | "slashCommandUsageDescription"
+  >
+): string | undefined {
+  switch (command.name.trim().toLowerCase()) {
+    case "compact":
+      return labels.slashCommandCompactDescription;
+    case "context":
+      return labels.slashCommandContextDescription;
+    case "fast":
+      return labels.slashCommandFastDescription;
+    case "goal":
+      return labels.slashCommandGoalDescription;
+    case "init":
+      return labels.slashCommandInitDescription;
+    case "plan":
+      return labels.slashCommandPlanDescription;
+    case "review":
+      return labels.slashCommandReviewDescription;
+    case "status":
+      return labels.slashCommandStatusDescription;
+    case "usage":
+      return labels.slashCommandUsageDescription;
+    default:
+      return command.description;
+  }
+}
+
+function slashCommandLabelForDisplay(
+  command: AgentSessionCommand,
+  labels: Pick<
+    AgentComposerProps["labels"],
+    | "slashCommandCompactLabel"
+    | "slashCommandContextLabel"
+    | "slashCommandFastLabel"
+    | "slashCommandGoalLabel"
+    | "slashCommandInitLabel"
+    | "slashCommandPlanLabel"
+    | "slashCommandReviewLabel"
+    | "slashCommandStatusLabel"
+    | "slashCommandUsageLabel"
+  >,
+  uiLanguage: UiLanguage
+): { primaryLabel?: string; secondaryLabel?: string } {
+  const canonicalLabel = labelForSlashCommand(command);
+  const primaryLabel = localizedSlashCommandLabel(command, labels);
+  return uiLanguage === "en" || primaryLabel === canonicalLabel
+    ? { primaryLabel }
+    : { primaryLabel, secondaryLabel: canonicalLabel };
+}
+
+function localizedSlashCommandLabel(
+  command: AgentSessionCommand,
+  labels: Pick<
+    AgentComposerProps["labels"],
+    | "slashCommandCompactLabel"
+    | "slashCommandContextLabel"
+    | "slashCommandFastLabel"
+    | "slashCommandGoalLabel"
+    | "slashCommandInitLabel"
+    | "slashCommandPlanLabel"
+    | "slashCommandReviewLabel"
+    | "slashCommandStatusLabel"
+    | "slashCommandUsageLabel"
+  >
+): string {
+  switch (command.name.trim().toLowerCase()) {
+    case "compact":
+      return labels.slashCommandCompactLabel;
+    case "context":
+      return labels.slashCommandContextLabel;
+    case "fast":
+      return labels.slashCommandFastLabel;
+    case "goal":
+      return labels.slashCommandGoalLabel;
+    case "init":
+      return labels.slashCommandInitLabel;
+    case "plan":
+      return labels.slashCommandPlanLabel;
+    case "review":
+      return labels.slashCommandReviewLabel;
+    case "status":
+      return labels.slashCommandStatusLabel;
+    case "usage":
+      return labels.slashCommandUsageLabel;
+    default:
+      return labelForSlashCommand(command);
+  }
+}
+
+function goalDraftObjectiveFromPrompt(prompt: string): string | null {
+  const match = /^\s*\/goal(?:\s+([\s\S]*))?\s*$/u.exec(prompt);
+  if (!match) {
+    return null;
+  }
+  return match[1] ?? "";
+}
+
+function buildGoalModePrompt(objective: string): string {
+  return objective.trim() === ""
+    ? GOAL_MODE_SLASH_COMMAND
+    : `${GOAL_MODE_SLASH_COMMAND} ${objective}`;
 }
 
 function isSlashCommandCapability(

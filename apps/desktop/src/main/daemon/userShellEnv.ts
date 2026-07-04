@@ -6,17 +6,28 @@ const marker = "__TUTTI_USER_SHELL_ENV_START__";
 const envCommand = `printf '%s\\0' ${marker}; env -0`;
 const maxShellEnvOutputBytes = 1024 * 1024;
 const allowedEnvKeys = new Set([
+  "ALL_PROXY",
   "ASDF_DATA_DIR",
   "ASDF_DIR",
   "FNM_DIR",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
   "LANG",
   "LC_ALL",
   "LC_CTYPE",
   "LC_MESSAGES",
+  "NO_PROXY",
   "N_PREFIX",
   "PATH",
   "PNPM_HOME",
-  "VOLTA_HOME"
+  "VOLTA_HOME",
+  // Proxy vars are conventionally lowercase in shell configs; Go's
+  // httpproxy.FromEnvironment and most CLIs read both spellings, so forward
+  // them verbatim without case normalization.
+  "all_proxy",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy"
 ]);
 const allowedEnvPrefixes = ["MISE_"];
 

@@ -9,7 +9,7 @@ import (
 )
 
 type referenceListInput struct {
-	Source  string `cli:"source" validate:"required" description:"Reference source: 'app' or 'task'."`
+	Source  string `cli:"source" validate:"required" description:"Reference source." enum:"app,task"`
 	ID      string `cli:"id" validate:"required" description:"Top container id: appId when source=app, topicId when source=task."`
 	GroupID string `cli:"group-id" description:"Optional sub-scope: an app group id when source=app, an issueId when source=task. Empty = whole app / whole topic."`
 	Query   string `cli:"query" description:"Optional file name filter."`

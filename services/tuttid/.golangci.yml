@@ -8,6 +8,7 @@ linters:
   default: none
   enable:
     - errcheck
+    - forbidigo
     - govet
     - ineffassign
     - nolintlint
@@ -15,6 +16,12 @@ linters:
     - unused
     - revive
   settings:
+    forbidigo:
+      forbid:
+        - pattern: 'http\.DefaultClient'
+          msg: "use packages/agent/daemon/httpx instead — it resolves the user's proxy per request"
+        - pattern: 'http\.(Get|Head|Post|PostForm)$'
+          msg: "use packages/agent/daemon/httpx instead — it resolves the user's proxy per request"
     revive:
       rules:
         - name: duplicated-imports
@@ -50,3 +57,7 @@ linters:
       - comments
       - common-false-positives
       - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - forbidigo

@@ -1024,7 +1024,8 @@ describe("AgentInteractivePromptSurface", () => {
         prompt={{
           kind: "exit-plan",
           requestId: "request-plan",
-          title: "Exit plan mode"
+          title: "Exit plan mode",
+          options: []
         }}
         isSubmitting={false}
         onSubmit={onSubmit}
@@ -1050,7 +1051,8 @@ describe("AgentInteractivePromptSurface", () => {
         prompt={{
           kind: "exit-plan",
           requestId: "request-plan-feedback",
-          title: "Exit plan mode"
+          title: "Exit plan mode",
+          options: []
         }}
         isSubmitting={false}
         onSubmit={onSubmit}
@@ -1077,7 +1079,8 @@ describe("AgentInteractivePromptSurface", () => {
         prompt={{
           kind: "exit-plan",
           requestId: "request-plan-feedback-2",
-          title: "Exit plan mode"
+          title: "Exit plan mode",
+          options: []
         }}
         isSubmitting={false}
         onSubmit={onSubmit}

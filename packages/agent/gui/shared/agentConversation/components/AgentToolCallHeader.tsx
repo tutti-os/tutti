@@ -27,6 +27,7 @@ export function AgentToolCallHeader({
   const diffStats = diffStatsForCall(call);
   const isActive =
     call.statusKind === "working" || call.statusKind === "waiting";
+  const isFailed = call.statusKind === "failed" || isFailedStatus(call.status);
 
   return (
     <div
@@ -39,7 +40,7 @@ export function AgentToolCallHeader({
         .join(" ")}
     >
       <div className="workspace-agents-status-panel__detail-tool-row-icon tsh-inline-scanlight-icon">
-        {call.statusKind === "failed" ? (
+        {isFailed ? (
           <AlertCircle
             size={TOOL_ROW_ICON_SIZE}
             strokeWidth={2}
@@ -186,6 +187,11 @@ function formatInlineStatusLabel(label: string): string {
   return /^[A-Z][a-z]+$/.test(label) ? label.toLowerCase() : label;
 }
 
+function isFailedStatus(value: string | null | undefined): boolean {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "failed" || normalized === "error";
+}
+
 function formatInlineTitleLabel(label: string): string {
   const trimmed = label.trim();
   if (!/[a-z]/.test(trimmed) || !/[A-Z]/.test(trimmed.slice(1))) {
@@ -220,6 +226,9 @@ function LoadingEllipsis(): JSX.Element {
 function diffStatsForCall(
   call: AgentToolCallVM
 ): { added: number; removed: number } | null {
+  if (call.rendererKind === "approval") {
+    return null;
+  }
   const files = getFileChangeRenderData(call);
   if (files.length > 0) {
     const totals = files.reduce(

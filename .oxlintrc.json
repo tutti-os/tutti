@@ -13,6 +13,20 @@
   "env": {
     "builtin": true
   },
+  "overrides": [
+    {
+      "files": ["apps/desktop/src/main/**"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "Outbound HTTP from desktop main must use net/outboundFetch (routes through Chromium's proxy stack); local daemon/loopback targets may disable this rule inline with a reason."
+          }
+        ]
+      }
+    }
+  ],
   "ignorePatterns": [
     "**/.git/**",
     "**/.claude/**",

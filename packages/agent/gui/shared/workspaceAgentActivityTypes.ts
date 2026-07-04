@@ -17,6 +17,7 @@ export interface WorkspaceAgentActivityComposerSettings {
   speed?: string | null;
   planMode?: boolean;
   browserUse?: boolean;
+  computerUse?: boolean;
   permissionModeId?: string | null;
 }
 
@@ -198,6 +199,7 @@ export interface WorkspaceAgentActivityStatePatch {
   permissionModeId?: string;
   settings?: WorkspaceAgentActivityComposerSettings;
   runtimeContext?: Record<string, unknown>;
+  pendingInteractive?: AgentActivitySession["pendingInteractive"];
   cwd?: string;
   title?: string;
   lifecycleStatus?: string;
@@ -308,9 +310,31 @@ export function mergeWorkspaceAgentActivityDurableAndOverlayMessages(input: {
 }): WorkspaceAgentActivityMessage[] {
   const durableMessages = input.durableMessages ?? [];
   const overlayMessages = selectWorkspaceAgentActivityOverlayMessages(input);
-  return overlayMessages.length === 0
-    ? [...durableMessages]
-    : mergeAgentActivityMessages(durableMessages, overlayMessages);
+  if (overlayMessages.length === 0) {
+    return [...durableMessages];
+  }
+  // Optimistic echoes carry version 0 (outside the durable version domain),
+  // so they cannot participate in a version sort. Durable-domain overlay rows
+  // merge by version as usual; surviving echoes append after all durable
+  // rows, ordered among themselves by when the user submitted.
+  const overlayDurableMessages = overlayMessages.filter(
+    (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
+  );
+  const optimisticMessages = overlayMessages
+    .filter(isWorkspaceAgentActivityOptimisticMessage)
+    .slice()
+    .sort(
+      (left, right) =>
+        left.occurredAtUnixMs - right.occurredAtUnixMs ||
+        left.messageId.localeCompare(right.messageId)
+    );
+  const merged =
+    overlayDurableMessages.length === 0
+      ? [...durableMessages]
+      : mergeAgentActivityMessages(durableMessages, overlayDurableMessages);
+  return optimisticMessages.length === 0
+    ? merged
+    : [...merged, ...optimisticMessages];
 }
 
 function workspaceAgentActivityMessageIdentity(

@@ -251,6 +251,7 @@ type analyticsDebugReportedEventPayload struct {
 type agentActivityUpdatedPayload struct {
 	WorkspaceID    string          `json:"workspaceId"`
 	AgentSessionID string          `json:"agentSessionId"`
+	AgentTargetID  string          `json:"agentTargetId,omitempty"`
 	EventType      string          `json:"eventType"`
 	Data           json.RawMessage `json:"data"`
 }
@@ -263,6 +264,7 @@ type agentActivityUpdatedDataHeader struct {
 
 type agentActivitySessionUpdateData struct {
 	agentActivityUpdatedDataHeader
+	AgentTargetID   string `json:"agentTargetId,omitempty"`
 	LastEventUnixMS *int64 `json:"lastEventUnixMs"`
 }
 
@@ -300,6 +302,7 @@ type agentActivityStatePatchData struct {
 	LastEventUnixMS  *int64                      `json:"lastEventUnixMs"`
 	OccurredAtUnixMS *int64                      `json:"occurredAtUnixMs,omitempty"`
 	Provider         string                      `json:"provider,omitempty"`
+	AgentTargetID    string                      `json:"agentTargetId,omitempty"`
 	ProviderSession  string                      `json:"providerSessionId,omitempty"`
 	Model            string                      `json:"model,omitempty"`
 	CWD              string                      `json:"cwd,omitempty"`
@@ -374,6 +377,12 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if strings.TrimSpace(decoded.AgentDockLayout) == "" {
+		return fmt.Errorf("preferences.agentDockLayout is required")
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(strings.TrimSpace(decoded.AgentDockLayout)) {
+		return fmt.Errorf("preferences.agentDockLayout is unsupported")
 	}
 	if decoded.AppCatalogChannel == "" {
 		return fmt.Errorf("preferences.appCatalogChannel is required")
@@ -454,6 +463,18 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopDockPlacement(decoded.Preferences.DockPlacement) {
 		return fmt.Errorf("preferences.dockPlacement is unsupported")
+	}
+	if decoded.Preferences.AgentConversationDetailMode == "" {
+		return fmt.Errorf("preferences.agentConversationDetailMode is required")
+	}
+	if !preferencesbiz.IsDesktopAgentConversationDetailMode(decoded.Preferences.AgentConversationDetailMode) {
+		return fmt.Errorf("preferences.agentConversationDetailMode is unsupported")
+	}
+	if strings.TrimSpace(decoded.Preferences.AgentDockLayout) == "" {
+		return fmt.Errorf("preferences.agentDockLayout is required")
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(strings.TrimSpace(decoded.Preferences.AgentDockLayout)) {
+		return fmt.Errorf("preferences.agentDockLayout is unsupported")
 	}
 	if decoded.Preferences.AppCatalogChannel == "" {
 		return fmt.Errorf("preferences.appCatalogChannel is required")

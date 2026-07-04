@@ -7,6 +7,7 @@ import type {
 import {
   defaultDesktopMinimizeAnimation,
   desktopWorkbenchWindowSnappingEqual,
+  normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopWorkbenchWindowSnapping
 } from "../../../../../../../shared/preferences/index.ts";
 
@@ -231,6 +232,10 @@ function createPreferencesKey(
     stableAgentGuiConversationRailCollapsedByProviderKey(
       preferences.agentGuiConversationRailCollapsedByProvider
     ),
+    normalizeDesktopAgentConversationDetailMode(
+      preferences.agentConversationDetailMode
+    ),
+    preferences.agentDockLayout,
     preferences.appCatalogChannel,
     preferences.browserUseConnectionMode ?? "isolated",
     preferences.defaultAgentProvider,
@@ -264,6 +269,13 @@ function preferencesEqual(
       stableAgentGuiConversationRailCollapsedByProviderKey(
         right.agentGuiConversationRailCollapsedByProvider
       ) &&
+    normalizeDesktopAgentConversationDetailMode(
+      left.agentConversationDetailMode
+    ) ===
+      normalizeDesktopAgentConversationDetailMode(
+        right.agentConversationDetailMode
+      ) &&
+    left.agentDockLayout === right.agentDockLayout &&
     (left.browserUseConnectionMode ?? "isolated") ===
       (right.browserUseConnectionMode ?? "isolated") &&
     left.appCatalogChannel === right.appCatalogChannel &&

@@ -6,7 +6,7 @@ import type {
 } from "../services/agentProviderStatusService.interface";
 import {
   ensureDesktopManagedAgentProviderStatuses,
-  projectDesktopManagedAgentsState
+  projectDesktopManagedAgentsStateForAgentGUI
 } from "../services/internal/desktopManagedAgentProviders.ts";
 
 const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
@@ -44,7 +44,7 @@ export function useDesktopManagedAgentsState(
   return useMemo(
     () =>
       agentProviderStatusService
-        ? projectDesktopManagedAgentsState(snapshot)
+        ? projectDesktopManagedAgentsStateForAgentGUI(snapshot)
         : null,
     [agentProviderStatusService, snapshot]
   );

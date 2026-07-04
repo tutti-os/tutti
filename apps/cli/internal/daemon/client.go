@@ -232,7 +232,15 @@ func daemonRequestError(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err) {
 		return fmt.Errorf("daemon request timed out")
 	}
+	if runningInAgentEnvironment() {
+		return fmt.Errorf("daemon is not reachable from this agent execution environment; rerun the command in an execution environment with localhost/IPC access")
+	}
 	return fmt.Errorf("daemon is not reachable")
+}
+
+func runningInAgentEnvironment() bool {
+	return strings.TrimSpace(os.Getenv("TUTTI_AGENT_SESSION_ID")) != "" ||
+		strings.TrimSpace(os.Getenv("TUTTI_AGENT_ROUTING")) != ""
 }
 
 func urlPathEscape(value string) string {

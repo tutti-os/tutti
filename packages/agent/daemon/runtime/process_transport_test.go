@@ -82,6 +82,38 @@ func TestLocalProcessTransportFindsKnownNodeGlobalBin(t *testing.T) {
 	}
 }
 
+func TestLocalProcessTransportCloseKillsProcessAfterGracefulShutdownFails(t *testing.T) {
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is unavailable")
+	}
+
+	conn, err := NewLocalProcessTransport().Start(context.Background(), ProcessSpec{
+		Command: []string{shPath, "-c", "trap '' TERM; while true; do sleep 1; done"},
+	})
+	if err != nil {
+		t.Fatalf("start transport: %v", err)
+	}
+
+	done := make(chan error, 1)
+	startedAt := time.Now()
+	go func() {
+		done <- conn.Close()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(4 * time.Second):
+		t.Fatal("Close did not force-kill process after graceful shutdown failed")
+	}
+	if elapsed := time.Since(startedAt); elapsed < 900*time.Millisecond {
+		t.Fatalf("Close returned after %s, want SIGTERM grace before kill fallback", elapsed)
+	}
+}
+
 func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 	tuttiBin := filepath.Join(string(os.PathSeparator), "Users", "Sun", ".tutti", "bin")
 	managedBin := filepath.Join(string(os.PathSeparator), "managed", "node", "bin")

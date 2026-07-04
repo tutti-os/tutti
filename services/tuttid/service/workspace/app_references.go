@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -492,7 +493,7 @@ func appReferenceListHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
 	}
-	return http.DefaultClient
+	return httpx.Default()
 }
 
 func normalizeAppReferenceListLimit(limit int) int {

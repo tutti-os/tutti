@@ -25,6 +25,10 @@ import {
   tuttiFolderAssetUrls,
   tuttiIssueAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
+import type {
+  AgentTargetPresentation,
+  IAgentsService
+} from "../../../workspace-agent/services/agentsService.interface";
 import { resolveDesktopWorkspaceAppDefaultIconUrl } from "../../../../../../shared/workspaceAppIconDefaults.ts";
 import type {
   DesktopRichTextAtCapability,
@@ -45,6 +49,7 @@ interface DesktopRichTextAtContributor {
 }
 
 export interface DesktopRichTextAtServiceDependencies {
+  agentsService?: Pick<IAgentsService, "load">;
   tuttidClient: TuttidClient;
   /** Active UI locale getter, read at query time so locale switches are picked up. */
   getLocale?: () => string;
@@ -92,6 +97,15 @@ interface AgentSessionAtItem {
   workspaceId: string;
 }
 
+interface AgentTargetAtItem {
+  description: string;
+  displayName: string;
+  iconUrl: string;
+  provider: WorkspaceAgentProvider;
+  targetId: string;
+  workspaceId: string;
+}
+
 interface WorkspaceAppAtItem {
   appId: string;
   commandCount: number;
@@ -122,6 +136,7 @@ interface BuiltInWorkspaceAppResource {
 }
 
 const {
+  agentTarget: AGENT_TARGET_PROVIDER_ID,
   agentSession: AGENT_SESSION_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
@@ -158,10 +173,13 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
     this.contributors = [
       createWorkspaceFileAtContributor(dependencies.tuttidClient),
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
+      createAgentTargetAtContributor({
+        agentsService: dependencies.agentsService,
+        agentProviderStatuses: dependencies.agentProviderStatuses
+      }),
       createAgentSessionAtContributor(dependencies.tuttidClient),
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
-        agentProviderStatuses: dependencies.agentProviderStatuses,
         getLocale: dependencies.getLocale
       })
     ];
@@ -227,7 +245,6 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
 
 function createWorkspaceAppAtContributor(contributorInput: {
   tuttidClient: TuttidClient;
-  agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
   getLocale?: () => string;
 }): DesktopRichTextAtContributor {
   return {
@@ -249,7 +266,6 @@ function createWorkspaceAppAtContributor(contributorInput: {
               return [];
             }
             return workspaceAppAtItemsFromMentionCandidates({
-              agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
               candidates: response.apps,
               excludedAppIds: excludedWorkspaceAppMentionIds(input.target),
               keyword: searchInput.keyword,
@@ -290,8 +306,6 @@ function createWorkspaceAppAtContributor(contributorInput: {
                   workspaceId
                 );
               const item = workspaceAppAtItemsFromMentionCandidates({
-                agentProviderStatuses:
-                  contributorInput.agentProviderStatuses?.(),
                 candidates: response.apps,
                 excludedAppIds: excludedWorkspaceAppMentionIds(input.target),
                 keyword: "",
@@ -321,7 +335,6 @@ function createWorkspaceAppAtContributor(contributorInput: {
 }
 
 function workspaceAppAtItemsFromMentionCandidates(input: {
-  agentProviderStatuses?: readonly AgentProviderStatus[];
   candidates: Awaited<
     ReturnType<TuttidClient["listWorkspaceAppMentionCandidates"]>
   >["apps"];
@@ -343,12 +356,7 @@ function workspaceAppAtItemsFromMentionCandidates(input: {
     if (excludedAppIds.has(appId.toLowerCase())) {
       continue;
     }
-    if (
-      !shouldShowReadyAgentPseudoApp({
-        agentProviderStatuses: input.agentProviderStatuses,
-        appId
-      })
-    ) {
+    if (isLegacyAgentWorkspaceAppMentionId(appId)) {
       continue;
     }
     const localization = findWorkspaceAppMentionLocalization(
@@ -412,20 +420,25 @@ const WORKSPACE_AGENT_APP_PROVIDER_BY_ID: Readonly<
   "agent-codex": "codex"
 };
 
-function shouldShowReadyAgentPseudoApp(input: {
+function isLegacyAgentWorkspaceAppMentionId(appId: string): boolean {
+  return (
+    WORKSPACE_AGENT_APP_PROVIDER_BY_ID[appId.trim().toLowerCase()] !== undefined
+  );
+}
+
+function shouldShowReadyAgentTarget(input: {
   agentProviderStatuses?: readonly AgentProviderStatus[];
-  appId: string;
+  provider: WorkspaceAgentProvider;
 }): boolean {
-  const provider =
-    WORKSPACE_AGENT_APP_PROVIDER_BY_ID[input.appId.trim().toLowerCase()];
-  if (!provider || input.agentProviderStatuses === undefined) {
+  if (input.agentProviderStatuses === undefined) {
     return true;
   }
-  // UI-only guard for agent pseudo apps. This reads an existing renderer
+  // UI-only guard for agent targets. This reads an existing renderer
   // snapshot and must not trigger provider availability/auth probing.
   return input.agentProviderStatuses.some(
     (status) =>
-      status.provider === provider && status.availability.status === "ready"
+      status.provider === input.provider &&
+      status.availability.status === "ready"
   );
 }
 
@@ -842,6 +855,195 @@ function workspaceIssueIdSearchKeyword(keyword: string): string | null {
   return /^issue-[A-Za-z0-9_-]+$/.test(issueId) ? issueId : null;
 }
 
+function createAgentTargetAtContributor(contributorInput: {
+  agentsService?: Pick<IAgentsService, "load">;
+  agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+}): DesktopRichTextAtContributor {
+  return {
+    capability: "agent-target",
+    getProviders(input) {
+      return [
+        createRichTextTriggerProvider<AgentTargetAtItem>({
+          id: AGENT_TARGET_PROVIDER_ID,
+          trigger: "@",
+          async query(searchInput) {
+            if (searchInput.abortSignal?.aborted) {
+              return [];
+            }
+            const response = await contributorInput.agentsService?.load(
+              searchInput.abortSignal
+            );
+            if (searchInput.abortSignal?.aborted) {
+              return [];
+            }
+            if (!response) {
+              return [];
+            }
+            return agentTargetAtItemsFromTargets({
+              agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
+              keyword: searchInput.keyword,
+              maxResults: searchInput.maxResults,
+              targets: response.agentTargets,
+              workspaceId: input.workspaceId
+            });
+          },
+          getItemKey: (item) => item.targetId,
+          getItemLabel: (item) => item.displayName,
+          getItemSubtitle: (item) => item.description,
+          getItemIconUrl: (item) => item.iconUrl,
+          toInsertResult(item) {
+            return createDesktopRichTextMentionInsertResult({
+              entityId: item.targetId,
+              label: item.displayName,
+              scope: compactStringRecord({
+                workspaceId: item.workspaceId
+              }),
+              presentation: compactMentionPresentation({
+                agentProviderId: item.provider,
+                description: item.description,
+                iconUrl: item.iconUrl,
+                subtitle: item.description
+              })
+            });
+          },
+          async resolveMention(identity) {
+            const workspaceId = scopeString(identity.scope, "workspaceId");
+            if (!workspaceId) {
+              return null;
+            }
+            return resolveMentionSafely(async () => {
+              const response = await contributorInput.agentsService?.load();
+              if (!response) {
+                return null;
+              }
+              const item = agentTargetAtItemsFromTargets({
+                agentProviderStatuses:
+                  contributorInput.agentProviderStatuses?.(),
+                keyword: "",
+                targets: response.agentTargets,
+                workspaceId
+              }).find((target) => target.targetId === identity.entityId);
+              if (!item) {
+                return null;
+              }
+              return {
+                label: item.displayName,
+                presentation: compactMentionPresentation({
+                  agentProviderId: item.provider,
+                  description: item.description,
+                  iconUrl: item.iconUrl,
+                  subtitle: item.description
+                })
+              };
+            });
+          }
+        })
+      ];
+    }
+  };
+}
+
+function agentTargetAtItemsFromTargets(input: {
+  agentProviderStatuses?: readonly AgentProviderStatus[];
+  keyword: string;
+  maxResults?: number;
+  targets: readonly AgentTargetPresentation[];
+  workspaceId: string;
+}): AgentTargetAtItem[] {
+  const keyword = input.keyword.trim().toLowerCase();
+  const items = input.targets
+    .filter((target) => target.enabled)
+    .map((target): AgentTargetAtItem | null => {
+      const provider = normalizeWorkspaceAgentProvider(target.provider);
+      if (!provider) {
+        return null;
+      }
+      if (
+        !shouldShowReadyAgentTarget({
+          agentProviderStatuses: input.agentProviderStatuses,
+          provider
+        })
+      ) {
+        return null;
+      }
+      const targetId = target.agentTargetId.trim();
+      if (!targetId) {
+        return null;
+      }
+      const label =
+        normalizeText(target.name) ??
+        resolveAgentSessionProviderLabel(provider);
+      const description = normalizeText(target.name) ?? label;
+      return {
+        description,
+        displayName: label,
+        iconUrl: target.iconUrl,
+        provider,
+        targetId,
+        workspaceId: input.workspaceId
+      };
+    })
+    .filter((item): item is AgentTargetAtItem => item !== null)
+    .filter((item) => agentTargetMatchesKeyword(item, keyword))
+    .sort(compareAgentTargetAtItems);
+  return input.maxResults === undefined
+    ? items
+    : items.slice(0, Math.max(0, input.maxResults));
+}
+
+function normalizeWorkspaceAgentProvider(
+  provider: string
+): WorkspaceAgentProvider | null {
+  switch (provider.trim()) {
+    case "claude-code":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return null;
+  }
+}
+
+function agentTargetMatchesKeyword(
+  item: AgentTargetAtItem,
+  keyword: string
+): boolean {
+  if (!keyword) {
+    return true;
+  }
+  return [item.targetId, item.provider, item.displayName, item.description]
+    .join("\n")
+    .toLowerCase()
+    .includes(keyword);
+}
+
+function compareAgentTargetAtItems(
+  left: AgentTargetAtItem,
+  right: AgentTargetAtItem
+): number {
+  const providerOrder =
+    agentTargetProviderRank(left.provider) -
+    agentTargetProviderRank(right.provider);
+  if (providerOrder !== 0) {
+    return providerOrder;
+  }
+  const labelOrder = left.displayName.localeCompare(
+    right.displayName,
+    undefined,
+    {
+      sensitivity: "base"
+    }
+  );
+  if (labelOrder !== 0) {
+    return labelOrder;
+  }
+  return left.targetId.localeCompare(right.targetId);
+}
+
+function agentTargetProviderRank(provider: WorkspaceAgentProvider): number {
+  return provider === "codex" ? 0 : 1;
+}
+
 function createAgentSessionAtContributor(
   tuttidClient: TuttidClient
 ): DesktopRichTextAtContributor {
@@ -864,8 +1066,7 @@ function createAgentSessionAtContributor(
               input.workspaceId,
               {
                 limit: searchInput.maxResults,
-                searchQuery: searchInput.keyword.trim(),
-                visibleOnly: true
+                searchQuery: searchInput.keyword.trim()
               }
             );
             if (searchInput.abortSignal?.aborted) {

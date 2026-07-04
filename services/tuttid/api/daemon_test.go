@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -66,22 +68,26 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
-	clearFn                  func(context.Context, string) (agentservice.ClearSessionsResult, error)
-	composerOptionsFn        func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
-	createFn                 func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
-	deleteFn                 func(context.Context, string, string) (bool, error)
-	importExternalFn         func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
-	validImportPathsFn       func(context.Context, agentservice.ExternalImportInput) ([]string, error)
-	listFn                   func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
-	listGeneratedFilesFn     func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
-	listMessagesFn           func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
-	readAttachmentFn         func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
-	scanExternalFn           func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
-	listGitBranchesFn        func(context.Context, string, string) (agentservice.GitBranches, error)
-	listGitBranchesForPathFn func(context.Context, string, string) (agentservice.GitBranches, error)
-	updatePinFn              func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateVisibleFn          func(context.Context, string, string, bool) (agentservice.Session, error)
-	updateSettingsFn         func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
+	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
+	deleteFn                        func(context.Context, string, string) (bool, error)
+	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
+	validImportPathsFn              func(context.Context, agentservice.ExternalImportInput) ([]string, error)
+	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
+	listSessionSectionsFn           func(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
+	listSessionSectionPageFn        func(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	listGeneratedFilesFn            func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
+	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
+	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	scanExternalFn                  func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
+	listGitBranchesFn               func(context.Context, string, string) (agentservice.GitBranches, error)
+	listGitBranchesForPathFn        func(context.Context, string, string) (agentservice.GitBranches, error)
+	resolveGitPatchSupportForPathFn func(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	applyGitPatchForPathFn          func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
+	updatePinFn                     func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
 
 func (stubAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -201,6 +207,20 @@ func (s stubAgentSessionService) ListFiltered(ctx context.Context, workspaceID s
 	return s.listFn(ctx, workspaceID, input)
 }
 
+func (s stubAgentSessionService) ListSessionSections(ctx context.Context, workspaceID string, input agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error) {
+	if s.listSessionSectionsFn == nil {
+		return agentservice.SessionSectionsPage{}, nil
+	}
+	return s.listSessionSectionsFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) ListSessionSectionPage(ctx context.Context, workspaceID string, input agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error) {
+	if s.listSessionSectionPageFn == nil {
+		return agentservice.SessionSection{}, nil
+	}
+	return s.listSessionSectionPageFn(ctx, workspaceID, input)
+}
+
 func (s stubAgentSessionService) Clear(ctx context.Context, workspaceID string) (agentservice.ClearSessionsResult, error) {
 	if s.clearFn == nil {
 		return agentservice.ClearSessionsResult{}, nil
@@ -283,6 +303,20 @@ func (s stubAgentSessionService) ListGitBranchesForPath(ctx context.Context, wor
 		return s.listGitBranchesForPathFn(ctx, workspaceID, workingDirectory)
 	}
 	return agentservice.GitBranches{}, nil
+}
+
+func (s stubAgentSessionService) ResolveGitPatchSupportForPath(ctx context.Context, workspaceID string, cwd string) (agentservice.GitPatchSupport, error) {
+	if s.resolveGitPatchSupportForPathFn != nil {
+		return s.resolveGitPatchSupportForPathFn(ctx, workspaceID, cwd)
+	}
+	return agentservice.GitPatchSupport{}, nil
+}
+
+func (s stubAgentSessionService) ApplyGitPatchForPath(ctx context.Context, workspaceID string, input agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error) {
+	if s.applyGitPatchForPathFn != nil {
+		return s.applyGitPatchForPathFn(ctx, workspaceID, input)
+	}
+	return agentservice.ApplyGitPatchResult{}, nil
 }
 
 func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -526,7 +560,9 @@ func (s stubPreferencesService) Get(ctx context.Context) (preferencesbiz.Desktop
 func (s stubPreferencesService) Put(ctx context.Context, input preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
 	if s.putFn == nil {
 		return preferencesbiz.DesktopPreferences{
-			DefaultAgentProvider: input.DefaultAgentProvider,
+			AgentConversationDetailMode: input.AgentConversationDetailMode,
+			AgentDockLayout:             input.AgentDockLayout,
+			DefaultAgentProvider:        input.DefaultAgentProvider,
 
 			DockIconStyle:       "default",
 			DockPlacement:       input.DockPlacement,
@@ -539,6 +575,17 @@ func (s stubPreferencesService) Put(ctx context.Context, input preferencesservic
 		}, nil
 	}
 	return s.putFn(ctx, input)
+}
+
+type stubAgentTargetService struct {
+	listFn func(context.Context) ([]agenttargetbiz.Target, error)
+}
+
+func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
+	if s.listFn == nil {
+		return agenttargetbiz.DefaultSystemTargets(1), nil
+	}
+	return s.listFn(ctx)
 }
 
 func TestDaemonAPIGeneratedRoutesWorkspaceTerminalsReturnServiceUnavailable(t *testing.T) {
@@ -603,8 +650,8 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
-				if input.SearchQuery != "mention" || input.Limit != 30 || !input.VisibleOnly {
-					t.Fatalf("list input = %#v, want searchQuery=mention limit=30 visibleOnly=true", input)
+				if input.SearchQuery != "mention" || input.Limit != 30 {
+					t.Fatalf("list input = %#v, want searchQuery=mention limit=30", input)
 				}
 				return []agentservice.Session{{
 					ID:        "agent-session-1",
@@ -622,7 +669,74 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-sessions?searchQuery=mention&limit=30&visibleOnly=true",
+		"/v1/workspaces/ws-1/agent-sessions?searchQuery=mention&limit=30",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listSessionSectionsFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.LimitPerSection != 7 || input.AgentTargetID != "claude-target" {
+					t.Fatalf("section input = %#v, want limitPerSection and agentTargetID", input)
+				}
+				return agentservice.SessionSectionsPage{
+					WorkspaceID: workspaceID,
+					Sections: []agentservice.SessionSection{{
+						Kind:       "conversations",
+						SectionKey: "conversations",
+						HasMore:    false,
+					}},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-session-sections?limitPerSection=7&agentTargetId=claude-target",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesListAgentSessionSectionPageForwardsCursor(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listSessionSectionPageFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.SectionKey != "project:/workspace/project" || input.Cursor != "1000|session-1" || input.Limit != 5 || input.AgentTargetID != "claude-target" {
+					t.Fatalf("page input = %#v, want sectionKey cursor limit agentTargetID", input)
+				}
+				return agentservice.SessionSection{
+					Kind:       "project",
+					SectionKey: input.SectionKey,
+					HasMore:    false,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-session-sections/page?sectionKey=project:%2Fworkspace%2Fproject&cursor=1000%7Csession-1&limit=5&agentTargetId=claude-target",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {
@@ -727,6 +841,110 @@ func TestDaemonAPIGeneratedRoutesReadAgentSessionAttachment(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesApplyWorkspaceGitPatch(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			applyGitPatchForPathFn: func(_ context.Context, workspaceID string, input agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.Cwd != "/workspace/project" {
+					t.Fatalf("cwd = %q, want /workspace/project", input.Cwd)
+				}
+				if input.Diff != "diff --git a/a.txt b/a.txt\n" {
+					t.Fatalf("diff = %q", input.Diff)
+				}
+				if !input.Revert || !input.Atomic || input.Target != agentservice.ApplyGitPatchTargetStaged || !input.AllowBinary {
+					t.Fatalf("input flags = %#v", input)
+				}
+				return agentservice.ApplyGitPatchResult{
+					Status:          agentservice.ApplyGitPatchStatusPartialSuccess,
+					AppliedPaths:    []string{"a.txt"},
+					SkippedPaths:    []string{"b.txt"},
+					ConflictedPaths: []string{"c.txt"},
+					ExecOutput: agentservice.ApplyGitPatchExecOutput{
+						Command: "git apply -R patch.diff",
+						Stderr:  "conflict",
+					},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/git-patch",
+		map[string]any{
+			"cwd":         "/workspace/project",
+			"diff":        "diff --git a/a.txt b/a.txt\n",
+			"revert":      true,
+			"atomic":      true,
+			"target":      "staged",
+			"allowBinary": true,
+		},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceGitPatchResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Status != tuttigenerated.WorkspaceGitPatchStatus(agentservice.ApplyGitPatchStatusPartialSuccess) {
+		t.Fatalf("status = %q, want partial-success", response.Status)
+	}
+	if !slices.Equal(response.AppliedPaths, []string{"a.txt"}) ||
+		!slices.Equal(response.SkippedPaths, []string{"b.txt"}) ||
+		!slices.Equal(response.ConflictedPaths, []string{"c.txt"}) {
+		t.Fatalf("response paths = %#v", response)
+	}
+	if response.ExecOutput == nil || response.ExecOutput.Command != "git apply -R patch.diff" || response.ExecOutput.Stderr != "conflict" {
+		t.Fatalf("execOutput = %#v", response.ExecOutput)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesResolveWorkspaceGitPatchSupport(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			resolveGitPatchSupportForPathFn: func(_ context.Context, workspaceID string, cwd string) (agentservice.GitPatchSupport, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if cwd != "/workspace/project" {
+					t.Fatalf("cwd = %q, want /workspace/project", cwd)
+				}
+				return agentservice.GitPatchSupport{
+					Supported: true,
+					Root:      "/workspace/project",
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/git-patch-support?cwd=%2Fworkspace%2Fproject",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceGitPatchSupportResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if !response.Supported {
+		t.Fatalf("supported = false, want true")
+	}
+	if response.Root == nil || *response.Root != "/workspace/project" {
+		t.Fatalf("root = %#v, want /workspace/project", response.Root)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesReplaceWorkspaceAppIconReturnServiceUnavailable(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))
@@ -814,30 +1032,13 @@ func TestDaemonAPIGeneratedRoutesRetryWorkspaceAppMapsInvalidRuntimeState(t *tes
 	)
 }
 
-func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
-	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+func TestDaemonAPIGeneratedRoutesCreateAgentSessionRejectsMissingAgentTarget(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
-			createFn: func(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
-				if workspaceID != "ws-1" {
-					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
-				}
-				if input.Provider != "codex" {
-					t.Fatalf("provider = %q, want codex", input.Provider)
-				}
-				if input.AgentSessionID != "11111111-1111-4111-8111-111111111111" {
-					t.Fatalf("agent session id = %q", input.AgentSessionID)
-				}
-				if input.ProviderTargetRef["kind"] != "sharedAgent" || input.ProviderTargetRef["sharedAgentId"] != "agent-1" {
-					t.Fatalf("provider target ref = %#v, want shared agent ref", input.ProviderTargetRef)
-				}
-				return agentservice.Session{
-					ID:        input.AgentSessionID,
-					Provider:  "codex",
-					Status:    "created",
-					CreatedAt: createdAt,
-				}, nil
+			createFn: func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error) {
+				t.Fatal("Create should not be called when agentTargetId is missing")
+				return agentservice.Session{}, nil
 			},
 		},
 	}))
@@ -852,14 +1053,57 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSession(t *testing.T) {
 			"sharedAgentId": "agent-1",
 		},
 	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
+		apierrors.ReasonMalformedRequest,
+		"agentTargetId is required",
+	)
+}
+
+func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			createFn: func(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.AgentTargetID != agenttargetbiz.IDLocalCodex {
+					t.Fatalf("agent target id = %q, want %s", input.AgentTargetID, agenttargetbiz.IDLocalCodex)
+				}
+				if input.Provider != "" {
+					t.Fatalf("provider = %q, want empty pre-service target-only authority", input.Provider)
+				}
+				return agentservice.Session{
+					ID:            input.AgentSessionID,
+					AgentTargetID: input.AgentTargetID,
+					Provider:      "codex",
+					Status:        "created",
+					CreatedAt:     createdAt,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
+		"agentSessionId": "11111111-1111-4111-8111-111111111111",
+		"agentTargetId":  agenttargetbiz.IDLocalCodex,
+		"initialContent": []map[string]any{{"type": "text", "text": "hello"}},
+	})
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
 	}
 
 	var response tuttigenerated.WorkspaceAgentSessionResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.Session.Id != "11111111-1111-4111-8111-111111111111" {
-		t.Fatalf("session id = %q, want frontend UUID", response.Session.Id)
+	if response.Session.AgentTargetId == nil || *response.Session.AgentTargetId != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("session agent target id = %#v, want %s", response.Session.AgentTargetId, agenttargetbiz.IDLocalCodex)
 	}
 }
 
@@ -1038,7 +1282,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 
 	var response tuttigenerated.AgentProviderComposerOptionsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.Provider != tuttigenerated.Codex {
+	if response.Provider != tuttigenerated.WorkspaceAgentProviderCodex {
 		t.Fatalf("provider = %q, want codex", response.Provider)
 	}
 	if response.EffectiveSettings.Model == nil || *response.EffectiveSettings.Model != "gpt-5" {
@@ -1388,7 +1632,9 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 		PreferencesService: stubPreferencesService{
 			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
 				return preferencesbiz.DesktopPreferences{
-					DefaultAgentProvider: "claude-code",
+					AgentConversationDetailMode: "general",
+					AgentDockLayout:             "unified",
+					DefaultAgentProvider:        "claude-code",
 
 					DockIconStyle:       "default",
 					DockPlacement:       "left",
@@ -1420,11 +1666,17 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 	if response.Preferences.Locale != tuttigenerated.ZhCN {
 		t.Fatalf("locale = %q, want %q", response.Preferences.Locale, tuttigenerated.ZhCN)
 	}
-	if response.Preferences.DefaultAgentProvider != tuttigenerated.ClaudeCode {
-		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.ClaudeCode)
+	if response.Preferences.DefaultAgentProvider != tuttigenerated.WorkspaceAgentProviderClaudeCode {
+		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.WorkspaceAgentProviderClaudeCode)
 	}
-	if response.Preferences.ThemeSource != tuttigenerated.Dark {
-		t.Fatalf("themeSource = %q, want %q", response.Preferences.ThemeSource, tuttigenerated.Dark)
+	if response.Preferences.AgentConversationDetailMode != tuttigenerated.General {
+		t.Fatalf("agentConversationDetailMode = %q, want %q", response.Preferences.AgentConversationDetailMode, tuttigenerated.General)
+	}
+	if response.Preferences.AgentDockLayout != tuttigenerated.Unified {
+		t.Fatalf("agentDockLayout = %q, want %q", response.Preferences.AgentDockLayout, tuttigenerated.Unified)
+	}
+	if response.Preferences.ThemeSource != tuttigenerated.DesktopThemeSourceDark {
+		t.Fatalf("themeSource = %q, want %q", response.Preferences.ThemeSource, tuttigenerated.DesktopThemeSourceDark)
 	}
 	if response.Preferences.SleepPreventionMode != tuttigenerated.WhileAgentRunning {
 		t.Fatalf("sleepPreventionMode = %q, want %q", response.Preferences.SleepPreventionMode, tuttigenerated.WhileAgentRunning)
@@ -1446,16 +1698,18 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 				captured = input
 				return preferencesbiz.DesktopPreferences{
 					AgentGUIConversationRailCollapsedByProvider: input.AgentGUIConversationRailCollapsedByProvider,
-					AppCatalogChannel:    input.AppCatalogChannel,
-					DefaultAgentProvider: input.DefaultAgentProvider,
-					DockIconStyle:        input.DockIconStyle,
-					DockPlacement:        input.DockPlacement,
-					Initialized:          true,
-					Locale:               input.Locale,
-					SleepPreventionMode:  input.SleepPreventionMode,
-					ThemeSource:          input.ThemeSource,
-					UpdateChannel:        input.UpdateChannel,
-					UpdatePolicy:         input.UpdatePolicy,
+					AgentConversationDetailMode:                 input.AgentConversationDetailMode,
+					AgentDockLayout:                             input.AgentDockLayout,
+					AppCatalogChannel:                           input.AppCatalogChannel,
+					DefaultAgentProvider:                        input.DefaultAgentProvider,
+					DockIconStyle:                               input.DockIconStyle,
+					DockPlacement:                               input.DockPlacement,
+					Initialized:                                 true,
+					Locale:                                      input.Locale,
+					SleepPreventionMode:                         input.SleepPreventionMode,
+					ThemeSource:                                 input.ThemeSource,
+					UpdateChannel:                               input.UpdateChannel,
+					UpdatePolicy:                                input.UpdatePolicy,
 				}, nil
 			},
 		},
@@ -1468,16 +1722,18 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 				"claude-code": false,
 				"codex":       true,
 			},
-			"defaultAgentProvider": "codex",
-			"appCatalogChannel":    "staging",
-			"dockIconStyle":        "default",
-			"dockPlacement":        "bottom",
-			"locale":               "zh-CN",
-			"minimizeAnimation":    "scale",
-			"sleepPreventionMode":  "never",
-			"themeSource":          "dark",
-			"updateChannel":        "stable",
-			"updatePolicy":         "prompt",
+			"agentConversationDetailMode": "general",
+			"agentDockLayout":             "legacySplit",
+			"defaultAgentProvider":        "codex",
+			"appCatalogChannel":           "staging",
+			"dockIconStyle":               "default",
+			"dockPlacement":               "bottom",
+			"locale":                      "zh-CN",
+			"minimizeAnimation":           "scale",
+			"sleepPreventionMode":         "never",
+			"themeSource":                 "dark",
+			"updateChannel":               "stable",
+			"updatePolicy":                "prompt",
 		},
 	})
 	if recorder.Code != http.StatusOK {
@@ -1489,8 +1745,14 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if collapsed, ok := captured.AgentGUIConversationRailCollapsedByProvider["claude-code"]; !ok || collapsed {
 		t.Fatalf("captured rail preference = %#v, want claude-code false", captured.AgentGUIConversationRailCollapsedByProvider)
 	}
+	if captured.AgentDockLayout != "legacySplit" {
+		t.Fatalf("captured agentDockLayout = %q, want legacySplit", captured.AgentDockLayout)
+	}
 	if captured.AppCatalogChannel != "staging" {
 		t.Fatalf("captured appCatalogChannel = %q, want staging", captured.AppCatalogChannel)
+	}
+	if captured.AgentConversationDetailMode != "general" {
+		t.Fatalf("captured agentConversationDetailMode = %q, want general", captured.AgentConversationDetailMode)
 	}
 	var response tuttigenerated.DesktopPreferencesStateResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
@@ -1502,17 +1764,50 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 		*response.Preferences.AgentGuiConversationRailCollapsedByProvider.ClaudeCode {
 		t.Fatalf("response rail claude-code = %#v, want false", response.Preferences.AgentGuiConversationRailCollapsedByProvider.ClaudeCode)
 	}
+	if response.Preferences.AgentConversationDetailMode != tuttigenerated.General {
+		t.Fatalf("response agentConversationDetailMode = %q, want general", response.Preferences.AgentConversationDetailMode)
+	}
 	if response.Preferences.AppCatalogChannel != tuttigenerated.Staging {
 		t.Fatalf("response appCatalogChannel = %q, want staging", response.Preferences.AppCatalogChannel)
 	}
 }
 
-func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing.T) {
+func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-targets", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.ListAgentTargetsResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if len(response.Targets) != 2 {
+		t.Fatalf("targets len = %d, want 2", len(response.Targets))
+	}
+	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex ||
+		response.Targets[0].Provider != tuttigenerated.AgentTargetProviderCodex ||
+		response.Targets[0].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[0].LaunchRef.Provider != tuttigenerated.AgentTargetProviderCodex {
+		t.Fatalf("first target = %#v, want local codex", response.Targets[0])
+	}
+	if response.Targets[1].Id != agenttargetbiz.IDLocalClaudeCode ||
+		response.Targets[1].Provider != tuttigenerated.AgentTargetProviderClaudeCode ||
+		response.Targets[1].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[1].LaunchRef.Provider != tuttigenerated.AgentTargetProviderClaudeCode {
+		t.Fatalf("second target = %#v, want local claude-code", response.Targets[1])
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesRequiresAgentConversationDetailMode(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		PreferencesService: stubPreferencesService{
 			putFn: func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
-				t.Fatal("Put should not be called for invalid locale")
+				t.Fatal("Put should not be called when agent conversation detail mode is missing")
 				return preferencesbiz.DesktopPreferences{}, nil
 			},
 		},
@@ -1524,7 +1819,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing
 			"appCatalogChannel":    "production",
 			"dockIconStyle":        "default",
 			"dockPlacement":        "bottom",
-			"locale":               "fr",
+			"locale":               "en",
 			"minimizeAnimation":    "scale",
 			"sleepPreventionMode":  "never",
 			"themeSource":          "dark",
@@ -1540,8 +1835,127 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing
 		t,
 		recorder,
 		tuttigenerated.InvalidRequest,
+		"missing_desktop_agent_conversation_detail_mode",
+		"desktop agent conversation detail mode is required",
+	)
+}
+
+func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesAgentConversationDetailMode(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		PreferencesService: stubPreferencesService{
+			putFn: func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
+				t.Fatal("Put should not be called when agent conversation detail mode is invalid")
+				return preferencesbiz.DesktopPreferences{}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
+		"preferences": map[string]any{
+			"agentConversationDetailMode": "daily",
+			"agentDockLayout":             "legacySplit",
+			"defaultAgentProvider":        "codex",
+			"appCatalogChannel":           "production",
+			"dockIconStyle":               "default",
+			"dockPlacement":               "bottom",
+			"locale":                      "en",
+			"minimizeAnimation":           "scale",
+			"sleepPreventionMode":         "never",
+			"themeSource":                 "dark",
+			"updateChannel":               "stable",
+			"updatePolicy":                "prompt",
+		},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
+		"unsupported_desktop_agent_conversation_detail_mode",
+		"desktop agent conversation detail mode is unsupported",
+	)
+}
+
+func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesValidatesLocale(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		PreferencesService: stubPreferencesService{
+			putFn: func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
+				t.Fatal("Put should not be called for invalid locale")
+				return preferencesbiz.DesktopPreferences{}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
+		"preferences": map[string]any{
+			"agentConversationDetailMode": "general",
+			"agentDockLayout":             "legacySplit",
+			"defaultAgentProvider":        "codex",
+			"appCatalogChannel":           "production",
+			"dockIconStyle":               "default",
+			"dockPlacement":               "bottom",
+			"locale":                      "fr",
+			"minimizeAnimation":           "scale",
+			"sleepPreventionMode":         "never",
+			"themeSource":                 "dark",
+			"updateChannel":               "stable",
+			"updatePolicy":                "prompt",
+		},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
 		"unsupported_desktop_locale",
 		"desktop locale is unsupported",
+	)
+}
+
+func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesRequiresAgentDockLayout(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		PreferencesService: stubPreferencesService{
+			putFn: func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
+				t.Fatal("Put should not be called when agent dock layout is missing")
+				return preferencesbiz.DesktopPreferences{}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
+		"preferences": map[string]any{
+			"agentConversationDetailMode": "general",
+			"defaultAgentProvider":        "codex",
+			"appCatalogChannel":           "production",
+			"dockIconStyle":               "default",
+			"dockPlacement":               "bottom",
+			"locale":                      "en",
+			"minimizeAnimation":           "scale",
+			"sleepPreventionMode":         "never",
+			"themeSource":                 "dark",
+			"updateChannel":               "stable",
+			"updatePolicy":                "prompt",
+		},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
+		"missing_desktop_agent_dock_layout",
+		"desktop agent dock layout is required",
 	)
 }
 

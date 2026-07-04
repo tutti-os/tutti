@@ -3,6 +3,10 @@ import test from "node:test";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDefaultsFromEnv,
+  resolveDesktopDevelopmentAppName,
+  resolveDesktopLoginCallbackUrl,
+  resolveDesktopLoginProtocolClientRegistration,
+  resolveDesktopLoginProtocolScheme,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
@@ -158,6 +162,63 @@ test("resolveDesktopUserDataPath keeps production on Electron defaults", () => {
         appName: "Tutti"
       }),
       null
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopDevelopmentAppName isolates development single-instance identity", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.equal(resolveDesktopDevelopmentAppName("Tutti"), "Tutti Dev");
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopDevelopmentAppName("Tutti"), null);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopLoginCallbackUrl isolates development protocol scheme", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.equal(resolveDesktopLoginProtocolScheme(), "tutti-dev");
+    assert.equal(
+      resolveDesktopLoginCallbackUrl(),
+      "tutti-dev://login/callback"
+    );
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopLoginProtocolScheme(), "tutti");
+    assert.equal(resolveDesktopLoginCallbackUrl(), "tutti://login/callback");
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopLoginProtocolClientRegistration skips raw Electron dev registration", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.deepEqual(
+      resolveDesktopLoginProtocolClientRegistration({
+        isPackaged: false
+      }),
+      { scheme: "tutti-dev" }
+    );
+
+    process.env.TUTTI_ENV = "production";
+    assert.deepEqual(
+      resolveDesktopLoginProtocolClientRegistration({
+        isPackaged: true
+      }),
+      { scheme: "tutti" }
     );
   } finally {
     restoreEnv(previousEnv);

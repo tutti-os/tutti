@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 )
 
 const (
@@ -68,7 +70,7 @@ func (l GeminiCLIModelLister) listModelsFromSchema(ctx context.Context) ([]Agent
 	request.Header.Set("accept", "application/json")
 	client := l.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Default()
 	}
 	response, err := client.Do(request)
 	if err != nil {

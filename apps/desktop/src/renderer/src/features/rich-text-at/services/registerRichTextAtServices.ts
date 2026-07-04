@@ -5,9 +5,11 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import { DesktopRichTextAtService } from "./internal/desktopRichTextAtService";
 import { IDesktopRichTextAtService } from "./richTextAtService.interface";
+import type { IAgentsService } from "../../workspace-agent/services/agentsService.interface";
 import type { DesktopAgentSessionStatusView } from "../providers/desktopAgentSessionMentionProvider";
 
 export interface RichTextAtServiceRegistrationInput {
+  agentsService?: IAgentsService;
   tuttidClient: TuttidClient;
   getLocale?: () => string;
   resolveAgentIconUrl?: (provider: string) => string;
@@ -23,6 +25,7 @@ export function registerRichTextAtServices(
   input: RichTextAtServiceRegistrationInput
 ): IDesktopRichTextAtService {
   const service = new DesktopRichTextAtService({
+    agentsService: input.agentsService,
     tuttidClient: input.tuttidClient,
     getLocale: input.getLocale,
     resolveAgentIconUrl: input.resolveAgentIconUrl,

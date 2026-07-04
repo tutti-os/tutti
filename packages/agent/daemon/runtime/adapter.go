@@ -2,9 +2,12 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
+
+var ErrLiveSessionBusy = errors.New("agent live session is busy")
 
 type ProcessSpec struct {
 	Provider             string
@@ -30,6 +33,13 @@ type ProcessConnection interface {
 	Close() error
 }
 
+type GracefulProcessConnection interface {
+	ProcessConnection
+	CloseInput() error
+	Terminate() error
+	Kill() error
+}
+
 type ProcessTransport interface {
 	Start(context.Context, ProcessSpec) (ProcessConnection, error)
 }
@@ -48,12 +58,20 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+type AsyncExecAdapter interface {
+	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
+}
+
 type ResumeProbeAdapter interface {
 	CanResume(Session) bool
 }
 
 type LiveSessionProbeAdapter interface {
 	HasLiveSession(Session) bool
+}
+
+type LiveSessionReleaseAdapter interface {
+	ReleaseLiveSession(context.Context, Session) error
 }
 
 type StateAdapter interface {

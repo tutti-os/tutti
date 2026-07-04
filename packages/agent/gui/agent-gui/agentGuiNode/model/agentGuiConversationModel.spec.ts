@@ -909,6 +909,64 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
+  it("keeps the processing row after an interim assistant message while the turn lifecycle is running", () => {
+    const interimTimelineItems = [
+      timelineItem({
+        id: 1,
+        eventId: "user-1",
+        turnId: "turn-1",
+        actorType: "user",
+        actorId: "user-1",
+        itemType: "message.user",
+        role: "user",
+        content: "Dispatch the sub-agents",
+        occurredAtUnixMs: 10
+      }),
+      timelineItem({
+        id: 2,
+        eventId: "assistant-1",
+        turnId: "turn-1",
+        actorType: "agent",
+        actorId: "codex",
+        itemType: "message.assistant",
+        role: "assistant",
+        content: "I will now dispatch the sub-agents.",
+        status: "completed",
+        occurredAtUnixMs: 20
+      })
+    ];
+    const conversationSource = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Codex",
+      titleFallback: null,
+      status: "working" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 20
+    };
+
+    const withRunningTurn = buildAgentGUIConversationVM({
+      conversation: {
+        ...conversationSource,
+        turnLifecycle: { activeTurnId: "turn-1", phase: "running" }
+      },
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+    const withoutTurnLifecycle = buildAgentGUIConversationVM({
+      conversation: conversationSource,
+      workspaceRoot: "/workspace",
+      timelineItems: interimTimelineItems
+    });
+
+    expect(withRunningTurn?.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+    expect(
+      withoutTurnLifecycle?.rows.some((row) => row.kind === "processing")
+    ).toBe(false);
+  });
+
   it("derives pending approval from ACP call.started approval timeline items", () => {
     const conversation = buildAgentGUIConversationVM({
       conversation: {
@@ -1397,6 +1455,58 @@ describe("agentGuiConversationModel", () => {
     );
   });
 
+  it("treats streaming AskUserQuestion timeline items as pending prompts", () => {
+    expect(
+      selectPendingInteractivePromptFromTimelineItems([
+        {
+          id: 1,
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          seq: 1,
+          eventId: "call-1",
+          actorType: "agent",
+          actorId: "claude-code",
+          itemType: "call.started",
+          role: "assistant",
+          callType: "interactive",
+          callId: "call-1",
+          name: "AskUserQuestion",
+          status: "streaming",
+          payload: {
+            input: {
+              requestId: "request-ask",
+              questions: [
+                {
+                  header: "Color",
+                  question: "What's your favorite color?",
+                  options: [
+                    { label: "Blue", description: "The color of the sky" }
+                  ]
+                }
+              ],
+              toolName: "AskUserQuestion"
+            },
+            metadata: {
+              adapter: "claude-agent-sdk",
+              callType: "interactive",
+              interactiveKind: "ask-user",
+              toolName: "AskUserQuestion"
+            },
+            status: "streaming",
+            toolName: "AskUserQuestion"
+          },
+          occurredAtUnixMs: 10,
+          createdAtUnixMs: 10
+        }
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        kind: "ask-user",
+        requestId: "request-ask"
+      })
+    );
+  });
+
   it("treats switch-mode approval timeline items as exit-plan prompts", () => {
     const item: AgentHostWorkspaceAgentTimelineItem = {
       id: 1,
@@ -1789,6 +1899,242 @@ describe("agentGuiConversationModel", () => {
     ]);
 
     expect(items).toEqual([]);
+  });
+
+  describe("sub-agent child-thread segregation", () => {
+    const conversation = {
+      id: "session-1",
+      provider: "codex" as const,
+      title: "Codex",
+      titleFallback: null,
+      status: "working" as const,
+      cwd: "/workspace",
+      updatedAtUnixMs: 400
+    };
+
+    const subAgentFixtures = () => ({
+      userItem: timelineItem({
+        id: 1,
+        eventId: "user-1",
+        turnId: "turn-1",
+        actorType: "user",
+        actorId: "user-1",
+        itemType: "message.user",
+        role: "user",
+        payload: { text: "Spawn a helper to inspect the repo." },
+        occurredAtUnixMs: 10
+      }),
+      spawnCardItem: timelineItem({
+        id: 2,
+        eventId: "spawn-1-started",
+        turnId: "turn-1",
+        itemType: "call.started",
+        callType: "tool",
+        callId: "spawn-1",
+        name: "spawnAgent",
+        status: "running",
+        payload: {
+          callId: "spawn-1",
+          name: "spawnAgent",
+          toolName: "Agent",
+          kind: "execute",
+          status: "running",
+          input: { task: "inspect the repository", agentName: "spawnAgent" }
+        },
+        occurredAtUnixMs: 20
+      }),
+      childTextItem: timelineItem({
+        id: 3,
+        eventId: "child-msg-1",
+        turnId: "child-turn-1",
+        itemType: "message.assistant",
+        role: "assistant",
+        payload: {
+          text: "Scanning the repository layout",
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
+        },
+        occurredAtUnixMs: 30
+      }),
+      childCallItem: timelineItem({
+        id: 4,
+        eventId: "child-call-1",
+        turnId: "child-turn-1",
+        itemType: "call.started",
+        callType: "tool",
+        callId: "child-call-1",
+        name: "Run command",
+        status: "running",
+        payload: {
+          callId: "child-call-1",
+          name: "Run command",
+          ownerThreadId: "child-thread-1",
+          ownerCallId: "spawn-1"
+        },
+        occurredAtUnixMs: 40
+      })
+    });
+
+    it("excludes child-thread rows of all kinds from the main conversation detail", () => {
+      const { userItem, spawnCardItem, childTextItem, childCallItem } =
+        subAgentFixtures();
+      const detail = buildAgentGUIConversationDetail({
+        timelineItems: [userItem, spawnCardItem, childTextItem, childCallItem],
+        conversation,
+        workspaceRoot: "/workspace"
+      });
+
+      const allMessages = (detail?.turns ?? []).flatMap((turn) =>
+        turn.agentMessages.map((message) => message.body)
+      );
+      const allToolCallIds = (detail?.turns ?? []).flatMap((turn) =>
+        turn.toolCalls.map((call) => call.id)
+      );
+
+      expect(allMessages).not.toContain("Scanning the repository layout");
+      expect(allToolCallIds).toEqual(["call:spawn-1"]);
+    });
+
+    it("hides child-thread rows even when no collab card has arrived yet", () => {
+      const { userItem, childTextItem, childCallItem } = subAgentFixtures();
+      const detail = buildAgentGUIConversationDetail({
+        timelineItems: [userItem, childTextItem, childCallItem],
+        conversation,
+        workspaceRoot: "/workspace"
+      });
+
+      const allBodies = (detail?.turns ?? []).flatMap((turn) => [
+        ...turn.agentMessages.map((message) => message.body),
+        ...turn.toolCalls.map((call) => call.name)
+      ]);
+
+      expect(allBodies).not.toContain("Scanning the repository layout");
+      expect(allBodies).not.toContain("Run command");
+    });
+
+    it("surfaces live sub-agent lanes on the collab spawn card", () => {
+      const { userItem, spawnCardItem, childTextItem, childCallItem } =
+        subAgentFixtures();
+      const projected = buildAgentGUIConversationVM({
+        timelineItems: [userItem, spawnCardItem, childTextItem, childCallItem],
+        conversation,
+        workspaceRoot: "/workspace"
+      });
+
+      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      expect(toolCalls.map((call) => call.id)).toEqual(["call:spawn-1"]);
+
+      const spawnCall = toolCalls[0];
+      expect(spawnCall?.task?.subAgents).toEqual([
+        expect.objectContaining({
+          ownerThreadId: "child-thread-1",
+          status: "running",
+          latestActivity: "Run command",
+          latestActivityKind: "tool",
+          startedAtUnixMs: 30,
+          latestActivityAtUnixMs: 40
+        })
+      ]);
+
+      const groupEntries = (projected?.rows ?? []).flatMap((row) =>
+        row.kind === "tool-group" ? row.entries : []
+      );
+      const entryCall = groupEntries.find(
+        (entry) => entry.kind === "tool-call"
+      );
+      expect(
+        entryCall?.kind === "tool-call"
+          ? entryCall.call.task?.subAgents?.length
+          : 0
+      ).toBe(1);
+    });
+
+    it("keeps child rows hidden and lanes final after the spawn card completes", () => {
+      const { userItem, spawnCardItem, childTextItem, childCallItem } =
+        subAgentFixtures();
+      const spawnCompletedItem = timelineItem({
+        id: 5,
+        eventId: "spawn-1-completed",
+        turnId: "turn-1",
+        itemType: "call.completed",
+        callType: "tool",
+        callId: "spawn-1",
+        name: "spawnAgent",
+        status: "completed",
+        payload: {
+          callId: "spawn-1",
+          name: "spawnAgent",
+          toolName: "Agent",
+          kind: "execute",
+          status: "completed",
+          input: { task: "inspect the repository", agentName: "spawnAgent" },
+          output: {
+            result: { agent_id: "child-thread-1", status: "completed" }
+          }
+        },
+        occurredAtUnixMs: 50
+      });
+
+      const projected = buildAgentGUIConversationVM({
+        timelineItems: [
+          userItem,
+          spawnCardItem,
+          childTextItem,
+          childCallItem,
+          spawnCompletedItem
+        ],
+        conversation: { ...conversation, status: "ready" as const },
+        workspaceRoot: "/workspace"
+      });
+
+      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      expect(toolCalls.map((call) => call.id)).toEqual(["call:spawn-1"]);
+      expect(toolCalls[0]?.task?.subAgents).toEqual([
+        expect.objectContaining({
+          ownerThreadId: "child-thread-1",
+          status: "completed"
+        })
+      ]);
+    });
+
+    it("does not attach lanes to unrelated tool calls", () => {
+      const { userItem, spawnCardItem, childTextItem } = subAgentFixtures();
+      const shellItem = timelineItem({
+        id: 6,
+        eventId: "shell-1-started",
+        turnId: "turn-1",
+        itemType: "call.started",
+        callType: "tool",
+        callId: "shell-1",
+        name: "Run command",
+        status: "running",
+        payload: {
+          callId: "shell-1",
+          name: "Run command",
+          toolName: "Bash",
+          input: { command: "ls" }
+        },
+        occurredAtUnixMs: 25
+      });
+
+      const projected = buildAgentGUIConversationVM({
+        timelineItems: [userItem, spawnCardItem, shellItem, childTextItem],
+        conversation,
+        workspaceRoot: "/workspace"
+      });
+
+      const toolCalls = (projected?.rows ?? []).flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      const shellCall = toolCalls.find((call) => call.id === "call:shell-1");
+      const spawnCall = toolCalls.find((call) => call.id === "call:spawn-1");
+      expect(shellCall?.task?.subAgents ?? undefined).toBeUndefined();
+      expect(spawnCall?.task?.subAgents?.length).toBe(1);
+    });
   });
 });
 

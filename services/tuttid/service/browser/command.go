@@ -3,10 +3,12 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"strings"
 
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // chrome-devtools-mcp launch resolution. The daemon now consumes this command
@@ -35,8 +37,8 @@ var (
 
 // resolveBrowserMCPCommand returns the full command (command + args) used to
 // launch the browser MCP server, honoring operator overrides.
-func resolveBrowserMCPCommand(ctx context.Context, preferences PreferencesReader) []string {
-	command, args := resolveBrowserMCPBaseCommand()
+func resolveBrowserMCPCommand(ctx context.Context, preferences PreferencesReader, runtimeResolver managedruntime.ProfileResolver) []string {
+	command, args := resolveBrowserMCPBaseCommand(ctx, runtimeResolver)
 	if raw := strings.TrimSpace(os.Getenv(browserMCPArgsOverrideEnv)); raw != "" {
 		var override []string
 		if err := json.Unmarshal([]byte(raw), &override); err == nil {
@@ -49,11 +51,27 @@ func resolveBrowserMCPCommand(ctx context.Context, preferences PreferencesReader
 	return append([]string{command}, args...)
 }
 
-func resolveBrowserMCPBaseCommand() (string, []string) {
+func resolveBrowserMCPBaseCommand(ctx context.Context, runtimeResolver managedruntime.ProfileResolver) (string, []string) {
 	if command := strings.TrimSpace(os.Getenv(browserMCPCommandOverrideEnv)); command != "" {
 		return command, []string{}
 	}
 	if entry := strings.TrimSpace(os.Getenv(browserMCPEntryPathEnv)); entry != "" {
+		if node := strings.TrimSpace(os.Getenv("TUTTI_APP_NODE")); node != "" {
+			return node, []string{entry}
+		}
+		if runtimeResolver != nil {
+			appRuntime, err := runtimeResolver.ResolveProfile(ctx, managedruntime.NodeStaticProfile)
+			if err == nil && strings.TrimSpace(appRuntime.Node) != "" {
+				return strings.TrimSpace(appRuntime.Node), []string{entry}
+			}
+			if err != nil {
+				slog.Warn(
+					"browser mcp managed node runtime unavailable for vendored entry",
+					"event", "browser_mcp.managed_node_runtime_unavailable",
+					"error", err,
+				)
+			}
+		}
 		return "node", []string{entry}
 	}
 	return defaultBrowserMCPCommand, append([]string(nil), defaultBrowserMCPArgs...)

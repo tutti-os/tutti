@@ -5,10 +5,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 )
@@ -27,6 +30,8 @@ type localProcessConnection struct {
 
 	closeOnce sync.Once
 	sendMu    sync.Mutex
+	inputOnce sync.Once
+	closeErr  error
 }
 
 func NewLocalProcessTransport() ProcessTransport {
@@ -106,6 +111,8 @@ func logProcessStartEnvDiagnostics(spec ProcessSpec, env []string, resolvedComma
 		"path_contains_app_npm_bin", diag["path_contains_app_npm_bin"],
 		"workspace_env_present", diag["workspace_env_present"],
 		"agent_session_env_present", diag["agent_session_env_present"],
+		"proxy_env_present", diag["proxy_env_present"],
+		"proxy_source", diag["proxy_source"],
 	)
 }
 
@@ -114,6 +121,7 @@ func processStartEnvDiagnostics(spec ProcessSpec, env []string) map[string]any {
 	pathDirs := filepath.SplitList(pathValue)
 	appNodeBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NODE"))
 	appNPMBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NPM"))
+	proxyPresent, proxySource := proxyDiagnostics(spec, env)
 	return map[string]any{
 		"path_override_count":        envKeyCount(spec.Env, "PATH"),
 		"path_entry_count":           len(pathDirs),
@@ -123,7 +131,37 @@ func processStartEnvDiagnostics(spec ProcessSpec, env []string) map[string]any {
 		"path_contains_app_npm_bin":  appNPMBin != "." && pathContainsDir(pathDirs, appNPMBin),
 		"workspace_env_present":      envHasKey(env, "TUTTI_WORKSPACE_ID"),
 		"agent_session_env_present":  envHasKey(env, "TUTTI_AGENT_SESSION_ID"),
+		"proxy_env_present":          proxyPresent,
+		"proxy_source":               proxySource,
 	}
+}
+
+// proxyEnvKeys are checked case-insensitively; envValueFromList uses EqualFold
+// so lowercase shell-style spellings match too.
+var proxyEnvKeys = []string{"HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"}
+
+// proxyDiagnostics reports whether the spawned agent sees a proxy and where it
+// came from: "env" when the daemon process env or session overrides carry one
+// (user shell/session explicit), "system" when only the injected macOS system
+// proxy supplies it, "none" otherwise.
+func proxyDiagnostics(spec ProcessSpec, env []string) (bool, string) {
+	present := false
+	for _, key := range proxyEnvKeys {
+		if envHasKey(env, key) {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return false, "none"
+	}
+	processEnv := os.Environ()
+	for _, key := range proxyEnvKeys {
+		if envHasKey(spec.Env, key) || envHasKey(processEnv, key) {
+			return true, "env"
+		}
+	}
+	return true, "system"
 }
 
 func commandNameForLog(command []string) string {
@@ -220,13 +258,70 @@ func (c *localProcessConnection) Close() error {
 	}
 	c.closeOnce.Do(func() {
 		close(c.closing)
-		c.cancel()
-		_ = c.stdin.Close()
-		_ = c.stdout.Close()
-		_ = c.stderr.Close()
+		_ = c.CloseInput()
+		if !c.waitDone(250 * time.Millisecond) {
+			_ = c.Terminate()
+		}
+		if !c.waitDone(750 * time.Millisecond) {
+			killErr := c.Kill()
+			if !c.waitDone(2 * time.Second) {
+				if killErr != nil {
+					c.closeErr = killErr
+					return
+				}
+				c.closeErr = errors.New("process did not exit after kill")
+				return
+			}
+		}
 	})
+	if c.closeErr != nil {
+		return c.closeErr
+	}
 	<-c.done
 	return nil
+}
+
+func (c *localProcessConnection) CloseInput() error {
+	if c == nil || c.stdin == nil {
+		return nil
+	}
+	var err error
+	c.inputOnce.Do(func() {
+		err = c.stdin.Close()
+	})
+	return err
+}
+
+func (c *localProcessConnection) Terminate() error {
+	if c == nil || c.cmd == nil || c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Signal(syscall.SIGTERM)
+}
+
+func (c *localProcessConnection) Kill() error {
+	if c == nil {
+		return nil
+	}
+	c.cancel()
+	if c.cmd == nil || c.cmd.Process == nil {
+		return nil
+	}
+	return c.cmd.Process.Kill()
+}
+
+func (c *localProcessConnection) waitDone(timeout time.Duration) bool {
+	if c == nil {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-c.done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 func (c *localProcessConnection) readPipe(readers *sync.WaitGroup, reader io.Reader, stdout bool) {

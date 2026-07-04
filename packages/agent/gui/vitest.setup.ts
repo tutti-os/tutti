@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { createElement, isValidElement, cloneElement, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   MouseEvent as ReactMouseEvent,
   ReactElement,
@@ -16,6 +17,14 @@ import type {
   AgentHostRuntimeApi
 } from "./host/agentHostApi";
 import { installReactRenderLoopConsoleTrap } from "./test/reactRenderLoopConsoleTrap";
+
+const originalConsoleInfo = console.info.bind(console);
+console.info = (...args: unknown[]) => {
+  if (isSuppressedAgentGuiDiagnostic(args)) {
+    return;
+  }
+  originalConsoleInfo(...args);
+};
 
 class TestResizeObserver implements ResizeObserver {
   observe(): void {}
@@ -35,6 +44,8 @@ if (!document.elementFromPoint) {
   document.elementFromPoint = () => document.body;
 }
 
+globalThis.Event = window.Event;
+globalThis.CustomEvent = window.CustomEvent;
 HTMLCanvasElement.prototype.getContext = () => null;
 Element.prototype.scrollIntoView = () => undefined;
 Element.prototype.scrollTo = () => undefined;
@@ -86,18 +97,27 @@ vi.mock("react-medium-image-zoom", () => ({
     a11yNameButtonUnzoom,
     children,
     classDialog,
+    onZoomChange,
     ZoomContent
   }: {
     a11yNameButtonZoom?: string;
     a11yNameButtonUnzoom?: string;
     children?: ReactNode;
     classDialog?: string;
+    onZoomChange?: (
+      value: boolean,
+      data: { event: ReactMouseEvent | Event }
+    ) => void;
     ZoomContent?: (props: {
       buttonUnzoom: ReactElement;
       img: ReactElement | null;
+      modalState?: "LOADED" | "UNLOADING" | "UNLOADED";
     }) => ReactNode;
   }) {
-    const [isOpen, setIsOpen] = useState(false);
+    const [modalState, setModalState] = useState<
+      "LOADED" | "UNLOADING" | "UNLOADED"
+    >("UNLOADED");
+    const isOpen = modalState !== "UNLOADED";
     const labelZoom = a11yNameButtonZoom ?? "Zoom image";
     const labelUnzoom = a11yNameButtonUnzoom ?? "Minimize image";
     const childElement = isValidElement(children)
@@ -110,14 +130,16 @@ vi.mock("react-medium-image-zoom", () => ({
         ? cloneElement(childElement, {
             onClick: (event: ReactMouseEvent) => {
               childElement.props.onClick?.(event);
-              setIsOpen(true);
+              onZoomChange?.(true, { event });
+              setModalState("LOADED");
             }
           })
         : children;
     const modalImage =
       childElement !== null
         ? cloneElement(childElement as ReactElement<Record<string, unknown>>, {
-            "data-rmiz-modal-img": true
+            "data-rmiz-modal-img": true,
+            onTransitionEnd: () => setModalState("UNLOADED")
           })
         : null;
     const buttonUnzoom = createElement(
@@ -125,10 +147,25 @@ vi.mock("react-medium-image-zoom", () => ({
       {
         type: "button",
         "aria-label": labelUnzoom,
-        onClick: () => setIsOpen(false)
+        onClick: (event: ReactMouseEvent) => {
+          onZoomChange?.(false, { event });
+          setModalState("UNLOADING");
+        }
       },
       labelUnzoom
     );
+    const modal = isOpen
+      ? createPortal(
+          createElement(
+            "span",
+            { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
+            ZoomContent
+              ? ZoomContent({ buttonUnzoom, img: modalImage, modalState })
+              : [modalImage, buttonUnzoom]
+          ),
+          document.body
+        )
+      : null;
 
     return createElement(
       "span",
@@ -144,20 +181,15 @@ vi.mock("react-medium-image-zoom", () => ({
             "aria-label": labelZoom,
             "aria-hidden": isOpen ? true : undefined,
             "data-rmiz-btn-zoom": "",
-            onClick: () => setIsOpen(true)
+            onClick: (event: ReactMouseEvent) => {
+              onZoomChange?.(true, { event });
+              setModalState("LOADED");
+            }
           },
           labelZoom
         )
       ),
-      isOpen
-        ? createElement(
-            "span",
-            { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
-            ZoomContent
-              ? ZoomContent({ buttonUnzoom, img: modalImage })
-              : [modalImage, buttonUnzoom]
-          )
-        : null
+      modal
     );
   }
 }));
@@ -243,4 +275,12 @@ function installTestAgentHostApi(): void {
     }
   });
   setAgentHostApiForTests(testAgentHostApi);
+}
+
+function isSuppressedAgentGuiDiagnostic(args: readonly unknown[]): boolean {
+  const [prefix] = args;
+  return (
+    prefix === "[agent-gui] mention-lifecycle" ||
+    prefix === "[agent-gui] mention-search"
+  );
 }

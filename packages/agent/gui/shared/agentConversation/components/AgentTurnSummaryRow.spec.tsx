@@ -1,5 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@tutti-os/ui-system";
+import type {
+  AgentHostApplyWorkspaceGitPatchInput,
+  AgentHostApplyWorkspaceGitPatchResult
+} from "../../../host/agentHostApi";
 import { AgentTurnSummaryRow } from "./AgentTurnSummaryRow";
 
 vi.mock("../../../i18n/index", () => ({
@@ -7,7 +13,809 @@ vi.mock("../../../i18n/index", () => ({
     values ? `${key}:${Object.values(values).join(",")}` : key
 }));
 
+type MockTooltipProps = { children?: ReactNode };
+
+vi.mock("@tutti-os/ui-system", () => {
+  const Passthrough = ({ children }: MockTooltipProps) => <>{children}</>;
+
+  return {
+    Tooltip: Passthrough,
+    TooltipProvider: Passthrough,
+    TooltipTrigger: Passthrough,
+    TooltipContent: ({ children }: MockTooltipProps) => (
+      <div role="tooltip">{children}</div>
+    ),
+    toast: {
+      error: vi.fn()
+    }
+  };
+});
+
 describe("AgentTurnSummaryRow", () => {
+  beforeEach(() => {
+    Reflect.deleteProperty(window, "agentHostApi");
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("applies patch batches in Codex-compatible undo and reapply order", async () => {
+    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
+    const applyGitPatch = vi.fn(
+      async (
+        input: AgentHostApplyWorkspaceGitPatchInput
+      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
+        patchCalls.push(input);
+        return {
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success" as const
+        };
+      }
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:patch-batches",
+          turnId: "turn-1",
+          fileCount: 2,
+          modifiedCount: 2,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+middle\n",
+              occurredAtUnixMs: 10
+            },
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:2",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-middle\n+new\n",
+              occurredAtUnixMs: 11
+            }
+          ],
+          patchBatches: [
+            {
+              cwd: "/workspace/demo",
+              toolCallId: "call:1",
+              changes: [
+                {
+                  path: "src/app.ts",
+                  changeType: "modified",
+                  unifiedDiff: "@@ -1 +1 @@\n-old\n+middle"
+                }
+              ]
+            },
+            {
+              cwd: "/workspace/demo",
+              toolCallId: "call:2",
+              changes: [
+                {
+                  path: "src/app.ts",
+                  changeType: "modified",
+                  unifiedDiff: "@@ -1 +1 @@\n-middle\n+new"
+                }
+              ]
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/demo"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+    expect(screen.getByText("agentHost.agentGui.turnSummaryUndo")).toBeTruthy();
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(2);
+    });
+    expect(patchCalls[0]).toMatchObject({
+      cwd: "/workspace/demo",
+      revert: true
+    });
+    expect(patchCalls[0]?.diff).toContain("-middle\n+new");
+    expect(patchCalls[1]?.diff).toContain("-old\n+middle");
+    expect(
+      await screen.findByRole("button", {
+        name: "agentHost.agentGui.turnSummaryReapply"
+      })
+    ).toBeTruthy();
+    expect(
+      screen.getByText("agentHost.agentGui.turnSummaryReapply")
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryReapply"
+      })
+    );
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(4);
+    });
+    expect(patchCalls[2]).toMatchObject({
+      cwd: "/workspace/demo",
+      revert: false
+    });
+    expect(patchCalls[2]?.diff).toContain("-old\n+middle");
+    expect(patchCalls[3]?.diff).toContain("-middle\n+new");
+  }, 10_000);
+
+  it("falls back to a single unified diff batch when patch batches are missing", async () => {
+    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
+    const applyGitPatch = vi.fn(
+      async (
+        input: AgentHostApplyWorkspaceGitPatchInput
+      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
+        patchCalls.push(input);
+        return {
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      }
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:unified-fallback",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/demo"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(1);
+    });
+    expect(patchCalls[0]).toMatchObject({
+      cwd: "/workspace/demo",
+      revert: true
+    });
+    expect(patchCalls[0]?.diff).toContain(
+      "diff --git a/src/app.ts b/src/app.ts"
+    );
+    expect(patchCalls[0]?.diff).toContain("-old\n+new");
+  });
+
+  it("builds a fallback add-file patch from created content when patch batches are missing", async () => {
+    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
+    const applyGitPatch = vi.fn(
+      async (
+        input: AgentHostApplyWorkspaceGitPatchInput
+      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
+        patchCalls.push(input);
+        return {
+          appliedPaths: ["hello_world.md"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      }
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:created-content-fallback",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "hello_world.md",
+              path: "/Users/demo/02-git-clean/hello_world.md",
+              fileName: "hello_world.md",
+              directory: "/Users/demo/02-git-clean",
+              changeType: "created",
+              toolName: null,
+              messageId: "call:1",
+              content: "# Hello, world!\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/Users/demo/02-git-clean"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(1);
+    });
+    expect(patchCalls[0]).toMatchObject({
+      cwd: "/Users/demo/02-git-clean",
+      revert: true
+    });
+    expect(patchCalls[0]?.diff).toContain(
+      "diff --git a/hello_world.md b/hello_world.md"
+    );
+    expect(patchCalls[0]?.diff).toContain("new file mode 100644");
+    expect(patchCalls[0]?.diff).toContain("+# Hello, world!");
+  });
+
+  it("falls back to file unified diffs when recorded patch batches are not executable", async () => {
+    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
+    const applyGitPatch = vi.fn(
+      async (
+        input: AgentHostApplyWorkspaceGitPatchInput
+      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
+        patchCalls.push(input);
+        return {
+          appliedPaths: ["hello_world.md"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      }
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:bad-patch-batch-file-fallback",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "hello_world.md",
+              path: "/Users/demo/02-git-clean/hello_world.md",
+              fileName: "hello_world.md",
+              directory: "/Users/demo/02-git-clean",
+              changeType: "created",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/hello_world.md b/hello_world.md\nnew file mode 100644\n--- /dev/null\n+++ b/hello_world.md\n@@ -0,0 +1,1 @@\n+# Hello, world!\n",
+              occurredAtUnixMs: 10
+            }
+          ],
+          patchBatches: [
+            {
+              cwd: "/",
+              toolCallId: "call:1",
+              changes: [
+                {
+                  path: "/Users/demo/02-git-clean/hello_world.md",
+                  changeType: "created"
+                }
+              ]
+            }
+          ]
+        }}
+        workspaceRoot="/"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(1);
+    });
+    expect(patchCalls[0]).toMatchObject({
+      cwd: "/Users/demo/02-git-clean",
+      revert: true
+    });
+    expect(patchCalls[0]?.diff).toContain(
+      "diff --git a/hello_world.md b/hello_world.md"
+    );
+    expect(patchCalls[0]?.diff).toContain("+# Hello, world!");
+  });
+
+  it("maps Codex /workspace patch cwd to the host workspace root before git calls", async () => {
+    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
+    const supportCalls: string[] = [];
+    const applyGitPatch = vi.fn(
+      async (
+        input: AgentHostApplyWorkspaceGitPatchInput
+      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
+        patchCalls.push(input);
+        return {
+          appliedPaths: ["hello_world.md"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      }
+    );
+    const resolveGitPatchSupport = vi.fn(async ({ cwd }: { cwd: string }) => {
+      supportCalls.push(cwd);
+      return {
+        root: cwd,
+        supported: true
+      };
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch,
+        resolveGitPatchSupport
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:mapped-workspace",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "/workspace/hello_world.md",
+              path: "/workspace/hello_world.md",
+              fileName: "hello_world.md",
+              directory: "/workspace",
+              changeType: "created",
+              toolName: null,
+              messageId: "call:1",
+              content: "# Hello, world!\n",
+              occurredAtUnixMs: 10
+            }
+          ],
+          patchBatches: [
+            {
+              cwd: "/workspace",
+              toolCallId: "call:1",
+              changes: [
+                {
+                  path: "/workspace/hello_world.md",
+                  changeType: "created",
+                  content: "# Hello, world!\n"
+                }
+              ]
+            }
+          ]
+        }}
+        workspaceRoot="/Users/demo/02-git-clean"
+        label="Changed files"
+      />
+    );
+
+    await waitFor(() => {
+      expect(resolveGitPatchSupport).toHaveBeenCalledTimes(1);
+    });
+    expect(supportCalls).toEqual(["/Users/demo/02-git-clean"]);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(1);
+    });
+    expect(patchCalls[0]).toMatchObject({
+      cwd: "/Users/demo/02-git-clean",
+      revert: true
+    });
+    expect(patchCalls[0]?.diff).toContain(
+      "diff --git a/hello_world.md b/hello_world.md"
+    );
+    expect(patchCalls[0]?.diff).not.toContain("/workspace");
+  });
+
+  it("shows patch failures through the host toast instead of an inline card message", async () => {
+    vi.mocked(toast.error).mockClear();
+    const hostToastError = vi.fn();
+    const applyGitPatch = vi.fn(
+      async (): Promise<AgentHostApplyWorkspaceGitPatchResult> => ({
+        appliedPaths: [],
+        conflictedPaths: [],
+        skippedPaths: [],
+        status: "error"
+      })
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      toast: {
+        error: hostToastError
+      },
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:failed-undo",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/demo"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(hostToastError).toHaveBeenCalledWith(
+        "agentHost.agentGui.turnSummaryUndoFailed"
+      );
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("agentHost.agentGui.turnSummaryUndoFailed")
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    ).toBeTruthy();
+  });
+
+  it("falls back to the ui-system toast when the host has no toast capability", async () => {
+    vi.mocked(toast.error).mockClear();
+    const applyGitPatch = vi.fn(
+      async (): Promise<AgentHostApplyWorkspaceGitPatchResult> => ({
+        appliedPaths: [],
+        conflictedPaths: [],
+        skippedPaths: [],
+        status: "error"
+      })
+    );
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:fallback-toast",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/demo"
+        label="Changed files"
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.turnSummaryUndo"
+      })
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "agentHost.agentGui.turnSummaryUndoFailed"
+      );
+    });
+  });
+
+  it("disables undo with a git repository hint when the cwd is not a git repo", async () => {
+    const applyGitPatch = vi.fn();
+    const resolveGitPatchSupport = vi.fn(async () => ({
+      errorCode: "not-git-repo",
+      supported: false
+    }));
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch,
+        resolveGitPatchSupport
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:no-git",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/no-git"
+        label="Changed files"
+      />
+    );
+
+    await waitFor(() => {
+      expect(resolveGitPatchSupport).toHaveBeenCalledWith({
+        cwd: "/workspace/no-git"
+      });
+    });
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    await waitFor(() => {
+      expect(button).toHaveAttribute("disabled");
+    });
+    expect(button.textContent).toContain("agentHost.agentGui.turnSummaryUndo");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "agentHost.agentGui.turnSummaryGitRequired"
+    );
+
+    fireEvent.click(button);
+
+    expect(applyGitPatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps undo available when git support probing fails", async () => {
+    const applyGitPatch = vi.fn(
+      async (): Promise<AgentHostApplyWorkspaceGitPatchResult> => ({
+        appliedPaths: ["src/app.ts"],
+        conflictedPaths: [],
+        skippedPaths: [],
+        status: "success"
+      })
+    );
+    const resolveGitPatchSupport = vi.fn(async () => {
+      throw new Error("probe failed");
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch,
+        resolveGitPatchSupport
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:probe-failure",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "src/app.ts",
+              path: "src/app.ts",
+              fileName: "app.ts",
+              directory: "src",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              unifiedDiff:
+                "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace/demo"
+        label="Changed files"
+      />
+    );
+
+    await waitFor(() => {
+      expect(resolveGitPatchSupport).toHaveBeenCalledWith({
+        cwd: "/workspace/demo"
+      });
+    });
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    await waitFor(() => {
+      expect(button).not.toHaveAttribute("disabled");
+    });
+
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(applyGitPatch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps undo visible but disabled when no reversible patch data is available", () => {
+    const applyGitPatch = vi.fn();
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:missing-patch-data",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "hello_world.md",
+              path: "/workspace/hello_world.md",
+              fileName: "hello_world.md",
+              directory: "/workspace",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:1",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/Users/demo/01-no-git"
+        label="Changed files"
+      />
+    );
+
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    expect(button).toHaveAttribute("disabled");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "agentHost.agentGui.turnSummaryPatchUnavailable"
+    );
+
+    fireEvent.click(button);
+
+    expect(applyGitPatch).not.toHaveBeenCalled();
+  });
+
   it("renders a change card with expandable file diff rows and dispatches workspace actions", async () => {
     const onLinkAction = vi.fn();
     render(
@@ -97,6 +905,11 @@ describe("AgentTurnSummaryRow", () => {
         .getByText("agentHost.agentGui.turnSummaryFilesChanged:2")
         .closest("section")?.firstElementChild?.className
     ).toContain("agent-turn-summary-card");
+    expect(
+      screen
+        .getByText("agentHost.agentGui.turnSummaryFilesChanged:2")
+        .closest("section")?.firstElementChild?.firstElementChild?.className
+    ).toContain("items-center");
     expect(
       screen
         .getByText("agentHost.agentGui.turnSummaryFilesChanged:2")
@@ -229,7 +1042,7 @@ describe("AgentTurnSummaryRow", () => {
       />
     );
 
-    expect(screen.queryByText("src/file-4.ts")).toBeNull();
+    expect(screen.queryByTitle("src/file-4.ts")).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -238,10 +1051,10 @@ describe("AgentTurnSummaryRow", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("src/file-4.ts")).toBeTruthy();
+      expect(screen.getByTitle("src/file-4.ts")).toBeTruthy();
     });
     expect(
-      screen.getByText("src/file-4.ts").closest(".agent-collapsible-reveal")
+      screen.getByTitle("src/file-4.ts").closest(".agent-collapsible-reveal")
     ).toHaveAttribute("data-expanded", "true");
     expect(
       screen.getByRole("button", {
@@ -391,7 +1204,7 @@ describe("AgentTurnSummaryRow", () => {
 
     expect(screen.getAllByText("-1")).toHaveLength(2);
     expect(screen.queryByText("+1")).toBeNull();
-    expect(screen.getByText("/workspace/a.md").className).toContain(
+    expect(screen.getByTitle("/workspace/a.md").className).toContain(
       "line-through"
     );
 
@@ -436,6 +1249,12 @@ describe("AgentTurnSummaryRow", () => {
     const pathLabel = screen.getByTitle(
       "/workspace/very/deep/path/to/a/file/with/a/really-long-name/today_news_summary_2026-05-20.txt"
     );
+    const directoryLabel = pathLabel.querySelector(
+      ".agent-turn-summary-card__path-directory"
+    );
+    const fileNameLabel = pathLabel.querySelector(
+      ".agent-turn-summary-card__path-file"
+    );
     const pathToggle = pathLabel.closest("button");
     const pathContainer = pathLabel.parentElement;
     const fileRow = pathToggle?.closest(".agent-turn-summary-card__file");
@@ -443,9 +1262,22 @@ describe("AgentTurnSummaryRow", () => {
       .getByText("agentHost.agentGui.turnSummaryFilesChanged:1")
       .closest("section");
 
-    expect(pathLabel.className).toContain("truncate");
-    expect(pathLabel.className).toContain("block");
+    expect(pathLabel.className).toContain("flex");
     expect(pathLabel.className).toContain("min-w-0");
+    expect(pathLabel.className).toContain("overflow-hidden");
+    expect(pathLabel.className).toContain("whitespace-nowrap");
+    expect(directoryLabel?.textContent).toBe(
+      "/workspace/very/deep/path/to/a/file/with/a/really-long-name/"
+    );
+    expect(directoryLabel?.className).toContain(
+      "agent-turn-summary-card__path-directory"
+    );
+    expect(fileNameLabel?.textContent).toBe(
+      "today_news_summary_2026-05-20.txt"
+    );
+    expect(fileNameLabel?.className).toContain(
+      "agent-turn-summary-card__path-file"
+    );
     expect(pathContainer?.className).toContain("flex-1");
     expect(pathContainer?.className).toContain("overflow-hidden");
     expect(pathToggle?.className).toContain("flex-1");

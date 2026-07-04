@@ -176,6 +176,7 @@ export function resolveWorkbenchLaunchedHostNodeFrame(input: {
     );
 
     return resolveWorkbenchCascadedRect({
+      cascadeOffset: input.result.cascadeOffset,
       currentNodeStack: input.currentState.nodeStack.filter((nodeId) =>
         existingSameTypeNodeIds.has(nodeId)
       ),
@@ -193,6 +194,7 @@ export function resolveWorkbenchLaunchedHostNodeFrame(input: {
   }
 
   return resolveWorkbenchCascadedRect({
+    cascadeOffset: input.result.cascadeOffset,
     currentNodeStack: input.currentState.nodeStack,
     existingNodes: input.currentState.nodes,
     preferredFrame: responsivePreferredFrame,

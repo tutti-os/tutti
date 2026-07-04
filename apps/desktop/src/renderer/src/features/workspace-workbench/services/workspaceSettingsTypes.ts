@@ -5,6 +5,7 @@ import type {
 
 export type WorkspaceSettingsSectionID =
   | "about"
+  | "account"
   | "agent"
   | "appearance"
   | "apps"
@@ -119,6 +120,7 @@ export interface WorkspaceSettingsStoreState {
   generalFocusRequestID: number;
   managedModels: WorkspaceSettingsManagedModelsMutableState;
   open: boolean;
+  tuttiAgentSwitchEnabled: boolean;
   workspaceID: string | null;
 }
 
@@ -130,5 +132,6 @@ export interface WorkspaceSettingsReadableStoreState {
   readonly generalFocusRequestID: number;
   readonly managedModels: WorkspaceSettingsManagedModelsSnapshotState;
   readonly open: boolean;
+  readonly tuttiAgentSwitchEnabled: boolean;
   readonly workspaceID: string | null;
 }

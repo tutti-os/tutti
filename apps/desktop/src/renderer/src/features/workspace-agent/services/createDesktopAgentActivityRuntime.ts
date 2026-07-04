@@ -6,7 +6,7 @@ import type {
   AgentActivitySessionEventEnvelope,
   AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
-import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { AgentConversationPinnedReporter } from "../../analytics/reporters/agent-conversation-pinned/agentConversationPinnedReporter.ts";
 import { AgentConversationUnpinnedReporter } from "../../analytics/reporters/agent-conversation-unpinned/agentConversationUnpinnedReporter.ts";
@@ -26,6 +26,11 @@ import {
   type AgentHostAgentSessionComposerSettings
 } from "./internal/desktopAgentHostProjection.ts";
 import { reportAgentSessionSettingsChanges } from "./internal/agentSessionSettingsAnalytics.ts";
+import {
+  AgentAnalyticsErrorCode,
+  createAgentNodeResultTracker,
+  safeTrackAgentNodeResult
+} from "./internal/agentNodeResultAnalytics.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 
@@ -38,6 +43,7 @@ type AgentComposerSettingsChange = {
 interface CreateDesktopAgentActivityRuntimeOptions {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
+  hostFilesApi?: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
   runtimeApi?: Pick<
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
@@ -137,7 +143,16 @@ export function createDesktopAgentActivityRuntime(
     reporterNow: options.reporterNow,
     reporterService: options.reporterService
   });
+  const nodeResultTracker = createAgentNodeResultTracker({
+    reporterNow: options.reporterNow,
+    reporterService: options.reporterService
+  });
+  const archiveAgentPromptFile = options.hostFilesApi?.archiveAgentPromptFile;
   return {
+    promptContentUploadSupport: {
+      file: Boolean(archiveAgentPromptFile),
+      image: false
+    },
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: input.agentSessionId,
@@ -150,8 +165,29 @@ export function createDesktopAgentActivityRuntime(
           provider: resolveDesktopAgentGUIProvider(input.provider)
         }
       });
-      const activation =
-        await workspaceAgentActivityService.activateSession(input);
+      const flow = "session_create" as const;
+      const node = "activate_session" as const;
+      const fallbackErrorCode =
+        input.mode === "existing"
+          ? AgentAnalyticsErrorCode.SessionResumeFailed
+          : AgentAnalyticsErrorCode.SessionCreateFailed;
+      let activation: Awaited<
+        ReturnType<IWorkspaceAgentActivityService["activateSession"]>
+      >;
+      try {
+        activation = await workspaceAgentActivityService.activateSession(input);
+      } catch (error) {
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: input.agentSessionId,
+          error,
+          fallbackErrorCode,
+          flow,
+          node,
+          provider: resolveDesktopAgentGUIProvider(input.provider),
+          success: false
+        });
+        throw error;
+      }
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: activation.session.agentSessionId,
         event: "activity_runtime.activate.resolved",
@@ -165,6 +201,19 @@ export function createDesktopAgentActivityRuntime(
         }
       });
       const activationFailed = activation.activation.status === "failed";
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: activation.session.agentSessionId,
+        error: activationFailed
+          ? (activation.error?.message ??
+            activation.error?.code ??
+            "Agent session activation failed.")
+          : undefined,
+        fallbackErrorCode,
+        flow,
+        node,
+        provider: activation.session.provider,
+        success: !activationFailed
+      });
       if (input.mode === "new" && !activationFailed) {
         await sessionStartedTracker.track({
           agentSessionId: activation.session.agentSessionId,
@@ -181,6 +230,30 @@ export function createDesktopAgentActivityRuntime(
           provider: activation.session.provider,
           source: resolveAgentSessionSource({ mode: input.mode })
         });
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: activation.session.agentSessionId,
+          flow,
+          node: "session_started_reported",
+          provider: activation.session.provider,
+          success: true
+        });
+        const initialPrompt = promptContentDisplayText(
+          input.initialContent ?? []
+        );
+        if (initialPrompt) {
+          await messageSentTracker.track({
+            agentSessionId: activation.session.agentSessionId,
+            prompt: initialPrompt,
+            provider: activation.session.provider
+          });
+          await safeTrackAgentNodeResult(nodeResultTracker, {
+            agentSessionId: activation.session.agentSessionId,
+            flow,
+            node: "message_sent_reported",
+            provider: activation.session.provider,
+            success: true
+          });
+        }
       }
       return activation;
     },
@@ -217,6 +290,12 @@ export function createDesktopAgentActivityRuntime(
     },
     listAgentGeneratedFiles: (input) =>
       workspaceAgentActivityService.listAgentGeneratedFiles(input),
+    listSessionsPage: (input) =>
+      workspaceAgentActivityService.listSessionsPage(input),
+    listSessionSections: (input) =>
+      workspaceAgentActivityService.listSessionSections(input),
+    listSessionSectionPage: (input) =>
+      workspaceAgentActivityService.listSessionSectionPage(input),
     async load(workspaceId, signal) {
       const snapshot = await workspaceAgentActivityService.load(
         workspaceId,
@@ -247,7 +326,23 @@ export function createDesktopAgentActivityRuntime(
         runtimeApi: options.runtimeApi,
         workspaceId: input.workspaceId
       });
-      const result = await workspaceAgentActivityService.sendInput(input);
+      let result: Awaited<
+        ReturnType<IWorkspaceAgentActivityService["sendInput"]>
+      >;
+      try {
+        result = await workspaceAgentActivityService.sendInput(input);
+      } catch (error) {
+        await safeTrackAgentNodeResult(nodeResultTracker, {
+          agentSessionId: input.agentSessionId,
+          error,
+          fallbackErrorCode: AgentAnalyticsErrorCode.RuntimeExecFailed,
+          flow: "message_send",
+          node: "send_input_request",
+          provider: null,
+          success: false
+        });
+        throw error;
+      }
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: result.session.agentSessionId,
         event: "activity_runtime.send.resolved",
@@ -261,13 +356,79 @@ export function createDesktopAgentActivityRuntime(
           turnPhase: result.turnLifecycle?.phase ?? null
         }
       });
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: result.session.agentSessionId,
+        flow: "message_send",
+        node: "send_input_request",
+        provider: result.session.provider,
+        success: true
+      });
       await messageSentTracker.track({
         agentSessionId: result.session.agentSessionId,
         prompt: promptContentDisplayText(input.content),
         provider: result.session.provider
       });
+      await safeTrackAgentNodeResult(nodeResultTracker, {
+        agentSessionId: result.session.agentSessionId,
+        flow: "message_send",
+        node: "message_sent_reported",
+        provider: result.session.provider,
+        success: true
+      });
       return result;
     },
+    ...(archiveAgentPromptFile
+      ? {
+          async uploadPromptContent(
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["uploadPromptContent"]>
+            >[0]
+          ) {
+            const content = await Promise.all(
+              input.content.map(async (block) => {
+                if (block.type === "file") {
+                  const hostPath = block.hostPath?.trim() ?? "";
+                  if (!hostPath) {
+                    throw new Error("Prompt file upload requires hostPath.");
+                  }
+                  const archived = await archiveAgentPromptFile({
+                    workspaceID: input.workspaceId,
+                    hostPath,
+                    displayName: block.name ?? null,
+                    mimeType: block.mimeType ?? null
+                  });
+                  return {
+                    ...block,
+                    name: archived.name,
+                    path: archived.path,
+                    sizeBytes: archived.sizeBytes,
+                    uploadStatus: "uploaded"
+                  };
+                }
+                if (block.type === "image" && block.data) {
+                  const archived = await archiveAgentPromptFile({
+                    workspaceID: input.workspaceId,
+                    dataBase64: block.data,
+                    displayName: block.name ?? null,
+                    mimeType: block.mimeType ?? null
+                  });
+                  const blockWithoutData = { ...block };
+                  delete blockWithoutData.data;
+                  return {
+                    ...blockWithoutData,
+                    name: archived.name,
+                    path: archived.path,
+                    sizeBytes: archived.sizeBytes,
+                    uploadStatus: "uploaded"
+                  };
+                }
+                return block;
+              })
+            );
+            return { content };
+          }
+        }
+      : {}),
     readSessionAttachment: (input) =>
       workspaceAgentActivityService.readSessionAttachment(input),
     async setSessionPinned(input) {

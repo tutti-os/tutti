@@ -103,7 +103,7 @@ export function AgentEnvSetupTrack({
         </p>
       )}
 
-      <ol className="m-0 flex list-none flex-col gap-2 p-0">
+      <ol className="m-0 flex list-none flex-col divide-y divide-[var(--border-1)] p-0">
         {stages.map((stage) => {
           const isActive = stage.status === "running";
           const dimmed = stage.status === "pending";
@@ -137,7 +137,7 @@ export function AgentEnvSetupTrack({
               key={stage.id}
               data-stage={stage.id}
               data-status={stage.status}
-              className={`flex gap-2.5 rounded-[8px] bg-[var(--transparency-block)] p-3 ${
+              className={`flex gap-2.5 py-3 ${
                 multiLine ? "items-start" : "items-center"
               } ${dimmed && !problem ? "opacity-50" : ""}`}
             >

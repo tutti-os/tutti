@@ -2,6 +2,8 @@ import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
+  DesktopAgentConversationDetailMode,
+  DesktopAgentDockLayout,
   DesktopAgentProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
@@ -18,6 +20,8 @@ import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
 export interface DesktopPreferencesStoreState {
   changingDefaultAgentProvider: DesktopAgentProvider | null;
+  changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
+  changingAgentDockLayout: DesktopAgentDockLayout | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   changingDockIconStyle: DesktopDockIconStyle | null;
@@ -32,6 +36,8 @@ export interface DesktopPreferencesStoreState {
   changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  agentConversationDetailMode: DesktopAgentConversationDetailMode;
+  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: DesktopAgentProvider;
@@ -50,6 +56,8 @@ export interface DesktopPreferencesStoreState {
 
 export interface DesktopPreferencesReadableStoreState {
   readonly changingDefaultAgentProvider: DesktopAgentProvider | null;
+  readonly changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
+  readonly changingAgentDockLayout: DesktopAgentDockLayout | null;
   readonly changingAppCatalogChannel: DesktopAppCatalogChannel | null;
   readonly changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
@@ -64,6 +72,8 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  readonly agentConversationDetailMode: DesktopAgentConversationDetailMode;
+  readonly agentDockLayout: DesktopAgentDockLayout;
   readonly appCatalogChannel: DesktopAppCatalogChannel;
   readonly browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   readonly defaultAgentProvider: DesktopAgentProvider;

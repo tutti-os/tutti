@@ -13,6 +13,13 @@ const workspaceChromeSource = readFileSync(
   ),
   "utf8"
 );
+const workspaceOutcomeToastSource = readFileSync(
+  new URL(
+    "../features/workspace-workbench/ui/WorkspaceAgentOutcomeNotificationToast.tsx",
+    import.meta.url
+  ),
+  "utf8"
+);
 const desktopToastStyleSource = readFileSync(
   new URL(
     "../../../../../../packages/agent/gui/app/renderer/agentactivity.css",
@@ -216,23 +223,43 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
 });
 
-test("desktop outcome toast puts only its middle notification content in a fronted card", () => {
-  assert.match(
+test("workspace chrome does not own outcome toast UI", () => {
+  assert.doesNotMatch(
     workspaceChromeSource,
-    /workspace-agent-decision-toast__content relative z-\[1\] grid w-full min-w-0 cursor-pointer gap-2\.5 text-left/
+    /WorkspaceAgentOutcomeToast|workspace-agent-decision-toast__outcome-card|workspace-agent-outcome/
+  );
+});
+
+test("desktop outcome foreground notification uses the agent toast card", () => {
+  assert.match(
+    workspaceOutcomeToastSource,
+    /toast\.custom\([\s\S]*<WorkspaceAgentOutcomeToast/
   );
   assert.match(
-    workspaceChromeSource,
-    /<p className="workspace-agent-decision-toast__outcome-card min-w-0 text-\[13px\] leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{body\}[\s\S]*<\/p>/
+    workspaceOutcomeToastSource,
+    /className: workspaceAgentDecisionToastClassName/
+  );
+  assert.match(
+    workspaceOutcomeToastSource,
+    /duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION/
+  );
+  assert.match(
+    workspaceOutcomeToastSource,
+    /className="relative w-full min-w-0 overflow-visible rounded-\[12px\] border border-\[var\(--tutti-purple-border\)\] bg-\[var\(--tutti-purple-bg\)\] p-3\.5"/
+  );
+  assert.match(
+    workspaceOutcomeToastSource,
+    /workspace-agent-decision-toast__edge-glow agent-gui-edge-glow pointer-events-none inset-0 rounded-\[12px\]/
+  );
+  assert.match(
+    workspaceOutcomeToastSource,
+    /workspace-agent-decision-toast__outcome-card/
   );
   assert.match(
     desktopToastStyleSource,
     /\.workspace-agent-decision-toast__outcome-card\s*{[^}]*border:\s*1px solid var\(--line-1\);[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--background-fronted\);[^}]*padding:\s*10px;/s
   );
-  assert.doesNotMatch(
-    workspaceChromeSource,
-    /workspace-agent-decision-toast__outcome-title|workspace-agent-decision-toast__outcome-body|workspace-agent-decision-toast__outcome-muted/
-  );
+  assert.doesNotMatch(workspaceOutcomeToastSource, /Toast\.Success/);
 });
 
 test("desktop generic toasts do not use edge glow", () => {

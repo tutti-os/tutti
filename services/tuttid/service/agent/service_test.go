@@ -13,17 +13,21 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 func TestServiceCreatesAndListsSessions(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		Title:          stringRef("Migration smoke"),
 		InitialContent: TextPromptContent("hello"),
@@ -58,6 +62,339 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 	if got.ID != session.ID {
 		t.Fatalf("got session ID = %q, want %q", got.ID, session.ID)
+	}
+}
+
+func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{
+		targets: map[string]agenttargetbiz.Target{
+			agenttargetbiz.IDLocalClaudeCode: {
+				ID:            agenttargetbiz.IDLocalClaudeCode,
+				Provider:      "claude-code",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("claude-code"),
+				Name:          "Claude Code",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		InitialContent: TextPromptContent("hello target"),
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": "codex",
+			"targetId": "wrong-target",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Provider != "claude-code" || session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("session provider/target = %q/%q, want claude-code/%s", session.Provider, session.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].Provider; got != "claude-code" {
+		t.Fatalf("runtime provider = %q, want claude-code", got)
+	}
+	if got := runtime.startCalls[0].AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
+	}
+	ref := runtime.startCalls[0].ProviderTargetRef
+	if ref["kind"] != agenttargetbiz.LaunchRefTypeLocalCLI ||
+		ref["provider"] != "claude-code" ||
+		ref["targetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime provider target ref = %#v, want daemon-derived local_cli claude target", ref)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargetInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		input       CreateSessionInput
+		targets     map[string]agenttargetbiz.Target
+		errContains string
+	}{
+		{
+			name: "missing target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-missing",
+				AgentTargetID:  "missing-target",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target not found",
+		},
+		{
+			name: "disabled target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-disabled",
+				AgentTargetID:  "disabled-codex",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				"disabled-codex": {
+					ID:            "disabled-codex",
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Disabled Codex",
+					Enabled:       false,
+					Source:        agenttargetbiz.SourceUser,
+				},
+			},
+			errContains: "agent target is disabled",
+		},
+		{
+			name: "provider mismatch",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-mismatch",
+				AgentTargetID:  agenttargetbiz.IDLocalCodex,
+				Provider:       "claude-code",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				agenttargetbiz.IDLocalCodex: {
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				},
+			},
+			errContains: "provider does not match agent target",
+		},
+		{
+			name: "missing launch authority",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-no-authority",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: ErrInvalidArgument.Error(),
+		},
+		{
+			name: "provider target ref without agent target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-provider-ref",
+				Provider:       "codex",
+				ProviderTargetRef: map[string]any{
+					"kind":     "shared-agent",
+					"provider": "codex",
+					"targetId": "shared-agent:codex-1",
+				},
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target id is required",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := NewService(runtime)
+			service.AgentTargetStore = fakeAgentTargetStore{targets: tc.targets}
+
+			_, err := service.Create(context.Background(), "ws-1", tc.input)
+			if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument containing %q", err, tc.errContains)
+			}
+			if len(runtime.startCalls) != 0 {
+				t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+			}
+		})
+	}
+}
+
+func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "empty defaults to coding", mode: "", want: "coding"},
+		{name: "general is preserved", mode: "general", want: "general"},
+		{name: "invalid defaults to coding", mode: "daily", want: "coding"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := newTestService(runtime)
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID:         "session-" + strings.ReplaceAll(tc.name, " ", "-"),
+				AgentTargetID:          agenttargetbiz.IDLocalCodex,
+				Provider:               "codex",
+				ConversationDetailMode: tc.mode,
+				InitialContent:         TextPromptContent("hello"),
+			})
+			if err != nil {
+				t.Fatalf("Create returned error: %v", err)
+			}
+			if len(runtime.startCalls) != 1 {
+				t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+			}
+			if got := runtime.startCalls[0].ConversationDetailMode; got != tc.want {
+				t.Fatalf("runtime conversationDetailMode = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetLookup{
+		targets: map[string]agenttargetbiz.Target{
+			"local-codex": {
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  "local-codex",
+		Provider:       "codex",
+		ProviderTargetRef: map[string]any{
+			"kind":     "client-supplied",
+			"provider": "codex",
+			"targetId": "ignored-client-ref",
+		},
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if got := runtime.startCalls[0].Provider; got != "codex" {
+		t.Fatalf("runtime provider = %q, want codex", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "local_cli" {
+		t.Fatalf("provider target ref kind = %#v, want local_cli", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
+		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		agentTargetID   string
+		requestProvider string
+		target          agenttargetbiz.Target
+	}{
+		{
+			name:            "disabled target",
+			agentTargetID:   "local-codex",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       false,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "request provider mismatch",
+			agentTargetID:   "local-codex",
+			requestProvider: "claude-code",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "target not found",
+			agentTargetID:   "missing-target",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewService(newFakeRuntime())
+			service.AgentTargetStore = fakeAgentTargetLookup{
+				targets: map[string]agenttargetbiz.Target{
+					tc.target.ID: tc.target,
+				},
+			}
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID: "target-session-invalid",
+				AgentTargetID:  tc.agentTargetID,
+				Provider:       tc.requestProvider,
+				InitialContent: TextPromptContent("hello"),
+			})
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+}
+
+func TestServiceCreateReportsNodeResults(t *testing.T) {
+	runtime := newFakeRuntime()
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := newTestService(runtime)
+	service.AnalyticsReporter = reporter
+
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		InitialContent: TextPromptContent("hello"),
+	}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	assertAgentNodeSequence(t, reporter.events, []string{
+		"content_normalized",
+		"provider_runtime_checked",
+		"model_validated",
+		"cwd_resolved",
+		"runtime_prepared",
+		"runtime_started",
+		"prompt_validated",
+		"prompt_prepared",
+		"runtime_exec",
+	})
+	for _, event := range reporter.events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if got := event.Params["flow"]; got != "session_create" {
+			t.Fatalf("flow = %#v, want session_create in %#v", got, event.Params)
+		}
+		if got := event.Params["status"]; got != "success" {
+			t.Fatalf("status = %#v, want success in %#v", got, event.Params)
+		}
+		if got := event.Params["error_code"]; got != "agent_error_none" {
+			t.Fatalf("error_code = %#v, want agent_error_none in %#v", got, event.Params)
+		}
+		if got := event.Params["error_message"]; got != "" {
+			t.Fatalf("error_message = %#v, want empty in %#v", got, event.Params)
+		}
 	}
 }
 
@@ -580,6 +917,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if value(importedSession.Title) != "Plan the import" {
 		t.Fatalf("imported session title = %q, want first user message", value(importedSession.Title))
 	}
+	if importedSession.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("imported Codex agent target id = %q, want %s", importedSession.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 	importedMessages, err := service.ListMessages(ctx, "ws-1", codexAID, ListMessagesInput{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListMessages imported session error = %v", err)
@@ -607,25 +947,30 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 		if session.Cwd != projectA {
 			t.Fatalf("session cwd = %q, want %q", session.Cwd, projectA)
 		}
-		if session.Resumable {
-			t.Fatalf("imported session %s resumable = true", session.ID)
+		if !session.Resumable {
+			t.Fatalf("imported session %s resumable = false, want continuable in place", session.ID)
 		}
 	}
-	if _, err := service.SendInput(ctx, "ws-1", sessions[0].ID, SendInput{Content: TextPromptContent("resume")}); !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("SendInput imported error = %v, want ErrSessionNotFound", err)
-	}
-	if len(runtime.resumeCalls) != 0 {
-		t.Fatalf("runtime resume calls = %d, want 0", len(runtime.resumeCalls))
-	}
 
+	// Importing the whole project (no explicit session ids) now covers all
+	// available history rather than only the discovery window, so an explicitly
+	// imported project also pulls the 45-day-old codex-old session that the
+	// 30-day scan deliberately hides. claude-a (2 messages) + codex-old (1).
 	rerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},
 	})
 	if err != nil {
 		t.Fatalf("ImportExternalSessions rerun error = %v", err)
 	}
-	if rerun.ImportedSessions != 1 || rerun.ImportedMessages != 2 {
+	if rerun.ImportedSessions != 2 || rerun.ImportedMessages != 3 {
 		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
+	}
+	claudeSession, err := service.Get(ctx, "ws-1", externalImportedSessionID("claude-code", "claude-a"))
+	if err != nil {
+		t.Fatalf("Get imported Claude Code session error = %v", err)
+	}
+	if claudeSession.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("imported Claude Code agent target id = %q, want %s", claudeSession.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
 	finalRerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},
@@ -683,20 +1028,24 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
+	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result: agentsidecarservice.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
+		input: &prepareInput,
 	}
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		AgentSessionID: "11111111-1111-4111-8111-111111111111",
-		Cwd:            &cwd,
-		Provider:       "codex",
-		InitialContent: TextPromptContent("hello"),
+		AgentSessionID:         "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:          agenttargetbiz.IDLocalCodex,
+		Cwd:                    &cwd,
+		Provider:               "codex",
+		ConversationDetailMode: "general",
+		InitialContent:         TextPromptContent("hello"),
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -714,11 +1063,14 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	if len(start.Env) != 1 || start.Env[0] != "CODEX_HOME=/prepared/codex-home" {
 		t.Fatalf("runtime env = %#v, want prepared env", start.Env)
 	}
+	if prepareInput.ConversationDetailMode != "general" {
+		t.Fatalf("prepare conversationDetailMode = %q, want general", prepareInput.ConversationDetailMode)
+	}
 }
 
 func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -735,9 +1087,10 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "codex",
-		Model:    stringRef("gpt-6"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+		Model:         stringRef("gpt-6"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -759,7 +1112,7 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 
 func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", time.Now().UTC(), []ComposerConfigOptionValue{
 		{Value: "default", Label: "Default"},
 		{Value: "sonnet", Label: "Sonnet"},
@@ -770,9 +1123,10 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("not-a-claude-model"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		Model:         stringRef("not-a-claude-model"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -815,7 +1169,7 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 		}
 		return session
 	}
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	var cleanupCalls []agentsidecarservice.CleanupInput
 	service.RuntimePreparer = fakeRuntimePreparer{
@@ -824,9 +1178,10 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("MiniMax-M2.7"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		Model:         stringRef("MiniMax-M2.7"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -853,7 +1208,7 @@ func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing
 
 func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -871,6 +1226,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -894,11 +1250,12 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "claude-code",
@@ -919,26 +1276,20 @@ func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 
 func TestServiceCreateClampsPlanModeForProvidersWithoutCapability(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
-	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "gemini",
 	})
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
+	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "agent target id is required") {
+		t.Fatalf("Create error = %v, want missing agent target ErrInvalidArgument", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
-	}
-	if runtime.startCalls[0].PlanMode {
-		t.Fatal("runtime start plan mode = true, want clamped to false for gemini")
-	}
-	if session.Settings == nil || session.Settings.PlanMode {
-		t.Fatalf("session settings = %#v, want plan mode clamped to false", session.Settings)
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
 	}
 }
 
@@ -946,7 +1297,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	startErr := errors.New("start failed")
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -955,6 +1306,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "codex",
 	})
@@ -970,7 +1322,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	prepareInput := (*agentsidecarservice.PrepareInput)(nil)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: prepareInput,
@@ -978,6 +1330,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: []PromptContentBlock{{
 			Type:     "image",
 			MimeType: "image/png",
@@ -995,7 +1348,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
@@ -1022,6 +1375,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1053,7 +1407,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "claude-code",
@@ -1073,6 +1427,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1086,7 +1441,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "codex",
@@ -1098,6 +1453,7 @@ func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	for _, sessionID := range []string{"session-1", "session-2"} {
 		_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 			AgentSessionID: sessionID,
+			AgentTargetID:  agenttargetbiz.IDLocalCodex,
 			InitialContent: TextPromptContent("hello"),
 			Provider:       "codex",
 		})
@@ -1184,7 +1540,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 	execErr := errors.New("exec failed")
 	runtime := newFakeRuntime()
 	runtime.execErr = execErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1193,6 +1549,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -1214,10 +1571,11 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID:       "session-1",
+		AgentTargetID:        agenttargetbiz.IDLocalCodex,
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
@@ -1252,11 +1610,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1282,10 +1641,11 @@ func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 
 func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("ordinary prompt"),
 	})
@@ -1303,10 +1663,11 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 	created, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1377,7 +1738,7 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1387,6 +1748,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1411,7 +1773,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1421,6 +1783,7 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	cwd := "/user/workdir"
 
 	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1504,7 +1867,7 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1513,6 +1876,7 @@ func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1595,6 +1959,28 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
 	if !ok || !slices.Contains(capabilities, "imageInput") {
 		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
+	}
+}
+
+func TestServiceGetComposerOptionsDoesNotCarryConversationDetailMode(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Settings: ComposerSettings{
+			ConversationDetailMode: "general",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if got := options.EffectiveSettings.ConversationDetailMode; got != "" {
+		t.Fatalf("effectiveSettings.conversationDetailMode = %q, want empty", got)
+	}
+	payload := ComposerSettingsToMap(options.EffectiveSettings)
+	if _, ok := payload["conversationDetailMode"]; ok {
+		t.Fatalf("effectiveSettings payload includes conversationDetailMode: %#v", payload)
 	}
 }
 
@@ -2336,6 +2722,36 @@ func TestServiceGetsComposerOptionsLeavesUnresolvedProviderModelUnset(t *testing
 	}
 }
 
+func TestServiceSessionNormalizesStaleClaudeSDKImageCapability(t *testing.T) {
+	session := serviceSession(RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Settings: &ComposerSettings{
+			Model: "haiku",
+		},
+		RuntimeContext: map[string]any{
+			"adapter":      "claude-agent-sdk",
+			"capabilities": []any{"compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "review"},
+		},
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}, true)
+
+	capabilities, ok := session.RuntimeContext["capabilities"].([]any)
+	hasImageInput := false
+	for _, capability := range capabilities {
+		if capability == "imageInput" {
+			hasImageInput = true
+			break
+		}
+	}
+	if !ok || !hasImageInput {
+		t.Fatalf("capabilities = %#v, want imageInput", session.RuntimeContext["capabilities"])
+	}
+}
+
 func TestServiceUpdateSettingsNormalizesCodexMinimalReasoningEffort(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
@@ -2607,6 +3023,88 @@ func TestActivityProjectionUsesRuntimeContextTitleFallback(t *testing.T) {
 	}
 	if got := publisher.events[0].payload["title"]; got != "Automation Review" {
 		t.Fatalf("published title = %#v, want runtime context title", got)
+	}
+}
+
+func TestActivityProjectionReportsFailedRuntimeNodeResult(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    true,
+			LastEventUnixMS: 200,
+		},
+	}
+	reporter := &recordingAgentAnalyticsReporter{}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Source: agentsessionstore.EventSource{
+			Provider: "codex",
+		},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "failed",
+			LastError:       "network connection disconnected",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if len(reporter.events) != 1 {
+		t.Fatalf("analytics events = %d, want 1", len(reporter.events))
+	}
+	event := reporter.events[0]
+	if event.Name != "agent.node_result" {
+		t.Fatalf("event name = %q, want agent.node_result", event.Name)
+	}
+	for key, want := range map[string]any{
+		"agent_session_id": "session-1",
+		"flow":             "runtime_activity",
+		"node":             "runtime_exec",
+		"error_code":       "agent_runtime_network_disconnected",
+		"error_message":    "network connection disconnected",
+		"node_name":        "runtime_exec",
+		"provider":         "codex",
+		"status":           "failure",
+		"success":          false,
+	} {
+		if got := event.Params[key]; got != want {
+			t.Fatalf("params[%q] = %#v, want %#v in %#v", key, got, want, event.Params)
+		}
+	}
+}
+
+func TestActivityProjectionSkipsFailedRuntimeNodeResultWhenStateNotApplied(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    false,
+			LastEventUnixMS: 200,
+		},
+	}
+	reporter := &recordingAgentAnalyticsReporter{}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Source: agentsessionstore.EventSource{
+			Provider: "codex",
+		},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus:  "failed",
+			LastError:        "network connection disconnected",
+			OccurredAtUnixMS: 150,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if len(reporter.events) != 0 {
+		t.Fatalf("analytics events = %d, want 0: %#v", len(reporter.events), reporter.events)
 	}
 }
 
@@ -2944,7 +3442,7 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 		Cwd:             "/workspace/hidden",
 		Status:          "completed",
 		Visible:         false,
-		Title:           "Mention hidden",
+		Title:           "Hidden",
 		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
 		UpdatedAtUnixMS: hiddenUpdatedAt.UnixMilli(),
 	}
@@ -2975,7 +3473,6 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	list, err := service.ListFiltered(context.Background(), "ws-1", ListSessionsInput{
 		SearchQuery: "mention",
 		Limit:       1,
-		VisibleOnly: true,
 	})
 	if err != nil {
 		t.Fatalf("ListFiltered returned error: %v", err)
@@ -2986,6 +3483,112 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	if list[0].ID != "session-newer" {
 		t.Fatalf("list[0].ID = %q, want session-newer", list[0].ID)
 	}
+}
+
+func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testing.T) {
+	reader := &fakeSectionReader{
+		pages: map[string]agentactivitybiz.SessionSectionPage{
+			"project:/workspace/project": {
+				SectionKey: "project:/workspace/project",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "project-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/workspace/project",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 5000,
+				}},
+				HasMore:    true,
+				NextCursor: "5000|project-session",
+			},
+			"conversations": {
+				SectionKey: "conversations",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "chat-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/scratch/session",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 4000,
+				}},
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:    "project-1",
+		Path:  "/workspace/project",
+		Label: "Project",
+	}}}
+
+	page, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+		AgentTargetID:   "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSections returned error: %v", err)
+	}
+	if len(page.Sections) != 2 {
+		t.Fatalf("sections = %d, want 2", len(page.Sections))
+	}
+	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
+		t.Fatalf("project section = %#v", page.Sections[0])
+	}
+	if got, want := sessionIDs(page.Sections[0].Sessions), []string{"project-session"}; !slices.Equal(got, want) {
+		t.Fatalf("project sessions = %#v, want %#v", got, want)
+	}
+	if !page.Sections[0].HasMore || page.Sections[0].NextCursor != "5000|project-session" {
+		t.Fatalf("project page state = hasMore %v cursor %q", page.Sections[0].HasMore, page.Sections[0].NextCursor)
+	}
+	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
+		t.Fatalf("conversations section = %#v", page.Sections[1])
+	}
+	if reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader agentTargetID = %q, want claude-target", reader.lastInput.AgentTargetID)
+	}
+}
+
+func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
+	reader := &fakeSectionReader{}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	section, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
+		SectionKey:    "project:/workspace/project",
+		Cursor:        "4000|middle",
+		Limit:         2,
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSectionPage returned error: %v", err)
+	}
+	if section.Kind != "project" || section.SectionKey != "project:/workspace/project" {
+		t.Fatalf("section = %#v", section)
+	}
+	if reader.lastInput.SectionKey != "project:/workspace/project" ||
+		reader.lastInput.CursorUpdatedAtMS != 4000 ||
+		reader.lastInput.CursorSessionID != "middle" ||
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func sessionIDs(sessions []Session) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	return ids
 }
 
 func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
@@ -3054,8 +3657,9 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 
 func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -3144,6 +3748,39 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 	}
 }
 
+func TestServiceSendInputContinuesImportedSession(t *testing.T) {
+	// Imported conversations must continue in place: sending resumes (or, when
+	// the provider session is missing locally, recreates) the provider session
+	// rather than rejecting with ErrSessionNotFound and forcing a new chat.
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-imported": {
+				ID:                "session-imported",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "imported-thread-1",
+				Origin:            WorkspaceAgentSessionOriginImported,
+				Status:            "completed",
+				Title:             "Imported chat",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-imported", SendInput{Content: TextPromptContent("continue")}); err != nil {
+		t.Fatalf("SendInput imported error = %v, want continue in place", err)
+	}
+	if len(runtime.resumeCalls) != 1 {
+		t.Fatalf("resume calls = %d, want 1", len(runtime.resumeCalls))
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+}
+
 func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -3172,6 +3809,108 @@ func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *tes
 	}
 	if session.EndedAt != nil {
 		t.Fatalf("endedAt = %#v, want nil for accepted input", session.EndedAt)
+	}
+}
+
+func TestServiceSendInputReportsNodeResults(t *testing.T) {
+	runtime := newFakeRuntime()
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := NewService(runtime)
+	service.AnalyticsReporter = reporter
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "waiting",
+				Title:             "Persisted session",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")}); err != nil {
+		t.Fatalf("SendInput returned error: %v", err)
+	}
+
+	assertAgentNodeSequence(t, reporter.events, []string{
+		"runtime_session_ready",
+		"content_normalized",
+		"prompt_validated",
+		"prompt_prepared",
+		"runtime_exec",
+		"session_refreshed",
+	})
+	for _, event := range reporter.events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if got := event.Params["flow"]; got != "message_send" {
+			t.Fatalf("flow = %#v, want message_send in %#v", got, event.Params)
+		}
+		if got := event.Params["status"]; got != "success" {
+			t.Fatalf("status = %#v, want success in %#v", got, event.Params)
+		}
+		if got := event.Params["error_code"]; got != "agent_error_none" {
+			t.Fatalf("error_code = %#v, want agent_error_none in %#v", got, event.Params)
+		}
+		if got := event.Params["error_message"]; got != "" {
+			t.Fatalf("error_message = %#v, want empty in %#v", got, event.Params)
+		}
+		if got := event.Params["node_name"]; got != event.Params["node"] {
+			t.Fatalf("node_name = %#v, want node alias %#v", got, event.Params["node"])
+		}
+	}
+}
+
+func TestServiceSendInputReportsRuntimeExecFailure(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.execErr = errors.New("network connection disconnected")
+	reporter := &recordingAgentAnalyticsReporter{}
+	service := NewService(runtime)
+	service.AnalyticsReporter = reporter
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "waiting",
+				Title:             "Persisted session",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")}); err == nil {
+		t.Fatal("SendInput returned nil error, want runtime exec error")
+	}
+
+	var failure reporterservice.Event
+	for _, event := range reporter.events {
+		if event.Name == "agent.node_result" && event.Params["node"] == "runtime_exec" {
+			failure = event
+			break
+		}
+	}
+	if failure.Name == "" {
+		t.Fatalf("runtime_exec failure event not found in %#v", reporter.events)
+	}
+	for key, want := range map[string]any{
+		"flow":          "message_send",
+		"status":        "failure",
+		"error_code":    "agent_runtime_network_disconnected",
+		"error_message": "network connection disconnected",
+		"success":       false,
+	} {
+		if got := failure.Params[key]; got != want {
+			t.Fatalf("params[%q] = %#v, want %#v in %#v", key, got, want, failure.Params)
+		}
 	}
 }
 
@@ -3271,14 +4010,25 @@ func TestServiceReconcilesOpenToolCallBeforeSubmittingInteractive(t *testing.T) 
 	}
 }
 
-func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing.T) {
+func TestServiceReconcilesGhostOpenApprovalWhileBackgroundAgentsAreLive(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
-		ID:                "session-1",
-		WorkspaceID:       "ws-1",
-		Provider:          "codex",
-		ProviderSessionID: "provider-session-1",
-		Status:            "ready",
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": float64(1),
+				"items": []any{
+					map[string]any{
+						"agentId":         "agent-1",
+						"parentToolUseId": "toolu-agent",
+						"status":          "running",
+					},
+				},
+			},
+		},
 	}
 	reconciled := make([]PersistedSession, 0)
 	service := NewService(runtime)
@@ -3286,29 +4036,97 @@ func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing
 		reconciled: &reconciled,
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
-				ID:                "session-1",
-				WorkspaceID:       "ws-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session-1",
-				Status:            "waiting",
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "idle",
 			},
 		},
 	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
 
-	if _, err := service.SubmitInteractive(
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
+	}
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want ghost open approval cleared", reconciled)
+	}
+}
+
+func TestServiceSubmitInteractiveReconcilesStaleLiveRequestError(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.submitInteractiveErr = errors.New(`interactive request "permission-1" is no longer live`)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "active",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
+
+	session, err := service.SubmitInteractive(
 		context.Background(),
 		"ws-1",
 		"session-1",
 		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
-	); err != nil {
+		SubmitInteractiveInput{OptionID: stringRef("allow")},
+	)
+	if err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}
-	if len(reconciled) != 1 {
-		t.Fatalf("reconciled = %#v, want stale ready runtime session reconciled", reconciled)
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
 	}
-	if len(runtime.submitInteractiveCalls) != 0 {
-		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want stale approval cleared after no-longer-live", reconciled)
 	}
 }
 
@@ -3382,6 +4200,58 @@ func TestServiceGetReconcilesStalePersistedTurn(t *testing.T) {
 	}
 }
 
+func TestServiceGetReconcilesRuntimeWaitingWithoutLivePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "waiting",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	reader := fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "waiting_approval",
+			},
+		},
+	}
+	service.SessionReader = reader
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	_, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled = %#v, want stale waiting runtime session reconciled", reconciled)
+	}
+	persisted := reader.sessions["ws-1:session-1"]
+	if persisted.Status == "waiting" || persisted.CurrentPhase == "waiting_approval" {
+		t.Fatalf("persisted session = %#v, want stale waiting cleared", persisted)
+	}
+}
+
 func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	runtime := newFakeRuntime()
 	reconciled := make([]PersistedSession, 0)
@@ -3411,6 +4281,252 @@ func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	}
 	if len(runtime.cancelCalls) != 0 {
 		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceReconcilesPhaseOnlyStalePersistedTurnBeforeCanceling(t *testing.T) {
+	runtime := newFakeRuntime()
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Status:            "created",
+				CurrentPhase:      "running",
+			},
+		},
+	}
+
+	result, err := service.Cancel(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Cancel returned error: %v", err)
+	}
+	if result.Canceled || result.Reason != CancelReasonStaleTurnReconciled {
+		t.Fatalf("cancel result = %#v, want phase-only stale turn reconciled without cancel", result)
+	}
+	if len(reconciled) != 1 || reconciled[0].CurrentPhase != "running" {
+		t.Fatalf("reconciled = %#v, want phase-only stale persisted session", reconciled)
+	}
+	if len(runtime.cancelCalls) != 0 {
+		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "waiting_approval" {
+		t.Fatalf("turn lifecycle = %#v, want live waiting approval", session.TurnLifecycle)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceEnsureRuntimeSessionDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	ensured, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("ensureRuntimeSessionResult returned error: %v", err)
+	}
+	if ensured.StaleTurnReconciled {
+		t.Fatal("stale turn reconciled = true, want false for live waiting approval turn")
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		PendingInteractive: &RuntimeInteractivePrompt{
+			Kind:      "exit-plan",
+			RequestID: "plan-1",
+			ToolName:  "ExitPlanMode",
+			Status:    "waiting",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "ready",
+				CurrentPhase: "idle",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.Status != "created" {
+		t.Fatalf("session status = %q, want live runtime status", session.Status)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live pending interactive", reconciled)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeBackgroundAgent(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": 1,
+				"items": []any{map[string]any{
+					"parentToolUseId": "call-agent-1",
+					"status":          "running",
+				}},
+			},
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "streaming",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "Read"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.RuntimeContext["backgroundAgents"] == nil {
+		t.Fatalf("runtime context = %#v, want backgroundAgents preserved", session.RuntimeContext)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile while background agent is running", reconciled)
 	}
 }
 
@@ -3599,12 +4715,29 @@ type fakeRuntime struct {
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]RuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
+	submitInteractiveErr   error
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
 	closeHook              func(RuntimeCloseInput)
 	validateErr            error
 	validateCalls          []RuntimeExecInput
+}
+
+type fakeAgentTargetStore struct {
+	err     error
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	if f.err != nil {
+		return agenttargetbiz.Target{}, f.err
+	}
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type fakeRuntimePreparer struct {
@@ -3682,6 +4815,20 @@ func writeAgentServiceJSONL(t *testing.T, path string, items ...map[string]any) 
 	}
 }
 
+func newTestService(runtime RuntimeController) *Service {
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	return service
+}
+
+func defaultTestAgentTargets() map[string]agenttargetbiz.Target {
+	targets := make(map[string]agenttargetbiz.Target)
+	for _, target := range agenttargetbiz.DefaultSystemTargets(0) {
+		targets[target.ID] = target
+	}
+	return targets
+}
+
 type fakeMessageReader struct {
 	lastLimit  *int
 	lastTurnID *string
@@ -3707,6 +4854,40 @@ func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Con
 type fakeSessionReader struct {
 	reconciled *[]PersistedSession
 	sessions   map[string]PersistedSession
+}
+
+type fakeSectionReader struct {
+	fakeSessionReader
+	lastInput agentactivitybiz.ListSessionSectionInput
+	pages     map[string]agentactivitybiz.SessionSectionPage
+}
+
+func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
+	f.lastInput = input
+	if f.pages == nil {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page, ok := f.pages[input.SectionKey]
+	if !ok {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page.WorkspaceID = input.WorkspaceID
+	page.SectionKey = input.SectionKey
+	return page, true
+}
+
+type fakeUserProjectReader struct {
+	projects []userprojectbiz.Project
+}
+
+func (f fakeUserProjectReader) List(context.Context) ([]userprojectbiz.Project, error) {
+	return f.projects, nil
 }
 
 func (f fakeMessageReader) ListSessionMessages(
@@ -3783,6 +4964,9 @@ func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExec
 
 func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) error {
 	f.submitInteractiveCalls = append(f.submitInteractiveCalls, input)
+	if f.submitInteractiveErr != nil {
+		return f.submitInteractiveErr
+	}
 	return nil
 }
 
@@ -3818,6 +5002,7 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Runti
 	f.resumeCalls = append(f.resumeCalls, input)
 	session := RuntimeSession{
 		ID:                input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		Cwd:               input.Cwd,
@@ -3922,14 +5107,16 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	session := RuntimeSession{
-		ID:       id,
-		Provider: input.Provider,
-		Cwd:      input.Cwd,
+		ID:            id,
+		AgentTargetID: input.AgentTargetID,
+		Provider:      input.Provider,
+		Cwd:           input.Cwd,
 		Settings: &ComposerSettings{
-			Model:            input.Model,
-			PermissionModeID: input.PermissionModeID,
-			PlanMode:         input.PlanMode,
-			ReasoningEffort:  input.ReasoningEffort,
+			Model:                  input.Model,
+			PermissionModeID:       input.PermissionModeID,
+			PlanMode:               input.PlanMode,
+			ReasoningEffort:        input.ReasoningEffort,
+			ConversationDetailMode: input.ConversationDetailMode,
 		},
 		Status:          "ready",
 		Title:           input.Title,
@@ -3949,6 +5136,18 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 	events := make(chan RuntimeStreamEvent)
 	close(events)
 	return events, func() {}, true
+}
+
+type fakeAgentTargetLookup struct {
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type activityProjectionRepoStub struct {
@@ -3973,6 +5172,10 @@ func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (
 
 func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agentactivitybiz.Session, bool, error) {
 	return nil, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
+	return agentactivitybiz.SessionSectionPage{}, false, nil
 }
 
 func (*activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {
@@ -4016,6 +5219,34 @@ func (p *activityUpdatePublisherStub) PublishAgentActivityUpdated(_ context.Cont
 		payload:        payload,
 	})
 	return nil
+}
+
+type recordingAgentAnalyticsReporter struct {
+	events []reporterservice.Event
+}
+
+func (r *recordingAgentAnalyticsReporter) Track(_ context.Context, events ...reporterservice.Event) {
+	r.events = append(r.events, events...)
+}
+
+func (*recordingAgentAnalyticsReporter) Close() error {
+	return nil
+}
+
+func assertAgentNodeSequence(t *testing.T, events []reporterservice.Event, want []string) {
+	t.Helper()
+	got := make([]string, 0, len(events))
+	for _, event := range events {
+		if event.Name != "agent.node_result" {
+			continue
+		}
+		if node, ok := event.Params["node"].(string); ok {
+			got = append(got, node)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("agent node sequence = %#v, want %#v; events = %#v", got, want, events)
+	}
 }
 
 func stringRef(value string) *string {

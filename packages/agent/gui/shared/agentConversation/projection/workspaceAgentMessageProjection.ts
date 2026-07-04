@@ -71,6 +71,8 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         ...(message.status?.trim() ? { status: message.status.trim() } : {})
       });
       mergedToolPayloadByKey.set(toolKey, mergedPayload);
+      const callType =
+        firstNonEmptyString(stringValue(mergedPayload.callType)) || "tool";
       const workspaceId = workspaceIdFromMessage(message);
       return {
         id,
@@ -83,7 +85,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         actorId: message.agentSessionId,
         itemType: toolCallItemType(message.status ?? undefined),
         role: "assistant",
-        callType: "tool",
+        callType,
         callId,
         name: firstNonEmptyString(toolName, titleToolName) || "Tool",
         ...(message.status !== undefined ? { status: message.status } : {}),

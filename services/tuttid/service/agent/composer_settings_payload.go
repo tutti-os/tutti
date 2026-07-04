@@ -1,6 +1,10 @@
 package agent
 
-import "strings"
+import (
+	"strings"
+
+	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+)
 
 // ComposerSettingsToMap serializes composer settings for activity persistence
 // and API/CLI surfaces. browserUse is tri-state: only written when explicitly set.
@@ -32,6 +36,9 @@ func composerSettingsToPayload(settings ComposerSettings) map[string]any {
 	if speed := strings.TrimSpace(settings.Speed); speed != "" {
 		payload["speed"] = speed
 	}
+	if strings.TrimSpace(settings.ConversationDetailMode) != "" {
+		payload["conversationDetailMode"] = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(settings.ConversationDetailMode)
+	}
 	if len(payload) == 0 {
 		return nil
 	}
@@ -39,7 +46,7 @@ func composerSettingsToPayload(settings ComposerSettings) map[string]any {
 }
 
 func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
-	return ComposerSettings{
+	settings := ComposerSettings{
 		Model:            payloadString(payload, "model"),
 		PermissionModeID: payloadString(payload, "permissionModeId"),
 		PlanMode:         payloadBool(payload, "planMode"),
@@ -48,6 +55,10 @@ func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
 		ComputerUse:      payloadBoolPointer(payload, "computerUse"),
 		Speed:            payloadString(payload, "speed"),
 	}
+	if _, ok := payload["conversationDetailMode"]; ok {
+		settings.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(payloadString(payload, "conversationDetailMode"))
+	}
+	return settings
 }
 
 func composerSettingsIsEmpty(settings ComposerSettings) bool {
@@ -55,6 +66,7 @@ func composerSettingsIsEmpty(settings ComposerSettings) bool {
 		strings.TrimSpace(settings.PermissionModeID) == "" &&
 		strings.TrimSpace(settings.ReasoningEffort) == "" &&
 		strings.TrimSpace(settings.Speed) == "" &&
+		strings.TrimSpace(settings.ConversationDetailMode) == "" &&
 		!settings.PlanMode &&
 		settings.BrowserUse == nil &&
 		settings.ComputerUse == nil
@@ -112,5 +124,6 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 		)
 		input.Speed = &normalizedSpeed
 	}
+	input.ConversationDetailMode = preferencesbiz.NormalizeDesktopAgentConversationDetailMode(settings.ConversationDetailMode)
 	return input
 }

@@ -1,4 +1,14 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import {
+  Globe,
+  Info,
+  ListChecks,
+  Minimize2,
+  Monitor,
+  Search,
+  Target,
+  ZapIcon
+} from "lucide-react";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import { cn } from "../../app/renderer/lib/utils";
 import type { AgentGUIProviderSkillOption } from "./model/agentGuiNodeTypes";
@@ -9,6 +19,8 @@ export type AgentSlashPaletteEntry =
       type: "command";
       key: string;
       label: string;
+      primaryLabel?: string;
+      secondaryLabel?: string;
       description?: string;
       command: AgentSessionCommand;
     }
@@ -53,9 +65,14 @@ const paletteStyles = {
   palette:
     "nodrag agent-gui-node__mention-palette flex h-full min-h-0 flex-col gap-1 overflow-y-auto px-1 pb-1 pt-2 [-webkit-app-region:no-drag]",
   option:
-    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-1.5 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  copy: "flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden leading-[16px]",
-  name: "min-w-0 max-w-[48%] shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
+    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  icon: "flex w-3 shrink-0 items-center justify-center self-center text-[var(--text-secondary)]",
+  copy: "flex min-w-0 flex-1 items-center gap-1 overflow-hidden leading-[16px]",
+  name: "flex min-w-0 max-w-[48%] shrink-0 items-center gap-1 overflow-hidden",
+  primaryName:
+    "min-w-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
+  secondaryName:
+    "shrink-0 text-[10px] font-normal text-[var(--text-secondary)]",
   descriptionText:
     "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]",
   groupHeader:
@@ -110,6 +127,7 @@ export function AgentSlashCommandPalette({
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
         const groupType = entryGroupType(entry);
+        const entryIcon = slashPaletteEntryIcon(entry);
         const groupHeader =
           showGroupHeaders && firstEntryIndexByType.get(groupType) === index ? (
             <div
@@ -161,8 +179,24 @@ export function AgentSlashCommandPalette({
                 onSelectSkill(entry.skill);
               }}
             >
+              {entryIcon ? (
+                <span aria-hidden="true" className={paletteStyles.icon}>
+                  {entryIcon}
+                </span>
+              ) : null}
               <span className={paletteStyles.copy}>
-                <span className={paletteStyles.name}>{entry.label}</span>
+                <span className={paletteStyles.name}>
+                  <span className={paletteStyles.primaryName}>
+                    {entry.type === "command"
+                      ? (entry.primaryLabel ?? entry.label)
+                      : entry.label}
+                  </span>
+                  {entry.type === "command" && entry.secondaryLabel ? (
+                    <span className={paletteStyles.secondaryName}>
+                      {entry.secondaryLabel}
+                    </span>
+                  ) : null}
+                </span>
                 {entry.description ? (
                   <span className={paletteStyles.descriptionText}>
                     {entry.description}
@@ -247,5 +281,38 @@ function labelForEntryGroupType(
       return labels.mcpGroupLabel;
     case "skill":
       return labels.skillsGroupLabel;
+  }
+}
+
+// Keep the explicit `size-*` class on each icon so the palette option's
+// `[&_svg:not([class*='size-'])]:size-4` fallback does not override it.
+const SLASH_PALETTE_ICON_CLASS = "size-3";
+
+function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
+  if (entry.type === "capability") {
+    return entry.capability.capability === "computerUse" ? (
+      <Monitor className={SLASH_PALETTE_ICON_CLASS} />
+    ) : (
+      <Globe className={SLASH_PALETTE_ICON_CLASS} />
+    );
+  }
+  if (entry.type !== "command") {
+    return null;
+  }
+  switch (entry.command.name.trim().toLowerCase()) {
+    case "compact":
+      return <Minimize2 className={SLASH_PALETTE_ICON_CLASS} />;
+    case "fast":
+      return <ZapIcon className={SLASH_PALETTE_ICON_CLASS} />;
+    case "goal":
+      return <Target className={SLASH_PALETTE_ICON_CLASS} />;
+    case "plan":
+      return <ListChecks className={SLASH_PALETTE_ICON_CLASS} />;
+    case "review":
+      return <Search className={SLASH_PALETTE_ICON_CLASS} />;
+    case "status":
+      return <Info className={SLASH_PALETTE_ICON_CLASS} />;
+    default:
+      return null;
   }
 }

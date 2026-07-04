@@ -56,9 +56,10 @@ type ComposerSettings struct {
 	BrowserUse *bool
 	// ComputerUse is tri-state: nil means "use the default" (on), so the
 	// composer can distinguish an explicit opt-out from an unset value.
-	ComputerUse     *bool
-	ReasoningEffort string
-	Speed           string
+	ComputerUse            *bool
+	ReasoningEffort        string
+	Speed                  string
+	ConversationDetailMode string
 }
 
 type ComposerOptionsInput struct {
@@ -208,10 +209,10 @@ func composerProviderCapabilities(provider string) []string {
 	if agentsidecarservice.BrowserUseDefaultEnabled() {
 		capabilities = append(capabilities, "browserUse")
 	}
-	// Computer use is delivered as a default MCP server to every provider, so the
-	// composer advertises it up front when enabled. Live sessions re-report it
-	// from session env (runtime adapters), which takes precedence in the GUI.
-	if agentsidecarservice.ComputerUseDefaultEnabled() {
+	// Computer use requires a local cua-driver before the composer advertises it
+	// up front. Live sessions re-report it from session env (runtime adapters),
+	// which takes precedence in the GUI.
+	if agentsidecarservice.ComputerUseAvailable() {
 		capabilities = append(capabilities, "computerUse")
 	}
 	return capabilities
@@ -361,10 +362,18 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.PermissionModeID = normalizePermissionModeIDForProvider(provider, settings.PermissionModeID)
 	settings.ReasoningEffort = normalizeReasoningEffortForProvider(provider, settings.ReasoningEffort)
 	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
+	settings.ConversationDetailMode = normalizeComposerConversationDetailMode(settings.ConversationDetailMode)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
 	settings.Model = normalizeComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)
 	return settings
+}
+
+func normalizeComposerConversationDetailMode(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return preferencesbiz.NormalizeDesktopAgentConversationDetailMode(value)
 }
 
 func normalizeComposerModelForProvider(provider string, model string) string {
@@ -665,12 +674,10 @@ const (
 // dimension. Speed combines orthogonally with model and reasoning effort.
 //
 //   - Codex: the codex app-server honours `service_tier` (fast → priority).
-//   - Claude Code: requires the patched claude-agent-acp bridge that advertises
-//     a `fast` config option backed by the SDK's `Settings.fastMode` (applied
-//     automatically on install, or via `pnpm patch:claude-agent-acp`). Stock
-//     bridges (≤0.44) do not
-//     advertise it; there the daemon's `supported["fast"]` gate skips it and the
-//     dropdown/`/fast` are simply a no-op until the patch is applied.
+//   - Claude Code: requires a supported claude-agent-acp bridge that advertises
+//     the native `fast` config option backed by the SDK's `Settings.fastMode`.
+//     The daemon maps Tutti's `standard` / `fast` speed tiers onto the bridge's
+//     live `off` / `on` config values.
 func speedProviderSupportsSpeed(provider string) bool {
 	switch agentprovider.Normalize(provider) {
 	case agentprovider.Codex, agentprovider.ClaudeCode:

@@ -94,6 +94,7 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionStateUpdate struct {
+	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 	Provider           string                            `json:"provider,omitempty"`
 	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
 	Model              string                            `json:"model,omitempty"`
@@ -101,6 +102,7 @@ type WorkspaceAgentSessionStateUpdate struct {
 	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
 	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
 	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	PendingInteractive *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
 	CWD                string                            `json:"cwd,omitempty"`
 	Title              string                            `json:"title,omitempty"`
 	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
@@ -141,6 +143,17 @@ type WorkspaceAgentTurnLifecycle struct {
 	Settling         bool                            `json:"settling,omitempty"`
 	Outcome          *string                         `json:"outcome,omitempty"`
 	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
+}
+
+type WorkspaceAgentInteractivePrompt struct {
+	Kind      string         `json:"kind"`
+	RequestID string         `json:"requestId,omitempty"`
+	ToolName  string         `json:"toolName,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Input     map[string]any `json:"input,omitempty"`
+	Output    map[string]any `json:"output,omitempty"`
+	Error     map[string]any `json:"error,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type ReportSessionMessagesInput struct {
@@ -320,29 +333,51 @@ type EventSource struct {
 	Provider          string `json:"provider,omitempty"`
 	ProviderSessionID string `json:"providerSessionId,omitempty"`
 	AgentID           string `json:"agentId,omitempty"`
+	AgentTargetID     string `json:"agentTargetId,omitempty"`
 	CWD               string `json:"cwd,omitempty"`
 	SessionOrigin     string `json:"sessionOrigin,omitempty"`
 	UserID            string `json:"-"`
 }
 
 type WorkspaceAgentStatePatch struct {
-	AgentSessionID     string                            `json:"agentSessionId"`
-	Provider           string                            `json:"provider,omitempty"`
-	ProviderSessionID  string                            `json:"providerSessionId,omitempty"`
-	Model              string                            `json:"model,omitempty"`
-	PermissionModeID   string                            `json:"permissionModeId,omitempty"`
-	Settings           map[string]any                    `json:"settings,omitempty"`
-	RuntimeContext     map[string]any                    `json:"runtimeContext,omitempty"`
-	TurnLifecycle      *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
-	CWD                string                            `json:"cwd,omitempty"`
-	Title              string                            `json:"title,omitempty"`
-	LifecycleStatus    string                            `json:"lifecycleStatus,omitempty"`
-	CurrentPhase       string                            `json:"currentPhase,omitempty"`
-	LastError          string                            `json:"lastError,omitempty"`
-	OccurredAtUnixMS   int64                             `json:"occurredAtUnixMs,omitempty"`
-	Turn               *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
-	Entities           []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
+	AgentSessionID            string                            `json:"agentSessionId"`
+	AgentTargetID             string                            `json:"agentTargetId,omitempty"`
+	Provider                  string                            `json:"provider,omitempty"`
+	ProviderSessionID         string                            `json:"providerSessionId,omitempty"`
+	Model                     string                            `json:"model,omitempty"`
+	PermissionModeID          string                            `json:"permissionModeId,omitempty"`
+	Settings                  map[string]any                    `json:"settings,omitempty"`
+	RuntimeContext            map[string]any                    `json:"runtimeContext,omitempty"`
+	TurnLifecycle             *WorkspaceAgentTurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability        *WorkspaceAgentSubmitAvailability `json:"submitAvailability,omitempty"`
+	PendingInteractive        *WorkspaceAgentInteractivePrompt  `json:"pendingInteractive,omitempty"`
+	PendingInteractivePresent bool                              `json:"-"`
+	CWD                       string                            `json:"cwd,omitempty"`
+	Title                     string                            `json:"title,omitempty"`
+	LifecycleStatus           string                            `json:"lifecycleStatus,omitempty"`
+	CurrentPhase              string                            `json:"currentPhase,omitempty"`
+	LastError                 string                            `json:"lastError,omitempty"`
+	OccurredAtUnixMS          int64                             `json:"occurredAtUnixMs,omitempty"`
+	Turn                      *WorkspaceAgentTurnPatch          `json:"turn,omitempty"`
+	Entities                  []WorkspaceAgentEntityPatch       `json:"entities,omitempty"`
+}
+
+func (p WorkspaceAgentStatePatch) MarshalJSON() ([]byte, error) {
+	type alias WorkspaceAgentStatePatch
+	data, err := json.Marshal(alias(p))
+	if err != nil || !p.PendingInteractivePresent {
+		return data, err
+	}
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil {
+		return nil, err
+	}
+	if p.PendingInteractive == nil {
+		object["pendingInteractive"] = nil
+	} else {
+		object["pendingInteractive"] = p.PendingInteractive
+	}
+	return json.Marshal(object)
 }
 
 type WorkspaceAgentTurnPatch struct {
@@ -468,6 +503,7 @@ type WorkspaceAgentPresence struct {
 type WorkspaceAgentSession struct {
 	ID                 uint64                            `json:"id"`
 	AgentSessionID     string                            `json:"agentSessionId"`
+	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 	PresenceID         uint64                            `json:"presenceId"`
 	UserID             string                            `json:"userId"`
 	Provider           string                            `json:"provider"`
@@ -492,6 +528,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 	type output struct {
 		ID                 uint64                            `json:"id"`
 		AgentSessionID     string                            `json:"agentSessionId"`
+		AgentTargetID      string                            `json:"agentTargetId,omitempty"`
 		PresenceID         uint64                            `json:"presenceId"`
 		UserID             string                            `json:"userId"`
 		Provider           string                            `json:"provider"`
@@ -514,6 +551,7 @@ func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
 	return json.Marshal(output{
 		ID:                 s.ID,
 		AgentSessionID:     s.AgentSessionID,
+		AgentTargetID:      s.AgentTargetID,
 		PresenceID:         s.PresenceID,
 		UserID:             s.UserID,
 		Provider:           s.Provider,
@@ -604,6 +642,8 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 		ID                     flexibleUint64           `json:"id"`
 		AgentSessionID         string                   `json:"agentSessionId"`
 		AgentSessionIDSnake    string                   `json:"agent_session_id"`
+		AgentTargetID          string                   `json:"agentTargetId"`
+		AgentTargetIDSnake     string                   `json:"agent_target_id"`
 		AgentID                string                   `json:"agentId"`
 		AgentIDSnake           string                   `json:"agent_id"`
 		PresenceID             flexibleUint64           `json:"presenceId"`
@@ -645,9 +685,10 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 			raw.AgentID,
 			raw.AgentIDSnake,
 		),
-		PresenceID: uint64(firstNonZeroFlexibleUint64(raw.PresenceID, raw.PresenceIDSnake)),
-		UserID:     firstNonEmptyString(raw.UserID, raw.UserIDSnake),
-		Provider:   raw.Provider,
+		AgentTargetID: firstNonEmptyString(raw.AgentTargetID, raw.AgentTargetIDSnake),
+		PresenceID:    uint64(firstNonZeroFlexibleUint64(raw.PresenceID, raw.PresenceIDSnake)),
+		UserID:        firstNonEmptyString(raw.UserID, raw.UserIDSnake),
+		Provider:      raw.Provider,
 		ProviderSessionID: firstNonEmptyString(
 			raw.ProviderSessionID,
 			raw.ProviderSessionIDSnake,

@@ -283,6 +283,65 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 	}
 }
 
+func TestCommandGuideSummaryIncludesScopeDescriptions(t *testing.T) {
+	guide := commandGuideFromCapabilities("tutti-dev", []cliservice.Capability{
+		{
+			ID:      "agent-context.agent.sessions",
+			Path:    []string{"agent", "sessions"},
+			Summary: "List agent sessions",
+		},
+		{
+			ID:      "issue-manager.issue.topic.list",
+			Path:    []string{"issue", "topic", "list"},
+			Summary: "List issue topics",
+		},
+		{
+			ID:      "workspace-apps.app.open",
+			Path:    []string{"app", "open"},
+			Summary: "Open a workspace app",
+		},
+		{
+			ID:          "ai-media-canvas.aimc.open",
+			Path:        []string{"aimc", "open"},
+			Summary:     "Open AI Canvas",
+			Description: "Open AI Canvas.",
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "ai-media-canvas",
+				AppName: "AI Canvas",
+			},
+		},
+	})
+	summary := commandGuideSummary(PrepareInput{
+		CLICommand:   "tutti-dev",
+		CommandGuide: guide,
+	})
+
+	for _, want := range []string{
+		"- `tutti-dev agent ...` - agent sessions, summaries, turn resources, active peers.",
+		"- `tutti-dev app ...` - open/show installed app windows only when explicitly requested.",
+		"- `tutti-dev issue ...` - issue/topic/task/run inspection and execution state.",
+		"- `tutti-dev aimc ...` - workspace app commands for AI Canvas (App id: ai-media-canvas).",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary missing %q: %q", want, summary)
+		}
+	}
+
+	customGuide := strings.Join([]string{
+		"- Run workspace automations: `tutti-dev automation run --json`",
+		"- Inspect automation history: `tutti-dev automation history --json`",
+	}, "\n")
+	customSummary := commandGuideSummary(PrepareInput{
+		CLICommand:   "tutti-dev",
+		CommandGuide: customGuide,
+	})
+	wantCustom := "- `tutti-dev automation ...` - Inspect automation history; Run workspace automations."
+	if !strings.Contains(customSummary, wantCustom) {
+		t.Fatalf("custom summary missing %q: %q", wantCustom, customSummary)
+	}
+}
+
 func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	guide := commandGuide(PrepareInput{CLICommand: "tutti-dev"})
 

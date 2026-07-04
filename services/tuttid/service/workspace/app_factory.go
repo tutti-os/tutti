@@ -319,6 +319,7 @@ func (s *AppFactoryService) Create(ctx context.Context, workspaceID string, inpu
 	}
 	session, err := s.AgentSessionService.Create(ctx, workspaceID, agentservice.CreateSessionInput{
 		AgentSessionID: agentSessionID,
+		AgentTargetID:  factoryAgentTargetID(job.Provider),
 		Provider:       job.Provider,
 		InitialContent: agentservice.TextPromptContent(initialPrompt),
 		Title:          &title,

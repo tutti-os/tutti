@@ -1,8 +1,9 @@
 export interface SingleInstanceDeps {
   requestSingleInstanceLock: () => boolean;
   quit: () => void;
-  onSecondInstance: (handler: () => void) => void;
+  onSecondInstance: (handler: (argv: readonly string[]) => void) => void;
   focusPrimaryWindow: () => void;
+  handleSecondInstanceArgv?: (argv: readonly string[]) => void;
 }
 
 /**
@@ -22,6 +23,9 @@ export function ensureSingleInstance(deps: SingleInstanceDeps): boolean {
     return false;
   }
 
-  deps.onSecondInstance(() => deps.focusPrimaryWindow());
+  deps.onSecondInstance((argv) => {
+    deps.handleSecondInstanceArgv?.(argv);
+    deps.focusPrimaryWindow();
+  });
   return true;
 }

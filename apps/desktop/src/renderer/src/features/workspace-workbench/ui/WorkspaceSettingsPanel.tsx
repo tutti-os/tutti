@@ -10,14 +10,26 @@ import { createPortal } from "react-dom";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import type { DesktopComputerUseStatus } from "@shared/contracts/ipc";
+import type {
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUsePermissionsStatus,
+  DesktopComputerUseStatus
+} from "@shared/contracts/ipc";
 import {
   AddIcon,
+  AskLinedIcon,
   Button,
+  CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   CloseIcon,
   DeleteIcon,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   EyeIcon,
   GitHubBrandIcon,
   ImportLinedIcon,
@@ -29,6 +41,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  StatusDot,
   Switch,
   Tooltip,
   TooltipContent,
@@ -62,21 +75,27 @@ import {
 } from "../../../../../shared/i18n/index.ts";
 import {
   type DesktopAgentProvider,
+  desktopAgentDockLayouts,
+  desktopAgentConversationDetailModes,
   desktopAppCatalogChannels,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
   desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
+  desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
+  type DesktopAgentConversationDetailMode,
+  type DesktopAgentDockLayout,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
+  type DesktopUpdateChannel,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
@@ -88,6 +107,7 @@ import {
 } from "../../../../../shared/theme/index.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import { useAccountService } from "./useAccountService";
 import {
   WorkspaceSettingsActionButton,
   workspaceSettingsControlColumnClass
@@ -115,10 +135,20 @@ const workspaceManagedModelProviderPrefixClass =
 
 const developerPanelUnlockTaps = 7;
 const computerUseOperationSettleMs = 280;
+const computerUseAutoCheckIntervalMs = 1_500;
+const computerUseAutoCheckMaxMs = 120_000;
+const computerUseFocusRefreshMinIntervalMs = 5_000;
 const tuttiWebsiteUrl = "https://tutti.sh/";
 const tuttiGitHubUrl = "https://github.com/tutti-os/tutti";
 const tuttiDesktopIconUrl = new URL(
   "../../../../../../build/icon.png",
+  import.meta.url
+).href;
+// Screen recording of the System Settings permission row (icon © Cua AI,
+// Inc., MIT) showing the CuaDriver toggle being switched on — the exact
+// action users must perform after "Open Settings".
+const cuaDriverToggleDemoUrl = new URL(
+  "../../../assets/cua-driver-toggle-demo.gif",
   import.meta.url
 ).href;
 const workspaceSettingsDefaultAgentProviders = [
@@ -243,6 +273,14 @@ export function WorkspaceSettingsPanel({
               id: "apps" as const,
               label: t("workspace.settings.nav.apps")
             },
+            ...(settingsState.tuttiAgentSwitchEnabled
+              ? [
+                  {
+                    id: "account" as const,
+                    label: t("workspace.settings.nav.account")
+                  }
+                ]
+              : []),
             {
               id: "about" as const,
               label: t("workspace.settings.nav.about")
@@ -297,8 +335,14 @@ export function WorkspaceSettingsPanel({
               />
             ) : settingsState.activeSection === "agent" ? (
               <WorkspaceAgentSettingsSection
+                agentConversationDetailMode={
+                  desktopPreferencesState.agentConversationDetailMode
+                }
                 browserUseConnectionMode={
                   desktopPreferencesState.browserUseConnectionMode
+                }
+                changingAgentConversationDetailMode={
+                  desktopPreferencesState.changingAgentConversationDetailMode
                 }
                 changingDefaultAgentProvider={
                   desktopPreferencesState.changingDefaultAgentProvider
@@ -313,6 +357,9 @@ export function WorkspaceSettingsPanel({
                 focusRequestID={settingsState.generalFocusRequestID}
                 onBrowserUseConnectionModeChange={(mode) => {
                   void settingsService.changeBrowserUseConnectionMode(mode);
+                }}
+                onAgentConversationDetailModeChange={(mode) => {
+                  void settingsService.changeAgentConversationDetailMode(mode);
                 }}
                 onDefaultAgentProviderChange={(provider) => {
                   void settingsService.changeDefaultAgentProvider(provider);
@@ -399,6 +446,8 @@ export function WorkspaceSettingsPanel({
                   );
                 }}
               />
+            ) : settingsState.activeSection === "account" ? (
+              <WorkspaceAccountSettingsSection />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
@@ -410,9 +459,16 @@ export function WorkspaceSettingsPanel({
                   analyticsDebugPreferenceState.available
                 }
                 analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
+                agentDockLayout={desktopPreferencesState.agentDockLayout}
                 appCatalogChannel={desktopPreferencesState.appCatalogChannel}
+                changingAgentDockLayout={
+                  desktopPreferencesState.changingAgentDockLayout
+                }
                 changingAppCatalogChannel={
                   desktopPreferencesState.changingAppCatalogChannel
+                }
+                changingUpdateChannel={
+                  desktopPreferencesState.changingUpdateChannel
                 }
                 developerLogs={settingsState.developerLogs}
                 developerPanelVisible={settingsState.developerPanelVisible}
@@ -422,11 +478,16 @@ export function WorkspaceSettingsPanel({
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
+                tuttiAgentSwitchEnabled={settingsState.tuttiAgentSwitchEnabled}
+                updateChannel={desktopPreferencesState.updateChannel}
                 onAppCatalogChannelChange={(channel) => {
                   void settingsService.changeAppCatalogChannel(channel);
                 }}
                 onAnalyticsDebugEnabledChange={(enabled) => {
                   analyticsDebugPreferenceService.setEnabled(enabled);
+                }}
+                onAgentDockLayoutChange={(layout) => {
+                  void settingsService.changeAgentDockLayout(layout);
                 }}
                 onClearConversationHistory={() => {
                   if (
@@ -444,6 +505,12 @@ export function WorkspaceSettingsPanel({
                 }}
                 onDeveloperPanelVisibleChange={(visible) => {
                   settingsService.setDeveloperPanelVisible(visible);
+                }}
+                onTuttiAgentSwitchEnabledChange={(enabled) => {
+                  settingsService.setTuttiAgentSwitchEnabled(enabled);
+                }}
+                onUpdateChannelChange={(channel) => {
+                  void settingsService.changeUpdateChannel(channel);
                 }}
                 onShowAppDeveloperSourcesChange={(show) => {
                   void settingsService.changeShowAppDeveloperSources(show);
@@ -1456,30 +1523,44 @@ function ManagedModelProviderFields({
 function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
+  agentDockLayout,
   appCatalogChannel,
+  changingAgentDockLayout,
   changingAppCatalogChannel,
+  changingUpdateChannel,
   developerLogs,
   developerPanelVisible,
   fileDefaultOpenersByExtension,
   showAppDeveloperSources,
+  tuttiAgentSwitchEnabled,
+  updateChannel,
   onAnalyticsDebugEnabledChange,
+  onAgentDockLayoutChange,
   onAppCatalogChannelChange,
   onClearConversationHistory,
   onClearLogs,
   onDeveloperPanelVisibleChange,
   onExportLogs,
   onFileDefaultOpenersChange,
-  onShowAppDeveloperSourcesChange
+  onShowAppDeveloperSourcesChange,
+  onTuttiAgentSwitchEnabledChange,
+  onUpdateChannelChange
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
+  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
+  changingAgentDockLayout: DesktopAgentDockLayout | null;
   changingAppCatalogChannel: DesktopAppCatalogChannel | null;
+  changingUpdateChannel: DesktopUpdateChannel | null;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   showAppDeveloperSources: boolean;
+  tuttiAgentSwitchEnabled: boolean;
+  updateChannel: DesktopUpdateChannel;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
+  onAgentDockLayoutChange: (layout: DesktopAgentDockLayout) => void;
   onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
   onClearConversationHistory: () => void;
   onClearLogs: () => void;
@@ -1489,12 +1570,16 @@ function WorkspaceDeveloperSettingsSection({
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
+  onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
+  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
   const [newExtension, setNewExtension] = useState("");
   const [newOpener, setNewOpener] =
     useState<DesktopFileDefaultOpener>("fileViewer");
+  const isUpdatingAgentDockLayout = changingAgentDockLayout !== null;
+  const pendingAgentDockLayout = changingAgentDockLayout ?? agentDockLayout;
   const normalizedNewExtension = normalizeDesktopFileExtension(newExtension);
   const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension).sort(
     ([left], [right]) => left.localeCompare(right)
@@ -1526,6 +1611,71 @@ function WorkspaceDeveloperSettingsSection({
         changingAppCatalogChannel={changingAppCatalogChannel}
         onAppCatalogChannelChange={onAppCatalogChannelChange}
       />
+
+      <ReleaseChannelControl
+        changingUpdateChannel={changingUpdateChannel}
+        updateChannel={updateChannel}
+        onUpdateChannelChange={onUpdateChannelChange}
+      />
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.agentDockLayoutLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.general.agentDockLayoutDescription")}
+          </p>
+        </div>
+        <div className="w-[220px] min-w-[220px] max-[560px]:w-full max-[560px]:min-w-0">
+          <Select
+            disabled={isUpdatingAgentDockLayout}
+            value={pendingAgentDockLayout}
+            onValueChange={(value) =>
+              onAgentDockLayoutChange(value as DesktopAgentDockLayout)
+            }
+          >
+            <SelectTrigger
+              aria-label={t("workspace.settings.general.agentDockLayoutLabel")}
+              className={workspaceSettingsSelectTriggerClass}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              {desktopAgentDockLayouts.map((layout) => (
+                <SelectItem key={layout} value={layout}>
+                  {layout === "legacySplit"
+                    ? t(
+                        "workspace.settings.general.agentDockLayoutOptions.legacySplit"
+                      )
+                    : t(
+                        "workspace.settings.general.agentDockLayoutOptions.unified"
+                      )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.tuttiAgentSwitchLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.tuttiAgentSwitchDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.developer.tuttiAgentSwitchLabel")}
+          checked={tuttiAgentSwitchEnabled}
+          onCheckedChange={onTuttiAgentSwitchEnabledChange}
+        />
+      </div>
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
@@ -1804,6 +1954,69 @@ function workspaceSettingsAppCatalogChannelOptionLabelKey(
   }
 }
 
+function ReleaseChannelControl({
+  changingUpdateChannel,
+  updateChannel,
+  onUpdateChannelChange
+}: {
+  changingUpdateChannel: DesktopUpdateChannel | null;
+  updateChannel: DesktopUpdateChannel;
+  onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
+}) {
+  const { t } = useTranslation();
+  const effectiveUpdateChannel = changingUpdateChannel ?? updateChannel;
+
+  return (
+    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t("workspace.settings.developer.releaseChannelLabel")}
+        </strong>
+        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+          {t("workspace.settings.developer.releaseChannelDescription")}
+        </p>
+      </div>
+      <div
+        aria-label={t("workspace.settings.developer.releaseChannelLabel")}
+        className="grid h-8 shrink-0 grid-cols-2 overflow-hidden rounded-[6px] bg-[var(--transparency-block)] p-0.5"
+        role="group"
+      >
+        {desktopUpdateChannels.map((channel) => {
+          const selected = effectiveUpdateChannel === channel;
+          return (
+            <button
+              key={channel}
+              aria-pressed={selected}
+              className={cn(
+                "min-w-[92px] rounded-[5px] border-0 px-3 text-[13px] font-semibold leading-none outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-focus)]",
+                selected
+                  ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+                  : "bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
+              disabled={changingUpdateChannel !== null}
+              type="button"
+              onClick={() => onUpdateChannelChange(channel)}
+            >
+              {t(workspaceSettingsUpdateChannelOptionLabelKey(channel))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function workspaceSettingsUpdateChannelOptionLabelKey(
+  channel: DesktopUpdateChannel
+): DesktopI18nKey {
+  switch (channel) {
+    case "stable":
+      return "workspace.settings.developer.releaseChannelOptions.stable";
+    case "rc":
+      return "workspace.settings.developer.releaseChannelOptions.rc";
+  }
+}
+
 function workspaceSettingsMinimizeAnimationOptionLabelKey(
   animation: DesktopMinimizeAnimation
 ): DesktopI18nKey {
@@ -1827,6 +2040,10 @@ function workspaceSettingsWindowSnappingShortcutLabelKey(
       return "workspace.settings.appearance.workbenchWindowSnappingShortcutOptions.commandShiftArrows";
   }
 }
+
+type WorkspaceSettingsWindowSnappingSelectValue =
+  | "off"
+  | DesktopWorkbenchWindowSnappingShortcutPreset;
 
 function workspaceSettingsFileDefaultOpenerLabelKey(
   opener: DesktopFileDefaultOpener
@@ -1858,7 +2075,7 @@ function WorkspaceSettingsPanelPortal({
 
   const panel = (
     <div
-      className="fixed inset-0 grid place-items-center bg-[color-mix(in_srgb,var(--backdrop)_28%,transparent)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
+      className="fixed inset-0 grid place-items-center bg-[var(--backdrop)] supports-backdrop-filter:backdrop-blur-sm transition-[background] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none"
       data-workspace-settings-backdrop="true"
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}
@@ -1923,19 +2140,81 @@ function ComputerUseSetupRow({
   const { t } = useTranslation();
   const { service: settingsService } = useWorkspaceSettingsService();
   const [status, setStatus] = useState<
-    "idle" | "checking" | "installed" | "not-installed"
+    "idle" | "checking" | "installed" | "not-installed" | "check-failed"
   >("idle");
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
-  const [operation, setOperation] = useState<
-    "grant" | "install" | "uninstall" | null
-  >(null);
+  const [operation, setOperation] = useState<"install" | "uninstall" | null>(
+    null
+  );
   const [operationProgress, setOperationProgress] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [attentionActive, setAttentionActive] = useState(false);
+  const [autoCheckActive, setAutoCheckActive] = useState(false);
+  const [openingSettingsPane, setOpeningSettingsPane] =
+    useState<DesktopComputerUsePermissionPane | null>(null);
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
+  const [wizardStep, setWizardStep] =
+    useState<ComputerUseWizardStep>("install");
+  const [wizardVerifyMessage, setWizardVerifyMessage] = useState<string | null>(
+    null
+  );
+  const [checkingPermissionStatus, setCheckingPermissionStatus] =
+    useState(false);
+  const [lastCheckedAtUnixMs, setLastCheckedAtUnixMs] = useState<number | null>(
+    null
+  );
   const handledAttentionRequestRef = useRef(0);
+  const autoCheckStartedAtRef = useRef<number | null>(null);
+  const diagnosticContextRef = useRef<Record<string, unknown>>({});
+  const lastKnownStatusRef = useRef<DesktopComputerUseStatus | null>(null);
+  const focusRefreshLastRunRef = useRef(0);
+  const restartInFlightRef = useRef(false);
+  const wizardGrantFiredRef = useRef<
+    Partial<Record<DesktopComputerUsePermissionPane, boolean>>
+  >({});
 
   const operationRunning = operation !== null;
+  const grantStep = resolveComputerUseGrantStep(computerUseStatus);
+  // The row hint only carries transient operation feedback; persistent
+  // status guidance lives on the manage button (pulse + tooltip) instead of
+  // a standing paragraph.
+  const computerUseHint =
+    message ??
+    (status === "check-failed"
+      ? t("workspace.settings.general.computerUseStatusCheckFailed")
+      : null);
+  const computerUseNeedsAttention =
+    status === "installed" && !isComputerUseFullyAuthorized(computerUseStatus);
+  diagnosticContextRef.current = {
+    autoCheckActive,
+    checkingPermissionStatus,
+    dialogOpen: permissionDialogOpen,
+    grantStep,
+    operation,
+    operationProgress,
+    panelStatus: status,
+    status: summarizeComputerUseStatusForDiagnostic(computerUseStatus),
+    wizardStep
+  };
+
+  const logPermissionDiagnostic = useCallback(
+    (
+      event: string,
+      details?: Record<string, unknown>,
+      level?: "debug" | "error" | "info" | "warn"
+    ) => {
+      settingsService.logComputerUsePermissionDiagnostic({
+        details: {
+          ...diagnosticContextRef.current,
+          ...details
+        },
+        event,
+        level
+      });
+    },
+    [settingsService]
+  );
 
   useEffect(() => {
     if (!operationRunning) {
@@ -1952,7 +2231,11 @@ function ComputerUseSetupRow({
   }, [operationRunning]);
 
   const checkStatus = useCallback(
-    async (options?: { clearMessage?: boolean; silent?: boolean }) => {
+    async (options?: {
+      clearMessage?: boolean;
+      diagnosticTrigger?: string;
+      silent?: boolean;
+    }): Promise<DesktopComputerUseStatus | null> => {
       if (!options?.silent) {
         setStatus("checking");
       }
@@ -1962,47 +2245,206 @@ function ComputerUseSetupRow({
       try {
         const result = await settingsService.checkComputerUseStatus();
         const nextStatus = result.installed ? "installed" : "not-installed";
+        lastKnownStatusRef.current = result;
         setComputerUseStatus(result);
         setStatus(nextStatus);
+        logPermissionDiagnostic("computer_use.permission_status_checked", {
+          nextPanelStatus: nextStatus,
+          result: summarizeComputerUseStatusForDiagnostic(result),
+          trigger: options?.diagnosticTrigger ?? "unknown"
+        });
         return result;
       } catch {
-        const fallbackStatus: DesktopComputerUseStatus = {
-          installed: false,
-          permissions: null
-        };
-        setComputerUseStatus(fallbackStatus);
-        setStatus("not-installed");
-        return fallbackStatus;
+        // Keep the last known status on transient failures; only surface the
+        // dedicated failed state when we have never read a status at all.
+        if (lastKnownStatusRef.current === null) {
+          setStatus("check-failed");
+        } else if (!options?.silent) {
+          setStatus(
+            lastKnownStatusRef.current.installed ? "installed" : "not-installed"
+          );
+        }
+        logPermissionDiagnostic(
+          "computer_use.permission_status_check_failed",
+          {
+            trigger: options?.diagnosticTrigger ?? "unknown"
+          },
+          "warn"
+        );
+        return null;
       }
     },
-    [settingsService]
+    [logPermissionDiagnostic, settingsService]
   );
 
   useEffect(() => {
-    void checkStatus();
+    void checkStatus({ diagnosticTrigger: "initial" });
   }, [checkStatus]);
 
+  const startAutoCheck = useCallback(() => {
+    autoCheckStartedAtRef.current = Date.now();
+    setAutoCheckActive(true);
+  }, []);
+
+  // Wizard verify: one deterministic reconciliation, never gated on any
+  // prior status read. Restarting the daemon clears every macOS staleness at
+  // once (cached AXIsProcessTrusted, frozen capture availability, a daemon
+  // macOS killed) and only then is the status read trustworthy.
+  const handleWizardVerify = async () => {
+    if (restartInFlightRef.current || checkingPermissionStatus) {
+      return;
+    }
+    restartInFlightRef.current = true;
+    setCheckingPermissionStatus(true);
+    setWizardVerifyMessage(null);
+    logPermissionDiagnostic("computer_use.wizard_verify_clicked");
+    try {
+      const { status: nextStatus } =
+        await settingsService.restartComputerUseDriver({ force: true });
+      lastKnownStatusRef.current = nextStatus;
+      setComputerUseStatus(nextStatus);
+      setStatus(nextStatus.installed ? "installed" : "not-installed");
+      setLastCheckedAtUnixMs(Date.now());
+      logPermissionDiagnostic("computer_use.wizard_verify_resolved", {
+        nextStatus: summarizeComputerUseStatusForDiagnostic(nextStatus)
+      });
+      if (isComputerUseFullyAuthorized(nextStatus)) {
+        setWizardStep("done");
+      }
+    } catch {
+      logPermissionDiagnostic("computer_use.wizard_verify_failed", {}, "warn");
+      setWizardVerifyMessage(
+        t("workspace.settings.general.computerUseStatusCheckFailed")
+      );
+    } finally {
+      restartInFlightRef.current = false;
+      setCheckingPermissionStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!autoCheckActive) {
+      return;
+    }
+    if (
+      status === "not-installed" ||
+      isComputerUseFullyAuthorized(computerUseStatus)
+    ) {
+      setAutoCheckActive(false);
+      return;
+    }
+    if (status !== "installed") {
+      return;
+    }
+
+    // Status is auxiliary in the wizard: this poll only keeps the per-step
+    // chips honest. Nothing gates on it.
+    const timer = window.setInterval(() => {
+      const startedAt = autoCheckStartedAtRef.current;
+      if (
+        startedAt !== null &&
+        Date.now() - startedAt > computerUseAutoCheckMaxMs
+      ) {
+        setAutoCheckActive(false);
+        return;
+      }
+      void checkStatus({
+        clearMessage: false,
+        diagnosticTrigger: "auto-poll",
+        silent: true
+      });
+    }, computerUseAutoCheckIntervalMs);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [autoCheckActive, checkStatus, computerUseStatus, status]);
+
+  useEffect(() => {
+    if (
+      status !== "installed" ||
+      isComputerUseFullyAuthorized(computerUseStatus)
+    ) {
+      return;
+    }
+    // Grants usually happen in System Settings; re-check as soon as the user
+    // comes back instead of waiting for a manual click.
+    const refreshOnVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      const now = Date.now();
+      if (
+        now - focusRefreshLastRunRef.current <
+        computerUseFocusRefreshMinIntervalMs
+      ) {
+        return;
+      }
+      focusRefreshLastRunRef.current = now;
+      void checkStatus({
+        clearMessage: false,
+        diagnosticTrigger: "window-focus",
+        silent: true
+      });
+    };
+    window.addEventListener("focus", refreshOnVisibility);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshOnVisibility);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [checkStatus, computerUseStatus, status]);
+
   const handleInstall = async () => {
+    logPermissionDiagnostic("computer_use.permission_install_clicked");
     setOperation("install");
     setOperationProgress(8);
     setMessage(null);
     try {
       const currentStatus = await checkStatus({
         clearMessage: false,
+        diagnosticTrigger: "install-preflight",
         silent: true
       });
+      if (currentStatus === null) {
+        setMessage(
+          t("workspace.settings.general.computerUseStatusCheckFailed")
+        );
+        return;
+      }
       if (currentStatus.installed) {
         setOperationProgress(100);
         await delay(computerUseOperationSettleMs);
         setMessage(null);
+        if (permissionDialogOpen && wizardStep === "install") {
+          setWizardStep("accessibility");
+        }
         return;
       }
       const result = await settingsService.installComputerUse();
       setOperationProgress(100);
       await delay(computerUseOperationSettleMs);
       if (result.success) {
-        await checkStatus({ clearMessage: false });
+        const nextStatus = await checkStatus({
+          clearMessage: false,
+          diagnosticTrigger: "install-completed"
+        });
         setMessage(null);
+        // A fresh install has no grants yet — continue straight into the
+        // wizard's first grant step.
+        if (nextStatus?.installed === true) {
+          if (isComputerUseFullyAuthorized(nextStatus)) {
+            setWizardStep("done");
+          } else {
+            logPermissionDiagnostic(
+              "computer_use.permission_dialog_open_changed",
+              { open: true, trigger: "install-completed" }
+            );
+            setWizardStep("accessibility");
+            setPermissionDialogOpen(true);
+            startAutoCheck();
+          }
+        }
       } else {
         setMessage(t("workspace.settings.general.computerUseInstallFailed"));
       }
@@ -2015,26 +2457,39 @@ function ComputerUseSetupRow({
   };
 
   const handleUninstall = async () => {
+    logPermissionDiagnostic("computer_use.permission_uninstall_clicked");
     setOperation("uninstall");
     setOperationProgress(8);
     setMessage(null);
     try {
       const currentStatus = await checkStatus({
         clearMessage: false,
+        diagnosticTrigger: "uninstall-preflight",
         silent: true
       });
+      if (currentStatus === null) {
+        setMessage(
+          t("workspace.settings.general.computerUseStatusCheckFailed")
+        );
+        return;
+      }
       if (!currentStatus.installed) {
         setOperationProgress(100);
         await delay(computerUseOperationSettleMs);
         setMessage(null);
+        setAutoCheckActive(false);
         return;
       }
       const result = await settingsService.uninstallComputerUse();
       setOperationProgress(100);
       await delay(computerUseOperationSettleMs);
       if (result.success) {
-        await checkStatus({ clearMessage: false });
+        await checkStatus({
+          clearMessage: false,
+          diagnosticTrigger: "uninstall-completed"
+        });
         setMessage(null);
+        setAutoCheckActive(false);
       } else {
         setMessage(t("workspace.settings.general.computerUseUninstallFailed"));
       }
@@ -2046,35 +2501,59 @@ function ComputerUseSetupRow({
     }
   };
 
-  const handleGrant = async () => {
-    setOperation("grant");
-    setOperationProgress(8);
-    setMessage(null);
+  const handleOpenPermissionSettings = async (
+    pane: DesktopComputerUsePermissionPane
+  ) => {
+    logPermissionDiagnostic("computer_use.permission_settings_open_clicked", {
+      pane
+    });
+    setOpeningSettingsPane(pane);
+    // Fire-and-forget the grant on this user-initiated click: it registers
+    // CuaDriver in the privacy panes and raises the TCC prompt when macOS
+    // still shows one. The CLI may open windows of its own, so it must only
+    // ever run behind an explicit user action — never on step entry. Progress
+    // is observed through status polling, never by awaiting it.
+    if (!wizardGrantFiredRef.current[pane]) {
+      wizardGrantFiredRef.current[pane] = true;
+      logPermissionDiagnostic("computer_use.wizard_grant_fired", { pane });
+      void settingsService
+        .startComputerUsePermissionGrant()
+        .catch(() => undefined);
+    }
     try {
-      const currentStatus = await checkStatus({
-        clearMessage: false,
-        silent: true
-      });
-      if (!currentStatus.installed) {
-        setOperationProgress(100);
-        await delay(computerUseOperationSettleMs);
-        setMessage(null);
-        return;
-      }
-      const result = await settingsService.grantComputerUsePermissions();
-      if (result.success) {
-        setOperationProgress(100);
-        await delay(computerUseOperationSettleMs);
-        await checkStatus({ clearMessage: false });
-        setMessage(null);
-      } else {
-        setMessage(t("workspace.settings.general.computerUseGrantFailed"));
-      }
+      await settingsService.openComputerUsePermissionSettings(pane);
+      startAutoCheck();
     } catch {
-      setMessage(t("workspace.settings.general.computerUseGrantFailed"));
+      setMessage(t("workspace.settings.general.computerUseOpenSettingsFailed"));
     } finally {
-      setOperation(null);
-      setOperationProgress(0);
+      setOpeningSettingsPane(null);
+    }
+  };
+
+  const handlePermissionDialogOpenChange = (open: boolean) => {
+    logPermissionDiagnostic("computer_use.permission_dialog_open_changed", {
+      open
+    });
+    setPermissionDialogOpen(open);
+    if (open) {
+      // Status only assists here: it picks a starting step, and the user can
+      // navigate freely regardless of what it says.
+      setWizardStep(resolveComputerUseWizardInitialStep(computerUseStatus));
+      setWizardVerifyMessage(null);
+      wizardGrantFiredRef.current = {};
+      if (
+        status === "installed" &&
+        !isComputerUseFullyAuthorized(computerUseStatus)
+      ) {
+        startAutoCheck();
+        void checkStatus({
+          clearMessage: false,
+          diagnosticTrigger: "dialog-opened",
+          silent: true
+        });
+      }
+    } else {
+      setAutoCheckActive(false);
     }
   };
 
@@ -2110,114 +2589,656 @@ function ComputerUseSetupRow({
   }, [attentionRequestID, status, computerUseStatus]);
 
   const grantTooltip = resolveComputerUseGrantTooltip(computerUseStatus, t);
-  const grantLabel =
-    operation === "grant"
-      ? t("workspace.settings.general.computerUseGranting")
-      : isComputerUseFullyAuthorized(computerUseStatus)
-        ? t("workspace.settings.general.computerUseAuthorizedButton")
-        : t("workspace.settings.general.computerUseGrantButton");
+  const manageLabel = isComputerUseFullyAuthorized(computerUseStatus)
+    ? t("workspace.settings.general.computerUseAuthorizedButton")
+    : t("workspace.settings.general.computerUseManageButton");
 
   return (
-    <div
-      ref={anchorRef}
-      className="relative isolate flex w-full items-center justify-between gap-4 outline-none max-[560px]:flex-col max-[560px]:items-stretch"
-      data-workspace-settings-anchor="computer-use"
-      tabIndex={-1}
-    >
+    <>
       <div
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute -inset-x-3 -inset-y-2 z-0 rounded-[8px] transition-colors duration-200",
-          attentionActive
-            ? "bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)]"
-            : "bg-transparent"
-        )}
-      />
-      <div className="relative z-[1] flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {t("workspace.settings.general.computerUseLabel")}
-        </strong>
-        <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-          {t("workspace.settings.general.computerUseDescription")}
-        </p>
-        {message && (
-          <p className="m-0 mt-1 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {message}
-          </p>
-        )}
-      </div>
-      <div
-        className={cn(
-          "relative z-[1] flex items-center justify-end gap-2",
-          workspaceSettingsControlColumnClass
-        )}
+        ref={anchorRef}
+        className="relative isolate flex w-full items-center justify-between gap-4 outline-none max-[560px]:flex-col max-[560px]:items-stretch"
+        data-workspace-settings-anchor="computer-use"
+        tabIndex={-1}
       >
-        {(status === "checking" || status === "idle") && (
-          <WorkspaceSettingsActionButton
-            className="flex-1"
-            disabled
-            label={t("common.loading")}
-          />
-        )}
-        {status === "not-installed" && (
-          <WorkspaceSettingsActionButton
-            className="flex-1"
-            disabled={operationRunning}
-            label={
-              operation === "install"
-                ? t("workspace.settings.general.computerUseInstalling")
-                : t("workspace.settings.general.computerUseInstallButton")
-            }
-            progress={operation === "install" ? operationProgress : null}
-            progressAriaLabel={t(
-              "workspace.settings.general.computerUseProgressAria"
-            )}
-            onClick={() => {
-              void handleInstall();
-            }}
-          />
-        )}
-        {status === "installed" && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <WorkspaceSettingsActionButton
-                  className="flex-1"
-                  disabled={operationRunning}
-                  label={grantLabel}
-                  progress={operation === "grant" ? operationProgress : null}
-                  progressAriaLabel={t(
-                    "workspace.settings.general.computerUseProgressAria"
-                  )}
-                  onClick={() => {
-                    void handleGrant();
-                  }}
-                />
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[260px]">
-                {grantTooltip}
-              </TooltipContent>
-            </Tooltip>
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none absolute -inset-x-3 -inset-y-2 z-0 rounded-[8px] transition-colors duration-200",
+            attentionActive
+              ? "bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)]"
+              : "bg-transparent"
+          )}
+        />
+        <div className="relative z-[1] flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.computerUseLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.general.computerUseDescription")}
+          </p>
+          {computerUseHint && (
+            <p className="m-0 mt-1 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+              {computerUseHint}
+            </p>
+          )}
+        </div>
+        <div
+          className={cn(
+            "relative z-[1] flex flex-col items-stretch justify-end gap-2",
+            workspaceSettingsControlColumnClass
+          )}
+        >
+          {(status === "checking" || status === "idle") && (
             <WorkspaceSettingsActionButton
-              className="flex-1"
+              disabled
+              label={t("common.loading")}
+            />
+          )}
+          {status === "check-failed" && (
+            <WorkspaceSettingsActionButton
+              label={t(
+                "workspace.settings.general.computerUseStatusRetryButton"
+              )}
+              onClick={() => {
+                void checkStatus({ diagnosticTrigger: "retry" });
+              }}
+            />
+          )}
+          {status === "not-installed" && (
+            <WorkspaceSettingsActionButton
               disabled={operationRunning}
               label={
-                operation === "uninstall"
-                  ? t("workspace.settings.general.computerUseUninstalling")
-                  : t("workspace.settings.general.computerUseUninstallButton")
+                operation === "install"
+                  ? t("workspace.settings.general.computerUseInstalling")
+                  : t("workspace.settings.general.computerUseInstallButton")
               }
-              progress={operation === "uninstall" ? operationProgress : null}
+              progress={operation === "install" ? operationProgress : null}
               progressAriaLabel={t(
                 "workspace.settings.general.computerUseProgressAria"
               )}
-              variant="destructive"
               onClick={() => {
-                void handleUninstall();
+                void handleInstall();
               }}
             />
-          </>
-        )}
+          )}
+          {status === "installed" && (
+            <div className="flex w-full items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="relative min-w-0 flex-1">
+                    <WorkspaceSettingsActionButton
+                      disabled={
+                        operationRunning || openingSettingsPane !== null
+                      }
+                      label={manageLabel}
+                      progressAriaLabel={t(
+                        "workspace.settings.general.computerUseProgressAria"
+                      )}
+                      onClick={() => {
+                        logPermissionDiagnostic(
+                          "computer_use.permission_manage_clicked"
+                        );
+                        handlePermissionDialogOpenChange(true);
+                      }}
+                    />
+                    {computerUseNeedsAttention && (
+                      <StatusDot
+                        className="absolute -right-0.5 -top-0.5 z-[1]"
+                        pulse
+                        size="xs"
+                        tone="amber"
+                      />
+                    )}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px]">
+                  {grantTooltip}
+                </TooltipContent>
+              </Tooltip>
+              <WorkspaceSettingsActionButton
+                className="flex-1"
+                disabled={operationRunning || openingSettingsPane !== null}
+                label={
+                  operation === "uninstall"
+                    ? t("workspace.settings.general.computerUseUninstalling")
+                    : t("workspace.settings.general.computerUseUninstallButton")
+                }
+                progress={operation === "uninstall" ? operationProgress : null}
+                progressAriaLabel={t(
+                  "workspace.settings.general.computerUseProgressAria"
+                )}
+                variant="destructive"
+                onClick={() => {
+                  void handleUninstall();
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
+      <ComputerUseSetupWizardDialog
+        checkingPermissionStatus={checkingPermissionStatus}
+        computerUseStatus={computerUseStatus}
+        installRunning={operation === "install"}
+        installed={status === "installed"}
+        lastCheckedAtUnixMs={lastCheckedAtUnixMs}
+        open={permissionDialogOpen}
+        openingSettingsPane={openingSettingsPane}
+        operationProgress={operationProgress}
+        step={wizardStep}
+        verifyMessage={wizardVerifyMessage}
+        onInstall={handleInstall}
+        onOpenChange={handlePermissionDialogOpenChange}
+        onOpenSettings={handleOpenPermissionSettings}
+        onStepChange={setWizardStep}
+        onVerify={handleWizardVerify}
+      />
+    </>
+  );
+}
+
+type ComputerUseWizardStep =
+  | "install"
+  | "accessibility"
+  | "screen-recording"
+  | "verify"
+  | "done";
+
+const computerUseWizardStepOrder: readonly ComputerUseWizardStep[] = [
+  "install",
+  "accessibility",
+  "screen-recording",
+  "verify",
+  "done"
+];
+
+// Status only assists here: it picks a plausible starting step. The user can
+// navigate freely, so a wrong guess costs nothing.
+function resolveComputerUseWizardInitialStep(
+  status: DesktopComputerUseStatus | null
+): ComputerUseWizardStep {
+  if (status?.installed !== true) {
+    return "install";
+  }
+  if (isComputerUseFullyAuthorized(status)) {
+    return "done";
+  }
+  if (status.permissions?.accessibility === true) {
+    return "screen-recording";
+  }
+  return "accessibility";
+}
+
+function computerUseWizardStepLabel(
+  step: ComputerUseWizardStep,
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  switch (step) {
+    case "install":
+      return t("workspace.settings.general.computerUseInstallButton");
+    case "accessibility":
+      return t("workspace.settings.general.computerUsePermissionAccessibility");
+    case "screen-recording":
+      return t(
+        "workspace.settings.general.computerUsePermissionScreenRecording"
+      );
+    case "verify":
+      return t("workspace.settings.general.computerUseStatusCheckAgain");
+    case "done":
+      return t("workspace.settings.general.computerUseDoneButton");
+  }
+}
+
+function ComputerUseSetupWizardDialog({
+  checkingPermissionStatus,
+  computerUseStatus,
+  installRunning,
+  installed,
+  lastCheckedAtUnixMs,
+  open,
+  openingSettingsPane,
+  operationProgress,
+  step,
+  verifyMessage,
+  onInstall,
+  onOpenChange,
+  onOpenSettings,
+  onStepChange,
+  onVerify
+}: {
+  checkingPermissionStatus: boolean;
+  computerUseStatus: DesktopComputerUseStatus | null;
+  installRunning: boolean;
+  installed: boolean;
+  lastCheckedAtUnixMs: number | null;
+  open: boolean;
+  openingSettingsPane: DesktopComputerUsePermissionPane | null;
+  operationProgress: number;
+  step: ComputerUseWizardStep;
+  verifyMessage: string | null;
+  onInstall: () => Promise<void>;
+  onOpenChange: (open: boolean) => void;
+  onOpenSettings: (pane: DesktopComputerUsePermissionPane) => Promise<void>;
+  onStepChange: (step: ComputerUseWizardStep) => void;
+  onVerify: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const permissions = computerUseStatus?.permissions ?? null;
+  const driverState: "running" | "not-running" | "unknown" =
+    permissions?.source === "driver-daemon"
+      ? "running"
+      : computerUseStatus?.reason === "driver-daemon-not-running"
+        ? "not-running"
+        : "unknown";
+  const accessibilityState: ComputerUsePermissionState =
+    driverState === "not-running"
+      ? "unknown"
+      : resolveComputerUsePermissionState(permissions?.accessibility ?? null);
+  const screenRecordingState: ComputerUsePermissionState =
+    driverState === "not-running"
+      ? "unknown"
+      : resolveComputerUseScreenRecordingState(permissions);
+  const stepIndex = computerUseWizardStepOrder.indexOf(step);
+  const grantPane: DesktopComputerUsePermissionPane | null =
+    step === "accessibility"
+      ? "accessibility"
+      : step === "screen-recording"
+        ? "screen-recording"
+        : null;
+  const grantChipState =
+    step === "accessibility" ? accessibilityState : screenRecordingState;
+  const goBack = () => {
+    const target = computerUseWizardStepOrder[stepIndex - 1];
+    if (target !== undefined) {
+      onStepChange(target);
+    }
+  };
+  const goNext = () => {
+    const target = computerUseWizardStepOrder[stepIndex + 1];
+    if (target !== undefined) {
+      onStepChange(target);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[min(720px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[620px]"
+        onOpenAutoFocus={(event) => {
+          // Default auto-focus lands on the "?" help trigger and pops its
+          // tooltip the moment the dialog opens.
+          event.preventDefault();
+        }}
+      >
+        <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
+          <div className="flex items-center gap-1.5">
+            <DialogTitle>
+              {t("workspace.settings.general.computerUsePermissionDialogTitle")}
+            </DialogTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label={t(
+                    "workspace.settings.general.computerUsePermissionDialogRelationshipTitle"
+                  )}
+                  className="inline-flex shrink-0 cursor-default text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                  type="button"
+                >
+                  <AskLinedIcon aria-hidden="true" className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[320px]" side="bottom">
+                {t(
+                  "workspace.settings.general.computerUsePermissionDialogRelationshipBody"
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <DialogDescription className="sr-only">
+            {t(
+              "workspace.settings.general.computerUsePermissionDialogDescription"
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="m-0 flex shrink-0 list-none flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border-1)] px-5 py-3">
+          {computerUseWizardStepOrder.map((wizardStep, index) => {
+            const state =
+              index === stepIndex
+                ? "current"
+                : index < stepIndex
+                  ? "done"
+                  : "upcoming";
+            return (
+              <li key={wizardStep} className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                    state === "current"
+                      ? "bg-[var(--text-primary)] text-[var(--background-fronted)]"
+                      : state === "done"
+                        ? "bg-[color-mix(in_srgb,var(--state-success)_16%,transparent)] text-[var(--state-success)]"
+                        : "bg-[var(--transparency-block)] text-[var(--text-tertiary)]"
+                  )}
+                >
+                  {state === "done" ? (
+                    <CheckIcon aria-hidden="true" className="size-3" />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    "text-[12px] font-medium",
+                    state === "current"
+                      ? "text-[var(--text-primary)]"
+                      : "text-[var(--text-tertiary)]"
+                  )}
+                >
+                  {computerUseWizardStepLabel(wizardStep, t)}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+          {step === "install" && (
+            <>
+              <p className="m-0 text-[13px] leading-[1.45] text-[var(--text-secondary)]">
+                {t("workspace.settings.general.computerUseWizardInstallBody")}
+              </p>
+              <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--text-primary)]">
+                <StatusDot tone={installed ? "green" : "neutral"} />
+                {t(
+                  installed
+                    ? "workspace.settings.general.computerUseStatusInstalled"
+                    : "workspace.settings.general.computerUseStatusNotInstalled"
+                )}
+              </div>
+            </>
+          )}
+          {grantPane !== null && (
+            <>
+              <p className="m-0 text-[13px] leading-[1.45] text-[var(--text-secondary)]">
+                {t(
+                  "workspace.settings.general.computerUseWizardGrantInstruction",
+                  { permission: computerUseWizardStepLabel(step, t) }
+                )}
+              </p>
+              {step === "screen-recording" && (
+                <p className="m-0 text-[12px] leading-[1.4] text-[var(--text-tertiary)]">
+                  {t(
+                    "workspace.settings.general.computerUseWizardScreenRecordingKillNote"
+                  )}
+                </p>
+              )}
+              <img
+                alt=""
+                className="w-full rounded-[8px] border border-[var(--border-1)]"
+                draggable={false}
+                src={cuaDriverToggleDemoUrl}
+              />
+              <ComputerUsePermissionStatusRow
+                label={computerUseWizardStepLabel(step, t)}
+                stateLabel={resolveComputerUsePermissionStateLabel(
+                  grantChipState,
+                  t
+                )}
+                tone={computerUsePermissionStateTone(grantChipState)}
+                action={{
+                  label: t(
+                    "workspace.settings.general.computerUseOpenPaneButton"
+                  ),
+                  loading: openingSettingsPane === grantPane,
+                  onClick: () => {
+                    void onOpenSettings(grantPane);
+                  }
+                }}
+              />
+            </>
+          )}
+          {(step === "verify" || step === "done") && (
+            <>
+              <p className="m-0 text-[13px] leading-[1.45] text-[var(--text-secondary)]">
+                {t(
+                  step === "verify"
+                    ? "workspace.settings.general.computerUseWizardVerifyBody"
+                    : "workspace.settings.general.computerUseWizardDoneBody"
+                )}
+              </p>
+              <ComputerUsePermissionStatusRow
+                label={t(
+                  "workspace.settings.general.computerUseDriverRowLabel"
+                )}
+                stateLabel={t(
+                  driverState === "running"
+                    ? "workspace.settings.general.computerUseDriverStatusRunning"
+                    : driverState === "not-running"
+                      ? "workspace.settings.general.computerUseDriverStatusNotRunning"
+                      : "workspace.settings.general.computerUsePermissionStatusUnknown"
+                )}
+                tone={
+                  driverState === "running"
+                    ? "success"
+                    : driverState === "not-running"
+                      ? "warning"
+                      : "neutral"
+                }
+              />
+              <ComputerUsePermissionStatusRow
+                label={t(
+                  "workspace.settings.general.computerUsePermissionAccessibility"
+                )}
+                stateLabel={resolveComputerUsePermissionStateLabel(
+                  accessibilityState,
+                  t
+                )}
+                tone={computerUsePermissionStateTone(accessibilityState)}
+                action={
+                  step === "verify" &&
+                  computerUsePermissionStateTone(accessibilityState) ===
+                    "warning"
+                    ? {
+                        label: t(
+                          "workspace.settings.general.computerUseWizardGrantStepReturn"
+                        ),
+                        onClick: () => {
+                          onStepChange("accessibility");
+                        }
+                      }
+                    : null
+                }
+              />
+              <ComputerUsePermissionStatusRow
+                label={t(
+                  "workspace.settings.general.computerUsePermissionScreenRecording"
+                )}
+                stateLabel={resolveComputerUsePermissionStateLabel(
+                  screenRecordingState,
+                  t
+                )}
+                tone={computerUsePermissionStateTone(screenRecordingState)}
+                action={
+                  step === "verify" &&
+                  computerUsePermissionStateTone(screenRecordingState) ===
+                    "warning"
+                    ? {
+                        label: t(
+                          "workspace.settings.general.computerUseWizardGrantStepReturn"
+                        ),
+                        onClick: () => {
+                          onStepChange("screen-recording");
+                        }
+                      }
+                    : null
+                }
+              />
+              {step === "verify" && verifyMessage !== null && (
+                <p className="m-0 text-[13px] leading-[1.4] text-[var(--state-warning)]">
+                  {verifyMessage}
+                </p>
+              )}
+              {step === "verify" && lastCheckedAtUnixMs !== null && (
+                <p className="m-0 text-[12px] leading-[1.35] text-[var(--text-tertiary)]">
+                  {t("workspace.settings.general.computerUseLastCheckedAt", {
+                    time: new Date(lastCheckedAtUnixMs).toLocaleTimeString()
+                  })}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+        <DialogFooter className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border-1)] px-5 py-4">
+          {stepIndex > 0 && step !== "done" && (
+            <Button
+              size="default"
+              type="button"
+              variant="ghost"
+              onClick={goBack}
+            >
+              {t("workspace.settings.general.computerUseWizardBack")}
+            </Button>
+          )}
+          {step === "install" &&
+            (installed ? (
+              <Button size="default" type="button" onClick={goNext}>
+                {t("workspace.settings.general.computerUseWizardNext")}
+              </Button>
+            ) : (
+              <Button
+                aria-valuemax={installRunning ? 100 : undefined}
+                aria-valuemin={installRunning ? 0 : undefined}
+                aria-valuenow={
+                  installRunning ? Math.round(operationProgress) : undefined
+                }
+                disabled={installRunning}
+                role={installRunning ? "progressbar" : undefined}
+                size="default"
+                type="button"
+                onClick={() => {
+                  void onInstall();
+                }}
+              >
+                {installRunning && (
+                  <LoadingIcon className="size-4 animate-spin" />
+                )}
+                {t(
+                  installRunning
+                    ? "workspace.settings.general.computerUseInstalling"
+                    : "workspace.settings.general.computerUseInstallButton"
+                )}
+              </Button>
+            ))}
+          {grantPane !== null && (
+            <Button size="default" type="button" onClick={goNext}>
+              {t("workspace.settings.general.computerUseWizardNext")}
+            </Button>
+          )}
+          {step === "verify" && (
+            <Button
+              disabled={checkingPermissionStatus}
+              size="default"
+              type="button"
+              onClick={() => {
+                void onVerify();
+              }}
+            >
+              {checkingPermissionStatus && (
+                <LoadingIcon className="size-4 animate-spin" />
+              )}
+              {t(
+                checkingPermissionStatus
+                  ? "workspace.settings.general.computerUseWizardVerifyChecking"
+                  : "workspace.settings.general.computerUseStatusCheckAgain"
+              )}
+            </Button>
+          )}
+          {step === "done" && (
+            <Button
+              size="default"
+              type="button"
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {t("workspace.settings.general.computerUseDoneButton")}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type ComputerUsePermissionState =
+  | "granted"
+  | "missing"
+  | "unknown"
+  | "capture-unavailable";
+
+function computerUsePermissionStateTone(
+  state: ComputerUsePermissionState
+): "success" | "warning" | "neutral" {
+  switch (state) {
+    case "granted":
+      return "success";
+    case "missing":
+    case "capture-unavailable":
+      return "warning";
+    case "unknown":
+      return "neutral";
+  }
+}
+
+function ComputerUsePermissionStatusRow({
+  action,
+  label,
+  stateLabel,
+  tone
+}: {
+  action?: {
+    disabled?: boolean;
+    label: string;
+    loading?: boolean;
+    onClick: () => void;
+  } | null;
+  label: string;
+  stateLabel: string;
+  tone: "success" | "warning" | "neutral";
+}) {
+  return (
+    <div className="flex min-h-[44px] items-center justify-between gap-3 rounded-[8px] bg-[var(--transparency-block)] px-3 py-2">
+      <span className="min-w-0 truncate text-[13px] font-medium text-[var(--text-primary)]">
+        {label}
+      </span>
+      <span className="flex shrink-0 items-center gap-3">
+        <span className="flex items-center gap-2">
+          <StatusDot
+            tone={
+              tone === "success"
+                ? "green"
+                : tone === "warning"
+                  ? "amber"
+                  : "neutral"
+            }
+          />
+          <span className="text-[13px] font-medium text-[var(--text-primary)]">
+            {stateLabel}
+          </span>
+        </span>
+        {action && (
+          <Button
+            className="min-w-[88px]"
+            disabled={action.disabled || action.loading}
+            size="dialog"
+            type="button"
+            onClick={action.onClick}
+          >
+            {action.loading && <LoadingIcon className="size-4 animate-spin" />}
+            {action.label}
+          </Button>
+        )}
+      </span>
     </div>
   );
 }
@@ -2235,6 +3256,24 @@ function nextComputerUseOperationProgress(current: number): number {
   return Math.min(94, current + 2);
 }
 
+function summarizeComputerUseStatusForDiagnostic(
+  status: DesktopComputerUseStatus | null
+): Record<string, unknown> | null {
+  if (!status) {
+    return null;
+  }
+  return {
+    authorization: status.authorization,
+    installed: status.installed,
+    permissionAccessibility: status.permissions?.accessibility ?? null,
+    permissionScreenRecording: status.permissions?.screenRecording ?? null,
+    permissionScreenRecordingCapturable:
+      status.permissions?.screenRecordingCapturable ?? null,
+    permissionSource: status.permissions?.source ?? null,
+    reason: status.reason ?? null
+  };
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -2243,13 +3282,46 @@ function isComputerUseFullyAuthorized(
   status: DesktopComputerUseStatus | null
 ): boolean {
   const permissions = status?.permissions;
-  return Boolean(
-    status?.installed &&
-    permissions?.source === "driver-daemon" &&
+  return (
+    status?.installed === true &&
+    permissions != null &&
     permissions.accessibility === true &&
     permissions.screenRecording === true &&
     permissions.screenRecordingCapturable === true
   );
+}
+
+type ComputerUseGrantStep =
+  | "authorized"
+  | "accessibility"
+  | "screen-recording"
+  | "screen-recording-capture-unavailable"
+  | "driver-daemon-not-running"
+  | "unknown";
+
+function resolveComputerUseGrantStep(
+  status: DesktopComputerUseStatus | null
+): ComputerUseGrantStep {
+  if (isComputerUseFullyAuthorized(status)) {
+    return "authorized";
+  }
+  if (status?.reason === "driver-daemon-not-running") {
+    return "driver-daemon-not-running";
+  }
+  const permissions = status?.permissions;
+  if (!permissions) {
+    return "unknown";
+  }
+  if (permissions.accessibility !== true) {
+    return "accessibility";
+  }
+  if (permissions.screenRecording !== true) {
+    return "screen-recording";
+  }
+  if (permissions.screenRecordingCapturable !== true) {
+    return "screen-recording-capture-unavailable";
+  }
+  return "unknown";
 }
 
 function resolveComputerUseGrantTooltip(
@@ -2260,7 +3332,7 @@ function resolveComputerUseGrantTooltip(
     return t("workspace.settings.general.computerUseAuthorizedTooltip");
   }
   const permissions = status?.permissions;
-  if (!permissions || permissions.source !== "driver-daemon") {
+  if (!permissions) {
     return t("workspace.settings.general.computerUsePermissionUnknownTooltip");
   }
 
@@ -2278,7 +3350,6 @@ function resolveComputerUseGrantTooltip(
       t("workspace.settings.general.computerUsePermissionScreenRecording")
     );
   }
-
   return t("workspace.settings.general.computerUsePermissionMissingTooltip", {
     permissions: missingPermissions.join(
       t("workspace.settings.general.computerUsePermissionListSeparator")
@@ -2286,23 +3357,76 @@ function resolveComputerUseGrantTooltip(
   });
 }
 
+function resolveComputerUsePermissionState(
+  value: boolean | null
+): ComputerUsePermissionState {
+  if (value === true) {
+    return "granted";
+  }
+  if (value === false) {
+    return "missing";
+  }
+  return "unknown";
+}
+
+function resolveComputerUseScreenRecordingState(
+  permissions: DesktopComputerUsePermissionsStatus | null
+): ComputerUsePermissionState {
+  if (!permissions || permissions.screenRecording === null) {
+    return "unknown";
+  }
+  if (permissions.screenRecording !== true) {
+    return "missing";
+  }
+  if (permissions.screenRecordingCapturable !== true) {
+    return "capture-unavailable";
+  }
+  return "granted";
+}
+
+function resolveComputerUsePermissionStateLabel(
+  state: ComputerUsePermissionState,
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  switch (state) {
+    case "granted":
+      return t("workspace.settings.general.computerUsePermissionStatusGranted");
+    case "missing":
+      return t("workspace.settings.general.computerUsePermissionStatusMissing");
+    case "unknown":
+      return t("workspace.settings.general.computerUsePermissionStatusUnknown");
+    case "capture-unavailable":
+      return t(
+        "workspace.settings.general.computerUsePermissionStatusCaptureUnavailable"
+      );
+  }
+}
+
 function WorkspaceAgentSettingsSection({
+  agentConversationDetailMode,
   browserUseConnectionMode,
+  changingAgentConversationDetailMode,
   changingDefaultAgentProvider,
   changingBrowserUseConnectionMode,
   defaultAgentProvider,
   focusedAnchor,
   focusRequestID,
+  onAgentConversationDetailModeChange,
   onDefaultAgentProviderChange,
   onBrowserUseConnectionModeChange,
   onOpenExternalAgentImport
 }: {
+  agentConversationDetailMode: DesktopAgentConversationDetailMode;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
+  changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
   changingDefaultAgentProvider: DesktopAgentProvider | null;
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
   defaultAgentProvider: DesktopAgentProvider;
   focusedAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   focusRequestID: number;
+  onAgentConversationDetailModeChange: (
+    mode: DesktopAgentConversationDetailMode
+  ) => void;
   onBrowserUseConnectionModeChange: (
     mode: DesktopBrowserUseConnectionMode
   ) => void;
@@ -2324,6 +3448,10 @@ function WorkspaceAgentSettingsSection({
     changingBrowserUseConnectionMode !== null;
   const pendingBrowserUseConnectionMode =
     changingBrowserUseConnectionMode ?? browserUseConnectionMode;
+  const isUpdatingAgentConversationDetailMode =
+    changingAgentConversationDetailMode !== null;
+  const pendingAgentConversationDetailMode =
+    changingAgentConversationDetailMode ?? agentConversationDetailMode;
 
   useEffect(() => {
     if (!focusedAnchor || focusRequestID === 0) {
@@ -2339,6 +3467,60 @@ function WorkspaceAgentSettingsSection({
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.agentConversationDetailModeLabel")}
+          </strong>
+        </div>
+        <div
+          aria-label={t(
+            "workspace.settings.general.agentConversationDetailModeLabel"
+          )}
+          className="grid w-full grid-cols-2 gap-2 max-[430px]:grid-cols-1"
+          role="radiogroup"
+        >
+          {desktopAgentConversationDetailModes.map((mode) => {
+            const selected = pendingAgentConversationDetailMode === mode;
+            return (
+              <button
+                key={mode}
+                aria-checked={selected}
+                className={cn(
+                  "flex min-h-[72px] min-w-0 flex-col items-start justify-center gap-1 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
+                  selected
+                    ? "border border-[var(--tutti-purple)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                    : "border border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+                )}
+                disabled={isUpdatingAgentConversationDetailMode}
+                role="radio"
+                type="button"
+                onClick={() => onAgentConversationDetailModeChange(mode)}
+              >
+                <span className="text-[13px] font-semibold leading-[1.25]">
+                  {mode === "coding"
+                    ? t(
+                        "workspace.settings.general.agentConversationDetailModeOptions.codingTitle"
+                      )
+                    : t(
+                        "workspace.settings.general.agentConversationDetailModeOptions.generalTitle"
+                      )}
+                </span>
+                <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
+                  {mode === "coding"
+                    ? t(
+                        "workspace.settings.general.agentConversationDetailModeOptions.codingDescription"
+                      )
+                    : t(
+                        "workspace.settings.general.agentConversationDetailModeOptions.generalDescription"
+                      )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -2604,6 +3786,107 @@ function WorkspaceGeneralSettingsSection({
           checked={agentDiagnosticsReporting}
           onCheckedChange={setAgentDiagnosticsConsent}
         />
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceAccountSettingsSection() {
+  const { t } = useTranslation();
+  const { service: accountService, state: accountState } = useAccountService();
+
+  useEffect(() => {
+    void accountService.refreshUserInfo();
+  }, [accountService]);
+
+  const handleLogin = async () => {
+    if (accountState.signingOut) {
+      return;
+    }
+    await accountService.startLogin();
+  };
+
+  const handleLogout = async () => {
+    if (accountState.signingIn || accountState.signingOut) {
+      return;
+    }
+    await accountService.logout();
+  };
+
+  const user = accountState.user;
+  const displayName = user?.name || user?.email || user?.user_id || "Tutti";
+
+  return (
+    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+      <div className="flex min-w-0 items-center gap-3">
+        {user?.avatar ? (
+          <img
+            alt=""
+            className="size-12 shrink-0 rounded-full object-cover"
+            draggable={false}
+            src={user.avatar}
+          />
+        ) : (
+          <div className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--transparency-block)] text-[18px] font-semibold text-[var(--text-primary)]">
+            {displayName.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div className="min-w-0">
+          <strong className="block truncate text-[16px] font-semibold leading-6 text-[var(--text-primary)]">
+            {accountState.loading
+              ? t("common.loading")
+              : user
+                ? displayName
+                : t("workspace.settings.account.signedOutTitle")}
+          </strong>
+          <p className="m-0 truncate text-[13px] text-[var(--text-secondary)]">
+            {user?.email || t("workspace.settings.account.description")}
+          </p>
+        </div>
+      </div>
+
+      {accountState.error ? (
+        <p className="m-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
+          {accountState.error}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        {user ? (
+          <>
+            <WorkspaceSettingsActionButton
+              disabled={accountState.signingIn || accountState.signingOut}
+              label={
+                accountState.signingOut
+                  ? t("workspace.settings.account.signingOut")
+                  : t("workspace.settings.account.logout")
+              }
+              onClick={handleLogout}
+            />
+            <WorkspaceSettingsActionButton
+              disabled={accountState.signingIn || accountState.signingOut}
+              label={t("workspace.settings.account.refresh")}
+              onClick={() => void accountService.refreshUserInfo()}
+            />
+          </>
+        ) : (
+          <WorkspaceSettingsActionButton
+            disabled={accountState.loading || accountState.signingOut}
+            icon={
+              accountState.signingIn ? (
+                <LoadingIcon className="size-3.5" />
+              ) : null
+            }
+            label={
+              accountState.signingIn
+                ? t("workspace.settings.account.signingIn")
+                : accountState.loginStatus === "pending"
+                  ? t("workspace.settings.account.reopenLogin")
+                  : t("workspace.settings.account.login")
+            }
+            onClick={handleLogin}
+          />
+        )}
       </div>
     </div>
   );
@@ -2877,7 +4160,7 @@ function WorkspaceAppearanceSettingsSection({
         </div>
       </div>
 
-      <div className="flex w-full items-start justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.appearance.workbenchWindowSnappingLabel")}
@@ -2888,39 +4171,30 @@ function WorkspaceAppearanceSettingsSection({
             )}
           </p>
         </div>
-        <div className="flex w-[220px] min-w-[220px] flex-col gap-2 max-[560px]:w-full max-[560px]:min-w-0">
-          <div className="flex min-h-9 items-center justify-end max-[560px]:justify-start">
-            <Switch
-              aria-label={t(
-                "workspace.settings.appearance.workbenchWindowSnappingLabel"
-              )}
-              checked={pendingWorkbenchWindowSnapping.enabled}
-              disabled={isUpdatingWorkbenchWindowSnapping}
-              onCheckedChange={(enabled) =>
-                onWorkbenchWindowSnappingChange({
-                  ...pendingWorkbenchWindowSnapping,
-                  enabled
-                })
-              }
-            />
-          </div>
+        <div className="w-[220px] min-w-[220px] max-[560px]:w-full max-[560px]:min-w-0">
           <Select
-            disabled={
-              isUpdatingWorkbenchWindowSnapping ||
-              !pendingWorkbenchWindowSnapping.enabled
+            disabled={isUpdatingWorkbenchWindowSnapping}
+            value={
+              pendingWorkbenchWindowSnapping.enabled
+                ? pendingWorkbenchWindowSnapping.shortcutPreset
+                : "off"
             }
-            value={pendingWorkbenchWindowSnapping.shortcutPreset}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
+              const nextValue =
+                value as WorkspaceSettingsWindowSnappingSelectValue;
               onWorkbenchWindowSnappingChange({
                 ...pendingWorkbenchWindowSnapping,
+                enabled: nextValue !== "off",
                 shortcutPreset:
-                  value as DesktopWorkbenchWindowSnappingShortcutPreset
-              })
-            }
+                  nextValue === "off"
+                    ? pendingWorkbenchWindowSnapping.shortcutPreset
+                    : nextValue
+              });
+            }}
           >
             <SelectTrigger
               aria-label={t(
-                "workspace.settings.appearance.workbenchWindowSnappingShortcutLabel"
+                "workspace.settings.appearance.workbenchWindowSnappingLabel"
               )}
               className={workspaceSettingsSelectTriggerClass}
             >
@@ -2930,6 +4204,11 @@ function WorkspaceAppearanceSettingsSection({
               className={workspaceSettingsSelectContentClass}
               style={{ zIndex: "var(--z-panel-popover)" }}
             >
+              <SelectItem value="off">
+                {t(
+                  "workspace.settings.appearance.workbenchWindowSnappingShortcutOptions.off"
+                )}
+              </SelectItem>
               {desktopWorkbenchWindowSnappingShortcutPresets.map((preset) => (
                 <SelectItem key={preset} value={preset}>
                   {t(workspaceSettingsWindowSnappingShortcutLabelKey(preset))}

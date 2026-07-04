@@ -26,6 +26,14 @@ test("recommended category tabs keep enough vertical room for the selected pill"
   assert.match(source, /shadow-\[inset_0_0_0_1px_var\(--line-1\)\]/);
 });
 
+test("community apps are a top-level tab split from recommended apps", () => {
+  assert.match(source, /label: copy\.t\("labels\.communityApps"\)/);
+  assert.match(source, /value: "community"/);
+  assert.match(source, /!isCommunityRecommendedApp\(app\.id\)/);
+  assert.match(source, /isCommunityRecommendedApp\(app\.id\)/);
+  assert.match(source, /copy\.t\("messages\.communityAppsEmpty"\)/);
+});
+
 test("App Center app grid keeps bottom padding above the window edge", () => {
   assert.match(
     source,

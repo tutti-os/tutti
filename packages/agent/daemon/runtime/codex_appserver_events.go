@@ -10,15 +10,17 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime/codexproto"
 )
 
 // handleAppServerMessage routes codex app-server server->client traffic.
-// Server requests (approvals, user-input questions) block until the user
-// answers; notifications are translated into activity events through the
-// shared ACP turn normalizer so the rest of the daemon sees one event shape.
+// Server requests (approvals, user-input questions) register pending resolver
+// state and respond asynchronously; notifications are translated into activity
+// events through the shared ACP turn normalizer so the rest of the daemon sees
+// one event shape.
 func (a *CodexAppServerAdapter) handleAppServerMessage(
 	ctx context.Context,
-	client *acpClient,
+	client *codexAppServerClient,
 	session Session,
 	turnID string,
 	message acpMessage,
@@ -39,141 +41,61 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			appServerMethodPatchApprovalV1:
 			return a.appServerServerRequest(ctx, client, session, turnID, message, emit)
 		default:
-			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: "method not supported"})
+			err := fmt.Errorf("server request method %q is not supported", message.Method)
+			if codexproto.IsKnownServerRequestMethod(message.Method) {
+				// Schema-known background requests the daemon deliberately
+				// declines (auth token refresh, attestation, sandbox setup)
+				// get a silent -32601; a transcript failure card would show
+				// users spurious red cards for background operations.
+				slog.Debug(
+					"agent session app-server declined known server request",
+					"agent_session_id", session.AgentSessionID,
+					"method", message.Method,
+				)
+			} else if emit != nil {
+				emit(appServerUnsupportedServerRequestEvents(session, turnID, message, err))
+			}
+			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: err.Error()})
 			return nil, nil
 		}
 	}
-	return a.appServerNotificationEvents(client, session, turnID, message, normalizer, emitCommands), nil
+	reduction := newCodexAppServerReducer(a).ReduceNotification(client, session, turnID, message, normalizer, emitCommands)
+	return reduction.Events, nil
 }
 
-func (a *CodexAppServerAdapter) appServerNotificationEvents(
-	client *acpClient,
-	session Session,
-	turnID string,
-	message acpMessage,
-	normalizer *acpTurnNormalizer,
-	emitCommands CommandSnapshotSink,
-) []activityshared.Event {
-	params := map[string]any{}
-	if len(message.Params) > 0 {
-		_ = json.Unmarshal(message.Params, &params)
-	}
-	switch message.Method {
-	case appServerNotifyTurnStarted:
-		// Record the provider turn id (needed for turn/interrupt and
-		// turn/steer) only while a turn context is registered, so stray
-		// turns (for example compaction) cannot block future prompts.
-		if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
-			if turn := payloadObject(params["turn"]); turn != nil {
-				providerTurnID := asString(turn["id"])
-				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
-					a.interruptActiveTurnAsync(&codexAppServerSession{
-						client:   client,
-						threadID: firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),
-					}, session, activeTurn, providerTurnID, "queued cancel")
-				}
-			}
-		}
-		return nil
-	case appServerNotifyTurnCompleted:
-		// Deliver the final turn payload to the goroutine waiting in Exec.
-		a.completeActiveTurn(session.AgentSessionID, payloadObject(params["turn"]))
-		return nil
-	case appServerNotifyAgentMessageDelta:
-		if normalizer == nil {
-			return nil
-		}
-		return normalizer.AppendAssistantChunk(session, turnID, asStringRaw(params["delta"]))
-	case appServerNotifyReasoningSummaryPart, appServerNotifyThreadSettingsUpdated:
-		return nil
-	case appServerNotifyReasoningDelta, appServerNotifyReasoningSummary:
-		if normalizer == nil {
-			return nil
-		}
-		return normalizer.AppendThinkingChunk(session, turnID, appServerReasoningDeltaText(params))
-	case appServerNotifyItemStarted:
-		return a.appServerItemEvents(session, turnID, payloadObject(params["item"]), false, normalizer)
-	case appServerNotifyItemCompleted:
-		return a.appServerItemEvents(session, turnID, payloadObject(params["item"]), true, normalizer)
-	case appServerNotifyPlanUpdated:
-		if normalizer == nil {
-			return nil
-		}
-		update := appServerPlanUpdate(turnID, params)
-		if update == nil {
-			return nil
-		}
-		events, _ := normalizer.ToolCallEvents(session, turnID, update)
-		return events
-	case appServerNotifyTokenUsage:
-		a.applyTokenUsage(session.AgentSessionID, params)
-		if event, ok := acpUsageUpdatedEvent(session); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case appServerNotifyRateLimitsUpdated:
-		a.applyRateLimits(session.AgentSessionID, payloadObject(params["rateLimits"]))
-		if event, ok := acpUsageUpdatedEvent(session); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case appServerNotifyAccountUpdated:
-		a.applyAccountUpdate(session.AgentSessionID, params)
-		return nil
-	case appServerNotifyThreadNameUpdated:
-		if event, ok := acpSessionTitleEvent(session, map[string]any{
-			"title": asString(params["threadName"]),
-		}); ok {
-			return []activityshared.Event{event}
-		}
-		return nil
-	case appServerNotifyError:
-		if willRetry, _ := params["willRetry"].(bool); willRetry {
-			turnError := payloadObject(params["error"])
-			detail := asString(turnError["message"])
-			return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "transport_retry", "", detail)}
-		}
-		// Terminal turn failures already surface as agent_visible_error in the GUI.
-		return nil
-	case appServerNotifyWarning:
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "", asString(params["message"]))}
-	case appServerNotifyDeprecation:
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning",
-			asString(params["summary"]), asString(params["details"]))}
-	case appServerNotifyModelRerouted:
-		title := fmt.Sprintf("Codex rerouted the model from %s to %s.",
-			asString(params["fromModel"]), asString(params["toModel"]))
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", title, asString(params["reason"]))}
-	case appServerNotifyThreadCompacted:
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
-	case appServerNotifyThreadGoalUpdated:
-		a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
-		return nil
-	case appServerNotifyThreadGoalCleared:
-		a.applyGoalClear(session.AgentSessionID)
-		return nil
-	case appServerNotifyThreadStarted:
-		return nil
-	default:
-		_ = emitCommands
-		return nil
-	}
-}
-
-// appServerNoticeItems maps review/compaction thread items to a one-line
-// system-notice banner. emitOnCompleted selects which lifecycle event carries
-// the banner: enteredReviewMode rides item/started (it always fires), while
-// exitedReviewMode and contextCompaction ride the authoritative item/completed.
+// appServerNoticeItems maps review thread items to a one-line system-notice
+// banner. emitOnCompleted selects which lifecycle event carries the banner:
+// enteredReviewMode rides item/started (it always fires), while
+// exitedReviewMode rides the authoritative item/completed.
 var appServerNoticeItems = map[string]struct {
 	message         string
 	emitOnCompleted bool
 }{
 	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
 	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
-	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
 }
 
-func (a *CodexAppServerAdapter) appServerItemEvents(
+const (
+	appServerCompactingContextTitle     = "Compacting context."
+	appServerContextCompactedTitle      = "Context compacted."
+	appServerCompactionInterruptedTitle = "Context compaction interrupted."
+)
+
+// appServerCompactionNoticeEvent emits the compaction banner for both item
+// lifecycle events. Both banners share one messageId keyed to the thread item
+// so the "Context compacted." notice replaces the in-progress "Compacting
+// context." notice in place instead of appending a second transcript row.
+func appServerCompactionNoticeEvent(session Session, turnID string, messageID string, completed bool) activityshared.Event {
+	title := appServerCompactingContextTitle
+	if completed {
+		title = appServerContextCompactedTitle
+	}
+	return appServerSystemNoticeEvent(session, turnID, "system_notice", title, "", map[string]any{
+		"messageId": messageID,
+	})
+}
+
+func (*CodexAppServerAdapter) appServerItemEvents(
 	session Session,
 	turnID string,
 	item map[string]any,
@@ -185,12 +107,18 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 	}
 	itemType := asString(item["type"])
 	// Review/compaction items stream both item/started and item/completed.
-	// Gate each banner to a single lifecycle event so the GUI shows it once.
+	// Gate each review banner to a single lifecycle event so the GUI shows it
+	// once; compaction emits on both so the GUI can show live progress.
 	if notice, ok := appServerNoticeItems[itemType]; ok {
 		if notice.emitOnCompleted != completed {
 			return nil
 		}
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+	}
+	if itemType == "contextCompaction" {
+		messageID := "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		normalizer.TrackCompactionNotice(messageID, completed)
+		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, completed)}
 	}
 	switch itemType {
 	case "agentMessage":
@@ -298,7 +226,11 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		if len(locations) > 0 {
 			update["locations"] = locations
 		}
-		update["rawInput"] = map[string]any{"changes": item["changes"]}
+		rawInput := map[string]any{"changes": item["changes"]}
+		if cwd := asString(item["cwd"]); cwd != "" {
+			rawInput["cwd"] = cwd
+		}
+		update["rawInput"] = rawInput
 	case "mcpToolCall":
 		server := asString(item["server"])
 		tool := asString(item["tool"])
@@ -389,11 +321,41 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 			update["status"] = messageStreamStateFailed
 		}
 	case "collabAgentToolCall":
-		update["title"] = firstNonEmpty(asString(item["tool"]), "agent")
-		update["kind"] = "execute"
-		update["rawInput"] = map[string]any{
+		tool := firstNonEmpty(asString(item["tool"]), "agent")
+		update["title"] = tool
+		if appServerAgentControlToolName(tool) != "" {
+			update["kind"] = "other"
+		} else {
+			update["kind"] = "execute"
+		}
+		rawInput := map[string]any{
 			"task":      asStringRaw(item["prompt"]),
-			"agentName": firstNonEmpty(asString(item["tool"]), "agent"),
+			"agentName": tool,
+		}
+		// The GUI seeds placeholder lanes from the spawn card's declared
+		// children before any child rows arrive; lane attachment itself rides
+		// the ownerCallId recorded on each child row (ADR 0007).
+		if receivers := appServerReceiverThreadIDs(item["receiverThreadIds"]); len(receivers) > 0 {
+			ids := make([]any, 0, len(receivers))
+			for _, id := range receivers {
+				ids = append(ids, id)
+			}
+			rawInput["receiverThreadIds"] = ids
+		}
+		update["rawInput"] = rawInput
+		if completed {
+			output := appServerCollabAgentRawOutput(item)
+			if len(output) > 0 {
+				update["rawOutput"] = output
+			} else if update["status"] == messageStreamStateFailed {
+				slog.Debug(
+					"agent session app-server collab agent failed without output",
+					"itemId", itemID,
+					"tool", tool,
+					"status", status,
+					"rawItem", appServerItemJSON(item),
+				)
+			}
 		}
 	case "imageGeneration":
 		update["title"] = "Generate image"
@@ -420,6 +382,433 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		return nil, false
 	}
 	return update, true
+}
+
+func appServerAgentControlToolName(tool string) string {
+	switch normalizeAgentToolToken(tool) {
+	case "closeagent":
+		return "CloseAgent"
+	case "wait":
+		return "Wait"
+	default:
+		return ""
+	}
+}
+
+func appServerCollabAgentRawOutput(item map[string]any) map[string]any {
+	output := map[string]any{}
+	if message := firstNonEmpty(
+		appServerOutputText(item["error"]),
+		appServerOutputText(item["message"]),
+	); message != "" {
+		output["message"] = message
+	}
+	if result := item["result"]; result != nil {
+		output["result"] = clonePayloadValue(result)
+	}
+	if text := firstNonEmpty(
+		appServerOutputText(item["output"]),
+		appServerOutputText(item["stdout"]),
+	); text != "" {
+		output["output"] = text
+	}
+	if stderr := appServerOutputText(item["stderr"]); stderr != "" {
+		output["stderr"] = stderr
+	}
+	return output
+}
+
+func appServerOutputText(value any) string {
+	if text := asStringRaw(value); strings.TrimSpace(text) != "" {
+		return text
+	}
+	record := payloadObject(value)
+	return firstNonEmpty(
+		asStringRaw(record["message"]),
+		asStringRaw(record["text"]),
+		asStringRaw(record["output"]),
+		asStringRaw(record["result"]),
+	)
+}
+
+type appServerNotificationRoute struct {
+	ownerThreadID string
+	// ownerCallID is the spawn collabAgentToolCall item id that created the
+	// owning child thread (registry parentItemID). Stamped on every routed
+	// child event so the GUI attaches lanes by recorded edge, not inference
+	// (ADR 0007).
+	ownerCallID string
+	turnID      string
+	normalizer  *acpTurnNormalizer
+	events      []activityshared.Event
+	drop        bool
+}
+
+func (a *CodexAppServerAdapter) appServerNotificationRoute(
+	session Session,
+	method string,
+	params map[string]any,
+) appServerNotificationRoute {
+	parentThreadID := strings.TrimSpace(session.ProviderSessionID)
+	eventThreadID := strings.TrimSpace(asString(params["threadId"]))
+	if parentThreadID == "" || eventThreadID == "" || eventThreadID == parentThreadID {
+		if added := a.rememberAppServerChildThreads(session.AgentSessionID, parentThreadID, payloadObject(params["item"])); len(added) > 0 {
+			a.scheduleChildNicknameFetches(session, added)
+		}
+		return appServerNotificationRoute{}
+	}
+
+	child, ok := a.appServerChildThread(session.AgentSessionID, eventThreadID)
+	if !ok {
+		a.recordForeignThreadDrop(session.AgentSessionID, eventThreadID)
+		a.logAppServerForeignThreadDrop(session, method, params, eventThreadID)
+		return appServerNotificationRoute{drop: true}
+	}
+	if event := appServerChildTerminalStatusEvent(session, eventThreadID, method, params); event.Type != "" {
+		return appServerNotificationRoute{
+			ownerThreadID: eventThreadID,
+			ownerCallID:   child.parentItemID,
+			turnID:        event.Payload.TurnID,
+			events:        []activityshared.Event{event},
+			drop:          true,
+		}
+	}
+	if appServerSuppressChildNotification(method) {
+		return appServerNotificationRoute{drop: true}
+	}
+	if child.normalizer == nil {
+		child.normalizer = newACPTurnNormalizer()
+		a.storeAppServerChildThread(session.AgentSessionID, eventThreadID, child)
+	}
+	return appServerNotificationRoute{
+		ownerThreadID: eventThreadID,
+		ownerCallID:   child.parentItemID,
+		turnID:        firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"])),
+		normalizer:    child.normalizer,
+	}
+}
+
+const appServerForeignDropTrackerCap = 64
+
+// recordForeignThreadDrop remembers an unknown-thread drop so a later child
+// registration can report events lost to the announce/stream ordering gap
+// (ADR 0003 verification telemetry). Bounded; unrelated foreign threads age
+// out by never being registered.
+func (a *CodexAppServerAdapter) recordForeignThreadDrop(agentSessionID string, threadID string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	if appSession.recentForeignDrops == nil {
+		appSession.recentForeignDrops = make(map[string]int)
+	}
+	if len(appSession.recentForeignDrops) >= appServerForeignDropTrackerCap {
+		if _, tracked := appSession.recentForeignDrops[threadID]; !tracked {
+			return
+		}
+	}
+	appSession.recentForeignDrops[threadID]++
+}
+
+func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID string, parentThreadID string, item map[string]any) []string {
+	if asString(item["type"]) != "collabAgentToolCall" {
+		return nil
+	}
+	childThreadIDs := appServerReceiverThreadIDs(item["receiverThreadIds"])
+	if len(childThreadIDs) == 0 {
+		return nil
+	}
+	parentThreadID = strings.TrimSpace(parentThreadID)
+	parentItemID := strings.TrimSpace(asString(item["id"]))
+	// Only the spawn card owns the children it declares. Wait/close control
+	// cards also list receiverThreadIds and must register the thread for
+	// routing, but must never claim lane ownership: parentItemID is
+	// first-wins below, and it becomes each child row's ownerCallId
+	// (ADR 0007).
+	if appServerAgentControlToolName(asString(item["tool"])) != "" {
+		parentItemID = ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return nil
+	}
+	if appSession.childThreads == nil {
+		appSession.childThreads = make(map[string]*codexAppServerThreadContext)
+	}
+	added := make([]string, 0, len(childThreadIDs))
+	for _, childThreadID := range childThreadIDs {
+		if childThreadID == "" || childThreadID == parentThreadID {
+			continue
+		}
+		if existing := appSession.childThreads[childThreadID]; existing != nil {
+			if existing.parentItemID == "" {
+				existing.parentItemID = parentItemID
+			}
+			if existing.parentThreadID == "" {
+				existing.parentThreadID = parentThreadID
+			}
+			continue
+		}
+		context := &codexAppServerThreadContext{
+			parentThreadID: parentThreadID,
+			parentItemID:   parentItemID,
+			normalizer:     newACPTurnNormalizer(),
+		}
+		if dropped := appSession.recentForeignDrops[childThreadID]; dropped > 0 {
+			context.droppedBeforeRegistration = dropped
+			delete(appSession.recentForeignDrops, childThreadID)
+			slog.Warn(
+				"agent session app-server child events arrived before registration",
+				"agent_session_id", agentSessionID,
+				"child_thread_id", childThreadID,
+				"dropped_events", dropped,
+			)
+		}
+		appSession.childThreads[childThreadID] = context
+		added = append(added, childThreadID)
+	}
+	return added
+}
+
+func (a *CodexAppServerAdapter) appServerChildThread(agentSessionID string, childThreadID string) (*codexAppServerThreadContext, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil || appSession.childThreads == nil {
+		return nil, false
+	}
+	child := appSession.childThreads[strings.TrimSpace(childThreadID)]
+	if child == nil {
+		return nil, false
+	}
+	return &codexAppServerThreadContext{
+		parentThreadID:            child.parentThreadID,
+		parentItemID:              child.parentItemID,
+		normalizer:                child.normalizer,
+		droppedBeforeRegistration: child.droppedBeforeRegistration,
+	}, true
+}
+
+func (a *CodexAppServerAdapter) storeAppServerChildThread(
+	agentSessionID string,
+	childThreadID string,
+	child *codexAppServerThreadContext,
+) {
+	if child == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	if appSession.childThreads == nil {
+		appSession.childThreads = make(map[string]*codexAppServerThreadContext)
+	}
+	appSession.childThreads[strings.TrimSpace(childThreadID)] = child
+}
+
+func appServerSuppressChildNotification(method string) bool {
+	switch method {
+	case appServerNotifyThreadStarted,
+		appServerNotifyThreadSettingsUpdated,
+		appServerNotifyThreadNameUpdated,
+		appServerNotifyThreadCompacted,
+		appServerNotifyThreadGoalUpdated,
+		appServerNotifyThreadGoalCleared,
+		appServerNotifyTurnStarted,
+		appServerNotifyTurnCompleted,
+		// A child's error must never reach failActiveTurnFromAppServerError on
+		// the parent session: with an empty parent activeTurnID (wildcard
+		// match) it would fail the parent's running turn. Child failures reach
+		// the transcript through the parent's collabAgentToolCall item.
+		appServerNotifyError,
+		appServerNotifyServerRequestResolved,
+		appServerNotifyPlanUpdated,
+		appServerNotifyTokenUsage,
+		appServerNotifyRateLimitsUpdated,
+		appServerNotifyAccountUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+func appServerChildTerminalStatusEvent(
+	session Session,
+	ownerThreadID string,
+	method string,
+	params map[string]any,
+) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	if ownerThreadID == "" {
+		return activityshared.Event{}
+	}
+	switch method {
+	case appServerNotifyTurnCompleted:
+		turn := payloadObject(params["turn"])
+		turnID := firstNonEmpty(asString(params["turnId"]), asString(turn["id"]))
+		status := appServerChildLifecycleStatus(asString(turn["status"]))
+		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, status, appServerChildFailureDetail(turn))
+	case appServerNotifyError:
+		if willRetry, _ := params["willRetry"].(bool); willRetry {
+			return activityshared.Event{}
+		}
+		turnID := firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"]))
+		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, "failed", appServerChildFailureDetail(payloadObject(params["error"])))
+	case appServerNotifyThreadNameUpdated:
+		return appServerSubAgentNameEvent(session, ownerThreadID, asString(params["threadName"]))
+	default:
+		return activityshared.Event{}
+	}
+}
+
+// appServerSubAgentNameEvent projects a child thread's name onto a hidden
+// ownerThreadId-tagged marker so the GUI can title the sub-agent lane with
+// the agent's real identity instead of the collab tool name.
+func appServerSubAgentNameEvent(session Session, ownerThreadID string, name string) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	name = strings.TrimSpace(name)
+	if ownerThreadID == "" || name == "" {
+		return activityshared.Event{}
+	}
+	messageID := "subagent-name:" + ownerThreadID
+	payload := map[string]any{
+		"messageId":     messageID,
+		"contentMode":   messageContentModeSnapshot,
+		"messageKind":   "subAgentName",
+		"subAgentName":  name,
+		"ownerThreadId": ownerThreadID,
+	}
+	event := newTurnActivityEventWithID(
+		session,
+		messageID,
+		EventMessage,
+		"",
+		"completed",
+		RoleAssistant,
+		"",
+		payload,
+	)
+	event.OwnerThreadID = ownerThreadID
+	return event
+}
+
+func appServerChildLifecycleStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "failed", "error", "errored":
+		return "failed"
+	case "canceled", "cancelled", "interrupted":
+		return "canceled"
+	default:
+		return "completed"
+	}
+}
+
+func appServerChildFailureDetail(payload map[string]any) string {
+	return firstNonEmpty(
+		asStringRaw(payload["message"]),
+		asStringRaw(payload["detail"]),
+		asStringRaw(payload["error"]),
+		asStringRaw(payload["reason"]),
+	)
+}
+
+func appServerSubAgentLifecycleEvent(session Session, ownerThreadID string, turnID string, status string, detail string) activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	status = strings.TrimSpace(status)
+	if ownerThreadID == "" || status == "" {
+		return activityshared.Event{}
+	}
+	messageID := "subagent-lifecycle:" + ownerThreadID + ":" + firstNonEmpty(strings.TrimSpace(turnID), newID())
+	payload := map[string]any{
+		"messageId":               messageID,
+		"contentMode":             messageContentModeSnapshot,
+		"streamState":             status,
+		"messageKind":             "subAgentLifecycle",
+		"subAgentLifecycleStatus": status,
+		"ownerThreadId":           ownerThreadID,
+	}
+	if detail != "" {
+		payload["detail"] = detail
+	}
+	event := newTurnActivityEventWithID(
+		session,
+		messageID,
+		EventMessage,
+		strings.TrimSpace(turnID),
+		status,
+		RoleAssistant,
+		"",
+		payload,
+	)
+	event.OwnerThreadID = ownerThreadID
+	return event
+}
+
+func appServerReceiverThreadIDs(value any) []string {
+	values, ok := value.([]any)
+	if !ok {
+		if typed, ok := value.([]string); ok {
+			out := make([]string, 0, len(typed))
+			for _, item := range typed {
+				if trimmed := strings.TrimSpace(item); trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+			return out
+		}
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if threadID := strings.TrimSpace(asString(value)); threadID != "" {
+			out = append(out, threadID)
+		}
+	}
+	return out
+}
+
+func appServerEventsWithOwner(events []activityshared.Event, ownerThreadID string, ownerCallID string) []activityshared.Event {
+	ownerThreadID = strings.TrimSpace(ownerThreadID)
+	if ownerThreadID == "" || len(events) == 0 {
+		return events
+	}
+	ownerCallID = strings.TrimSpace(ownerCallID)
+	for index := range events {
+		events[index].OwnerThreadID = ownerThreadID
+		events[index].OwnerCallID = ownerCallID
+	}
+	return events
+}
+
+func (*CodexAppServerAdapter) logAppServerForeignThreadDrop(
+	session Session,
+	method string,
+	params map[string]any,
+	eventThreadID string,
+) {
+	expectedThreadID := strings.TrimSpace(session.ProviderSessionID)
+	item := payloadObject(params["item"])
+	slog.Debug(
+		"agent session app-server notification ignored for foreign thread",
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", expectedThreadID,
+		"event_thread_id", eventThreadID,
+		"event_turn_id", asString(params["turnId"]),
+		"method", method,
+		"item_id", asString(item["id"]),
+		"item_type", asString(item["type"]),
+		"item_status", asString(item["status"]),
+	)
 }
 
 func appServerItemStatus(status string) string {
@@ -640,9 +1029,13 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 	if title != "" {
 		update["title"] = title
 	}
-	if title == "Context compacted." {
+	if title == appServerContextCompactedTitle {
 		update["noticeCommand"] = "compact"
 		update["noticeCommandStatus"] = "completed"
+	}
+	if title == appServerCompactingContextTitle {
+		update["noticeCommand"] = "compact"
+		update["noticeCommandStatus"] = "inProgress"
 	}
 	if detail != "" {
 		update["detail"] = detail
@@ -662,7 +1055,7 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 
 func (a *CodexAppServerAdapter) appServerServerRequest(
 	ctx context.Context,
-	client *acpClient,
+	client *codexAppServerClient,
 	session Session,
 	turnID string,
 	message acpMessage,
@@ -688,18 +1081,51 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 	if len(events) > 0 {
 		emit(events)
 	}
+	go a.respondAppServerServerRequest(ctx, client, session, turnID, message, params, pending, emit)
+	return nil, nil
+}
+
+func (a *CodexAppServerAdapter) respondAppServerServerRequest(
+	ctx context.Context,
+	client *codexAppServerClient,
+	session Session,
+	turnID string,
+	message acpMessage,
+	params map[string]any,
+	pending *pendingACPRequest,
+	emit EventSink,
+) {
+	if pending == nil {
+		return
+	}
 	defer a.deletePendingRequest(session.AgentSessionID, pending.requestID)
 	selection, err := pending.wait(ctx)
 	if err != nil {
 		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		if emit != nil {
+			emit(resolved)
+		}
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
-		return resolved, err
+		return
+	}
+	if selection.outOfBandResolved {
+		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		if emit != nil {
+			emit(resolved)
+		}
+		return
+	}
+	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
+	if emit != nil {
+		emit(resolved)
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
-		return acpPermissionResolvedEvents(session, turnID, pending, selection, err), err
+		if emit != nil {
+			emit(acpPermissionResolvedEvents(session, turnID, pending, selection, err))
+		}
+		return
 	}
-	return acpPermissionResolvedEvents(session, turnID, pending, selection, nil), nil
 }
 
 func (a *CodexAppServerAdapter) appServerApprovalRequested(
@@ -760,6 +1186,42 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 			payload,
 		),
 	}, pending, nil
+}
+
+func appServerUnsupportedServerRequestEvents(
+	session Session,
+	turnID string,
+	message acpMessage,
+	err error,
+) []activityshared.Event {
+	if strings.TrimSpace(turnID) == "" || err == nil {
+		return nil
+	}
+	requestID := acpRequestID(message.ID)
+	callID := firstNonEmpty(requestID, newID())
+	return []activityshared.Event{
+		newTurnActivityEventWithID(
+			session,
+			"server-request:"+callID,
+			EventCallFailed,
+			turnID,
+			messageStreamStateFailed,
+			"",
+			"Unsupported server request",
+			map[string]any{
+				"callId":   callID,
+				"callType": "server_request",
+				"name":     "Unsupported server request",
+				"toolName": "ServerRequest",
+				"status":   messageStreamStateFailed,
+				"error": map[string]any{
+					"requestId": requestID,
+					"method":    message.Method,
+					"message":   err.Error(),
+				},
+			},
+		),
+	}
 }
 
 func (a *CodexAppServerAdapter) appServerUserInputRequested(
@@ -1048,16 +1510,26 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	if sandbox := codexAppServerSandboxMode(session.PermissionModeID); sandbox != "" {
 		params["sandbox"] = sandbox
 	}
+	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
+		params["approvalsReviewer"] = approvalsReviewer
+	}
 	return params
 }
 
-func appServerTurnStartParams(session Session, threadID string, content []PromptContentBlock, planModeMask map[string]any, defaultModel string) map[string]any {
+func appServerTurnStartParams(
+	session Session,
+	threadID string,
+	content []PromptContentBlock,
+	planModeMask map[string]any,
+	defaultModeMask map[string]any,
+	defaultModel string,
+) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
 		"threadId": threadID,
 		"input":    appServerUserInput(content),
 	}
-	if collaborationMode := appServerPlanCollaborationMode(settings, planModeMask, defaultModel); collaborationMode != nil {
+	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel); collaborationMode != nil {
 		params["collaborationMode"] = collaborationMode
 	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
@@ -1075,10 +1547,13 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 	if sandboxPolicy := codexAppServerSandboxPolicy(session.PermissionModeID); sandboxPolicy != nil {
 		params["sandboxPolicy"] = sandboxPolicy
 	}
+	if approvalsReviewer := codexAppServerApprovalsReviewer(session.PermissionModeID); approvalsReviewer != "" {
+		params["approvalsReviewer"] = approvalsReviewer
+	}
 	return params
 }
 
-// appServerPlanCollaborationMode assembles the turn/start collaborationMode
+// appServerCollaborationMode assembles the turn/start collaborationMode
 // payload. Collaboration mode is sticky thread state on the codex side, so
 // once negotiation succeeded every turn declares its mode explicitly: the
 // Plan preset while plan mode is on, the default mode otherwise (mirrors the
@@ -1086,23 +1561,36 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 // schema requires a concrete settings.model — session override first, then
 // the session default model, then the mask's own model; without any model
 // the field is omitted rather than sending an invalid request.
-func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[string]any, defaultModel string) map[string]any {
-	if planModeMask == nil {
+func appServerCollaborationMode(
+	settings SessionSettings,
+	planModeMask map[string]any,
+	defaultModeMask map[string]any,
+	defaultModel string,
+) map[string]any {
+	if planModeMask == nil && defaultModeMask == nil {
 		return nil
 	}
-	model := strings.TrimSpace(firstNonEmpty(settings.Model, defaultModel, asString(planModeMask["model"])))
+	mode := "default"
+	modeMask := defaultModeMask
+	if settings.PlanMode {
+		if planModeMask == nil {
+			return nil
+		}
+		modeMask = planModeMask
+		mode = strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan")))
+	}
+	model := strings.TrimSpace(firstNonEmpty(settings.Model, defaultModel, asString(modeMask["model"])))
 	if model == "" {
 		return nil
 	}
 	collaborationSettings := map[string]any{
-		"model": model,
-		// null selects the built-in instructions for the mode.
-		"developer_instructions": nil,
+		"model":                  model,
+		"developer_instructions": appServerCollaborationModeDeveloperInstructions(modeMask),
 	}
 	if effort := codexACPReasoningEffortValue(settings.ReasoningEffort); effort != "" {
 		collaborationSettings["reasoning_effort"] = effort
 	} else if settings.PlanMode {
-		if presetEffort := strings.TrimSpace(asString(planModeMask["reasoning_effort"])); presetEffort != "" {
+		if presetEffort := strings.TrimSpace(asString(modeMask["reasoning_effort"])); presetEffort != "" {
 			collaborationSettings["reasoning_effort"] = presetEffort
 		} else {
 			collaborationSettings["reasoning_effort"] = nil
@@ -1110,14 +1598,25 @@ func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[s
 	} else {
 		collaborationSettings["reasoning_effort"] = nil
 	}
-	mode := "default"
-	if settings.PlanMode {
-		mode = strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan")))
-	}
 	return map[string]any{
 		"mode":     mode,
 		"settings": collaborationSettings,
 	}
+}
+
+func appServerCollaborationModeDeveloperInstructions(modeMask map[string]any) any {
+	if modeMask == nil {
+		return nil
+	}
+	if text, ok := modeMask["developer_instructions"].(string); ok && strings.TrimSpace(text) != "" {
+		return text
+	}
+	if settings := payloadObject(modeMask["settings"]); settings != nil {
+		if text, ok := settings["developer_instructions"].(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return nil
 }
 
 func appServerUserInput(content []PromptContentBlock) []map[string]any {
@@ -1274,6 +1773,17 @@ func codexAppServerSandboxPolicy(modeID string) map[string]any {
 		return map[string]any{"type": "dangerFullAccess"}
 	default:
 		return nil
+	}
+}
+
+func codexAppServerApprovalsReviewer(modeID string) string {
+	switch codexACPModeID(modeID) {
+	case "read-only":
+		return "user"
+	case "auto":
+		return "auto_review"
+	default:
+		return ""
 	}
 }
 

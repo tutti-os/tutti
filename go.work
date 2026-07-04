@@ -14,6 +14,8 @@ use ./packages/workspace/files
 
 use ./packages/workspace/issues
 
+use ./packages/auth/bridge-go
+
 use (
 	./packages/agent/daemon
 	./packages/appcli/core

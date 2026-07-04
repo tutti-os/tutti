@@ -39,6 +39,8 @@ describe("projectAgentToolCall", () => {
     ["todowrite", "tool", "todo-write"],
     ["toolsearch", "tool", "tool-search"],
     ["skill", "tool", "skill"],
+    ["closeAgent", "tool", "default"],
+    ["wait", "tool", "default"],
     ["custom_mcp_tool", "mcp", "mcp"],
     ["Approval", "approval", "approval"],
     ["EnterPlanMode", "interactive", "plan-enter"],
@@ -260,6 +262,29 @@ describe("projectAgentToolCall", () => {
     expect(projected.task?.steps[0]?.summary).toBe("Loaded docs chunk");
   });
 
+  it("does not project task summary or prompt as output when result payload is missing", () => {
+    const prompt =
+      "Generate one random integer from 1 to 10 inclusive. Use your own randomness.";
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      name: "Agent",
+      toolName: "Agent",
+      callType: "tool",
+      status: "failed",
+      statusKind: "failed",
+      summary: prompt,
+      payload: {
+        input: {
+          prompt,
+          task: prompt
+        }
+      }
+    });
+
+    expect(projected.task?.prompt).toBe(prompt);
+    expect(projected.task?.resultMarkdown).toBeNull();
+  });
+
   it("projects Claude subagent prompt, duration, result, and steps from nested tool response payloads", () => {
     const projected = projectAgentToolCall({
       ...baseCall(),
@@ -313,6 +338,27 @@ describe("projectAgentToolCall", () => {
     );
     expect(projected.task?.steps).toHaveLength(1);
     expect(projected.task?.steps[0]?.summary).toBe("Searched web");
+  });
+
+  it("projects async subagent agent id from metadata", () => {
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "Agent",
+      callType: "subagent",
+      payload: {
+        input: {
+          prompt: "Inspect workspace"
+        },
+        metadata: {
+          subagentAsync: true,
+          taskStatus: "running",
+          subagentAgentId: "a33f4e9013dedffe8"
+        }
+      }
+    });
+
+    expect(projected.task?.delegateSessionId).toBe("a33f4e9013dedffe8");
+    expect(projected.task?.status).toBe("running");
   });
 });
 

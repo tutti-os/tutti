@@ -196,6 +196,36 @@ describe("AgentQueuedPromptPanel", () => {
     expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-1");
   });
 
+  it("allows queued image prompt previews to zoom", () => {
+    render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                data: "aW1hZ2U=",
+                name: "panel.png"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Zoom image/ })
+    ).toBeInTheDocument();
+  });
+
   it("emits queued mention link clicks without toggling the queue panel", () => {
     const onLinkClick = vi.fn();
     const { container } = render(

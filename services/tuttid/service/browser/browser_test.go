@@ -12,6 +12,7 @@ import (
 
 	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // scriptedConn fakes an MCP server over the process connection: it answers
@@ -180,6 +181,33 @@ func TestCallToolUsesAutoConnectWhenDesktopPreferenceReusesChrome(t *testing.T) 
 	}
 	if slices.Contains(command, "--isolated") {
 		t.Fatalf("command = %#v, did not want --isolated", command)
+	}
+}
+
+func TestCallToolUsesManagedNodeForVendoredBrowserMCPEntry(t *testing.T) {
+	transport := &scriptedTransport{}
+	svc := newTestService(transport)
+	entryPath := "/Applications/Tutti.app/Contents/Resources/bin/browser-mcp/chrome-devtools-mcp.js"
+	nodePath := "/Users/example/.tutti/app-runtimes/darwin-arm64/node/bin/node"
+	svc.managedRuntime = browserRuntimeResolverStub{
+		runtime: managedruntime.ResolvedRuntime{Node: nodePath},
+	}
+	t.Setenv(browserMCPEntryPathEnv, entryPath)
+	t.Setenv("TUTTI_APP_NODE", "")
+
+	if _, err := svc.CallTool(context.Background(), "ws-1", "", "list_pages", nil); err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+
+	if len(transport.specs) != 1 {
+		t.Fatalf("started specs len = %d, want 1", len(transport.specs))
+	}
+	command := transport.specs[0].Command
+	if len(command) < 2 || command[0] != nodePath || command[1] != entryPath {
+		t.Fatalf("command = %#v, want managed node plus vendored entry", command)
+	}
+	if !slices.Contains(command, "--isolated") {
+		t.Fatalf("command = %#v, want normal browser connection args", command)
 	}
 }
 
@@ -408,6 +436,23 @@ func (r *mutablePreferencesReader) setMode(mode string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.preferences.BrowserUseConnectionMode = mode
+}
+
+type browserRuntimeResolverStub struct {
+	runtime managedruntime.ResolvedRuntime
+	err     error
+}
+
+func (r browserRuntimeResolverStub) Resolve(context.Context) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, r.err
+}
+
+func (r browserRuntimeResolverStub) ResolveProfile(context.Context, string) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, r.err
+}
+
+func (r browserRuntimeResolverStub) PreloadProfile(context.Context, string) error {
+	return r.err
 }
 
 // TestE2ENavigateRealChrome drives a real chrome-devtools-mcp + Chrome through

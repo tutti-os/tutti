@@ -61,6 +61,7 @@ export interface IWorkspaceAppCenterService {
     appId: string;
     workspaceId: string;
   }): Promise<void>;
+  openExternalUrl(url: string): Promise<void>;
   prepareFactoryJobModification(input: {
     jobId: string;
     workspaceId: string;

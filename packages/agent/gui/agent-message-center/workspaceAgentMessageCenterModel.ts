@@ -21,6 +21,11 @@ import {
   type WorkspaceAgentMessageCenterDigest,
   type WorkspaceAgentMessageCenterDigestAgentSummary
 } from "./workspaceAgentMessageCenterDigest";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../shared/agentConversation/exitPlanOptions";
 
 export interface WorkspaceAgentMessageCenterModel {
   waitingCount: number;
@@ -339,7 +344,6 @@ function analyzeMessageCenterSessionMessages(
         }
       }
     }
-
     if (isAgentMessageRole(message.role)) {
       const summary = messageSummary(message);
       if (summary) {
@@ -402,9 +406,9 @@ function promptFromMessage(
   message: AgentActivityMessage
 ): AgentConversationPromptVM | null {
   return (
+    exitPlanPromptFromMessage(message) ??
     approvalPromptFromMessage(message) ??
-    askUserPromptFromMessage(message) ??
-    exitPlanPromptFromMessage(message)
+    askUserPromptFromMessage(message)
   );
 }
 
@@ -416,6 +420,9 @@ function approvalPromptFromMessage(
   }
   const payload = recordValue(message.payload);
   const input = recordValue(payload.input);
+  if (isExitPlanMessage(message, input)) {
+    return null;
+  }
   const requestId =
     stringValue(input.requestId) ??
     stringValue(payload.requestId) ??
@@ -516,18 +523,46 @@ function askUserPromptFromMessage(
 function exitPlanPromptFromMessage(
   message: AgentActivityMessage
 ): AgentConversationPromptVM | null {
-  if (!includesAny(normalizedMetadataValues(message), ["exitplanmode"])) {
+  const payload = recordValue(message.payload);
+  const input = recordValue(payload.input);
+  if (!isExitPlanMessage(message, input)) {
     return null;
   }
-  const payload = recordValue(message.payload);
   return {
     kind: "exit-plan",
-    requestId: stringValue(payload.requestId) ?? message.messageId,
+    requestId:
+      stringValue(input.requestId) ??
+      stringValue(payload.requestId) ??
+      message.messageId,
     title:
+      stringValue(input.title) ??
+      stringValue(recordValue(input.toolCall).title) ??
       stringValue(payload.title) ??
       stringValue(payload.summary) ??
-      messageSummary(message)
+      messageSummary(message),
+    options: extractExitPlanModeOptions(input, payload),
+    ...keepPlanningOption(extractExitPlanKeepPlanningOptionId(input, payload))
   };
+}
+
+function keepPlanningOption(optionId: string | null): {
+  keepPlanningOptionId?: string;
+} {
+  return optionId ? { keepPlanningOptionId: optionId } : {};
+}
+
+function isExitPlanMessage(
+  message: AgentActivityMessage,
+  input: Record<string, unknown> = recordValue(
+    recordValue(message.payload).input
+  )
+): boolean {
+  // Some shapes only flag exit-plan via metadata ("exitplanmode"); the canonical
+  // Claude shape is a `switch_mode` approval carrying a `plan` option.
+  return (
+    includesAny(normalizedMetadataValues(message), ["exitplanmode"]) ||
+    isExitPlanSwitchModeInput(input)
+  );
 }
 
 function codexPlanImplementationPrompt(

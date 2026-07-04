@@ -20,6 +20,8 @@ import { registerWorkspaceFileManagerServices } from "@renderer/features/workspa
 import { registerWorkspaceUserProjectServices } from "@renderer/features/workspace-user-project";
 import {
   createAgentProviderTerminalCommandRunner,
+  createWorkspaceAgentOutcomeForegroundNotificationPresenter,
+  createWorkspaceAgentOutcomeNotificationController,
   registerWorkspaceWorkbenchServices
 } from "@renderer/features/workspace-workbench";
 import {
@@ -29,6 +31,7 @@ import {
 } from "@tutti-os/agent-gui/agent-message-center";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
 import { tuttiAgentAssetUrls } from "../../../../../shared/tuttiAssetProtocol.ts";
+import { translate } from "../../../i18n";
 import { getActiveLocale } from "../../../i18n/runtime";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import { createToastNotificationService } from "@renderer/lib/notificationService";
@@ -59,6 +62,11 @@ export interface WorkspaceWindowContainerResult {
 export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
   const environment = resolveDesktopEnvironment(window.tutti);
   const desktopApi = environment.desktopApi;
+  const routeWorkspaceID = new URLSearchParams(window.location.search).get(
+    "workspaceId"
+  );
+  const activeWorkspaceID =
+    routeWorkspaceID || environment.startupWorkspaceID || "__default__";
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
   const tuttidEventStreamClient = createDesktopTuttidEventStreamClient(
     desktopApi.runtime
@@ -108,6 +116,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     eventStreamClient: tuttidEventStreamClient,
     reporterService
   });
+  let disposeAgentOutcomeNotificationController: (() => void) | null = null;
   let releasedWindowAnalytics = false;
   const releaseWindowAnalytics = () => {
     if (releasedWindowAnalytics) {
@@ -115,6 +124,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     }
     releasedWindowAnalytics = true;
     window.removeEventListener("beforeunload", releaseWindowAnalytics);
+    disposeAgentOutcomeNotificationController?.();
+    disposeAgentOutcomeNotificationController = null;
     predefinePageviewAnalytics.dispose();
     daemonConnectionAnalytics.release();
   };
@@ -163,12 +174,26 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     notifications: notificationService,
     reporterService,
     runtimeApi: desktopApi.runtime,
+    resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
     workspaceUserProjectService
   });
+  const agentOutcomeNotificationController =
+    createWorkspaceAgentOutcomeNotificationController({
+      foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
+      notifications: notificationService,
+      translate,
+      workspaceAgentActivityService:
+        workspaceAgentServices.workspaceAgentActivityService,
+      workspaceId: activeWorkspaceID
+    });
+  disposeAgentOutcomeNotificationController = () => {
+    agentOutcomeNotificationController.dispose();
+  };
   registerRichTextAtServices(registry, {
+    agentsService: workspaceAgentServices.agentsService,
     tuttidClient,
     getLocale: getActiveLocale,
     resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,

@@ -7,6 +7,7 @@ import type {
   WorkbenchFrame,
   WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult,
+  WorkbenchHostNodeHeaderContext,
   WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
@@ -31,6 +32,9 @@ export interface CreateBrowserNodeDefinitionInput {
   feature: BrowserNodeFeature;
   frame?: WorkbenchFrame;
   onNavigated?: (input: { nodeId: string; url: string }) => void;
+  renderTrafficLights?: (
+    context: WorkbenchHostNodeHeaderContext<BrowserNodeExternalState>
+  ) => ReactNode;
   typeId?: string;
 }
 
@@ -76,6 +80,7 @@ export function createBrowserNodeDefinition({
   feature,
   frame = defaultBrowserNodeFrame,
   onNavigated,
+  renderTrafficLights,
   typeId = defaultBrowserNodeTypeId
 }: CreateBrowserNodeDefinitionInput): WorkbenchHostNodeDefinition<BrowserNodeExternalState> {
   return {
@@ -103,33 +108,28 @@ export function createBrowserNodeDefinition({
         showHeader: false,
         syncDefaultUrl: true
       }),
-    renderHeader: ({
-      defaultActions,
-      activation,
-      displayMode,
-      dragHandleProps,
-      externalNodeState,
-      isFocused,
-      node,
-      windowActions
-    }) =>
+    renderHeader: (headerContext) =>
       createElement(BrowserNodeWorkbenchHeader, {
-        defaultActions,
+        defaultActions: renderTrafficLights
+          ? renderTrafficLights(headerContext)
+          : headerContext.defaultActions,
         defaultUrl: resolveBrowserNodeInitialUrl({
-          activation,
+          activation: headerContext.activation,
           defaultUrl,
-          externalNodeState
+          externalNodeState: headerContext.externalNodeState
         }),
-        displayMode,
-        dragHandleProps,
+        displayMode: headerContext.displayMode,
+        dragHandleProps: headerContext.dragHandleProps,
         feature,
-        nodeId: node.id,
+        nodeId: headerContext.node.id,
         onCloseRequest: () => {
           void feature.hostApi
-            .close({ nodeId: node.id })
+            .close({ nodeId: headerContext.node.id })
             .catch(() => undefined);
         },
-        onFocusRequest: isFocused ? undefined : () => windowActions.focus()
+        onFocusRequest: headerContext.isFocused
+          ? undefined
+          : () => headerContext.windowActions.focus()
       }),
     title: feature.i18n.t("title"),
     typeId,

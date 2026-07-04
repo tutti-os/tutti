@@ -348,3 +348,135 @@ test("cascades the next rect from the active node", () => {
     { x: 248, y: 168, width: 900, height: 560 }
   );
 });
+
+test("cascades the next rect with a custom offset", () => {
+  assert.deepEqual(
+    resolveWorkbenchCascadedRect({
+      cascadeOffset: { x: 180, y: 88 },
+      currentNodeStack: ["node-a"],
+      existingNodes: [
+        {
+          id: "node-a",
+          kind: "agent-gui",
+          title: "Codex",
+          frame: { x: 140, y: 48, width: 1040, height: 538 },
+          displayMode: "floating",
+          restoreFrame: null,
+          isMinimized: false,
+          data: null
+        }
+      ],
+      preferredFrame: { x: 140, y: 48, width: 1040, height: 538 },
+      surfaceSize: { width: 1440, height: 900 }
+    }),
+    { x: 320, y: 136, width: 1040, height: 538 }
+  );
+});
+
+test("chooses another cascade position when clamping would repeat an existing rect", () => {
+  const frame = resolveWorkbenchCascadedRect({
+    cascadeOffset: { x: 180, y: 88 },
+    constraints: {
+      minHeight: 160,
+      minWidth: 280,
+      safeArea: {
+        bottom: 88,
+        left: 0,
+        right: 0,
+        top: 52
+      },
+      surfacePadding: 0
+    },
+    currentNodeStack: ["node-a", "node-b", "node-c", "node-d"],
+    existingNodes: [
+      {
+        id: "node-a",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 140, y: 48, width: 1040, height: 538 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      },
+      {
+        id: "node-b",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 320, y: 136, width: 1040, height: 538 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      },
+      {
+        id: "node-c",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 400, y: 224, width: 1040, height: 538 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      },
+      {
+        id: "node-d",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 400, y: 274, width: 1040, height: 538 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      }
+    ],
+    preferredFrame: { x: 140, y: 48, width: 1040, height: 538 },
+    surfaceSize: { width: 1440, height: 900 }
+  });
+
+  assert.deepEqual(frame, { x: 0, y: 274, width: 1040, height: 538 });
+});
+
+test("chooses another cascade position when relaunching from the same active node", () => {
+  const frame = resolveWorkbenchCascadedRect({
+    cascadeOffset: { x: 180, y: 88 },
+    constraints: {
+      minHeight: 160,
+      minWidth: 280,
+      safeArea: {
+        bottom: 88,
+        left: 0,
+        right: 0,
+        top: 52
+      },
+      surfacePadding: 0
+    },
+    currentNodeStack: ["node-b", "node-a"],
+    existingNodes: [
+      {
+        id: "node-a",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 140, y: 48, width: 1040, height: 538 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      },
+      {
+        id: "node-b",
+        kind: "agent-gui",
+        title: "Codex",
+        frame: { x: 320, y: 136, width: 1039, height: 537 },
+        displayMode: "floating",
+        restoreFrame: null,
+        isMinimized: false,
+        data: null
+      }
+    ],
+    preferredFrame: { x: 140, y: 48, width: 1040, height: 538 },
+    surfaceSize: { width: 1440, height: 900 }
+  });
+
+  assert.deepEqual(frame, { x: 0, y: 274, width: 1040, height: 538 });
+});

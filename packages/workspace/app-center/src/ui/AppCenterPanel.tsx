@@ -40,6 +40,8 @@ import type {
 } from "../contracts/viewModel.ts";
 import type { WorkspaceAppLocalRepairRequest } from "../contracts/host.ts";
 import {
+  isCommunityRecommendedApp,
+  sortCommunityApps,
   sortMyAppsByCreatedDesc,
   sortRecommendedApps,
   sortRecommendedAppsForAllTab
@@ -64,7 +66,7 @@ type FactoryTemplateID =
   | "system"
   | "news"
   | "gomoku";
-export type AppCenterAppTab = "recommended" | "my";
+export type AppCenterAppTab = "recommended" | "community" | "my";
 type RecommendedCategoryTabID =
   | "all"
   | "product-design"
@@ -488,12 +490,16 @@ export function AppCenterPanel({
     viewModel.apps.filter((app) => app.sourceKind === "local")
   );
   const recommendedSourceApps = viewModel.apps.filter(
-    (app) => app.sourceKind !== "local"
+    (app) => app.sourceKind !== "local" && !isCommunityRecommendedApp(app.id)
+  );
+  const communitySourceApps = viewModel.apps.filter(
+    (app) => app.sourceKind !== "local" && isCommunityRecommendedApp(app.id)
   );
   const recommendedApps = sortRecommendedApps(recommendedSourceApps);
   const recommendedAppsForAllTab = sortRecommendedAppsForAllTab(
     recommendedSourceApps
   );
+  const communityApps = sortCommunityApps(communitySourceApps);
   const recommendedCategoryTabs = createRecommendedCategoryTabs(
     recommendedApps,
     copy
@@ -509,15 +515,23 @@ export function AppCenterPanel({
           (app) => app.category === activeRecommendedCategoryLabel
         );
   const activeApps =
-    activeAppTab === "recommended" ? activeRecommendedApps : myApps;
+    activeAppTab === "recommended"
+      ? activeRecommendedApps
+      : activeAppTab === "community"
+        ? communityApps
+        : myApps;
   const activeAppTabTitle =
     activeAppTab === "recommended"
       ? copy.t("labels.recommendedApps")
-      : copy.t("labels.myApps");
+      : activeAppTab === "community"
+        ? copy.t("labels.communityApps")
+        : copy.t("labels.myApps");
   const activeAppEmptyMessage =
     activeAppTab === "recommended"
       ? copy.t("messages.recommendedAppsEmpty")
-      : copy.t("messages.myAppsEmpty");
+      : activeAppTab === "community"
+        ? copy.t("messages.communityAppsEmpty")
+        : copy.t("messages.myAppsEmpty");
   const pendingDeleteAppInstalled = pendingDeleteApp?.installed ?? false;
   const deleteAppConfirmLabel = copy.t(
     pendingDeleteAppInstalled
@@ -573,6 +587,10 @@ export function AppCenterPanel({
                 {
                   label: copy.t("labels.recommendedApps"),
                   value: "recommended"
+                },
+                {
+                  label: copy.t("labels.communityApps"),
+                  value: "community"
                 },
                 {
                   label: copy.t("labels.myApps"),

@@ -157,7 +157,7 @@ export function WorkspaceFilePreviewNodeBody({
     <WorkspaceFilePreviewSurface
       directoryMessage=""
       emptyMessage={appI18n.t("workspaceFileManager.previewUnsupported")}
-      frameClassName="flex h-full min-h-0 min-w-0 w-full items-center justify-center overflow-hidden bg-[var(--surface-primary)] text-[var(--text-tertiary)]"
+      frameClassName="flex h-full min-h-0 min-w-0 w-full items-center justify-center overflow-hidden bg-[var(--background-fronted)] text-[var(--text-tertiary)]"
       imageAlt={(entry) => entry.name}
       imageClassName="block max-h-full max-w-full object-contain"
       imageFrameClassName="overflow-auto p-3"
@@ -193,9 +193,9 @@ function WorkspaceTextFileEditor({
     state.saveStatus === "error" && state.message ? state.message : null;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--surface-primary)]">
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--background-fronted)]">
       {saveError ? (
-        <div className="shrink-0 border-b border-[color-mix(in_srgb,var(--state-danger)_28%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_10%,var(--surface-primary))] px-3 py-2 text-[11px] leading-[18px] text-[var(--state-danger)]">
+        <div className="shrink-0 border-b border-[color-mix(in_srgb,var(--state-danger)_28%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_10%,var(--background-fronted))] px-3 py-2 text-[11px] leading-[18px] text-[var(--state-danger)]">
           {saveError}
         </div>
       ) : null}

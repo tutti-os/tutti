@@ -1,11 +1,11 @@
 ---
 name: issue-manager
-description: Issue-manager for Tutti workspace issues — `mention://workspace-issue/...` handoffs, issue inspection, execution, breakdown (`mode=breakdown`, persist child tasks), or run reporting. Reach tutti-cli for CLI syntax only.
+description: Issue-manager for Tutti workspace issues — `mention://workspace-issue/...` handoffs, issue inspection, execution, breakdown (`mode=breakdown`, persist child tasks), or run reporting. Reach `$tutti-cli` for CLI syntax only.
 ---
 
 # Issue Manager
 
-Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, read the materialized sibling `tutti-cli/SKILL.md` file and use its `## Commands` section as the command reference for CLI syntax and flags.
+Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, use injected `$tutti-cli`; exact syntax and flags live in its `command-guide.md` file.
 
 Run metadata: use `--agent-provider {{AGENT_PROVIDER}}`. Do not pass `--agent-session-id` in normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 

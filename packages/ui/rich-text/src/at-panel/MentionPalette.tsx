@@ -387,7 +387,10 @@ function MentionPaletteGroups<TItem>({
   highlightedKey: string | null;
   highlightedOptionRef: MutableRefObject<HTMLButtonElement | null>;
   getItemKey: (item: TItem, group: MentionPaletteGroup<TItem>) => string;
-  renderItem: (item: TItem, ctx: { active: boolean }) => ReactNode;
+  renderItem: (
+    item: TItem,
+    ctx: { active: boolean; group: MentionPaletteGroup<TItem> }
+  ) => ReactNode;
   onHighlightChange: (key: string) => void;
   onSelectItem: (item: TItem, group: MentionPaletteGroup<TItem>) => void;
   onExpandGroup: (groupId: string) => void;
@@ -439,7 +442,7 @@ function MentionPaletteGroups<TItem>({
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onSelectItem(item, group)}
                   >
-                    {renderItem(item, { active: isHighlighted })}
+                    {renderItem(item, { active: isHighlighted, group })}
                   </button>
                 );
               })}

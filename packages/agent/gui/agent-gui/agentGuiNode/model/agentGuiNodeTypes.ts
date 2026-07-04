@@ -1,11 +1,16 @@
 import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type {
+  AgentGUINodeData,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderTarget
+} from "../../../types";
 import type {
   AgentGUIApprovalRequest,
   AgentGUIConversationSummary,
   AgentGUIConversationUserProject,
   AgentGUIInteractivePrompt
 } from "./agentGuiConversationModel";
+import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
 import type {
   AgentSessionCommand,
   AgentSessionComposerSettings,
@@ -17,6 +22,8 @@ import type {
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+
+export type AgentGUIConversationScope = "single-provider" | "multi-provider";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -159,6 +166,10 @@ export interface AgentGUINodeViewModel {
   currentUserId?: string | null;
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
+  providerTargets: readonly AgentGUIProviderTarget[];
+  providerTargetsLoading: boolean;
+  conversationScope: AgentGUIConversationScope;
+  conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];
   activeConversation: AgentGUIConversationSummary | null;
@@ -179,6 +190,7 @@ export interface AgentGUINodeViewModel {
   promptImagesSupported: boolean;
   compactSupported: boolean | null;
   usage: AgentActivityUsage | null;
+  backgroundAgentCount: number;
   /** Codex plan turn finished: offer the TUI-equivalent implement prompt. */
   listError: string | null;
   isDeletingConversation: boolean;
@@ -201,4 +213,5 @@ export interface AgentGUINodeViewModel {
   conversationDetail: WorkspaceAgentSessionDetailViewModel | null;
   sessionChrome: AgentGUISessionChrome;
   inlineNotice: AgentGUIInlineNotice | null;
+  providerReadinessGate: AgentGUIProviderReadinessGate | null;
 }

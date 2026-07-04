@@ -2,6 +2,7 @@ package computer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"runtime"
@@ -24,6 +25,9 @@ func TestAdaptToolCallIntegration(t *testing.T) {
 
 	result, err := svc.CallTool(ctx, "integration-test", "", "screenshot", nil)
 	if err != nil {
+		if errors.Is(err, ErrPermissionsMissing) {
+			t.Skipf("cua-driver permissions not granted: %v", err)
+		}
 		t.Fatalf("CallTool screenshot: %v", err)
 	}
 	if !strings.Contains(result.Text, "Screenshot saved to ") {

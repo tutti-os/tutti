@@ -29,8 +29,10 @@ type EventStreamService interface {
 
 type DaemonAPI struct {
 	UserProjectService        UserProjectService
+	AgentTargetService        AgentTargetService
 	PreferencesService        preferencesapi.Service
 	ManagedCredentialsService *managedcredentialsservice.Service
+	AccountService            AccountService
 	EventStreamService        EventStreamService
 	WorkspaceService          workspaceapi.CatalogService
 	WorkbenchService          workspaceapi.WorkbenchService

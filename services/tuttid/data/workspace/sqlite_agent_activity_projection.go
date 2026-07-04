@@ -27,6 +27,7 @@ func projectionSessionToBiz(session agentactivityprojection.SessionSnapshot) age
 		ID:                session.AgentSessionID,
 		WorkspaceID:       session.WorkspaceID,
 		Origin:            session.Origin,
+		AgentTargetID:     session.AgentTargetID,
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		Model:             session.Model,

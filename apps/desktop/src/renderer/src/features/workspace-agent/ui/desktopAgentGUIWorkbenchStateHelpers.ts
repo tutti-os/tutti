@@ -4,17 +4,48 @@ import {
   type DesktopAgentGUIComposerOverrides,
   type DesktopAgentGUINodeState,
   type DesktopAgentGUIProvider
-} from "../desktopAgentGUINodeState";
+} from "../desktopAgentGUINodeState.ts";
+
+export function resolveDesktopAgentGUIProviderForAgentTarget(
+  agentTargetId: string | null,
+  providerTargets:
+    | readonly {
+        agentTargetId?: string | null;
+        provider: DesktopAgentGUIProvider;
+      }[]
+    | undefined,
+  fallbackProvider: DesktopAgentGUIProvider
+): DesktopAgentGUIProvider {
+  if (!agentTargetId) {
+    return fallbackProvider;
+  }
+  const target = providerTargets?.find(
+    (candidate) => candidate.agentTargetId === agentTargetId
+  );
+  if (target) {
+    return target.provider;
+  }
+  if (agentTargetId === "local:codex") {
+    return "codex";
+  }
+  if (agentTargetId === "local:claude-code") {
+    return "claude-code";
+  }
+  return fallbackProvider;
+}
 
 export function withDesktopAgentGUIProviderComposerDefaults(
   state: DesktopAgentGUINodeState,
   provider: DesktopAgentGUIProvider,
   defaults: DesktopAgentComposerDefaults | null
 ): DesktopAgentGUINodeState {
+  const agentTargetId = state.agentTargetId?.trim() || null;
   if (
     !defaults ||
     state.lastActiveAgentSessionId ||
     state.composerOverrides ||
+    (agentTargetId &&
+      state.composerOverridesByAgentTargetId?.[agentTargetId]) ||
     state.composerOverridesByProvider?.[provider]
   ) {
     return state;
@@ -27,14 +58,22 @@ export function withDesktopAgentGUIProviderComposerDefaults(
   }
 
   return normalizeDesktopAgentGUINodeState(
-    {
-      ...state,
-      composerOverrides,
-      composerOverridesByProvider: {
-        ...(state.composerOverridesByProvider ?? {}),
-        [provider]: composerOverrides
-      }
-    },
+    agentTargetId
+      ? {
+          ...state,
+          composerOverridesByAgentTargetId: {
+            ...(state.composerOverridesByAgentTargetId ?? {}),
+            [agentTargetId]: composerOverrides
+          }
+        }
+      : {
+          ...state,
+          composerOverrides,
+          composerOverridesByProvider: {
+            ...(state.composerOverridesByProvider ?? {}),
+            [provider]: composerOverrides
+          }
+        },
     provider
   );
 }

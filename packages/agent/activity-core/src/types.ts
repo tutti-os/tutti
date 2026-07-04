@@ -18,6 +18,7 @@ export type AgentActivityDisplayStatus =
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider: string;
   providerSessionId?: string | null;
   userId?: string;
@@ -27,6 +28,7 @@ export interface AgentActivitySession {
   status: AgentActivitySessionStatus | (string & {});
   turnLifecycle?: AgentActivityTurnLifecycle | null;
   submitAvailability?: AgentActivitySubmitAvailability | null;
+  pendingInteractive?: AgentActivityInteractivePrompt | null;
   visible?: boolean;
   resumable?: boolean;
   currentPhase?: string | null;
@@ -39,6 +41,17 @@ export interface AgentActivitySession {
   pinnedAtUnixMs?: number | null;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
+}
+
+export interface AgentActivityInteractivePrompt {
+  kind: string;
+  requestId?: string;
+  toolName?: string;
+  status?: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export type AgentActivityCancelReason =
@@ -175,6 +188,7 @@ export interface AgentActivityComposerOptions {
 }
 
 export interface AgentActivityLoadComposerOptionsInput {
+  agentTargetId?: string | null;
   workspaceId: string;
   provider: string;
   cwd?: string | null;
@@ -187,6 +201,7 @@ export interface AgentActivitySnapshot {
   sessions: AgentActivitySession[];
   presences: AgentActivityPresence[];
   sessionMessagesById: Record<string, AgentActivityMessage[]>;
+  composerOptionsByAgentTargetId?: Record<string, AgentActivityComposerOptions>;
   composerOptionsByProvider?: Record<string, AgentActivityComposerOptions>;
 }
 
@@ -206,6 +221,7 @@ export interface AgentActivityUpdatedEvent {
 
 export interface AgentActivityStatePatch {
   agentSessionId: string;
+  agentTargetId?: string;
   currentPhase?: string;
   cwd?: string;
   lastError?: string;
@@ -218,6 +234,7 @@ export interface AgentActivityStatePatch {
   runtimeContext?: Record<string, unknown>;
   startedAtUnixMs?: number;
   submitAvailability?: AgentActivitySubmitAvailability;
+  pendingInteractive?: AgentActivityInteractivePrompt | null;
   endedAtUnixMs?: number;
   title?: string;
   turn?: {
@@ -251,6 +268,7 @@ export interface AgentActivityProviderTargetRef {
 export interface AgentActivityCreateSessionInput {
   workspaceId: string;
   agentSessionId?: string | null;
+  agentTargetId?: string | null;
   cwd?: string | null;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */

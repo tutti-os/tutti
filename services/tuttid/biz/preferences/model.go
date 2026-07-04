@@ -7,25 +7,35 @@ import (
 )
 
 const (
-	DefaultDesktopAppCatalogChannel        = "production"
-	DefaultDesktopDefaultAgentProvider     = agentproviderbiz.Codex
-	DefaultDesktopDockIconStyle            = "default"
-	DefaultDesktopDockPlacement            = "bottom"
-	DefaultDesktopBrowserUseConnectionMode = "isolated"
-	DefaultDesktopLocale                   = "en"
-	DefaultDesktopMinimizeAnimation        = "scale"
-	DefaultDesktopSleepPreventionMode      = "never"
-	DefaultDesktopShowAppDeveloperSources  = false
-	DefaultDesktopThemeSource              = "dark"
-	DefaultDesktopUpdateChannel            = "rc"
-	DefaultDesktopUpdatePolicy             = "prompt"
-	DefaultDesktopWindowSnappingEnabled    = false
-	DefaultDesktopWindowSnappingShortcut   = "commandArrows"
+	DesktopAgentDockLayoutLegacySplit = "legacySplit"
+	DesktopAgentDockLayoutUnified     = "unified"
+
+	DesktopAgentConversationDetailModeCoding  = "coding"
+	DesktopAgentConversationDetailModeGeneral = "general"
+
+	DefaultDesktopAppCatalogChannel           = "production"
+	DefaultDesktopAgentDockLayout             = DesktopAgentDockLayoutLegacySplit
+	DefaultDesktopAgentConversationDetailMode = DesktopAgentConversationDetailModeCoding
+	DefaultDesktopDefaultAgentProvider        = agentproviderbiz.Codex
+	DefaultDesktopDockIconStyle               = "default"
+	DefaultDesktopDockPlacement               = "bottom"
+	DefaultDesktopBrowserUseConnectionMode    = "isolated"
+	DefaultDesktopLocale                      = "en"
+	DefaultDesktopMinimizeAnimation           = "scale"
+	DefaultDesktopSleepPreventionMode         = "never"
+	DefaultDesktopShowAppDeveloperSources     = false
+	DefaultDesktopThemeSource                 = "dark"
+	DefaultDesktopUpdateChannel               = "rc"
+	DefaultDesktopUpdatePolicy                = "prompt"
+	DefaultDesktopWindowSnappingEnabled       = false
+	DefaultDesktopWindowSnappingShortcut      = "commandArrows"
 )
 
 type DesktopPreferences struct {
 	AgentComposerDefaultsByProvider             map[string]AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentConversationDetailMode                 string
+	AgentDockLayout                             string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -54,6 +64,8 @@ func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
 		AgentGUIConversationRailCollapsedByProvider: map[string]bool{},
+		AgentConversationDetailMode:                 DefaultDesktopAgentConversationDetailMode,
+		AgentDockLayout:                             DefaultDesktopAgentDockLayout,
 		AppCatalogChannel:                           DefaultDesktopAppCatalogChannel,
 		BrowserUseConnectionMode:                    DefaultDesktopBrowserUseConnectionMode,
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
@@ -75,6 +87,40 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		UpdatePolicy:                 DefaultDesktopUpdatePolicy,
 		WindowSnappingEnabled:        DefaultDesktopWindowSnappingEnabled,
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
+	}
+}
+
+func NormalizeDesktopAgentDockLayout(value string) string {
+	normalized := strings.TrimSpace(value)
+	if IsDesktopAgentDockLayout(normalized) {
+		return normalized
+	}
+	return DefaultDesktopAgentDockLayout
+}
+
+func IsDesktopAgentDockLayout(value string) bool {
+	switch value {
+	case DesktopAgentDockLayoutLegacySplit, DesktopAgentDockLayoutUnified:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeDesktopAgentConversationDetailMode(value string) string {
+	normalized := strings.TrimSpace(value)
+	if IsDesktopAgentConversationDetailMode(normalized) {
+		return normalized
+	}
+	return DefaultDesktopAgentConversationDetailMode
+}
+
+func IsDesktopAgentConversationDetailMode(value string) bool {
+	switch value {
+	case "coding", "general":
+		return true
+	default:
+		return false
 	}
 }
 

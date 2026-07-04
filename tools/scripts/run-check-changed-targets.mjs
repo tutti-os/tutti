@@ -2,6 +2,7 @@ import { dirname, join, relative } from "node:path";
 
 const GO_MODULE_ROOTS = [
   "apps/cli",
+  "packages/agent/daemon",
   "packages/appcli/core",
   "packages/workbench/service",
   "packages/workspace/files",

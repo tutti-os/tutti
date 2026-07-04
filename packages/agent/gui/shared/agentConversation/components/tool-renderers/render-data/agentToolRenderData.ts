@@ -80,6 +80,7 @@ export interface AgentTaskRenderData {
   childSessionId: string | null;
   steps: AgentTaskStepVM[];
   resultMarkdown: string | null;
+  errorMarkdown: string | null;
 }
 
 export interface AgentSkillRenderData {
@@ -259,10 +260,12 @@ export function getWebSearchRenderData(
     ),
     output:
       firstString(
+        stringValue(call.output?.text),
+        contentText(call.content),
+        contentText(call.output?.content),
         stringValue(call.output?.stdout),
         stringValue(call.output?.output),
-        stringValue(call.output?.content),
-        contentText(call.output?.content)
+        stringValue(call.output?.content)
       ) ?? "",
     error:
       firstString(
@@ -399,9 +402,14 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
   const task = call.task;
   const steps: AgentTaskStepVM[] =
     task?.steps ?? normalizeTaskStepsFromCall(call);
+  const outputRawOutput = recordValue(call.output?.rawOutput);
+  const errorRawOutput = recordValue(call.error?.rawOutput);
   return {
     title: task?.title ?? call.name,
-    status: task?.status ?? null,
+    status:
+      task?.status ??
+      stringValue(call.metadata?.taskStatus) ??
+      stringValue(call.metadata?.subagentStatus),
     durationText:
       typeof task?.durationMs === "number" && Number.isFinite(task.durationMs)
         ? formatDuration(task.durationMs)
@@ -419,14 +427,16 @@ export function getTaskRenderData(call: AgentToolCallVM): AgentTaskRenderData {
       stringValue(call.metadata?.childSessionID),
       stringValue(call.metadata?.child_session_id),
       stringValue(call.metadata?.subagentSessionID),
-      stringValue(call.metadata?.subagent_session_id)
+      stringValue(call.metadata?.subagent_session_id),
+      stringValue(call.metadata?.subagentAgentId),
+      stringValue(call.metadata?.agentId)
     ),
     steps,
     resultMarkdown: firstString(
       stringValue(task?.resultMarkdown),
-      firstNonEmptyStructuredText(call.output, call.error),
-      nonEmpty(call.summary)
-    )
+      firstNonEmptyStructuredText(call.output, outputRawOutput)
+    ),
+    errorMarkdown: firstNonEmptyStructuredText(call.error, errorRawOutput)
   };
 }
 
@@ -586,6 +596,10 @@ function firstNonEmptyStructuredText(...values: Array<unknown>): string | null {
 
 function booleanValue(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
+}
+
+export function formatAgentToolDurationMs(value: number): string {
+  return formatDuration(value);
 }
 
 function formatDuration(value: number): string {

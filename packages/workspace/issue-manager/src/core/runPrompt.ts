@@ -52,11 +52,9 @@ export function buildIssueManagerRunPrompt(input: {
     task: input.task,
     mode: "execute"
   });
-  return [
-    input.copy?.t("runPrompts.executeIntro") ?? "Handle this task reference.",
-    "",
-    mentionMarkdown
-  ].join("\n");
+  const intro =
+    input.copy?.t("runPrompts.executeIntro") ?? "Handle this task reference.";
+  return `${intro} ${mentionMarkdown}`;
 }
 
 export function buildIssueManagerTaskBreakdownPrompt(input: {
@@ -74,12 +72,10 @@ export function buildIssueManagerTaskBreakdownPrompt(input: {
     mode: "breakdown"
   });
 
-  return [
+  const intro =
     input.copy?.t("runPrompts.breakdownIntro") ??
-      "Break this task reference down into executable tasks.",
-    "",
-    issueMention
-  ].join("\n");
+    "Break this task reference down into executable tasks.";
+  return `${intro} ${issueMention}`;
 }
 
 function buildIssueManagerIssueMention(input: {

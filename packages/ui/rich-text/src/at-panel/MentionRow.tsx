@@ -1,11 +1,11 @@
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   Badge,
   FileCodeIcon,
   FileTextIcon,
   FolderIcon,
   ImageFileIcon,
-  LocateFolderIcon,
   ProductIcon,
   StatusDot,
   VideoFileIcon,
@@ -78,12 +78,16 @@ export interface MentionRowRenderOptions {
   classNames?: MentionRowClassNames;
   dataAttributeMode?: MentionRowDataAttributeMode;
   /**
-   * 当提供时,issue / app 行末尾渲染一个「查看产物文件」入口图标(独立点击热区,
+   * 当提供时,issue / app 行末尾渲染一个「查看产物」入口(独立点击热区,
    * 不触发整行选中)。点击回调由调用方注入(如打开引用文件 picker 并定位到该实体)。
    */
   onOpenReferences?: () => void;
-  /** 入口图标的无障碍标签 / tooltip 文案。 */
+  /** 入口的无障碍标签 / tooltip 文案。 */
   openReferencesLabel?: string;
+  /** 当提供时,文件夹行末尾渲染一个「进入下一级」箭头按钮。 */
+  onNavigateInto?: () => void;
+  /** 「进入下一级」箭头按钮的无障碍标签 / tooltip 文案。 */
+  navigateIntoLabel?: string;
 }
 
 interface ResolvedMentionRowRenderOptions {
@@ -91,6 +95,8 @@ interface ResolvedMentionRowRenderOptions {
   dataAttributeMode: MentionRowDataAttributeMode;
   onOpenReferences?: () => void;
   openReferencesLabel?: string;
+  onNavigateInto?: () => void;
+  navigateIntoLabel?: string;
 }
 
 const DEFAULT_MENTION_ROW_CLASS_NAMES = {
@@ -122,7 +128,9 @@ function resolveMentionRowRenderOptions(
       classNames: options.classNames,
       dataAttributeMode: options.dataAttributeMode ?? "shared",
       onOpenReferences: options.onOpenReferences,
-      openReferencesLabel: options.openReferencesLabel
+      openReferencesLabel: options.openReferencesLabel,
+      onNavigateInto: options.onNavigateInto,
+      navigateIntoLabel: options.navigateIntoLabel
     };
   }
   return {
@@ -136,7 +144,10 @@ function isMentionRowRenderOptions(
 ): options is MentionRowRenderOptions {
   return (
     options !== undefined &&
-    ("classNames" in options || "dataAttributeMode" in options)
+    ("classNames" in options ||
+      "dataAttributeMode" in options ||
+      "onOpenReferences" in options ||
+      "onNavigateInto" in options)
   );
 }
 
@@ -157,7 +168,9 @@ export function renderMentionRow(
     classNames,
     dataAttributeMode,
     onOpenReferences,
-    openReferencesLabel
+    openReferencesLabel,
+    onNavigateInto,
+    navigateIntoLabel
   } = resolveMentionRowRenderOptions(options);
   const resolved = resolveMentionRowClassNames(classNames);
   const referencesButton = onOpenReferences ? (
@@ -173,6 +186,8 @@ export function renderMentionRow(
         item={item}
         classNames={resolved}
         dataAttributeMode={dataAttributeMode}
+        navigateIntoLabel={navigateIntoLabel}
+        onNavigateInto={onNavigateInto}
       />
     );
   }
@@ -252,12 +267,6 @@ export function renderMentionRow(
       <span className="rich-text-at-mention-row__text-stack rich-text-at-mention-row__text-stack--fill">
         <span className="rich-text-at-mention-row__inline">
           <span className="rich-text-at-mention-row__title">{item.title}</span>
-          {item.statusTag ? (
-            <MentionStatusBadge
-              statusTag={item.statusTag}
-              dataAttributeMode={dataAttributeMode}
-            />
-          ) : null}
         </span>
         {item.creatorName ? (
           <span className="rich-text-at-mention-row__description">
@@ -265,15 +274,20 @@ export function renderMentionRow(
           </span>
         ) : null}
       </span>
+      {item.statusTag ? (
+        <MentionStatusBadge
+          statusTag={item.statusTag}
+          dataAttributeMode={dataAttributeMode}
+        />
+      ) : null}
       {referencesButton}
     </span>
   );
 }
 
 /**
- * 「查看产物文件」入口图标。issue / app 行末尾的独立点击热区:点击只触发
+ * 「查看产物」入口。issue / app 行末尾的独立点击热区:点击只触发
  * {@link onOpenReferences}(如打开引用文件 picker 并定位),阻断冒泡以免触发整行选中。
- * 行外层按钮的 `[&_svg]:pointer-events-none` 使图标本身不吃事件,点击落在此 `<span>` 上。
  */
 function MentionOpenReferencesButton({
   label,
@@ -284,12 +298,13 @@ function MentionOpenReferencesButton({
   onOpenReferences: () => void;
   dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
+  const resolvedLabel = label?.trim() || "查看产物";
   return (
     <span
       role="button"
       tabIndex={-1}
-      aria-label={label}
-      title={label}
+      aria-label={resolvedLabel}
+      title={resolvedLabel}
       className="rich-text-at-mention-row__open-references"
       {...mentionRowDataAttribute(dataAttributeMode, "openReferences", "true")}
       onMouseDown={(event) => {
@@ -302,7 +317,39 @@ function MentionOpenReferencesButton({
         onOpenReferences();
       }}
     >
-      <LocateFolderIcon size={16} />
+      {resolvedLabel}
+    </span>
+  );
+}
+
+function MentionNavigateIntoButton({
+  label,
+  onNavigateInto,
+  dataAttributeMode
+}: {
+  label?: string;
+  onNavigateInto: () => void;
+  dataAttributeMode: MentionRowDataAttributeMode;
+}): React.JSX.Element {
+  return (
+    <span
+      role="button"
+      tabIndex={-1}
+      aria-label={label}
+      title={label}
+      className="rich-text-at-mention-row__navigate-into"
+      {...mentionRowDataAttribute(dataAttributeMode, "navigateInto", "true")}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onNavigateInto();
+      }}
+    >
+      <ArrowRightIcon size={16} />
     </span>
   );
 }
@@ -310,11 +357,15 @@ function MentionOpenReferencesButton({
 function MentionFileRow({
   item,
   classNames,
-  dataAttributeMode
+  dataAttributeMode,
+  navigateIntoLabel,
+  onNavigateInto
 }: {
   item: MentionRowFileItem;
   classNames: Required<MentionRowClassNames>;
   dataAttributeMode: MentionRowDataAttributeMode;
+  navigateIntoLabel?: string;
+  onNavigateInto?: () => void;
 }): React.JSX.Element {
   return (
     <span
@@ -353,6 +404,13 @@ function MentionFileRow({
           </span>
         ) : null}
       </span>
+      {onNavigateInto ? (
+        <MentionNavigateIntoButton
+          label={navigateIntoLabel}
+          onNavigateInto={onNavigateInto}
+          dataAttributeMode={dataAttributeMode}
+        />
+      ) : null}
     </span>
   );
 }
@@ -581,7 +639,6 @@ function MentionSessionTitle({
         {item.participant}
       </span>
       <span className="rich-text-at-mention-row__session-summary">
-        {" "}
         {item.summary ?? ""}
       </span>
     </>

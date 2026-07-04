@@ -312,6 +312,54 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	agentConversationDetailMode := strings.TrimSpace(string(request.Body.Preferences.AgentConversationDetailMode))
+	if agentConversationDetailMode == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopAgentConversationDetailMode,
+					apierrors.WithDeveloperMessage("desktop agent conversation detail mode is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentConversationDetailMode"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopAgentConversationDetailMode(agentConversationDetailMode) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopAgentConversationDetailMode,
+					apierrors.WithDeveloperMessage("desktop agent conversation detail mode is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentConversationDetailMode"}),
+				),
+			),
+		}, nil
+	}
+
+	agentDockLayout := strings.TrimSpace(string(request.Body.Preferences.AgentDockLayout))
+	if agentDockLayout == "" {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonMissingDesktopAgentDockLayout,
+					apierrors.WithDeveloperMessage("desktop agent dock layout is required"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentDockLayout"}),
+				),
+			),
+		}, nil
+	}
+	if !preferencesbiz.IsDesktopAgentDockLayout(agentDockLayout) {
+		return tuttigenerated.PutDesktopPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(
+				apierrors.InvalidRequest(
+					apierrors.ReasonUnsupportedDesktopAgentDockLayout,
+					apierrors.WithDeveloperMessage("desktop agent dock layout is unsupported"),
+					apierrors.WithParams(map[string]any{"field": "preferences.agentDockLayout"}),
+				),
+			),
+		}, nil
+	}
+
 	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
 	if request.Body.Preferences.WorkbenchWindowSnapping != nil {
 		windowSnappingShortcutPreset := strings.TrimSpace(
@@ -352,11 +400,13 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromGenerated(
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
-		AppCatalogChannel:        appCatalogChannel,
-		BrowserUseConnectionMode: browserUseConnectionMode,
-		DefaultAgentProvider:     defaultAgentProvider,
-		DockIconStyle:            dockIconStyle,
-		DockPlacement:            dockPlacement,
+		AgentConversationDetailMode: agentConversationDetailMode,
+		AgentDockLayout:             agentDockLayout,
+		AppCatalogChannel:           appCatalogChannel,
+		BrowserUseConnectionMode:    browserUseConnectionMode,
+		DefaultAgentProvider:        defaultAgentProvider,
+		DockIconStyle:               dockIconStyle,
+		DockPlacement:               dockPlacement,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),

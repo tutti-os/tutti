@@ -36,9 +36,15 @@ import type {
   MentionPaletteState
 } from "@tutti-os/ui-rich-text/at-panel";
 
-export type AgentMentionFilterId = "session" | "file" | "issue" | "app";
+export type AgentMentionFilterId =
+  | "session"
+  | "file"
+  | "issue"
+  | "agent"
+  | "app";
 export type AgentMentionGroupId =
   | "apps"
+  | "agents"
   | "files"
   | "opened_files"
   | "agent_generated_files"
@@ -188,6 +194,7 @@ function buildBrowseCategories(): AgentMentionBrowseCategory[] {
 const {
   agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID,
   agentSession: AGENT_SESSION_PROVIDER_ID,
+  agentTarget: AGENT_TARGET_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
@@ -1005,6 +1012,25 @@ export class AgentMentionSearchController {
           totalCounts: totalCountsFromRawGroups(rawGroups)
         };
       }
+      case "agent": {
+        const agentItems = await this.queryProviderMentionItemsById({
+          providerId: AGENT_TARGET_PROVIDER_ID,
+          workspaceId: input.workspaceId,
+          currentUserId: input.currentUserId,
+          query: input.query,
+          sessionCwd: input.sessionCwd,
+          diagnostics: providerDiagnostics
+        });
+        const rawGroups = emptyAgentMentionRawGroups();
+        rawGroups.agents = agentItems.filter(
+          (item) => item.kind === "agent-target"
+        );
+        return {
+          providerDiagnostics,
+          rawGroups,
+          totalCounts: totalCountsFromRawGroups(rawGroups)
+        };
+      }
       case "app": {
         const appItems = await this.queryProviderMentionItemsById({
           providerId: WORKSPACE_APP_PROVIDER_ID,
@@ -1342,6 +1368,7 @@ export class AgentMentionSearchController {
       "agent_generated_files",
       "my_sessions",
       "collab_sessions",
+      "agents",
       "apps",
       "issues"
     ] as const) {
@@ -1373,6 +1400,7 @@ export class AgentMentionSearchController {
       "agent_generated_files",
       "my_sessions",
       "collab_sessions",
+      "agents",
       "apps",
       "issues"
     ] as const) {
@@ -1416,6 +1444,7 @@ export function preloadAgentMentionBrowse(input: {
 function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
   return {
     apps: [],
+    agents: [],
     opened_files: [],
     agent_generated_files: [],
     my_sessions: [],
@@ -1429,6 +1458,7 @@ function cloneAgentMentionRawGroups(
 ): AgentMentionRawGroups {
   return {
     apps: [...rawGroups.apps],
+    agents: [...rawGroups.agents],
     opened_files: [...rawGroups.opened_files],
     agent_generated_files: [...rawGroups.agent_generated_files],
     my_sessions: [...rawGroups.my_sessions],
@@ -1442,6 +1472,7 @@ function totalCountsFromRawGroups(
 ): AgentMentionTotalCounts {
   return {
     apps: rawGroups.apps.length,
+    agents: rawGroups.agents.length,
     opened_files: rawGroups.opened_files.length,
     agent_generated_files: rawGroups.agent_generated_files.length,
     my_sessions: rawGroups.my_sessions.length,
@@ -1620,6 +1651,28 @@ function providerItemToAgentMentionItem(input: {
         undefined,
       iconUrl: presentation.iconUrl?.trim() || undefined,
       referencesListSupported: presentation.referencesListSupported === "true"
+    };
+  }
+  if (input.providerId === AGENT_TARGET_PROVIDER_ID) {
+    const agentProviderId = presentation.agentProviderId?.trim() || undefined;
+    return {
+      kind: "agent-target",
+      href: createRichTextMentionHref({
+        providerId: "agent-target",
+        entityId: targetId,
+        label,
+        scope: { workspaceId }
+      }),
+      workspaceId,
+      targetId,
+      name: label,
+      description:
+        compactText(presentation.description) ||
+        compactText(presentation.subtitle) ||
+        compactText(input.subtitle) ||
+        undefined,
+      agentProviderId,
+      iconUrl: presentation.iconUrl?.trim() || undefined
     };
   }
   if (input.providerId === AGENT_SESSION_PROVIDER_ID) {

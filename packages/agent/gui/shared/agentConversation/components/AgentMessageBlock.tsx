@@ -10,6 +10,7 @@ import {
 import { ChevronRight, LoaderCircle } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
+import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
@@ -42,8 +43,14 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
+const CONTEXT_COMPACTION_IN_PROGRESS_TITLE = "Compacting context.";
+const CONTEXT_COMPACTION_INTERRUPTED_TITLE = "Context compaction interrupted.";
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
+const SYSTEM_NOTICE_WARNING_CLASS_NAME =
+  "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
+const SYSTEM_NOTICE_ERROR_CLASS_NAME =
+  "border-[var(--on-danger-hover)] bg-[var(--on-danger)]";
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -211,6 +218,7 @@ export function AgentMessageBlock({
             <AgentCopyableMessageGroup
               key={message.id}
               copyText={message.copyText ?? null}
+              occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
               onCopyMessageText={handleCopyMessageText}
             >
@@ -226,6 +234,7 @@ export function AgentMessageBlock({
             <AgentCopyableMessageGroup
               key={message.id}
               copyText={copyText}
+              occurredAtUnixMs={message.occurredAtUnixMs}
               speaker={row.speaker}
               onCopyMessageText={handleCopyMessageText}
             >
@@ -243,24 +252,34 @@ export function AgentMessageBlock({
 function AgentCopyableMessageGroup({
   children,
   copyText,
+  occurredAtUnixMs,
   onCopyMessageText,
   speaker
 }: {
   children: ReactNode;
   copyText: string | null;
+  occurredAtUnixMs: number | null;
   onCopyMessageText: (text: string) => Promise<boolean>;
   speaker: AgentMessageRowVM["speaker"];
 }): JSX.Element {
   "use memo";
+  const timestamp = formatAgentMessageTimestamp(occurredAtUnixMs);
 
   return (
     <div className={styles.messageGroup} data-agent-message-speaker={speaker}>
       {children}
-      {copyText ? (
-        <AgentMessageCopyButton
-          copyText={copyText}
-          onCopyMessageText={onCopyMessageText}
-        />
+      {timestamp || copyText ? (
+        <div className={styles.messageFooter}>
+          {timestamp ? (
+            <span className={styles.messageTimestamp}>{timestamp}</span>
+          ) : null}
+          {copyText ? (
+            <AgentMessageCopyButton
+              copyText={copyText}
+              onCopyMessageText={onCopyMessageText}
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -322,7 +341,7 @@ function AgentUserImageGrid({
   const thumbnailWidth = images.length === 1 ? "160px" : "80px";
   return (
     <div
-      className="grid justify-self-end gap-2"
+      className={styles.userImageGrid}
       style={{
         gridTemplateColumns: `repeat(${columnCount}, ${thumbnailWidth})`
       }}
@@ -331,15 +350,12 @@ function AgentUserImageGrid({
         const src = loadedImages.get(image.id) ?? imageDataUrl(image);
         const loading = !src && loadingIds.has(image.id);
         return (
-          <div
-            key={image.id}
-            className="max-h-20 min-w-0 overflow-hidden rounded-[6px]"
-          >
+          <div key={image.id} className={styles.userImageThumbnail}>
             {src ? (
               <ZoomableImage
                 src={src}
                 alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[6px] object-contain"
+                className="block max-h-20 w-full rounded-[7px] object-contain"
                 draggable={false}
                 downloadName={image.name?.trim() || "image.png"}
               />
@@ -486,30 +502,33 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
-  if (isContextCompactionNotice(message, title)) {
+  if (isContextCompactionProgressNotice(message, title)) {
     return (
-      <div
-        role="status"
-        className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
-      >
-        <span
-          aria-hidden="true"
-          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-        />
-        <span className="shrink-0 whitespace-nowrap">{title}</span>
-        <span
-          aria-hidden="true"
-          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-        />
-      </div>
+      <ContextCompactionProgressDivider
+        startedAtUnixMs={message.occurredAtUnixMs}
+      />
     );
   }
-  const isWarning =
-    notice?.severity === "warning" || notice?.severity === "error";
+  if (isContextCompactionNotice(message, title)) {
+    return (
+      <ContextCompactionDivider
+        text={translate("agentHost.agentGui.contextCompactionCompleted")}
+      />
+    );
+  }
+  if (isContextCompactionInterruptedNotice(message, title)) {
+    return (
+      <ContextCompactionDivider
+        text={translate("agentHost.agentGui.contextCompactionInterrupted")}
+      />
+    );
+  }
+  const isStatusNotice = systemNoticeIsStatus(message);
+  const noticeToneClassName = systemNoticeToneClassName(message);
   return (
     <section
-      role={isWarning ? "status" : undefined}
-      className="box-border w-full min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)] p-3 text-[13px] leading-5 text-[var(--text-primary)]"
+      role={isStatusNotice ? "status" : undefined}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${noticeToneClassName}`}
     >
       <div className="min-w-0">
         <div className="font-medium text-[var(--text-primary)]">{title}</div>
@@ -518,6 +537,43 @@ function AgentSystemNoticeMessage({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function systemNoticeToneClassName(message: AgentMessageContentVM): string {
+  const notice = message.systemNotice;
+  if (
+    notice?.severity === "error" ||
+    notice?.noticeKind === "transport_fallback" ||
+    isTransportFallbackNotice(message)
+  ) {
+    return SYSTEM_NOTICE_ERROR_CLASS_NAME;
+  }
+  if (notice?.severity === "warning") {
+    return SYSTEM_NOTICE_WARNING_CLASS_NAME;
+  }
+  return SYSTEM_NOTICE_WARNING_CLASS_NAME;
+}
+
+function systemNoticeIsStatus(message: AgentMessageContentVM): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.severity === "warning" ||
+    notice?.severity === "error" ||
+    notice?.noticeKind === "transport_fallback" ||
+    isTransportFallbackNotice(message)
+  );
+}
+
+function isTransportFallbackNotice(message: AgentMessageContentVM): boolean {
+  const notice = message.systemNotice;
+  const text = [notice?.title, notice?.detail, message.body]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return (
+    text.includes("falling back from websockets") ||
+    text.includes("https transport")
   );
 }
 
@@ -553,6 +609,90 @@ function isContextCompactionNotice(
     (notice.detail?.trim() ?? "") === "" &&
     title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
   );
+}
+
+function isContextCompactionProgressNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE
+  );
+}
+
+function isContextCompactionInterruptedNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE
+  );
+}
+
+function ContextCompactionDivider({ text }: { text: string }): JSX.Element {
+  "use memo";
+  return (
+    <div
+      role="status"
+      className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+    >
+      <span
+        aria-hidden="true"
+        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+      />
+      <span className="shrink-0 whitespace-nowrap">{text}</span>
+      <span
+        aria-hidden="true"
+        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+      />
+    </div>
+  );
+}
+
+// Live compaction banner: the daemon replaces this notice in place with the
+// "Context compacted." notice once the provider finishes, so the timer only
+// runs while compaction is actually in flight.
+function ContextCompactionProgressDivider({
+  startedAtUnixMs
+}: {
+  startedAtUnixMs: number | null;
+}): JSX.Element {
+  "use memo";
+  const elapsedSeconds = useElapsedSeconds(startedAtUnixMs);
+  const label = translate("agentHost.agentGui.contextCompactionInProgress");
+  const text =
+    elapsedSeconds === null
+      ? label
+      : `${label} · ${formatElapsedSeconds(elapsedSeconds)}`;
+  return <ContextCompactionDivider text={text} />;
+}
+
+function useElapsedSeconds(startUnixMs: number | null): number | null {
+  const [nowUnixMs, setNowUnixMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (startUnixMs === null) {
+      return;
+    }
+    const timer = setInterval(() => setNowUnixMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [startUnixMs]);
+  if (startUnixMs === null) {
+    return null;
+  }
+  return Math.max(0, Math.floor((nowUnixMs - startUnixMs) / 1000));
+}
+
+function formatElapsedSeconds(seconds: number): string {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 // Codex plan-mode proposals render as a framed card (mirrors the codex TUI

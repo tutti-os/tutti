@@ -102,6 +102,23 @@ test("window controls use left-aligned traffic lights", () => {
     trafficLightsSource,
     /<TooltipProvider delayDuration=\{250\} skipDelayDuration=\{0\}>[\s\S]*<TooltipTrigger asChild>\{button\}<\/TooltipTrigger>[\s\S]*<TooltipContent side="bottom">\{input\.label\}<\/TooltipContent>/
   );
+  assert.match(
+    trafficLightsSource,
+    /const iconName =[\s\S]*tone === "maximize"[\s\S]*input\.pressed[\s\S]*"unfullscreen"[\s\S]*"fullscreen"[\s\S]*: tone;/
+  );
+  assert.match(
+    trafficLightsSource,
+    /<WindowTrafficLightIcon[\s\S]*className="workbench-window-traffic-light__icon"[\s\S]*data-workbench-traffic-light-icon=\{iconName\}[\s\S]*iconName=\{iconName\}/
+  );
+});
+
+test("custom headers can opt out of the window header divider", () => {
+  const styleSource = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    styleSource,
+    /\.workbench-window__header--custom:has\(\s*\[data-workbench-custom-header-border="none"\]\s*\)\s*\{[\s\S]*border-bottom-color:\s*transparent;/s
+  );
 });
 
 test("corner resize handles render outside the clipped window surface", () => {

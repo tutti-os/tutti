@@ -23,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "../../app/renderer/components/ui/dropdown-menu";
+import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import {
   CanvasNodeGuideLinedIcon,
@@ -280,14 +281,19 @@ export function AgentQueuedPromptPanel({
                   ) : null}
                   {images.length > 0 ? (
                     <div className={styles.composerQueuedPromptImages}>
-                      {images.slice(0, 3).map((image, index) => (
-                        <img
-                          key={`${queuedPrompt.id}:image:${index}`}
-                          alt=""
-                          className={styles.composerQueuedPromptImage}
-                          src={`data:${image.mimeType};base64,${image.data}`}
-                        />
-                      ))}
+                      {images.slice(0, 3).map((image, index) => {
+                        const src = `data:${image.mimeType};base64,${image.data}`;
+                        return (
+                          <ZoomableImage
+                            key={`${queuedPrompt.id}:image:${index}`}
+                            alt={image.name?.trim() || ""}
+                            className={styles.composerQueuedPromptImage}
+                            draggable={false}
+                            src={src}
+                            wrapElement="span"
+                          />
+                        );
+                      })}
                     </div>
                   ) : null}
                 </div>

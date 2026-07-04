@@ -1,24 +1,36 @@
 import type { AppCenterViewModel } from "../contracts/viewModel.ts";
 
 const installableRecommendedAppIds = [
+  ["ai-slide"],
+  ["ai-doc"],
   ["ai-media-canvas", "media-canvas"],
   ["vibe-design"],
   ["group-chat"],
-  ["automation"],
-  ["daily-product-radar", "daily-tech-radar", "radar"]
+  ["automation"]
 ] as const;
 
 const comingSoonRecommendedAppIds = [
-  "ai-slide",
-  "ai-doc",
   "ai-sheet",
   "open-cut",
   "product-competition",
-  "design-review",
-  "document-summarizer"
+  "design-review"
+] as const;
+
+const communityRecommendedAppIdGroups = [
+  ["group-chat"],
+  ["design-review"],
+  ["product-competition"],
+  ["daily-product-radar", "daily-tech-radar", "radar"],
+  ["draw-topic-app", "answer-book", "app_answer_book", "idea-draw"],
+  ["omni-catcher"]
 ] as const;
 
 const recommendedAppDisplayRankById = buildRecommendedAppDisplayRankById();
+const communityRecommendedAppDisplayRankById =
+  buildCommunityRecommendedAppDisplayRankById();
+const communityRecommendedAppIdSet = new Set<string>(
+  communityRecommendedAppDisplayRankById.keys()
+);
 
 export function sortMyAppsByCreatedDesc(
   apps: readonly AppCenterViewModel["apps"][number][]
@@ -47,6 +59,35 @@ export function sortRecommendedAppsForAllTab(
   apps: readonly AppCenterViewModel["apps"][number][]
 ): AppCenterViewModel["apps"] {
   return [...apps].sort(compareRecommendedApps);
+}
+
+export function sortCommunityApps(
+  apps: readonly AppCenterViewModel["apps"][number][]
+): AppCenterViewModel["apps"] {
+  return [...apps].sort(compareCommunityApps);
+}
+
+export function isCommunityRecommendedApp(appId: string): boolean {
+  return communityRecommendedAppIdSet.has(appId.trim().toLowerCase());
+}
+
+function compareCommunityApps(
+  left: AppCenterViewModel["apps"][number],
+  right: AppCenterViewModel["apps"][number]
+): number {
+  const displayOrder =
+    getCommunityRecommendedAppDisplayRank(left.id) -
+    getCommunityRecommendedAppDisplayRank(right.id);
+  if (displayOrder !== 0) {
+    return displayOrder;
+  }
+
+  const installedOrder = Number(right.installed) - Number(left.installed);
+  if (installedOrder !== 0) {
+    return installedOrder;
+  }
+
+  return compareRecommendedApps(left, right);
 }
 
 function compareRecommendedApps(
@@ -100,9 +141,30 @@ function buildRecommendedAppDisplayRankById(): Map<string, number> {
   return rankById;
 }
 
+function buildCommunityRecommendedAppDisplayRankById(): Map<string, number> {
+  const rankById = new Map<string, number>();
+  let rank = 0;
+
+  for (const aliases of communityRecommendedAppIdGroups) {
+    for (const appId of aliases) {
+      rankById.set(appId, rank);
+    }
+    rank += 1;
+  }
+
+  return rankById;
+}
+
 function getRecommendedAppDisplayRank(appId: string): number {
   return (
     recommendedAppDisplayRankById.get(appId.trim().toLowerCase()) ??
+    Number.MAX_SAFE_INTEGER
+  );
+}
+
+function getCommunityRecommendedAppDisplayRank(appId: string): number {
+  return (
+    communityRecommendedAppDisplayRankById.get(appId.trim().toLowerCase()) ??
     Number.MAX_SAFE_INTEGER
   );
 }

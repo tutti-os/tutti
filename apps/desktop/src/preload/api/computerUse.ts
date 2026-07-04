@@ -19,6 +19,28 @@ export function createComputerUseDesktopApi(): DesktopComputerUseApi {
     },
     grantPermissions(): Promise<DesktopComputerUseActionResult> {
       return invokeDesktopApi(desktopIpcChannels.computerUse.grantPermissions);
+    },
+    startPermissionGrant() {
+      return invokeDesktopApi(
+        desktopIpcChannels.computerUse.startPermissionGrant
+      );
+    },
+    getPermissionGrantStatus() {
+      return invokeDesktopApi(
+        desktopIpcChannels.computerUse.getPermissionGrantStatus
+      );
+    },
+    openPermissionSettings(pane): Promise<void> {
+      return invokeDesktopApi(
+        desktopIpcChannels.computerUse.openPermissionSettings,
+        pane
+      );
+    },
+    restartDriver(input) {
+      return invokeDesktopApi(
+        desktopIpcChannels.computerUse.restartDriver,
+        input
+      );
     }
   };
 }

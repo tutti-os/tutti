@@ -65,6 +65,7 @@ export interface WorkspaceAppCenterServiceDependencies {
     DesktopWorkspaceAppCenterLocalFileGateway;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
+    | "openExternal"
     | "revealInFolder"
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
@@ -593,6 +594,14 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         this.store.openingFolderAppId = null;
       }
     }
+  }
+
+  async openExternalUrl(url: string): Promise<void> {
+    const target = url.trim();
+    if (!target) {
+      return;
+    }
+    await this.dependencies.hostFilesApi.openExternal(target);
   }
 
   async uninstallApp(input: {

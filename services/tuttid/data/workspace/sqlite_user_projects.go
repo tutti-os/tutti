@@ -37,6 +37,7 @@ ORDER BY last_used_at_unix_ms DESC, updated_at_unix_ms DESC, label ASC, id ASC
 		); err != nil {
 			return nil, fmt.Errorf("scan user project: %w", err)
 		}
+		project.SectionKey = userprojectbiz.SectionKeyFromPath(project.Path)
 		result = append(result, project)
 	}
 	if err := rows.Err(); err != nil {
@@ -103,6 +104,7 @@ WHERE path = ?
 	); err != nil {
 		return userprojectbiz.Project{}, fmt.Errorf("get user project after put: %w", err)
 	}
+	stored.SectionKey = userprojectbiz.SectionKeyFromPath(stored.Path)
 	return stored, nil
 }
 

@@ -74,6 +74,7 @@ test("issue-manager run prompt keeps execute handoff issue-scoped", () => {
     prompt,
     /\[@Plan migration\]\(mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=execute\)/
   );
+  assert.doesNotMatch(prompt, /\n+\[@Plan migration\]/);
   assert.doesNotMatch(prompt, /Port renderer/);
   assert.doesNotMatch(prompt, /taskId=/);
   assert.doesNotMatch(prompt, /runId=/);
@@ -114,6 +115,7 @@ test("issue-manager run prompt targets selected task when provided", () => {
     prompt,
     /\[@Plan migration \/ Port renderer\]\(mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=execute&taskId=task-1\)/
   );
+  assert.doesNotMatch(prompt, /\n+\[@Plan migration \/ Port renderer\]/);
   assert.doesNotMatch(prompt, /runId=/);
   assert.doesNotMatch(prompt, /outputDir=/);
 });
@@ -181,6 +183,7 @@ test("issue-manager task breakdown prompt captures issue context", () => {
     prompt,
     /\[@Plan migration\]\(mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=breakdown\)/
   );
+  assert.doesNotMatch(prompt, /\n+\[@Plan migration\]/);
   assert.match(prompt, /Break this task reference down into executable tasks/);
   assert.doesNotMatch(prompt, /现有子任务数：1/);
   assert.doesNotMatch(prompt, /引用资料数：1/);

@@ -18,8 +18,10 @@ import type {
 } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
+import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
+import { IAccountService } from "./accountService.interface";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
@@ -50,6 +52,15 @@ export function registerWorkspaceWorkbenchServices(
   registry: ServiceRegistry,
   input: WorkspaceWorkbenchServiceRegistrationInput
 ): void {
+  registry.register(
+    IAccountService,
+    new SyncDescriptor(AccountService, [
+      {
+        hostFilesApi: input.hostFilesApi,
+        tuttidClient: input.tuttidClient
+      }
+    ])
+  );
   registry.register(
     IWorkspaceWorkbenchHostService,
     new SyncDescriptor(WorkspaceWorkbenchHostService, [

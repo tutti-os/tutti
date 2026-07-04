@@ -20,35 +20,47 @@ function parseStableVersion(value) {
 export function parseReleaseVersion(value) {
   const normalized = normalizeReleaseVersion(value);
   const match =
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.(0|[1-9]\d*))?$/.exec(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(rc|beta)\.(0|[1-9]\d*))?$/.exec(
       normalized
     );
   if (!match) {
     return null;
   }
 
+  const channel = match[4] ?? null;
+  const prereleaseNumber = match[5] === undefined ? null : Number(match[5]);
   return {
     major: Number(match[1]),
     minor: Number(match[2]),
     patch: Number(match[3]),
-    rc: match[4] === undefined ? null : Number(match[4])
+    beta: channel === "beta" ? prereleaseNumber : null,
+    channel,
+    prereleaseNumber,
+    rc: channel === "rc" ? prereleaseNumber : null
   };
 }
 
 export function formatReleaseVersion(version) {
   const stable = `${version.major}.${version.minor}.${version.patch}`;
-  return version.rc === null ? stable : `${stable}-rc.${version.rc}`;
+  const channel =
+    version.channel ?? ((version.rc ?? null) !== null ? "rc" : null);
+  const prereleaseNumber =
+    version.prereleaseNumber ?? (channel === "rc" ? version.rc : version.beta);
+  return channel === null ? stable : `${stable}-${channel}.${prereleaseNumber}`;
 }
 
 export function isReleaseCandidateVersion(version) {
-  return parseReleaseVersion(formatReleaseVersion(version))?.rc !== null;
+  return parseReleaseVersion(formatReleaseVersion(version))?.channel === "rc";
 }
 
 function toStableVersion(version) {
   return {
+    beta: null,
+    channel: null,
     major: version.major,
     minor: version.minor,
     patch: version.patch,
+    prereleaseNumber: null,
     rc: null
   };
 }
@@ -62,27 +74,48 @@ function compareStableVersions(left, right) {
 }
 
 function bumpStableVersion(currentVersion, strategy) {
-  if (strategy === "patch" || strategy === "patch_rc") {
+  if (
+    strategy === "patch" ||
+    strategy === "patch_rc" ||
+    strategy === "patch_beta"
+  ) {
     return {
+      beta: null,
+      channel: null,
       major: currentVersion.major,
       minor: currentVersion.minor,
       patch: currentVersion.patch + 1,
+      prereleaseNumber: null,
       rc: null
     };
   }
-  if (strategy === "minor" || strategy === "minor_rc") {
+  if (
+    strategy === "minor" ||
+    strategy === "minor_rc" ||
+    strategy === "minor_beta"
+  ) {
     return {
+      beta: null,
+      channel: null,
       major: currentVersion.major,
       minor: currentVersion.minor + 1,
       patch: 0,
+      prereleaseNumber: null,
       rc: null
     };
   }
-  if (strategy === "major" || strategy === "major_rc") {
+  if (
+    strategy === "major" ||
+    strategy === "major_rc" ||
+    strategy === "major_beta"
+  ) {
     return {
+      beta: null,
+      channel: null,
       major: currentVersion.major + 1,
       minor: 0,
       patch: 0,
+      prereleaseNumber: null,
       rc: null
     };
   }
@@ -94,7 +127,7 @@ function resolveLatestStableVersion(currentVersion, tags) {
 
   for (const tag of tags) {
     const parsedVersion = parseReleaseVersion(tag);
-    if (!parsedVersion || parsedVersion.rc !== null) {
+    if (!parsedVersion || parsedVersion.channel !== null) {
       continue;
     }
     if (compareStableVersions(parsedVersion, latestVersion) > 0) {
@@ -105,26 +138,37 @@ function resolveLatestStableVersion(currentVersion, tags) {
   return latestVersion;
 }
 
-function resolveNextRcVersion(baseVersion, tags) {
-  let highestRc = -1;
+function resolveNextPrereleaseVersion(baseVersion, tags, channel) {
+  let highestPrerelease = -1;
 
   for (const tag of tags) {
     const parsedVersion = parseReleaseVersion(tag);
     if (
       !parsedVersion ||
-      parsedVersion.rc === null ||
+      parsedVersion.channel !== channel ||
       compareStableVersions(parsedVersion, baseVersion) !== 0
     ) {
       continue;
     }
 
-    highestRc = Math.max(highestRc, parsedVersion.rc);
+    highestPrerelease = Math.max(
+      highestPrerelease,
+      parsedVersion.prereleaseNumber
+    );
   }
 
+  const prereleaseNumber = highestPrerelease + 1;
   return {
     ...baseVersion,
-    rc: highestRc + 1
+    beta: channel === "beta" ? prereleaseNumber : null,
+    channel,
+    prereleaseNumber,
+    rc: channel === "rc" ? prereleaseNumber : null
   };
+}
+
+function resolveNextRcVersion(baseVersion, tags) {
+  return resolveNextPrereleaseVersion(baseVersion, tags, "rc");
 }
 
 function parseExplicitReleaseTag(tag) {
@@ -153,7 +197,10 @@ export function resolveDesktopRelease({
     strategy === "major" ||
     strategy === "patch_rc" ||
     strategy === "minor_rc" ||
-    strategy === "major_rc"
+    strategy === "major_rc" ||
+    strategy === "patch_beta" ||
+    strategy === "minor_beta" ||
+    strategy === "major_beta"
   ) {
     const latestStableVersion = resolveLatestStableVersion(
       parsedCurrentVersion,
@@ -163,9 +210,13 @@ export function resolveDesktopRelease({
     if (!bumpedVersion) {
       throw new Error(`Unsupported strategy: ${strategy}`);
     }
-    releaseVersion = strategy.endsWith("_rc")
-      ? resolveNextRcVersion(bumpedVersion, tags)
-      : bumpedVersion;
+    if (strategy.endsWith("_rc")) {
+      releaseVersion = resolveNextPrereleaseVersion(bumpedVersion, tags, "rc");
+    } else if (strategy.endsWith("_beta")) {
+      releaseVersion = resolveNextPrereleaseVersion(bumpedVersion, tags, "beta");
+    } else {
+      releaseVersion = bumpedVersion;
+    }
   } else if (strategy === "explicit_version") {
     releaseVersion = parseReleaseVersion(explicitVersion);
     if (!releaseVersion) {
@@ -183,8 +234,10 @@ export function resolveDesktopRelease({
   }
 
   const version = formatReleaseVersion(releaseVersion);
-  const prerelease = releaseVersion.rc !== null;
+  const channel = releaseVersion.channel ?? "stable";
+  const prerelease = channel !== "stable";
   return {
+    channel,
     makeLatest: !prerelease,
     prerelease,
     tag: normalizeReleaseTag(version),
@@ -196,5 +249,6 @@ export {
   compareStableVersions,
   parseStableVersion,
   resolveLatestStableVersion,
+  resolveNextPrereleaseVersion,
   resolveNextRcVersion
 };

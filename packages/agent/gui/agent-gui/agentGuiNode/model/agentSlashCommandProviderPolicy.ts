@@ -29,6 +29,9 @@ export type SlashCommandSelectionEffect =
       draft: string;
     }
   | {
+      kind: "activateGoalMode";
+    }
+  | {
       kind: "submitPrompt";
       prompt: string;
       displayPrompt?: string;
@@ -225,6 +228,9 @@ export function resolveSlashCommandSelectionEffect({
   if (isLocalTogglePlanCommand(provider, commandName)) {
     return { kind: "togglePlanMode" };
   }
+  if (isGoalModeCommand(commandName)) {
+    return { kind: "activateGoalMode" };
+  }
   if (isLocalToggleSpeedCommand(provider, commandName)) {
     return { kind: "toggleSpeed" };
   }
@@ -329,6 +335,10 @@ function isLocalTogglePlanCommand(
     isACPProvider(provider) &&
     ACP_LOCAL_TOGGLE_PLAN_COMMANDS.has(commandName.trim().toLowerCase())
   );
+}
+
+function isGoalModeCommand(commandName: string): boolean {
+  return commandName.trim().toLowerCase() === "goal";
 }
 
 function isReviewPickerCommand(

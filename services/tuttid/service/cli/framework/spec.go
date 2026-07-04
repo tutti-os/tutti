@@ -57,6 +57,7 @@ type FieldSpec struct {
 	Hint        string
 	Min         *int64
 	Max         *int64
+	Enum        []string
 }
 
 type InputSpec struct {

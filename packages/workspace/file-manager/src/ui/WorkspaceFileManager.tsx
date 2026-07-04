@@ -11,6 +11,7 @@ import type { WorkspaceFileManagerSession } from "../services/workspaceFileManag
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileLocation,
   WorkspaceFileOpenWithApplication
 } from "../services/workspaceFileManagerTypes.ts";
 import { WorkspaceFileManagerContextMenuContainer } from "./WorkspaceFileManagerContextMenuContainer.tsx";
@@ -42,6 +43,7 @@ import {
   type WorkspaceFileManagerVisibleTreeRow
 } from "./workspaceFileManagerVisibleTree.ts";
 import { workspaceFileSearchEntryToEntry } from "../services/workspaceFileManagerModel.ts";
+import { findWorkspaceFileLocationById } from "../services/workspaceFileManagerLocations.ts";
 import {
   useWorkspaceFileManagerDialogsView,
   useWorkspaceFileManagerPanelsView,
@@ -69,6 +71,9 @@ export interface WorkspaceFileManagerProps {
   resolveEntryIconUrl?: (
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
+  renderExternalLocationContent?: (
+    location: Extract<WorkspaceFileLocation, { kind: "external" }>
+  ) => ReactElement | null;
   hostOs?: NodeJS.Platform;
   i18n: WorkspaceFileManagerI18nRuntime;
   session: WorkspaceFileManagerSession;
@@ -87,6 +92,7 @@ export function WorkspaceFileManager({
   openInAppBrowserIcon,
   resolveOpenWithApplicationIcon,
   resolveEntryIconUrl,
+  renderExternalLocationContent,
   hostOs = "linux",
   session,
   surface = "card"
@@ -97,6 +103,13 @@ export function WorkspaceFileManager({
   const rootView = useWorkspaceFileManagerRootView(session);
   const { state: panelsState, view: panelsView } =
     useWorkspaceFileManagerPanelsView(session);
+  const selectedExternalLocation = useMemo(() => {
+    const location = findWorkspaceFileLocationById(
+      rootView.locationSections,
+      rootView.selectedLocationId
+    );
+    return location?.kind === "external" ? location : null;
+  }, [rootView.locationSections, rootView.selectedLocationId]);
 
   useEffect(() => {
     function handleCopyShortcut(event: KeyboardEvent): void {
@@ -111,6 +124,9 @@ export function WorkspaceFileManager({
         return;
       }
       if (!rootRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      if (selectedExternalLocation) {
         return;
       }
       if (
@@ -138,7 +154,13 @@ export function WorkspaceFileManager({
     return () => {
       window.removeEventListener("keydown", handleCopyShortcut);
     };
-  }, [onCopyEntry, panelsState, panelsView.selectedEntry, session]);
+  }, [
+    onCopyEntry,
+    panelsState,
+    panelsView.selectedEntry,
+    selectedExternalLocation,
+    session
+  ]);
 
   useEffect(() => {
     function handleRenameShortcut(event: KeyboardEvent): void {
@@ -154,6 +176,9 @@ export function WorkspaceFileManager({
         return;
       }
       if (!rootRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      if (selectedExternalLocation) {
         return;
       }
       if (
@@ -180,7 +205,12 @@ export function WorkspaceFileManager({
     return () => {
       window.removeEventListener("keydown", handleRenameShortcut);
     };
-  }, [panelsState, panelsView.selectedEntry, session]);
+  }, [
+    panelsState,
+    panelsView.selectedEntry,
+    selectedExternalLocation,
+    session
+  ]);
 
   useEffect(() => {
     function resetDropOverlay(): void {
@@ -328,47 +358,57 @@ export function WorkspaceFileManager({
         }}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <WorkspaceFileManagerToolbarContainer
-          i18n={i18n}
-          arrangeMode={arrangeMode}
-          layoutMode={layoutMode}
-          onArrangeModeChange={setArrangeMode}
-          onDirectoryExpanded={onDirectoryExpanded}
-          onLayoutModeChange={setLayoutMode}
-          session={session}
-        />
-        <div
-          className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden"
-          style={
-            {
-              "--workspace-file-manager-dialog-overlay-z-index": "20"
-            } as CSSProperties
-          }
-        >
-          <WorkspaceFileManagerPanelsContainer
-            dateLocale={dateLocale}
-            entryDragMode={entryDragMode}
-            arrangeMode={arrangeMode}
+        {selectedExternalLocation ? (
+          (renderExternalLocationContent?.(selectedExternalLocation) ?? null)
+        ) : (
+          <>
+            <WorkspaceFileManagerToolbarContainer
+              i18n={i18n}
+              arrangeMode={arrangeMode}
+              layoutMode={layoutMode}
+              onArrangeModeChange={setArrangeMode}
+              onDirectoryExpanded={onDirectoryExpanded}
+              onLayoutModeChange={setLayoutMode}
+              session={session}
+            />
+            <div
+              className="@max-[600px]/workspace-file-manager:flex-col @max-[600px]/workspace-file-manager:gap-3 flex min-h-0 min-w-0 flex-1 overflow-hidden"
+              style={
+                {
+                  "--workspace-file-manager-dialog-overlay-z-index": "20"
+                } as CSSProperties
+              }
+            >
+              <WorkspaceFileManagerPanelsContainer
+                dateLocale={dateLocale}
+                entryDragMode={entryDragMode}
+                arrangeMode={arrangeMode}
+                i18n={i18n}
+                layoutMode={layoutMode}
+                onDirectoryExpanded={onDirectoryExpanded}
+                onEntryDragStart={onEntryDragStart}
+                onOpenContextMenu={openContextMenu}
+                resolveEntryIconUrl={resolveEntryIconUrl}
+                session={session}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      {!selectedExternalLocation ? (
+        <>
+          <WorkspaceFileManagerDialogsContainer i18n={i18n} session={session} />
+          <WorkspaceFileManagerContextMenuContainer
+            hostOs={hostOs}
             i18n={i18n}
-            layoutMode={layoutMode}
-            onDirectoryExpanded={onDirectoryExpanded}
-            onEntryDragStart={onEntryDragStart}
-            onOpenContextMenu={openContextMenu}
-            resolveEntryIconUrl={resolveEntryIconUrl}
+            onCopyEntry={onCopyEntry}
+            onCopyPath={onCopyPath}
+            openInAppBrowserIcon={openInAppBrowserIcon}
+            resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
             session={session}
           />
-        </div>
-      </div>
-      <WorkspaceFileManagerDialogsContainer i18n={i18n} session={session} />
-      <WorkspaceFileManagerContextMenuContainer
-        hostOs={hostOs}
-        i18n={i18n}
-        onCopyEntry={onCopyEntry}
-        onCopyPath={onCopyPath}
-        openInAppBrowserIcon={openInAppBrowserIcon}
-        resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
-        session={session}
-      />
+        </>
+      ) : null}
     </section>
   );
 }

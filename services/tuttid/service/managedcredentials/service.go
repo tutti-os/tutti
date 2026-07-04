@@ -16,6 +16,8 @@ import (
 
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 )
 
 const GrantCodeTTL = 5 * time.Hour
@@ -386,7 +388,7 @@ func (s *Service) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient
 	}
-	return &http.Client{Timeout: 10 * time.Second}
+	return httpx.NewClient(10 * time.Second)
 }
 
 func (s *Service) fetchProviderModels(ctx context.Context, config managedcredentialsbiz.ProviderConfig) ([]managedcredentialsbiz.Model, error) {

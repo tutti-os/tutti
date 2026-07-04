@@ -46,6 +46,7 @@ func TestQueuedReporterCallsClientWithNormalizedRuntimeInput(t *testing.T) {
 		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "agent-1",
 			MessageID:      "message-1",
+			TurnID:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 		}},

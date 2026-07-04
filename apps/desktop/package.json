@@ -14,6 +14,7 @@
     "executableName": "Tutti",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "generateUpdatesFilesForAllChannels": true,
+    "afterPack": "scripts/copy-vendored-node-resources-after-pack.mjs",
     "afterAllArtifactBuild": "scripts/notarize-mac-dmg-artifacts.mjs",
     "extraResources": [
       {
@@ -26,7 +27,17 @@
       },
       {
         "from": "build/browser-mcp",
-        "to": "bin/browser-mcp"
+        "to": "bin/browser-mcp",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/claude-sdk-sidecar",
+        "to": "bin/claude-sdk-sidecar",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -48,7 +59,8 @@
       "binaries": [
         "Contents/Resources/bin/tuttid",
         "Contents/Resources/bin/tutti"
-      ]
+      ],
+      "x64ArchFiles": "Contents/Resources/bin/claude-sdk-sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude"
     },
     "dmg": {
       "sign": true,

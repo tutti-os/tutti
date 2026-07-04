@@ -292,7 +292,7 @@ func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, bi
 	if s.RunAuthStatusCommand != nil {
 		return s.RunAuthStatusCommand(ctx, spec, binaryPath)
 	}
-	return runAuthStatusCommand(ctx, spec, binaryPath)
+	return runAuthStatusCommand(ctx, spec, binaryPath, s.commandResolver().Env(spec.AdapterEnv))
 }
 
 // cliVersionTokenPattern matches the first semver-ish token in `--version`
@@ -311,7 +311,7 @@ func parseCLIVersion(output string) string {
 // "" when the binary is absent, errors, or prints nothing version-like. Used for
 // every supported provider (not just codex) so the config panel can show the
 // installed CLI version.
-func (Service) cliVersion(ctx context.Context, binaryPath string) string {
+func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
 	binaryPath = strings.TrimSpace(binaryPath)
 	if binaryPath == "" {
 		return ""
@@ -321,7 +321,11 @@ func (Service) cliVersion(ctx context.Context, binaryPath string) string {
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
 	defer cancel()
-	output, err := exec.CommandContext(commandCtx, binaryPath, "--version").CombinedOutput()
+	command := exec.CommandContext(commandCtx, binaryPath, "--version")
+	if env != nil {
+		command.Env = env
+	}
+	output, err := command.CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -443,7 +447,7 @@ func (s Service) authStatusCommandRetryDelay() time.Duration {
 	return defaultAuthStatusCommandRetryDelay
 }
 
-func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) (AuthInfo, bool) {
 	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
 	defer cancel()
 	command := exec.CommandContext(commandCtx, binaryPath, spec.AuthStatusCommand...)
@@ -451,7 +455,7 @@ func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath str
 	// API through the same proxy as spawned agents (mirroring agent install &
 	// login), instead of connecting directly and hitting `403 Request not allowed`
 	// from a restricted region.
-	command.Env = runtimecmd.InjectSystemProxyEnv(os.Environ())
+	command.Env = runtimecmd.InjectSystemProxyEnv(env)
 	output, err := command.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

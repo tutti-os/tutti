@@ -3,7 +3,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
@@ -210,6 +211,604 @@ describe("AgentTranscriptView", () => {
     expect(dividers[0]!.className).toContain(
       "bg-[var(--line-2,var(--tutti-line-2))]"
     );
+  });
+
+  it("renders user message locator ticks and scrolls to the selected message", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const base = detailViewModel();
+
+    try {
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      );
+
+      const locator = screen.getByTestId("agent-message-locator");
+      expect(locator).toBeTruthy();
+      expect(locator).toHaveStyle({
+        "--agent-message-locator-height": "66px"
+      });
+      fireEvent.mouseEnter(locator);
+      const panel = screen.getByTestId("agent-message-locator-panel");
+      expect(within(panel).getByText("User asks for a fix")).toBeTruthy();
+      expect(within(panel).getByText("Follow-up request")).toBeTruthy();
+      vi.useFakeTimers();
+      fireEvent.mouseLeave(locator);
+      fireEvent.mouseEnter(panel);
+      act(() => {
+        vi.advanceTimersByTime(160);
+      });
+      expect(screen.getByTestId("agent-message-locator-panel")).toBeTruthy();
+      vi.useRealTimers();
+
+      fireEvent.mouseEnter(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      );
+      expect(
+        within(panel)
+          .getByRole("button", { name: "User asks for a fix" })
+          .getAttribute("data-active")
+      ).toBeNull();
+      expect(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      ).toHaveAttribute("data-active", "true");
+
+      fireEvent.click(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        behavior: "smooth"
+      });
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-selected", "true");
+    } finally {
+      vi.useRealTimers();
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("locates the nearest user message when clicking the locator rail around a dot", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const base = detailViewModel();
+
+    try {
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      );
+
+      const locator = screen.getByTestId("agent-message-locator");
+      const viewport = screen.getByTestId("agent-message-locator-viewport");
+      viewport.getBoundingClientRect = () =>
+        ({
+          bottom: 96,
+          height: 96,
+          left: 0,
+          right: 36,
+          top: 0,
+          width: 36,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        }) as DOMRect;
+
+      fireEvent.click(viewport, { clientY: 34 });
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        behavior: "smooth"
+      });
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-selected", "true");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("uses fast container scrolling for distant user message locator targets", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    vi.useFakeTimers();
+    const base = detailViewModel();
+
+    try {
+      render(
+        <div data-testid="agent-gui-timeline" style={{ overflowY: "auto" }}>
+          <AgentTranscriptView
+            conversation={projectAgentConversationVM(
+              detailViewModel({
+                turns: [
+                  base.turns[0]!,
+                  {
+                    id: "turn-2",
+                    userMessage: {
+                      id: "user-2",
+                      body: "Distant follow-up request"
+                    },
+                    userMessages: [
+                      {
+                        id: "user-2",
+                        body: "Distant follow-up request"
+                      }
+                    ],
+                    agentMessages: [
+                      { id: "assistant-2", body: "Distant answer" }
+                    ],
+                    toolCalls: [],
+                    toolCallCount: 0,
+                    hasFailedToolCall: false,
+                    agentItems: [
+                      {
+                        kind: "message",
+                        message: {
+                          id: "assistant-2",
+                          body: "Distant answer"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              })
+            )}
+            labels={{
+              thinkingLabel: "Thought process",
+              toolCallsLabel: (count) => `Tool calls (${count})`,
+              processing: "Planning next moves",
+              turnSummary: "Changed files",
+              userMessageLocator: "User messages"
+            }}
+          />
+        </div>
+      );
+
+      const timeline = screen.getByTestId("agent-gui-timeline");
+      Object.defineProperty(timeline, "clientHeight", {
+        configurable: true,
+        value: 400
+      });
+      Object.defineProperty(timeline, "scrollHeight", {
+        configurable: true,
+        value: 4000
+      });
+      timeline.getBoundingClientRect = () =>
+        ({
+          bottom: 400,
+          height: 400,
+          left: 0,
+          right: 800,
+          top: 0,
+          width: 800,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        }) as DOMRect;
+      const distantRow = screen
+        .getByText("Distant follow-up request")
+        .closest<HTMLElement>("[data-agent-transcript-row]");
+      expect(distantRow).toBeTruthy();
+      distantRow!.getBoundingClientRect = () =>
+        ({
+          bottom: 3280,
+          height: 80,
+          left: 0,
+          right: 800,
+          top: 3200,
+          width: 800,
+          x: 0,
+          y: 3200,
+          toJSON: () => ({})
+        }) as DOMRect;
+
+      fireEvent.click(
+        screen
+          .getByTestId("agent-message-locator")
+          .querySelectorAll(".agent-gui-message-locator__tick")[1]!
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(timeline.scrollTop).toBe(3040);
+    } finally {
+      vi.useRealTimers();
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("keeps the selected user message locator tick inside the locator viewport", async () => {
+    const turns = Array.from({ length: 16 }, (_, index) => ({
+      id: `turn-${index + 1}`,
+      userMessage: {
+        id: `user-${index + 1}`,
+        body: `Request ${index + 1}`
+      },
+      userMessages: [
+        {
+          id: `user-${index + 1}`,
+          body: `Request ${index + 1}`
+        }
+      ],
+      agentMessages: [
+        {
+          id: `assistant-${index + 1}`,
+          body: `Answer ${index + 1}`
+        }
+      ],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: [
+        {
+          kind: "message" as const,
+          message: {
+            id: `assistant-${index + 1}`,
+            body: `Answer ${index + 1}`
+          }
+        }
+      ]
+    }));
+
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(detailViewModel({ turns }))}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files",
+          userMessageLocator: "User messages"
+        }}
+      />
+    );
+
+    const locator = screen.getByTestId("agent-message-locator");
+    const viewport = screen.getByTestId("agent-message-locator-viewport");
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 96
+    });
+
+    fireEvent.click(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[14]!
+    );
+
+    await waitFor(() => {
+      expect(viewport.scrollTop).toBeGreaterThan(0);
+    });
+    expect(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[14]
+    ).toHaveAttribute("data-selected", "true");
+  });
+
+  it("keeps a compact locator safety inset above composer scroll padding", async () => {
+    const base = detailViewModel();
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{
+          overflowY: "auto",
+          scrollPaddingBottom: "120px"
+        }}
+      >
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
+    );
+
+    Object.defineProperty(
+      screen.getByTestId("agent-gui-timeline"),
+      "clientHeight",
+      {
+        configurable: true,
+        value: 400
+      }
+    );
+    await flushAnimationFrame();
+
+    expect(screen.getByTestId("agent-message-locator")).toHaveStyle({
+      "--agent-message-locator-visible-height": "352px"
+    });
+  });
+
+  it("contains wheel scrolling inside the message locator panel", () => {
+    const timelineWheel = vi.fn();
+    const base = detailViewModel();
+    render(
+      <div data-testid="agent-gui-timeline" onWheel={timelineWheel}>
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      </div>
+    );
+
+    fireEvent.mouseEnter(screen.getByTestId("agent-message-locator"));
+    const panel = screen.getByTestId("agent-message-locator-panel");
+    fireEvent.wheel(panel, { deltaY: 48 });
+
+    expect(timelineWheel).not.toHaveBeenCalled();
+  });
+
+  it("does not mark loaded historical agent responses as unread", async () => {
+    const base = detailViewModel();
+    const loadedTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up request" },
+      userMessages: [{ id: "user-2", body: "Follow-up request" }],
+      agentMessages: [{ id: "assistant-2", body: "Follow-up answer" }],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: [
+        {
+          kind: "message" as const,
+          message: {
+            id: "assistant-2",
+            body: "Follow-up answer"
+          }
+        }
+      ]
+    };
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files",
+      userMessageLocator: "User messages"
+    };
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({ turns: [] })
+        )}
+        labels={labels}
+      />
+    );
+
+    rerender(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({ turns: [base.turns[0]!, loadedTurn] })
+        )}
+        labels={labels}
+      />
+    );
+
+    await act(async () => undefined);
+    const locator = screen.getByTestId("agent-message-locator");
+    for (const tick of locator.querySelectorAll(
+      ".agent-gui-message-locator__tick"
+    )) {
+      expect(tick).not.toHaveAttribute("data-unread-agent-response", "true");
+    }
+  });
+
+  it("marks newly answered user message locator ticks as unread until located", async () => {
+    const base = detailViewModel();
+    const followUpTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up request" },
+      userMessages: [{ id: "user-2", body: "Follow-up request" }],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+    const labels = {
+      thinkingLabel: "Thought process",
+      toolCallsLabel: (count: number) => `Tool calls (${count})`,
+      processing: "Planning next moves",
+      turnSummary: "Changed files",
+      userMessageLocator: "User messages"
+    };
+    const conversationForTurns = (
+      turns: WorkspaceAgentSessionDetailViewModel["turns"]
+    ) => projectAgentConversationVM(detailViewModel({ turns }));
+    const { rerender } = render(
+      <AgentTranscriptView
+        conversation={conversationForTurns([base.turns[0]!, followUpTurn])}
+        labels={labels}
+      />
+    );
+
+    const locator = screen.getByTestId("agent-message-locator");
+    const initialTicks = locator.querySelectorAll(
+      ".agent-gui-message-locator__tick"
+    );
+    expect(initialTicks[0]).not.toHaveAttribute(
+      "data-unread-agent-response",
+      "true"
+    );
+    expect(initialTicks[1]).not.toHaveAttribute(
+      "data-unread-agent-response",
+      "true"
+    );
+
+    rerender(
+      <AgentTranscriptView
+        conversation={conversationForTurns([
+          base.turns[0]!,
+          {
+            ...followUpTurn,
+            agentMessages: [{ id: "assistant-2", body: "Follow-up answer" }],
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "Follow-up answer"
+                }
+              }
+            ]
+          }
+        ])}
+        labels={labels}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-unread-agent-response", "true");
+    });
+    expect(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[0]
+    ).not.toHaveAttribute("data-unread-agent-response", "true");
+
+    fireEvent.click(
+      locator.querySelectorAll(".agent-gui-message-locator__tick")[1]!
+    );
+
+    await waitFor(() => {
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).not.toHaveAttribute("data-unread-agent-response", "true");
+    });
   });
 
   it("renders attached thinking before assistant message content within the same row", () => {
@@ -952,8 +1551,8 @@ describe("AgentTranscriptView", () => {
       })
     );
     await flushCollapsibleRevealFrames();
-    expect(screen.getByText("src/App.tsx")).toBeTruthy();
-    expect(screen.getByText("src/routes.ts")).toBeTruthy();
+    expect(screen.getByTitle("src/App.tsx")).toBeTruthy();
+    expect(screen.getByTitle("src/routes.ts")).toBeTruthy();
   });
 
   it("renders visible agent errors as an alert with collapsible details", async () => {

@@ -1,6 +1,7 @@
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
+  applyWorkspaceGitPatch,
   cancelWorkspaceAgentSession,
   checkUserProjectPath,
   clearWorkspaceAgentSessions,
@@ -25,8 +26,11 @@ import {
   deleteWorkspace,
   deleteWorkspaceFileEntry,
   getDesktopPreferences,
+  getAccountLoginStatus,
+  getAccountUserInfo,
   getHealth,
   getStartupWorkspace,
+  listAgentTargets,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
   getWorkspaceAgentSession,
@@ -42,6 +46,8 @@ import {
   listWorkspaceAppMentionCandidates,
   listWorkspaceAgentGeneratedFiles,
   listUserProjects,
+  listWorkspaceAgentSessionSectionPage,
+  listWorkspaceAgentSessionSections,
   listWorkspaceAgentSessionMessages,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
@@ -53,6 +59,7 @@ import {
   listWorkspaceFileDirectory,
   listWorkspaceRecentFiles,
   listWorkspaces,
+  logoutAccount,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
   renameWorkspaceFileEntry,
@@ -65,6 +72,7 @@ import {
   readWorkspaceAgentSessionAttachment,
   listWorkspaceAgentSessionGitBranches,
   listWorkspaceGitBranches,
+  resolveWorkspaceGitPatchSupport,
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
@@ -72,6 +80,7 @@ import {
   searchWorkspaceFiles,
   searchWorkspaceIssueReferences,
   sendWorkspaceAgentSessionInput,
+  startAccountLogin,
   submitWorkspaceAgentInteractive,
   terminateWorkspaceTerminal,
   trackEvents,
@@ -115,6 +124,31 @@ export function createTuttidClient(
   });
 
   return {
+    async listAgentTargets() {
+      return unwrapData(
+        await listAgentTargets({ client }),
+        "Agent targets request failed."
+      );
+    },
+    async startAccountLogin() {
+      const response = await startAccountLogin({ client });
+      return unwrapData(response, "Start account login request failed.");
+    },
+    async getAccountLoginStatus(attemptID) {
+      const response = await getAccountLoginStatus({
+        client,
+        query: { attempt_id: attemptID }
+      });
+      return unwrapData(response, "Account login status request failed.");
+    },
+    async getAccountUserInfo() {
+      const response = await getAccountUserInfo({ client });
+      return unwrapData(response, "Account user info request failed.").user;
+    },
+    async logoutAccount() {
+      const response = await logoutAccount({ client });
+      unwrapAccepted(response, "Account logout request failed.");
+    },
     async listCliCapabilities(workspaceID, options) {
       const response = await listCliCapabilities({
         client,
@@ -550,13 +584,46 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Workspace terminals request failed.");
     },
-    async listWorkspaceAgentSessions(workspaceID, request) {
+    async listWorkspaceAgentSessions(workspaceID, request, requestOptions) {
       const response = await listWorkspaceAgentSessions({
         client,
         path: { workspaceID },
-        query: request
+        query: request,
+        ...requestOptions
       });
       return unwrapData(response, "Workspace agent sessions request failed.");
+    },
+    async listWorkspaceAgentSessionSections(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await listWorkspaceAgentSessionSections({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace agent session sections request failed."
+      );
+    },
+    async listWorkspaceAgentSessionSectionPage(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await listWorkspaceAgentSessionSectionPage({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace agent session section page request failed."
+      );
     },
     async listWorkspaceAgentGeneratedFiles(workspaceID, request) {
       const response = await listWorkspaceAgentGeneratedFiles({
@@ -809,6 +876,25 @@ export function createTuttidClient(
         query: { workingDirectory }
       });
       return unwrapData(response, "List workspace git branches failed.");
+    },
+    async resolveWorkspaceGitPatchSupport(workspaceID, cwd) {
+      const response = await resolveWorkspaceGitPatchSupport({
+        client,
+        path: { workspaceID },
+        query: { cwd }
+      });
+      return unwrapData(
+        response,
+        "Resolve workspace git patch support failed."
+      );
+    },
+    async applyWorkspaceGitPatch(workspaceID, request) {
+      const response = await applyWorkspaceGitPatch({
+        client,
+        body: request,
+        path: { workspaceID }
+      });
+      return unwrapData(response, "Apply workspace git patch failed.");
     },
     async updateWorkspaceAgentSessionSettings(
       workspaceID,

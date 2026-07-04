@@ -10,6 +10,8 @@ import type {
   AgentUsageQuota
 } from "@tutti-os/agent-gui";
 
+import { outboundFetch } from "./net/outboundFetch.ts";
+
 const CODEX_DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/";
 const CODEX_CHATGPT_USAGE_PATH = "/wham/usage";
 const CODEX_API_USAGE_PATH = "/api/codex/usage";
@@ -516,7 +518,9 @@ async function fetchCodexUsage(
   if (credentials.accountId) {
     headers["ChatGPT-Account-Id"] = credentials.accountId;
   }
-  const response = await fetch(await resolveCodexUsageUrl(), { headers });
+  const response = await outboundFetch(await resolveCodexUsageUrl(), {
+    headers
+  });
   const text = await response.text();
   if (response.status === 401 || response.status === 403) {
     throw new Error("Codex OAuth token is expired or unauthorized.");
@@ -534,7 +538,7 @@ async function fetchCodexUsage(
 async function fetchClaudeOAuthUsage(
   credentials: ClaudeOAuthCredentials
 ): Promise<ClaudeOAuthUsageResponse> {
-  const response = await fetch(CLAUDE_OAUTH_USAGE_URL, {
+  const response = await outboundFetch(CLAUDE_OAUTH_USAGE_URL, {
     headers: {
       Accept: "application/json",
       "anthropic-beta": CLAUDE_OAUTH_BETA_HEADER,

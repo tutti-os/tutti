@@ -812,6 +812,7 @@ async function requestWorkspaceAppUploadPrepare(
   input: DesktopWorkspaceAppFileUploadPrepareInput
 ): Promise<{ expiresAt: string; uploadId: string }> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(workspaceAppUploadSessionUrl(baseUrl, context), {
     body: JSON.stringify(input),
     headers: {
@@ -862,6 +863,7 @@ async function requestWorkspaceAppUploadComplete(
   uploadId: string
 ): Promise<TuttiExternalUploadedFile> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `${workspaceAppUploadSessionPath(context)}/${encodeURIComponent(uploadId)}/complete`,
@@ -890,6 +892,7 @@ async function requestWorkspaceAppUploadCancel(
   uploadId: string
 ): Promise<void> {
   const baseUrl = resolveDesktopDaemonBaseUrl(endpoint);
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `${workspaceAppUploadSessionPath(context)}/${encodeURIComponent(uploadId)}`,
@@ -1072,6 +1075,7 @@ async function requestManagedAiModelPermission(
     installationId,
     issuer
   });
+  // oxlint-disable-next-line no-restricted-globals -- talks to the local daemon, not outbound
   const response = await fetch(
     new URL(
       `/v1/workspaces/${encodeURIComponent(context.workspaceID)}/apps/${encodeURIComponent(context.appID)}/managed-model-grants`,

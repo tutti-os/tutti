@@ -1,0 +1,44 @@
+{
+  "name": "@tutti-os/auth-bridge",
+  "version": "0.0.0-test.20260630000000.local",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/auth/bridge"
+  },
+  "type": "module",
+  "types": "./src/browser.ts",
+  "exports": {
+    "./browser": "./src/browser.ts",
+    "./node": "./src/node.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "type-check": "tsc --noEmit",
+    "test": "pnpm exec tsx --test src/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./browser": {
+        "types": "./dist/browser.d.ts",
+        "import": "./dist/browser.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
+      }
+    },
+    "types": "./dist/browser.d.ts"
+  }
+}

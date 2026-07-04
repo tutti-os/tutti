@@ -1,7 +1,12 @@
 package agentstatus
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -12,8 +17,9 @@ const (
 	// is used — the operator's choice is trusted as-is.
 	agentNPMRegistryEnv = "TUTTI_AGENT_NPM_REGISTRY"
 
-	// officialNPMRegistry is tried first: when reachable it is the fastest and
-	// most authoritative source.
+	// officialNPMRegistry is the authoritative default source. Installers may
+	// rank it behind a mirror when the user's current network makes a mirror
+	// measurably faster.
 	officialNPMRegistry = "https://registry.npmjs.org"
 
 	// CN-available fallback mirrors, used when public npm is slow or blocked.
@@ -38,6 +44,17 @@ const (
 	// otherwise-succeeding installs, so it is set comfortably above the proxied
 	// case while staying below the overall install timeout.
 	perRegistryInstallTimeout = 150 * time.Second
+
+	// agentNPMRegistryRankTimeout bounds the lightweight package metadata probe
+	// used to order registries before a large npm install. It is intentionally
+	// much shorter than an install attempt: a registry that cannot return metadata
+	// quickly should not get the first shot at a 100MB+ optional platform binary.
+	agentNPMRegistryRankTimeout = 5 * time.Second
+
+	// Avoid reshuffling registries on tiny timing noise from goroutine scheduling,
+	// DNS cache warmth, or localhost test transports. Meaningful network
+	// differences are much larger than this.
+	agentNPMRegistryRankMinDifference = 25 * time.Millisecond
 )
 
 // agentNPMRegistries returns the ordered list of npm registries to try for
@@ -62,6 +79,106 @@ func (s Service) agentNPMRegistries() []string {
 // adapter fallback) rather than retried through the chain.
 func (s Service) primaryAgentNPMRegistry() string {
 	return s.agentNPMRegistries()[0]
+}
+
+func (s Service) preferredAgentNPMRegistry(ctx context.Context, packageName string) string {
+	registries := s.rankedAgentNPMRegistries(ctx, packageName)
+	if len(registries) == 0 {
+		return ""
+	}
+	return registries[0]
+}
+
+func (s Service) rankedAgentNPMRegistries(ctx context.Context, packageName string) []string {
+	registries := s.agentNPMRegistries()
+	if len(registries) <= 1 {
+		return registries
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	type probeResult struct {
+		index     int
+		registry  string
+		reachable bool
+		duration  time.Duration
+	}
+	results := make(chan probeResult, len(registries))
+	for index, registry := range registries {
+		go func(index int, registry string) {
+			startedAt := time.Now()
+			probeCtx, cancel := context.WithTimeout(ctx, agentNPMRegistryRankTimeout)
+			defer cancel()
+			reachable := s.probeNPMRegistryPackage(probeCtx, registry, packageName)
+			results <- probeResult{
+				index:     index,
+				registry:  registry,
+				reachable: reachable,
+				duration:  time.Since(startedAt),
+			}
+		}(index, registry)
+	}
+
+	probed := make([]probeResult, 0, len(registries))
+	for range registries {
+		probed = append(probed, <-results)
+	}
+	sort.SliceStable(probed, func(i, j int) bool {
+		left := probed[i]
+		right := probed[j]
+		if left.reachable != right.reachable {
+			return left.reachable
+		}
+		if left.reachable && right.reachable {
+			diff := left.duration - right.duration
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > agentNPMRegistryRankMinDifference {
+				return left.duration < right.duration
+			}
+		}
+		return left.index < right.index
+	})
+
+	ranked := make([]string, 0, len(probed))
+	displayRanked := make([]string, 0, len(probed))
+	for _, result := range probed {
+		ranked = append(ranked, result.registry)
+		displayRanked = append(displayRanked, displayNPMRegistry(result.registry))
+	}
+	slog.Info(
+		"agent npm registries ranked",
+		"package", strings.TrimSpace(packageName),
+		"registries", displayRanked,
+	)
+	return ranked
+}
+
+func (s Service) probeNPMRegistryPackage(ctx context.Context, registry string, packageName string) bool {
+	endpoint := npmRegistryPackageEndpoint(registry, packageName)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	response, err := s.httpClient().Do(request)
+	if err != nil {
+		return false
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64*1024))
+	return response.StatusCode >= 200 && response.StatusCode < 300
+}
+
+func npmRegistryPackageEndpoint(registry string, packageName string) string {
+	registry = strings.TrimRight(strings.TrimSpace(registry), "/")
+	packageName = strings.TrimSpace(packageName)
+	if registry == "" || packageName == "" {
+		return registry
+	}
+	escapedPackage := strings.ReplaceAll(packageName, "/", "%2f")
+	return registry + "/" + escapedPackage
 }
 
 // withAgentNPMRegistry returns env with exactly one npm_config_registry entry.

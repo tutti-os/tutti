@@ -570,6 +570,9 @@ func sessionSettingsWithACPConfig(
 		asString(config["speed"]),
 		asString(config["fast"]),
 	); speed != "" {
+		if strings.TrimSpace(provider) == ProviderClaudeCode {
+			speed = claudeCodeSpeedFromACPFastConfigValue(speed)
+		}
 		settings.Speed = speed
 		hasSettings = true
 	}

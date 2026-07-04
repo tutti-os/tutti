@@ -5,6 +5,8 @@ import type {
   WorkspaceAgentSessionDetailTurn
 } from "../../workspaceAgentSessionDetailViewModel";
 import type {
+  AgentTurnSummaryPatchBatchVM,
+  AgentTurnSummaryPatchChangeVM,
   AgentTurnSummaryFileVM,
   AgentTurnSummaryRowVM
 } from "../contracts/agentTurnSummaryRowVM";
@@ -20,13 +22,17 @@ import {
 type AgentTurnSummaryChangeType = AgentTurnSummaryFileVM["changeType"];
 
 interface AgentTurnSummaryProjectionOptions {
+  defaultCwd?: string | null;
   workspaceRoot?: string | null;
 }
 
 export function projectAgentTurnSummaryRows(
   detail: WorkspaceAgentSessionDetailViewModel
 ): AgentTurnSummaryRowVM[] {
-  const options = { workspaceRoot: detail.workspaceRoot };
+  const options = {
+    defaultCwd: detail.cwd,
+    workspaceRoot: detail.workspaceRoot
+  };
   const rows = detail.turns.flatMap((turn) =>
     projectAgentTurnSummaryRowForTurn(turn, options)
   );
@@ -93,16 +99,14 @@ export function projectAgentTurnSummaryRowForTurn(
   turn: WorkspaceAgentSessionDetailTurn,
   options: AgentTurnSummaryProjectionOptions = {}
 ): AgentTurnSummaryRowVM[] {
+  const summaryCalls = turnToolCallsForSummary(turn);
   const files = applyShortestUniqueFileLabels(
-    dedupeFiles(
-      turnToolCallsForSummary(turn).flatMap((call) =>
-        filesFromCall(call, options)
-      )
-    )
+    dedupeFiles(summaryCalls.flatMap((call) => filesFromCall(call, options)))
   );
   if (files.length === 0) {
     return [];
   }
+  const patchBatches = patchBatchesFromCalls(summaryCalls, options);
   const fileCount = files.length;
   const createdCount = files.filter(
     (file) => file.changeType === "created"
@@ -118,6 +122,7 @@ export function projectAgentTurnSummaryRowForTurn(
       id: `turn-summary:${turn.id}`,
       turnId: turn.id,
       files,
+      ...(patchBatches.length > 0 ? { patchBatches } : {}),
       fileCount,
       modifiedCount,
       createdCount,
@@ -154,7 +159,6 @@ function filesFromCall(
   options: AgentTurnSummaryProjectionOptions
 ): AgentTurnSummaryFileVM[] {
   const toolState = objectValue(call.payload?.tool_state);
-  const metadata = objectValue(call.payload?.metadata);
   const input =
     objectValue(call.payload?.input) ??
     objectValue(toolState?.input) ??
@@ -163,11 +167,7 @@ function filesFromCall(
     objectValue(call.payload?.output) ?? objectValue(toolState?.output);
   const error =
     objectValue(call.payload?.error) ?? objectValue(toolState?.error);
-  const nestedTaskSteps =
-    arrayValue(metadata?.steps) ??
-    arrayValue(output?.steps) ??
-    arrayValue(call.payload?.steps) ??
-    [];
+  const nestedTaskSteps = nestedTaskStepsFromPayload(call.payload, output);
 
   const directChanges = extractFileChanges({
     id: call.id,
@@ -195,14 +195,7 @@ function filesFromCall(
         stringValue(step.tool_name) ??
         stringValue(step.name) ??
         null,
-      statusKind:
-        firstNonEmptyString(
-          stringValue(step.statusKind),
-          stringValue(step.status),
-          stringValue(step.toolStatus)
-        ) ??
-        call.statusKind ??
-        null,
+      statusKind: nestedTaskStepStatusKind(step, call.statusKind ?? null),
       occurredAtUnixMs:
         numberValue(step.occurredAtUnixMs) ??
         numberValue(step.occurred_at_unix_ms) ??
@@ -216,6 +209,176 @@ function filesFromCall(
     });
   });
   return [...directChanges, ...nestedChanges];
+}
+
+function patchBatchesFromCalls(
+  calls: readonly WorkspaceAgentSessionDetailToolCall[],
+  options: AgentTurnSummaryProjectionOptions
+): AgentTurnSummaryPatchBatchVM[] {
+  return calls.flatMap((call) => patchBatchesFromCall(call, options));
+}
+
+function patchBatchesFromCall(
+  call: WorkspaceAgentSessionDetailToolCall,
+  options: AgentTurnSummaryProjectionOptions
+): AgentTurnSummaryPatchBatchVM[] {
+  const directBatch = isFailedToolStatus(call.statusKind ?? null)
+    ? []
+    : patchBatchFromPayload({
+        id: call.id,
+        payload: call.payload ?? null,
+        toolInput: null,
+        toolOutput: null,
+        toolError: null,
+        options
+      });
+  const output = objectValue(call.payload?.output);
+  const nestedTaskSteps = nestedTaskStepsFromPayload(call.payload, output);
+  const nestedBatches = nestedTaskSteps.flatMap((value, index) => {
+    const step = objectValue(value);
+    if (!step) {
+      return [];
+    }
+    if (
+      isFailedToolStatus(
+        nestedTaskStepStatusKind(step, call.statusKind ?? null)
+      )
+    ) {
+      return [];
+    }
+    return patchBatchFromPayload({
+      id:
+        stringValue(step.toolUseId) ??
+        stringValue(step.id) ??
+        `${call.id}:step:${index + 1}`,
+      payload: objectValue(step.payload),
+      toolInput: objectValue(step.toolInput) ?? objectValue(step.tool_input),
+      toolOutput: objectValue(step.toolResult) ?? objectValue(step.tool_result),
+      toolError: objectValue(step.toolError) ?? objectValue(step.tool_error),
+      options
+    });
+  });
+  return [...directBatch, ...nestedBatches];
+}
+
+function patchBatchFromPayload(input: {
+  id: string;
+  payload: Record<string, unknown> | null;
+  toolInput: Record<string, unknown> | null;
+  toolOutput: Record<string, unknown> | null;
+  toolError: Record<string, unknown> | null;
+  options: AgentTurnSummaryProjectionOptions;
+}): AgentTurnSummaryPatchBatchVM[] {
+  const toolState = objectValue(input.payload?.tool_state);
+  const metadata = objectValue(input.payload?.metadata);
+  const payloadInput =
+    input.toolInput ??
+    objectValue(input.payload?.input) ??
+    objectValue(toolState?.input);
+  const payloadOutput =
+    input.toolOutput ??
+    objectValue(input.payload?.output) ??
+    objectValue(toolState?.output);
+  const rawInput = objectValue(payloadInput?.rawInput);
+  const changes = firstFileChangeValue(
+    payloadOutput?.changes,
+    input.payload?.changes,
+    payloadInput?.changes,
+    rawInput?.changes
+  );
+  const patchChanges = patchChangesFromChangeMap(changes);
+  if (patchChanges.length === 0) {
+    return [];
+  }
+  return [
+    {
+      cwd:
+        firstNonEmptyString(
+          stringValue(input.payload?.cwd),
+          stringValue(payloadInput?.cwd),
+          stringValue(rawInput?.cwd),
+          stringValue(payloadOutput?.cwd),
+          stringValue(metadata?.cwd),
+          input.options.defaultCwd ?? null
+        ) ?? null,
+      toolCallId: input.id,
+      changes: patchChanges
+    }
+  ];
+}
+
+function patchChangesFromChangeMap(
+  changes: unknown
+): AgentTurnSummaryPatchChangeVM[] {
+  return fileChangeEntriesFromChanges(changes).flatMap((entry) => {
+    const change = entry.change;
+    const normalizedPath = entry.path.trim();
+    if (!normalizedPath) {
+      return [];
+    }
+    const normalizedType = normalizeChangeType(fileChangeTypeValue(change));
+    const unifiedDiff =
+      firstNonEmptyString(
+        stringValue(change.unified_diff),
+        stringValue(change.unifiedDiff),
+        stringValue(change.diff),
+        stringValue(change.patch)
+      ) ?? null;
+    let oldString = firstPresentString(
+      literalStringValue(change.old_string),
+      literalStringValue(change.oldString)
+    );
+    const explicitContent = literalStringValue(change.content);
+    let newString = firstPresentString(
+      literalStringValue(change.new_string),
+      literalStringValue(change.newString),
+      explicitContent
+    );
+    if (
+      normalizedType === "created" &&
+      oldString === null &&
+      newString !== null
+    ) {
+      oldString = "";
+    }
+    if (
+      normalizedType === "deleted" &&
+      oldString === null &&
+      newString !== null
+    ) {
+      oldString = newString;
+      newString = "";
+    }
+    if (
+      normalizedType === "deleted" &&
+      newString === null &&
+      oldString !== null
+    ) {
+      newString = "";
+    }
+    const content = firstPresentString(
+      normalizedType === "deleted" ? null : explicitContent,
+      normalizedType === "created" ? newString : null
+    );
+    if (
+      !unifiedDiff &&
+      oldString === null &&
+      newString === null &&
+      content === null
+    ) {
+      return [];
+    }
+    return [
+      {
+        path: normalizedPath,
+        changeType: normalizedType ?? inferAgentPatchChangeType(unifiedDiff),
+        unifiedDiff,
+        oldString,
+        newString,
+        content
+      }
+    ];
+  });
 }
 
 function summaryPathInput(
@@ -273,21 +436,21 @@ function extractFileChanges(input: {
       stringValue(payload?.patch),
       stringValue(metadata?.patch)
     ),
-    firstNonEmptyString(
-      stringValue(input.output?.oldString),
-      stringValue(input.output?.old_string),
-      stringValue(input.input?.oldString),
-      stringValue(input.input?.old_string)
+    firstPresentString(
+      literalStringValue(input.output?.oldString),
+      literalStringValue(input.output?.old_string),
+      literalStringValue(input.input?.oldString),
+      literalStringValue(input.input?.old_string)
     ),
-    firstNonEmptyString(
-      stringValue(input.output?.newString),
-      stringValue(input.output?.new_string),
-      stringValue(input.input?.newString),
-      stringValue(input.input?.new_string)
+    firstPresentString(
+      literalStringValue(input.output?.newString),
+      literalStringValue(input.output?.new_string),
+      literalStringValue(input.input?.newString),
+      literalStringValue(input.input?.new_string)
     ),
-    firstNonEmptyString(
-      stringValue(input.output?.content),
-      stringValue(input.input?.content)
+    firstPresentString(
+      literalStringValue(input.output?.content),
+      literalStringValue(input.input?.content)
     ),
     input.options
   );
@@ -361,28 +524,25 @@ function extractFileChanges(input: {
       stringValue(metadata?.patch),
       stringValue(input.output?.content)
     ) ?? null;
-  const oldString =
-    firstNonEmptyString(
-      stringValue(input.output?.oldString),
-      stringValue(input.output?.old_string),
-      stringValue(input.input?.oldString),
-      stringValue(input.input?.old_string)
-    ) ?? null;
-  const newString =
-    firstNonEmptyString(
-      stringValue(input.output?.newString),
-      stringValue(input.output?.new_string),
-      stringValue(input.input?.newString),
-      stringValue(input.input?.new_string)
-    ) ?? null;
-  const content =
-    firstNonEmptyString(
-      stringValue(input.input?.content),
-      stringValue(rawInput?.content),
-      stringValue(input.input?.new_source),
-      stringValue(input.output?.content),
-      stringValue(input.output?.new_source)
-    ) ?? null;
+  const oldString = firstPresentString(
+    literalStringValue(input.output?.oldString),
+    literalStringValue(input.output?.old_string),
+    literalStringValue(input.input?.oldString),
+    literalStringValue(input.input?.old_string)
+  );
+  const newString = firstPresentString(
+    literalStringValue(input.output?.newString),
+    literalStringValue(input.output?.new_string),
+    literalStringValue(input.input?.newString),
+    literalStringValue(input.input?.new_string)
+  );
+  const content = firstPresentString(
+    literalStringValue(input.input?.content),
+    literalStringValue(rawInput?.content),
+    literalStringValue(input.input?.new_source),
+    literalStringValue(input.output?.content),
+    literalStringValue(input.output?.new_source)
+  );
   const explicitChangeType =
     normalizeChangeType(
       firstNonEmptyString(
@@ -522,18 +682,16 @@ function collectChangeMapFiles(
       stringValue(change.diff),
       stringValue(change.patch)
     );
-    let oldString =
-      firstNonEmptyString(
-        stringValue(change.old_string),
-        stringValue(change.oldString)
-      ) ?? null;
-    const explicitContent = stringValue(change.content);
-    let newString =
-      firstNonEmptyString(
-        stringValue(change.new_string),
-        stringValue(change.newString),
-        explicitContent
-      ) ?? null;
+    let oldString = firstPresentString(
+      literalStringValue(change.old_string),
+      literalStringValue(change.oldString)
+    );
+    const explicitContent = literalStringValue(change.content);
+    let newString = firstPresentString(
+      literalStringValue(change.new_string),
+      literalStringValue(change.newString),
+      explicitContent
+    );
     if (
       normalizedType === "created" &&
       oldString === null &&
@@ -556,11 +714,10 @@ function collectChangeMapFiles(
     ) {
       newString = "";
     }
-    const content =
-      firstNonEmptyString(
-        normalizedType === "deleted" ? null : explicitContent,
-        normalizedType === "created" ? newString : null
-      ) ?? null;
+    const content = firstPresentString(
+      normalizedType === "deleted" ? null : explicitContent,
+      normalizedType === "created" ? newString : null
+    );
     if (
       !unifiedDiff &&
       oldString === null &&
@@ -625,22 +782,20 @@ function collectContentDiffFiles(
       stringValue(relatedChange?.unified_diff),
       stringValue(relatedChange?.unifiedDiff)
     );
-    let oldString =
-      firstNonEmptyString(
-        stringValue(item.oldText),
-        stringValue(item.oldString),
-        stringValue(relatedChange?.old_string),
-        stringValue(relatedChange?.oldString)
-      ) ?? null;
-    const relatedContent = stringValue(relatedChange?.content);
-    let newString =
-      firstNonEmptyString(
-        stringValue(item.newText),
-        stringValue(item.newString),
-        stringValue(relatedChange?.new_string),
-        stringValue(relatedChange?.newString),
-        relatedContent
-      ) ?? null;
+    let oldString = firstPresentString(
+      literalStringValue(item.oldText),
+      literalStringValue(item.oldString),
+      literalStringValue(relatedChange?.old_string),
+      literalStringValue(relatedChange?.oldString)
+    );
+    const relatedContent = literalStringValue(relatedChange?.content);
+    let newString = firstPresentString(
+      literalStringValue(item.newText),
+      literalStringValue(item.newString),
+      literalStringValue(relatedChange?.new_string),
+      literalStringValue(relatedChange?.newString),
+      relatedContent
+    );
     if (
       normalizedType === "created" &&
       oldString === null &&
@@ -663,8 +818,10 @@ function collectContentDiffFiles(
     ) {
       newString = "";
     }
-    const explicitContent =
-      firstNonEmptyString(stringValue(item.content), relatedContent) ?? null;
+    const explicitContent = firstPresentString(
+      literalStringValue(item.content),
+      relatedContent
+    );
     const inferredType =
       normalizedType ??
       inferChangeTypeFromToolContent(
@@ -680,11 +837,10 @@ function collectContentDiffFiles(
     ) {
       oldString = "";
     }
-    const content =
-      firstNonEmptyString(
-        inferredType === "deleted" ? null : explicitContent,
-        inferredType === "created" ? newString : null
-      ) ?? null;
+    const content = firstPresentString(
+      inferredType === "deleted" ? null : explicitContent,
+      inferredType === "created" ? newString : null
+    );
     if (
       !unifiedDiff &&
       oldString === null &&
@@ -942,7 +1098,7 @@ function inferChangeTypeFromToolContent(
 ): "modified" | "created" | null {
   const normalizedToolName = normalizeToolName(toolName);
   if (normalizedToolName === "write" || normalizedToolName === "writefile") {
-    return content || newString ? "created" : null;
+    return content !== null || newString !== null ? "created" : null;
   }
   if (oldString !== null || newString !== null) {
     return "modified";
@@ -988,6 +1144,34 @@ function arrayValue(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
 }
 
+function nestedTaskStepsFromPayload(
+  payload: Record<string, unknown> | null,
+  output: Record<string, unknown> | null
+): unknown[] {
+  const metadata = objectValue(payload?.metadata);
+  return (
+    arrayValue(metadata?.steps) ??
+    arrayValue(output?.steps) ??
+    arrayValue(payload?.steps) ??
+    []
+  );
+}
+
+function nestedTaskStepStatusKind(
+  step: Record<string, unknown>,
+  fallback: string | null
+): string | null {
+  return (
+    firstNonEmptyString(
+      stringValue(step.statusKind),
+      stringValue(step.status),
+      stringValue(step.toolStatus)
+    ) ??
+    fallback ??
+    null
+  );
+}
+
 function firstLocationPath(value: unknown[] | null): string | null {
   if (!value) {
     return null;
@@ -1019,6 +1203,10 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function literalStringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -1029,6 +1217,17 @@ function firstNonEmptyString(
   for (const value of values) {
     if (typeof value === "string" && value.trim()) {
       return value.trim();
+    }
+  }
+  return null;
+}
+
+function firstPresentString(
+  ...values: Array<string | null | undefined>
+): string | null {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value;
     }
   }
   return null;

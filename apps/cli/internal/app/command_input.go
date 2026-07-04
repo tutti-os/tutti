@@ -249,13 +249,19 @@ func schemaPropertyEnumValues(property any) []string {
 		return nil
 	}
 	value, ok := propertyMap["enum"].([]any)
+	if ok {
+		values := make([]string, 0, len(value))
+		for _, item := range value {
+			values = append(values, formatSchemaValue(item))
+		}
+		return values
+	}
+	stringValues, ok := propertyMap["enum"].([]string)
 	if !ok {
 		return nil
 	}
-	values := make([]string, 0, len(value))
-	for _, item := range value {
-		values = append(values, formatSchemaValue(item))
-	}
+	values := make([]string, 0, len(stringValues))
+	values = append(values, stringValues...)
 	return values
 }
 

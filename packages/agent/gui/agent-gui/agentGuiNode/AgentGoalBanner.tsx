@@ -46,7 +46,10 @@ export function isGoalBannerVisible(
   return !TERMINAL_GOAL_STATUSES.has(normalizeGoalStatus(status));
 }
 
-function statusLabel(status: string, labels: AgentGoalBannerLabels): string {
+export function goalStatusLabel(
+  status: string,
+  labels: AgentGoalBannerLabels
+): string {
   switch (normalizeGoalStatus(status)) {
     case "paused":
       return labels.statusPaused;
@@ -63,6 +66,25 @@ function statusLabel(status: string, labels: AgentGoalBannerLabels): string {
     default:
       return labels.statusActive;
   }
+}
+
+export function describeGoal(input: {
+  objective: string;
+  status: string;
+  tokenBudget?: number;
+  tokensUsed?: number;
+  labels: AgentGoalBannerLabels;
+}): string {
+  const trimmedObjective = input.objective.trim();
+  const detailParts = [goalStatusLabel(input.status, input.labels)];
+  if (typeof input.tokenBudget === "number" && input.tokenBudget > 0) {
+    const used =
+      typeof input.tokensUsed === "number" && input.tokensUsed >= 0
+        ? input.tokensUsed
+        : 0;
+    detailParts.push(input.labels.budgetUsage(used, input.tokenBudget));
+  }
+  return `${trimmedObjective} · ${detailParts.join(" · ")}`;
 }
 
 /**
@@ -82,21 +104,18 @@ export function AgentGoalBanner({
   labels
 }: AgentGoalBannerProps): JSX.Element {
   "use memo";
-  const trimmedObjective = objective.trim();
-  const detailParts = [statusLabel(status, labels)];
-  if (typeof tokenBudget === "number" && tokenBudget > 0) {
-    const used =
-      typeof tokensUsed === "number" && tokensUsed >= 0 ? tokensUsed : 0;
-    detailParts.push(labels.budgetUsage(used, tokenBudget));
-  }
-  const description = `${trimmedObjective} · ${detailParts.join(" · ")}`;
+  const description = describeGoal({
+    objective,
+    status,
+    tokenBudget,
+    tokensUsed,
+    labels
+  });
   const fullMessage = `${labels.goalLabel} ${description}`;
   return (
     <div className={styles.sessionChrome}>
       <section
         className={cn(styles.chromeCard, styles.chromeCardMuted)}
-        data-expandable="false"
-        data-expanded="false"
         role="status"
         data-testid="agent-gui-goal-banner"
       >

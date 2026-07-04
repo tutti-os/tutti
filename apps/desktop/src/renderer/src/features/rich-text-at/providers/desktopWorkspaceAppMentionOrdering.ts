@@ -4,8 +4,6 @@ export interface DesktopWorkspaceAppMentionOrderItem {
 }
 
 const workspaceAppMentionRankGroups = [
-  ["agent-codex"],
-  ["agent-claude-code"],
   ["ai-media-canvas", "media-canvas"],
   ["vibe-design"],
   ["group-chat"],
@@ -17,8 +15,8 @@ const workspaceAppMentionRankGroups = [
   ["open-cut"],
   ["product-competition"],
   ["design-review"],
-  ["calendar"],
-  ["document-summarizer"]
+  ["draw-topic-app", "answer-book", "app_answer_book", "idea-draw"],
+  ["calendar"]
 ] as const;
 
 const workspaceAppMentionRankById = buildWorkspaceAppMentionRankById();

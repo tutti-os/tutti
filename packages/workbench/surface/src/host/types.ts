@@ -150,6 +150,7 @@ export interface WorkbenchHostLaunchResult {
     payload?: unknown;
     type: string;
   } | null;
+  cascadeOffset?: { x: number; y: number };
   defaultFrame?: WorkbenchFrame;
   displayMode?: WorkbenchDisplayMode;
   dockEntryId?: string;
@@ -157,6 +158,15 @@ export interface WorkbenchHostLaunchResult {
   instanceId: string;
   instanceKey?: string | null;
   launchSource?: string | null;
+  /**
+   * When true, skip the "cascade-same-type-centered" re-center/resize step
+   * for a node that already exists (see openLaunchResult in session.ts).
+   * Set this when the launch is re-focusing a specific already-open
+   * instance (e.g. reusing the window for a known conversation/session)
+   * rather than a fresh/generic open, so the user's current window size and
+   * position are preserved instead of being reset to the default frame.
+   */
+  preserveExistingNodeFrame?: boolean;
   reuseDockEntryNode?: boolean;
   sizeConstraints?: WorkbenchNodeSizeConstraints | null;
   title?: string;

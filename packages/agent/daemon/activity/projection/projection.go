@@ -6,6 +6,7 @@ type SessionSnapshot struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -29,6 +30,7 @@ type SessionStateReport struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -71,6 +73,7 @@ func ProjectSessionState(
 		WorkspaceID:       strings.TrimSpace(report.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(report.AgentSessionID),
 		Origin:            strings.TrimSpace(report.Origin),
+		AgentTargetID:     strings.TrimSpace(report.AgentTargetID),
 		Provider:          strings.TrimSpace(report.Provider),
 		ProviderSessionID: strings.TrimSpace(report.ProviderSessionID),
 		Model:             strings.TrimSpace(report.Model),
@@ -95,6 +98,9 @@ func ProjectSessionState(
 		}
 		if session.Origin == "" {
 			session.Origin = existing.Origin
+		}
+		if session.AgentTargetID == "" {
+			session.AgentTargetID = existing.AgentTargetID
 		}
 		if session.Provider == "" {
 			session.Provider = existing.Provider
@@ -250,10 +256,19 @@ func ProjectMessageUpdate(
 		}
 		message.Payload["text"] = stringValue(message.Payload["text"]) + update.ContentDelta
 	}
+	message.Payload = clearStaleToolPayloadForStatus(message.Kind, message.Status, message.Payload)
 	if message.Payload == nil {
 		message.Payload = map[string]any{}
 	}
 	return message, true
+}
+
+func clearStaleToolPayloadForStatus(kind string, status string, payload map[string]any) map[string]any {
+	if strings.TrimSpace(kind) != "tool_call" || strings.TrimSpace(status) != "completed" || len(payload) == 0 {
+		return payload
+	}
+	delete(payload, "error")
+	return payload
 }
 
 func firstNonZeroInt64(values ...int64) int64 {

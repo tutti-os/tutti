@@ -37,7 +37,7 @@ type taskRunCompleteInput struct {
 	IssueID      string `cli:"issue-id" validate:"required"`
 	TaskID       string `cli:"task-id" validate:"required"`
 	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required"`
+	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
 	Summary      string `cli:"summary"`
 	ErrorMessage string `cli:"error-message"`
 	Outputs      string `cli:"outputs"`
@@ -46,7 +46,7 @@ type taskRunCompleteInput struct {
 type issueRunCompleteInput struct {
 	IssueID      string `cli:"issue-id" validate:"required"`
 	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required"`
+	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
 	Summary      string `cli:"summary"`
 	ErrorMessage string `cli:"error-message"`
 	Outputs      string `cli:"outputs"`

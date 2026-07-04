@@ -34,7 +34,10 @@ function createWorkspaceLaunch(): WorkspaceLaunch {
   };
 }
 
-function createUpdateService(events: string[]): AppUpdateService {
+function createUpdateService(
+  events: string[],
+  options: { quitAndInstallPending?: boolean } = {}
+): AppUpdateService {
   return {
     async checkForUpdates() {
       throw new Error("not used");
@@ -53,6 +56,9 @@ function createUpdateService(events: string[]): AppUpdateService {
     },
     async installUpdate() {
       throw new Error("not used");
+    },
+    isQuitAndInstallPending() {
+      return options.quitAndInstallPending ?? false;
     },
     onStateChanged() {
       return () => undefined;
@@ -151,6 +157,47 @@ test("before quit waits for managed tuttid stop before quitting the app", async 
   assert.equal(events.includes("tuttid:stop:done"), true);
   assert.equal(events.includes("windows:destroy-all"), true);
   assert.equal(events.at(-1), "app:quit");
+});
+
+test("before quit waits for managed tuttid stop when update install is pending", async () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {
+        events.push("tuttid:stop");
+      }),
+      updateService: createUpdateService(events, {
+        quitAndInstallPending: true
+      }),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  let prevented = false;
+  handlers.beforeQuit({
+    preventDefault() {
+      prevented = true;
+      events.push("quit:prevented");
+    }
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(prevented, true);
+  assert.equal(
+    events.join("|"),
+    [
+      "quit:prevented",
+      "info:desktop app before quit for update install",
+      "tuttid:stop",
+      "windows:destroy-all",
+      "app:quit"
+    ].join("|")
+  );
 });
 
 test("before quit does not trigger a second stop while shutdown is already in progress", async () => {

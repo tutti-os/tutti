@@ -1,16 +1,10 @@
 package agentstatus
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
@@ -51,7 +46,7 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}
-	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), nil)
+	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
 	return providerRuntimeResolution{
 		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
 		AdapterPath:    adapterPath,
@@ -206,6 +201,7 @@ func (s Service) installMissingProviderRuntime(
 			Status: "running",
 			Step:   installTarget,
 		})
+		nodeStartedAt := s.now()
 		command, result, err := s.executeInstaller(ctx, spec.Provider, installer, &current)
 		if command != "" {
 			summary.Commands = append(summary.Commands, command)
@@ -218,6 +214,14 @@ func (s Service) installMissingProviderRuntime(
 		}
 		summary.ExitCode = intPointer(result.ExitCode)
 		if err != nil {
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Error:     err,
+				Node:      installNodeForTarget(installTarget),
+				Provider:  spec.Provider,
+				Result:    RunActionResult{ReasonCode: "install_start_failed"},
+				StartedAt: nodeStartedAt,
+				Status:    "failure",
+			})
 			slog.Warn(
 				"agent provider install step failed to run",
 				"provider", spec.Provider,
@@ -232,6 +236,16 @@ func (s Service) installMissingProviderRuntime(
 			return summary, current, err
 		}
 		if result.ExitCode != 0 {
+			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+				Node:     installNodeForTarget(installTarget),
+				Provider: spec.Provider,
+				Result: RunActionResult{
+					ReasonCode: "install_command_failed",
+					Status:     RunActionFailed,
+					Message:    firstNonBlank(result.Stderr, result.Stdout, "Install command failed"),
+				},
+				StartedAt: nodeStartedAt,
+			})
 			slog.Warn(
 				"agent provider install step failed",
 				"provider", spec.Provider,
@@ -254,6 +268,12 @@ func (s Service) installMissingProviderRuntime(
 			"stdout", trimActionOutput(result.Stdout),
 			"stderr", trimActionOutput(result.Stderr),
 		)
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Node:      installNodeForTarget(installTarget),
+			Provider:  spec.Provider,
+			Result:    RunActionResult{Status: RunActionCompleted},
+			StartedAt: nodeStartedAt,
+		})
 		selectedInstallDir := current.InstallDir
 		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
 		current = s.resolveProviderRuntime(ctx, resolvedSpec)
@@ -271,6 +291,14 @@ func (s Service) installMissingProviderRuntime(
 }
 
 func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) (InstallerSpec, bool, string) {
+	if strings.TrimSpace(runtime.ReasonCode) == "acp_adapter_launch_failed" {
+		if spec.AdapterInstall.Kind != "" {
+			return spec.AdapterInstall, true, "adapter"
+		}
+		if spec.Install.Kind != "" {
+			return spec.Install, true, "cli"
+		}
+	}
 	if strings.TrimSpace(runtime.CLIPath) == "" {
 		if spec.Install.Kind == "" {
 			return InstallerSpec{}, false, ""
@@ -308,6 +336,13 @@ func (s Service) nextMissingInstaller(spec ProviderSpec, runtime providerRuntime
 	return InstallerSpec{}, false, ""
 }
 
+func installNodeForTarget(target string) string {
+	if strings.TrimSpace(target) == "adapter" {
+		return "install_adapter"
+	}
+	return "install_cli"
+}
+
 func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerRuntimeResolution) bool {
 	if spec.Provider != agentprovider.Codex {
 		return false
@@ -315,7 +350,7 @@ func (s Service) providerCLIRequiresInstall(spec ProviderSpec, runtime providerR
 	if !s.codexPlatformBinaryOK(runtime.CLIPath) {
 		return true
 	}
-	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath))
+	return !codexVersionMeetsMinimum(s.cliVersion(context.Background(), runtime.CLIPath, runtime.Env))
 }
 
 func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
@@ -359,7 +394,7 @@ func (s Service) executeInstaller(
 	case InstallerKindShellCommand:
 		result, err := s.installCommand(installCtx, InstallCommandInput{
 			Command:  spec.ShellCommand,
-			Env:      s.commandResolver().Env(nil),
+			Env:      s.shellCommandInstallerEnv(installCtx, spec),
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
 		if err == nil && result.ExitCode == 0 {
@@ -391,7 +426,11 @@ func (s Service) executeInstaller(
 		result, err := s.runReleaseBinaryInstaller(installCtx, spec, installDir)
 		return runResult(result, err)
 	case InstallerKindCodexCLILatest:
-		result, err := s.runCodexCLILatestInstaller(installCtx, spec, "")
+		existingCLIPath := ""
+		if runtime != nil {
+			existingCLIPath = strings.TrimSpace(runtime.CLIPath)
+		}
+		result, err := s.runCodexCLILatestInstaller(installCtx, spec, existingCLIPath)
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)
@@ -402,6 +441,23 @@ func (s Service) executeInstaller(
 	default:
 		return command, InstallCommandResult{ExitCode: 1, Stderr: fmt.Sprintf("unsupported installer kind %q", spec.Kind)}, nil
 	}
+}
+
+func (s Service) shellCommandInstallerEnv(ctx context.Context, spec InstallerSpec) []string {
+	resolver := s.commandResolver()
+	if !shellCommandUsesNPM(spec.ShellCommand) {
+		return resolver.Env(nil)
+	}
+	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, false)
+	if !ok {
+		return resolver.Env(nil)
+	}
+	return resolver.Env(appRuntime.EnvOverrides)
+}
+
+func shellCommandUsesNPM(command string) bool {
+	fields := strings.Fields(command)
+	return len(fields) > 0 && fields[0] == npmBinaryName()
 }
 
 func installerLockCommand(spec InstallerSpec) string {
@@ -548,7 +604,8 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	// CN-available mirrors when it is slow or blocked. Each attempt is bounded so a
 	// blocked registry fails over quickly instead of consuming the whole budget;
 	// the npm_config_registry value selects the source.
-	registries := s.agentNPMRegistries()
+	packageName, _ := splitNPMPackageSpec(npmSpec.Package)
+	registries := s.rankedAgentNPMRegistries(ctx, packageName)
 	var result InstallCommandResult
 	for i, registry := range registries {
 		setActiveAction(ctx, provider, ActiveAction{
@@ -625,143 +682,14 @@ func ensureWritableInstallDir(dir string) error {
 	return errors.Join(closeErr, removeErr)
 }
 
-func extractReleaseBinary(archivePath string, binaryName string, destinationPath string) error {
-	switch {
-	case strings.HasSuffix(archivePath, ".tar.gz"):
-		return extractReleaseBinaryFromTarGz(archivePath, binaryName, destinationPath)
-	case strings.HasSuffix(archivePath, ".zip"):
-		return extractReleaseBinaryFromZip(archivePath, binaryName, destinationPath)
-	default:
-		return fmt.Errorf("unsupported release archive format: %s", archivePath)
-	}
-}
-
-func extractReleaseBinaryFromTarGz(archivePath string, binaryName string, destinationPath string) error {
-	file, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("open release archive: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return fmt.Errorf("open gzip release archive: %w", err)
-	}
-	defer func() {
-		_ = gzipReader.Close()
-	}()
-	reader := tar.NewReader(gzipReader)
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read tar release archive: %w", err)
-		}
-		if header == nil || header.FileInfo().IsDir() {
-			continue
-		}
-		if filepath.Base(header.Name) != binaryName {
-			continue
-		}
-		return writeReleaseBinary(destinationPath, reader, header.FileInfo().Mode())
-	}
-	return fmt.Errorf("release archive does not contain %s", binaryName)
-}
-
-func extractReleaseBinaryFromZip(archivePath string, binaryName string, destinationPath string) error {
-	reader, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return fmt.Errorf("open zip release archive: %w", err)
-	}
-	defer func() {
-		_ = reader.Close()
-	}()
-	for _, file := range reader.File {
-		if file == nil || file.FileInfo().IsDir() {
-			continue
-		}
-		if filepath.Base(file.Name) != binaryName {
-			continue
-		}
-		content, err := file.Open()
-		if err != nil {
-			return fmt.Errorf("open zipped release binary %s: %w", binaryName, err)
-		}
-		err = writeReleaseBinary(destinationPath, content, file.Mode())
-		closeErr := content.Close()
-		return errors.Join(err, closeErr)
-	}
-	return fmt.Errorf("release archive does not contain %s", binaryName)
-}
-
-func writeReleaseBinary(destinationPath string, content io.Reader, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0o755); err != nil {
-		return fmt.Errorf("create release binary parent: %w", err)
-	}
-	target, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return fmt.Errorf("create release binary destination: %w", err)
-	}
-	_, copyErr := io.Copy(target, content)
-	closeErr := target.Close()
-	if mode != 0 {
-		mode = mode.Perm()
-		if mode == 0 {
-			mode = 0o755
-		}
-		if chmodErr := os.Chmod(destinationPath, mode); chmodErr != nil {
-			return errors.Join(copyErr, closeErr, chmodErr)
-		}
-	}
-	return errors.Join(copyErr, closeErr)
-}
-
-func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("open file for sha256: %w", err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("compute file sha256: %w", err)
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-func normalizeSHA256(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimPrefix(strings.ToLower(value), "sha256:")
-	return value
-}
-
-func archiveSuffix(url string) string {
-	switch {
-	case strings.HasSuffix(url, ".tar.gz"):
-		return ".tar.gz"
-	case strings.HasSuffix(url, ".zip"):
-		return ".zip"
-	default:
-		return ""
-	}
-}
-
 func (s Service) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient
 	}
 	// Route downloads (codex CLI package, claude install.sh, release binaries)
-	// through the macOS system proxy. This is an in-process HTTP call, so it
-	// cannot inherit the proxy env we inject into spawned children — resolve it
-	// directly. Prefers an explicit env proxy, falls back to the system proxy.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = runtimecmd.HTTPProxyFunc()
-	return &http.Client{Transport: transport}
+	// through the shared proxy-aware funnel. This is an in-process HTTP call,
+	// so it cannot inherit the proxy env we inject into spawned children.
+	return httpx.Default()
 }
 
 func joinShellCommand(parts []string) string {

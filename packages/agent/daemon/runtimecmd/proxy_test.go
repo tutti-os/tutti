@@ -3,8 +3,12 @@ package runtimecmd
 import (
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/net/http/httpproxy"
 )
 
 // Real-world `scutil --proxy` output with Clash Verge system proxy enabled
@@ -140,105 +144,134 @@ func TestEnvNoProxyWhenScutilUnavailable(t *testing.T) {
 	}
 }
 
-func TestSystemProxyURLFromPrefersHTTPS(t *testing.T) {
-	got, ok := systemProxyURLFrom(map[string]string{
-		"HTTPS_PROXY": "http://127.0.0.1:7890",
-		"HTTP_PROXY":  "http://127.0.0.1:1080",
-	})
-	if !ok {
-		t.Fatalf("systemProxyURLFrom() ok = false, want true")
-	}
-	if got.String() != "http://127.0.0.1:7890" {
-		t.Fatalf("systemProxyURLFrom() = %q, want HTTPS entry http://127.0.0.1:7890", got)
-	}
-}
-
-func TestSystemProxyURLFromFallsBackToHTTP(t *testing.T) {
-	got, ok := systemProxyURLFrom(map[string]string{
-		"HTTP_PROXY": "http://10.0.0.2:3128",
-	})
-	if !ok {
-		t.Fatalf("systemProxyURLFrom() ok = false, want true")
-	}
-	if got.String() != "http://10.0.0.2:3128" {
-		t.Fatalf("systemProxyURLFrom() = %q, want http://10.0.0.2:3128", got)
-	}
-}
-
-func TestSystemProxyURLFromEmptyReturnsFalse(t *testing.T) {
-	if got, ok := systemProxyURLFrom(nil); ok {
-		t.Fatalf("systemProxyURLFrom(nil) = (%v, true), want (nil, false)", got)
-	}
-	if got, ok := systemProxyURLFrom(map[string]string{"HTTPS_PROXY": "  "}); ok {
-		t.Fatalf("systemProxyURLFrom(blank) = (%v, true), want (nil, false)", got)
-	}
-}
-
-func mustParseURL(t *testing.T, raw string) *url.URL {
+func proxyFor(t *testing.T, cfg *httpproxy.Config, rawURL string) *url.URL {
 	t.Helper()
-	parsed, err := url.Parse(raw)
+	target, err := url.Parse(rawURL)
 	if err != nil {
-		t.Fatalf("url.Parse(%q): %v", raw, err)
+		t.Fatalf("url.Parse(%q): %v", rawURL, err)
 	}
-	return parsed
+	proxy, err := cfg.ProxyFunc()(target)
+	if err != nil {
+		t.Fatalf("ProxyFunc(%q): %v", rawURL, err)
+	}
+	return proxy
 }
 
-func TestHTTPProxyFuncPrefersEnvProxy(t *testing.T) {
-	envURL := mustParseURL(t, "http://env-proxy:8080")
-	systemURL := mustParseURL(t, "http://system-proxy:7890")
-	fn := httpProxyFunc(
-		func(*http.Request) (*url.URL, error) { return envURL, nil },
-		systemURL, true,
-	)
-	got, err := fn(&http.Request{})
-	if err != nil {
-		t.Fatalf("proxy func err = %v", err)
+func TestMergeSystemProxyEnvWins(t *testing.T) {
+	cfg := &httpproxy.Config{HTTPSProxy: "http://env-proxy:8080"}
+	mergeSystemProxy(cfg, map[string]string{
+		"HTTPS_PROXY": "http://system-proxy:7890",
+		"HTTP_PROXY":  "http://system-proxy:7890",
+		"NO_PROXY":    noProxyDefault,
+	})
+	if cfg.HTTPSProxy != "http://env-proxy:8080" {
+		t.Fatalf("HTTPSProxy = %q, want env value preserved", cfg.HTTPSProxy)
 	}
-	if got != envURL {
-		t.Fatalf("proxy = %v, want env proxy %v (env wins over system)", got, envURL)
+	if cfg.HTTPProxy != "http://system-proxy:7890" {
+		t.Fatalf("HTTPProxy = %q, want system value filling the blank", cfg.HTTPProxy)
 	}
-}
-
-func TestHTTPProxyFuncFallsBackToSystem(t *testing.T) {
-	systemURL := mustParseURL(t, "http://system-proxy:7890")
-	fn := httpProxyFunc(
-		func(*http.Request) (*url.URL, error) { return nil, nil },
-		systemURL, true,
-	)
-	got, err := fn(&http.Request{})
-	if err != nil {
-		t.Fatalf("proxy func err = %v", err)
-	}
-	if got != systemURL {
-		t.Fatalf("proxy = %v, want system proxy %v when env has none", got, systemURL)
+	if got := proxyFor(t, cfg, "https://api.anthropic.com/v1"); got == nil || got.Host != "env-proxy:8080" {
+		t.Fatalf("proxy = %v, want env proxy env-proxy:8080", got)
 	}
 }
 
-func TestHTTPProxyFuncDirectWhenNoneConfigured(t *testing.T) {
-	fn := httpProxyFunc(
-		func(*http.Request) (*url.URL, error) { return nil, nil },
-		nil, false,
-	)
-	got, err := fn(&http.Request{})
-	if err != nil {
-		t.Fatalf("proxy func err = %v", err)
+func TestMergeSystemProxyFallsBackToSystem(t *testing.T) {
+	cfg := &httpproxy.Config{}
+	mergeSystemProxy(cfg, map[string]string{
+		"HTTPS_PROXY": "http://system-proxy:7890",
+		"HTTP_PROXY":  "http://system-proxy:7890",
+		"NO_PROXY":    noProxyDefault,
+	})
+	if got := proxyFor(t, cfg, "https://api.anthropic.com/v1"); got == nil || got.Host != "system-proxy:7890" {
+		t.Fatalf("proxy = %v, want system proxy when env has none", got)
 	}
-	if got != nil {
+}
+
+func TestMergeSystemProxyDirectWhenNoneConfigured(t *testing.T) {
+	cfg := &httpproxy.Config{}
+	mergeSystemProxy(cfg, nil)
+	if got := proxyFor(t, cfg, "https://api.anthropic.com/v1"); got != nil {
 		t.Fatalf("proxy = %v, want nil (direct) when nothing configured", got)
 	}
 }
 
-func TestHTTPProxyFuncPropagatesEnvError(t *testing.T) {
-	wantErr := http.ErrNoCookie
-	fn := httpProxyFunc(
-		func(*http.Request) (*url.URL, error) { return nil, wantErr },
-		mustParseURL(t, "http://system-proxy:7890"), true,
-	)
-	got, err := fn(&http.Request{})
-	if err != wantErr {
-		t.Fatalf("err = %v, want %v (env error surfaces, no system fallback)", err, wantErr)
+func TestMergeSystemProxyBypassesLoopbackAndNoProxy(t *testing.T) {
+	cfg := &httpproxy.Config{}
+	mergeSystemProxy(cfg, map[string]string{
+		"HTTPS_PROXY": "http://system-proxy:7890",
+		"HTTP_PROXY":  "http://system-proxy:7890",
+		"NO_PROXY":    noProxyDefault,
+	})
+	for _, target := range []string{
+		"http://127.0.0.1:4545/v1/health",
+		"http://localhost:4545/v1/health",
+		"https://printer.local/status",
+	} {
+		if got := proxyFor(t, cfg, target); got != nil {
+			t.Fatalf("proxy for %q = %v, want nil (local bypass)", target, got)
+		}
 	}
-	if got != nil {
-		t.Fatalf("proxy = %v, want nil on env error", got)
+	if got := proxyFor(t, cfg, "https://api.anthropic.com/v1"); got == nil {
+		t.Fatalf("proxy for external target = nil, want system proxy")
+	}
+}
+
+func TestMergeSystemProxyDefaultsNoProxyForEnvOnlyProxy(t *testing.T) {
+	// Env sets a proxy but no NO_PROXY, and no system proxy exists: the
+	// default exclusions still apply so .local names never hit the proxy.
+	cfg := &httpproxy.Config{HTTPSProxy: "http://env-proxy:8080"}
+	mergeSystemProxy(cfg, nil)
+	if cfg.NoProxy != noProxyDefault {
+		t.Fatalf("NoProxy = %q, want default %q", cfg.NoProxy, noProxyDefault)
+	}
+}
+
+func TestProxyAutodetectDisabledSkipsInjection(t *testing.T) {
+	t.Setenv(disableProxyAutodetectEnvKey, "1")
+	resolver := Resolver{
+		Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HomeDir:     func() (string, error) { return t.TempDir(), nil },
+		ScutilProxy: func() (string, bool) { return scutilProxyEnabled, true },
+	}
+	env := resolver.Env(nil)
+	if got := envValue(env, "HTTPS_PROXY"); got != "" {
+		t.Fatalf("HTTPS_PROXY = %q, want empty when autodetect disabled", got)
+	}
+}
+
+func TestProxyAutodetectDisabledKeepsEnvProxy(t *testing.T) {
+	t.Setenv(disableProxyAutodetectEnvKey, "true")
+	t.Setenv("HTTPS_PROXY", "http://env-proxy:8080")
+	fn := DynamicProxyFunc()
+	request, err := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	got, err := fn(request)
+	if err != nil {
+		t.Fatalf("proxy func err = %v", err)
+	}
+	if got == nil || got.Host != "env-proxy:8080" {
+		t.Fatalf("proxy = %v, want explicit env proxy to keep working", got)
+	}
+}
+
+func TestSystemProxyEnvCachesScutil(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("scutil cache path is darwin-only")
+	}
+	systemProxyCache.Lock()
+	systemProxyCache.env = map[string]string{"HTTPS_PROXY": "http://cached-proxy:7890"}
+	systemProxyCache.expiresAt = time.Now().Add(time.Minute)
+	systemProxyCache.Unlock()
+	t.Cleanup(func() {
+		systemProxyCache.Lock()
+		systemProxyCache.env = nil
+		systemProxyCache.expiresAt = time.Time{}
+		systemProxyCache.Unlock()
+	})
+	got := Resolver{}.systemProxyEnv()
+	if got["HTTPS_PROXY"] != "http://cached-proxy:7890" {
+		t.Fatalf("systemProxyEnv() = %v, want cached value within TTL", got)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"
@@ -85,7 +86,7 @@ type HTTPAppArtifactFetcher struct {
 func (f HTTPAppArtifactFetcher) FetchAppArtifact(ctx context.Context, artifactURL string, destinationPath string) error {
 	client := f.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Default()
 	}
 	return downloadAppArtifact(ctx, client, artifactURL, destinationPath)
 }

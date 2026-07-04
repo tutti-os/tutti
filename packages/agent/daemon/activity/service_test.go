@@ -212,8 +212,8 @@ func TestStoreRemoteMessageEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 		t.Fatalf("notify count after remote echo = %d, want unchanged", notifyCount)
 	}
 	reply, ok := svc.ListSessionMessages("room-1", "agent-1", 0, 10)
-	if !ok || reply.LatestVersion != 7 || len(reply.Messages) != 1 || reply.Messages[0].Version != 7 {
-		t.Fatalf("messages reply = %#v, ok=%v, want cursor metadata applied", reply, ok)
+	if !ok || reply.LatestVersion != 1 || len(reply.Messages) != 1 || reply.Messages[0].Version != 1 {
+		t.Fatalf("messages reply = %#v, ok=%v, want local cursor preserved", reply, ok)
 	}
 
 	svc.appendSessionMessages("room-1", "agent-1", []WorkspaceAgentSessionMessage{{
@@ -228,6 +228,240 @@ func TestStoreRemoteMessageEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	}}, 8)
 	if notifyCount != 2 {
 		t.Fatalf("notify count after new remote message = %d, want 2", notifyCount)
+	}
+}
+
+func TestStoreAssignsGapFreeMessageVersionsForSameMillisecondRows(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	sameMS := int64(1710000000001)
+	svc.ApplySessionMessages("room-1", EventSource{AgentID: "agent-1"}, "agent-1", []WorkspaceAgentSessionMessageUpdate{{
+		MessageID:        "client-submit:user:submit-1",
+		TurnID:           "turn-1",
+		Role:             "user",
+		Kind:             "text",
+		Payload:          map[string]any{"clientSubmitId": "submit-1", "text": "hello"},
+		OccurredAtUnixMS: sameMS,
+	}, {
+		MessageID:        "assistant-1",
+		TurnID:           "turn-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "hi"},
+		OccurredAtUnixMS: sameMS,
+	}})
+
+	reply, ok := svc.ListSessionMessages("room-1", "agent-1", 0, 10)
+	if !ok || reply.LatestVersion != 2 || len(reply.Messages) != 2 {
+		t.Fatalf("messages reply = %#v, ok=%v, want two gap-free rows", reply, ok)
+	}
+	if reply.Messages[0].Version != 1 || reply.Messages[1].Version != 2 {
+		t.Fatalf("versions = %d/%d, want 1/2", reply.Messages[0].Version, reply.Messages[1].Version)
+	}
+
+	incremental, ok := svc.ListSessionMessages("room-1", "agent-1", 1, 10)
+	if !ok || incremental.LatestVersion != 2 || len(incremental.Messages) != 1 || incremental.Messages[0].MessageID != "assistant-1" {
+		t.Fatalf("incremental reply = %#v, ok=%v, want only version 2", incremental, ok)
+	}
+	full, ok := svc.ListSessionMessages("room-1", "agent-1", 0, 10)
+	if !ok || len(full.Messages) != 2 {
+		t.Fatalf("full resync reply = %#v, ok=%v, want complete snapshot", full, ok)
+	}
+}
+
+func TestStoreSortsSessionMessagesByOccurredAtNotVersion(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	svc.ApplySessionMessages("room-1", EventSource{AgentID: "agent-1"}, "agent-1", []WorkspaceAgentSessionMessageUpdate{{
+		MessageID:        "later-ingested-first",
+		TurnID:           "turn-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "later"},
+		OccurredAtUnixMS: 3000,
+	}, {
+		MessageID:        "earlier-ingested-second",
+		TurnID:           "turn-1",
+		Role:             "user",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "earlier"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	reply, ok := svc.ListSessionMessages("room-1", "agent-1", 0, 10)
+	if !ok || len(reply.Messages) != 2 {
+		t.Fatalf("messages reply = %#v, ok=%v, want two rows", reply, ok)
+	}
+	if reply.Messages[0].MessageID != "earlier-ingested-second" || reply.Messages[0].Version != 2 {
+		t.Fatalf("first message = %#v, want earlier row despite version 2", reply.Messages[0])
+	}
+	if reply.Messages[1].MessageID != "later-ingested-first" || reply.Messages[1].Version != 1 {
+		t.Fatalf("second message = %#v, want later row despite version 1", reply.Messages[1])
+	}
+}
+
+func TestStoreZeroOccurredAtLegacyRowSortsByFallbackTimestamp(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	// Hydration (RestoreSnapshot -> mergeSnapshotMessagesLocked) stores rows
+	// as-is: legacy rows can carry StartedAt/CompletedAt but no OccurredAt.
+	svc.RestoreSnapshot("room-1", WorkspaceAgentSnapshot{
+		SessionMessagesByID: map[string][]WorkspaceAgentSessionMessage{
+			"agent-1": {{
+				MessageID:       "legacy-started-only",
+				Role:            "assistant",
+				Kind:            "text",
+				Payload:         map[string]any{"text": "old"},
+				StartedAtUnixMS: 1000,
+			}, {
+				MessageID:        "timestamped-later",
+				Role:             "assistant",
+				Kind:             "text",
+				Payload:          map[string]any{"text": "new"},
+				OccurredAtUnixMS: 2000,
+			}},
+		},
+	})
+
+	reply, ok := svc.ListSessionMessages("room-1", "agent-1", 0, 10)
+	if !ok || len(reply.Messages) != 2 {
+		t.Fatalf("messages reply = %#v, ok=%v, want two rows", reply, ok)
+	}
+	if reply.Messages[0].MessageID != "legacy-started-only" || reply.Messages[1].MessageID != "timestamped-later" {
+		t.Fatalf(
+			"order = [%s %s], want the zero-OccurredAt legacy row placed by its startedAt fallback, not forced last",
+			reply.Messages[0].MessageID,
+			reply.Messages[1].MessageID,
+		)
+	}
+}
+
+func TestStoreListSessionMessagesPagesByVersionDespiteOccurredAtOrder(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	// Ingest (version) order is the reverse of display (occurredAt) order.
+	svc.ApplySessionMessages("room-1", EventSource{AgentID: "agent-1"}, "agent-1", []WorkspaceAgentSessionMessageUpdate{{
+		MessageID:        "third-by-time",
+		TurnID:           "turn-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "third"},
+		OccurredAtUnixMS: 3000,
+	}, {
+		MessageID:        "second-by-time",
+		TurnID:           "turn-1",
+		Role:             "assistant",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "second"},
+		OccurredAtUnixMS: 2000,
+	}, {
+		MessageID:        "first-by-time",
+		TurnID:           "turn-1",
+		Role:             "user",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "first"},
+		OccurredAtUnixMS: 1000,
+	}})
+
+	// Page with limit=1 and advance the cursor the way poller.go
+	// maxMessageVersion does: max(reply.LatestVersion, delivered versions).
+	// Every message must be delivered exactly once; a page must never contain
+	// version N while omitting an undelivered version < N.
+	delivered := []string{}
+	cursor := uint64(0)
+	for page := 0; page < 6; page++ {
+		reply, ok := svc.ListSessionMessages("room-1", "agent-1", cursor, 1)
+		if !ok {
+			t.Fatalf("ListSessionMessages ok = false on page %d", page)
+		}
+		if len(reply.Messages) == 0 {
+			if reply.HasMore {
+				t.Fatalf("empty page %d reported hasMore", page)
+			}
+			break
+		}
+		next := reply.LatestVersion
+		for _, message := range reply.Messages {
+			delivered = append(delivered, message.MessageID)
+			if message.Version > next {
+				next = message.Version
+			}
+		}
+		if next <= cursor {
+			t.Fatalf("cursor did not advance on page %d: %d -> %d", page, cursor, next)
+		}
+		cursor = next
+	}
+	want := []string{"third-by-time", "second-by-time", "first-by-time"}
+	if !reflect.DeepEqual(delivered, want) {
+		t.Fatalf("delivered = %#v, want every message in version order %#v", delivered, want)
+	}
+}
+
+func TestStoreSnapshotCarriesTurnStateAndMessagesFromActivityEvents(t *testing.T) {
+	svc := New(nil)
+	svc.TrackRoom("room-1")
+
+	source := EventSource{
+		Provider:          "codex",
+		ProviderSessionID: "provider-1",
+		AgentID:           "agent-1",
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+	}
+	svc.ApplyEvents("room-1", source, []activityshared.Event{{
+		EventID:           "session-started-1",
+		Type:              activityshared.EventSessionStarted,
+		Provider:          activityshared.ProviderCodex,
+		ProviderSessionID: "provider-1",
+		AgentSessionID:    "agent-1",
+		OccurredAtUnixMS:  1000,
+		Payload: activityshared.EventPayload{
+			LifecycleStatus: string(activityshared.SessionLifecycleStatusActive),
+			EffectiveStatus: string(activityshared.SessionStatusIdle),
+		},
+	}, {
+		EventID:           "turn-started-1",
+		Type:              activityshared.EventTurnStarted,
+		Provider:          activityshared.ProviderCodex,
+		ProviderSessionID: "provider-1",
+		AgentSessionID:    "agent-1",
+		OccurredAtUnixMS:  1001,
+		Payload: activityshared.EventPayload{
+			TurnID:    "turn-1",
+			TurnPhase: string(activityshared.TurnPhaseWorking),
+		},
+	}, {
+		EventID:           "message-1",
+		Type:              activityshared.EventMessageAppended,
+		Provider:          activityshared.ProviderCodex,
+		ProviderSessionID: "provider-1",
+		AgentSessionID:    "agent-1",
+		OccurredAtUnixMS:  1002,
+		Payload: activityshared.EventPayload{
+			TurnID:  "turn-1",
+			Role:    activityshared.MessageRoleAssistant,
+			Content: "working",
+			Metadata: map[string]any{
+				"messageId": "assistant:turn-1:1",
+			},
+		},
+	}})
+
+	snapshot, ok := svc.GetAgentSnapshot("room-1")
+	if !ok || len(snapshot.Sessions) != 1 {
+		t.Fatalf("snapshot = %#v, ok=%v, want one session", snapshot, ok)
+	}
+	session := snapshot.Sessions[0]
+	if session.TurnPhase != string(activityshared.TurnPhaseWorking) || session.EffectiveStatus != string(activityshared.SessionStatusWorking) {
+		t.Fatalf("session turn state = phase %q effective %q, want working", session.TurnPhase, session.EffectiveStatus)
+	}
+	messages := snapshot.SessionMessagesByID["agent-1"]
+	if len(messages) != 1 || messages[0].MessageID != "assistant:turn-1:1" || messages[0].Version != 1 {
+		t.Fatalf("snapshot messages = %#v, want one versioned message", snapshot.SessionMessagesByID)
 	}
 }
 
@@ -959,20 +1193,22 @@ func TestStoreStoresMessageUpdatesForLocalReads(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.ApplyActivity("room-1", EventSource{AgentID: "agent-session-1"}, nil, nil, []WorkspaceAgentMessageUpdate{{
-		AgentSessionID: "agent-session-1",
-		MessageID:      "message-2",
-		Seq:            2,
-		Role:           "assistant",
-		Kind:           "text",
-		Status:         "streaming",
-		Payload:        map[string]any{"text": "working"},
+		AgentSessionID:   "agent-session-1",
+		MessageID:        "message-2",
+		Seq:              2,
+		Role:             "assistant",
+		Kind:             "text",
+		Status:           "streaming",
+		Payload:          map[string]any{"text": "working"},
+		OccurredAtUnixMS: 1710000000002,
 	}, {
-		AgentSessionID: "agent-session-1",
-		MessageID:      "message-1",
-		Seq:            1,
-		Role:           "user",
-		Kind:           "text",
-		Payload:        map[string]any{"text": "hello"},
+		AgentSessionID:   "agent-session-1",
+		MessageID:        "message-1",
+		Seq:              1,
+		Role:             "user",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "hello"},
+		OccurredAtUnixMS: 1710000000001,
 	}})
 	svc.ApplyActivity("room-1", EventSource{AgentID: "agent-session-1"}, nil, nil, []WorkspaceAgentMessageUpdate{{
 		AgentSessionID:    "agent-session-1",
@@ -992,11 +1228,11 @@ func TestStoreStoresMessageUpdatesForLocalReads(t *testing.T) {
 	if len(messages.Messages) != 2 {
 		t.Fatalf("messages = %#v, want 2", messages.Messages)
 	}
-	if messages.Messages[0].MessageID != "message-1" || messages.Messages[0].Seq != 1 {
-		t.Fatalf("first message = %#v, want message-1 seq 1", messages.Messages[0])
+	if messages.Messages[0].MessageID != "message-1" || messages.Messages[0].Seq != 2 {
+		t.Fatalf("first message = %#v, want message-1 displayed first with seq 2", messages.Messages[0])
 	}
-	if messages.Messages[1].MessageID != "message-2" || messages.Messages[1].Seq != 2 || messages.Messages[1].Status != "completed" {
-		t.Fatalf("second message = %#v, want completed message-2 preserving first seq 2", messages.Messages[1])
+	if messages.Messages[1].MessageID != "message-2" || messages.Messages[1].Seq != 1 || messages.Messages[1].Status != "completed" {
+		t.Fatalf("second message = %#v, want completed message-2 preserving first seq 1", messages.Messages[1])
 	}
 	if messages.Messages[1].Payload["text"] != "done" || messages.Messages[1].CompletedAtUnixMS != 1710000000003 {
 		t.Fatalf("merged message = %#v", messages.Messages[1])
@@ -1084,7 +1320,7 @@ func TestStoreAppliesSessionMessagesForLocalReads(t *testing.T) {
 		message.Status != "completed" || message.CompletedAtUnixMS != 1710000000002 {
 		t.Fatalf("message = %#v", message)
 	}
-	if message.Seq != 0 || message.CallID != "" || message.Title != "" {
+	if message.Seq != 1 || message.CallID != "" || message.Title != "" {
 		t.Fatalf("new session message leaked old top-level fields: %#v", message)
 	}
 	if message.Payload["text"] != "hello" {
@@ -1122,7 +1358,7 @@ func TestStoreBuildsSnapshotMessagesFromCanonicalSessionMessages(t *testing.T) {
 	}
 	message := sessionMessages[0]
 	if message.AgentSessionID != "agent-session-1" || message.MessageID != "toolcall:call-1" ||
-		message.Version != 2 || message.Status != "running" {
+		message.Version != 1 || message.Status != "running" {
 		t.Fatalf("snapshot message = %#v", message)
 	}
 	if message.Payload["toolName"] != "Bash" || message.Payload["callId"] != "call-1" || message.Payload["title"] != "Bash" {
@@ -1401,7 +1637,7 @@ func TestStoreMergesToolMessageUpdatePayloadsForLocalReads(t *testing.T) {
 		t.Fatalf("messages = %#v, ok=%v, want one message", messages.Messages, ok)
 	}
 	message := messages.Messages[0]
-	if message.Seq != 2 || message.Status != "completed" || message.StartedAtUnixMS != 1710000000002 || message.CompletedAtUnixMS != 1710000000003 {
+	if message.Seq != 1 || message.Status != "completed" || message.StartedAtUnixMS != 1710000000002 || message.CompletedAtUnixMS != 1710000000003 {
 		t.Fatalf("merged tool message metadata = %#v", message)
 	}
 	input, _ := message.Payload["input"].(map[string]any)

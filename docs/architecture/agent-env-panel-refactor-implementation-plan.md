@@ -309,7 +309,7 @@ describe("buildAgentEnvWizardViewModel", () => {
 
   it("exposes the manual install command for codex", () => {
     expect(buildAgentEnvWizardViewModel(input()).manualCommand).toBe(
-      "npm install -g @openai/codex"
+      "npm install -g @openai/codex --include=optional"
     );
   });
 });
@@ -380,8 +380,8 @@ export interface NetworkCheck {
 
 const MANUAL_INSTALL_COMMANDS: Partial<Record<WorkspaceAgentProvider, string>> =
   {
-    codex: "npm install -g @openai/codex",
-    "claude-code": "npm install -g @anthropic-ai/claude-code"
+    codex: "npm install -g @openai/codex --include=optional",
+    "claude-code": "curl -fsSL https://claude.ai/install.sh | bash"
   };
 
 function endpointHost(endpoint: string | null | undefined): string | null {

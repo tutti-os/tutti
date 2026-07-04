@@ -9,10 +9,18 @@ import {
 } from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
+import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
 import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import {
+  AgentActivityRuntimeProvider,
+  type AgentActivityRuntime,
+  type AgentActivityRuntimeSessionSection,
+  type AgentActivityRuntimeSessionSectionsResult
+} from "../../agentActivityRuntime";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -24,9 +32,17 @@ const conversationMetaMock = vi.hoisted(() => ({
 
 const composerMock = vi.hoisted(() => ({
   calls: [] as Array<{
+    backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
+    onSubmit?: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
+    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+    providerSelectReadonly?: boolean;
+    providerTargets?: AgentGUINodeViewModel["providerTargets"];
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }>
@@ -50,16 +66,29 @@ vi.mock("./AgentSessionChrome", () => ({
 
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
+    backgroundAgentStatusText?: string | null;
     composerFocusRequestSequence?: number | null;
     compactSupported?: boolean | null;
     isSendingTurn?: boolean;
+    onSubmit?: (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string
+    ) => void;
+    onProviderSelect?: AgentGUINodeViewProps["actions"]["selectProvider"];
+    providerSelectReadonly?: boolean;
+    providerTargets?: AgentGUINodeViewModel["providerTargets"];
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
   }) => {
     composerMock.calls.push({
+      backgroundAgentStatusText: props.backgroundAgentStatusText,
       composerFocusRequestSequence: props.composerFocusRequestSequence,
       compactSupported: props.compactSupported,
       isSendingTurn: props.isSendingTurn,
+      onProviderSelect: props.onProviderSelect,
+      providerSelectReadonly: props.providerSelectReadonly,
+      onSubmit: props.onSubmit,
+      providerTargets: props.providerTargets,
       showStopButton: props.showStopButton,
       usage: props.usage
     });
@@ -126,6 +155,29 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({ onConversationRailWidthChanged });
 
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
+  });
+
+  it("only renders the provider filter for multi-provider conversation scope", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    const { container, rerender } = renderAgentGUINodeView({
+      viewModel: createViewModel({ providerTargets })
+    });
+
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: createViewModel({
+          conversationScope: "multi-provider",
+          providerTargets
+        })
+      })
+    );
+
+    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
   });
 
   it("ignores rail pointer moves that do not come from the resize handle drag", () => {
@@ -257,81 +309,306 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(resizeHandle).toHaveClass("opacity-0");
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
+  it("switches the conversation filter from the avatar rail tile", () => {
+    const actions = createActions();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ]
+      }
+    });
 
-  it("keeps the conversation search field styled from the carried TSH surface", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    fireEvent.click(screen.getByRole("tab", { name: "Claude Code" }));
 
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-panel\s*\{[^}]*border-right:\s*0;/s
+    expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
+      provider: "claude-code",
+      providerTargetId: claudeTarget.targetId
+    });
+    expect(actions.updateConversationFilter).not.toHaveBeenCalled();
+    expect(actions.selectProvider).not.toHaveBeenCalled();
+  });
+
+  it("switches Codex into an agent-target conversation filter", () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: claudeTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: claudeTarget,
+        providerTargets: [codexTarget, claudeTarget]
+      }
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Codex" }));
+
+    expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
+      provider: "codex",
+      providerTargetId: codexTarget.targetId
+    });
+    expect(actions.updateConversationFilter).not.toHaveBeenCalled();
+    expect(actions.selectProvider).not.toHaveBeenCalled();
+  });
+
+  it("highlights All from the conversation filter without constraining target", () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: claudeTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ]
+      }
+    });
+
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
-    expect(css).toMatch(
-      /\.room-issue-node__search-field\s*{[^}]*position:\s*relative[^}]*min-width:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-toolbar\s*\{[^}]*--agent-gui-rail-control-radius:\s*6px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-toolbar\s*\{[^}]*padding:\s*0\s+16px\s+16px;/s
-    );
-    expect(css).toMatch(
-      /\.workbench-window:has\(\s*\[data-agent-gui-workbench-header="true"\]\[data-agent-gui-workbench-header-collapsed="false"\]\s*\)\s*\.agent-gui-node__rail-toolbar\s*{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\);/s
-    );
-    expect(css).toMatch(
-      /\.room-issue-node__search-input\s*{[^}]*width:\s*100%[^}]*height:\s*32px\s*!important;[^}]*min-height:\s*32px;[^}]*max-height:\s*32px;[^}]*border:\s*0\s*!important;[^}]*border-radius:\s*var\(--agent-gui-rail-control-radius\)\s*!important;[^}]*font-size:\s*13px\s*!important;[^}]*line-height:\s*18px;[^}]*appearance:\s*none;/s
-    );
-    expect(css).toMatch(
-      /\.room-issue-node__search-clear-button\s*{[^}]*position:\s*absolute[^}]*right:\s*4px[^}]*width:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__new-conversation-icon-button\s*\{[^}]*height:\s*32px;[^}]*min-height:\s*32px;[^}]*max-height:\s*32px;[^}]*border:\s*0\s*!important;[^}]*border-radius:\s*var\(--agent-gui-rail-control-radius\)\s*!important;[^}]*font-size:\s*13px;/s
+    expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveAttribute(
+      "aria-selected",
+      "false"
     );
   });
 
-  it("does not animate the rail resize geometry while dragging", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+  it("highlights Codex instead of All for an agent-target filter", () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: codexTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: codexTarget,
+        providerTargets: [
+          codexTarget,
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      }
+    });
 
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\[data-rail-resizing="true"\]\s*{[^}]*transition:\s*none/s
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "false"
     );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-resize-handle\[data-resizing="true"\]\s*{[^}]*transition:\s*none/s
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
   });
 
-  it("uses ui-system ConfirmationDialog for project action confirmations", () => {
-    const source = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
+  it("selects only the All tile for all-conversation mode", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          createLocalAgentGUIProviderTarget("claude-code")
+        ]
+      }
+    });
 
-    expect(source).toMatch(/ConfirmationDialog/);
-    expect(source).toMatch(
-      /setPendingProjectAction\(\{[\s\S]*kind:\s*"batch-delete"/
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
-    expect(source).toMatch(
-      /setPendingProjectAction\(\{[\s\S]*kind:\s*"remove"/
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveAttribute(
+      "aria-selected",
+      "false"
     );
-    expect(source).toMatch(
-      /onConfirmDeleteProjectConversations\(action\.path\)/
-    );
-    expect(source).toMatch(/onRemoveProject\(action\.path\)/);
-    expect(source).toMatch(/tone="destructive"/);
-    expect(source).toMatch(
-      /overlayClassName=\{AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME\}/
-    );
-    expect(source).not.toMatch(/toast\.custom\(/);
-    expect(source).not.toMatch(/toast\.warning\(/);
   });
 
-  it("places conversation section create action tooltips above the icon button first", () => {
-    const source = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
+  it("selects the All tile for daemon local Codex targets", () => {
+    const daemonCodexTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      targetId: "local-codex"
+    };
 
-    expect(source).toMatch(
-      /<TooltipContent\s+side="top"\s+sideOffset=\{6\}\s+className=\{styles\.conversationSectionActionTooltip\}\s*>\s*\{createConversationLabel\}/
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: daemonCodexTarget,
+        providerTargets: [
+          daemonCodexTarget,
+          {
+            ...createLocalAgentGUIProviderTarget("claude-code"),
+            targetId: "local-claude-code"
+          }
+        ]
+      }
+    });
+
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true"
     );
+    expect(screen.getByRole("tab", { name: "Codex" })).toHaveAttribute(
+      "aria-selected",
+      "false"
+    );
+  });
+
+  it("shows provider target loading placeholders without local fallback tiles", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        providerTargets: [],
+        providerTargetsLoading: true
+      }
+    });
+
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Claude Code" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+  });
+
+  it("does not synthesize provider rail tiles when provider targets are explicitly empty", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        providerTargets: [],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Codex" })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+  });
+
+  it("falls back to All for avatar rail targets without an agent target id", () => {
+    const actions = createActions();
+    const localGeminiTarget = {
+      ...createLocalAgentGUIProviderTarget("gemini"),
+      label: "Local Gemini"
+    };
+    const sharedGeminiTarget = {
+      ...createLocalAgentGUIProviderTarget("gemini"),
+      targetId: "shared-agent:gemini-1",
+      label: "Shared Gemini"
+    };
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "all" },
+        selectedProviderTarget: sharedGeminiTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          localGeminiTarget,
+          sharedGeminiTarget
+        ]
+      }
+    });
+
+    const sharedTile = screen.getByRole("tab", { name: "Shared Gemini" });
+    expect(sharedTile).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.click(sharedTile);
+
+    expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
+      provider: "gemini",
+      providerTargetId: "shared-agent:gemini-1"
+    });
+    expect(actions.updateConversationFilter).not.toHaveBeenCalled();
+    expect(actions.selectProvider).not.toHaveBeenCalled();
+  });
+
+  it("hides provider switching options from the single-provider composer", () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const providerTargets = [
+      codexTarget,
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: codexTarget,
+        providerTargets
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      onProviderSelect: undefined,
+      providerSelectReadonly: true,
+      providerTargets: [codexTarget]
+    });
+  });
+
+  it("passes provider switching options into the multi-provider composer", () => {
+    const actions = createActions();
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        providerTargets
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      onProviderSelect: actions.selectProvider,
+      providerSelectReadonly: false,
+      providerTargets
+    });
+  });
+
+  it("renders the composer provider select read-only for an active session", () => {
+    const providerTargets = [
+      createLocalAgentGUIProviderTarget("codex"),
+      createLocalAgentGUIProviderTarget("claude-code")
+    ];
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversationScope: "multi-provider",
+        conversations: [conversation],
+        providerTargets
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      providerSelectReadonly: true,
+      providerTargets
+    });
   });
 
   it("opens a new conversation draft for the selected project section", () => {
@@ -485,21 +762,6 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
-
-  it("keeps ordinary conversation section actions hover and focus discoverable", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-more-button\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section:hover\s+\.agent-gui-node__conversation-section-more-button,[\s\S]*?\.agent-gui-node__conversation-section:focus-within\s+\.agent-gui-node__conversation-section-more-button,[\s\S]*?\.agent-gui-node__conversation-section-more-button\[aria-expanded="true"\s*\]\s*\{[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section\[data-kind="conversations"\]\s+\.agent-gui-node__conversation-section-actions\s*\{[^}]*min-width:\s*0;/s
-    );
-  });
-
   it("defers rendering conversation items for collapsed project sections", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -641,6 +903,50 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByText("noConversations")).not.toBeInTheDocument();
   });
 
+  it("groups project sections from the filtered conversations passed into the rail", () => {
+    const visibleConversation = {
+      ...createConversationSummary("visible-session"),
+      cwd: "/workspace/app",
+      project: {
+        id: "project-app",
+        path: "/workspace/app",
+        label: "App"
+      }
+    };
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: "local:codex"
+        },
+        conversations: [visibleConversation],
+        userProjects: [
+          {
+            id: "project-app",
+            path: "/workspace/app",
+            label: "App"
+          },
+          {
+            id: "project-api",
+            path: "/workspace/api",
+            label: "Api"
+          }
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        emptyProjectConversations: "No chats yet"
+      }
+    });
+
+    expect(screen.getByText("App")).toBeInTheDocument();
+    expect(screen.getByText("Api")).toBeInTheDocument();
+    expect(screen.getByText("visible-session")).toBeInTheDocument();
+    expect(conversationMetaMock.calls).toEqual(["visible-session"]);
+    expect(screen.getAllByText("No chats yet")).toHaveLength(2);
+  });
+
   it("hides batch delete from empty project section actions", async () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -694,6 +1000,56 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByTestId("agent-gui-conversation-list-loading-skeleton")
     ).toHaveAccessibleName("loadingConversations");
     expect(screen.queryByText("loadingConversations")).not.toBeInTheDocument();
+  });
+
+  it("does not render cwd-derived project sections while runtime sections are loading", () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(
+      () =>
+        new Promise<AgentActivityRuntimeSessionSectionsResult>(() => undefined)
+    );
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "project",
+          sectionKey: input.sectionKey,
+          userProject: createRuntimeUserProject(project),
+          sessions: [],
+          hasMore: false
+        })
+      },
+      labels: {
+        ...createLabels(),
+        loadingConversations: "loadingConversations"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: [
+          {
+            ...createConversationSummary("project-session-1"),
+            cwd: "/workspace/app/package-1"
+          }
+        ]
+      }
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toHaveAccessibleName("loadingConversations");
+    expect(screen.queryByRole("button", { name: /App/u })).toBeNull();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-project-session-1")
+    ).not.toBeInTheDocument();
   });
 
   it("opens a conversation from the rail with the external-link action", () => {
@@ -795,35 +1151,873 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not rerender the conversation rail when only the active detail state changes", () => {
-    const actions = createActions();
-    const labels = createLabels();
-    const viewModel = {
-      ...createViewModel(),
-      conversations: Array.from({ length: 20 }, (_, index) =>
-        createConversationSummary(`session-${index + 1}`)
-      )
+  it("loads more project rail sessions through the runtime section page", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
     };
-    const initialOptions = {
-      actions,
-      isActive: true,
-      labels,
-      viewModel
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: [
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-1",
+                "/workspace/app/package-1"
+              ),
+              updatedAtUnixMs: 100
+            },
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-3",
+                "/workspace/app/package-3"
+              ),
+              updatedAtUnixMs: 90
+            },
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-4",
+                "/workspace/app/package-4"
+              ),
+              updatedAtUnixMs: 80
+            },
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-5",
+                "/workspace/app/package-5"
+              ),
+              updatedAtUnixMs: 70
+            },
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-2",
+                "/workspace/app/package-2"
+              ),
+              updatedAtUnixMs: 10
+            }
+          ],
+          hasMore: true,
+          nextCursor: "10|project-session-2",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "project",
+      sectionKey: input.sectionKey,
+      userProject: createRuntimeUserProject(project),
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            input.workspaceId,
+            "project-extra",
+            "/workspace/app/packages/web"
+          ),
+          updatedAtUnixMs: 5
+        }
+      ]
+    }));
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage
     };
 
-    const { rerender } = renderAgentGUINodeView(initialOptions);
+    renderAgentGUINodeView({
+      activityRuntime,
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
 
-    expect(conversationMetaMock.calls).toHaveLength(5);
-    conversationMetaMock.calls = [];
-
-    rerender(
-      buildAgentGUINodeViewElement({
-        ...initialOptions,
-        isActive: false
+    fireEvent.click(
+      within(projectSection as HTMLElement).getByRole("button", {
+        name: "Show more"
       })
     );
 
-    expect(conversationMetaMock.calls).toHaveLength(0);
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    expect(listSessionSectionPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: "10|project-session-2",
+        limit: 5,
+        sectionKey: "project:/workspace/app",
+        signal: expect.any(AbortSignal),
+        workspaceId: "room-1"
+      })
+    );
+    expect(
+      await screen.findByTestId("agent-gui-conversation-item-project-extra")
+    ).toBeInTheDocument();
+  });
+
+  it("does not refetch runtime rail sections when an existing conversation summary or active provider updates", async () => {
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeConversationsSection({
+          sessions: [
+            {
+              ...createRuntimeSession(input.workspaceId, "session-1"),
+              title: "Initial title",
+              updatedAtUnixMs: 100
+            }
+          ],
+          hasMore: false
+        })
+      ]
+    }));
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage: async (
+        input: Parameters<
+          NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+        >[0]
+      ) => ({
+        kind: "conversations" as const,
+        sectionKey: input.sectionKey,
+        sessions: [],
+        hasMore: false
+      })
+    };
+    const initialConversation = {
+      ...createConversationSummary("session-1"),
+      title: "Initial title",
+      updatedAtUnixMs: 100
+    };
+    const baseViewModel = createViewModel();
+    const viewModel = {
+      ...baseViewModel,
+      data: {
+        ...baseViewModel.data,
+        provider: "claude-code" as const
+      },
+      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
+      conversations: [initialConversation]
+    };
+    const labels = createLabels();
+    const rendered = renderAgentGUINodeView({
+      activityRuntime,
+      labels,
+      viewModel
+    });
+
+    await waitFor(() => {
+      expect(listSessionSections).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    ).toHaveTextContent("Initial title");
+
+    const updatedConversation = {
+      ...initialConversation,
+      status: "working" as const,
+      title: "Updated title",
+      updatedAtUnixMs: 200
+    };
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels: { ...labels },
+        viewModel: {
+          ...viewModel,
+          data: {
+            ...viewModel.data,
+            provider: "codex" as const
+          },
+          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+          activeConversation: updatedConversation,
+          activeConversationId: updatedConversation.id,
+          conversations: [updatedConversation]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-conversation-item-session-1")
+      ).toHaveTextContent("Updated title");
+    });
+    expect(listSessionSections).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the active agent target filter to runtime rail section requests", async () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const agentTargetId = claudeTarget.agentTargetId ?? "";
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: [
+            {
+              ...createRuntimeSession(
+                input.workspaceId,
+                "project-session-1",
+                "/workspace/app/package-1",
+                { agentTargetId, provider: "claude-code" }
+              ),
+              updatedAtUnixMs: 100
+            }
+          ],
+          hasMore: true,
+          nextCursor: "100|project-session-1",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "project",
+      sectionKey: input.sectionKey,
+      userProject: createRuntimeUserProject(project),
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            input.workspaceId,
+            "project-extra",
+            "/workspace/app/older",
+            { agentTargetId, provider: "claude-code" }
+          ),
+          updatedAtUnixMs: 90
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage
+      },
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversationScope: "multi-provider",
+        conversationFilter: { kind: "agentTarget", agentTargetId },
+        selectedProviderTarget: claudeTarget,
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("codex"),
+          claudeTarget
+        ],
+        userProjects: [project],
+        conversations: []
+      }
+    });
+
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    await waitFor(() => {
+      expect(listSessionSections).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId,
+          limitPerSection: 5,
+          workspaceId: "room-1"
+        })
+      );
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
+
+    fireEvent.click(
+      within(projectSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentTargetId,
+          cursor: "100|project-session-1",
+          sectionKey: "project:/workspace/app",
+          workspaceId: "room-1"
+        })
+      );
+    });
+  });
+
+  it("renders an empty project runtime section without Show more when hasMore is false", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: [],
+          hasMore: false,
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage =
+      vi.fn<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>();
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage
+      },
+      labels: {
+        ...createLabels(),
+        emptyProjectConversations: "No chats yet",
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
+
+    expect(
+      within(projectSection as HTMLElement).getByText("No chats yet")
+    ).toBeInTheDocument();
+    expect(
+      within(projectSection as HTMLElement).queryByRole("button", {
+        name: "Show more"
+      })
+    ).not.toBeInTheDocument();
+    expect(listSessionSectionPage).not.toHaveBeenCalled();
+  });
+
+  it("loads more ordinary rail sessions through the conversations section page", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: [],
+          hasMore: false,
+          workspaceId: input.workspaceId
+        }),
+        createRuntimeConversationsSection({
+          sessions: Array.from({ length: 5 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `chat-session-${index + 1}`,
+              `/scratch/chat-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "96|chat-session-5"
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "conversations",
+      sectionKey: input.sectionKey,
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            input.workspaceId,
+            "chat-extra",
+            "/scratch/outside-project"
+          ),
+          updatedAtUnixMs: 40
+        }
+      ]
+    }));
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage
+    };
+
+    const { container } = renderAgentGUINodeView({
+      activityRuntime,
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+    const conversationsSection = await waitFor(() => {
+      const section = container.querySelector(
+        '.agent-gui-node__conversation-section[data-kind="conversations"]'
+      );
+      if (!section) {
+        throw new Error("Expected conversations section to render.");
+      }
+      return section;
+    });
+    if (!conversationsSection) {
+      throw new Error("Expected conversations section to render.");
+    }
+
+    fireEvent.click(
+      within(conversationsSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    expect(listSessionSectionPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: "96|chat-session-5",
+        limit: 5,
+        signal: expect.any(AbortSignal),
+        sectionKey: "conversations",
+        workspaceId: "room-1"
+      })
+    );
+    expect(
+      await screen.findByTestId("agent-gui-conversation-item-chat-extra")
+    ).toBeInTheDocument();
+  });
+
+  it("offers runtime paging when a project section has fewer than five local sessions", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: Array.from({ length: 2 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `project-session-${index + 1}`,
+              `/workspace/app/package-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "99|project-session-2",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "project",
+      sectionKey: input.sectionKey,
+      userProject: createRuntimeUserProject(project),
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            input.workspaceId,
+            "project-third",
+            "/workspace/app/older"
+          ),
+          updatedAtUnixMs: 80
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage
+      },
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
+
+    fireEvent.click(
+      within(projectSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    expect(listSessionSectionPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: "99|project-session-2",
+        sectionKey: "project:/workspace/app"
+      })
+    );
+    expect(
+      await screen.findByTestId("agent-gui-conversation-item-project-third")
+    ).toBeInTheDocument();
+  });
+
+  it("pages a parent project section by section key", async () => {
+    const parentProject = {
+      id: "project-root",
+      path: "/workspace",
+      label: "Workspace"
+    };
+    const childProject = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project: parentProject,
+          sessions: Array.from({ length: 5 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `parent-session-${index + 1}`,
+              `/workspace/package-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "96|parent-session-5",
+          workspaceId: input.workspaceId
+        }),
+        createRuntimeProjectSection({
+          project: childProject,
+          sessions: [],
+          hasMore: false,
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "project",
+      sectionKey: input.sectionKey,
+      userProject: createRuntimeUserProject(parentProject),
+      hasMore: false,
+      sessions: []
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage
+      },
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [parentProject, childProject],
+        conversations: []
+      }
+    });
+    const parentSectionButton = await screen.findByRole("button", {
+      name: /Workspace/u
+    });
+    const parentSection = parentSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!parentSection) {
+      throw new Error("Expected parent project section to render.");
+    }
+
+    fireEvent.click(
+      within(parentSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    expect(listSessionSectionPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: "96|parent-session-5",
+        sectionKey: "project:/workspace"
+      })
+    );
+  });
+
+  it("aborts and ignores stale runtime paging when the rail scope changes", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const deferredPage: {
+      resolve?: (page: AgentActivityRuntimeSessionSection) => void;
+    } = {};
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: Array.from({ length: 5 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `project-session-${index + 1}`,
+              `/workspace/app/package-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "96|project-session-5",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(
+      () =>
+        new Promise((resolve) => {
+          deferredPage.resolve = resolve;
+        })
+    );
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage
+    };
+    const { rerender } = renderAgentGUINodeView({
+      activityRuntime,
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
+
+    fireEvent.click(
+      within(projectSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    const signal = listSessionSectionPage.mock.calls[0]?.[0].signal;
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels: {
+          ...createLabels(),
+          showMoreConversations: "Show more"
+        },
+        viewModel: {
+          ...createViewModel({ workspaceId: "room-2" }),
+          userProjects: [project],
+          conversations: []
+        }
+      })
+    );
+
+    expect(signal?.aborted).toBe(true);
+    deferredPage.resolve?.({
+      kind: "project",
+      sectionKey: "project:/workspace/app",
+      userProject: createRuntimeUserProject(project),
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            "room-1",
+            "stale-project-extra",
+            "/workspace/app/older"
+          ),
+          updatedAtUnixMs: 80
+        }
+      ]
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-conversation-item-stale-project-extra")
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("aborts runtime paging when the rail unmounts", async () => {
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: Array.from({ length: 5 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `project-session-${index + 1}`,
+              `/workspace/app/package-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "96|project-session-5",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(() => new Promise<AgentActivityRuntimeSessionSection>(() => undefined));
+    const { unmount } = renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage
+      },
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more"
+      },
+      viewModel: {
+        ...createViewModel(),
+        userProjects: [project],
+        conversations: []
+      }
+    });
+
+    const projectSectionButton = await screen.findByRole("button", {
+      name: /App/u
+    });
+    const projectSection = projectSectionButton.closest(
+      ".agent-gui-node__conversation-section"
+    );
+    if (!projectSection) {
+      throw new Error("Expected project section to render.");
+    }
+
+    fireEvent.click(
+      within(projectSection as HTMLElement).getByRole("button", {
+        name: "Show more"
+      })
+    );
+    await waitFor(() => {
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+    });
+    const signal = listSessionSectionPage.mock.calls[0]?.[0].signal;
+
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
   });
 
   it("scrolls the active conversation item into view", () => {
@@ -851,97 +2045,108 @@ describe("AgentGUINodeView layout persistence", () => {
     }
   });
 
-  it("does not re-scroll the active conversation when only conversation metadata changes", () => {
+  it("does not scroll the active conversation again after loading more rail sessions", async () => {
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     const scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      sections: [
+        createRuntimeProjectSection({
+          project,
+          sessions: Array.from({ length: 5 }, (_, index) => ({
+            ...createRuntimeSession(
+              input.workspaceId,
+              `project-session-${index + 1}`,
+              `/workspace/app/package-${index + 1}`
+            ),
+            updatedAtUnixMs: 100 - index
+          })),
+          hasMore: true,
+          nextCursor: "96|project-session-5",
+          workspaceId: input.workspaceId
+        })
+      ]
+    }));
+    const listSessionSectionPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+    >(async (input) => ({
+      kind: "project",
+      sectionKey: input.sectionKey,
+      userProject: createRuntimeUserProject(project),
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(
+            input.workspaceId,
+            "project-extra",
+            "/workspace/app/older"
+          ),
+          updatedAtUnixMs: 80
+        }
+      ]
+    }));
 
     try {
-      const firstConversation = createConversationSummary("session-1");
-      const activeConversation = createConversationSummary("session-2");
-      const viewModel = {
-        ...createViewModel(),
-        conversations: [firstConversation, activeConversation],
-        activeConversation,
-        activeConversationId: "session-2"
-      };
-      const { rerender } = renderAgentGUINodeView({ viewModel });
+      renderAgentGUINodeView({
+        activityRuntime: {
+          ...createNoopAgentActivityRuntime(),
+          listSessionSections,
+          listSessionSectionPage
+        },
+        labels: {
+          ...createLabels(),
+          showMoreConversations: "Show more"
+        },
+        viewModel: {
+          ...createViewModel(),
+          activeConversation: {
+            ...createConversationSummary("project-session-1"),
+            cwd: "/workspace/app/package-1",
+            project
+          },
+          activeConversationId: "project-session-1",
+          userProjects: [project],
+          conversations: []
+        }
+      });
+      const projectSectionButton = await screen.findByRole("button", {
+        name: /App/u
+      });
 
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      });
+      const projectSection = projectSectionButton.closest(
+        ".agent-gui-node__conversation-section"
+      );
+      if (!projectSection) {
+        throw new Error("Expected project section to render.");
+      }
 
-      const updatedActiveConversation = {
-        ...activeConversation,
-        status: "working" as const,
-        updatedAtUnixMs: activeConversation.updatedAtUnixMs + 1_000
-      };
-      rerender(
-        <AgentGUINodeView
-          viewModel={{
-            ...viewModel,
-            conversations: [firstConversation, updatedActiveConversation],
-            activeConversation: updatedActiveConversation
-          }}
-          isAgentProviderReady={true}
-          actions={createActions()}
-          conversationRailCollapsed={false}
-          conversationRailWidthPx={240}
-          conversationRailMinWidthPx={220}
-          conversationRailMaxWidthPx={420}
-          detailMinWidthPx={220}
-          uiLanguage="en"
-          onConversationRailWidthChanged={vi.fn()}
-          labels={createLabels()}
-          workspaceUserProjectI18n={workspaceUserProjectI18n}
-        />
+      fireEvent.click(
+        within(projectSection as HTMLElement).getByRole("button", {
+          name: "Show more"
+        })
       );
 
+      await waitFor(() => {
+        expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
+      });
+      expect(
+        await screen.findByTestId("agent-gui-conversation-item-project-extra")
+      ).toBeInTheDocument();
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
-  });
-
-  it("keeps projected conversation and transcript labels stable across unrelated rerenders", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      conversationRailWidthPx: 240,
-      onConversationRailWidthChanged,
-      viewModel,
-      actions,
-      labels
-    });
-    const firstCall = conversationFlowMock.calls.at(-1);
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={viewModel}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={320}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
-    );
-    const secondCall = conversationFlowMock.calls.at(-1);
-
-    expect(firstCall?.conversation).toBeTruthy();
-    expect(secondCall?.conversation).toBe(firstCall?.conversation);
-    expect(secondCall?.labels).toBe(firstCall?.labels);
   });
 
   it("does not rerender the conversation detail flow when filtering the rail list", () => {
@@ -964,98 +2169,6 @@ describe("AgentGUINodeView layout persistence", () => {
       {
         target: { value: "session-2" }
       }
-    );
-
-    expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
-  });
-
-  it("does not rerender the conversation detail flow when detail chrome state changes", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      viewModel,
-      actions,
-      labels,
-      onConversationRailWidthChanged
-    });
-    const initialRenderCount = conversationFlowMock.calls.length;
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={{
-          ...viewModel,
-          inlineNotice: {
-            id: "notice-1",
-            message: "detail failed",
-            tone: "error",
-            autoDismissMs: null
-          }
-        }}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={240}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
-    );
-
-    expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
-  });
-
-  it("does not rerender the conversation detail flow when detail header status changes", () => {
-    const viewModel = {
-      ...createViewModel(),
-      activeConversation: createConversationSummary("session-1"),
-      activeConversationId: "session-1",
-      conversationDetail: createConversationDetail()
-    };
-    const actions = createActions();
-    const labels = createLabels();
-    const onConversationRailWidthChanged = vi.fn();
-
-    const { rerender } = renderAgentGUINodeView({
-      viewModel,
-      actions,
-      labels,
-      onConversationRailWidthChanged
-    });
-    const initialRenderCount = conversationFlowMock.calls.length;
-
-    rerender(
-      <AgentGUINodeView
-        viewModel={{
-          ...viewModel,
-          activeConversation: {
-            ...viewModel.activeConversation!,
-            status: "working"
-          }
-        }}
-        actions={actions}
-        isAgentProviderReady={true}
-        conversationRailCollapsed={false}
-        conversationRailWidthPx={240}
-        conversationRailMinWidthPx={220}
-        conversationRailMaxWidthPx={420}
-        detailMinWidthPx={220}
-        uiLanguage="en"
-        onConversationRailWidthChanged={onConversationRailWidthChanged}
-        labels={labels}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-      />
     );
 
     expect(conversationFlowMock.calls).toHaveLength(initialRenderCount);
@@ -1221,10 +2334,39 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(timelineContent).toHaveStyle({
       minWidth: "100%",
       display: "grid",
+      gridTemplateColumns: "minmax(0, 1fr)",
       gap: "24px"
     });
   });
 
+  it("marks the timeline as away from top only after scrolling down", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail()
+      }
+    });
+
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+
+    expect(timeline).not.toHaveClass(
+      "agent-gui-node__timeline--scrolled-from-top"
+    );
+
+    timeline.scrollTop = 48;
+    fireEvent.scroll(timeline);
+    expect(timeline).toHaveClass("agent-gui-node__timeline--scrolled-from-top");
+
+    timeline.scrollTop = 0;
+    fireEvent.scroll(timeline);
+    expect(timeline).not.toHaveClass(
+      "agent-gui-node__timeline--scrolled-from-top"
+    );
+  });
   it("renders older-message loading above the transcript", () => {
     const activeConversation = createConversationSummary("session-1");
     renderAgentGUINodeView({
@@ -1302,6 +2444,53 @@ describe("AgentGUINodeView layout persistence", () => {
       })
     );
     expect(timeline.scrollTop).toBe(400);
+  });
+
+  it("scrolls to the bottom after submitting a prompt from the middle of the timeline", () => {
+    const activeConversation = createConversationSummary("session-1");
+    const actions = createActions();
+    const activeViewModel = {
+      ...createViewModel(),
+      conversations: [activeConversation],
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      conversationDetail: createConversationDetail()
+    };
+    const { rerender } = renderAgentGUINodeView({
+      actions,
+      viewModel: activeViewModel
+    });
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+    let scrollHeight = 1000;
+    Object.defineProperty(timeline, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight
+    });
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => 400
+    });
+
+    timeline.scrollTop = 240;
+    fireEvent.scroll(timeline);
+
+    composerMock.calls.at(-1)?.onSubmit?.([{ type: "text", text: "New ask" }]);
+    expect(actions.submitPrompt).toHaveBeenCalledWith([
+      { type: "text", text: "New ask" }
+    ]);
+
+    scrollHeight = 1240;
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        viewModel: {
+          ...activeViewModel,
+          conversationDetail: createConversationDetailWithUserMessage("New ask")
+        }
+      })
+    );
+
+    expect(timeline.scrollTop).toBe(840);
   });
 });
 
@@ -1383,6 +2572,23 @@ describe("AgentGUINodeView usage", () => {
 
     expect(composerMock.calls.at(-1)?.usage?.percentUsed).toBeNull();
   });
+
+  it("passes background agent waiting status to the composer", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        backgroundAgentCount: 2
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.backgroundAgentStatusText).toBe(
+      "waitingForBackgroundAgent:2"
+    );
+  });
 });
 
 describe("AgentGUINodeView detail header actions", () => {
@@ -1456,42 +2662,114 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(action).toHaveClass("tsh-desktop-no-drag");
     expect(action).toHaveClass("[-webkit-app-region:no-drag]");
   });
-
-  it("floats the setup notice above the detail content without affecting layout", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    const setupNoticeRule = css.match(
-      /\.agent-gui-node__provider-setup-notice\s*{[^}]*}/s
-    )?.[0];
-
-    expect(setupNoticeRule).toContain("position: absolute;");
-    expect(setupNoticeRule).toContain("top: 56px;");
-    // Horizontally centered above the detail content.
-    expect(setupNoticeRule).toContain("left: 50%;");
-    expect(setupNoticeRule).toContain("transform: translateX(-50%);");
-    expect(setupNoticeRule).toContain("z-index: 2;");
-    expect(setupNoticeRule).toContain("width: max-content;");
-    // Message text and the "Set up" action must not butt together.
-    expect(setupNoticeRule).toContain("column-gap: 6px;");
-    expect(setupNoticeRule).toMatch(
-      /max-width:\s*min\(\s*calc\(100% - \(var\(--agent-gui-detail-padding-x\) \* 2\)\),\s*420px\s*\);/s
-    );
-    expect(setupNoticeRule).toContain("margin: 0;");
-    expect(setupNoticeRule).not.toContain("background:");
-    expect(setupNoticeRule).toContain("pointer-events: auto;");
-    expect(css).toContain(
-      ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
-    );
-    expect(css).toContain("top: calc(64px + 16px);");
-    const setupNoticeActionRule = css.match(
-      /\.agent-gui-node__provider-setup-notice-action\s*{[^}]*}/s
-    )?.[0];
-    expect(setupNoticeActionRule).toContain("-webkit-app-region: no-drag;");
-  });
-
   it("hides the setup notice when the provider is ready", () => {
     renderAgentGUINodeView({ isAgentProviderReady: true });
 
     expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
+  });
+});
+
+describe("AgentGUINodeView provider readiness gate", () => {
+  afterEach(() => {
+    composerMock.calls = [];
+  });
+
+  it("renders an empty-state gate instead of the composer when the provider is not installed", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "not_installed",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateInstallTitle");
+    expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
+    expect(screen.queryByTestId("agent-composer")).toBeNull();
+
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    );
+
+    expect(onAction).toHaveBeenCalledWith("codex", "install");
+  });
+
+  it("renders a login gate for auth-required providers", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "auth_required",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateLoginTitle");
+
+    fireEvent.click(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    );
+
+    expect(onAction).toHaveBeenCalledWith("codex", "login");
+  });
+
+  it("disables the gate action while an action is pending", () => {
+    const onAction = vi.fn();
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "not_installed",
+          pendingAction: "install",
+          onAction
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-pending")
+    ).toHaveTextContent("providerGatePendingInstall");
+
+    const action = screen.getByTestId(
+      "agent-gui-provider-readiness-gate-action"
+    );
+    expect(action).toBeDisabled();
+    fireEvent.click(action);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the normal empty composer when no gate is present", () => {
+    renderAgentGUINodeView();
+
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(screen.getByTestId("agent-composer")).toBeInTheDocument();
+  });
+
+  it("does not gate existing active conversations", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [activeConversation],
+        providerReadinessGate: {
+          status: "not_installed"
+        }
+      })
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
   });
 });
 
@@ -1527,6 +2805,7 @@ describe("AgentGUINodeView usage alert banner", () => {
 });
 
 interface RenderAgentGUINodeViewOptions {
+  activityRuntime?: AgentActivityRuntime;
   conversationRailCollapsed?: boolean;
   conversationRailWidthPx?: number;
   isActive?: boolean;
@@ -1541,6 +2820,7 @@ interface RenderAgentGUINodeViewOptions {
 }
 
 function buildAgentGUINodeViewElement({
+  activityRuntime = testAgentActivityRuntime,
   conversationRailCollapsed = false,
   conversationRailWidthPx = 240,
   isActive = true,
@@ -1554,24 +2834,26 @@ function buildAgentGUINodeViewElement({
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
-    <AgentGUINodeView
-      viewModel={viewModel}
-      onLinkAction={onLinkAction}
-      isActive={isActive}
-      isAgentProviderReady={isAgentProviderReady}
-      slashStatusLimits={slashStatusLimits}
-      actions={actions}
-      workspaceUserProjectI18n={workspaceUserProjectI18n}
-      conversationRailCollapsed={conversationRailCollapsed}
-      conversationRailWidthPx={conversationRailWidthPx}
-      conversationRailMinWidthPx={220}
-      conversationRailMaxWidthPx={420}
-      detailMinWidthPx={220}
-      uiLanguage="en"
-      onOpenConversationWindow={onOpenConversationWindow}
-      onConversationRailWidthChanged={onConversationRailWidthChanged}
-      labels={labels}
-    />
+    <AgentActivityRuntimeProvider runtime={activityRuntime}>
+      <AgentGUINodeView
+        viewModel={viewModel}
+        onLinkAction={onLinkAction}
+        isActive={isActive}
+        isAgentProviderReady={isAgentProviderReady}
+        slashStatusLimits={slashStatusLimits}
+        actions={actions}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        conversationRailCollapsed={conversationRailCollapsed}
+        conversationRailWidthPx={conversationRailWidthPx}
+        conversationRailMinWidthPx={220}
+        conversationRailMaxWidthPx={420}
+        detailMinWidthPx={220}
+        uiLanguage="en"
+        onOpenConversationWindow={onOpenConversationWindow}
+        onConversationRailWidthChanged={onConversationRailWidthChanged}
+        labels={labels}
+      />
+    </AgentActivityRuntimeProvider>
   );
 }
 
@@ -1581,8 +2863,209 @@ function renderAgentGUINodeView(options: RenderAgentGUINodeViewOptions = {}) {
 
 type AgentGUINodeViewProps = Parameters<typeof AgentGUINodeView>[0];
 
+function createNoopAgentActivityRuntime(): AgentActivityRuntime {
+  const snapshot = createEmptyAgentActivitySnapshot();
+  return {
+    promptContentUploadSupport: { file: true, image: true },
+    async cancelSession(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        canceled: false,
+        reason: "no_active_turn"
+      };
+    },
+    async createSession(input) {
+      return createRuntimeSession(
+        input.workspaceId,
+        "session-1",
+        input.cwd ?? "/workspace"
+      );
+    },
+    async deleteSession() {
+      return { removed: true };
+    },
+    async activateSession(input) {
+      return {
+        session: createRuntimeSession(
+          input.workspaceId,
+          input.agentSessionId,
+          input.cwd ?? "/workspace"
+        ),
+        activation: { mode: input.mode, status: "attached" }
+      };
+    },
+    async getSession(workspaceId, agentSessionId) {
+      return createRuntimeSession(workspaceId, agentSessionId);
+    },
+    async getComposerOptions() {
+      return {};
+    },
+    async updateSessionSettings(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        settings: input.settings
+      };
+    },
+    async warmupOpenclawGateway() {
+      return { accepted: true, ready: true };
+    },
+    async getSessionControlState() {
+      return { status: "ready" } as Awaited<
+        ReturnType<AgentActivityRuntime["getSessionControlState"]>
+      >;
+    },
+    getSnapshot() {
+      return snapshot;
+    },
+    async listSessionMessages() {
+      return { messages: [], latestVersion: 0, hasMore: false };
+    },
+    async listAgentGeneratedFiles(input) {
+      return { workspaceId: input.workspaceId, entries: [] };
+    },
+    async load() {
+      return snapshot;
+    },
+    ensureSessionSynchronized() {
+      return () => undefined;
+    },
+    retainSessionEvents() {
+      return () => undefined;
+    },
+    async sendInput(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        turnId: "turn-1",
+        turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+        submitAvailability: { state: "ready" }
+      };
+    },
+    async uploadPromptContent(input) {
+      return { content: input.content };
+    },
+    async readSessionAttachment(input) {
+      return {
+        attachmentId: input.attachmentId,
+        mimeType: "application/octet-stream",
+        data: ""
+      };
+    },
+    async readPromptAsset(input) {
+      return {
+        assetId: input.assetId ?? undefined,
+        mimeType: input.mimeType,
+        path: input.path ?? "",
+        data: ""
+      };
+    },
+    async setSessionPinned(input) {
+      return createRuntimeSession(input.workspaceId, input.agentSessionId);
+    },
+    async trackSettingsProjectChange() {},
+    async trackDraftComposerSettingsChange() {},
+    reportDiagnostic() {},
+    async unactivateSession(input) {
+      return {
+        agentSessionId: input.agentSessionId,
+        buffered: true
+      };
+    },
+    async submitInteractive() {
+      return {};
+    },
+    subscribeSessionEvents() {
+      return () => undefined;
+    },
+    subscribe() {
+      return () => undefined;
+    }
+  };
+}
+
+function createRuntimeSession(
+  workspaceId: string,
+  agentSessionId: string,
+  cwd = "/workspace",
+  options: {
+    agentTargetId?: string;
+    provider?: "codex" | "claude-code";
+  } = {}
+) {
+  return {
+    workspaceId,
+    agentSessionId,
+    ...(options.agentTargetId ? { agentTargetId: options.agentTargetId } : {}),
+    provider: options.provider ?? ("codex" as const),
+    providerSessionId: `provider-${agentSessionId}`,
+    cwd,
+    title: "",
+    status: "ready",
+    createdAtUnixMs: 1,
+    updatedAtUnixMs: 1
+  };
+}
+
+function createRuntimeUserProject(project: {
+  id: string;
+  label: string;
+  path: string;
+}) {
+  return {
+    createdAtUnixMs: 1,
+    id: project.id,
+    label: project.label,
+    path: project.path,
+    sectionKey: `project:${project.path}`,
+    updatedAtUnixMs: 1
+  };
+}
+
+function createRuntimeProjectSection(input: {
+  hasMore: boolean;
+  nextCursor?: string;
+  project: { id: string; label: string; path: string };
+  sessions: ReturnType<typeof createRuntimeSession>[];
+  workspaceId: string;
+}): AgentActivityRuntimeSessionSection {
+  return {
+    kind: "project",
+    sectionKey: `project:${input.project.path}`,
+    userProject: createRuntimeUserProject(input.project),
+    sessions: input.sessions,
+    hasMore: input.hasMore,
+    nextCursor: input.nextCursor
+  };
+}
+
+function createRuntimeConversationsSection(input: {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: ReturnType<typeof createRuntimeSession>[];
+}): AgentActivityRuntimeSessionSection {
+  return {
+    kind: "conversations",
+    sectionKey: "conversations",
+    sessions: input.sessions,
+    hasMore: input.hasMore,
+    nextCursor: input.nextCursor
+  };
+}
+
+function createEmptyAgentActivitySnapshot(): AgentActivitySnapshot {
+  return {
+    workspaceId: "workspace-1",
+    presences: [],
+    sessions: [],
+    sessionMessagesById: {}
+  };
+}
+
+const testAgentActivityRuntime = createNoopAgentActivityRuntime();
+
 function createActions(): AgentGUINodeViewProps["actions"] {
   return {
+    updateConversationFilter: vi.fn(),
+    selectConversationFilterTarget: vi.fn(),
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
@@ -1594,6 +3077,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     interruptCurrentTurn: vi.fn(),
     updateDraftContent: vi.fn(),
     updateComposerSettings: vi.fn(),
+    selectProvider: vi.fn(),
     sendQueuedPromptNext: vi.fn(),
     removeQueuedPrompt: vi.fn(),
     editQueuedPrompt: vi.fn(),
@@ -1603,13 +3087,16 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     toggleConversationPinned: vi.fn(),
     removeProject: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
+    confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),
     confirmDeleteConversation: vi.fn()
   };
 }
 
-function createViewModel(): AgentGUINodeViewModel {
+function createViewModel(
+  overrides: Partial<AgentGUINodeViewModel> = {}
+): AgentGUINodeViewModel {
   return {
     workspaceId: "room-1",
     data: {
@@ -1618,6 +3105,10 @@ function createViewModel(): AgentGUINodeViewModel {
       conversationRailWidthPx: null
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
+    conversationScope: "single-provider",
+    conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],
     activeConversation: null,
@@ -1638,6 +3129,7 @@ function createViewModel(): AgentGUINodeViewModel {
     promptImagesSupported: true,
     compactSupported: null,
     usage: null,
+    backgroundAgentCount: 0,
     listError: null,
     isDeletingConversation: false,
     isDeletingProjectConversations: false,
@@ -1684,7 +3176,9 @@ function createViewModel(): AgentGUINodeViewModel {
       recovery: null,
       rawState: null
     },
-    inlineNotice: null
+    inlineNotice: null,
+    ...overrides,
+    providerReadinessGate: overrides.providerReadinessGate ?? null
   };
 }
 
@@ -1749,12 +3243,48 @@ function createConversationDetail(): WorkspaceAgentSessionDetailViewModel {
   };
 }
 
+function createConversationDetailWithUserMessage(
+  body: string
+): WorkspaceAgentSessionDetailViewModel {
+  const detail = createConversationDetail();
+  return {
+    ...detail,
+    turns: [
+      ...detail.turns,
+      {
+        id: "turn-2",
+        userMessage: { id: "user-2", body, turnId: "turn-2" },
+        userMessages: [{ id: "user-2", body, turnId: "turn-2" }],
+        agentMessages: [],
+        toolCalls: [],
+        toolCallCount: 0,
+        hasFailedToolCall: false,
+        agentItems: []
+      }
+    ]
+  };
+}
+
 function createLabels(): AgentGUIViewLabels {
   return {
     initialPlaceholder: "initialPlaceholder",
     followupPlaceholder: "followupPlaceholder",
     installRequiredPlaceholder: "installRequiredPlaceholder",
     installRequiredAction: "installRequiredAction",
+    providerGateCheckingTitle: "providerGateCheckingTitle",
+    providerGateCheckingDescription: "providerGateCheckingDescription",
+    providerGateInstallTitle: "providerGateInstallTitle",
+    providerGateInstallDescription: "providerGateInstallDescription",
+    providerGateInstallAction: "providerGateInstallAction",
+    providerGateLoginTitle: "providerGateLoginTitle",
+    providerGateLoginDescription: "providerGateLoginDescription",
+    providerGateLoginAction: "providerGateLoginAction",
+    providerGateUnavailableTitle: "providerGateUnavailableTitle",
+    providerGateUnavailableDescription: "providerGateUnavailableDescription",
+    providerGateRetryAction: "providerGateRetryAction",
+    providerGatePendingInstall: "providerGatePendingInstall",
+    providerGatePendingLogin: "providerGatePendingLogin",
+    providerGatePendingRefresh: "providerGatePendingRefresh",
     collaboratorSessionReadOnlyPlaceholder:
       "collaboratorSessionReadOnlyPlaceholder",
     send: "send",
@@ -1834,6 +3364,10 @@ function createLabels(): AgentGUIViewLabels {
     agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",
     emptyProjectConversations: "emptyProjectConversations",
+    conversationFilterAll: "All",
+    conversationFilterCodex: "Codex",
+    conversationFilterClaudeCode: "Claude Code",
+    providerSwitchLabel: "Switch provider",
     startConversation: "startConversation",
     selectConversation: "selectConversation",
     loadingConversations: "loadingConversations",
@@ -1861,6 +3395,12 @@ function createLabels(): AgentGUIViewLabels {
     batchDeleteProjectSessionsBody: (count: number, project: string) =>
       `batchDeleteProjectSessionsBody:${count}:${project}`,
     batchDeleteProjectSessionsConfirm: "batchDeleteProjectSessionsConfirm",
+    conversationsSectionMoreActions: "conversationsSectionMoreActions",
+    batchDeleteConversations: "batchDeleteConversations",
+    batchDeleteConversationsTitle: "batchDeleteConversationsTitle",
+    batchDeleteConversationsBody: (count: number) =>
+      `batchDeleteConversationsBody:${count}`,
+    batchDeleteConversationsConfirm: "batchDeleteConversationsConfirm",
     approvalRequired: "approvalRequired",
     approvalUnavailable: "approvalUnavailable",
     authRequired: "authRequired",
@@ -1880,6 +3420,7 @@ function createLabels(): AgentGUIViewLabels {
     goalClearHint: "goalClearHint",
     processing: "processing",
     turnSummary: "turnSummary",
+    userMessageLocator: "userMessageLocator",
     planLead: "planLead",
     planModes: [],
     projectLocked: "projectLocked",
@@ -1892,6 +3433,8 @@ function createLabels(): AgentGUIViewLabels {
     submitAnswers: "submitAnswers",
     answerPlaceholder: "answerPlaceholder",
     waitingForAnswer: "waitingForAnswer",
+    waitingForBackgroundAgent: (count: number) =>
+      `waitingForBackgroundAgent:${count}`,
     thinkingLabel: "thinkingLabel",
     toolCallsLabel: (count: number) => `toolCalls:${count}`,
     openConversationWindow: "openConversationWindow",
@@ -1919,6 +3462,24 @@ function createLabels(): AgentGUIViewLabels {
     slashPalettePluginsGroup: "slashPalettePluginsGroup",
     slashPaletteConnectorsGroup: "slashPaletteConnectorsGroup",
     slashPaletteMcpGroup: "slashPaletteMcpGroup",
+    slashCommandCompactLabel: "slashCommandCompactLabel",
+    slashCommandContextLabel: "slashCommandContextLabel",
+    slashCommandFastLabel: "slashCommandFastLabel",
+    slashCommandGoalLabel: "slashCommandGoalLabel",
+    slashCommandInitLabel: "slashCommandInitLabel",
+    slashCommandPlanLabel: "slashCommandPlanLabel",
+    slashCommandReviewLabel: "slashCommandReviewLabel",
+    slashCommandStatusLabel: "slashCommandStatusLabel",
+    slashCommandUsageLabel: "slashCommandUsageLabel",
+    slashCommandCompactDescription: "slashCommandCompactDescription",
+    slashCommandContextDescription: "slashCommandContextDescription",
+    slashCommandFastDescription: "slashCommandFastDescription",
+    slashCommandGoalDescription: "slashCommandGoalDescription",
+    slashCommandInitDescription: "slashCommandInitDescription",
+    slashCommandPlanDescription: "slashCommandPlanDescription",
+    slashCommandReviewDescription: "slashCommandReviewDescription",
+    slashCommandStatusDescription: "slashCommandStatusDescription",
+    slashCommandUsageDescription: "slashCommandUsageDescription",
     browserUseCapabilityLabel: "browserUseCapabilityLabel",
     browserUseCapabilityDescription: "browserUseCapabilityDescription",
     browserUseCapabilityDescriptionAutoConnect:
@@ -1968,8 +3529,10 @@ function createLabels(): AgentGUIViewLabels {
     fileMentionEmpty: "fileMentionEmpty",
     fileMentionError: "fileMentionError",
     fileMentionTabHint: "fileMentionTabHint",
+    mentionPalette: "mentionPalette",
     removeMention: "removeMention",
     addReference: "addReference",
+    addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     syncPending: "syncPending",
     syncSynced: "syncSynced",

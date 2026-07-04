@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"strings"
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -13,7 +14,7 @@ func (p Provider) newActivePeersCommand() cliservice.Command {
 		ID:          appID + ".agent.active-peers",
 		Path:        []string{"agent", "active-peers"},
 		Summary:     "Show active peer agents",
-		Description: "Show logical active peer agents in the current workspace before editing files.",
+		Description: "Show logical active peer agents and their execution cwd in the current workspace before editing files.",
 		Kind:        framework.KindList,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -52,6 +53,7 @@ func activePeerValues(peers []agentservice.ActivePeer) []any {
 		value := map[string]any{
 			"agentSessionId": peer.Session.ID,
 			"provider":       peer.Session.Provider,
+			"cwd":            strings.TrimSpace(peer.Session.Cwd),
 			"status":         string(peer.Session.Status),
 			"title":          "",
 		}

@@ -28,6 +28,19 @@ test("browser workbench node forwards navigation callbacks to browser nodes", ()
   );
 });
 
+test("browser workbench node lets hosts replace default traffic lights", () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "index.ts"),
+    "utf8"
+  );
+
+  assert.match(source, /renderTrafficLights\?:/);
+  assert.match(
+    source,
+    /defaultActions:\s*renderTrafficLights[\s\S]*renderTrafficLights\(headerContext\)[\s\S]*headerContext\.defaultActions/
+  );
+});
+
 test("browser workbench node exposes native minimized snapshot capture", () => {
   const source = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "index.ts"),

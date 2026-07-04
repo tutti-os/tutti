@@ -3,15 +3,19 @@ export {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   agentGuiWorkbenchDefaultCopy,
   agentGuiWorkbenchDefaultNodeFrame,
+  buildAgentGuiDockEntries,
   createAgentGuiWorkbenchContribution,
+  resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
 export type {
+  AgentGuiWorkbenchProviderAvailability,
   AgentGuiWorkbenchContributionCopy,
   AgentGuiWorkbenchContributionCopyOverrides,
   AgentGuiWorkbenchConversationRailToggleDetail,
   AgentGuiWorkbenchNewConversationDetail,
   AgentGuiWorkbenchRenderBodyHelpers,
+  BuildAgentGuiDockEntriesInput,
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
@@ -29,10 +33,13 @@ export {
 } from "./providerCatalog.ts";
 export {
   agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchDockEntryIdForLayout,
+  agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchInstanceId,
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
+  agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
@@ -54,6 +61,16 @@ export {
   type AgentGuiWorkbenchHeaderCopy,
   type AgentGuiWorkbenchHeaderProps
 } from "./header.ts";
+export {
+  formatAgentGuiConversationPlainTitle,
+  formatAgentGuiSessionPlainTitle,
+  resolveAgentGuiWorkbenchSessionTitle
+} from "./sessionTitle.ts";
+export type {
+  AgentGuiSessionTitleFormatOptions,
+  AgentGuiWorkbenchSessionTitleResult,
+  ResolveAgentGuiWorkbenchSessionTitleInput
+} from "./sessionTitle.ts";
 export {
   agentGuiWorkbenchOpenSessionActivationType,
   agentGuiWorkbenchPrefillPromptActivationType,

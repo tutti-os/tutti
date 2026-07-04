@@ -61,7 +61,7 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
-	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml")); err != nil {
+	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
 		return err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
@@ -176,7 +176,7 @@ func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	return nil
 }
 
-func ensureCodexSessionConfig(configPath string) error {
+func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read codex config: %w", err)
@@ -186,6 +186,14 @@ func ensureCodexSessionConfig(configPath string) error {
 		next = serviceTierNext
 		changed = true
 	}
+	if tuttiNext, tuttiChanged := codexConfigWithTuttiConversationDetailMode(next, input.ConversationDetailMode); tuttiChanged {
+		next = tuttiNext
+		changed = true
+	}
+	if detailModeNext, detailModeChanged := codexConfigWithConversationDetailModeInstructions(next, input.ConversationDetailMode); detailModeChanged {
+		next = detailModeNext
+		changed = true
+	}
 	if !changed {
 		return nil
 	}
@@ -193,6 +201,131 @@ func ensureCodexSessionConfig(configPath string) error {
 		return fmt.Errorf("write codex config: %w", err)
 	}
 	return nil
+}
+
+func codexConfigWithTuttiConversationDetailMode(content string, conversationDetailMode string) (string, bool) {
+	mode := normalizeAgentConversationDetailMode(conversationDetailMode)
+	line := `conversationDetailMode = ` + strconv.Quote(mode)
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for sectionStart, existingLine := range lines {
+		if strings.TrimSpace(existingLine) != "[tutti]" {
+			continue
+		}
+		sectionEnd := len(lines)
+		for index := sectionStart + 1; index < len(lines); index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+				sectionEnd = index
+				break
+			}
+		}
+		for index := sectionStart + 1; index < sectionEnd; index++ {
+			trimmed := strings.TrimSpace(lines[index])
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if !codexConfigLineHasKey(trimmed, "conversationDetailMode") {
+				continue
+			}
+			if strings.TrimSpace(lines[index]) == line {
+				return content, false
+			}
+			nextLines := append([]string{}, lines...)
+			nextLines[index] = line
+			return strings.Join(nextLines, "\n"), true
+		}
+		nextLines := make([]string, 0, len(lines)+1)
+		nextLines = append(nextLines, lines[:sectionEnd]...)
+		nextLines = append(nextLines, line)
+		nextLines = append(nextLines, lines[sectionEnd:]...)
+		return strings.Join(nextLines, "\n"), true
+	}
+	block := "[tutti]\n" + line + "\n"
+	if strings.TrimSpace(content) == "" {
+		return block, true
+	}
+	return strings.TrimRight(content, "\r\n") + "\n\n" + block, true
+}
+
+func codexConfigWithConversationDetailModeInstructions(content string, conversationDetailMode string) (string, bool) {
+	instructions := agentConversationDetailModeInstructions(conversationDetailMode)
+	if strings.TrimSpace(instructions) == "" {
+		return codexConfigWithoutConversationDetailModeInstructions(content)
+	}
+	if strings.Contains(content, instructions) {
+		return content, false
+	}
+	line := `developer_instructions = ` + strconv.Quote(instructions)
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for index, existingLine := range lines {
+		trimmed := strings.TrimSpace(existingLine)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		if !codexConfigLineHasKey(trimmed, "developer_instructions") {
+			continue
+		}
+		value, endIndex, ok := codexConfigStringAssignmentValueAt(lines, index, "developer_instructions")
+		if ok && strings.TrimSpace(value) != "" {
+			line = `developer_instructions = ` + strconv.Quote(strings.TrimRight(value, "\n")+"\n\n"+instructions)
+		}
+		nextLines := make([]string, 0, len(lines)-(endIndex-index))
+		nextLines = append(nextLines, lines[:index]...)
+		nextLines = append(nextLines, line)
+		nextLines = append(nextLines, lines[endIndex+1:]...)
+		return strings.Join(nextLines, "\n"), true
+	}
+	if strings.TrimSpace(content) == "" {
+		return line + "\n", true
+	}
+	return line + "\n\n" + strings.TrimLeft(content, "\r\n"), true
+}
+
+func codexConfigWithoutConversationDetailModeInstructions(content string) (string, bool) {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for index, existingLine := range lines {
+		trimmed := strings.TrimSpace(existingLine)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		if !codexConfigLineHasKey(trimmed, "developer_instructions") {
+			continue
+		}
+		value, endIndex, ok := codexConfigStringAssignmentValueAt(lines, index, "developer_instructions")
+		if !ok {
+			return content, false
+		}
+		nextValue, removed := codexDeveloperInstructionsWithoutConversationDetailMode(value)
+		if !removed {
+			return content, false
+		}
+		nextLines := make([]string, 0, len(lines)-(endIndex-index))
+		nextLines = append(nextLines, lines[:index]...)
+		if strings.TrimSpace(nextValue) != "" {
+			nextLines = append(nextLines, `developer_instructions = `+strconv.Quote(nextValue))
+		}
+		nextLines = append(nextLines, lines[endIndex+1:]...)
+		return strings.Join(nextLines, "\n"), true
+	}
+	return content, false
+}
+
+func codexDeveloperInstructionsWithoutConversationDetailMode(value string) (string, bool) {
+	instructions := nonTechnicalUIConversationDetailModeInstructions
+	if !strings.Contains(value, instructions) {
+		return value, false
+	}
+	next := strings.ReplaceAll(value, instructions, "")
+	for strings.Contains(next, "\n\n\n") {
+		next = strings.ReplaceAll(next, "\n\n\n", "\n\n")
+	}
+	return strings.TrimSpace(next), true
 }
 
 func codexConfigWithProjectRootMarkersDisabled(content string) (string, bool) {
@@ -289,7 +422,16 @@ func codexConfigStringAssignmentValue(line string, key string) (string, bool) {
 	for index := 1; index < len(rawValue); index++ {
 		char := rawValue[index]
 		if quote == '"' && escaped {
-			builder.WriteByte(char)
+			switch char {
+			case 'n':
+				builder.WriteByte('\n')
+			case 'r':
+				builder.WriteByte('\r')
+			case 't':
+				builder.WriteByte('\t')
+			default:
+				builder.WriteByte(char)
+			}
 			escaped = false
 			continue
 		}
@@ -303,6 +445,44 @@ func codexConfigStringAssignmentValue(line string, key string) (string, bool) {
 		builder.WriteByte(char)
 	}
 	return "", false
+}
+
+func codexConfigStringAssignmentValueAt(lines []string, index int, key string) (string, int, bool) {
+	if index < 0 || index >= len(lines) {
+		return "", index, false
+	}
+	line := strings.TrimSpace(lines[index])
+	if value, ok := codexConfigStringAssignmentValue(line, key); ok {
+		return value, index, true
+	}
+	if !codexConfigLineHasKey(line, key) {
+		return "", index, false
+	}
+	_, rawValue, ok := strings.Cut(line, "=")
+	if !ok {
+		return "", index, false
+	}
+	rawValue = strings.TrimSpace(rawValue)
+	if !strings.HasPrefix(rawValue, `"""`) && !strings.HasPrefix(rawValue, `'''`) {
+		return "", codexConfigAssignmentEndLine(lines, index), false
+	}
+	delimiter := rawValue[:3]
+	rest := strings.TrimPrefix(rawValue, delimiter)
+	if endOffset := strings.Index(rest, delimiter); endOffset >= 0 {
+		return rest[:endOffset], index, true
+	}
+	var builder strings.Builder
+	builder.WriteString(rest)
+	for lineIndex := index + 1; lineIndex < len(lines); lineIndex++ {
+		builder.WriteByte('\n')
+		lineValue := lines[lineIndex]
+		if endOffset := strings.Index(lineValue, delimiter); endOffset >= 0 {
+			builder.WriteString(lineValue[:endOffset])
+			return builder.String(), lineIndex, true
+		}
+		builder.WriteString(lineValue)
+	}
+	return "", index, false
 }
 
 // Consume a complete multiline TOML array so stale marker entries do not remain

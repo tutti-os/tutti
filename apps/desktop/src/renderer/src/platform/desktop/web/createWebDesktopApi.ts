@@ -52,7 +52,12 @@ export function createWebDesktopApi(): DesktopApi {
 function createWebComputerUseApi(): DesktopComputerUseApi {
   return {
     checkStatus() {
-      return Promise.resolve({ installed: false, permissions: null });
+      return Promise.resolve({
+        installed: false,
+        permissions: null,
+        authorization: "unknown",
+        reason: "not-installed"
+      });
     },
     install() {
       return Promise.reject(electronDebugRequired("computerUse.install"));
@@ -64,6 +69,24 @@ function createWebComputerUseApi(): DesktopComputerUseApi {
       return Promise.reject(
         electronDebugRequired("computerUse.grantPermissions")
       );
+    },
+    startPermissionGrant() {
+      return Promise.reject(
+        electronDebugRequired("computerUse.startPermissionGrant")
+      );
+    },
+    getPermissionGrantStatus() {
+      return Promise.reject(
+        electronDebugRequired("computerUse.getPermissionGrantStatus")
+      );
+    },
+    openPermissionSettings() {
+      return Promise.reject(
+        electronDebugRequired("computerUse.openPermissionSettings")
+      );
+    },
+    restartDriver() {
+      return Promise.reject(electronDebugRequired("computerUse.restartDriver"));
     }
   };
 }
@@ -190,6 +213,9 @@ function createWebPlatformApi(): DesktopPlatformApi {
   return {
     homeDirectory: "",
     os: inferPlatform(),
+    resolveDroppedEntries() {
+      return [];
+    },
     resolveDroppedPaths() {
       return [];
     }
@@ -260,6 +286,9 @@ function createWebHostApi(): DesktopHostApi {
       },
       readLocalPreviewFile() {
         return Promise.reject(electronDebugRequired("readLocalPreviewFile"));
+      },
+      archiveAgentPromptFile() {
+        return Promise.reject(electronDebugRequired("archiveAgentPromptFile"));
       },
       readPreviewFile() {
         return Promise.reject(electronDebugRequired("readPreviewFile"));

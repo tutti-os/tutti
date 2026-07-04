@@ -13,6 +13,7 @@
     "./plan-decision-ops": "./shared/agentConversation/planImplementation.ts",
     "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "./mention-file-presentation": "./agent-gui/shared/mentionFilePresentation.ts",
+    "./queued-prompt-runtime": "./agentQueuedPromptRuntimeCore.ts",
     "./agent-title-text": "./shared/utils/agentTitleText.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
     "./i18n": "./i18n/index.ts",
@@ -20,6 +21,7 @@
     "./workbench/contribution": "./workbench/contribution.ts",
     "./workbench/launch": "./workbench/launch.ts",
     "./workbench/providerCatalog": "./workbench/providerCatalog.ts",
+    "./workbench/sessionTitle": "./workbench/sessionTitle.ts",
     "./workbench/state": "./workbench/state.ts",
     "./workbench/types": "./workbench/types.ts",
     "./styles.css": "./app/renderer/agentactivity.css"
@@ -35,7 +37,7 @@
   },
   "scripts": {
     "build": "tsup --config tsup.config.ts && node ../../../tools/scripts/copy-package-assets.mjs app/renderer/agentactivity.css dist/app/renderer/agentactivity.css app/renderer/assets/icons dist/app/renderer/assets/icons",
-    "test": "vitest run --environment jsdom",
+    "test": "vitest run --environment jsdom --maxWorkers=3",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
@@ -106,6 +108,10 @@
         "types": "./dist/agent-conversation/index.d.ts",
         "import": "./dist/agent-conversation/index.js"
       },
+      "./agent-env": {
+        "types": "./dist/agent-env/index.d.ts",
+        "import": "./dist/agent-env/index.js"
+      },
       "./context-mention-palette": {
         "types": "./dist/context-mention-palette/index.d.ts",
         "import": "./dist/context-mention-palette/index.js"
@@ -121,6 +127,10 @@
       "./mention-file-presentation": {
         "types": "./dist/mention-file-presentation.d.ts",
         "import": "./dist/mention-file-presentation.js"
+      },
+      "./queued-prompt-runtime": {
+        "types": "./dist/queued-prompt-runtime.d.ts",
+        "import": "./dist/queued-prompt-runtime.js"
       },
       "./agent-title-text": {
         "types": "./dist/agent-title-text.d.ts",
@@ -150,6 +160,10 @@
         "types": "./dist/workbench/providerCatalog.d.ts",
         "import": "./dist/workbench/providerCatalog.js"
       },
+      "./workbench/sessionTitle": {
+        "types": "./dist/workbench/sessionTitle.d.ts",
+        "import": "./dist/workbench/sessionTitle.js"
+      },
       "./workbench/state": {
         "types": "./dist/workbench/state.d.ts",
         "import": "./dist/workbench/state.js"
@@ -169,6 +183,9 @@
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
         ],
+        "agent-env": [
+          "./dist/agent-env/index.d.ts"
+        ],
         "context-mention-palette": [
           "./dist/context-mention-palette/index.d.ts"
         ],
@@ -180,6 +197,9 @@
         ],
         "mention-file-presentation": [
           "./dist/mention-file-presentation.d.ts"
+        ],
+        "queued-prompt-runtime": [
+          "./dist/queued-prompt-runtime.d.ts"
         ],
         "agent-title-text": [
           "./dist/agent-title-text.d.ts"
@@ -201,6 +221,9 @@
         ],
         "workbench/providerCatalog": [
           "./dist/workbench/providerCatalog.d.ts"
+        ],
+        "workbench/sessionTitle": [
+          "./dist/workbench/sessionTitle.d.ts"
         ],
         "workbench/state": [
           "./dist/workbench/state.d.ts"

@@ -17,7 +17,9 @@ import {
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import { AgentGuiWorkbenchHeader } from "./header.ts";
 import {
-  agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchDockIdentityFromIdentifier,
+  agentGuiWorkbenchDockEntryIdForLayout,
+  type AgentGuiWorkbenchDockLayout,
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchTypeId,
   createAgentGuiWorkbenchLaunchDescriptor
@@ -29,9 +31,11 @@ import {
   normalizeAgentGuiWorkbenchState
 } from "./state.ts";
 import {
+  agentGuiWorkbenchDefaultDockProviders,
   agentGuiWorkbenchProviderLabels,
   agentGuiWorkbenchProviders,
   isAgentGuiWorkbenchDefaultDockProvider,
+  isAgentGuiWorkbenchProvider,
   resolveAgentGuiWorkbenchProviderLabel
 } from "./providerCatalog.ts";
 import type {
@@ -39,6 +43,11 @@ import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "./types.ts";
+import { normalizeAgentGUIProviderTargets } from "../providerTargets.ts";
+import type {
+  AgentGUIProviderTarget,
+  AgentGUIProviderTargetRef
+} from "../types.ts";
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   height: 560,
@@ -49,6 +58,7 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
 
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
+export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -100,10 +110,16 @@ export interface AgentGuiWorkbenchRenderBodyHelpers {
 
 export interface CreateAgentGuiWorkbenchContributionInput {
   copy?: AgentGuiWorkbenchContributionCopyOverrides;
+  defaultProvider?: AgentGuiWorkbenchProvider | null;
+  defaultProviderTargetId?: string | null;
+  dockLayout?: AgentGuiWorkbenchDockLayout;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   dockSectionId?: string;
   frame?: WorkbenchFrame;
   id?: string;
+  providerAvailability?: AgentGuiWorkbenchProviderAvailability;
+  providerTargets?: readonly AgentGUIProviderTarget[] | null;
+  providerTargetsLoading?: boolean;
   renderBody(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
@@ -131,6 +147,12 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   resolveDockEntryVisibility?: (
     provider: AgentGuiWorkbenchProvider
   ) => WorkbenchHostDockEntry["visibility"];
+  resolveDockLaunchPayload?: (input: {
+    dockEntryId?: string | null;
+    payload: unknown;
+    reason: WorkbenchHostLaunchRequest["reason"];
+  }) => unknown | null | undefined;
+  unifiedDockIconUrl?: string;
   workspaceId: string;
 }
 
@@ -143,23 +165,21 @@ export function createAgentGuiWorkbenchContribution(
   const frame = input.frame ?? agentGuiWorkbenchDefaultNodeFrame;
   const copy = resolveAgentGuiWorkbenchContributionCopy(input.copy);
   return {
-    dockEntries: agentGuiWorkbenchProviders.map((provider, index) =>
-      createAgentGuiWorkbenchDockEntry({
-        label: agentGuiWorkbenchProviderLabels[provider],
-        iconUrl:
-          input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider],
-        order: index,
-        provider,
-        renderPreview: input.renderPreview,
-        resolveDockPopupTitle: input.resolveDockPopupTitle,
-        sectionId: input.dockSectionId ?? "agents",
-        visibility:
-          input.resolveDockEntryVisibility?.(provider) ??
-          (isAgentGuiWorkbenchDefaultDockProvider(provider)
-            ? "always"
-            : "never")
-      })
-    ),
+    dockEntries: buildAgentGuiDockEntries({
+      defaultProvider: input.defaultProvider,
+      defaultProviderTargetId: input.defaultProviderTargetId,
+      dockIconUrls: input.dockIconUrls,
+      label: copy.nodeTitle,
+      layout: input.dockLayout ?? "legacySplit",
+      providerAvailability: input.providerAvailability,
+      providerTargetsLoading: input.providerTargetsLoading,
+      renderPreview: input.renderPreview,
+      resolveDockEntryVisibility: input.resolveDockEntryVisibility,
+      resolveDockPopupTitle: input.resolveDockPopupTitle,
+      sectionId: input.dockSectionId ?? "agents",
+      targets: input.providerTargets,
+      unifiedDockIconUrl: input.unifiedDockIconUrl
+    }),
     externalStateSource: nodeStateSource.externalStateSource,
     id: input.id ?? "workspace-agent-gui",
     nodes: [
@@ -199,6 +219,15 @@ export function createAgentGuiWorkbenchContribution(
         }) => {
           const provider = agentGuiWorkbenchProviderFromInstanceId(instanceId);
           const providerTitle = resolveAgentGuiWorkbenchProviderLabel(provider);
+          const isUnifiedDockNode =
+            agentGuiWorkbenchDockIdentityFromIdentifier(node.data.dockEntryId)
+              ?.kind === "unifiedAggregate";
+          const headerTitle = isUnifiedDockNode
+            ? copy.nodeTitle
+            : providerTitle;
+          const headerIconUrl = isUnifiedDockNode
+            ? input.unifiedDockIconUrl
+            : agentGuiDockIconUrls[provider];
           const rawWorkbenchState = (externalNodeState ??
             node.data.runtimeNodeState) as
             | Partial<AgentGuiWorkbenchNodeState>
@@ -220,9 +249,7 @@ export function createAgentGuiWorkbenchContribution(
             node.frame.width
           );
           const conversationTitle =
-            input.resolveDockPopupTitle?.(workbenchState) ??
-            nodeState.lastActiveConversationTitle ??
-            null;
+            input.resolveDockPopupTitle?.(workbenchState) ?? null;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
@@ -265,10 +292,10 @@ export function createAgentGuiWorkbenchContribution(
             conversationTitle,
             conversationRailWidthPx,
             displayMode,
-            iconUrl: agentGuiDockIconUrls[provider],
+            iconUrl: headerIconUrl,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
-            title: providerTitle,
+            title: headerTitle,
             windowActions: {
               close: windowActions.close,
               minimize: windowActions.minimize,
@@ -336,22 +363,39 @@ export function createAgentGuiWorkbenchContribution(
         return null;
       }
 
+      const launchPayload = resolveAgentGuiWorkbenchLaunchPayload(request, {
+        resolveDockLaunchPayload: input.resolveDockLaunchPayload
+      });
       const {
         activation,
         dockEntryId,
         instanceId: descriptorInstanceId,
+        openInNewWindow,
         provider,
         reuseDockEntryNode,
+        reuseExistingSessionNode,
         targetAgentSessionId
-      } = createAgentGuiWorkbenchLaunchDescriptor(request);
+      } = createAgentGuiWorkbenchLaunchDescriptor({
+        ...request,
+        payload: launchPayload
+      });
       // Locate an already-open node currently showing this session (its launch
       // instanceId may differ from the session-keyed one, e.g. a conversation
       // started fresh as a draft) so we focus it instead of opening a duplicate.
-      const existingInstanceId = targetAgentSessionId
-        ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
-        : null;
+      const existingInstanceId =
+        targetAgentSessionId && reuseExistingSessionNode
+          ? nodeStateSource.findInstanceIdByAgentSessionId(targetAgentSessionId)
+          : null;
       const instanceId = existingInstanceId ?? descriptorInstanceId;
-      const title = resolveAgentGuiWorkbenchProviderLabel(provider);
+      const title =
+        agentGuiWorkbenchDockIdentityFromIdentifier(dockEntryId)?.kind ===
+        "unifiedAggregate"
+          ? copy.nodeTitle
+          : resolveAgentGuiWorkbenchProviderLabel(provider);
+      const providerTarget = providerTargetLaunchPayloadFromRequest(
+        launchPayload,
+        provider
+      );
       if (targetAgentSessionId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
@@ -363,6 +407,34 @@ export function createAgentGuiWorkbenchContribution(
             ...normalizeAgentGuiWorkbenchState(previousState),
             ...(targetAgentSessionId
               ? { lastActiveAgentSessionId: targetAgentSessionId }
+              : {}),
+            ...(providerTarget.agentTargetId
+              ? { agentTargetId: providerTarget.agentTargetId }
+              : {}),
+            ...(providerTarget.providerTargetId
+              ? { agentTargetId: providerTarget.providerTargetId }
+              : {})
+          },
+          typeId: agentGuiWorkbenchTypeId
+        });
+      } else if (
+        providerTarget.agentTargetId ||
+        providerTarget.providerTargetId ||
+        providerTarget.providerTargetRef
+      ) {
+        const previousState = nodeStateSource.readNodeState({
+          instanceId,
+          typeId: agentGuiWorkbenchTypeId
+        });
+        nodeStateSource.writeNodeState({
+          instanceId,
+          state: {
+            ...normalizeAgentGuiWorkbenchState(previousState),
+            ...(providerTarget.agentTargetId
+              ? { agentTargetId: providerTarget.agentTargetId }
+              : {}),
+            ...(providerTarget.providerTargetId
+              ? { agentTargetId: providerTarget.providerTargetId }
               : {})
           },
           typeId: agentGuiWorkbenchTypeId
@@ -374,17 +446,131 @@ export function createAgentGuiWorkbenchContribution(
       });
       return {
         activation,
+        ...(openInNewWindow
+          ? { cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset }
+          : {}),
         defaultFrame,
         dockEntryId,
-        framePolicy: isAgentGuiWorkbenchCompactVisibleFrame(defaultFrame, frame)
-          ? "absolute"
-          : "cascade-same-type-centered",
+        framePolicy:
+          !openInNewWindow &&
+          isAgentGuiWorkbenchCompactVisibleFrame(defaultFrame, frame)
+            ? "absolute"
+            : "cascade-same-type-centered",
         instanceId,
+        // Reusing the window already showing this specific conversation
+        // (e.g. clicking a completion notification) should just focus it,
+        // not reset it back to the default size/position.
+        preserveExistingNodeFrame: existingInstanceId !== null,
         reuseDockEntryNode,
         title,
         typeId: agentGuiWorkbenchTypeId
       };
     }
+  };
+}
+
+export type AgentGuiWorkbenchProviderAvailability = Partial<
+  Record<
+    AgentGuiWorkbenchProvider,
+    | boolean
+    | "available"
+    | "ready"
+    | "unavailable"
+    | {
+        available?: boolean | null;
+        status?: string | null;
+      }
+    | null
+    | undefined
+  >
+>;
+
+export interface BuildAgentGuiDockEntriesInput {
+  defaultProvider?: AgentGuiWorkbenchProvider | null;
+  defaultProviderTargetId?: string | null;
+  dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
+  label?: string;
+  layout: AgentGuiWorkbenchDockLayout;
+  providerAvailability?: AgentGuiWorkbenchProviderAvailability;
+  providerTargetsLoading?: boolean;
+  renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
+  resolveDockEntryVisibility?: CreateAgentGuiWorkbenchContributionInput["resolveDockEntryVisibility"];
+  resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
+  sectionId?: string;
+  targets?: readonly AgentGUIProviderTarget[] | null;
+  unifiedDockIconUrl?: string;
+}
+
+export function buildAgentGuiDockEntries(
+  input: BuildAgentGuiDockEntriesInput
+): WorkbenchHostDockEntry[] {
+  const sectionId = input.sectionId ?? "agents";
+  if (input.layout === "unified") {
+    const launchPayload = resolveAgentGuiUnifiedDockLaunchPayload(input);
+    const provider = launchPayload.provider;
+    return [
+      createAgentGuiWorkbenchDockEntry({
+        aggregateProviders: agentGuiWorkbenchDefaultDockProviders,
+        iconUrl:
+          input.unifiedDockIconUrl ??
+          input.dockIconUrls?.[provider] ??
+          agentGuiDockIconUrls[provider],
+        label: input.label ?? agentGuiWorkbenchDefaultCopy.nodeTitle,
+        launchPayload,
+        layout: "unified",
+        order: 0,
+        provider,
+        renderPreview: input.renderPreview,
+        resolveDockPopupTitle: input.resolveDockPopupTitle,
+        sectionId,
+        visibility: "always"
+      })
+    ];
+  }
+
+  return agentGuiWorkbenchProviders.map((provider, index) =>
+    createAgentGuiWorkbenchDockEntry({
+      label: agentGuiWorkbenchProviderLabels[provider],
+      iconUrl: input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider],
+      layout: "legacySplit",
+      order: index,
+      provider,
+      renderPreview: input.renderPreview,
+      resolveDockPopupTitle: input.resolveDockPopupTitle,
+      sectionId,
+      visibility:
+        input.resolveDockEntryVisibility?.(provider) ??
+        (isAgentGuiWorkbenchDefaultDockProvider(provider) ? "always" : "never")
+    })
+  );
+}
+
+export function resolveAgentGuiUnifiedDockLaunchPayload(
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    | "defaultProvider"
+    | "defaultProviderTargetId"
+    | "providerAvailability"
+    | "providerTargetsLoading"
+    | "targets"
+  >
+): {
+  provider: AgentGuiWorkbenchProvider;
+  agentTargetId?: string;
+  providerTargetId?: string;
+  providerTargetRef?: AgentGUIProviderTargetRef;
+} {
+  const target = resolveUnifiedAgentGuiDockTarget(input);
+  if (target) {
+    return {
+      provider: target.provider,
+      ...(target.agentTargetId ? { agentTargetId: target.agentTargetId } : {}),
+      providerTargetId: target.targetId,
+      providerTargetRef: target.ref
+    };
+  }
+  return {
+    provider: resolveUnifiedAgentGuiDockProvider(input)
   };
 }
 
@@ -446,8 +632,11 @@ export function resolveAgentGuiWorkbenchContributionCopy(
 }
 
 function createAgentGuiWorkbenchDockEntry(input: {
+  aggregateProviders?: readonly AgentGuiWorkbenchProvider[];
   iconUrl?: string;
   label: string;
+  launchPayload?: Record<string, unknown>;
+  layout: AgentGuiWorkbenchDockLayout;
   order: number;
   provider: AgentGuiWorkbenchProvider;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
@@ -462,14 +651,20 @@ function createAgentGuiWorkbenchDockEntry(input: {
       src: input.iconUrl
     }),
     iconSize: "large",
-    id: agentGuiWorkbenchDockEntryId(input.provider),
+    id: agentGuiWorkbenchDockEntryIdForLayout({
+      dockLayout: input.layout,
+      provider: input.provider
+    }),
     label: input.label,
     launchBehavior: "enabled",
-    launchPayload: { provider: input.provider },
+    launchPayload: input.launchPayload ?? { provider: input.provider },
     matchNode: (node) =>
       node.data.typeId === agentGuiWorkbenchTypeId &&
-      agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ===
-        input.provider,
+      (input.aggregateProviders
+        ? input.aggregateProviders.includes(
+            resolveAgentGuiWorkbenchProviderFromNode(node)
+          )
+        : resolveAgentGuiWorkbenchProviderFromNode(node) === input.provider),
     order: input.order,
     providePopupItemPreview: (item) =>
       input.renderPreview
@@ -494,6 +689,227 @@ function createAgentGuiWorkbenchDockEntry(input: {
     sectionId: input.sectionId,
     typeId: agentGuiWorkbenchTypeId,
     visibility: input.visibility
+  };
+}
+
+function resolveAgentGuiWorkbenchProviderFromNode(
+  node: Parameters<NonNullable<WorkbenchHostDockEntry["matchNode"]>>[0]
+): AgentGuiWorkbenchProvider {
+  return (
+    agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ??
+    agentGuiWorkbenchProviderFromIdentifier(node.data.dockEntryId) ??
+    providerFromState(node.data.snapshotNodeState) ??
+    providerFromState(node.data.runtimeNodeState) ??
+    agentGuiWorkbenchProviderFromIdentifier(node.data.typeId) ??
+    "codex"
+  );
+}
+
+function providerFromState(state: unknown): AgentGuiWorkbenchProvider | null {
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+  const provider = (state as { provider?: unknown }).provider;
+  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+}
+
+function resolveAgentGuiWorkbenchLaunchPayload(
+  request: WorkbenchHostLaunchRequest,
+  input: Pick<
+    CreateAgentGuiWorkbenchContributionInput,
+    "resolveDockLaunchPayload"
+  >
+): unknown {
+  if (
+    request.reason !== "dock" ||
+    agentGuiWorkbenchDockIdentityFromIdentifier(request.dockEntryId)?.kind !==
+      "unifiedAggregate" ||
+    !isEmptyAgentGuiWorkbenchDockLaunchPayload(request.payload)
+  ) {
+    return request.payload;
+  }
+  return (
+    input.resolveDockLaunchPayload?.({
+      dockEntryId: request.dockEntryId,
+      payload: request.payload,
+      reason: request.reason
+    }) ?? request.payload
+  );
+}
+
+function isEmptyAgentGuiWorkbenchDockLaunchPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return true;
+  }
+  const typed = payload as Record<string, unknown>;
+  return (
+    typeof typed.agentSessionId !== "string" &&
+    typeof typed.draftPrompt !== "string"
+  );
+}
+
+function resolveUnifiedAgentGuiDockTarget(
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    | "defaultProvider"
+    | "defaultProviderTargetId"
+    | "providerAvailability"
+    | "providerTargetsLoading"
+    | "targets"
+  >
+): AgentGUIProviderTarget | null {
+  const targets = normalizeAgentGUIProviderTargets(input.targets, {
+    fallbackToLocal:
+      input.providerTargetsLoading !== true && input.targets == null
+  }).filter(
+    (
+      target
+    ): target is AgentGUIProviderTarget & {
+      provider: (typeof agentGuiWorkbenchDefaultDockProviders)[number];
+    } =>
+      isAgentGuiWorkbenchProvider(target.provider) &&
+      isUnifiedAgentGuiDockProvider(target.provider) &&
+      target.disabled !== true &&
+      isAgentGuiProviderAvailable(target.provider, input.providerAvailability)
+  );
+  const defaultProviderTargetId = input.defaultProviderTargetId?.trim();
+  if (defaultProviderTargetId) {
+    const explicitTarget = targets.find(
+      (target) => target.targetId === defaultProviderTargetId
+    );
+    if (explicitTarget) {
+      return explicitTarget;
+    }
+  }
+
+  if (
+    input.defaultProvider &&
+    isUnifiedAgentGuiDockProvider(input.defaultProvider) &&
+    isAgentGuiProviderAvailable(
+      input.defaultProvider,
+      input.providerAvailability
+    )
+  ) {
+    const target = preferredAgentGuiDockTargetForProvider(
+      targets,
+      input.defaultProvider
+    );
+    if (target) {
+      return target;
+    }
+  }
+
+  return targets[0] ?? null;
+}
+
+function resolveUnifiedAgentGuiDockProvider(
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    "defaultProvider" | "providerAvailability" | "targets"
+  >
+): AgentGuiWorkbenchProvider {
+  if (
+    input.defaultProvider &&
+    isUnifiedAgentGuiDockProvider(input.defaultProvider) &&
+    isAgentGuiProviderAvailable(
+      input.defaultProvider,
+      input.providerAvailability
+    )
+  ) {
+    return input.defaultProvider;
+  }
+  const target = resolveUnifiedAgentGuiDockTarget(input);
+  if (target) {
+    return target.provider;
+  }
+  return (
+    agentGuiWorkbenchDefaultDockProviders.find((provider) =>
+      isAgentGuiProviderAvailable(provider, input.providerAvailability)
+    ) ?? "codex"
+  );
+}
+
+function isUnifiedAgentGuiDockProvider(
+  provider: AgentGuiWorkbenchProvider
+): provider is (typeof agentGuiWorkbenchDefaultDockProviders)[number] {
+  return agentGuiWorkbenchDefaultDockProviders.includes(
+    provider as (typeof agentGuiWorkbenchDefaultDockProviders)[number]
+  );
+}
+
+function preferredAgentGuiDockTargetForProvider(
+  targets: readonly AgentGUIProviderTarget[],
+  provider: AgentGuiWorkbenchProvider
+): AgentGUIProviderTarget | null {
+  const providerTargets = targets.filter(
+    (target) => target.provider === provider
+  );
+  return providerTargets[0] ?? null;
+}
+
+function isAgentGuiProviderAvailable(
+  provider: AgentGuiWorkbenchProvider,
+  availability: AgentGuiWorkbenchProviderAvailability | null | undefined
+): boolean {
+  const value = availability?.[provider];
+  if (value === null || value === undefined) {
+    return true;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return value === "ready" || value === "available";
+  }
+  if (typeof value.available === "boolean") {
+    return value.available;
+  }
+  return value.status === "ready" || value.status === "available";
+}
+
+function providerTargetLaunchPayloadFromRequest(
+  payload: unknown,
+  expectedProvider: AgentGuiWorkbenchProvider
+): {
+  agentTargetId: string | null;
+  providerTargetId: string | null;
+  providerTargetRef: AgentGUIProviderTargetRef | null;
+} {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      agentTargetId: null,
+      providerTargetId: null,
+      providerTargetRef: null
+    };
+  }
+  const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
+  const providerTargetId = (payload as { providerTargetId?: unknown })
+    .providerTargetId;
+  const providerTargetRef = (payload as { providerTargetRef?: unknown })
+    .providerTargetRef;
+  return {
+    agentTargetId:
+      typeof agentTargetId === "string" && agentTargetId.trim()
+        ? agentTargetId.trim()
+        : null,
+    providerTargetId:
+      typeof providerTargetId === "string" && providerTargetId.trim()
+        ? providerTargetId.trim()
+        : null,
+    providerTargetRef:
+      providerTargetRef &&
+      typeof providerTargetRef === "object" &&
+      !Array.isArray(providerTargetRef) &&
+      (providerTargetRef as { provider?: unknown }).provider ===
+        expectedProvider &&
+      typeof (providerTargetRef as { kind?: unknown }).kind === "string" &&
+      (providerTargetRef as { kind: string }).kind.trim()
+        ? {
+            ...(providerTargetRef as AgentGUIProviderTargetRef),
+            kind: (providerTargetRef as { kind: string }).kind.trim(),
+            provider: expectedProvider
+          }
+        : null
   };
 }
 

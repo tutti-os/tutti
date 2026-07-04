@@ -2,6 +2,12 @@ import type { AgentActivitySendInput } from "@tutti-os/agent-activity-core";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import { normalizeDesktopAgentGUIProvider } from "../../desktopAgentGUINodeState.ts";
+import { createAgentMessageSentTracker } from "./agentMessageSentAnalytics.ts";
+import {
+  AgentAnalyticsErrorCode,
+  createAgentNodeResultTracker,
+  safeTrackAgentNodeResult
+} from "./agentNodeResultAnalytics.ts";
 import {
   createAgentSessionStartedTracker,
   resolveAgentSessionSource
@@ -32,9 +38,25 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
     typeof createAgentSessionStartedTracker
   >;
 
+  private readonly messageSentTracker: ReturnType<
+    typeof createAgentMessageSentTracker
+  >;
+
+  private readonly nodeResultTracker: ReturnType<
+    typeof createAgentNodeResultTracker
+  >;
+
   constructor(dependencies: WorkspaceAgentPromptSessionServiceDependencies) {
     this.dependencies = dependencies;
     this.sessionStartedTracker = createAgentSessionStartedTracker({
+      reporterNow: dependencies.reporterNow,
+      reporterService: dependencies.reporterService
+    });
+    this.messageSentTracker = createAgentMessageSentTracker({
+      reporterNow: dependencies.reporterNow,
+      reporterService: dependencies.reporterService
+    });
+    this.nodeResultTracker = createAgentNodeResultTracker({
       reporterNow: dependencies.reporterNow,
       reporterService: dependencies.reporterService
     });
@@ -45,6 +67,14 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
   ): Promise<WorkspaceAgentPromptSessionCreateResult> {
     const prompt = input.prompt.trim();
     if (!prompt) {
+      await safeTrackAgentNodeResult(this.nodeResultTracker, {
+        error: "workspace_agent.prompt_session_prompt_required",
+        fallbackErrorCode: AgentAnalyticsErrorCode.PromptValidateFailed,
+        flow: "session_create",
+        node: "prompt_validated",
+        provider: input.provider ?? null,
+        success: false
+      });
       throw new Error("workspace_agent.prompt_session_prompt_required");
     }
 
@@ -56,28 +86,67 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
       this.dependencies.workspaceUserProjectService
     );
     const title = input.title?.trim() || prompt;
-    const activation =
-      await this.dependencies.workspaceAgentActivityService.activateSession({
+    await safeTrackAgentNodeResult(this.nodeResultTracker, {
+      agentSessionId,
+      flow: "session_create",
+      node: "prompt_validated",
+      provider,
+      success: true
+    });
+    let activation: Awaited<
+      ReturnType<IWorkspaceAgentActivityService["activateSession"]>
+    >;
+    try {
+      activation =
+        await this.dependencies.workspaceAgentActivityService.activateSession({
+          agentSessionId,
+          ...(cwd ? { cwd } : {}),
+          initialContent: textPromptContent(prompt),
+          mode: "new",
+          provider,
+          title,
+          visible: input.visible ?? true,
+          workspaceId: input.workspaceId
+        });
+    } catch (error) {
+      await safeTrackAgentNodeResult(this.nodeResultTracker, {
         agentSessionId,
-        ...(cwd ? { cwd } : {}),
-        initialContent: textPromptContent(prompt),
-        mode: "new",
+        error,
+        fallbackErrorCode: AgentAnalyticsErrorCode.SessionCreateFailed,
+        flow: "session_create",
+        node: "activate_session",
         provider,
-        title,
-        visible: input.visible ?? true,
-        workspaceId: input.workspaceId
+        success: false
       });
+      throw error;
+    }
     if (
       activation.activation.status === "failed" ||
       activation.session.status === "failed"
     ) {
-      throw new Error(
+      const activationError =
         activation.error?.message ??
-          activation.error?.code ??
-          "workspace_agent.prompt_session_create_failed"
-      );
+        activation.error?.code ??
+        "workspace_agent.prompt_session_create_failed";
+      await safeTrackAgentNodeResult(this.nodeResultTracker, {
+        agentSessionId: activation.session.agentSessionId,
+        error: activationError,
+        fallbackErrorCode: AgentAnalyticsErrorCode.SessionCreateFailed,
+        flow: "session_create",
+        node: "activate_session",
+        provider: activation.session.provider || provider,
+        success: false
+      });
+      throw new Error(activationError);
     }
 
+    await safeTrackAgentNodeResult(this.nodeResultTracker, {
+      agentSessionId: activation.session.agentSessionId,
+      flow: "session_create",
+      node: "activate_session",
+      provider: activation.session.provider || provider,
+      success: true
+    });
     await this.sessionStartedTracker.track({
       agentSessionId: activation.session.agentSessionId,
       hasProject: Boolean(activation.session.cwd?.trim()),
@@ -87,6 +156,25 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
         mode: "new",
         source: input.source ?? undefined
       })
+    });
+    await safeTrackAgentNodeResult(this.nodeResultTracker, {
+      agentSessionId: activation.session.agentSessionId,
+      flow: "session_create",
+      node: "session_started_reported",
+      provider: activation.session.provider || provider,
+      success: true
+    });
+    await this.messageSentTracker.track({
+      agentSessionId: activation.session.agentSessionId,
+      prompt,
+      provider: activation.session.provider || provider
+    });
+    await safeTrackAgentNodeResult(this.nodeResultTracker, {
+      agentSessionId: activation.session.agentSessionId,
+      flow: "session_create",
+      node: "message_sent_reported",
+      provider: activation.session.provider || provider,
+      success: true
     });
 
     return {

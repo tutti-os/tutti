@@ -20,6 +20,8 @@ import (
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
+
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 )
 
 const defaultAppHealthcheckTimeout = 30 * time.Second
@@ -673,7 +675,7 @@ func (r *AppRunner) httpClient() *http.Client {
 	if r.HTTPClient != nil {
 		return r.HTTPClient
 	}
-	return &http.Client{Timeout: 1 * time.Second}
+	return httpx.NewClient(1 * time.Second)
 }
 
 func (r *AppRunner) runtimeResolver() AppRuntimeResolver {

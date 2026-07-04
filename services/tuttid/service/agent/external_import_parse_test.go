@@ -305,7 +305,7 @@ func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
 	}
 }
 
-func TestParseClaudeCodeJSONLUsesPromptInsideMentionHandoffTitle(t *testing.T) {
+func TestParseClaudeCodeJSONLStripsTuttiMentionRoutingReminder(t *testing.T) {
 	cwd := t.TempDir()
 	prompt := "[@AI Canvas](mention://workspace-app/ai-media-canvas?workspaceId=ws-1) 帮我生成图片"
 	session, ok, err := parseClaudeCodeJSONL(
@@ -313,12 +313,15 @@ func TestParseClaudeCodeJSONLUsesPromptInsideMentionHandoffTitle(t *testing.T) {
 		strings.NewReader(testAgentJSONL(t,
 			map[string]any{
 				"timestamp": "2026-06-18T00:00:00Z",
-				"sessionId": "claude-handoff",
+				"sessionId": "claude-reminder",
 				"cwd":       cwd,
 				"uuid":      "claude-1",
 				"message": map[string]any{
-					"role":    "user",
-					"content": []any{map[string]any{"type": "text", "text": "Claude Code mention handoff routing for this user turn:\n- Treat `mention://...` links as internal Tutti references.\n\nUser prompt:\n" + prompt}},
+					"role": "user",
+					"content": []any{
+						map[string]any{"type": "text", "text": prompt},
+						map[string]any{"type": "text", "text": tuttiMentionRoutingReminder},
+					},
 				},
 			},
 		)),
@@ -328,6 +331,12 @@ func TestParseClaudeCodeJSONLUsesPromptInsideMentionHandoffTitle(t *testing.T) {
 	}
 	if session.Title != prompt {
 		t.Fatalf("title = %q, want user prompt title", session.Title)
+	}
+	if len(session.Messages) != 1 {
+		t.Fatalf("message count = %d, want 1", len(session.Messages))
+	}
+	if session.Messages[0].Text != prompt {
+		t.Fatalf("message text = %q, want user prompt", session.Messages[0].Text)
 	}
 }
 

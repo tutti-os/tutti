@@ -33,6 +33,7 @@ export interface CreateDesktopAgentActivityAdapterInput {
 
 const defaultAgentSessionCreateRequestTimeoutMs = 30_000;
 const defaultComposerOptionsRequestTimeoutMs = 15_000;
+const agentActivitySessionListLimit = 100;
 
 export function createDesktopAgentActivityAdapter({
   agentProviderStatusService,
@@ -41,7 +42,7 @@ export function createDesktopAgentActivityAdapter({
   tuttidClient,
   runtimeApi
 }: CreateDesktopAgentActivityAdapterInput): AgentActivityAdapter {
-  // At most one pre-warm draft per workspace. Switching plan/permission/model
+  // At most one pre-warm draft per workspace target. Switching plan/permission/model
   // updates this draft in place via the ACP protocol instead of tearing it
   // down and creating a brand new hidden session on every toggle.
   const claudeDrafts = new Map<string, ClaudeDraftSessionEntry>();
@@ -51,8 +52,8 @@ export function createDesktopAgentActivityAdapter({
       return;
     }
     entry.status = "disposed";
-    if (claudeDrafts.get(entry.workspaceId) === entry) {
-      claudeDrafts.delete(entry.workspaceId);
+    if (claudeDrafts.get(entry.cacheKey) === entry) {
+      claudeDrafts.delete(entry.cacheKey);
     }
     void entry.promise
       .then((session) =>
@@ -70,21 +71,20 @@ export function createDesktopAgentActivityAdapter({
     const agentSessionId =
       normalizeText(input.agentSessionId) ??
       createDesktopAgentActivitySessionId();
+    const agentTargetId = requiredAgentTargetId(input.agentTargetId);
     const promise = withAbortableRequestTimeout(
       (signal) =>
         tuttidClient.createWorkspaceAgentSession(
           input.workspaceId,
           {
             agentSessionId,
+            agentTargetId,
             cwd,
             initialContent: [],
             model: input.settings.model,
             permissionModeId: input.settings.permissionModeId,
             planMode: input.settings.planMode,
             provider: "claude-code",
-            ...(input.providerTargetRef
-              ? { providerTargetRef: input.providerTargetRef }
-              : {}),
             reasoningEffort: input.settings.reasoningEffort,
             speed: input.settings.speed,
             title: null,
@@ -99,15 +99,16 @@ export function createDesktopAgentActivityAdapter({
       }
     ).then((session) => sessionWithClaudeDraftContext(session, draftKey));
     const entry: ClaudeDraftSessionEntry = {
+      cacheKey: claudeDraftCacheKey(input),
       cwd,
       promise,
-      providerTargetKey: providerTargetRefKey(input.providerTargetRef),
+      providerTargetKey: claudeDraftTargetKey(input),
       sessionId: agentSessionId,
       settingsKey,
       status: "starting",
       workspaceId: input.workspaceId
     };
-    claudeDrafts.set(input.workspaceId, entry);
+    claudeDrafts.set(entry.cacheKey, entry);
     void promise.then(
       (session) => {
         if (entry.status === "starting") {
@@ -117,8 +118,8 @@ export function createDesktopAgentActivityAdapter({
       },
       () => {
         entry.status = "failed";
-        if (claudeDrafts.get(input.workspaceId) === entry) {
-          claudeDrafts.delete(input.workspaceId);
+        if (claudeDrafts.get(entry.cacheKey) === entry) {
+          claudeDrafts.delete(entry.cacheKey);
         }
       }
     );
@@ -130,8 +131,8 @@ export function createDesktopAgentActivityAdapter({
   ): Promise<WorkspaceAgentSession> => {
     const cwd = input.cwd ?? null;
     const settingsKey = JSON.stringify(input.settings);
-    const providerTargetKey = providerTargetRefKey(input.providerTargetRef);
-    const existing = claudeDrafts.get(input.workspaceId);
+    const providerTargetKey = claudeDraftTargetKey(input);
+    const existing = claudeDrafts.get(claudeDraftCacheKey(input));
     if (
       existing &&
       existing.status !== "disposed" &&
@@ -174,12 +175,29 @@ export function createDesktopAgentActivityAdapter({
       );
       return updated;
     }
+    const requestedAgentSessionId = normalizeText(input.agentSessionId);
+    const existingSameRequestedSession = requestedAgentSessionId
+      ? Array.from(claudeDrafts.values()).find(
+          (entry) =>
+            entry.workspaceId === input.workspaceId &&
+            entry.sessionId === requestedAgentSessionId &&
+            entry.providerTargetKey !== providerTargetKey &&
+            !isDeadDraftStatus(entry.status)
+        )
+      : undefined;
     const shouldCreateFreshDraftSession =
-      existing &&
-      existing.providerTargetKey !== providerTargetKey &&
-      normalizeText(input.agentSessionId) === existing.sessionId;
+      (existing &&
+        existing.providerTargetKey !== providerTargetKey &&
+        requestedAgentSessionId === existing.sessionId) ||
+      existingSameRequestedSession !== undefined;
     if (existing) {
       deleteClaudeDraft(existing);
+    }
+    if (
+      existingSameRequestedSession &&
+      existingSameRequestedSession !== existing
+    ) {
+      deleteClaudeDraft(existingSameRequestedSession);
     }
     return createClaudeDraft(
       shouldCreateFreshDraftSession
@@ -204,12 +222,11 @@ export function createDesktopAgentActivityAdapter({
     ) {
       return null;
     }
-    const entry = claudeDrafts.get(input.workspaceId);
+    const entry = claudeDrafts.get(claudeDraftCacheKey(input));
     if (
       !entry ||
       entry.sessionId !== agentSessionId ||
-      entry.providerTargetKey !==
-        providerTargetRefKey(input.providerTargetRef) ||
+      entry.providerTargetKey !== claudeDraftTargetKey(input) ||
       isDeadDraftStatus(entry.status)
     ) {
       return null;
@@ -225,8 +242,8 @@ export function createDesktopAgentActivityAdapter({
       { visible: true }
     );
     entry.status = "promoted";
-    if (claudeDrafts.get(input.workspaceId) === entry) {
-      claudeDrafts.delete(input.workspaceId);
+    if (claudeDrafts.get(entry.cacheKey) === entry) {
+      claudeDrafts.delete(entry.cacheKey);
     }
     const result = await tuttidClient.sendWorkspaceAgentSessionInput(
       input.workspaceId,
@@ -245,7 +262,8 @@ export function createDesktopAgentActivityAdapter({
   return {
     async listSessions(input) {
       const response = await tuttidClient.listWorkspaceAgentSessions(
-        input.workspaceId
+        input.workspaceId,
+        { limit: agentActivitySessionListLimit }
       );
       return {
         sessions: response.sessions.map((session) =>
@@ -368,6 +386,7 @@ export function createDesktopAgentActivityAdapter({
         ) {
           const draft = await ensureClaudeDraft({
             agentSessionId: input.agentSessionId?.trim() ?? null,
+            agentTargetId: input.agentTargetId ?? null,
             cwd: input.cwd ?? null,
             settings: normalizedClaudeDraftSettings({
               model: input.model,
@@ -397,12 +416,14 @@ export function createDesktopAgentActivityAdapter({
           provider: input.provider,
           workspaceId: input.workspaceId
         });
+        const agentTargetId = requiredAgentTargetId(input.agentTargetId);
         const session = await withAbortableRequestTimeout(
           (signal) =>
             tuttidClient.createWorkspaceAgentSession(
               input.workspaceId,
               {
                 agentSessionId,
+                agentTargetId,
                 cwd: input.cwd ?? null,
                 initialContent: toTuttidPromptContentBlocks(
                   input.initialContent ?? []
@@ -413,9 +434,6 @@ export function createDesktopAgentActivityAdapter({
                 planMode: input.planMode ?? null,
                 permissionModeId: input.permissionModeId ?? null,
                 provider: workspaceAgentProvider(input.provider),
-                ...(input.providerTargetRef
-                  ? { providerTargetRef: input.providerTargetRef }
-                  : {}),
                 reasoningEffort: input.reasoningEffort ?? null,
                 speed: input.speed ?? null,
                 title: input.title ?? null,
@@ -663,6 +681,7 @@ interface ClaudeDraftSettings {
 
 interface ClaudeDraftInput {
   agentSessionId?: string | null;
+  agentTargetId?: string | null;
   cwd: string | null;
   providerTargetRef?: AgentActivityProviderTargetRef | null;
   settings: ClaudeDraftSettings;
@@ -671,6 +690,7 @@ interface ClaudeDraftInput {
 }
 
 interface ClaudeDraftSessionEntry {
+  cacheKey: string;
   cwd: string | null;
   providerTargetKey: string;
   settingsKey: string;
@@ -707,11 +727,39 @@ function isDeadDraftStatus(status: ClaudeDraftStatus): boolean {
 
 function claudeDraftKey(input: ClaudeDraftInput): string {
   return JSON.stringify({
+    agentTargetId: normalizeText(input.agentTargetId) ?? "",
     cwd: input.cwd ?? "",
     providerTargetRef: sortProviderTargetRefValue(input.providerTargetRef),
     settings: input.settings,
     workspaceId: input.workspaceId
   });
+}
+
+function claudeDraftCacheKey(
+  input: Pick<
+    ClaudeDraftInput,
+    "agentTargetId" | "providerTargetRef" | "workspaceId"
+  >
+): string {
+  return `${input.workspaceId}:${claudeDraftTargetKey(input)}`;
+}
+
+function claudeDraftTargetKey(
+  input: Pick<ClaudeDraftInput, "agentTargetId" | "providerTargetRef">
+): string {
+  const agentTargetId = normalizeText(input.agentTargetId);
+  if (agentTargetId) {
+    return `agentTarget:${agentTargetId}`;
+  }
+  return `providerTarget:${providerTargetRefKey(input.providerTargetRef)}`;
+}
+
+function requiredAgentTargetId(value: string | null | undefined): string {
+  const agentTargetId = normalizeText(value);
+  if (!agentTargetId) {
+    throw new Error("Agent target id is required to create an agent session.");
+  }
+  return agentTargetId;
 }
 
 function providerTargetRefKey(
@@ -791,8 +839,9 @@ export function agentActivitySessionFromTuttidSession(
   return {
     workspaceId,
     agentSessionId: session.id,
+    ...(session.agentTargetId ? { agentTargetId: session.agentTargetId } : {}),
     provider: session.provider,
-    providerSessionId: session.id,
+    providerSessionId: session.providerSessionId ?? session.id,
     cwd: session.cwd ?? "/",
     title: session.title ?? "",
     status: session.status,

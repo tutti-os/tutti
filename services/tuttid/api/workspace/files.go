@@ -222,11 +222,11 @@ func DomainSearchKindsFromGenerated(
 func generatedFileEntryKind(kind workspacefiles.EntryKind) tuttigenerated.WorkspaceFileEntryKind {
 	switch kind {
 	case workspacefiles.EntryKindFile:
-		return tuttigenerated.WorkspaceFileEntryKindFile
+		return tuttigenerated.File
 	case workspacefiles.EntryKindDirectory:
-		return tuttigenerated.WorkspaceFileEntryKindDirectory
+		return tuttigenerated.Directory
 	default:
-		return tuttigenerated.WorkspaceFileEntryKindUnknown
+		return tuttigenerated.Unknown
 	}
 }
 

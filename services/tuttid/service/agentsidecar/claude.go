@@ -26,7 +26,11 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 	if err := os.MkdirAll(filepath.Dir(systemPromptPath), 0o700); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("create claude system prompt directory: %w", err)
 	}
-	if err := os.WriteFile(systemPromptPath, []byte(tuttiCLIPolicy(input.PrepareInput)), 0o600); err != nil {
+	systemPrompt := joinPromptSections(
+		tuttiCLIPolicy(input.PrepareInput),
+		agentConversationDetailModeSystemPromptAppend(input.ConversationDetailMode),
+	)
+	if err := os.WriteFile(systemPromptPath, []byte(systemPrompt), 0o600); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("write claude system prompt: %w", err)
 	}
 	pluginDir := filepath.Join(input.RuntimeRoot, "claude-plugin", "tutti-cli")

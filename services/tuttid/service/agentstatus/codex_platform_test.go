@@ -80,7 +80,7 @@ func TestServiceCodexPlatformBinaryComplete(t *testing.T) {
 	}
 }
 
-func TestServiceCodexPlatformBinaryCompleteAcceptsLegacyBinaryPath(t *testing.T) {
+func TestServiceCodexPlatformBinaryCompleteRejectsLegacyBinaryPath(t *testing.T) {
 	pkg := t.TempDir()
 	legacyBinPath := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "codex")
 	if err := os.MkdirAll(filepath.Dir(legacyBinPath), 0o755); err != nil {
@@ -95,7 +95,7 @@ func TestServiceCodexPlatformBinaryCompleteAcceptsLegacyBinaryPath(t *testing.T)
 		return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
 	}}
 	path, complete := svc.codexPlatformBinaryComplete(pkg, "darwin", "arm64")
-	if !complete || path != legacyBinPath {
-		t.Fatalf("expected complete with legacy path=%q, got (%q,%v)", legacyBinPath, path, complete)
+	if complete {
+		t.Fatalf("expected incomplete with legacy path=%q, got complete at %q", legacyBinPath, path)
 	}
 }

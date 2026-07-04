@@ -4,8 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	agentsidecarbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentsidecar"
 	agentsidecardata "github.com/tutti-os/tutti/services/tuttid/data/agentsidecar"
@@ -85,7 +87,12 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	if !strings.Contains(string(codexAgents), "tutti issue list") {
+	const maxCodexAgentsChars = 5000
+	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
+		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
+	}
+	if !strings.Contains(string(codexAgents), "`tutti <scope> --help`") ||
+		!strings.Contains(string(codexAgents), "App id mapping") {
 		t.Fatalf("codex AGENTS.md content = %q", string(codexAgents))
 	}
 	if strings.Contains(string(codexAgents), `Skill(skill="issue-manager", args="<full mention URI>")`) {
@@ -96,12 +103,14 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("codex AGENTS.md content = %q, want no guessed materialized skill paths", string(codexAgents))
 	}
 	if !strings.Contains(string(codexAgents), "# Host App Context") ||
-		!strings.Contains(string(codexAgents), "standard Markdown syntax, for example `![alt](/absolute/path.png)`") ||
-		!strings.Contains(string(codexAgents), "you MUST include that image in your final response using Markdown image syntax") ||
-		!strings.Contains(string(codexAgents), "Prefer final image paths under `$CODEX_HOME/generated_images/`") ||
-		!strings.Contains(string(codexAgents), "Do not use unverified tool sandbox paths such as `/mnt/data/...`") ||
-		!strings.Contains(string(codexAgents), "Do not include inline base64 image data in responses") ||
-		!strings.Contains(string(codexAgents), "Return web URLs as Markdown links, for example") {
+		!strings.Contains(string(codexAgents), "Images/videos: use Markdown") ||
+		!strings.Contains(string(codexAgents), "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(string(codexAgents), "Prefer `$CODEX_HOME/generated_images/`") ||
+		!strings.Contains(string(codexAgents), "never use unverified sandbox path") ||
+		!strings.Contains(string(codexAgents), "No inline base64.") ||
+		!strings.Contains(string(codexAgents), "use `[filename](/abs/path)` Markdown links") ||
+		!strings.Contains(string(codexAgents), "No relative paths, line suffixes") ||
+		!strings.Contains(string(codexAgents), "Web URLs: Markdown links") {
 		t.Fatalf("codex AGENTS.md content = %q, want host app rendering guidance", string(codexAgents))
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
@@ -193,13 +202,22 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("tutti skill missing: %v", err)
 	}
-	if !strings.Contains(string(skill), "tutti agent sessions") {
+	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
+		!strings.Contains(string(skill), "this skill's `command-guide.md`") {
 		t.Fatalf("skill content = %q", string(skill))
+	}
+	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
+	if err != nil {
+		t.Fatalf("tutti command guide reference missing: %v", err)
+	}
+	if !strings.Contains(string(commandGuideReference), "tutti agent sessions") ||
+		!strings.Contains(string(commandGuideReference), "tutti issue list --topic-id <topic-id>") {
+		t.Fatalf("tutti command guide reference = %q", string(commandGuideReference))
 	}
 	if !strings.Contains(string(skill), "local Tutti daemon") ||
 		!strings.Contains(string(skill), "localhost/IPC") ||
 		!strings.Contains(string(skill), "execution environment") ||
-		!strings.Contains(string(skill), "Issue execution sequencing belongs to the `issue-manager` skill") {
+		!strings.Contains(string(skill), "Issue execution sequencing belongs to `$issue-manager`") {
 		t.Fatalf("skill content = %q, want local daemon environment guidance", string(skill))
 	}
 	if !strings.HasPrefix(string(skill), "---\nname: tutti-cli\n") {
@@ -214,7 +232,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(issueSkill), "mention://workspace-issue") ||
 		!strings.Contains(string(issueSkill), "mode=breakdown") ||
-		!strings.Contains(string(issueSkill), "read the materialized sibling `tutti-cli/SKILL.md`") ||
+		!strings.Contains(string(issueSkill), "command-guide.md") ||
 		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
 		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
@@ -241,7 +259,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(workspaceAppSkill), "mention://workspace-app") ||
 		!strings.Contains(string(workspaceAppSkill), "appId") ||
-		!strings.Contains(string(workspaceAppSkill), "use the injected `tutti-cli` command reference") ||
+		!strings.Contains(string(workspaceAppSkill), "use injected `$tutti-cli`") ||
+		!strings.Contains(string(workspaceAppSkill), "command-guide.md") ||
 		!strings.Contains(string(workspaceAppSkill), "Do not derive filesystem paths from the plugin directory, plugin name, or skill slug") ||
 		!strings.Contains(string(workspaceAppSkill), "inherits the caller agent session working directory") ||
 		!strings.Contains(string(workspaceAppSkill), "turn-resources") ||
@@ -334,8 +353,16 @@ func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T)
 	if err != nil {
 		t.Fatalf("tutti fallback skill missing: %v", err)
 	}
-	if !strings.Contains(string(tuttiSkill), "tutti agent sessions") {
+	if !strings.Contains(string(tuttiSkill), "`tutti <scope> --help`") ||
+		!strings.Contains(string(tuttiSkill), "this skill's `command-guide.md`") {
 		t.Fatalf("tutti fallback skill = %q", string(tuttiSkill))
+	}
+	tuttiReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli-tutti", commandGuideReferencePath))
+	if err != nil {
+		t.Fatalf("tutti fallback command guide reference missing: %v", err)
+	}
+	if !strings.Contains(string(tuttiReference), "tutti agent sessions") {
+		t.Fatalf("tutti fallback command guide reference = %q", string(tuttiReference))
 	}
 }
 
@@ -363,8 +390,129 @@ func TestDefaultPreparerCodexWritesProjectRootMarkersDisabledConfigWithoutUserCo
 	if err != nil {
 		t.Fatalf("codex config missing: %v", err)
 	}
-	if strings.TrimSpace(string(codexConfig)) != codexProjectRootMarkersDisabledConfig {
-		t.Fatalf("codex config = %q, want project root markers disabled", string(codexConfig))
+	config := string(codexConfig)
+	if !strings.Contains(config, codexProjectRootMarkersDisabledConfig) ||
+		!strings.Contains(config, "[tutti]") ||
+		!strings.Contains(config, `conversationDetailMode = "coding"`) ||
+		strings.Contains(config, "### Non-technical UI") {
+		t.Fatalf("codex config = %q, want project root markers disabled and Tutti coding marker only", config)
+	}
+}
+
+func TestDefaultPreparerCodexWritesGeneralConversationDetailModeToSessionConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:            "workspace-1",
+		AgentSessionID:         "session-1",
+		Provider:               "codex",
+		Cwd:                    cwd,
+		ConversationDetailMode: "general",
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	codexConfig, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("codex config missing: %v", err)
+	}
+	config := string(codexConfig)
+	if !strings.Contains(config, "[tutti]") ||
+		!strings.Contains(config, `conversationDetailMode = "general"`) ||
+		!strings.Contains(config, `developer_instructions =`) ||
+		!strings.Contains(config, "### Non-technical UI") ||
+		!strings.Contains(config, "don't name bash commands you're running") ||
+		!strings.Contains(config, "focus on outputs") {
+		t.Fatalf("codex config = %q, want Tutti general marker and non-technical UI developer instructions", config)
+	}
+}
+
+func TestCodexConfigWithTuttiConversationDetailModeUpdatesExistingMarker(t *testing.T) {
+	input := strings.Join([]string{
+		`project_root_markers = []`,
+		"",
+		"[tutti]",
+		`conversationDetailMode = "coding"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+	}, "\n")
+
+	next, changed := codexConfigWithTuttiConversationDetailMode(input, "general")
+	if !changed {
+		t.Fatalf("codexConfigWithTuttiConversationDetailMode changed = false, want true")
+	}
+	if !strings.Contains(next, `[tutti]`) ||
+		!strings.Contains(next, `conversationDetailMode = "general"`) ||
+		strings.Contains(next, `conversationDetailMode = "coding"`) ||
+		!strings.Contains(next, "[model_providers.proxy]") {
+		t.Fatalf("merged config = %q, want updated Tutti conversation detail mode marker", next)
+	}
+}
+
+func TestCodexConfigWithConversationDetailModeInstructionsAppendsExistingDeveloperInstructions(t *testing.T) {
+	input := strings.Join([]string{
+		`developer_instructions = "Existing guidance."`,
+		`model = "gpt-5.5"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+	}, "\n")
+
+	next, changed := codexConfigWithConversationDetailModeInstructions(input, "general")
+	if !changed {
+		t.Fatalf("codexConfigWithConversationDetailModeInstructions changed = false, want true")
+	}
+	if !strings.Contains(next, "Existing guidance.") ||
+		!strings.Contains(next, "### Non-technical UI") ||
+		!strings.Contains(next, "[model_providers.proxy]") {
+		t.Fatalf("merged config = %q, want existing developer instructions plus non-technical UI", next)
+	}
+}
+
+func TestCodexConfigWithConversationDetailModeInstructionsRemovesManagedInstructionsForCoding(t *testing.T) {
+	input := strings.Join([]string{
+		`developer_instructions = ` + strconv.Quote("Existing guidance.\n\n"+nonTechnicalUIConversationDetailModeInstructions),
+		`model = "gpt-5.5"`,
+		"",
+		"[tutti]",
+		`conversationDetailMode = "general"`,
+	}, "\n")
+
+	next, changed := codexConfigWithConversationDetailModeInstructions(input, "coding")
+	if !changed {
+		t.Fatalf("codexConfigWithConversationDetailModeInstructions changed = false, want true")
+	}
+	if !strings.Contains(next, `developer_instructions = "Existing guidance."`) ||
+		strings.Contains(next, "### Non-technical UI") ||
+		!strings.Contains(next, "[tutti]") {
+		t.Fatalf("merged config = %q, want existing developer instructions without non-technical UI", next)
+	}
+}
+
+func TestCodexConfigWithConversationDetailModeInstructionsRemovesEmptyManagedKeyForCoding(t *testing.T) {
+	input := strings.Join([]string{
+		`developer_instructions = ` + strconv.Quote(nonTechnicalUIConversationDetailModeInstructions),
+		`model = "gpt-5.5"`,
+		"",
+		"[tutti]",
+		`conversationDetailMode = "general"`,
+	}, "\n")
+
+	next, changed := codexConfigWithConversationDetailModeInstructions(input, "coding")
+	if !changed {
+		t.Fatalf("codexConfigWithConversationDetailModeInstructions changed = false, want true")
+	}
+	if strings.Contains(next, `developer_instructions =`) ||
+		strings.Contains(next, "### Non-technical UI") ||
+		!strings.Contains(next, `model = "gpt-5.5"`) ||
+		!strings.Contains(next, "[tutti]") {
+		t.Fatalf("merged config = %q, want managed developer_instructions key removed", next)
 	}
 }
 
@@ -519,7 +667,8 @@ func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(content), "tutti-dev issue list") {
+	if !strings.Contains(string(content), "`tutti-dev <scope> --help`") ||
+		!strings.Contains(string(content), "App id mapping") {
 		t.Fatalf("codex AGENTS.md content = %q, want tutti-dev command", string(content))
 	}
 	pathEnv := envValue(prepared.Env, "PATH")
@@ -642,10 +791,11 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
-		WorkspaceID:    "workspace-1",
-		AgentSessionID: "session-1",
-		Provider:       "claude-code",
-		Cwd:            cwd,
+		WorkspaceID:            "workspace-1",
+		AgentSessionID:         "session-1",
+		Provider:               "claude-code",
+		Cwd:                    cwd,
+		ConversationDetailMode: "general",
 	})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
@@ -687,52 +837,57 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claude system prompt missing: %v", err)
 	}
-	if !strings.Contains(string(systemPrompt), "tutti issue list") {
+	if !strings.Contains(string(systemPrompt), "`tutti <scope> --help`") ||
+		!strings.Contains(string(systemPrompt), "App id mapping") {
 		t.Fatalf("claude system prompt content = %q", string(systemPrompt))
 	}
-	if !strings.Contains(string(systemPrompt), "First use the relevant injected Tutti skill") ||
-		!strings.Contains(string(systemPrompt), "If a provider-native Skill tool is available, use the exact skill name exposed by the provider") ||
-		!strings.Contains(string(systemPrompt), "If no exact provider-native Skill tool is available") ||
-		!strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
+	if !strings.Contains(string(systemPrompt), "### Non-technical UI") ||
+		!strings.Contains(string(systemPrompt), "don't name bash commands you're running") ||
+		!strings.Contains(string(systemPrompt), "focus on outputs") {
+		t.Fatalf("claude system prompt content = %q, want non-technical UI guidance", string(systemPrompt))
+	}
+	if !strings.Contains(string(systemPrompt), "## Mention Routing") ||
+		!strings.Contains(string(systemPrompt), "| URI") ||
+		!strings.Contains(string(systemPrompt), "Fallback CLI Command") ||
+		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
+		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
+		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
 		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:workspace-app")`) ||
 		!strings.Contains(string(systemPrompt), "Do not call a plain skill name that is not visible") ||
 		!strings.Contains(string(systemPrompt), "Do not pass arguments to Skill") ||
 		!strings.Contains(string(systemPrompt), "the skill reads the mention URI from the current user turn") ||
-		!strings.Contains(string(systemPrompt), "Call the exact visible Skill tool for `workspace-app`") ||
+		!strings.Contains(string(systemPrompt), "Call the exact visible Skill tool when available") ||
 		!strings.Contains(string(systemPrompt), "fall back to that materialized skill file") ||
 		!strings.Contains(string(systemPrompt), "Do not guess a directory from the plain skill slug") ||
-		!strings.Contains(string(systemPrompt), "Treat mention routing as higher priority than guessing the source platform from the display label") ||
-		!strings.Contains(string(systemPrompt), "Treat `mention://...` links as internal Tutti references") ||
-		!strings.Contains(string(systemPrompt), "Do not try to open `mention://...` links in a browser") ||
-		!strings.Contains(string(systemPrompt), "If no matching skill is visible") ||
-		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
-		!strings.Contains(string(systemPrompt), "The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions") ||
-		!strings.Contains(string(systemPrompt), "prefer one self-contained Bash command or script") ||
-		!strings.Contains(string(systemPrompt), "checks the CLI first") ||
-		!strings.Contains(string(systemPrompt), "polls with bounded sleeps") ||
-		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
+		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
+		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
-		!strings.Contains(string(systemPrompt), "standard Markdown syntax, for example `![alt](/absolute/path.png)`") ||
-		!strings.Contains(string(systemPrompt), "you MUST include that image in your final response using Markdown image syntax") ||
-		!strings.Contains(string(systemPrompt), "Prefer final image paths under `$CODEX_HOME/generated_images/`") ||
-		!strings.Contains(string(systemPrompt), "Do not use unverified tool sandbox paths such as `/mnt/data/...`") ||
-		!strings.Contains(string(systemPrompt), "Do not include inline base64 image data in responses") ||
-		!strings.Contains(string(systemPrompt), "Return web URLs as Markdown links, for example") {
+		!strings.Contains(string(systemPrompt), "Images/videos: use Markdown") ||
+		!strings.Contains(string(systemPrompt), "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(string(systemPrompt), "Prefer `$CODEX_HOME/generated_images/`") ||
+		!strings.Contains(string(systemPrompt), "never use unverified sandbox path") ||
+		!strings.Contains(string(systemPrompt), "No inline base64.") ||
+		!strings.Contains(string(systemPrompt), "use `[filename](/abs/path)` Markdown links") ||
+		!strings.Contains(string(systemPrompt), "No relative paths, line suffixes") ||
+		!strings.Contains(string(systemPrompt), "Web URLs: Markdown links") {
 		t.Fatalf("claude system prompt content = %q, want host app rendering guidance", string(systemPrompt))
 	}
-	if !strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
+	if !strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
 		!strings.Contains(string(systemPrompt), "Claude Code skill listings can omit descriptions") ||
-		!strings.Contains(string(systemPrompt), "First use the relevant injected Tutti skill") ||
-		!strings.Contains(string(systemPrompt), "do not call a plain slug that is not visible") ||
-		!strings.Contains(string(systemPrompt), "if no exact visible Skill tool is available or it fails, fall back to that materialized skill file") ||
-		!strings.Contains(string(systemPrompt), "Do not open `mention://...` links in a browser") ||
+		!strings.Contains(string(systemPrompt), "Provider Skill tool exists -> call exact visible name for matching `$...` skill") ||
+		!strings.Contains(string(systemPrompt), "Skill missing/fails -> read matching materialized `SKILL.md`") ||
+		!strings.Contains(string(systemPrompt), "`mention://...` = internal data. Not URL/path.") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
@@ -769,12 +924,13 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claude plugin skill missing: %v", err)
 	}
-	if !strings.Contains(string(pluginSkill), "tutti issue list") ||
+	if !strings.Contains(string(pluginSkill), "`tutti <scope> --help`") ||
+		!strings.Contains(string(pluginSkill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
-		!strings.Contains(string(pluginSkill), "invoke the `issue-manager` skill") ||
-		!strings.Contains(string(pluginSkill), "invoke the `workspace-app` skill") {
+		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
+		!strings.Contains(string(pluginSkill), "invoke `$workspace-app`") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
 	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))
@@ -950,7 +1106,8 @@ func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session GEMINI.md missing: %v", err)
 	}
-	if !strings.Contains(string(sessionGemini), "tutti issue list") {
+	if !strings.Contains(string(sessionGemini), "`tutti <scope> --help`") ||
+		!strings.Contains(string(sessionGemini), "App id mapping") {
 		t.Fatalf("session GEMINI.md content = %q", string(sessionGemini))
 	}
 	settings, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "settings.json"))
@@ -964,8 +1121,16 @@ func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session gemini skill missing: %v", err)
 	}
-	if !strings.Contains(string(skill), "tutti agent sessions") {
+	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
+		!strings.Contains(string(skill), "this skill's `command-guide.md`") {
 		t.Fatalf("session gemini skill = %q", string(skill))
+	}
+	geminiReference, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "tutti-cli", commandGuideReferencePath))
+	if err != nil {
+		t.Fatalf("session gemini command guide reference missing: %v", err)
+	}
+	if !strings.Contains(string(geminiReference), "tutti agent sessions") {
+		t.Fatalf("session gemini command guide reference = %q", string(geminiReference))
 	}
 	issueSkill, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "issue-manager", "SKILL.md"))
 	if err != nil {
@@ -1026,7 +1191,7 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	if !strings.Contains(string(codexAgents), "`browser-use`") {
+	if !strings.Contains(string(codexAgents), "`$browser-use`") {
 		t.Fatalf("codex AGENTS.md content = %q, want browser-use policy", string(codexAgents))
 	}
 }

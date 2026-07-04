@@ -6,6 +6,10 @@ import type {
 import type {
   ClearDeveloperLogsResult,
   DesktopComputerUseActionResult,
+  DesktopComputerUsePermissionGrantStatus,
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopComputerUseRestartDriverResult,
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind,
   DesktopDeveloperLogsState,
@@ -54,6 +58,20 @@ export interface DesktopWorkspaceSettingsClient {
   installComputerUse(): Promise<DesktopComputerUseActionResult>;
   uninstallComputerUse(): Promise<DesktopComputerUseActionResult>;
   grantComputerUsePermissions(): Promise<DesktopComputerUseActionResult>;
+  startComputerUsePermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus>;
+  getComputerUsePermissionGrantStatus(): Promise<DesktopComputerUsePermissionGrantStatus | null>;
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+    workspaceId?: string | null;
+  }): Promise<void>;
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void>;
+  restartComputerUseDriver(
+    input?: DesktopComputerUseRestartDriverInput
+  ): Promise<DesktopComputerUseRestartDriverResult>;
   clearLogs(): Promise<ClearDeveloperLogsResult>;
   clearWorkspaceAgentSessions(
     workspaceID: string
@@ -102,6 +120,27 @@ export function createDesktopWorkspaceSettingsClient(input: {
     },
     grantComputerUsePermissions() {
       return input.computerUseApi.grantPermissions();
+    },
+    startComputerUsePermissionGrant() {
+      return input.computerUseApi.startPermissionGrant();
+    },
+    getComputerUsePermissionGrantStatus() {
+      return input.computerUseApi.getPermissionGrantStatus();
+    },
+    logComputerUsePermissionDiagnostic(payload) {
+      return input.runtimeApi.logRendererDiagnostic({
+        details: payload.details ?? {},
+        event: payload.event,
+        level: payload.level ?? "info",
+        source: "workspace-workbench",
+        workspaceId: payload.workspaceId ?? null
+      });
+    },
+    openComputerUsePermissionSettings(pane) {
+      return input.computerUseApi.openPermissionSettings(pane);
+    },
+    restartComputerUseDriver(restartInput) {
+      return input.computerUseApi.restartDriver(restartInput);
     },
     clearLogs() {
       return input.developerApi.clearLogs();

@@ -13,6 +13,8 @@ import {
   cn,
   Drawer,
   DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
   StatusDot,
   TooltipProvider
 } from "@tutti-os/ui-system";
@@ -543,12 +545,12 @@ function WorkspaceAgentMessageCenterPanelContent({
           <div className="flex-none border-b border-[var(--border-1)] px-3.5 pt-3 pb-3">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+                <DrawerTitle className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                   {t("agentHost.workspaceAgentMessageCenterTitle")}
-                </div>
-                <div className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
+                </DrawerTitle>
+                <DrawerDescription className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
                   {headerSummary}
-                </div>
+                </DrawerDescription>
               </div>
               <MessageCenterViewMenu
                 filtersActive={hasActiveFilters}
@@ -704,7 +706,7 @@ const MessageCenterRenderedCard = memo(function MessageCenterRenderedCard({
   );
 });
 
-function MessageCenterGroupHeading({
+export function MessageCenterGroupHeading({
   group
 }: {
   group: ReturnType<typeof groupMessageCenterItems>[number];

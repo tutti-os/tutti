@@ -38,7 +38,7 @@ func TestTrackEventsAcceptsEvents(t *testing.T) {
 					Params:   &params,
 				},
 				{
-					Name:     "predefine_pageview",
+					Name:     "app.pageview",
 					ClientTs: 1749124800010,
 				},
 			},
@@ -73,8 +73,8 @@ func TestTrackEventsAcceptsEvents(t *testing.T) {
 	}
 
 	pageviewEvent := reporter.events[1]
-	if pageviewEvent.Name != "predefine_pageview" {
-		t.Fatalf("pageview event.Name = %q, want %q", pageviewEvent.Name, "predefine_pageview")
+	if pageviewEvent.Name != "app.pageview" {
+		t.Fatalf("pageview event.Name = %q, want %q", pageviewEvent.Name, "app.pageview")
 	}
 	if pageviewEvent.ClientTS != 1749124800010 {
 		t.Fatalf("pageview event.ClientTS = %d, want %d", pageviewEvent.ClientTS, int64(1749124800010))
@@ -141,6 +141,13 @@ func TestTrackEventsRejectsInvalidEventShape(t *testing.T) {
 			name: "bad pattern name",
 			events: []tuttigenerated.TrackEvent{
 				{Name: "ClickWorkspaceCreate", ClientTs: 1749124800000},
+			},
+			wantReason: "analytics_event_name_invalid",
+		},
+		{
+			name: "legacy single segment pageview name",
+			events: []tuttigenerated.TrackEvent{
+				{Name: "predefine_pageview", ClientTs: 1749124800000},
 			},
 			wantReason: "analytics_event_name_invalid",
 		},

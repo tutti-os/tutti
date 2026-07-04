@@ -209,7 +209,7 @@ export function createWorkspaceIssueManagerContribution(input: {
       resolveRichTextTriggerProviders: ({ surface, workspaceId }) =>
         // The neutral `DesktopRichTextAtService` already emits the enriched
         // workspace-app (localized name/description + resolved icon) and
-        // agent-session (provider icon + avatar + participant + status) providers,
+        // agent-target (provider icon + agent metadata) providers,
         // so the issue-manager `@`-mention rows render identically to the agent
         // without this package importing any agent/desktop mention resolvers.
         input.richTextAtService.getProviders(

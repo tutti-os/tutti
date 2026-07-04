@@ -234,12 +234,6 @@ export const appCenterEn = {
       description:
         "Open-source video editor with media arrangement and timeline editing.",
       name: "Open Cut"
-    },
-    documentSummarizer: {
-      category: "Other tools",
-      description:
-        "Extract conclusions, key points, and action items from long documents.",
-      name: "Document Summarizer"
     }
   },
   categories: {
@@ -254,12 +248,13 @@ export const appCenterEn = {
     appList: "App Center",
     appPlural: "Apps",
     appSingular: "App",
+    communityApps: "Community apps",
     failedCount: "{{count}} failed",
     installedAppsTitle: "{{count}} installed {{appLabel}}",
     installedCount: "{{count}} installed",
     localDev: "local-dev",
     myApps: "My apps",
-    recommendedApps: "Recommended apps",
+    recommendedApps: "Official apps",
     runningCount: "{{count}} running",
     updateAvailable: "Update to {{version}}",
     version: "Version {{version}}"
@@ -280,11 +275,14 @@ export const appCenterEn = {
       "Remote app catalog is unavailable. Local apps are still available.",
     catalogLoading: "Loading remote app catalog...",
     empty: "No apps installed yet",
+    communityAppsEmpty: "No community apps available.",
     myAppsEmpty: "Imported and created apps will appear here.",
-    recommendedAppsEmpty: "No recommended apps available."
+    recommendedAppsEmpty: "No official apps available."
   },
   sources: {
+    developer: "Developer:",
     developerCount: "{{count}} developers",
+    developerMenuLabel: "Developer: {{name}}",
     githubRepository: "GitHub repository",
     official: "Official",
     title: "Source"
@@ -515,11 +513,6 @@ export const appCenterZhCN = {
       category: "内容创作",
       description: "开源视频剪辑工具，支持素材编排和时间线编辑",
       name: "Open Cut"
-    },
-    documentSummarizer: {
-      category: "其他工具",
-      description: "提炼长文档的结论、要点和行动项",
-      name: "文档总结器"
     }
   },
   categories: {
@@ -534,12 +527,13 @@ export const appCenterZhCN = {
     appList: "应用中心",
     appPlural: "App",
     appSingular: "App",
+    communityApps: "社区应用",
     failedCount: "{{count}} 个失败",
     installedAppsTitle: "已安装 {{count}} 个 {{appLabel}}",
     installedCount: "已安装 {{count}} 个",
     localDev: "本地调试",
     myApps: "我的应用",
-    recommendedApps: "推荐应用",
+    recommendedApps: "官方应用",
     runningCount: "{{count}} 个运行中",
     updateAvailable: "更新到 {{version}}",
     version: "版本 {{version}}"
@@ -558,11 +552,14 @@ export const appCenterZhCN = {
     catalogFailed: "无法加载远程应用目录，本地应用仍可用。",
     catalogLoading: "正在加载远程应用目录...",
     empty: "还没有安装应用",
+    communityAppsEmpty: "暂无社区应用",
     myAppsEmpty: "导入或创建的应用会显示在这里",
-    recommendedAppsEmpty: "暂无推荐应用"
+    recommendedAppsEmpty: "暂无官方应用"
   },
   sources: {
+    developer: "开发者：",
     developerCount: "{{count}} 位开发者",
+    developerMenuLabel: "开发者：{{name}}",
     githubRepository: "GitHub 仓库",
     official: "官方",
     title: "来源"

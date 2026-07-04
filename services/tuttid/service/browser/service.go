@@ -8,6 +8,7 @@ import (
 
 	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // defaultIdleTTL shuts a workspace's browser (and its Chrome) down after a
@@ -20,6 +21,7 @@ const defaultIdleTTL = 5 * time.Minute
 type Service struct {
 	transport            agentruntime.ProcessTransport
 	preferences          PreferencesReader
+	managedRuntime       managedruntime.ProfileResolver
 	idleTTL              time.Duration
 	autoConnectPreflight func() error
 
@@ -41,6 +43,7 @@ func NewService(preferences ...PreferencesReader) *Service {
 	return &Service{
 		transport:            agentruntime.NewLocalProcessTransport(),
 		preferences:          reader,
+		managedRuntime:       managedruntime.DefaultResolver{},
 		idleTTL:              defaultIdleTTL,
 		autoConnectPreflight: validateAutoConnectChromeReady,
 		sessions:             make(map[string]*browserSession),
@@ -106,7 +109,7 @@ func (s *Service) getOrCreate(workspaceID, connectionMode string) *browserSessio
 }
 
 func (s *Service) resolveCommand(ctx context.Context) []string {
-	return resolveBrowserMCPCommand(ctx, s.preferences)
+	return resolveBrowserMCPCommand(ctx, s.preferences, s.managedRuntime)
 }
 
 func (s *Service) resetIdle(workspaceID string, session *browserSession) {

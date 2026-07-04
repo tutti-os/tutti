@@ -140,63 +140,54 @@ describe("AgentSessionChrome", () => {
     expect(onAuthLogin).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps long compact chrome messages collapsed until the user expands them", () => {
+  it("shows full auth chrome messages in a tooltip without expandable layout state", async () => {
     const onRetryActivation = vi.fn();
     const message =
       "Codex ACP requires authentication in the runtime VM. Sync the Codex host credentials, then retry this session.";
-    const restoreOverflowMock = mockElementOverflow({
-      clientHeight: 20,
-      clientWidth: 100,
-      scrollHeight: 20,
-      scrollWidth: 240
-    });
 
-    try {
-      render(
-        <AgentSessionChrome
-          chrome={{
-            auth: {
-              message
-            },
-            approval: null,
-            recovery: null,
-            rawState: null
-          }}
-          isRespondingApproval={false}
-          onSubmitApprovalOption={vi.fn()}
-          onRetryActivation={onRetryActivation}
-          onContinueInNewConversation={vi.fn()}
-          labels={{
-            approvalRequired: "Approval required",
-            authRequired: "Authentication required",
-            activatingSession: "Connecting session...",
-            retryActivation: "Retry",
-            continueInNewConversation: "Continue in new session"
-          }}
-        />
-      );
+    render(
+      <AgentSessionChrome
+        chrome={{
+          auth: {
+            message
+          },
+          approval: null,
+          recovery: null,
+          rawState: null
+        }}
+        isRespondingApproval={false}
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={onRetryActivation}
+        onContinueInNewConversation={vi.fn()}
+        labels={{
+          approvalRequired: "Approval required",
+          authRequired: "Authentication required",
+          activatingSession: "Connecting session...",
+          retryActivation: "Retry",
+          continueInNewConversation: "Continue in new session"
+        }}
+      />
+    );
 
-      const warningChrome = screen.getByText(message).closest("section");
-      expect(warningChrome).not.toBeNull();
-      expect(warningChrome).toHaveAttribute("data-expandable", "true");
-      expect(warningChrome).toHaveAttribute("data-expanded", "false");
-      expect(screen.getByText(message)).toHaveAttribute("title", message);
-      expect(
-        screen.getByTestId("agent-session-chrome-auth-expand-cue")
-      ).toBeTruthy();
+    const messageElement = screen.getByText(message);
+    const warningChrome = messageElement.closest("section");
+    expect(warningChrome).not.toBeNull();
+    expect(warningChrome).not.toHaveAttribute("data-expandable");
+    expect(warningChrome).not.toHaveAttribute("data-expanded");
+    expect(messageElement).not.toHaveAttribute("title");
+    expect(
+      screen.queryByTestId("agent-session-chrome-auth-expand-cue")
+    ).toBeNull();
 
-      fireEvent.click(warningChrome!);
-      expect(warningChrome).toHaveAttribute("data-expanded", "true");
+    fireEvent.pointerMove(messageElement, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(message);
 
-      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(onRetryActivation).toHaveBeenCalledTimes(1);
-      expect(warningChrome).toHaveAttribute("data-expanded", "true");
-    } finally {
-      restoreOverflowMock();
-    }
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryActivation).toHaveBeenCalledTimes(1);
+    expect(warningChrome).not.toHaveAttribute("data-expanded");
   });
 
-  it("does not expand compact recovery chrome when the message already fits", () => {
+  it("shows full recovery chrome messages in a tooltip without expandable layout state", async () => {
     const message = "Something went wrong. Please try again.";
 
     render(
@@ -225,15 +216,15 @@ describe("AgentSessionChrome", () => {
       />
     );
 
-    const recoveryChrome = screen.getByText(message).closest("section");
+    const messageElement = screen.getByText(message);
+    const recoveryChrome = messageElement.closest("section");
     expect(recoveryChrome).not.toBeNull();
-    expect(recoveryChrome).toHaveAttribute("data-expandable", "false");
-    expect(recoveryChrome).toHaveAttribute("data-expanded", "false");
+    expect(recoveryChrome).not.toHaveAttribute("data-expandable");
+    expect(recoveryChrome).not.toHaveAttribute("data-expanded");
 
-    fireEvent.click(recoveryChrome!);
-
-    expect(recoveryChrome).toHaveAttribute("data-expandable", "false");
-    expect(recoveryChrome).toHaveAttribute("data-expanded", "false");
+    fireEvent.pointerMove(messageElement, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(message);
+    expect(recoveryChrome).not.toHaveAttribute("data-expanded");
   });
 
   it("renders warning recovery chrome with danger color without alert behavior", () => {
@@ -336,7 +327,7 @@ describe("AgentSessionChrome", () => {
     expect(onContinueInNewConversation).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the localized activating label for recovery chrome while reconnecting", () => {
+  it("uses the localized activating label for recovery chrome while reconnecting", async () => {
     const { container } = render(
       <AgentSessionChrome
         chrome={{
@@ -376,6 +367,13 @@ describe("AgentSessionChrome", () => {
     expect(
       screen.queryByText("Reconnecting to the live agent session…")
     ).toBeNull();
+
+    fireEvent.pointerMove(screen.getByText("Connecting session"), {
+      pointerType: "mouse"
+    });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Connecting session..."
+    );
   });
 
   it("replaces auth chrome with activating recovery chrome while connecting", () => {
@@ -475,60 +473,5 @@ function chromeState(): AgentGUISessionChrome {
       message: "Connection dropped while restoring the session."
     },
     rawState: null
-  };
-}
-
-function mockElementOverflow(dimensions: {
-  clientHeight: number;
-  clientWidth: number;
-  scrollHeight: number;
-  scrollWidth: number;
-}): () => void {
-  const descriptors = {
-    clientHeight: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "clientHeight"
-    ),
-    clientWidth: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "clientWidth"
-    ),
-    scrollHeight: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollHeight"
-    ),
-    scrollWidth: Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollWidth"
-    )
-  };
-
-  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
-    configurable: true,
-    get: () => dimensions.clientHeight
-  });
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-    configurable: true,
-    get: () => dimensions.clientWidth
-  });
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
-    configurable: true,
-    get: () => dimensions.scrollHeight
-  });
-  Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
-    configurable: true,
-    get: () => dimensions.scrollWidth
-  });
-
-  return () => {
-    for (const [property, descriptor] of Object.entries(descriptors)) {
-      if (descriptor) {
-        Object.defineProperty(HTMLElement.prototype, property, descriptor);
-      } else {
-        delete (HTMLElement.prototype as unknown as Record<string, unknown>)[
-          property
-        ];
-      }
-    }
   };
 }

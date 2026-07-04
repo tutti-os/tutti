@@ -4,6 +4,7 @@ import {
   mentionItemToAttrs,
   type AgentContextMentionItem
 } from "./agentFileMentionExtension";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 function basename(path: string): string {
   const normalized = path.trim().replace(/\/+$/, "");
@@ -36,23 +37,35 @@ function referenceMentionPath(item: WorkspaceFileReference): string {
  * 每个 item 走 mentionItemToAttrs 归一为节点 attrs;item 之间补空格。
  */
 export function createAgentMentionContent(
-  items: readonly AgentContextMentionItem[]
+  items: readonly AgentContextMentionItem[],
+  options: { prefixCaretAnchor?: boolean } = {}
 ): JSONContent[] {
   return items.flatMap((item, index) => [
-    ...(index > 0 ? ([{ type: "text", text: " " }] as JSONContent[]) : []),
+    ...(index === 0 && options.prefixCaretAnchor
+      ? ([
+          { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR }
+        ] as JSONContent[])
+      : index > 0
+        ? ([{ type: "text", text: " " }] as JSONContent[])
+        : []),
     { type: "agentFileMention", attrs: mentionItemToAttrs(item) },
     { type: "text", text: " " }
   ]);
 }
 
 export function createAgentFileMentionContent(
-  items: readonly WorkspaceFileReference[]
+  items: readonly WorkspaceFileReference[],
+  options: { prefixCaretAnchor?: boolean } = {}
 ): JSONContent[] {
   return items.flatMap((item, index) => {
     const path = referenceMentionPath(item);
     const name = item.displayName?.trim() || basename(path);
     return [
-      ...(index > 0 ? ([{ type: "text", text: " " }] as JSONContent[]) : []),
+      ...(index === 0 && options.prefixCaretAnchor
+        ? ([
+            { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR }
+          ] as JSONContent[])
+        : []),
       {
         type: "agentFileMention",
         attrs: {

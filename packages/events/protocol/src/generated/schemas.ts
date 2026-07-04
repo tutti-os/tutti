@@ -9,6 +9,8 @@ export const preferencesDesktopPreferencesSchema = {
   required: [
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
+    "agentConversationDetailMode",
+    "agentDockLayout",
     "appCatalogChannel",
     "defaultAgentProvider",
     "dockIconStyle",
@@ -142,6 +144,14 @@ export const preferencesDesktopPreferencesSchema = {
           type: "boolean"
         }
       }
+    },
+    agentConversationDetailMode: {
+      type: "string",
+      enum: ["coding", "general"]
+    },
+    agentDockLayout: {
+      type: "string",
+      enum: ["legacySplit", "unified"]
     },
     appCatalogChannel: {
       type: "string",
@@ -596,6 +606,9 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "string",
               minLength: 1
             },
+            agentTargetId: {
+              type: "string"
+            },
             eventType: {
               const: "session_update"
             },
@@ -825,6 +838,9 @@ export const agentActivityUpdatedPayloadSchema = {
             provider: {
               type: "string"
             },
+            agentTargetId: {
+              type: "string"
+            },
             providerSessionId: {
               type: "string"
             },
@@ -894,6 +910,9 @@ export const agentActivityUpdatedPayloadSchema = {
       type: "string",
       minLength: 1
     },
+    agentTargetId: {
+      type: "string"
+    },
     eventType: {
       type: "string",
       enum: [
@@ -953,6 +972,8 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
       required: [
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
+        "agentConversationDetailMode",
+        "agentDockLayout",
         "appCatalogChannel",
         "defaultAgentProvider",
         "dockIconStyle",
@@ -1086,6 +1107,14 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "boolean"
             }
           }
+        },
+        agentConversationDetailMode: {
+          type: "string",
+          enum: ["coding", "general"]
+        },
+        agentDockLayout: {
+          type: "string",
+          enum: ["legacySplit", "unified"]
         },
         appCatalogChannel: {
           type: "string",
@@ -1201,6 +1230,8 @@ export const preferencesDesktopUpdatedPayloadSchema = {
       required: [
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
+        "agentConversationDetailMode",
+        "agentDockLayout",
         "appCatalogChannel",
         "defaultAgentProvider",
         "dockIconStyle",
@@ -1334,6 +1365,14 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "boolean"
             }
           }
+        },
+        agentConversationDetailMode: {
+          type: "string",
+          enum: ["coding", "general"]
+        },
+        agentDockLayout: {
+          type: "string",
+          enum: ["legacySplit", "unified"]
         },
         appCatalogChannel: {
           type: "string",

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1397,7 +1398,7 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 	for _, title := range []string{
 		"[Request interrupted by user]",
 		"[Request interrupted by user for tool use]",
-		"Claude Code mention handoff routing for this user turn: - Treat `mention://...` links as internal Tutti references.",
+		tuttiMentionRoutingReminder,
 	} {
 		events := standardACPUpdateEvents(standardACPClaudeCodeConfig(), session, "turn-1", json.RawMessage(`{
 			"update": {
@@ -1409,6 +1410,24 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 			if event.Payload.Title == title {
 				t.Fatalf("events = %#v, want synthetic interrupt title %q excluded from title updates", events, title)
 			}
+		}
+	}
+}
+
+func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderGemini)
+	session.ProviderSessionID = "gemini-session-1"
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "session_info_update",
+			"title": "`+tuttiMentionRoutingReminder+`"
+		}
+	}`), newACPTurnNormalizer())
+	for _, event := range events {
+		if event.Payload.Title == tuttiMentionRoutingReminder {
+			t.Fatalf("events = %#v, want internal mention routing title excluded from title updates", events)
 		}
 	}
 }
@@ -1521,13 +1540,109 @@ func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	}
 }
 
+func TestNexightSpawnCommandCarriesModelSettings(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings *SessionSettings
+		want     []string
+	}{
+		{
+			name:     "spark model adds reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.3-codex-spark",
+				"--config", "model_reasoning_summary=none",
+				"--config", "model_reasoning_effort=high",
+			},
+		},
+		{
+			name:     "plain model omits reasoning summary override",
+			settings: &SessionSettings{Model: "gpt-5.1-codex", ReasoningEffort: "medium"},
+			want: []string{
+				nexightACPCommand,
+				"--config", "model=gpt-5.1-codex",
+				"--config", "model_reasoning_effort=medium",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			transport := newStandardACPTransport("Nexight", "nexight-session-1")
+			adapter := NewNexightAdapter(transport)
+			session := standardTestSession(ProviderNexight)
+			session.Settings = tc.settings
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			transport.mu.Lock()
+			specs := append([]ProcessSpec(nil), transport.specs...)
+			transport.mu.Unlock()
+			if len(specs) != 1 {
+				t.Fatalf("specs = %#v, want one process spawn", specs)
+			}
+			if !reflect.DeepEqual(specs[0].Command, tc.want) {
+				t.Fatalf("spawn command = %#v, want %#v", specs[0].Command, tc.want)
+			}
+		})
+	}
+}
+
+func TestNexightRequiresNewSessionWhenReasoningSummaryOverrideChanges(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewNexightAdapter(nil)
+	session := standardTestSession(ProviderNexight)
+	session.Settings = &SessionSettings{Model: "gpt-5.1-codex"}
+
+	sparkModel := "gpt-5.3-codex-spark"
+	if !adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("switching to a spark-family model must force a new session (spawn-time model_reasoning_summary override)")
+	}
+	plainModel := "gpt-5.2-codex"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &plainModel}) {
+		t.Fatal("plain-to-plain model change must not force a new session")
+	}
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{}) {
+		t.Fatal("empty patch must not force a new session")
+	}
+}
+
+func TestStandardACPSpawnCommandUnchangedForOtherProviders(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
+	session.Settings = &SessionSettings{Model: "gpt-5.3-codex-spark", ReasoningEffort: "high"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	specs := append([]ProcessSpec(nil), transport.specs...)
+	transport.mu.Unlock()
+	if len(specs) != 1 || !reflect.DeepEqual(specs[0].Command, []string{"hermes", "acp"}) {
+		t.Fatalf("spawn command = %#v, want bare hermes command", specs)
+	}
+	sparkModel := "gpt-5.3-codex-spark"
+	if adapter.RequiresNewSessionForSettings(session, SessionSettingsPatch{Model: &sparkModel}) {
+		t.Fatal("non-nexight providers must not force new sessions for model changes")
+	}
+}
+
 func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -1545,6 +1660,71 @@ func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
 	}
 	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_fallback" {
 		t.Fatalf("noticeKind = %#v, want transport_fallback", got)
+	}
+}
+
+func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderNexight)
+	session.ProviderSessionID = "nexight-session-1"
+
+	events := standardACPUpdateEvents(NewNexightAdapter(nil).config, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "agent_thought_chunk",
+			"content": {
+				"type": "text",
+				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
+			}
+		}
+	}`), newACPTurnNormalizer())
+
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one system notice message", events)
+	}
+	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
+		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
+	}
+	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+}
+
+func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
+	t.Parallel()
+
+	mapper := NewNexightAdapter(nil).config.stderrMessageMapper
+	if mapper == nil {
+		t.Fatal("nexight config stderrMessageMapper = nil, want stream-error mapper")
+	}
+
+	message, ok := mapper([]byte(
+		`2026-05-29T09:05:51.179821Z ERROR codex_acp::thread: Handled error during turn: Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: Some(401) }) Some("unexpected status 401 Unauthorized")`,
+	))
+	if !ok {
+		t.Fatal("stderr notice ok = false, want true")
+	}
+	if message.Method != acpMethodUpdate {
+		t.Fatalf("method = %q, want %q", message.Method, acpMethodUpdate)
+	}
+	var params struct {
+		Update map[string]any `json:"update"`
+	}
+	if err := json.Unmarshal(message.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if got := params.Update["sessionUpdate"]; got != "stream_error" {
+		t.Fatalf("sessionUpdate = %#v, want stream_error", got)
+	}
+	if got := params.Update["noticeKind"]; got != "transport_retry" {
+		t.Fatalf("noticeKind = %#v, want transport_retry", got)
+	}
+	if got := params.Update["source"]; got != "acp_stderr" {
+		t.Fatalf("source = %#v, want acp_stderr", got)
+	}
+
+	if _, ok := mapper([]byte("WARN unrelated")); ok {
+		t.Fatal("generic stderr ok = true, want false")
 	}
 }
 
@@ -1575,33 +1755,6 @@ func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	}
 }
 
-func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
-	t.Parallel()
-
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
-
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
-		"update": {
-			"sessionUpdate": "agent_thought_chunk",
-			"content": {
-				"type": "text",
-				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
-			}
-		}
-	}`), newACPTurnNormalizer())
-
-	if len(events) != 1 {
-		t.Fatalf("events = %#v, want one system notice message", events)
-	}
-	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
-		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
-	}
-	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
-		t.Fatalf("noticeKind = %#v, want transport_retry", got)
-	}
-}
-
 func TestStandardACPConfigOptionUpdateSignalsSessionStateReload(t *testing.T) {
 	t.Parallel()
 
@@ -1627,6 +1780,128 @@ func TestStandardACPConfigOptionUpdateSignalsSessionStateReload(t *testing.T) {
 	}
 	if got := events[0].Payload.Metadata["configOptionKey"]; got != "model" {
 		t.Fatalf("metadata configOptionKey = %#v, want model", got)
+	}
+}
+
+func TestStandardACPIgnoresForeignProviderSessionUpdateDuringTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-current")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "claude-session-current"
+
+	var commandSnapshots []AgentSessionCommandSnapshot
+	var emittedEvents [][]activityshared.Event
+	var configUpdates []AgentSessionConfigOptionsUpdate
+	adapter.SetCommandSnapshotSink(func(snapshot AgentSessionCommandSnapshot) {
+		commandSnapshots = append(commandSnapshots, snapshot)
+	})
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		emittedEvents = append(emittedEvents, events)
+	})
+	adapter.SetConfigOptionsUpdateSink(func(update AgentSessionConfigOptionsUpdate) {
+		configUpdates = append(configUpdates, update)
+	})
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-foreign", acpMessage{
+		Method: acpMethodUpdate,
+		Params: json.RawMessage(`{
+			"sessionId": "claude-session-foreign",
+			"update": {
+				"sessionUpdate": "session_info_update",
+				"title": "Foreign title"
+			}
+		}`),
+	}, newACPTurnNormalizer(), nil, nil)
+	if err != nil {
+		t.Fatalf("handle foreign title update: %v", err)
+	}
+	if len(events) != 0 || len(emittedEvents) != 0 {
+		t.Fatalf("foreign title events = %#v emitted=%#v, want none", events, emittedEvents)
+	}
+
+	if _, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-foreign", acpMessage{
+		Method: acpMethodUpdate,
+		Params: json.RawMessage(`{
+			"sessionId": "claude-session-foreign",
+			"update": {
+				"sessionUpdate": "available_commands_update",
+				"availableCommands": [{
+					"name": "foreign-web",
+					"description": "Foreign command"
+				}]
+			}
+		}`),
+	}, newACPTurnNormalizer(), nil, nil); err != nil {
+		t.Fatalf("handle foreign command update: %v", err)
+	}
+	if _, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-foreign", acpMessage{
+		Method: acpMethodUpdate,
+		Params: json.RawMessage(`{
+			"sessionId": "claude-session-foreign",
+			"update": {
+				"sessionUpdate": "config_option_update",
+				"key": "model",
+				"value": "foreign-model"
+			}
+		}`),
+	}, newACPTurnNormalizer(), nil, nil); err != nil {
+		t.Fatalf("handle foreign config update: %v", err)
+	}
+	if len(commandSnapshots) != 0 {
+		t.Fatalf("foreign command snapshots = %#v, want none", commandSnapshots)
+	}
+	if len(configUpdates) != 0 {
+		t.Fatalf("foreign config updates = %#v, want none", configUpdates)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want baseline Claude commands")
+	}
+	if names := agentSessionCommandNames(snapshot.Commands); containsString(names, "foreign-web") {
+		t.Fatalf("command names = %#v, want foreign command filtered", names)
+	}
+	state := adapter.SessionState(session)
+	config := payloadObject(state.RuntimeContext["config"])
+	if got := asString(config["model"]); got == "foreign-model" {
+		t.Fatalf("runtime config model = %q, want foreign config filtered", got)
+	}
+}
+
+func TestStandardACPAcceptsMatchingProviderSessionUpdate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-current")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "claude-session-current"
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-current", acpMessage{
+		Method: acpMethodUpdate,
+		Params: json.RawMessage(`{
+			"sessionId": "claude-session-current",
+			"update": {
+				"sessionUpdate": "session_info_update",
+				"title": "Current title"
+			}
+		}`),
+	}, newACPTurnNormalizer(), nil, nil)
+	if err != nil {
+		t.Fatalf("handle matching update: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("events = %#v, want matching session update projected", events)
+	}
+	if got := events[0].Payload.Title; got != "Current title" {
+		t.Fatalf("title = %q, want Current title", got)
 	}
 }
 
@@ -1766,6 +2041,10 @@ func TestClaudeCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	}
 	if !ok || !monitorDisallowed {
 		t.Fatalf("disallowedTools = %#v, want Monitor disabled", options["disallowedTools"])
+	}
+	tools, ok := options["tools"].(map[string]any)
+	if !ok || tools["type"] != "preset" || tools["preset"] != "claude_code" {
+		t.Fatalf("tools = %#v, want claude_code preset", options["tools"])
 	}
 }
 
@@ -1978,7 +2257,7 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("systemPrompt.preset = %q, want claude_code", got)
 	}
 	if got, _ := systemPrompt["append"].(string); got != "Use Tutti CLI for issue context." {
-		t.Fatalf("systemPrompt.append = %q, want prompt file content", got)
+		t.Fatalf("systemPrompt.append = %q, want prompt file content without coding conversation detail mode override", got)
 	}
 	claudeCode, ok := meta["claudeCode"].(map[string]any)
 	if !ok {
@@ -1987,6 +2266,16 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	options, ok := claudeCode["options"].(map[string]any)
 	if !ok {
 		t.Fatalf("claudeCode.options = %#v, want map", claudeCode["options"])
+	}
+	allowedTools, ok := options["allowedTools"].([]any)
+	grepAllowed := false
+	globAllowed := false
+	for _, tool := range allowedTools {
+		grepAllowed = grepAllowed || asString(tool) == "Grep"
+		globAllowed = globAllowed || asString(tool) == "Glob"
+	}
+	if !ok || !grepAllowed || !globAllowed {
+		t.Fatalf("allowedTools = %#v, want Grep and Glob enabled", options["allowedTools"])
 	}
 	plugins, ok := options["plugins"].([]any)
 	if !ok || len(plugins) != 1 {
@@ -2000,8 +2289,8 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("claudeCode.options.plugins = %#v, want local plugin path %q", plugins, pluginDir)
 	}
 	filters, ok := claudeCode["emitRawSDKMessages"].([]any)
-	if !ok || len(filters) != 2 {
-		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system/init + result filters", claudeCode["emitRawSDKMessages"])
+	if !ok || len(filters) < 6 {
+		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want init/task/result filters", claudeCode["emitRawSDKMessages"])
 	}
 	filter, _ := filters[0].(map[string]any)
 	if got, _ := filter["type"].(string); got != "system" {
@@ -2011,13 +2300,22 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system init filter first", filters)
 	}
 	emittedTypes := map[string]bool{}
+	emittedSystemSubtypes := map[string]bool{}
 	for _, f := range filters {
 		m, _ := f.(map[string]any)
 		emittedTypes[asString(m["type"])] = true
+		if asString(m["type"]) == "system" {
+			emittedSystemSubtypes[asString(m["subtype"])] = true
+		}
 	}
 	for _, want := range []string{"system", "result"} {
 		if !emittedTypes[want] {
 			t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want %q included for auth-failure capture", filters, want)
+		}
+	}
+	for _, want := range []string{"init", "task_started", "task_progress", "task_notification", "task_updated"} {
+		if !emittedSystemSubtypes[want] {
+			t.Fatalf("claudeCode.emitRawSDKMessages = %#v, want system/%q included", filters, want)
 		}
 	}
 	instructions, ok := options["planModeInstructions"].(string)
@@ -2026,7 +2324,48 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptOnlyForProvider(t *testing.T) {
+func TestClaudeCodeAdapterStartAppendsGeneralConversationDetailModeSystemPrompt(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-general-conversation-detail-mode")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	session.Settings = &SessionSettings{ConversationDetailMode: AgentConversationDetailModeGeneral}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	meta, ok := transport.conn.lastNewSessionParams["_meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("session/new missing _meta params snapshot")
+	}
+	systemPrompt, ok := meta["systemPrompt"].(map[string]any)
+	if !ok {
+		t.Fatalf("systemPrompt = %#v, want map", meta["systemPrompt"])
+	}
+	appendText, _ := systemPrompt["append"].(string)
+	if !strings.Contains(appendText, "### Non-technical UI") ||
+		!strings.Contains(appendText, "don't name bash commands you're running") ||
+		!strings.Contains(appendText, "focus on outputs") {
+		t.Fatalf("systemPrompt.append = %q, want non-technical UI guidance", appendText)
+	}
+	claudeCode, ok := meta["claudeCode"].(map[string]any)
+	if !ok {
+		t.Fatalf("claudeCode = %#v, want map", meta["claudeCode"])
+	}
+	options, ok := claudeCode["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("claudeCode.options = %#v, want map", claudeCode["options"])
+	}
+	instructions, ok := options["planModeInstructions"].(string)
+	if !ok || !strings.Contains(instructions, "do not edit files") {
+		t.Fatalf("planModeInstructions = %#v, want Tutti plan workflow instructions", options["planModeInstructions"])
+	}
+}
+
+func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptForMarkdownMention(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Claude Agent", "claude-session-mention-routing")
@@ -2045,18 +2384,17 @@ func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptOnlyForProvider(t 
 
 	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
 	if len(texts) < 2 {
-		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
 	}
-	if !strings.Contains(texts[0], "Claude Code mention handoff routing for this user turn:") ||
-		!strings.Contains(texts[0], "Skill(skill=\"tutti-cli:tutti-cli\")") {
-		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[0])
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[1] != prompt {
-		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[len(texts)-1])
 	}
 	userContent := firstUserMessageContent(t, events)
 	if !strings.Contains(userContent, prompt) ||
-		strings.Contains(userContent, "Claude Code mention handoff routing") {
+		strings.Contains(userContent, "system-reminder") {
 		t.Fatalf("user activity event = %#v, want original user prompt only", events)
 	}
 }
@@ -2079,17 +2417,67 @@ func TestClaudeCodeAdapterExecRoutesWorkspaceReferenceMention(t *testing.T) {
 
 	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
 	if len(texts) < 2 {
-		t.Fatalf("prompt texts = %#v, want internal routing plus user prompt", texts)
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
 	}
-	if !strings.Contains(texts[0], "Skill(skill=\"tutti-cli:reference\")") {
-		t.Fatalf("routing prompt = %q, want reference skill routing", texts[0])
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[1] != prompt {
-		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[1], prompt)
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want reference skill routing", texts[len(texts)-1])
 	}
 }
 
-func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *testing.T) {
+func TestClaudeCodeAdapterExecRoutesEscapedMarkdownMentionLabel(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-escaped-label-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 [@设计\\]稿](mention://workspace-reference/app-1?groupId=group-1%29x&source=app&workspaceId=workspace-1)"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-escaped-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
+	}
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
+	}
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want reference skill routing", texts[len(texts)-1])
+	}
+}
+
+func TestClaudeCodeAdapterExecDoesNotRouteBareMentionURI(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-bare-mention-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "请读取 mention://workspace-reference/app-1?source=app&workspaceId=workspace-1&groupId=group-1"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-bare-reference", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if text != prompt {
+		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	}
+}
+
+func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Gemini CLI", "gemini-session-mention-routing")
@@ -2105,9 +2493,15 @@ func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *te
 		t.Fatalf("Exec: %v", err)
 	}
 
-	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
-	if text != prompt {
-		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	texts := promptTexts(t, transport.conn.lastPromptParamsSnapshot)
+	if len(texts) < 2 {
+		t.Fatalf("prompt texts = %#v, want user prompt plus internal routing", texts)
+	}
+	if texts[0] != prompt {
+		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
+	}
+	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }
 
@@ -2245,6 +2639,194 @@ func TestClaudeCodeAdapterMirrorsSDKGoalStatusIntoRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterProjectsSDKTaskMessagesIntoBackgroundAgents(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-task")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	startRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":        "system",
+			"subtype":     "task_started",
+			"task_id":     "task-1",
+			"description": "Inspect ACP subagent flow",
+			"task_type":   "general",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task started: %v", err)
+	}
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: startRaw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle task started: %v", err)
+	}
+	if len(activityEventsWithType(events, activityshared.EventActivityStarted)) != 1 ||
+		len(activityEventsWithType(events, activityshared.EventSessionUpdated)) != 1 {
+		t.Fatalf("events = %#v, want activity.started + session.updated", events)
+	}
+	background := payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	if got := background["count"]; got != 1 {
+		t.Fatalf("backgroundAgents = %#v, want running count 1", background)
+	}
+
+	progressRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":           "system",
+			"subtype":        "task_progress",
+			"task_id":        "task-1",
+			"summary":        "Read t3code adapter",
+			"last_tool_name": "Grep",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task progress: %v", err)
+	}
+	if _, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: progressRaw,
+	}, nil, nil, nil); err != nil {
+		t.Fatalf("handle task progress: %v", err)
+	}
+	background = payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	items, _ := background["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("backgroundAgents = %#v, want one item", background)
+	}
+	item := payloadObject(items[0])
+	if asString(item["summary"]) != "Read t3code adapter" || asString(item["lastToolName"]) != "Grep" {
+		t.Fatalf("background item = %#v, want progress fields", item)
+	}
+
+	completeRaw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type":    "system",
+			"subtype": "task_notification",
+			"task_id": "task-1",
+			"status":  "completed",
+			"summary": "Done",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal task notification: %v", err)
+	}
+	events, err = adapter.handleACPMessage(context.Background(), nil, session, "turn-task", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: completeRaw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle task notification: %v", err)
+	}
+	if len(activityEventsWithType(events, activityshared.EventActivityCompleted)) != 1 {
+		t.Fatalf("events = %#v, want activity.completed", events)
+	}
+	background = payloadObject(adapter.SessionState(session).RuntimeContext["backgroundAgents"])
+	if got := background["count"]; got != 0 {
+		t.Fatalf("backgroundAgents = %#v, want running count 0", background)
+	}
+}
+
+func TestClaudeCodeAdapterProjectsSDKAssistantTextMessage(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeAdapter(newStandardACPTransport("Claude Agent", "claude-session-sdk-text"))
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-sdk-text"
+	raw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type": "assistant",
+			"message": map[string]any{
+				"id":          "msg-final",
+				"type":        "message",
+				"role":        "assistant",
+				"stop_reason": "end_turn",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": "final answer",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal sdk assistant text: %v", err)
+	}
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-final", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: raw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle sdk assistant text: %v", err)
+	}
+	messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 {
+		t.Fatalf("assistant messages = %#v, want one", messages)
+	}
+	if got := messages[0].Payload.Content; got != "final answer" {
+		t.Fatalf("content = %q, want final answer", got)
+	}
+	if got := messages[0].Payload.Metadata["messageId"]; got != "msg-final" {
+		t.Fatalf("messageId = %#v, want msg-final", got)
+	}
+	if got := messages[0].Payload.Metadata["source"]; got != "claude_sdk" {
+		t.Fatalf("source = %#v, want claude_sdk", got)
+	}
+}
+
+func TestClaudeCodeAdapterSkipsDuplicateSDKAssistantText(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeAdapter(newStandardACPTransport("Claude Agent", "claude-session-sdk-text"))
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-sdk-text"
+	normalizer := newACPTurnNormalizer()
+	normalizer.ApplyAssistantFinalText("already projected")
+	completed := normalizer.FinishCompleted(session, "turn-final")
+	if len(activityMessagesWithRole(completed, activityshared.MessageRoleAssistant)) != 1 {
+		t.Fatalf("completed events = %#v, want baseline assistant message", completed)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type": "assistant",
+			"message": map[string]any{
+				"id":          "msg-final",
+				"type":        "message",
+				"role":        "assistant",
+				"stop_reason": "end_turn",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": "already projected",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal sdk assistant text: %v", err)
+	}
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-final", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: raw,
+	}, normalizer, nil, nil)
+	if err != nil {
+		t.Fatalf("handle duplicate sdk assistant text: %v", err)
+	}
+	if messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant); len(messages) != 0 {
+		t.Fatalf("assistant messages = %#v, want duplicate skipped", messages)
+	}
+}
+
 func firstPromptText(t *testing.T, params map[string]any) string {
 	t.Helper()
 	texts := promptTexts(t, params)
@@ -2347,6 +2929,42 @@ func TestClaudeCodeAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.
 	}
 	if got, _ := calls[1]["value"].(string); got != "high" {
 		t.Fatalf("second config value = %q, want high", got)
+	}
+}
+
+func TestClaudeCodeAdapterStartMapsNativeFastConfigOption(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-native-fast")
+	transport.conn.configOptions = []map[string]any{
+		{"id": "model"},
+		{"id": "effort"},
+		{
+			"id":           "fast",
+			"currentValue": "off",
+			"options": []any{
+				map[string]any{"value": "off", "name": "Standard"},
+				map[string]any{"value": "on", "name": "Fast"},
+			},
+		},
+	}
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.Settings = &SessionSettings{Speed: "standard"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want native fast update", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "fast" {
+		t.Fatalf("config id = %q, want fast", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "off" {
+		t.Fatalf("config value = %q, want off", got)
 	}
 }
 
@@ -2488,10 +3106,10 @@ func TestClaudeCodeAdapterApplySessionSettingsSkipsUnsupportedLiveSpeedConfig(t 
 	}
 }
 
-func TestClaudeCodeAdapterApplySessionSettingsSendsAdvertisedLiveSpeedConfig(t *testing.T) {
+func TestClaudeCodeAdapterApplySessionSettingsSkipsLegacyLiveSpeedConfig(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Claude Agent", "claude-session-live-speed-supported")
+	transport := newStandardACPTransport("Claude Agent", "claude-session-live-speed-legacy")
 	adapter := NewClaudeCodeAdapter(transport)
 	session := standardTestSession(ProviderClaudeCode)
 
@@ -2524,15 +3142,64 @@ func TestClaudeCodeAdapterApplySessionSettingsSendsAdvertisedLiveSpeedConfig(t *
 		t.Fatalf("ApplySessionSettings: %v", err)
 	}
 
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("config option calls = %#v, want legacy speed no-op", calls)
+	}
+}
+
+func TestClaudeCodeAdapterApplySessionSettingsMapsNativeLiveSpeedConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-live-native-speed")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "fast",
+			"value": "off",
+			"configOptions": [
+				{
+					"id": "fast",
+					"currentValue": "off",
+					"options": [
+						{"value": "off", "name": "Standard"},
+						{"value": "on", "name": "Fast"}
+					]
+				}
+			]
+		}
+	}`))
+
+	session.Settings = &SessionSettings{Speed: "fast"}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Speed: stringPtr("fast"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
 	calls := transport.conn.setConfigOptionCalls()
 	if len(calls) != 1 {
-		t.Fatalf("config option calls = %#v, want advertised live speed update", calls)
+		t.Fatalf("config option calls = %#v, want native live speed update", calls)
 	}
 	if got, _ := calls[0]["configId"].(string); got != "fast" {
 		t.Fatalf("config id = %q, want fast", got)
 	}
-	if got, _ := calls[0]["value"].(string); got != "fast" {
-		t.Fatalf("config value = %q, want fast", got)
+	if got, _ := calls[0]["value"].(string); got != "on" {
+		t.Fatalf("config value = %q, want on", got)
+	}
+
+	snapshot := adapter.SessionState(session)
+	if snapshot.Settings == nil {
+		t.Fatal("snapshot settings = nil, want live ACP settings")
+	}
+	if snapshot.Settings.Speed != "fast" {
+		t.Fatalf("snapshot settings speed = %q, want fast", snapshot.Settings.Speed)
 	}
 }
 
@@ -3238,6 +3905,7 @@ func TestStandardACPAdapterResumePreservesCommandsAdvertisedDuringLoadSession(t 
 	adapter := NewOpenClawAdapter(transport)
 	session := standardTestSession(ProviderOpenClaw)
 	session.ProviderSessionID = "persisted-openclaw-session-id"
+	transport.conn.sessionID = session.ProviderSessionID
 
 	if err := adapter.Resume(context.Background(), session); err != nil {
 		t.Fatalf("Resume: %v", err)
@@ -3282,6 +3950,55 @@ func TestSelectGeminiACPAuthMethodFallsBackToAPIKey(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close")
+	transport.conn.supportsCloseSession = true
+	transport.conn.closeSessionExits = true
+	adapter := NewGeminiAdapter(transport)
+	session := standardTestSession(ProviderGemini)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	params := transport.conn.closeSessionParams()
+	if got := asString(params["sessionId"]); got != "gemini-session-close" {
+		t.Fatalf("session/close sessionId = %q, want provider session id", got)
+	}
+	if !transport.conn.closed() {
+		t.Fatal("transport was not closed after protocol session close")
+	}
+}
+
+func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close-failure")
+	transport.conn.supportsCloseSession = true
+	transport.conn.closeSessionError = &acpError{Code: -32601, Message: "session close unavailable"}
+	adapter := NewGeminiAdapter(transport)
+	session := standardTestSession(ProviderGemini)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := adapter.Close(context.Background(), session); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if got := asString(transport.conn.closeSessionParams()["sessionId"]); got != "gemini-session-close-failure" {
+		t.Fatalf("session/close sessionId = %q, want provider session id", got)
+	}
+	if !transport.conn.closed() {
+		t.Fatal("transport was not closed after protocol close failure")
+	}
+}
+
 func standardTestSession(provider string) Session {
 	return Session{
 		RoomID:            "room-1",
@@ -3319,6 +4036,7 @@ func (t *standardACPTransport) Start(_ context.Context, spec ProcessSpec) (Proce
 
 type standardACPConnection struct {
 	mu                            sync.Mutex
+	closeOnce                     sync.Once
 	recv                          chan ProcessFrame
 	agentTitle                    string
 	sessionID                     string
@@ -3337,13 +4055,18 @@ type standardACPConnection struct {
 	lastAuthenticatedMethodID     string
 	setModeError                  *acpError
 	loadSessionError              *acpError
+	closeSessionError             *acpError
 	rejectModelValue              string
 	supportsLoadSession           bool
+	supportsCloseSession          bool
+	closeSessionExits             bool
 	isClosed                      bool
 	lastNewSessionParams          map[string]any
 	lastLoadSessionParams         map[string]any
+	lastCloseSessionParams        map[string]any
 	lastPromptParamsSnapshot      map[string]any
 	setConfigOptionSnapshots      []map[string]any
+	configOptions                 []map[string]any
 }
 
 func (c *standardACPConnection) Send(data []byte) error {
@@ -3371,18 +4094,25 @@ func (c *standardACPConnection) Send(data []byte) error {
 					"title": c.agentTitle,
 				},
 			}
+			sessionCapabilities := map[string]any{}
 			if strings.EqualFold(c.agentTitle, "Gemini CLI") {
 				result["authMethods"] = []map[string]any{
 					{"id": "oauth-personal", "name": "Login with Google"},
 					{"id": "gemini-api-key", "name": "Gemini API Key"},
 				}
-				result["sessionCapabilities"] = map[string]any{"load": true}
+				sessionCapabilities["load"] = true
 			}
 			if strings.EqualFold(c.agentTitle, "Claude Agent") {
-				result["sessionCapabilities"] = map[string]any{"resume": true}
+				sessionCapabilities["resume"] = true
 			}
 			if c.supportsLoadSession || strings.EqualFold(strings.TrimSpace(c.agentTitle), "OpenClaw") {
-				result["sessionCapabilities"] = map[string]any{"load": true}
+				sessionCapabilities["load"] = true
+			}
+			if c.supportsCloseSession {
+				sessionCapabilities["close"] = true
+			}
+			if len(sessionCapabilities) > 0 {
+				result["sessionCapabilities"] = sessionCapabilities
 			}
 			c.sendJSON(map[string]any{
 				"jsonrpc": "2.0",
@@ -3453,6 +4183,34 @@ func (c *standardACPConnection) Send(data []byte) error {
 					"configOptions": c.defaultConfigOptions(),
 				},
 			})
+		case acpMethodCloseSession:
+			var request struct {
+				Params map[string]any `json:"params"`
+			}
+			_ = json.Unmarshal([]byte(line), &request)
+			c.mu.Lock()
+			if request.Params != nil {
+				c.lastCloseSessionParams = maps.Clone(request.Params)
+			}
+			closeSessionError := c.closeSessionError
+			closeSessionExits := c.closeSessionExits
+			c.mu.Unlock()
+			if closeSessionError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   closeSessionError,
+				})
+				return nil
+			}
+			c.sendJSON(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      message.ID,
+				"result":  map[string]any{},
+			})
+			if closeSessionExits {
+				c.closeRecv()
+			}
 		case acpMethodSetMode:
 			var request struct {
 				Params map[string]any `json:"params"`
@@ -3668,8 +4426,14 @@ func (c *standardACPConnection) Close() error {
 	c.mu.Lock()
 	c.isClosed = true
 	c.mu.Unlock()
-	close(c.recv)
+	c.closeRecv()
 	return nil
+}
+
+func (c *standardACPConnection) closeRecv() {
+	c.closeOnce.Do(func() {
+		close(c.recv)
+	})
 }
 
 func (c *standardACPConnection) sendJSON(value any) {
@@ -3725,6 +4489,13 @@ func (c *standardACPConnection) sendConfigOptionsUpdate(key string, value string
 }
 
 func (c *standardACPConnection) defaultConfigOptions() []map[string]any {
+	if len(c.configOptions) > 0 {
+		out := make([]map[string]any, 0, len(c.configOptions))
+		for _, option := range c.configOptions {
+			out = append(out, clonePayloadDeep(option))
+		}
+		return out
+	}
 	title := strings.TrimSpace(c.agentTitle)
 	if strings.EqualFold(title, "Claude Agent") || strings.EqualFold(title, "Gemini CLI") {
 		return []map[string]any{
@@ -3806,6 +4577,15 @@ func (c *standardACPConnection) lastSetModeParams() map[string]any {
 		return nil
 	}
 	return maps.Clone(c.lastSetModeParamsSnapshot)
+}
+
+func (c *standardACPConnection) closeSessionParams() map[string]any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.lastCloseSessionParams == nil {
+		return nil
+	}
+	return maps.Clone(c.lastCloseSessionParams)
 }
 
 func (c *standardACPConnection) authenticatedMethodID() string {

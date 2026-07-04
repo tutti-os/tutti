@@ -48,6 +48,14 @@ func TestResolveDefaultsFromEnvAppliesOverrides(t *testing.T) {
 	assertEqual(t, got.Transport.TCPAddr, "127.0.0.1:1111")
 }
 
+func TestDesktopLoginCallbackURLUsesEnvironmentScheme(t *testing.T) {
+	t.Setenv("TUTTI_ENV", "development")
+	assertEqual(t, DesktopLoginCallbackURL(), "tutti-dev://login/callback")
+
+	t.Setenv("TUTTI_ENV", "production")
+	assertEqual(t, DesktopLoginCallbackURL(), "tutti://login/callback")
+}
+
 func TestResolveAnalyticsConfigUsesGeneratedDefaults(t *testing.T) {
 	t.Setenv("TUTTI_ENV", "")
 	t.Setenv("TUTTI_ANALYTICS_DISABLED", "")

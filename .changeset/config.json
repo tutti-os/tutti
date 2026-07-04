@@ -24,6 +24,7 @@
       "@tutti-os/workbench-launchpad",
       "@tutti-os/workbench-surface",
       "@tutti-os/app-release-tools",
+      "@tutti-os/auth-bridge",
       "@tutti-os/ui-i18n-runtime",
       "@tutti-os/ui-notifications",
       "@tutti-os/ui-rich-text",

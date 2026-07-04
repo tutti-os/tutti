@@ -15,11 +15,16 @@ const schemaMigrationWorkspacesV4 = "workspaces_v4"
 const schemaMigrationWorkspaceAgentActivityV1 = "workspace_agent_activity_v1"
 const schemaMigrationWorkspaceAgentActivityV2 = "workspace_agent_activity_v2"
 const schemaMigrationWorkspaceAgentActivityV3 = "workspace_agent_activity_v3"
+const schemaMigrationWorkspaceAgentActivityV4 = "workspace_agent_activity_v4"
+const schemaMigrationWorkspaceAgentActivityV5 = "workspace_agent_activity_v5"
+const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
+const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
 const schemaMigrationWorkspaceIssuesV3 = "workspace_issues_v3"
 const schemaMigrationWorkspaceIssuesV4 = "workspace_issues_v4"
 const schemaMigrationDesktopPreferencesV1 = "desktop_preferences_v1"
+const schemaMigrationDesktopPreferencesAgentDockLayoutV1 = "desktop_preferences_agent_dock_layout_v1"
 const schemaMigrationDesktopPreferencesSleepPreventionModeV1 = "desktop_preferences_sleep_prevention_mode_v1"
 const schemaMigrationDesktopPreferencesDockPlacementV1 = "desktop_preferences_dock_placement_v1"
 const schemaMigrationDesktopPreferencesDockIconStyleV1 = "desktop_preferences_dock_icon_style_v1"
@@ -33,6 +38,7 @@ const schemaMigrationDesktopPreferencesAppCatalogChannelV1 = "desktop_preference
 const schemaMigrationDesktopPreferencesMinimizeAnimationV1 = "desktop_preferences_minimize_animation_v1"
 const schemaMigrationDesktopPreferencesWindowSnappingV1 = "desktop_preferences_window_snapping_v1"
 const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_preferences_show_app_developer_sources_v1"
+const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
@@ -109,7 +115,22 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 
+	if err := s.applyWorkspaceAgentActivityV4(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceAgentActivityV5(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyAgentTargetsV1(ctx); err != nil {
+		return err
+	}
+
 	if err := s.applyDesktopPreferencesV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesAgentDockLayoutV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyDesktopPreferencesSleepPreventionModeV1(ctx); err != nil {
@@ -151,8 +172,15 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	if err := s.applyDesktopPreferencesShowAppDeveloperSourcesV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyDesktopPreferencesAgentConversationDetailModeV1(ctx); err != nil {
+		return err
+	}
 
 	if err := s.applyUserProjectsV1(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
 		return err
 	}
 
@@ -547,151 +575,6 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return fmt.Errorf("migrate workspace database for issue manager v2: %w", err)
 	}
 
-	return nil
-}
-
-func (s *SQLiteStore) applyWorkspaceAgentActivityV1(ctx context.Context) error {
-	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV1)
-	if err != nil {
-		return err
-	}
-	if applied {
-		return nil
-	}
-
-	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
-  workspace_id TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  origin TEXT NOT NULL DEFAULT '',
-  provider TEXT NOT NULL DEFAULT '',
-  provider_session_id TEXT NOT NULL DEFAULT '',
-  model TEXT NOT NULL DEFAULT '',
-  settings_json TEXT NOT NULL DEFAULT '{}',
-  runtime_context_json TEXT NOT NULL DEFAULT '{}',
-  cwd TEXT NOT NULL DEFAULT '',
-  title TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  current_phase TEXT NOT NULL DEFAULT '',
-  last_error TEXT NOT NULL DEFAULT '',
-  message_version INTEGER NOT NULL DEFAULT 0,
-  last_event_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  ended_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  created_at_unix_ms INTEGER NOT NULL,
-  updated_at_unix_ms INTEGER NOT NULL,
-  PRIMARY KEY (workspace_id, agent_session_id),
-  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_workspace_updated
-  ON workspace_agent_sessions(workspace_id, deleted_at_unix_ms, updated_at_unix_ms);
-
-CREATE TABLE IF NOT EXISTS workspace_agent_messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  workspace_id TEXT NOT NULL,
-  agent_session_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  version INTEGER NOT NULL,
-  turn_id TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL DEFAULT '',
-  kind TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  payload_json TEXT NOT NULL DEFAULT '{}',
-  occurred_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  started_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  completed_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  deleted_at_unix_ms INTEGER NOT NULL DEFAULT 0,
-  created_at_unix_ms INTEGER NOT NULL,
-  updated_at_unix_ms INTEGER NOT NULL,
-  UNIQUE (workspace_id, agent_session_id, message_id),
-  FOREIGN KEY (workspace_id, agent_session_id)
-    REFERENCES workspace_agent_sessions(workspace_id, agent_session_id)
-    ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_version
-  ON workspace_agent_messages(workspace_id, agent_session_id, deleted_at_unix_ms, version);
-
-CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_display
-  ON workspace_agent_messages(workspace_id, agent_session_id, deleted_at_unix_ms, id);
-
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV1, now)
-	if err != nil {
-		return fmt.Errorf("migrate workspace database agent activity v1: %w", err)
-	}
-
-	return nil
-}
-
-func (s *SQLiteStore) applyWorkspaceAgentActivityV2(ctx context.Context) error {
-	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV2)
-	if err != nil {
-		return err
-	}
-	if applied {
-		return nil
-	}
-
-	hasSettings, err := s.hasColumn(ctx, "workspace_agent_sessions", "settings_json")
-	if err != nil {
-		return err
-	}
-	hasRuntimeContext, err := s.hasColumn(ctx, "workspace_agent_sessions", "runtime_context_json")
-	if err != nil {
-		return err
-	}
-
-	now := unixMs(time.Now().UTC())
-	if !hasSettings {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
-			return fmt.Errorf("migrate workspace agent activity to v2 settings: %w", err)
-		}
-	}
-	if !hasRuntimeContext {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN runtime_context_json TEXT NOT NULL DEFAULT '{}';`); err != nil {
-			return fmt.Errorf("migrate workspace agent activity to v2 runtime context: %w", err)
-		}
-	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV2, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v2 migration: %w", err)
-	}
-	return nil
-}
-
-func (s *SQLiteStore) applyWorkspaceAgentActivityV3(ctx context.Context) error {
-	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV3)
-	if err != nil {
-		return err
-	}
-	if applied {
-		return nil
-	}
-
-	hasPinnedAt, err := s.hasColumn(ctx, "workspace_agent_sessions", "pinned_at_unix_ms")
-	if err != nil {
-		return err
-	}
-
-	now := unixMs(time.Now().UTC())
-	if !hasPinnedAt {
-		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN pinned_at_unix_ms INTEGER NOT NULL DEFAULT 0;`); err != nil {
-			return fmt.Errorf("migrate workspace agent activity to v3 pinned state: %w", err)
-		}
-	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
-  VALUES (?, ?);
-`, schemaMigrationWorkspaceAgentActivityV3, now); err != nil {
-		return fmt.Errorf("record workspace agent activity v3 migration: %w", err)
-	}
 	return nil
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AgentTarget,
   AgentProviderStatus,
   TuttidClient,
   WorkspaceAgentProvider
@@ -12,6 +13,14 @@ import {
   tuttiIssueAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
 import { DesktopRichTextAtService } from "./desktopRichTextAtService.ts";
+import {
+  mapAgentTargetsToPresentations,
+  mapAgentTargetPresentationsToProviderTargets
+} from "../../../workspace-agent/services/internal/desktopAgentsService.ts";
+import type {
+  AgentsSnapshot,
+  IAgentsService
+} from "../../../workspace-agent/services/agentsService.interface.ts";
 
 test("desktop rich text @ service assembles workspace file providers by capability", async () => {
   const searchCalls: Array<{
@@ -344,7 +353,6 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   const listCalls: Array<{
     limit?: number;
     searchQuery?: string;
-    visibleOnly?: boolean;
     workspaceId: string;
   }> = [];
   const service = new DesktopRichTextAtService({
@@ -354,16 +362,15 @@ test("desktop rich text @ service assembles agent session providers by capabilit
         request?: {
           limit?: number;
           searchQuery?: string;
-          visibleOnly?: boolean;
         }
       ) {
         listCalls.push({
           limit: request?.limit,
           searchQuery: request?.searchQuery,
-          visibleOnly: request?.visibleOnly,
           workspaceId
         });
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {
@@ -403,7 +410,6 @@ test("desktop rich text @ service assembles agent session providers by capabilit
     {
       limit: 5,
       searchQuery: "mentions",
-      visibleOnly: true,
       workspaceId: "workspace-1"
     }
   ]);
@@ -521,7 +527,7 @@ test("desktop rich text @ service assembles workspace app providers from mention
   });
 });
 
-test("desktop rich text @ service assembles provider agent mention apps from mention candidates", async () => {
+test("desktop rich text @ service excludes legacy provider agent pseudo apps from workspace app mentions", async () => {
   const service = new DesktopRichTextAtService({
     tuttidClient: {
       async listWorkspaceAppMentionCandidates(workspaceId: string) {
@@ -569,103 +575,43 @@ test("desktop rich text @ service assembles provider agent mention apps from men
   assert.ok(provider);
   const items = await provider.query({
     context: {},
-    keyword: "agent",
+    keyword: "",
     maxResults: 5,
     trigger: "@"
   });
 
-  assert.equal(items.length, 2);
-  const codexItem = items[0];
-  const claudeItem = items[1];
-  const claudeIconUrl = iconUrlFromProviderItem(claudeItem);
-  const codexIconUrl = iconUrlFromProviderItem(codexItem);
-  assert.equal(claudeIconUrl, tuttiAgentAssetUrls.claudeCode);
-  assert.equal(codexIconUrl, tuttiAgentAssetUrls.codex);
-  assert.deepEqual(items, [
-    {
-      appId: "agent-codex",
-      commandCount: 1,
-      commandDescriptions: [
-        "Start a Codex agent session in the current workspace."
-      ],
-      commandPaths: ["codex start"],
-      description:
-        "Start Codex in this workspace with access to shared context, files, and apps.",
-      commandSummaries: ["Start a Codex agent session"],
-      displayName: "Codex",
-      iconUrl: tuttiAgentAssetUrls.codex,
-      referencesListSupported: false,
-      scopes: ["codex"],
-      workspaceId: "workspace-1"
-    },
-    {
-      appId: "agent-claude-code",
-      commandCount: 1,
-      commandDescriptions: [
-        "Start a Claude Code agent session in the current workspace."
-      ],
-      commandPaths: ["claude start"],
-      description:
-        "Start Claude Code in this workspace with access to shared context, files, and apps.",
-      commandSummaries: ["Start a Claude Code agent session"],
-      displayName: "Claude Code",
-      iconUrl: tuttiAgentAssetUrls.claudeCode,
-      referencesListSupported: false,
-      scopes: ["claude"],
-      workspaceId: "workspace-1"
-    }
-  ]);
-  assert.deepEqual(provider.toInsertResult(codexItem), {
-    kind: "mention",
-    mention: {
-      entityId: "agent-codex",
-      label: "Codex",
-      presentation: {
-        description:
-          "Start Codex in this workspace with access to shared context, files, and apps.",
-        iconUrl: tuttiAgentAssetUrls.codex,
-        subtitle:
-          "Start Codex in this workspace with access to shared context, files, and apps."
-      },
-      scope: {
-        workspaceId: "workspace-1"
-      }
-    }
-  });
+  assert.deepEqual(items, []);
 });
 
-test("desktop rich text @ service localizes agent mention pseudo apps", async () => {
+test("desktop rich text @ service assembles agent target mentions", async () => {
+  const targets = [
+    createAgentTarget({
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex",
+      sortOrder: 10
+    }),
+    createAgentTarget({
+      id: "local:claude-code",
+      name: "Claude Code",
+      provider: "claude-code",
+      sortOrder: 20
+    }),
+    createAgentTarget({
+      enabled: false,
+      id: "disabled-codex",
+      name: "Disabled Codex",
+      provider: "codex",
+      sortOrder: 30
+    })
+  ];
   const service = new DesktopRichTextAtService({
-    tuttidClient: {
-      async listWorkspaceAppMentionCandidates(workspaceId: string) {
-        return {
-          workspaceId,
-          apps: [
-            createWorkspaceAppMentionCandidate({
-              appId: "agent-codex",
-              commandCount: 1,
-              description:
-                "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
-              displayName: "Codex",
-              scopes: ["codex"]
-            }),
-            createWorkspaceAppMentionCandidate({
-              appId: "agent-claude-code",
-              commandCount: 1,
-              description:
-                "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
-              displayName: "Claude Code",
-              scopes: ["claude"]
-            })
-          ]
-        };
-      }
-    } as unknown as TuttidClient,
-    getLocale: () => "zh-CN"
+    agentsService: createAgentsService(targets),
+    tuttidClient: {} as unknown as TuttidClient
   });
 
   const [provider] = service.getProviders({
-    capabilities: ["workspace-app"],
+    capabilities: ["agent-target"],
     surface: "agent-composer",
     target: "agent-gui",
     workspaceId: "workspace-1"
@@ -677,66 +623,48 @@ test("desktop rich text @ service localizes agent mention pseudo apps", async ()
     maxResults: 5,
     trigger: "@"
   });
-  const localizedItems = items as Array<{
-    description: string;
-    displayName: string;
-  }>;
 
   assert.deepEqual(
-    localizedItems.map((item) => ({
-      description: item.description,
-      displayName: item.displayName
-    })),
-    [
-      {
-        description: "启动 Codex，处理当前工作区任务。",
-        displayName: "Codex"
-      },
-      {
-        description: "启动 Claude Code，处理当前工作区任务。",
-        displayName: "Claude Code"
-      }
-    ]
+    items.map((item) => provider.getItemKey(item)),
+    ["local:codex", "local:claude-code"]
   );
+  assert.equal(provider.getItemIconUrl?.(items[0]), tuttiAgentAssetUrls.codex);
+  assert.deepEqual(provider.toInsertResult(items[0]), {
+    kind: "mention",
+    mention: {
+      entityId: "local:codex",
+      label: "Codex",
+      presentation: {
+        agentProviderId: "codex",
+        description: "Codex",
+        iconUrl: tuttiAgentAssetUrls.codex,
+        subtitle: "Codex"
+      },
+      scope: {
+        workspaceId: "workspace-1"
+      }
+    }
+  });
 });
 
-test("desktop rich text @ service hides agent pseudo app mentions using cached provider readiness", async () => {
+test("desktop rich text @ service hides agent target mentions using cached provider readiness", async () => {
+  const targets = [
+    createAgentTarget({
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex",
+      sortOrder: 10
+    }),
+    createAgentTarget({
+      id: "local:claude-code",
+      name: "Claude Code",
+      provider: "claude-code",
+      sortOrder: 20
+    })
+  ];
   const service = new DesktopRichTextAtService({
-    tuttidClient: {
-      async listWorkspaceAppMentionCandidates(workspaceId: string) {
-        return {
-          workspaceId,
-          apps: [
-            createWorkspaceAppMentionCandidate({
-              appId: "agent-codex",
-              commandCount: 1,
-              commandDescriptions: [
-                "Start a Codex agent session in the current workspace."
-              ],
-              commandPaths: ["codex start"],
-              commandSummaries: ["Start a Codex agent session"],
-              description:
-                "Start a Codex agent session in the current workspace.",
-              displayName: "Codex",
-              scopes: ["codex"]
-            }),
-            createWorkspaceAppMentionCandidate({
-              appId: "agent-claude-code",
-              commandCount: 1,
-              commandDescriptions: [
-                "Start a Claude Code agent session in the current workspace."
-              ],
-              commandPaths: ["claude start"],
-              commandSummaries: ["Start a Claude Code agent session"],
-              description:
-                "Start a Claude Code agent session in the current workspace.",
-              displayName: "Claude Code",
-              scopes: ["claude"]
-            })
-          ]
-        };
-      }
-    } as unknown as TuttidClient,
+    agentsService: createAgentsService(targets),
+    tuttidClient: {} as unknown as TuttidClient,
     agentProviderStatuses: () => [
       createAgentProviderStatus({
         availability: "ready",
@@ -750,7 +678,7 @@ test("desktop rich text @ service hides agent pseudo app mentions using cached p
   });
 
   const [provider] = service.getProviders({
-    capabilities: ["workspace-app"],
+    capabilities: ["agent-target"],
     surface: "agent-composer",
     target: "agent-gui",
     workspaceId: "workspace-1"
@@ -758,14 +686,57 @@ test("desktop rich text @ service hides agent pseudo app mentions using cached p
   assert.ok(provider);
   const items = await provider.query({
     context: {},
-    keyword: "agent",
+    keyword: "",
     maxResults: 5,
     trigger: "@"
   });
 
   assert.deepEqual(
     items.map((item) => provider.getItemKey(item)),
-    ["agent-codex"]
+    ["local:codex"]
+  );
+});
+
+test("desktop rich text @ service keeps explicit workspace app queries scoped to apps", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listWorkspaceAppMentionCandidates(workspaceId: string) {
+        return {
+          workspaceId,
+          apps: [
+            createWorkspaceAppMentionCandidate({
+              appId: "automation",
+              commandCount: 1,
+              description: "Manage automations.",
+              displayName: "Automation",
+              scopes: ["automation"]
+            })
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const providers = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "workspace-app-external",
+    target: "workspace-app",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    providers.map((provider) => provider.id),
+    ["workspace-app"]
+  );
+  const items = await providers[0]!.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.deepEqual(
+    items.map((item) => providers[0]!.getItemKey(item)),
+    ["automation"]
   );
 });
 
@@ -895,14 +866,6 @@ test("desktop rich text @ service hides issue manager app mentions from issue ma
   );
 });
 
-function iconUrlFromProviderItem(item: unknown): string {
-  if (!item || typeof item !== "object") {
-    return "";
-  }
-  const iconUrl = (item as { readonly iconUrl?: unknown }).iconUrl;
-  return typeof iconUrl === "string" ? iconUrl : "";
-}
-
 function createWorkspaceAppMentionCandidate(input: {
   appId: string;
   commandCount?: number;
@@ -950,6 +913,59 @@ function createWorkspaceAppMentionCandidate(input: {
     },
     source: input.source ?? "cli_app"
   };
+}
+
+function createAgentTarget(input: {
+  enabled?: boolean;
+  id: string;
+  name: string;
+  provider: "codex" | "claude-code";
+  sortOrder: number;
+}): AgentTarget {
+  return {
+    createdAtUnixMs: 1780272000000,
+    enabled: input.enabled ?? true,
+    iconKey: "",
+    id: input.id,
+    launchRef: {
+      provider: input.provider,
+      type: "local_cli"
+    },
+    name: input.name,
+    provider: input.provider,
+    sortOrder: input.sortOrder,
+    source: "system",
+    updatedAtUnixMs: 1780272000000
+  };
+}
+
+function createAgentsService(
+  targets: readonly AgentTarget[]
+): Pick<IAgentsService, "load"> {
+  const agentTargets = mapAgentTargetsToPresentations(targets, {
+    resolveAgentIconUrl: resolveTestAgentIconUrl
+  });
+  const snapshot: AgentsSnapshot = {
+    agentTargets,
+    capturedAtUnixMs: 1780272000000,
+    providerTargets: mapAgentTargetPresentationsToProviderTargets(agentTargets)
+  };
+  return {
+    async load() {
+      return snapshot;
+    }
+  };
+}
+
+function resolveTestAgentIconUrl(provider: string): string {
+  switch (provider) {
+    case "claude-code":
+      return tuttiAgentAssetUrls.claudeCode;
+    case "codex":
+      return tuttiAgentAssetUrls.codex;
+    default:
+      return "";
+  }
 }
 
 function createAgentProviderStatus(input: {
@@ -1103,6 +1119,7 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
       },
       async listWorkspaceAgentSessions(workspaceId: string) {
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {
@@ -1260,6 +1277,7 @@ test("desktop rich text @ service enriches cached agent session providers", asyn
     tuttidClient: {
       async listWorkspaceAgentSessions(workspaceId: string) {
         return {
+          hasMore: false,
           workspaceId,
           sessions: [
             {

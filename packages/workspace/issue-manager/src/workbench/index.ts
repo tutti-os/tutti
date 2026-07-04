@@ -210,7 +210,7 @@ export function createIssueManagerWorkbenchNodeDefinition<
         },
         onToggleSidebar: (nextCollapsed) => {
           if (
-            isSidebarCollapsed &&
+            isSidebarAutoCollapsed &&
             nextCollapsed === false &&
             node.displayMode !== "fullscreen"
           ) {

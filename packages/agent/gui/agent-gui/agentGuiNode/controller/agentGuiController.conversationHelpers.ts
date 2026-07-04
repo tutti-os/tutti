@@ -509,6 +509,9 @@ export function mergeSessionControlStatePatch(
     if (patch.settings.browserUse !== undefined) {
       nextSettings.browserUse = patch.settings.browserUse;
     }
+    if (patch.settings.computerUse !== undefined) {
+      nextSettings.computerUse = patch.settings.computerUse;
+    }
     if (patch.settings.permissionModeId !== undefined) {
       nextSettings.permissionModeId = normalizePermissionModeId(
         patch.settings.permissionModeId

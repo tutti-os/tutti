@@ -12,7 +12,6 @@ import {
   buildWorkspaceAgentInteractivePromptLabels,
   buildWorkspaceAgentMessageCenterModel,
   isWaitingMessageCenterItem,
-  managedAgentRoundedIconUrl,
   stabilizeWorkspaceAgentMessageCenterModel,
   WorkspaceAgentMessageCenterPanel,
   type WorkspaceAgentMessageCenterItem,
@@ -63,10 +62,6 @@ import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
 } from "../services/workspaceAgentDecisionNotification";
-import {
-  buildWorkspaceAgentOutcomeNotification,
-  workspaceAgentOutcomeNotificationKey
-} from "../services/workspaceAgentOutcomeNotification";
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
 import { registerWorkspaceMessageCenterOpenHandler } from "../services/workspaceMessageCenterCoordinator";
@@ -88,8 +83,6 @@ const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
 const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
 const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
 const WORKSPACE_AGENT_DECISION_TOAST_DURATION = Infinity;
-// Completion is informational, so the card auto-dismisses after a short window.
-const WORKSPACE_AGENT_OUTCOME_TOAST_DURATION = 6000;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX = 16;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX = 64;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
@@ -174,6 +167,7 @@ export function WorkspaceChrome({
           : `calc(${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX}px + var(--cove-workspace-mac-traffic-light-gutter, ${WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX}px))`
       } as React.CSSProperties)
     : undefined;
+  const [messageCenterOpen, setMessageCenterOpen] = useState(false);
   const [externalImportWizardProviders, setExternalImportWizardProviders] =
     useState<WorkspaceAgentProvider[] | undefined>(undefined);
   const [externalImportWizardOpen, setExternalImportWizardOpen] =
@@ -190,7 +184,10 @@ export function WorkspaceChrome({
     <>
       <header
         className={cn(
-          "grid min-h-[52px] items-center gap-4 bg-transparent px-4 [-webkit-app-region:drag]",
+          "grid min-h-[52px] items-center gap-4 bg-transparent px-4",
+          messageCenterOpen
+            ? "[-webkit-app-region:no-drag]"
+            : "[-webkit-app-region:drag]",
           "grid-cols-[max-content_minmax(0,1fr)_max-content]",
           isDarwin && "pl-[var(--workspace-chrome-left-padding)]",
           isWindows &&
@@ -219,6 +216,8 @@ export function WorkspaceChrome({
           <WorkspaceFeedbackGroupPopover />
           <WorkspaceAgentMessageCenterAction
             launchNode={launchNode}
+            open={messageCenterOpen}
+            setOpen={setMessageCenterOpen}
             workspace={workspace}
           />
           <WorkspaceMissionControlActions
@@ -251,9 +250,13 @@ export function WorkspaceChrome({
 
 function WorkspaceAgentMessageCenterAction({
   launchNode,
+  open,
+  setOpen,
   workspace
 }: {
   launchNode?: WorkbenchHostChromeRenderContext["launchNode"];
+  open: boolean;
+  setOpen: (nextOpen: boolean) => void;
   workspace: WorkspaceSummary;
 }) {
   const { i18n, locale, t } = useTranslation();
@@ -263,7 +266,6 @@ function WorkspaceAgentMessageCenterAction({
   const reporterService = useService(IReporterService);
   const notifications = useService(INotificationService);
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [open, setOpen] = useState(false);
   const [highlightedMessageCenterItemId, setHighlightedMessageCenterItemId] =
     useState<string | null>(null);
   const snapshotRef = useRef<{
@@ -272,7 +274,6 @@ function WorkspaceAgentMessageCenterAction({
   } | null>(null);
   const requestedMessageSummarySessionIdsRef = useRef<Set<string>>(new Set());
   const seenWaitingNotificationKeysRef = useRef<Set<string> | null>(null);
-  const seenOutcomeNotificationKeysRef = useRef<Set<string> | null>(null);
   const activeWaitingNotificationToastIdsRef = useRef<Map<string, string>>(
     new Map()
   );
@@ -372,13 +373,12 @@ function WorkspaceAgentMessageCenterAction({
       registerWorkspaceMessageCenterOpenHandler(workspace.id, () => {
         setOpen(true);
       }),
-    [workspace.id]
+    [setOpen, workspace.id]
   );
 
   useEffect(() => {
     requestedMessageSummarySessionIdsRef.current.clear();
     seenWaitingNotificationKeysRef.current = null;
-    seenOutcomeNotificationKeysRef.current = null;
     for (const toastId of activeWaitingNotificationToastIdsRef.current.values()) {
       toast.dismiss(toastId);
     }
@@ -402,84 +402,8 @@ function WorkspaceAgentMessageCenterAction({
         setOpen(false);
       });
     },
-    [launchNode]
+    [launchNode, setOpen]
   );
-
-  useEffect(() => {
-    const outcomeEntries = model.items
-      .map(
-        (item) => [workspaceAgentOutcomeNotificationKey(item), item] as const
-      )
-      .filter(
-        (entry): entry is readonly [string, WorkspaceAgentMessageCenterItem] =>
-          entry[0] !== null
-      );
-    const currentKeys = new Set(outcomeEntries.map(([key]) => key));
-    const seenKeys = seenOutcomeNotificationKeysRef.current;
-    if (!seenKeys) {
-      seenOutcomeNotificationKeysRef.current = currentKeys;
-      return;
-    }
-    const nextSeenKeys = new Set(seenKeys);
-    for (const key of currentKeys) {
-      nextSeenKeys.add(key);
-    }
-    seenOutcomeNotificationKeysRef.current = nextSeenKeys;
-    for (const [notificationKey, item] of outcomeEntries) {
-      if (seenKeys.has(notificationKey)) {
-        continue;
-      }
-      const notification = buildWorkspaceAgentOutcomeNotification(item, {
-        completedBody: t(
-          "workspace.agentMessageCenter.outcomeNotificationCompletedBody"
-        ),
-        failedBody: t(
-          "workspace.agentMessageCenter.outcomeNotificationFailedBody"
-        ),
-        fallbackAgentName: t("workspace.agentGui.fallbackAgentLabel")
-      });
-      if (!notification) {
-        continue;
-      }
-      // When the message center panel is open it already surfaces the outcome
-      // in-app, so skip the card. Otherwise raise an in-app notification card
-      // (no OS/system notification) that auto-dismisses after a short while.
-      if (open) {
-        continue;
-      }
-      const toastId = `workspace-agent-outcome:${workspace.id}:${notificationKey}`;
-      toast.custom(
-        (id) => (
-          <WorkspaceAgentOutcomeToast
-            agentIconUrl={managedAgentRoundedIconUrl(item.provider)}
-            agentName={notification.agentName}
-            body={notification.body}
-            closeLabel={t("common.close")}
-            conversationTitle={notification.conversationTitle}
-            level={notification.level}
-            statusLabel={t(
-              notification.level === "success"
-                ? "workspace.agentMessageCenter.outcomeNotificationCompletedStatus"
-                : "workspace.agentMessageCenter.outcomeNotificationFailedStatus"
-            )}
-            onClose={() => toast.dismiss(id)}
-            onOpen={() => {
-              toast.dismiss(id);
-              openMessageCenterChat({
-                agentSessionId: notification.agentSessionId,
-                provider: item.provider
-              });
-            }}
-          />
-        ),
-        {
-          className: workspaceAgentDecisionToastClassName,
-          id: toastId,
-          duration: WORKSPACE_AGENT_OUTCOME_TOAST_DURATION
-        }
-      );
-    }
-  }, [model, open, openMessageCenterChat, t, workspace.id]);
 
   useEffect(() => {
     const waitingEntries = waitingItems.map(
@@ -717,7 +641,7 @@ function WorkspaceAgentMessageCenterAction({
   );
   const closeMessageCenter = useCallback(() => {
     setOpen(false);
-  }, []);
+  }, [setOpen]);
   const handleHighlightedMessageCenterItemSettled = useCallback(
     (itemId: string) => {
       setHighlightedMessageCenterItemId((current) =>
@@ -777,7 +701,7 @@ function WorkspaceAgentMessageCenterAction({
               aria-label={t("workspace.agentMessageCenter.openAria")}
               className={cn(
                 "gap-1.5 rounded-[6px] border-transparent bg-transparent px-2.5 text-[var(--workbench-chrome-foreground)] shadow-none hover:border-transparent hover:bg-transparent focus-visible:border-transparent focus-visible:bg-transparent active:bg-transparent aria-expanded:bg-transparent",
-                open && "text-foreground"
+                open && "text-[var(--workbench-chrome-active-foreground)]"
               )}
               size="sm"
               title={triggerLabel}
@@ -915,86 +839,6 @@ function WorkspaceAgentDecisionToast({
           <span className="min-w-0 truncate">{agentName}</span>
         </div>
       </div>
-    </article>
-  );
-}
-
-function WorkspaceAgentOutcomeToast({
-  agentIconUrl,
-  agentName,
-  body,
-  closeLabel,
-  conversationTitle,
-  level,
-  statusLabel,
-  onClose,
-  onOpen
-}: {
-  agentIconUrl: string;
-  agentName: string;
-  body: string;
-  closeLabel: string;
-  conversationTitle: string;
-  level: "error" | "success";
-  statusLabel: string;
-  onClose: () => void;
-  onOpen: () => void;
-}) {
-  "use memo";
-  const displayTitle = conversationTitle || agentName;
-  const tone = level === "success" ? "green" : "red";
-
-  return (
-    <article className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] p-3.5">
-      <span
-        aria-hidden="true"
-        className="workspace-agent-decision-toast__edge-glow agent-gui-edge-glow pointer-events-none inset-0 rounded-[12px]"
-        style={{ position: "absolute" }}
-      />
-      <Button
-        type="button"
-        aria-label={closeLabel}
-        className="workspace-agent-decision-toast__close absolute top-0 right-0 z-[2] size-6 translate-x-[35%] -translate-y-[35%] rounded-full border-[var(--line-2)] bg-[var(--background-panel)] text-[var(--text-secondary)] shadow-sm hover:bg-[var(--background-fronted)] hover:text-[var(--text-primary)] focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)]"
-        size="icon-xs"
-        variant="chrome"
-        onClick={onClose}
-      >
-        <CloseIcon className="size-4" />
-      </Button>
-      <button
-        type="button"
-        className="workspace-agent-decision-toast__content relative z-[1] grid w-full min-w-0 cursor-pointer gap-2.5 text-left"
-        onClick={onOpen}
-      >
-        <div className="flex min-w-0 items-center justify-between gap-2.5 pr-2">
-          <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">
-            {displayTitle}
-          </h3>
-          <span
-            className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
-            data-status={level}
-            title={statusLabel}
-          >
-            <StatusDot tone={tone} size="sm" title={statusLabel} />
-            <span>{statusLabel}</span>
-          </span>
-        </div>
-        <p className="workspace-agent-decision-toast__outcome-card min-w-0 text-[13px] leading-5 text-[var(--text-secondary)]">
-          {body}
-        </p>
-        <div className="flex min-w-0 items-center gap-2 text-[13px] leading-5 text-[var(--text-secondary)]">
-          <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--line-1)] bg-[var(--transparency-block)]">
-            <img
-              src={agentIconUrl}
-              alt={agentName}
-              className="size-full object-cover"
-              decoding="async"
-              draggable={false}
-            />
-          </span>
-          <span className="min-w-0 truncate">{agentName}</span>
-        </div>
-      </button>
     </article>
   );
 }
@@ -1144,7 +988,8 @@ function WorkspaceMissionControlAction({
       aria-label={label}
       className={cn(
         "text-[var(--workbench-chrome-foreground)]",
-        active && "bg-transparency-block text-foreground"
+        active &&
+          "bg-transparency-block text-[var(--workbench-chrome-active-foreground)]"
       )}
       disabled={disabled}
       size="icon-sm"
@@ -1216,7 +1061,8 @@ function WorkspaceSettingsTrigger({
               aria-label={t("workspace.settings.trigger")}
               className={cn(
                 "text-[var(--workbench-chrome-foreground)]",
-                settingsState.open && "text-foreground"
+                settingsState.open &&
+                  "text-[var(--workbench-chrome-active-foreground)]"
               )}
               size="icon-sm"
               title={t("workspace.settings.trigger")}

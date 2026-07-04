@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -589,7 +590,7 @@ func fetchRemoteCatalog(catalogURL string) ([]App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create app catalog request: %w", err)
 	}
-	response, err := http.DefaultClient.Do(request)
+	response, err := httpx.Default().Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("fetch app catalog: %w", err)
 	}

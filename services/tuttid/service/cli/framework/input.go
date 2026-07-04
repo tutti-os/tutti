@@ -41,6 +41,7 @@ func FromStruct[T any]() InputSpec {
 			Hint:        strings.TrimSpace(field.Tag.Get("hint")),
 		}
 		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
+		fieldSpec.Enum = parseCSVTag(field.Tag.Get("enum"))
 		spec.Fields = append(spec.Fields, fieldSpec)
 		spec.AcceptsInput = true
 	}
@@ -65,6 +66,15 @@ func Schema(input InputSpec) map[string]any {
 		}
 		if field.Description != "" {
 			property["description"] = field.Description
+		}
+		if field.Min != nil {
+			property["minimum"] = *field.Min
+		}
+		if field.Max != nil {
+			property["maximum"] = *field.Max
+		}
+		if len(field.Enum) > 0 {
+			property["enum"] = field.Enum
 		}
 		properties[field.Name] = property
 		if field.Required {
@@ -151,7 +161,11 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 		if !ok {
 			return invalidInputError(spec.Name)
 		}
-		field.SetString(strings.TrimSpace(text))
+		trimmed := strings.TrimSpace(text)
+		if err := validateEnum(spec, trimmed); err != nil {
+			return err
+		}
+		field.SetString(trimmed)
 	case reflect.Slice:
 		if field.Type().Elem().Kind() != reflect.String {
 			return invalidInputError(spec.Name)
@@ -181,10 +195,10 @@ func setFieldValue(field reflect.Value, spec FieldSpec, raw any) error {
 			return invalidInputError(spec.Name)
 		}
 		if spec.Min != nil && value < *spec.Min {
-			return invalidInputError(spec.Name)
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be >= %d", *spec.Min))
 		}
 		if spec.Max != nil && value > *spec.Max {
-			return invalidInputError(spec.Name)
+			return invalidInputErrorWithReason(spec.Name, fmt.Sprintf("must be <= %d", *spec.Max))
 		}
 		field.SetInt(value)
 	default:
@@ -262,6 +276,26 @@ func invalidInputError(name string) error {
 	return fmt.Errorf("%w: invalid input %q", cliservice.ErrInvalidInput, name)
 }
 
+func invalidInputErrorWithReason(name string, reason string) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return invalidInputError(name)
+	}
+	return fmt.Errorf("%w: invalid input %q: %s", cliservice.ErrInvalidInput, name, reason)
+}
+
+func validateEnum(spec FieldSpec, value string) error {
+	if len(spec.Enum) == 0 || strings.TrimSpace(value) == "" && !spec.Required {
+		return nil
+	}
+	for _, allowed := range spec.Enum {
+		if value == allowed {
+			return nil
+		}
+	}
+	return invalidInputErrorWithReason(spec.Name, "must be one of "+strings.Join(spec.Enum, ", "))
+}
+
 func applyValidateTag(field *FieldSpec, tag string) {
 	for _, part := range strings.Split(tag, ",") {
 		part = strings.TrimSpace(part)
@@ -284,6 +318,20 @@ func applyValidateTag(field *FieldSpec, tag string) {
 			}
 		}
 	}
+}
+
+func parseCSVTag(tag string) []string {
+	if strings.TrimSpace(tag) == "" {
+		return nil
+	}
+	values := []string{}
+	for _, part := range strings.Split(tag, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }
 
 func schemaType(typ reflect.Type) string {

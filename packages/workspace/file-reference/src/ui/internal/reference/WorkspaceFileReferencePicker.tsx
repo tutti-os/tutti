@@ -5,6 +5,7 @@ import {
   DialogTitle,
   cn
 } from "@tutti-os/ui-system";
+import { useEffect } from "react";
 import type {
   WorkspaceFileReferenceAdapter,
   WorkspaceFileReference,
@@ -68,6 +69,28 @@ export function WorkspaceFileReferencePicker({
     open,
     workspaceId
   });
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handleEscapeKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", handleEscapeKeyDown, {
+      capture: true
+    });
+    return () => {
+      document.removeEventListener("keydown", handleEscapeKeyDown, {
+        capture: true
+      });
+    };
+  }, [onClose, open]);
 
   return (
     <Dialog
@@ -84,6 +107,11 @@ export function WorkspaceFileReferencePicker({
         className={cn(
           "nodrag flex h-[min(88vh,44rem)] w-full max-w-5xl flex-col gap-0 overflow-hidden border-[var(--line-1)] bg-[var(--background-fronted)] p-0 text-[var(--text-primary)] shadow-panel [-webkit-app-region:no-drag] sm:h-[min(82vh,44rem)] sm:max-w-5xl"
         )}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }}
         // When scoped, both overlay and content stay clipped within the nearest
         // positioned ancestor (the node window) instead of covering the viewport.
         overlayClassName={cn("nodrag", scoped && "!absolute")}

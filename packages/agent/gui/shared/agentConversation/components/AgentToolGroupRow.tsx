@@ -9,6 +9,7 @@ import { AgentEnterPlanModeCard } from "./AgentEnterPlanModeCard";
 import { AgentExitPlanModeCard } from "./AgentExitPlanModeCard";
 import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { AgentTaskCallCard } from "./AgentTaskCallCard";
+import { AgentSubAgentCards } from "./AgentSubAgentCards";
 import { AgentToolCallCard } from "./AgentToolCallCard";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import { hasAgentToolContent } from "./tool-renderers/agentToolContentShared";
@@ -198,6 +199,11 @@ function renderToolCard(
   rawTimelineJsonLabel = ""
 ): JSX.Element {
   const props = { call, onLinkClick, previewMode };
+  // A delegated sub-agent renders as its own first-class card - no tool-row
+  // chrome, no prompt echo; identity/status belong to the sub-agent itself.
+  if (call.task?.subAgents?.length) {
+    return <AgentSubAgentCards call={call} onLinkClick={onLinkClick} />;
+  }
   let card: JSX.Element;
   switch (call.rendererKind) {
     case "plan-enter":

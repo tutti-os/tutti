@@ -1,6 +1,7 @@
 import { proxy } from "valtio";
 import type { WorkspaceSettingsStoreState } from "../workspaceSettingsTypes";
 import { readDeveloperPanelVisible } from "./developerPanelVisibility.ts";
+import { readTuttiAgentSwitchEnabled } from "./tuttiAgentSwitchPreference.ts";
 
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
@@ -28,6 +29,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
       testingProvider: null
     },
     open: false,
+    tuttiAgentSwitchEnabled: readTuttiAgentSwitchEnabled(),
     workspaceID: null
   });
 }

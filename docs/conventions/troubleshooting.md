@@ -43,6 +43,110 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Claude SDK context window shows 200k for 1M models
+
+- Symptom:
+  Claude Code GUI usage shows a 200k context window for a model that should have
+  1M context, such as Claude Sonnet 5.
+- Quick checks:
+  Inspect the session runtime context for `usage.contextWindow.totalTokens`,
+  then trace the Claude SDK sidecar `usage_updated` payload and daemon
+  `agent_session.claude_sdk.usage_update` log. If the payload keys include
+  `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
+  model-usage context window.
+- Root cause:
+  AgentGUI only renders `runtimeContext.usage`; the total comes from the daemon
+  and Claude SDK sidecar. Claude SDK result messages expose model usage as a
+  map keyed by model id, for example
+  `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
+  only parses array-shaped `modelUsage`, the context-window total is missing and
+  daemon normalization falls back to 200k.
+- Fix:
+  Parse `modelUsage` recursively as both arrays and maps before using fallback
+  context-window values. Do not hard-code alias-to-model mappings in Tutti.
+- Validation:
+  Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
+  `contextWindow: 1_000_000`, then run the Claude SDK sidecar tests, daemon Go
+  tests, and sidecar typecheck.
+- References:
+  [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
+  [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
+### Codex npm install misses the platform package
+
+- Symptom:
+  The Codex environment dialog says the CLI is installed, but the adapter or
+  `codex app-server` probe is still missing. Logs may show
+  `Missing optional dependency @openai/codex-darwin-arm64`, a long wait on an
+  npm registry, or a later repair failure such as `ENOTEMPTY` while moving an
+  existing `@openai/codex` directory. Another form is an immediate launcher
+  failure such as `env: node: No such file or directory` after the JavaScript
+  `codex` shim has been installed.
+- Quick checks:
+  Inspect the npm debug log under the install cache for
+  `reify failed optional dependency`, then check whether the matching platform
+  package directory contains both `package.json` and the vendor `codex`
+  executable. Compare the selected registry with a temporary prefix/cache
+  install before changing the user's real install.
+- Root cause:
+  `@openai/codex` installs a JavaScript launcher plus a per-platform optional
+  package such as `@openai/codex-darwin-arm64`. npm can exit successfully even
+  when an optional dependency fetch failed, which leaves the launcher installed
+  but unable to start. A registry can also be reachable but too slow for the
+  platform tarball, so retrying the same source burns the install timeout before
+  mirrors are tried. The launcher itself uses `#!/usr/bin/env node`, so every
+  daemon-run Codex command (`--version`, `login status`, and `app-server`) must
+  run with the Tutti-managed Node bin directory on `PATH`; fixing only the npm
+  install command leaves post-install probes broken on machines without system
+  Node.
+- Fix:
+  Keep Codex installs on the Tutti-managed Node/npm runtime, install with
+  optional dependencies included, and rank configured npm registries with a
+  lightweight package metadata probe before attempting the install. Preserve
+  `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no mirror
+  fallback. Also pass the same managed Node `PATH` through provider command
+  resolution, version checks, auth-status checks, and adapter probes. If the
+  CLI path exists but `codex app-server` cannot launch, treat the failed probe
+  as a repair trigger so the install action does not clear immediately without
+  running an installer.
+- Validation:
+  Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
+  `codex --version`, the platform package metadata and vendor binary, and a
+  short `codex app-server` probe before touching the user's real install. Include
+  a case where the visible `codex` shim uses `#!/usr/bin/env node` and the normal
+  user `PATH` does not contain `node`.
+- References:
+  [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
+  [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [codex_platform.go](../../services/tuttid/service/agentstatus/codex_platform.go)
+
+### Dynamic CLI input rejects plausible flags
+
+- Symptom:
+  A dynamic `tutti-dev` command prints normal-looking help, but invocation fails
+  with `invalid input "<flag>"` or an app-level invalid-argument error even
+  though the flag name and shell syntax are correct.
+- Quick checks:
+  Inspect the command input struct tags under `services/tuttid/service/cli/providers`.
+  Confirm `validate:"min=...,max=..."` bounds and any finite string values such
+  as status, priority, or source are represented in the framework input schema.
+- Root cause:
+  Dynamic CLI help and agent command guides are generated from daemon capability
+  schema, while actual invocation is bound and validated later by the daemon.
+  If the schema omits enum/range metadata, agents may guess plausible but
+  invalid values such as `--status open` or an out-of-range page size.
+- Fix:
+  Keep finite string sets in `enum:"..."` tags and numeric bounds in
+  `validate:"min=...,max=..."`. The framework should reject invalid enum/range
+  input with a reason before provider code sees the request.
+- Validation:
+  Add provider tests that assert both advertised schema metadata and invalid
+  input errors for the affected command.
+- References:
+  [input.go](../../services/tuttid/service/cli/framework/input.go)
+  [issues.go](../../services/tuttid/service/cli/providers/issuemanager/issues.go)
+
 ### Desktop dev GUI exits before opening
 
 - Symptom:
@@ -60,11 +164,15 @@ Use this shape for new entries:
   corepack's shim, so `corepack prepare` succeeds but the script still validates
   the wrong `pnpm`. Electron's single-instance lock also follows Electron
   userData; if development and production share userData, a running production
-  app makes the dev app quit as a secondary instance.
+  app makes the dev app quit as a secondary instance. Agent shells launched from
+  the packaged app may inherit `TUTTI_ENV=production`, so `make dev-gui` must
+  force the development environment instead of preserving that inherited value.
 - Fix:
   Prefer the corepack shim directory before checking or running `pnpm`, and set
   development Electron userData to an environment-specific path before
-  requesting the single-instance lock.
+  requesting the single-instance lock. Ensure the dev-gui script exports
+  `TUTTI_ENV=development` before resolving pid files, installing the dev CLI, or
+  launching Electron.
 - Validation:
   Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
   the packaged app is open and confirm the renderer dev server and development
@@ -75,6 +183,40 @@ Use this shape for new entries:
   [dev-gui.sh](../../tools/scripts/dev-gui.sh)
   [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
   [defaults.ts](../../apps/desktop/src/main/defaults.ts)
+
+### macOS updates fail from a mounted DMG
+
+- Symptom:
+  A packaged macOS build can check for and download an update, but clicking
+  install appears to do nothing or logs an updater error such as
+  `Cannot update while running on a read-only volume`. The desktop log shows
+  the app executable under `/Volumes/.../Tutti.app`, and the daemon may stop
+  briefly because the update install flow began before the updater rejected the
+  read-only volume.
+- Quick checks:
+  Inspect `tutti-desktop.log` for `process.execPath`, updater errors, or
+  managed daemon start lines that point under `/Volumes`. Confirm whether the
+  user launched Tutti directly from a mounted `.dmg` instead of the copy in
+  `/Applications`.
+- Root cause:
+  macOS mounts compressed DMG installers as read-only volumes. Electron's macOS
+  updater cannot replace an app bundle that is running from that volume, so the
+  failure is an install-location problem rather than a dead `tuttid` process.
+- Fix:
+  In packaged macOS builds, detect `/Volumes` startup before desktop services
+  and managed `tuttid` are created. Prompt the user to move Tutti to
+  `/Applications`, call Electron's application-folder move when accepted, and
+  quit rather than continuing from the mounted image. Development builds must
+  skip this guard so local Electron runs keep working.
+- Validation:
+  Cover the guard with tests for development mode, non-macOS platforms,
+  `/Applications`, `/Volumes`, declined installation, successful automatic
+  move, and failed automatic move. Run the desktop tests, desktop typecheck, and
+  i18n check because the guard uses Electron dialog copy.
+- References:
+  [macosApplicationInstallGuard.ts](../../apps/desktop/src/main/macosApplicationInstallGuard.ts)
+  [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
+  [desktop-release.md](./desktop-release.md)
 
 ### App Center list requests repeatedly log runtime preload
 
@@ -204,7 +346,9 @@ Use this shape for new entries:
   whether the first browser command is lazily starting `chrome-devtools-mcp` or
   another browser backend. For browser backend overrides, inspect
   `TUTTI_BROWSER_MCP_COMMAND`, `TUTTI_BROWSER_MCP_ARGS`, and the packaged
-  desktop's internal `TUTTI_BROWSER_MCP_ENTRY_PATH` handoff.
+  desktop's internal `TUTTI_BROWSER_MCP_ENTRY_PATH` handoff. Packaged desktop
+  handoffs should launch that vendored entry with the daemon's managed
+  `node-static` runtime, not a bare `node` from the user's `PATH`.
 - Root cause:
   Browser commands can do a cold start on first use. The daemon may launch the
   browser backend while the CLI HTTP request is still waiting for the daemon to
@@ -224,6 +368,39 @@ Use this shape for new entries:
   [client.go](../../apps/cli/internal/daemon/client.go)
   [session.go](../../services/tuttid/service/browser/session.go)
   [command.go](../../services/tuttid/service/browser/command.go)
+
+### Agent sandbox cannot reach local daemon
+
+- Symptom:
+  An AgentGUI-backed Codex turn runs a dynamic Tutti CLI command such as
+  `tutti-dev automation --help` and gets `daemon is not reachable`, while
+  `~/.tutti-dev/run/tuttid.listener.json` exists and the desktop daemon is
+  running.
+- Quick checks:
+  Inspect the turn context in the provider session JSONL. If
+  `network_access=false`, a plain `exec_command` cannot reach localhost/IPC.
+  For Codex sessions, also confirm the command was not rerun with
+  `sandbox_permissions=require_escalated`. Other providers need their own
+  local-daemon-capable shell/runtime path, not Codex-specific sandbox syntax.
+- Root cause:
+  Dynamic CLI scopes fetch command capabilities from the local daemon before
+  printing scope help. In a sandboxed provider command environment, localhost
+  access can be blocked even though the daemon is reachable from the host.
+- Fix:
+  In agent environments, keep the CLI's transport failure message explicit
+  about the sandbox but provider-neutral. Put provider-specific recovery steps
+  in the injected runtime policy: Codex can use
+  `sandbox_permissions=require_escalated`, while ACP providers should be told to
+  use an execution environment with localhost/IPC access and not to invent Codex
+  flags.
+- Validation:
+  Add CLI daemon-client coverage that non-agent failures keep the plain
+  `daemon is not reachable` message, while agent failures include the
+  localhost/IPC execution-environment hint. Add provider policy coverage so only
+  Codex receives `sandbox_permissions=require_escalated`.
+- References:
+  [client.go](../../apps/cli/internal/daemon/client.go)
+  [run.go](../../apps/cli/internal/app/run.go)
 
 ### macOS Gatekeeper dialogs appear during Codex provider probing
 
@@ -259,6 +436,36 @@ Use this shape for new entries:
   intentionally falls back to a scanned nvm install.
 - References:
   [resolver.go](../../packages/agent/daemon/runtimecmd/resolver.go)
+
+### Codex provider install fails with missing npm
+
+- Symptom:
+  Agent setup or the onboarding flow repeatedly reports Codex install failures,
+  and `tuttid` logs show `installerKind=codex_cli_latest`, `exitCode=127`, and
+  `stderr="zsh:1: command not found: npm"` for every npm registry attempt.
+- Quick checks:
+  Search `tuttid.log` for `agent provider install step failed` and
+  `codex_cli_latest`. If each registry fails in milliseconds with exit code
+  `127`, stop investigating registry reachability; the command never reached
+  npm networking.
+- Root cause:
+  The Codex CLI installer is daemon-owned but shells out through the daemon
+  environment. Packaged desktop launches may not expose a user-managed `npm` on
+  `PATH`, even though Tutti already has a managed Node runtime for workspace app
+  and external-agent npm work.
+- Fix:
+  Resolve user `npm` first for compatibility, then fall back to the Tutti
+  managed Node runtime's `npm` before running
+  `npm install -g --prefix <stable-user-prefix> @openai/codex --include=optional`.
+  Keep the install prefix in a resolver-searched user directory such as
+  `~/.local` so the installed `codex` remains discoverable after install.
+- Validation:
+  Add or run service coverage for a daemon environment with no user `npm` and a
+  ready managed Node runtime. Then run `pnpm lint:go` and
+  `cd services/tuttid && go test ./service/agentstatus`.
+- References:
+  [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [runtime.go](../../services/tuttid/service/managedruntime/runtime.go)
 
 ### Malformed user skill frontmatter breaks skill discovery
 
@@ -393,6 +600,41 @@ delimited by ---`, and the composer skill picker may show partial or
   [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
   [terminalSurfaceRuntime.ts](../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
 
+### Post-composition suppression window swallows real terminal input
+
+- Symptom:
+  After committing Chinese IME text in a workspace terminal, the next quick
+  keystroke is intermittently lost: Enter pressed right after the candidate
+  commits does not execute the command (it must be pressed twice), fast typing
+  drops the first letter of the next word, or a full-width punctuation mark
+  typed immediately after a commit never reaches the PTY.
+- Quick checks:
+  Reproduce with fast input — commit a candidate with Space, then press Enter
+  or type the next character within ~80ms. Losses that disappear when typing
+  slowly point at the IME guard's post-composition window, not the PTY.
+- Root cause:
+  The guard suppressed every unmodified key for a fixed window after
+  `compositionend` to swallow ghost commit-key events. Only keys that can
+  commit a candidate (Enter, Escape, Space, digit selection keys) can replay
+  after `compositionend`; blanket suppression also swallowed genuine next
+  keystrokes, and blocking keyCode 229 keydowns kept xterm's
+  `CompositionHelper._handleAnyTextareaChanges` from forwarding IME
+  punctuation entered right after a commit.
+- Fix:
+  Inside the window, suppress only commit-capable keys (Enter, Escape, Space,
+  digits); let all other keys through so xterm's own keyCode 229 handling
+  still runs. Ghost events replay before the physical key is released, so
+  close the window as soon as a keyup arrives outside composition — any later
+  keydown is genuine user input, including genuine digits.
+- Validation:
+  Unit-cover letters and `Process` keys passing through the window, keyup
+  closing the window so a repeated Enter or digit is processed, and commit
+  keys (including digits) staying suppressed. Manually commit with Space then
+  immediately press Enter, select a candidate with a digit key, and type
+  full-width punctuation right after a commit.
+- References:
+  [terminalImeInputGuard.ts](../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
+
 ### Agent GUI app mentions show unavailable workspace apps
 
 - Symptom:
@@ -455,15 +697,14 @@ delimited by ---`, and the composer skill picker may show partial or
   must be persisted as session metadata rather than inferred later from
   user-project prefix matching.
 - Fix:
-  Treat exact user-project path matches as explicit user intent, then call the
-  host no-project resolver before parent project matching. The desktop resolver
-  should recognize generated `$HOME/Documents/tutti/session-<uuid>` cwd values
-  while allowing explicit registered projects to override them. External import
-  should mark home-cwd sessions and known provider scratch cwd shapes as
-  no-project in `runtimeContext`, skip them when registering user-project paths,
-  and let Agent GUI preserve that no-project mode during later project
-  re-resolution. Keep the project field derived in the Agent GUI view-model
-  rather than writing it back into the conversation store.
+  Persist Agent GUI rail grouping in daemon-owned
+  `workspace_agent_sessions.rail_section_*` fields from the shared
+  `services/tuttid/data/workspace` classifier. Migration and session-state
+  upsert should both use that classifier, matching exact user projects first,
+  then preserving no-project/provider scratch cwd shapes as conversations, then
+  applying longest parent-project matches. Do not rederive historical rail
+  assignment from the current user-project list during read pagination; keep
+  existing rail fields stable when a session's final cwd has not changed.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -550,6 +791,37 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agent/service.go)
   [wiring.go](../../services/tuttid/wiring.go)
 
+### Agent activity live updates fail after event schema changes
+
+- Symptom:
+  AgentGUI stays busy after a turn has finished, while durable
+  `workspace_agent_sessions` state is already idle and daemon logs show
+  `publish workspace agent activity update failed` with a
+  `decode ... data: json: unknown field` error.
+- Quick checks:
+  Compare the new field in
+  `packages/events/protocol/definitions/agent/activity.updated.event.json`,
+  generated event protocol outputs, and the hand-written strict validators in
+  `services/tuttid/service/eventstream/catalog.go`.
+- Root cause:
+  The shared business event schema and generated Go/TypeScript protocol files
+  can be current while the daemon event-stream catalog still rejects the same
+  payload through `DisallowUnknownFields` on a hand-written validation struct.
+  The activity projection may persist the correct session state, but the live
+  `agent.activity.updated` publish is rejected before the renderer runtime sees
+  the settling patch.
+- Fix:
+  Keep `catalog.go` validation DTOs in sync with new event fields, especially
+  for `agent.activity.updated` top-level, `session_update`, and `state_patch`
+  payloads. Add a positive validator test for the new field, not only generated
+  protocol checks.
+- Validation:
+  Run `go test ./services/tuttid/service/eventstream` and
+  `pnpm check:event-protocol-generated` when event protocol sources changed.
+- References:
+  [catalog.go](../../services/tuttid/service/eventstream/catalog.go)
+  [activity.updated.event.json](../../packages/events/protocol/definitions/agent/activity.updated.event.json)
+
 ### Agent approval controls submit stale permission requests after restart
 
 - Symptom:
@@ -586,6 +858,45 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agent/service.go)
   [activity_projection.go](../../services/tuttid/service/agent/activity_projection.go)
   [WorkspaceChrome.tsx](../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/WorkspaceChrome.tsx)
+
+### Claude SDK ExitPlanMode fails as interrupted after plan is ready
+
+- Symptom:
+  Claude Code SDK writes a plan, then `ExitPlanMode` appears failed with
+  `request interrupted by application restart`. The composer or dock can briefly
+  show a spinner, then clear without user approval.
+- Quick checks:
+  Compare runtime and durable session state. A live SDK interactive turn can
+  report `Status=created` while `TurnLifecycle.ActiveTurnID` is non-empty and
+  `TurnLifecycle.Phase=waiting_approval`. That is live, not stale. A bare
+  runtime `Status=waiting` without `pendingInteractive`, a live background
+  agent, or a non-empty active turn lifecycle is stale and should not block
+  reconciliation.
+- Root cause:
+  Stale resume reconciliation is only for restored persisted turns whose
+  provider callback no longer exists. If service read/ensure paths look only at
+  runtime `Status`, they can misclassify a live SDK synthetic interactive turn
+  as idle and mark the pending `ExitPlanMode` tool failed.
+- Fix:
+  Gate stale reconciliation with full runtime turn state: status, active turn
+  id, and phase. Treat `submitted`, `working`, `running`, `streaming`,
+  `waiting`, `waiting_approval`, `waiting_input`, and `awaiting_approval` with a
+  non-empty active turn id as live. Also treat a runtime pending interactive
+  prompt with a non-empty request id as live: a call message can reach durable
+  storage before the corresponding turn-lifecycle patch, and stale
+  reconciliation must not fail that just-created prompt during the race window.
+  Do not treat runtime `Status=waiting` alone as live. When a pending
+  interactive request fails or is canceled, emit the failed call and an
+  interrupted turn completion so the controller and durable session leave
+  `waiting_approval`.
+  Only reconcile when no live runtime turn or pending interactive prompt is
+  present, or when resuming from durable state after process loss.
+- Validation:
+  Add agent service tests for `Status=created` plus
+  `TurnLifecycle.Phase=waiting_approval` and a synthetic active turn id. `Get`
+  and `ensureRuntimeSessionResult` must not call stale reconciliation. Also add
+  coverage for `Status=waiting` with no pending interactive/live turn, which
+  must reconcile stale durable state.
 
 ### Codex ACP warns about user-level config as project-local config
 
@@ -644,6 +955,274 @@ delimited by ---`, and the composer skill picker may show partial or
 - Validation:
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
+
+### Codex app-server subagent output appears as the parent reply
+
+- Symptom:
+  A parent Codex AgentGUI turn that spawned subagents ends with a subagent-only
+  answer such as `{"n":7}`, or a failed Agent/subagent tool detail shows the
+  prompt again under Output even though the tool never returned a result.
+- Quick checks:
+  Compare `workspace_agent_sessions.provider_session_id` with app-server
+  notification `threadId` values in `tuttid.log`/run traces. Inspect
+  `workspace_agent_messages.payload` for the suspect tool call: if it has
+  `input.prompt`/`input.task` but no `output` or `error`, the GUI must not
+  synthesize an Output section from the summary or prompt.
+- Root cause:
+  Codex app-server streams parent and child-thread notifications over the same
+  connection. Transcript, tool, and `turn/completed` notifications must be
+  scoped to the active provider thread before they update the parent turn. On
+  the renderer side, task-like tools use the summary/title for compact labels,
+  but missing result payloads are not tool output.
+- Fix:
+  Drop notifications that carry a non-empty `threadId` different from the
+  session `provider_session_id`, with debug logging that records expected
+  thread, event thread, turn, item id/type/status, and method. Keep notifications
+  without `threadId` compatible. For Agent/task cards, render Output only from
+  actual `output`/`error` payload text, not from the prompt or summary.
+- Validation:
+  Add a Codex app-server test that injects foreign-thread `agentMessage` and
+  `turn/completed` notifications during a parent turn, plus AgentGUI projection
+  tests for failed Agent calls with prompt-only payloads. Run the focused Go and
+  GUI specs for those paths.
+
+### Claude SDK subagent events overwrite or complete the parent turn
+
+- Symptom:
+  A Claude Code SDK parent turn that launched `Task` subagents loses the parent
+  answer, finishes early when a child returns `result`, or shows child tool calls
+  as unrelated top-level activity instead of under the parent task.
+- Quick checks:
+  Inspect raw sidecar SDK messages for `parent_tool_use_id`. If that value is
+  non-empty, the event belongs to a nested subagent and must not update parent
+  assistant text, thinking text, usage, resume cursor, or terminal result state.
+  The projected tool metadata should preserve `parentToolUseId` so AgentGUI can
+  fold nested calls under the parent tool.
+- Root cause:
+  Claude Code SDK streams parent and subagent messages through the same query
+  loop. Without filtering on `parent_tool_use_id`, nested assistant/result
+  messages look like normal parent-turn messages. A parent turn may also settle
+  while `runtimeContext.backgroundAgents.count` is still positive; service-layer
+  stale resume reconciliation must treat that as live runtime state, otherwise
+  it can mark late child tools or approvals as failed with the
+  application-restart interruption message while the sidecar reader is still
+  draining background events. After the child finishes, the parent may continue
+  in a synthetic SDK turn; if that turn emits messages/tools without a
+  `turn_started` lifecycle event, AgentGUI can show completed thinking/tool
+  rows while the parent is still working and the composer spinner stays idle.
+  If a previously failed tool message later completes, durable payload merge
+  must clear stale `error` payload data so the UI does not display both the old
+  failure and final success.
+- Fix:
+  Treat non-empty `parent_tool_use_id` as a nested scope marker. Keep child tool
+  lifecycle events, but attach `metadata.parentToolUseId`; ignore nested
+  assistant text/thinking/usage/result for parent-turn state. For `Task` parents,
+  also keep child terminal payloads in task `metadata.steps` when available.
+  When the Agent tool reports an async launch, parse `agentId` and `output_file`
+  into structured metadata and mark the delegated task status as running. The Go
+  SDK adapter must own a persistent single-reader dispatcher for each live
+  sidecar session: `Exec` waits on a per-turn waiter, but the reader keeps
+  draining after terminal turn events and publishes late background/subagent
+  events through the session event sink. Do not make `task_notification` settle
+  the parent turn; treat it as task progress/completion metadata only. If a late
+  `task_notification` has no task or agent id but there is exactly one running
+  delegated task, resolve it to that task so the background agent count can
+  clear. Also emit delegated-task completion from the SDK `TaskCompleted` hook;
+  some SDK runs finish the child JSONL without a usable `task_notification`, and
+  the hook must still clear the runtime background-agent count. When the SDK
+  emits `TaskCreated` with only `task_id`, do not bind it to a running
+  delegated task by count. Use `parentToolUseId` as the canonical key and treat
+  `agentId`/`taskId` as aliases resolved back to an existing Agent tool call;
+  otherwise concurrent subagents can cross-bind ids and keep
+  `backgroundAgents.count` stale. The same rule applies to `task_started`,
+  `task_progress`, `task_notification`, and `TaskCompleted`: Claude Code often
+  puts the agent id into `task_id`, so resolve each alias against both the
+  task-id and agent-id maps, and never bind an alias that fails to resolve to
+  "the only running" task while any registered delegated task already has a
+  known alias. During concurrent launches, a child `task_started` can race
+  ahead of its own Agent launch result; binding that unknown alias to the
+  single already-registered task attributes one agent's completion to another,
+  drops the second agent's runtime entry, and clears the composer wait count
+  early. The daemon-side `backgroundAgents` map must also treat a sidecar
+  update that carries an explicit `parentToolUseId` as canonical: it may merge
+  through `agentId`/`taskId` aliases only into an entry whose recorded parent
+  tool call is empty or identical, and it must not overwrite an entry's
+  recorded `agentId`/`taskId` with a different value. Child assistant messages
+  tagged with `parent_tool_use_id` stream through the parent query while the
+  child is still running (often seconds after launch), so they are never a
+  completion signal; settle a delegated task only from the child `result`
+  message, the `task_notification` system message, or the `TaskCompleted`
+  hook. Otherwise the first child message marks the task completed, the next
+  `task_progress` flips it back to running, and the running background-agent
+  count oscillates (for example 2 -> 3 -> 2) without any new launch. A
+  `task_progress` that arrives after the task has settled must not resurrect
+  it; only an explicit `task_started` may restart a task. When the SDK
+  resumes parent work after a background agent, the sidecar must emit
+  `turn_started` for the synthetic continuation and the Go adapter must map it
+  to `EventTurnStarted`; keep the background-agent wait banner separate from
+  this turn lifecycle. Top-level assistant text and thinking must be keyed by
+  SDK message/content-block segments rather than by turn id. Treat the live
+  `content_block.index` as a stream locator only, not as durable message
+  identity. Consolidated assistant messages are fallback/tail compensation only,
+  because their content array indexes can differ from live `stream_event` block
+  indexes when thinking or tools are present. Projection code that merges
+  repeated tool-message updates should remove stale `error` data when the
+  canonical status becomes completed.
+- Validation:
+  Add sidecar normalizer coverage for `parentToolUseId`/task steps and adapter
+  coverage that terminal-after events still reach DB/UI through the session
+  event sink. SDK task lifecycle events should also update
+  `runtimeContext.backgroundAgents` from running to completed so composer wait
+  copy clears when the background agent finishes. Add service coverage that
+  runtime `backgroundAgents.count > 0` suppresses stale resume reconciliation
+  even when there is no active parent turn. Add sidecar/adapter coverage for
+  synthetic continuation `turn_started`, plus projection coverage that a
+  completed tool update drops an earlier failed `error` payload. For alias
+  binding, keep sidecar coverage that an unknown `task_id` racing ahead of its
+  own launch does not bind to another running task, and Go adapter coverage
+  that an alias conflict with a different recorded parent tool call keeps two
+  background-agent entries separate. For completion semantics, keep sidecar
+  coverage that a mid-run child assistant message does not complete the
+  delegated task (only the child `result` does) and that a trailing
+  `task_progress` after settlement does not resurrect the task.
+
+### Claude SDK subagent approval stuck in Message Center
+
+- Symptom:
+  A concurrent Claude Code SDK parent turn launches several `Task` subagents, the
+  parent turn settles to idle, and Message Center still shows a
+  `waiting_approval` tool call for a nested subagent Bash command. Clicking
+  approve/reject fails with `interactive request ... is no longer live`, Agent
+  GUI may never show the approval card, and `runtimeContext.backgroundAgents`
+  can stay positive even though some subagents already returned text in the raw
+  JSONL.
+- Quick checks:
+  Compare runtime `pendingInteractive` with durable `waiting_approval` rows.
+  Inspect tuttid logs for `message_update ... is missing turnId` on
+  `approval_resolved`. In sidecar logs, check whether the approval resolved
+  after the parent turn cleared `activeTurnId`. In the raw Claude session JSONL,
+  look for nested assistant messages with `parent_tool_use_id` and
+  `stop_reason=end_turn` but no child `result` event.
+- Root cause:
+  Subagent tool approvals can outlive the parent turn lifecycle. The sidecar may
+  emit `approval_resolved` after the active turn id is cleared, so the Go
+  adapter persists the completion without `turnId`. Service stale reconciliation
+  previously treated live background agents as proof that every open approval
+  was still live, leaving ghost durable approvals. Text-only subagent completions
+  that finish with a nested `end_turn` assistant message never emitted
+  `task_completed`, so background-agent counts stayed stale and submit paths
+  kept blocking. For nested launches (a subagent launching its own async
+  agents), the grandchild `Task` tool_use blocks only appear inside
+  child-stream assistant messages that the sidecar previously dropped, so the
+  grandchild task state was never registered: its approvals resolved no turn
+  id (the daemon rejects turnless `message_update`s, silently dropping the
+  approval card and deadlocking the grandchild), and a child `end_turn`
+  assistant could settle the child task while grandchildren were still
+  running.
+- Fix:
+  Store the originating turn id on pending interactive requests in the sidecar and
+  Go adapter, and reuse it when emitting `approval_resolved` if the event omits
+  `turnId`. Reconcile ghost open approvals whenever runtime has no live
+  `pendingInteractive`, even if background agents are still running. When
+  `SubmitInteractive` returns a stale no-longer-live error, reconcile the
+  persisted approval instead of surfacing the raw failure. Treat nested assistant
+  messages with non-empty `parent_tool_use_id` and `stop_reason=end_turn` as
+  delegated-task completion when no child `result` arrives, but only once no
+  delegated child task launched by that subagent is still running. In the
+  Claude SDK sidecar, also parse fold-in `queued_command` attachments and
+  user-string `<task-notification>` payloads (not only
+  `system/task_notification`), binding completion by
+  `tool-use-id`/`tool_use_id` so concurrent async agents settle independently.
+  For nested launches: register tool_use blocks from child-stream assistant
+  messages, treat the `Async agent launched successfully` result text as the
+  authoritative subagent-launch signal even when the tool name is unknown,
+  inherit the delegated-task turn id along the parent tool-use chain, and do
+  not settle a nested `end_turn` assistant while it still has a child tool_use
+  whose tool_result has not been processed. Use the sidecar's pending
+  `toolByID` entry for that pre-result window, then rely on the delegated task
+  created from the launch result while the grandchild is running. Let
+  interactive requests fall back to any delegated task's turn id (settled ones
+  included) and open a synthetic turn as last resort rather than emit a turnless
+  event.
+- Validation:
+  Add adapter coverage that stored pending turn ids survive missing
+  `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
+  with live background agents and stale submit reconciliation. Add sidecar
+  coverage that nested `end_turn` assistant text completes the delegated task,
+  fold-in `queued_command` notifications complete running agents, and dequeued
+  user-string task notifications complete by parent tool use id. For nested
+  launches, keep sidecar coverage that a grandchild launch registers with the
+  inherited turn id (with and without an observed tool_use block), that a
+  nested approval after the parent task completed still carries a turn id, and
+  that a child `end_turn` assistant defers completion both while a grandchild
+  tool_result is still pending and while the resulting grandchild task is
+  running.
+
+### Claude SDK parent waits forever for background agents that already finished
+
+- Symptom:
+  A Claude Code SDK parent session launches several async subagents, replies to
+  some results ("received result N, waiting for the rest..."), then goes idle
+  and never acknowledges the remaining results or produces the final summary.
+  `runtimeContext.backgroundAgents` shows every task completed, so the composer
+  wait copy has already cleared while the transcript still says it is waiting.
+- Quick checks:
+  Open the raw Claude session JSONL under
+  `~/.claude/projects/<project>/<provider-session-id>.jsonl` and correlate
+  three record kinds. `queue-operation enqueue` entries carry each
+  `<task-notification>`; a matching later `dequeue` means the notification ran
+  as its own follow-up (synthetic) turn, while `remove` plus a
+  `queued_command` attachment with `commandMode: "task-notification"` means it
+  was folded into the still-active turn instead. Also check for `api_error`
+  records (provider 429/limits) that stretch the active turn and widen the
+  fold-in window.
+- Root cause:
+  This is upstream Claude Code queue behavior, not a tutti event loss. Task
+  notifications that arrive while a turn is still streaming are removed from
+  the pending prompt queue and injected into the active turn as
+  `queued_command` attachments. The attachment contains the full notification
+  including `<status>`, `<summary>`, and `<result>`, is appended to the model
+  `messages`, and stays in the conversation history for later turns, but
+  Claude Code will never schedule a dedicated follow-up turn for it. The
+  information is therefore in the model context the whole time; weaker or
+  custom models can ignore the attachments, keep an incorrect "still waiting"
+  count across every later turn, and stall the workflow. Notifications that
+  arrive after the turn settles are dequeued normally and produce synthetic
+  turns.
+- Fix:
+  There is no daemon/sidecar data fix because tutti-side projections already
+  record the completed tasks; the gap is only in the model's own accounting.
+  Reproduce with a stronger model before treating this as a tutti regression.
+  If product-level mitigation is required, design it as an explicit nudge
+  prompt that restates the sidecar-known completed task list in text, because
+  the model already failed to read the same facts from context attachments.
+  Keep the composer wait copy semantics driven by
+  `runtimeContext.backgroundAgents`; do not try to infer "results not yet
+  acknowledged" from transcript text.
+- Validation:
+  Compare the raw JSONL queue operations against the persisted
+  `workspace_agent_messages` rows for the session: every removed notification
+  should still have its Agent tool row marked completed from the
+  `task_notification` system message, which confirms the daemon saw the
+  completion even though the parent model never acknowledged it.
+
+### Claude SDK Grep or Glob unavailable despite Claude Code preset
+
+- Symptom:
+  Claude emits `Grep` or `Glob`, but the SDK returns `No such tool available`
+  and suggests using shell `grep` or `find`.
+- Root cause:
+  Some Claude Code SDK native builds expose search through `Bash` by default.
+  The `claude_code` tool preset may not register dedicated `Grep`/`Glob` tools
+  unless the host also lists them in `allowedTools` or `tools`.
+- Fix:
+  Keep the `claude_code` preset as the base tool set, and explicitly include
+  `Grep` and `Glob` in Claude SDK `allowedTools`. Avoid replacing `tools` with a
+  short string list unless the host intentionally wants to narrow every built-in
+  tool available to Claude.
+- Validation:
+  Assert the sidecar start payload carries `allowedTools: ["Grep", "Glob"]`,
+  and typecheck against the local `@anthropic-ai/claude-agent-sdk` definitions.
 
 ### Concurrent agent CLI installs corrupt shared npm global state
 
@@ -706,15 +1285,20 @@ delimited by ---`, and the composer skill picker may show partial or
   `pnpm check:api-generated`. Trigger a Claude Code install and confirm status
   responses include `activeAction` while the CLI or adapter step is in flight.
 
-### ACP adapter appears stale after external registry migration
+### Legacy Claude ACP adapter appears stale after external registry migration
 
 - Symptom:
-  Claude Agent provider status is not ready, or live ACP options do not match
-  the package version advertised by the ACP External Agent Registry. Another
-  form is Claude Code context usage briefly showing `0%` during a running
-  session or around compaction, then returning to the prior nonzero value on
-  the next usage update.
+  With `TUTTI_CLAUDE_CODE_RUNTIME=acp`, Claude Agent provider status is not
+  ready, or live ACP options do not match the package version advertised by the
+  ACP External Agent Registry. Another form is Claude Code context usage briefly
+  showing `0%` during a running session or around compaction, then returning to
+  the prior nonzero value on the next usage update. A third form is new Claude
+  Code sessions failing during startup with
+  `Invalid value for config option fast: standard`.
 - Quick checks:
+  First confirm the runtime is legacy ACP. The default Claude Code runtime is
+  SDK; SDK provider availability checks the `claude` CLI plus the Claude SDK
+  sidecar entry and must not require `claude-acp`.
   Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
   and the package manifest under
   `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
@@ -722,7 +1306,10 @@ delimited by ---`, and the composer skill picker may show partial or
   the Tutti-owned Claude adapter source. For usage flicker, inspect that
   package's `dist/acp-agent.js` for `sessionUpdate: "usage_update"` near
   `compact_boundary`; it must not publish `used: 0` when the SDK
-  `getContextUsage()` probe fails.
+  `getContextUsage()` probe fails. For speed failures, inspect the live
+  `fast` config option values advertised by the managed package; supported
+  native Claude ACP packages that fall back to select options use `off` and
+  `on`.
 - Root cause:
   Tutti resolves Claude ACP from the external agent registry and installs the
   npm adapter into a daemon-owned prefix with managed npm. A stale or missing
@@ -730,14 +1317,20 @@ delimited by ---`, and the composer skill picker may show partial or
   make the adapter unavailable even when a global `claude-agent-acp` exists.
   Usage flicker can also come from the managed bridge bundle itself publishing
   an invalid zero context usage after a failed compact-boundary usage probe;
-  AgentGUI only displays the normalized runtime context it receives.
+  AgentGUI only displays the normalized runtime context it receives. Speed
+  failures come from treating Tutti's internal `standard` / `fast` speed tier
+  values as ACP wire values; supported Claude ACP packages advertise native
+  `fast` config values as `off` / `on`.
 - Fix:
   Run the provider install action so tuttid refreshes the registry, resolves the
   managed Node runtime, and installs the npm package into the per-agent prefix.
   Do not compensate by changing static model catalogs for behavior that should
   come from the live ACP package. Keep the Tutti claude-agent-acp patch script
   authoritative for bridge behavior and apply it to the managed package; do not
-  mask invalid usage in AgentGUI.
+  mask invalid usage in AgentGUI. Keep Tutti's internal speed tiers stable, but
+  translate Claude ACP `fast` config values at the adapter boundary according
+  to the live advertised options, and normalize the live value back before
+  projecting runtime settings.
 - Validation:
   Run `go test ./services/tuttid/service/agentstatus`, then confirm a stale
   global adapter is ignored and the install action uses managed npm with
@@ -745,11 +1338,51 @@ delimited by ---`, and the composer skill picker may show partial or
   For usage flicker, run
   `node services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs --dist <managed-acp-dist>`
   twice and confirm the second run reports no changes, then inspect the bundle
-  and confirm `lastAssistantTotalUsage = usedTokens ?? 0` is absent.
+  and confirm `lastAssistantTotalUsage = usedTokens ?? 0` is absent. For speed
+  compatibility, run the Claude ACP adapter tests that cover native `off` /
+  `on` advertised values and confirm legacy `standard` / `fast` advertised
+  values are ignored.
 - References:
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
   [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
+
+### Claude SDK model aliases resolve to configured Anthropic defaults
+
+- Symptom:
+  A Claude Code SDK session shows a Tutti composer model alias such as `sonnet`
+  or `haiku`, but the model response or error mentions a different concrete
+  model such as `mimo-v2.5-pro`.
+- Quick checks:
+  Inspect the effective Claude Code settings env from
+  `$CLAUDE_CONFIG_DIR/settings.json` or `~/.claude/settings.json`, especially
+  `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+  `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, and
+  `ANTHROPIC_BASE_URL`. Also inspect the session `runtime_context_json` for
+  `providerConfig.baseUrl` and `model` before assuming the UI selected the
+  concrete provider model directly.
+- Root cause:
+  The SDK sidecar passes Tutti's Claude Code aliases to
+  `@anthropic-ai/claude-agent-sdk`, while the SDK/Claude Code runtime still
+  resolves those aliases through the user's Claude settings env. A proxy such as
+  MiMo may map `sonnet` to a configured concrete model, and provider access
+  errors then mention that concrete model instead of the Tutti alias.
+- Fix:
+  Keep the sidecar inheriting the user's Claude settings so credentials and base
+  URL keep working. Fix provider access by changing the user's Claude settings or
+  managed provider model config, not by hard-coding Tutti's static alias list.
+  When an old SDK session predates image-input support, normalize its
+  `runtimeContext.capabilities` before projecting it to AgentGUI so stale
+  persisted state does not disable prompt-image paste.
+- Validation:
+  Confirm the session runtime context shows `adapter: claude-agent-sdk`, the
+  expected `providerConfig.baseUrl`, and an `imageInput` capability. Then run the
+  Claude SDK adapter tests plus the agent service tests covering runtime-context
+  normalization.
+- References:
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+  [service_helpers.go](../../services/tuttid/service/agent/service_helpers.go)
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
 
 ### Published package runtime asset 404 because the consumer bundler never saw the file
 
@@ -1023,6 +1656,42 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
   [appUpdateService.ts](../../apps/desktop/src/renderer/src/features/app-update/services/internal/appUpdateService.ts)
 
+### macOS in-app update closes Tutti but does not install the new version
+
+- Symptom:
+  After downloading a desktop update on macOS, clicking **Install** closes or
+  relaunches Tutti, but reopening the app still shows the old version. ShipIt
+  logs may contain `SQRLInstallerErrorDomain Code=-9` or
+  `App Still Running Error`.
+- Quick checks:
+  Confirm the packaged build is signed (unsigned or ad-hoc builds disable in-app
+  updates). Inspect `~/Library/Caches/sh.tutti.desktop.ShipIt/ShipIt_stderr.log`
+  for `Aborting update attempt because there are 1 running instances of the
+target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
+  cached update under `~/Library/Caches/@tutti-osdesktop-updater/pending`.
+- Root cause:
+  Squirrel.Mac refuses to replace `/Applications/Tutti.app` while any target
+  app instance is still running. Stopping `tuttid` before `quitAndInstall()` is
+  not sufficient because the Electron main process and helper windows still need
+  to complete the app quit path.
+- Fix:
+  Keep daemon shutdown in the desktop lifecycle instead of the update service.
+  `installUpdate()` should mark the install pending and call
+  `quitAndInstall()`. The `before-quit` gate should still run for pending update
+  installs: prevent the first quit, stop managed `tuttid`, destroy all windows,
+  then call `app.quit()` again so the app process exits and ShipIt can replace
+  the bundle.
+- Validation:
+  Run `src/main/desktopAppLifecycle.test.ts` and
+  `src/main/update/appUpdateService.test.ts`, including updater error and
+  synchronous `quitAndInstall()` failure cases. Then install a downloaded update
+  in a packaged macOS build; the app should relaunch on the new version and
+  ShipIt should not log `App Still Running Error`.
+- References:
+  [appUpdateService.ts](../../apps/desktop/src/main/update/appUpdateService.ts)
+  [desktopAppLifecycle.ts](../../apps/desktop/src/main/desktopAppLifecycle.ts)
+  [desktopAppServices.ts](../../apps/desktop/src/main/desktopAppServices.ts)
+
 ### Desktop Performance trace export runs out of memory
 
 - Symptom:
@@ -1081,6 +1750,33 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+
+### AgentGUI freezes when session history is large
+
+- Symptom:
+  The workspace renderer freezes, tears visually in screen recordings, or feels
+  stuck while opening AgentGUI or submitting an agent prompt in a workspace with
+  a long agent history.
+- Quick checks:
+  Inspect developer logs for `agent.gui.runtime.snapshot_changed` diagnostics.
+  If `sessionCount` is in the hundreds or thousands, check whether the desktop
+  adapter is calling `listWorkspaceAgentSessions` without a `limit`.
+- Root cause:
+  Unbounded session-list loads push every historical agent session into
+  `AgentActivityRuntime`, and each live event can make AgentGuiNode rebuild
+  conversation projections for history the visible rail does not need.
+- Fix:
+  Keep broad runtime session-list requests bounded at the desktop adapter or
+  daemon API boundary. Use targeted message/session fetches for the selected
+  detail rather than widening the runtime snapshot.
+- Validation:
+  Reproduce with a large session table and confirm runtime diagnostics report a
+  bounded `sessionCount`. Run the desktop adapter tests and `pnpm check:changed`
+  for mixed AgentGUI/desktop changes.
+- References:
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
 
 ### Browser Node focus pings miss iframe-hosted editors
 
@@ -1200,3 +1896,39 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   Run the workspace files launch coordinator test and the AgentGUI workspace
   link action test, then `pnpm check:changed` for mixed desktop and AgentGUI
   changes.
+
+### Claude SDK rejects live bypassPermissions mode
+
+- Symptom:
+  A Claude Code SDK session starts in `default`, `auto`, or plan mode, then live
+  switching to `bypassPermissions` fails with
+  `Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions`.
+  Or the session state already shows `permissionModeId=bypassPermissions`, but
+  ordinary tools such as Bash still surface AgentGUI approval prompts.
+- Quick checks:
+  Inspect the SDK query options emitted by `packages/agent/claude-sdk-sidecar`.
+  `allowDangerouslySkipPermissions` must be enabled when the query is created,
+  not only when the initial permission mode is already `bypassPermissions`.
+  In root/sandboxed runtimes, confirm the sidecar process receives
+  `IS_SANDBOX=1`. If the query launched correctly, inspect the sidecar
+  `canUseTool` callback path; bypass mode should short-circuit ordinary tools
+  after preserving special handling for `AskUserQuestion` and `ExitPlanMode`.
+- Root cause:
+  Claude SDK treats bypass permission support as a session launch capability.
+  `query.setPermissionMode("bypassPermissions")` cannot enable that capability
+  after the query has already started. Tutti's sidecar also owns the
+  `canUseTool` callback; if that callback always requests AgentGUI approval,
+  it can reintroduce prompts even after the SDK permission mode is bypass.
+- Fix:
+  Gate bypass availability with the same rule as Claude Agent ACP: non-root
+  processes can bypass, and root processes can bypass only when `IS_SANDBOX` is
+  set. Launch the SDK query with `allowDangerouslySkipPermissions` whenever
+  that gate passes, regardless of the current permission mode. In `canUseTool`,
+  handle `AskUserQuestion` and `ExitPlanMode` first, then directly allow
+  ordinary tools when the effective permission mode is `bypassPermissions`.
+- Validation:
+  Add sidecar coverage for a `default` session whose query still receives
+  `allowDangerouslySkipPermissions: true`, plus daemon runtime coverage that
+  Claude SDK sidecar process env includes `IS_SANDBOX=1`. Add callback coverage
+  proving bypass mode allows an ordinary Bash request without
+  `approval_requested`, while `AskUserQuestion` still surfaces user input.

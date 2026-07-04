@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type MutableRefObject,
   type ReactNode,
   type JSX
 } from "react";
@@ -18,6 +19,17 @@ import type { Editor as TiptapEditor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { ViewportMenuSurface } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
+import {
+  MentionPaletteFromState,
+  buildMentionPaletteModelFromTriggerMatches,
+  findMentionPaletteEntry,
+  moveMentionPaletteHighlight,
+  repairMentionPaletteHighlight,
+  renderMentionRow,
+  richTextTriggerQueryMatchToMentionRowItem,
+  type MentionPaletteCategoryConfig,
+  type MentionPaletteState
+} from "../at-panel/index.ts";
 import { createRichTextMentionAttrs } from "../plugins/index.ts";
 import { createRichTextTriggerRegistry } from "../plugins/triggerRegistry.ts";
 import type {
@@ -82,6 +94,20 @@ export interface RichTextTriggerEditorProps {
   menuPlacement?: RichTextTriggerMenuPlacement;
   menuOffset?: number;
   menuZIndex?: string | number;
+  palette?: RichTextTriggerEditorPaletteOptions;
+}
+
+export interface RichTextTriggerEditorPaletteOptions {
+  categories: readonly MentionPaletteCategoryConfig<RichTextTriggerQueryMatch>[];
+  defaultCategoryId?: string;
+  labels: {
+    tabHint: string;
+    cycleFilter: string;
+    moveSelection: string;
+    empty?: string;
+    listbox?: string;
+  };
+  maxHeightPx?: number;
 }
 
 type RichTextEditorTriggerQueryState = {
@@ -125,7 +151,8 @@ export function RichTextTriggerEditor({
   menuAnchor = "cursor",
   menuPlacement = "bottom-start",
   menuOffset = 6,
-  menuZIndex
+  menuZIndex,
+  palette
 }: RichTextTriggerEditorProps): JSX.Element {
   const normalizedValue = normalizeRichTextContent(value);
   const text = resolveRichTextTriggerText(
@@ -137,6 +164,7 @@ export function RichTextTriggerEditor({
   const lastSerializedValueRef = useRef(normalizedValue);
   const lastFocusSignalRef = useRef(focusSignal);
   const mentionHydrationRequestRef = useRef(0);
+  const suppressPastedAtQueryRef = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const registry = useMemo(
     () => createRichTextTriggerRegistry(triggerProviders),
@@ -154,6 +182,12 @@ export function RichTextTriggerEditor({
     []
   );
   const [activeIndex, setActiveIndex] = useState(0);
+  const [highlightedPaletteKey, setHighlightedPaletteKey] = useState<
+    string | null
+  >(null);
+  const [activePaletteCategoryId, setActivePaletteCategoryId] = useState(() =>
+    resolveDefaultPaletteCategoryId(palette)
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [resolvedMenuAnchor, setResolvedMenuAnchor] =
     useState<RichTextTriggerResolvedMenuPlacement | null>(null);
@@ -192,6 +226,7 @@ export function RichTextTriggerEditor({
         setQuery(null);
         setMatches([]);
         setActiveIndex(0);
+        setHighlightedPaletteKey(null);
         setIsLoading(false);
         resetMenuPlacement();
       }, 100);
@@ -302,6 +337,10 @@ export function RichTextTriggerEditor({
 
     const updateQueryState = () => {
       const nextQuery = findEditorAtQuery(editor, activeTriggerConfigs);
+      if (shouldSuppressPastedAtQuery(nextQuery, suppressPastedAtQueryRef)) {
+        setQuery(null);
+        return;
+      }
       setQuery(nextQuery);
     };
 
@@ -386,6 +425,56 @@ export function RichTextTriggerEditor({
     registry
   ]);
 
+  const resolvedPaletteCategoryId = resolveActivePaletteCategoryId(
+    palette,
+    activePaletteCategoryId
+  );
+  const paletteState = useMemo(
+    () =>
+      palette
+        ? buildMentionPaletteModelFromTriggerMatches({
+            activeCategoryId: resolvedPaletteCategoryId,
+            categories: palette.categories,
+            matches,
+            loading: isLoading,
+            query: query?.keyword ?? "",
+            mode: "results"
+          })
+        : null,
+    [isLoading, matches, palette, query?.keyword, resolvedPaletteCategoryId]
+  );
+
+  useEffect(() => {
+    const defaultCategoryId = resolveDefaultPaletteCategoryId(palette);
+    if (!defaultCategoryId) {
+      setActivePaletteCategoryId("");
+      return;
+    }
+    if (
+      palette?.categories.some(
+        (category) => category.id === activePaletteCategoryId
+      )
+    ) {
+      return;
+    }
+    setActivePaletteCategoryId(defaultCategoryId);
+  }, [activePaletteCategoryId, palette]);
+
+  useEffect(() => {
+    if (!paletteState) {
+      setHighlightedPaletteKey(null);
+      return;
+    }
+    setHighlightedPaletteKey((current) =>
+      repairMentionPaletteHighlight({
+        state: paletteState,
+        currentKey: current,
+        getItemKey: getPaletteMatchKey,
+        preferredKey: firstPaletteItemKey(paletteState)
+      })
+    );
+  }, [paletteState]);
+
   useLayoutEffect(() => {
     if (!editor || !query) {
       resetMenuPlacement();
@@ -459,6 +548,7 @@ export function RichTextTriggerEditor({
       .run();
     setMatches([]);
     setActiveIndex(0);
+    setHighlightedPaletteKey(null);
     setIsLoading(false);
     resetMenuPlacement();
   };
@@ -476,9 +566,67 @@ export function RichTextTriggerEditor({
       event.preventDefault();
       setMatches([]);
       setActiveIndex(0);
+      setHighlightedPaletteKey(null);
       setIsLoading(false);
       resetMenuPlacement();
       return;
+    }
+
+    if (paletteState) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const nextKey = moveMentionPaletteHighlight({
+          state: paletteState,
+          currentKey: highlightedPaletteKey,
+          delta: event.key === "ArrowDown" ? 1 : -1,
+          getItemKey: getPaletteMatchKey
+        });
+        if (nextKey !== null) {
+          event.preventDefault();
+          setHighlightedPaletteKey(nextKey);
+        }
+        return;
+      }
+
+      if (event.key === "Tab") {
+        const nextCategory = nextPaletteCategoryId(
+          paletteState.categories,
+          paletteState.filter,
+          event.shiftKey ? -1 : 1
+        );
+        if (nextCategory) {
+          event.preventDefault();
+          setActivePaletteCategoryId(nextCategory);
+        }
+        return;
+      }
+
+      if (event.key === "Enter") {
+        const entry = findMentionPaletteEntry({
+          state: paletteState,
+          key: highlightedPaletteKey,
+          getItemKey: getPaletteMatchKey
+        });
+        if (entry?.type === "category" && entry.categoryId) {
+          event.preventDefault();
+          setActivePaletteCategoryId(entry.categoryId);
+          return;
+        }
+        if (entry?.type !== "item" || !entry.groupId) {
+          return;
+        }
+        const group = paletteState.groups.find(
+          (candidate) => candidate.id === entry.groupId
+        );
+        const match =
+          group?.items[
+            typeof entry.itemIndex === "number" ? entry.itemIndex : -1
+          ] ?? null;
+        if (match) {
+          event.preventDefault();
+          applyMatch(match);
+        }
+        return;
+      }
     }
 
     if (matches.length === 0) {
@@ -513,6 +661,16 @@ export function RichTextTriggerEditor({
   return (
     <div
       className={cn("relative min-w-0 w-full", className)}
+      onPasteCapture={(event) => {
+        const pastedText = event.clipboardData.getData("text/plain");
+        suppressPastedAtQueryRef.current =
+          pastedText.includes("@") && !pastedText.endsWith("@");
+        if (suppressPastedAtQueryRef.current) {
+          window.setTimeout(() => {
+            suppressPastedAtQueryRef.current = false;
+          }, 0);
+        }
+      }}
       ref={containerRef}
     >
       <div className="w-full min-w-0" onKeyDownCapture={handleKeyDown}>
@@ -535,11 +693,44 @@ export function RichTextTriggerEditor({
       {isMenuOpen && resolvedMenuAnchor ? (
         <ViewportMenuSurface
           open
-          className="tutti-rich-text-at-menu max-h-64 w-[min(28rem,calc(100vw-24px))] overflow-y-auto p-1"
+          className={cn(
+            "tutti-rich-text-at-menu w-[min(32rem,calc(100vw-24px))]",
+            paletteState
+              ? "overflow-hidden p-0"
+              : "max-h-64 overflow-y-auto p-1"
+          )}
           placement={resolveViewportMenuSurfacePlacement(resolvedMenuAnchor)}
           style={menuSurfaceStyle}
         >
-          {matches.length > 0 ? (
+          {paletteState && palette ? (
+            <MentionPaletteFromState
+              state={paletteState}
+              highlightedKey={highlightedPaletteKey}
+              getItemKey={getPaletteMatchKey}
+              labels={{
+                loading: text.loadingLabel,
+                empty: palette.labels.empty ?? text.noMatchesLabel,
+                error: palette.labels.empty ?? text.noMatchesLabel,
+                tabHint: palette.labels.tabHint,
+                listbox: palette.labels.listbox
+              }}
+              hintLabels={{
+                cycleFilter: palette.labels.cycleFilter,
+                moveSelection: palette.labels.moveSelection
+              }}
+              maxHeightPx={palette.maxHeightPx ?? 320}
+              renderItem={(match) =>
+                renderMentionRow(
+                  richTextTriggerQueryMatchToMentionRowItem(match)
+                )
+              }
+              callbacks={{
+                onHighlightChange: setHighlightedPaletteKey,
+                onActiveCategoryIdChange: setActivePaletteCategoryId,
+                onSelectItem: applyMatch
+              }}
+            />
+          ) : matches.length > 0 ? (
             matches.map((match, index) => (
               <RichTextTriggerMenuItem
                 key={`${match.providerId}:${match.key}`}
@@ -561,6 +752,78 @@ export function RichTextTriggerEditor({
         </ViewportMenuSurface>
       ) : null}
     </div>
+  );
+}
+
+function shouldSuppressPastedAtQuery(
+  query: RichTextEditorTriggerQueryState | null,
+  suppressPastedAtQueryRef: MutableRefObject<boolean>
+): boolean {
+  return Boolean(
+    suppressPastedAtQueryRef.current &&
+    query?.trigger === "@" &&
+    query.keyword.length > 0
+  );
+}
+
+function resolveDefaultPaletteCategoryId(
+  palette: RichTextTriggerEditorPaletteOptions | undefined
+): string {
+  return (
+    palette?.defaultCategoryId?.trim() ||
+    palette?.categories[0]?.id.trim() ||
+    ""
+  );
+}
+
+function resolveActivePaletteCategoryId(
+  palette: RichTextTriggerEditorPaletteOptions | undefined,
+  activeCategoryId: string
+): string {
+  const active = activeCategoryId.trim();
+  if (
+    active &&
+    palette?.categories.some((category) => category.id === active)
+  ) {
+    return active;
+  }
+  return resolveDefaultPaletteCategoryId(palette);
+}
+
+function getPaletteMatchKey(
+  match: RichTextTriggerQueryMatch,
+  _groupId: string
+): string {
+  return `${match.providerId}:${match.key}`;
+}
+
+function firstPaletteItemKey(
+  state: MentionPaletteState<RichTextTriggerQueryMatch>
+): string | null {
+  for (const group of state.groups) {
+    const first = group.items[0];
+    if (first) {
+      return `${group.id}:${getPaletteMatchKey(first, group.id)}`;
+    }
+  }
+  return state.categories[0] ? `category:${state.categories[0].id}` : null;
+}
+
+function nextPaletteCategoryId(
+  categories: readonly { id: string }[],
+  currentCategoryId: string,
+  delta: 1 | -1
+): string | null {
+  if (categories.length === 0) {
+    return null;
+  }
+  const currentIndex = Math.max(
+    0,
+    categories.findIndex((category) => category.id === currentCategoryId)
+  );
+  return (
+    categories[(currentIndex + delta + categories.length) % categories.length]
+      ?.id ?? null
   );
 }
 

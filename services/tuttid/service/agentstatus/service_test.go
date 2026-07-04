@@ -184,6 +184,22 @@ func specWithSeparateAdapter() ProviderSpec {
 	}
 }
 
+func TestNextMissingInstallerRepairsAdapterLaunchFailureBeforeCLI(t *testing.T) {
+	spec := specWithSeparateAdapter()
+	installer, missing, target := (Service{}).nextMissingInstaller(spec, providerRuntimeResolution{
+		ReasonCode: "acp_adapter_launch_failed",
+	})
+	if !missing {
+		t.Fatal("missing = false, want true")
+	}
+	if target != "adapter" {
+		t.Fatalf("target = %q, want adapter", target)
+	}
+	if installer.Kind != spec.AdapterInstall.Kind {
+		t.Fatalf("installer.Kind = %q, want %q", installer.Kind, spec.AdapterInstall.Kind)
+	}
+}
+
 func TestServiceListReportsInstallActionWhenACPAdapterMissing(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		if name == "codex" {
@@ -368,6 +384,53 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	assertProviderCheck(t, status.Checks, "auth", true)
 }
 
+func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/usr/bin/env node\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
+
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	writeExecutable(t, managedNode, "#!/bin/sh\nif [ \"$2\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want ready; reason=%q lastError=%#v", status.Availability.Status, status.Availability.ReasonCode, status.LastError)
+	}
+	if status.CLI.Version != MinSupportedCodexVersion {
+		t.Fatalf("CLI.Version = %q, want %q", status.CLI.Version, MinSupportedCodexVersion)
+	}
+}
+
 func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
@@ -378,6 +441,8 @@ func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
@@ -430,9 +495,24 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
+	// The broken install lives under <home>/lib/node_modules, so repair-in-place
+	// must install at the npm global prefix that owns it — not duplicate the
+	// package in ~/.local. Derive the expected prefix the same way production does
+	// (via EvalSymlinks, so it matches on macOS where /var -> /private/var).
+	wantPrefix, wantPrefixOK := codexRepairInstallPrefix(filepath.Join(binDir, "codex"))
+	if !wantPrefixOK {
+		t.Fatalf("expected repair prefix to be derivable for %s", filepath.Join(binDir, "codex"))
+	}
+
 	var command InstallCommandInput
+	var activeStep string
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		command = input
+		if snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}}); err == nil {
+			if status := onlyStatus(t, snapshot); status.ActiveAction != nil {
+				activeStep = status.ActiveAction.Step
+			}
+		}
 		writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
@@ -448,8 +528,66 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
 	}
 	if !strings.Contains(command.Command, "@openai/codex") ||
+		!strings.Contains(command.Command, "--include=optional") ||
+		!strings.Contains(command.Command, "--prefix "+wantPrefix+" ") {
+		t.Fatalf("Command = %q, want Codex CLI install with optional deps repaired in place at --prefix %s", command.Command, wantPrefix)
+	}
+	if activeStep != "repair" {
+		t.Fatalf("active action step = %q, want %q (repair-in-place)", activeStep, "repair")
+	}
+	if result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("Probe = %#v, want ready probe", result.Probe)
+	}
+}
+
+func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then echo 'app-server failed' >&2; exit 127; fi\nexit 0\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nif [ \"$1\" = \"app-server\" ]; then sleep 5; fi\nexit 0\n")
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{
+		Provider: "codex",
+		ActionID: ActionInstall,
+	})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.Status != RunActionCompleted {
+		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
+	}
+	if !strings.Contains(command.Command, "@openai/codex") ||
 		!strings.Contains(command.Command, "--include=optional") {
-		t.Fatalf("Command = %q, want Codex CLI install with optional dependencies", command.Command)
+		t.Fatalf("Command = %q, want Codex CLI repair install with optional deps", command.Command)
 	}
 	if result.Probe == nil || result.Probe.Status != ProbeReady {
 		t.Fatalf("Probe = %#v, want ready probe", result.Probe)
@@ -521,6 +659,8 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 }
 
 func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -584,6 +724,8 @@ func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
 }
 
 func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -647,7 +789,72 @@ func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testi
 	}
 }
 
+func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	claudePath := filepath.Join(binDir, "claude")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+
+	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	registryCapturePath := filepath.Join(home, "npm-registry.txt")
+	writeExecutable(
+		t,
+		filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()),
+		"#!/bin/sh\nprintf '%s' \"$npm_config_registry\" > "+shellQuote(registryCapturePath)+"\necho 'sh: claude-agent-acp: command not found' >&2\nexit 127\n",
+	)
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+
+	service := Service{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(name string) (string, error) {
+			if name == "claude" {
+				return claudePath, nil
+			}
+			return "", errors.New("not found")
+		},
+		IsExecutableFile: isTestExecutableUnderHome(home),
+		Now: func() time.Time {
+			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+		},
+		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+			return AuthInfo{Status: AuthAuthenticated}, true
+		},
+		ExternalAgentRegistry: registryStore,
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
+		HTTPClient: agentNPMRegistryProbeHTTPClient(map[string]bool{
+			"registry.npmjs.org": true,
+		}),
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
+	}
+	registryBytes, err := os.ReadFile(registryCapturePath)
+	if err != nil {
+		t.Fatalf("read captured npm registry: %v", err)
+	}
+	if got := string(registryBytes); got != "https://registry.npmmirror.com" {
+		t.Fatalf("npm_config_registry = %q, want ranked mirror registry", got)
+	}
+}
+
 func TestServiceListReportsInstallActionWhenExternalAdapterCommandFailsAfterReadyWindow(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -1008,16 +1215,18 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	}
 }
 
-func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
+func TestServiceRunCodexCLILatestInstallerPrefersManagedNPM(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
-	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1046,31 +1255,33 @@ func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Fatalf("ExitCode = %d, want 0; stderr=%q", result.ExitCode, result.Stderr)
 	}
-	if !strings.Contains(command.Command, npmPath) ||
+	if !strings.Contains(command.Command, managedNPM) ||
 		!strings.Contains(command.Command, "install") ||
 		!strings.Contains(command.Command, "-g") ||
 		!strings.Contains(command.Command, "@openai/codex") ||
 		!strings.Contains(command.Command, "--include=optional") ||
 		!strings.Contains(command.Command, "--prefix") {
-		t.Fatalf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", command.Command)
+		t.Fatalf("Command = %q, want managed npm install with optional deps pinned to a searched --prefix", command.Command)
 	}
 	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
 		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
 	}
 }
 
-func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
+func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
-	nodePath := filepath.Join(binDir, nodeBinaryNameForTest())
-	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, nodePath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
 	service := probeTestService(home)
 	service.Environ = func() []string {
 		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
 	}
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
@@ -1093,13 +1304,16 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 		// This callback runs on the RunAction goroutine, so it must never call
 		// t.Fatalf/t.Skipf — those Goexit only this goroutine and hang the test on
 		// <-done. Use t.Errorf and return so the test goroutine unblocks.
-		if !strings.Contains(input.Command, npmPath) ||
+		if !strings.Contains(input.Command, managedNPM) ||
 			!strings.Contains(input.Command, "install") ||
 			!strings.Contains(input.Command, "-g") ||
 			!strings.Contains(input.Command, "@openai/codex") ||
 			!strings.Contains(input.Command, "--include=optional") ||
 			!strings.Contains(input.Command, "--prefix") {
-			t.Errorf("Command = %q, want global npm install with optional deps pinned to a searched --prefix", input.Command)
+			t.Errorf("Command = %q, want managed npm install with optional deps pinned to a searched --prefix", input.Command)
+		}
+		if !slices.Contains(input.Env, "TUTTI_APP_NODE="+managedNode) {
+			t.Errorf("Env = %#v, want managed node marker", input.Env)
 		}
 		if !slices.Contains(input.Env, "npm_config_registry=https://registry.example.test") {
 			t.Errorf("Env = %#v, want selected npm registry", input.Env)
@@ -1155,8 +1369,8 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 	if status.ActiveAction.Registry != "https://registry.example.test" {
 		t.Fatalf("ActiveAction.Registry = %q, want registry override", status.ActiveAction.Registry)
 	}
-	if status.ActiveAction.NodeTarget != nodePath {
-		t.Fatalf("ActiveAction.NodeTarget = %q, want %q", status.ActiveAction.NodeTarget, nodePath)
+	if status.ActiveAction.NodeTarget != managedNode {
+		t.Fatalf("ActiveAction.NodeTarget = %q, want %q", status.ActiveAction.NodeTarget, managedNode)
 	}
 	if !strings.Contains(status.ActiveAction.Stdout, "fetching @openai/codex") {
 		t.Fatalf("ActiveAction.Stdout = %q, want npm stdout", status.ActiveAction.Stdout)
@@ -1172,11 +1386,21 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
-	service := probeTestService(home)
-	service.Environ = func() []string {
-		return []string{"PATH=" + binDir}
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
 	}
-	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:       "claude-code",
 		BinaryNames:    []string{"claude-test"},
@@ -1368,6 +1592,8 @@ func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 }
 
 func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -1428,6 +1654,7 @@ func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
 }
 
 func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *testing.T) {
+	forceClaudeACPRuntime(t)
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 
 	home := t.TempDir()
@@ -1535,6 +1762,8 @@ func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *test
 }
 
 func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -1562,6 +1791,8 @@ func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testin
 }
 
 func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *testing.T) {
+	forceClaudeACPRuntime(t)
+
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -1594,6 +1825,132 @@ func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *tes
 	}
 	if slices.Contains(result.Command, "exec") {
 		t.Fatalf("Command = %#v, want installed bin without npm exec", result.Command)
+	}
+}
+
+func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
+	}
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.ExternalAgentRegistry = externalagentregistry.Store{
+		SourceURL: filepath.Join(home, "missing-registry.json"),
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Equal(result.Command, []string{managedNode, claudeSDKSidecarDefaultNodeArg, entry}) {
+		t.Fatalf("Command = %#v, want SDK sidecar command", result.Command)
+	}
+	if slices.Contains(result.Command, "exec") || slices.Contains(result.Command, "@agentclientprotocol/claude-agent-acp") {
+		t.Fatalf("Command = %#v, must not use ACP registry package in SDK mode", result.Command)
+	}
+}
+
+func TestServiceListClaudeCodeSDKDoesNotRequireACPAdapter(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	claudePath := filepath.Join(binDir, "claude")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
+	}
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.LookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return claudePath, nil
+		}
+		return "", errors.New("not found")
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	service.ExternalAgentRegistry = externalagentregistry.Store{
+		SourceURL: filepath.Join(home, "missing-registry.json"),
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want ready; reason=%q", status.Availability.Status, status.Availability.ReasonCode)
+	}
+	if strings.HasPrefix(status.Availability.ReasonCode, "acp_adapter") {
+		t.Fatalf("ReasonCode = %q, must not report ACP adapter in SDK mode", status.Availability.ReasonCode)
+	}
+	if !status.Adapter.Installed {
+		t.Fatalf("Adapter.Installed = false, want SDK sidecar runtime installed; status=%#v", status)
+	}
+	if strings.Contains(strings.Join(status.Adapter.Command, " "), "claude-agent-acp") {
+		t.Fatalf("Adapter.Command = %#v, must not use ACP adapter", status.Adapter.Command)
+	}
+}
+
+func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	claudePath := filepath.Join(binDir, "claude")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, claudeSDKSidecarEntryPathEnv + "=" + filepath.Join(home, "missing-main.ts")}
+	}
+	service.LookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return claudePath, nil
+		}
+		return "", errors.New("not found")
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want not_installed", status.Availability.Status)
+	}
+	if status.Availability.ReasonCode != ReasonClaudeSDKSidecarUnavailable {
+		t.Fatalf("ReasonCode = %q, want %q", status.Availability.ReasonCode, ReasonClaudeSDKSidecarUnavailable)
+	}
+	if status.Adapter.Installed {
+		t.Fatal("Adapter.Installed = true, want false when SDK sidecar entry is missing")
 	}
 }
 
@@ -2658,6 +3015,11 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
+func forceClaudeACPRuntime(t *testing.T) {
+	t.Helper()
+	t.Setenv(claudeCodeRuntimeEnv, claudeCodeRuntimeACP)
+}
+
 func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
 	t.Helper()
 	for _, check := range checks {
@@ -2674,6 +3036,11 @@ func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, pass
 func isTestExecutable(path string) bool {
 	stat, err := os.Stat(path)
 	return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+}
+
+func fileExistsForTest(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && !stat.IsDir()
 }
 
 func isTestExecutableUnderHome(home string) func(string) bool {

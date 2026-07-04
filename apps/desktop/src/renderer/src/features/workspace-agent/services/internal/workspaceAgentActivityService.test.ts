@@ -17,7 +17,11 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [readySession],
+        workspaceId: "ws-1"
+      }),
       sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -42,7 +46,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   assert.equal(snapshotSession?.currentPhase, "working");
 });
 
-test("WorkspaceAgentActivityService.activateSession forwards provider target refs to create", async () => {
+test("WorkspaceAgentActivityService.activateSession omits provider target refs for target-backed create", async () => {
   const createCalls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -61,6 +65,7 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
 
   await service.activateSession({
     agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     mode: "new",
@@ -80,6 +85,7 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
     workspaceId: "ws-1",
     request: {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
+      agentTargetId: "local:codex",
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "hello" }],
       initialDisplayPrompt: null,
@@ -87,17 +93,125 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
       permissionModeId: null,
       planMode: null,
       provider: "codex",
-      providerTargetRef: {
-        kind: "sharedAgent",
-        provider: "codex",
-        sharedAgentId: "agent-1"
-      },
       reasoningEffort: null,
       speed: null,
       title: "Shared Codex",
       visible: true
     }
   });
+});
+
+test("WorkspaceAgentActivityService keeps explicit Claude model display over default alias state", async () => {
+  const createdSession = workspaceAgentSession({
+    provider: "claude-code",
+    settings: { model: "opus" },
+    status: "working"
+  });
+  const loadedSession = workspaceAgentSession({
+    provider: "claude-code",
+    settings: { model: "default" },
+    status: "working"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => createdSession,
+      getWorkspaceAgentSession: async () => loadedSession,
+      sendWorkspaceAgentSessionInput: async () => ({ session: loadedSession }),
+      updateWorkspaceAgentSessionVisibility: async () => loadedSession
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const activation = await service.activateSession({
+    agentSessionId: "session-1",
+    agentTargetId: "local:claude-code",
+    cwd: "/workspace",
+    initialContent: [{ type: "text", text: "hi" }],
+    mode: "new",
+    provider: "claude-code",
+    settings: { model: "opus" },
+    title: "Claude",
+    visible: true,
+    workspaceId: "ws-1"
+  });
+  const controlState = await service.getSessionControlState({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(activation.session.status, "working");
+  assert.equal(controlState.settings?.model, "opus");
+});
+
+test("WorkspaceAgentActivityService composer options cache is agent target keyed", async () => {
+  const composerOptionCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getAgentProviderComposerOptions: async (
+        provider: string,
+        request: unknown
+      ) => {
+        composerOptionCalls.push({ provider, request });
+        return {
+          provider,
+          modelConfig: {
+            configurable: true,
+            options: [{ value: `model-${composerOptionCalls.length}` }]
+          },
+          runtimeContext: {}
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const first = await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+  const second = await service.getComposerOptions({
+    agentTargetId: "shared-codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+  const firstCached = await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(composerOptionCalls.length, 2);
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["local:codex"]
+      ?.models[0]?.value,
+    "model-1"
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["shared-codex"]
+      ?.models[0]?.value,
+    "model-2"
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByProvider?.codex,
+    undefined
+  );
+  assert.equal(
+    (first as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-1"
+  );
+  assert.equal(
+    (second as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-2"
+  );
+  assert.equal(
+    (firstCached as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-1"
+  );
 });
 
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {
@@ -123,7 +237,7 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
       },
       listWorkspaceAgentSessions: async () => {
         listCalls += 1;
-        return { sessions: [], workspaceId: "ws-1" };
+        return { hasMore: false, sessions: [], workspaceId: "ws-1" };
       }
     } as unknown as TuttidClient,
     runtimeApi: {
@@ -187,6 +301,105 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   ]);
   assert.deepEqual(result.entries, [
     { label: "report.md", path: "/workspace/report.md" }
+  ]);
+});
+
+test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal to tuttid", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSectionPage: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionPage"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionPage"]
+        >[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          section: {
+            hasMore: false,
+            kind: "project",
+            sectionKey: "project:/workspace",
+            sessions: []
+          },
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.listSessionSectionPage({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    cursor: "10|session-1",
+    limit: 5,
+    sectionKey: "project:/workspace",
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        cursor: "10|session-1",
+        limit: 5,
+        sectionKey: "project:/workspace"
+      },
+      options: { signal: abortController.signal }
+    }
+  ]);
+});
+
+test("WorkspaceAgentActivityService.listSessionSections forwards agent target filter to tuttid", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSections: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          sections: [],
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.listSessionSections({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    limitPerSection: 5,
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        limitPerSection: 5
+      },
+      options: { signal: abortController.signal }
+    }
   ]);
 });
 
@@ -318,14 +531,21 @@ test("WorkspaceAgentActivityService.submitPlanDecision routes a claude exit-plan
 });
 
 function workspaceAgentSession(overrides: {
+  provider?: string;
+  runtimeContext?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
   status: string;
 }): Record<string, unknown> {
   return {
     id: "session-1",
-    provider: "codex",
+    provider: overrides.provider ?? "codex",
     cwd: "/workspace",
     title: "Session 1",
     status: overrides.status,
+    ...(overrides.runtimeContext
+      ? { runtimeContext: overrides.runtimeContext }
+      : {}),
+    ...(overrides.settings ? { settings: overrides.settings } : {}),
     visible: true,
     createdAt: "2026-06-16T00:00:00.000Z",
     updatedAt: "2026-06-16T00:00:00.000Z"

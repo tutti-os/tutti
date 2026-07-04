@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   AgentGoalBanner,
+  describeGoal,
   isGoalBannerVisible,
   type AgentGoalBannerLabels
 } from "./AgentGoalBanner";
@@ -39,6 +40,18 @@ describe("isGoalBannerVisible", () => {
 });
 
 describe("AgentGoalBanner", () => {
+  it("builds the shared goal description text", () => {
+    expect(
+      describeGoal({
+        objective: "Finish the migration",
+        status: "active",
+        tokenBudget: 40000,
+        tokensUsed: 1200,
+        labels
+      })
+    ).toBe("Finish the migration · Active · 1200/40000 tokens");
+  });
+
   it("renders the objective with the goal label and status", () => {
     render(
       <AgentGoalBanner

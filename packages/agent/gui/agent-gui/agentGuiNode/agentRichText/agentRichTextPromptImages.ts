@@ -26,7 +26,86 @@ export function imageFilesFromDataTransfer(
       files.push(file);
     }
   }
+  if (files.length === 0) {
+    return Array.from(dataTransfer.files ?? []).filter((file) =>
+      supportedPromptImageMimeType(file.type)
+    );
+  }
   return files;
+}
+
+export function nonImageFilesFromDataTransfer(
+  dataTransfer: DataTransfer | null
+): File[] {
+  if (!dataTransfer) {
+    return [];
+  }
+  const files: File[] = [];
+  const items = (dataTransfer as { items?: DataTransferItemList | null }).items;
+  if (!items) {
+    return Array.from(dataTransfer.files ?? []).filter(
+      (file) =>
+        !supportedPromptImageMimeType(file.type) &&
+        !supportedPromptImageFileName(file.name)
+    );
+  }
+  for (const item of Array.from(items)) {
+    if (item.kind !== "file" || supportedPromptImageMimeType(item.type)) {
+      continue;
+    }
+    const file = item.getAsFile();
+    if (file && supportedPromptImageFileName(file.name)) {
+      continue;
+    }
+    if (file) {
+      files.push(file);
+    }
+  }
+  if (files.length === 0) {
+    return Array.from(dataTransfer.files ?? []).filter(
+      (file) =>
+        !supportedPromptImageMimeType(file.type) &&
+        !supportedPromptImageFileName(file.name)
+    );
+  }
+  return files;
+}
+
+export function systemFileDragInfoFromDataTransfer(
+  dataTransfer: DataTransfer | null
+): { hasImageFiles: boolean; hasRegularFiles: boolean } {
+  if (!dataTransfer) {
+    return { hasImageFiles: false, hasRegularFiles: false };
+  }
+  const items = (dataTransfer as { items?: DataTransferItemList | null }).items;
+  if (items) {
+    let hasImageFiles = false;
+    let hasRegularFiles = false;
+    for (const item of Array.from(items)) {
+      if (item.kind !== "file") {
+        continue;
+      }
+      if (supportedPromptImageMimeType(item.type)) {
+        hasImageFiles = true;
+      } else {
+        hasRegularFiles = true;
+      }
+    }
+    return { hasImageFiles, hasRegularFiles };
+  }
+  let hasImageFiles = false;
+  let hasRegularFiles = false;
+  for (const file of Array.from(dataTransfer.files ?? [])) {
+    if (
+      supportedPromptImageMimeType(file.type) ||
+      supportedPromptImageFileName(file.name)
+    ) {
+      hasImageFiles = true;
+    } else {
+      hasRegularFiles = true;
+    }
+  }
+  return { hasImageFiles, hasRegularFiles };
 }
 
 export function supportedPromptImageMimeType(
@@ -35,6 +114,10 @@ export function supportedPromptImageMimeType(
   return (
     value === "image/png" || value === "image/jpeg" || value === "image/webp"
   );
+}
+
+function supportedPromptImageFileName(value: string): boolean {
+  return /\.(png|jpe?g|webp)$/i.test(value.trim());
 }
 
 export async function readAgentRichTextPromptImages(

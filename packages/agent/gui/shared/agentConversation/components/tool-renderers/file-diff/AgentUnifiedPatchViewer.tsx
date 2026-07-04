@@ -1,6 +1,7 @@
 import { useMemo, useState, type JSX } from "react";
 import { translate } from "../../../../../i18n/index";
 import { AgentToolScrollArea } from "../AgentToolScrollArea";
+import { AgentPathTailLabel } from "../AgentPathTailLabel";
 import {
   parseAgentUnifiedDiffLines,
   parseAgentUnifiedDiffStats
@@ -132,7 +133,11 @@ export function AgentUnifiedPatchViewer({
               className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
               data-agent-diff-header="true"
             >
-              {path || "Patch"}
+              <AgentPathTailLabel
+                path={path}
+                fallback="Patch"
+                className="font-[var(--tsh-font-mono)]"
+              />
             </div>
           ) : null}
           <AgentToolScrollArea viewportClassName="agent-tool-diff__viewport px-4 py-3 text-[11px] leading-5">

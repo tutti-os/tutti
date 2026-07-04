@@ -31,11 +31,13 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderPayloadFromBiz(
 				preferences.AgentGUIConversationRailCollapsedByProvider,
 			),
-			AppCatalogChannel:        preferences.AppCatalogChannel,
-			BrowserUseConnectionMode: preferences.BrowserUseConnectionMode,
-			DefaultAgentProvider:     preferences.DefaultAgentProvider,
-			DockIconStyle:            preferences.DockIconStyle,
-			DockPlacement:            preferences.DockPlacement,
+			AgentConversationDetailMode: preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode),
+			AgentDockLayout:             preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout),
+			AppCatalogChannel:           preferences.AppCatalogChannel,
+			BrowserUseConnectionMode:    preferences.BrowserUseConnectionMode,
+			DefaultAgentProvider:        preferences.DefaultAgentProvider,
+			DockIconStyle:               preferences.DockIconStyle,
+			DockPlacement:               preferences.DockPlacement,
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -72,6 +74,8 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 		_, err = mutator.Put(ctx, preferencesservice.PutInput{
 			AgentComposerDefaultsByProvider:             decoded.AgentComposerDefaultsByProvider,
 			AgentGUIConversationRailCollapsedByProvider: decoded.AgentGUIConversationRailCollapsedByProvider,
+			AgentConversationDetailMode:                 decoded.AgentConversationDetailMode,
+			AgentDockLayout:                             decoded.AgentDockLayout,
 			AppCatalogChannel:                           decoded.AppCatalogChannel,
 			BrowserUseConnectionMode:                    decoded.BrowserUseConnectionMode,
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
@@ -97,6 +101,8 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 type decodedDesktopPreferencesMutationPayload struct {
 	AgentComposerDefaultsByProvider             map[string]preferencesbiz.AgentComposerDefaults
 	AgentGUIConversationRailCollapsedByProvider map[string]bool
+	AgentConversationDetailMode                 string
+	AgentDockLayout                             string
 	AppCatalogChannel                           string
 	BrowserUseConnectionMode                    string
 	DefaultAgentProvider                        string
@@ -133,11 +139,13 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromPayload(
 			decoded.Preferences.AgentGUIConversationRailCollapsedByProvider,
 		),
-		AppCatalogChannel:        decoded.Preferences.AppCatalogChannel,
-		BrowserUseConnectionMode: decoded.Preferences.BrowserUseConnectionMode,
-		DefaultAgentProvider:     decoded.Preferences.DefaultAgentProvider,
-		DockIconStyle:            decoded.Preferences.DockIconStyle,
-		DockPlacement:            decoded.Preferences.DockPlacement,
+		AgentConversationDetailMode: decoded.Preferences.AgentConversationDetailMode,
+		AgentDockLayout:             decoded.Preferences.AgentDockLayout,
+		AppCatalogChannel:           decoded.Preferences.AppCatalogChannel,
+		BrowserUseConnectionMode:    decoded.Preferences.BrowserUseConnectionMode,
+		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,
+		DockIconStyle:               decoded.Preferences.DockIconStyle,
+		DockPlacement:               decoded.Preferences.DockPlacement,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

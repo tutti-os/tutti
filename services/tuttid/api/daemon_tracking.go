@@ -90,16 +90,9 @@ func validateTrackEventsRequest(request tuttigenerated.TrackEventsRequestObject)
 }
 
 func isValidTrackEventName(name string) bool {
-	if isAllowedPredefinedTrackEventName(name) {
-		return true
-	}
 	return len(name) > 0 &&
 		len(name) <= maxTrackEventNameLength &&
 		trackEventNamePattern.MatchString(name)
-}
-
-func isAllowedPredefinedTrackEventName(name string) bool {
-	return name == "predefine_pageview"
 }
 
 func copyTrackEventParams(params *map[string]interface{}) map[string]any {

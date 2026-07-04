@@ -228,7 +228,7 @@ function WorkspaceFileManagerToolbarSearch({
   return (
     <div
       className={cn(
-        "relative h-7 w-[min(220px,34vw)] flex-none overflow-hidden rounded-md border border-[var(--border-1)] bg-[var(--background-fronted)] shadow-sm transition-[width,opacity,border-color,background-color] duration-200 ease-out",
+        "relative h-7 w-[min(220px,34vw)] flex-none overflow-hidden rounded-md bg-[var(--transparency-block)] transition-[width,opacity,background-color] duration-200 ease-out",
         "@max-[600px]/workspace-file-manager:w-[min(170px,42vw)]",
         !canSearch && "opacity-60"
       )}

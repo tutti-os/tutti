@@ -1,12 +1,18 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
   DesktopComputerUseActionResult,
+  DesktopComputerUsePermissionGrantStatus,
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopComputerUseRestartDriverResult,
   DesktopComputerUseStatus,
   DesktopDeveloperLogKind
 } from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
+  DesktopAgentConversationDetailMode,
+  DesktopAgentDockLayout,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -47,6 +53,19 @@ export interface IWorkspaceSettingsService {
   installComputerUse(): Promise<DesktopComputerUseActionResult>;
   uninstallComputerUse(): Promise<DesktopComputerUseActionResult>;
   grantComputerUsePermissions(): Promise<DesktopComputerUseActionResult>;
+  startComputerUsePermissionGrant(): Promise<DesktopComputerUsePermissionGrantStatus>;
+  getComputerUsePermissionGrantStatus(): Promise<DesktopComputerUsePermissionGrantStatus | null>;
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void;
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void>;
+  restartComputerUseDriver(
+    input?: DesktopComputerUseRestartDriverInput
+  ): Promise<DesktopComputerUseRestartDriverResult>;
   closePanel(): void;
   openPanel(
     workspace: WorkspaceSettingsWorkspaceInput,
@@ -54,6 +73,7 @@ export interface IWorkspaceSettingsService {
   ): void;
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
   setDeveloperPanelVisible(visible: boolean): void;
+  setTuttiAgentSwitchEnabled(enabled: boolean): void;
   beginManagedModelProviderDraft(
     provider: WorkspaceManagedModelProviderID
   ): void;
@@ -67,6 +87,10 @@ export interface IWorkspaceSettingsService {
     enabled: boolean
   ): Promise<void>;
   changeDefaultAgentProvider(provider: DesktopAgentProvider): Promise<void>;
+  changeAgentConversationDetailMode(
+    mode: DesktopAgentConversationDetailMode
+  ): Promise<void>;
+  changeAgentDockLayout(layout: DesktopAgentDockLayout): Promise<void>;
   changeAppCatalogChannel(channel: DesktopAppCatalogChannel): Promise<void>;
   changeBrowserUseConnectionMode(
     mode: DesktopBrowserUseConnectionMode

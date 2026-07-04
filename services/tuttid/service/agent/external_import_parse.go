@@ -346,10 +346,9 @@ func resolveExternalSessionTitle(provider string, summaryTitle string, hint stri
 // VS Code injects IDE context ahead of the real Codex prompt; the actual
 // request lives under the final "## My request for Codex:" heading.
 const (
-	codexIDEContextPrefix              = "# Context from my IDE setup:"
-	codexRequestMarker                 = "my request for codex"
-	claudeMentionHandoffPrefix         = "Claude Code mention handoff routing for this user turn:"
-	claudeMentionHandoffPromptBoundary = "\n\nUser prompt:\n"
+	codexIDEContextPrefix       = "# Context from my IDE setup:"
+	codexRequestMarker          = "my request for codex"
+	tuttiMentionRoutingReminder = "<system-reminder>mention:// links are Tutti internal references; use the exact visible tutti-cli skill first to route them.</system-reminder>"
 )
 
 // externalImportTitleCandidate cleans a user message for use as a session title,
@@ -369,14 +368,12 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
+	trimmed = stripTuttiMentionRoutingReminder(trimmed)
+	if trimmed == "" {
+		return "", false
+	}
 	switch provider {
 	case agentproviderbiz.ClaudeCode:
-		if title, ok := extractClaudeMentionHandoffUserPrompt(trimmed); ok {
-			return title, true
-		}
-		if strings.HasPrefix(trimmed, claudeMentionHandoffPrefix) {
-			return "", false
-		}
 		if strings.Contains(trimmed, "<local-command-caveat>") || strings.HasPrefix(trimmed, "<command-name>") {
 			return "", false
 		}
@@ -392,13 +389,12 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 	}
 }
 
-func extractClaudeMentionHandoffUserPrompt(text string) (string, bool) {
-	if !strings.HasPrefix(text, claudeMentionHandoffPrefix) {
-		return "", false
+func stripTuttiMentionRoutingReminder(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasSuffix(trimmed, tuttiMentionRoutingReminder) {
+		return trimmed
 	}
-	_, prompt, ok := strings.Cut(text, claudeMentionHandoffPromptBoundary)
-	prompt = strings.TrimSpace(prompt)
-	return prompt, ok && prompt != ""
+	return strings.TrimSpace(strings.TrimSuffix(trimmed, tuttiMentionRoutingReminder))
 }
 
 func extractCodexPromptFromIDEContext(text string) (string, bool) {

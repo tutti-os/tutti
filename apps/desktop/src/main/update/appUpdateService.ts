@@ -69,6 +69,7 @@ export interface AppUpdateService {
   downloadUpdate(): Promise<AppUpdateState>;
   getState(): AppUpdateState;
   installUpdate(): Promise<void>;
+  isQuitAndInstallPending(): boolean;
   onStateChanged(
     listener: (state: AppUpdateState, previousState: AppUpdateState) => void
   ): () => void;
@@ -472,6 +473,7 @@ export function createAppUpdateService(
   let activeCheckPromise: Promise<void> | null = null;
   let activeDownloadPromise: Promise<void> | null = null;
   let preserveAvailableStateDuringCheck = false;
+  let quitAndInstallPending = false;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -501,6 +503,26 @@ export function createAppUpdateService(
       clearInterval(intervalId);
       intervalId = null;
     }
+  };
+
+  const applyUpdaterError = (error: Error): void => {
+    getDesktopLogger().error("application updater failed", {
+      error: error.message,
+      error_name: error.name
+    });
+    applyState({
+      ...buildBaseState(
+        currentVersion,
+        state.policy,
+        state.channel,
+        "error",
+        normalizeMessage(error)
+      ),
+      checkedAt: new Date().toISOString(),
+      latestVersion: state.latestVersion,
+      releaseDate: state.releaseDate,
+      releaseName: state.releaseName
+    });
   };
 
   const resetConfiguredState = (
@@ -619,23 +641,8 @@ export function createAppUpdateService(
         return;
       }
 
-      getDesktopLogger().error("application updater failed", {
-        error: error.message,
-        error_name: error.name
-      });
-      applyState({
-        ...buildBaseState(
-          currentVersion,
-          state.policy,
-          state.channel,
-          "error",
-          normalizeMessage(error)
-        ),
-        checkedAt: new Date().toISOString(),
-        latestVersion: state.latestVersion,
-        releaseDate: state.releaseDate,
-        releaseName: state.releaseName
-      });
+      applyUpdaterError(error);
+      quitAndInstallPending = false;
     })
   ];
 
@@ -766,11 +773,30 @@ export function createAppUpdateService(
       });
       return state;
     },
-    installUpdate() {
-      if (state.status === "downloaded") {
-        resolvedDriver.quitAndInstall();
+    async installUpdate() {
+      if (state.status !== "downloaded" || quitAndInstallPending) {
+        return;
       }
-      return Promise.resolve();
+
+      quitAndInstallPending = true;
+      getDesktopLogger().info("application update install requested", {
+        channel: state.channel,
+        latest_version: state.latestVersion,
+        policy: state.policy
+      });
+
+      try {
+        resolvedDriver.quitAndInstall();
+      } catch (error) {
+        quitAndInstallPending = false;
+        applyUpdaterError(
+          error instanceof Error ? error : new Error(String(error))
+        );
+        throw error;
+      }
+    },
+    isQuitAndInstallPending() {
+      return quitAndInstallPending;
     },
     onStateChanged(listener) {
       stateChangedListeners.add(listener);

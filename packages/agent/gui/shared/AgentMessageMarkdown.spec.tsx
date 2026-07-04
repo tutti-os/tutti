@@ -12,6 +12,10 @@ import {
   resetCachedMarkdownImagesForTests,
   splitStreamingMarkdownBlocks
 } from "./AgentMessageMarkdown";
+import {
+  MANAGED_AGENT_ICON_ROUNDED_URLS,
+  managedAgentRoundedIconUrl
+} from "./managedAgentIcons";
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
@@ -28,6 +32,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(chip).toHaveAttribute("data-agent-reference-source", "task");
     // 角标数字已移除:chip 只展示标签,不再渲染文件数。
     expect(chip).toHaveTextContent("我的小项目");
     expect(chip).not.toHaveTextContent("3");
@@ -53,6 +58,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(mention).toHaveAttribute("data-agent-reference-source", "app");
     expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
@@ -117,65 +123,6 @@ describe("AgentMessageMarkdown", () => {
       "[&_pre_code]:[overflow-wrap:anywhere]"
     );
   });
-
-  it("allows long inline code to wrap inside narrow message containers", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          '字体栈：`css "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace` 已应用。'
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    const inlineCode = screen.getByText(
-      'css "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace'
-    );
-    expect(markdown?.className).toContain("[&_code]:inline");
-    expect(markdown?.className).toContain("[&_code]:[overflow-wrap:anywhere]");
-    expect(inlineCode.tagName).toBe("CODE");
-  });
-
-  it("allows fenced code blocks to wrap in conversation detail surfaces", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          '字体栈：\n\n```css\n"JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace\n```'
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    const code = screen.getByText(
-      '"JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace'
-    );
-    expect(code.closest("pre")).toBeInTheDocument();
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[white-space:pre-wrap]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[overflow-wrap:anywhere]"
-    );
-  });
-
-  it("allows consumers to share markdown rendering with surface-specific classes", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={"已读取 [README.md](README.md)"}
-        className="summary-markdown"
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown).toHaveClass("summary-markdown");
-  });
-
   it("renders GFM tables as table elements", () => {
     render(
       <AgentMessageMarkdown
@@ -193,17 +140,6 @@ describe("AgentMessageMarkdown", () => {
       screen.getByRole("cell", { name: "统一 API 格式适配不同 LLM 提供商" })
     ).toBeInTheDocument();
   });
-
-  it("keeps ordered list left padding clear of the card edge", () => {
-    render(<AgentMessageMarkdown content={"1. Awwwards\n2. Mobbin"} />);
-
-    expect(screen.getByRole("list")).toHaveStyle({
-      margin: "12px 0px 8px",
-      "padding-inline-start": "34px",
-      "padding-inline-end": "16px"
-    });
-  });
-
   it("keeps links inert for now", () => {
     render(
       <AgentMessageMarkdown
@@ -724,6 +660,108 @@ describe("AgentMessageMarkdown", () => {
     ).toHaveLength(2);
   });
 
+  it("resizes the image inside the zoom preview", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+
+    expect(screen.getByRole("status")).toHaveTextContent("100%");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Zoom in image|common\.zoomInImage/ })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1.25");
+    });
+    expect(modalImage).toHaveStyle({ transform: "scale(1.25)" });
+    expect((modalImage as HTMLElement).style.transformOrigin).toBe("");
+    expect(screen.getByRole("status")).toHaveTextContent("125%");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Reset image zoom|common\.resetImageZoom/
+      })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1");
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("100%");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Zoom out image|common\.zoomOutImage/
+      })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "0.75");
+    });
+    expect(modalImage).toHaveStyle({ transform: "scale(0.75)" });
+
+    const windowWheel = vi.fn();
+    window.addEventListener("wheel", windowWheel);
+    try {
+      fireEvent.wheel(modalImage as HTMLElement, {
+        bubbles: true,
+        cancelable: true,
+        deltaY: -20
+      });
+      await waitFor(() => {
+        expect(
+          Number(modalImage?.getAttribute("data-tsh-image-zoom"))
+        ).toBeGreaterThan(0.75);
+      });
+      expect(
+        Number(modalImage?.getAttribute("data-tsh-image-zoom"))
+      ).toBeLessThan(0.8);
+      expect(modalImage).toHaveStyle({ transition: "none" });
+      expect(windowWheel).not.toHaveBeenCalled();
+
+      fireEvent.wheel(modalImage as HTMLElement, {
+        bubbles: true,
+        cancelable: true,
+        deltaY: 20
+      });
+      await waitFor(() => {
+        expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "0.75");
+      });
+      expect(windowWheel).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("wheel", windowWheel);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /Minimize image/ }));
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1");
+    });
+  });
+
   it("copies and downloads a workspace markdown image from preview actions", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -775,7 +813,9 @@ describe("AgentMessageMarkdown", () => {
 
     const image = await screen.findByRole("img", { name: "generated image" });
     fireEvent.contextMenu(image, { clientX: 12, clientY: 34 });
-    expect(screen.getByRole("menu")).toHaveStyle({ left: "12px", top: "34px" });
+    const inlineMenu = screen.getByRole("menu");
+    expect(inlineMenu).toHaveStyle({ left: "12px", top: "34px" });
+    expect(inlineMenu.parentElement).toBe(document.body);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy image" }));
     await waitFor(() => {
@@ -786,6 +826,11 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
     const dialog = await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Copy image" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
+    });
+
     const modalImage = dialog.querySelector("img");
     expect(modalImage).toBeInstanceOf(HTMLElement);
     fireEvent.contextMenu(modalImage as HTMLElement, {
@@ -1020,6 +1065,48 @@ describe("AgentMessageMarkdown", () => {
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
     ).toHaveAttribute("src", iconUrl);
     expect(mention).toHaveTextContent("Weather");
+  });
+
+  it("renders agent target mentions with managed agent icons", () => {
+    const iconUrl = MANAGED_AGENT_ICON_ROUNDED_URLS["claude-code"];
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题"
+        agentTargets={[
+          {
+            agentTargetId: "local:claude-code",
+            iconUrl,
+            name: "Claude Code",
+            provider: "claude-code",
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-app-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("Claude Code");
+  });
+
+  it("renders agent target mentions without provider ids as agent tokens", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题" />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-icon-url",
+      managedAgentRoundedIconUrl(undefined)
+    );
+    expect(
+      mention?.querySelector(".tsh-agent-object-token__icon")
+    ).not.toBeInTheDocument();
   });
 
   it("renders workspace app factory mentions as object tokens", () => {

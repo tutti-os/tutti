@@ -7,6 +7,8 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
   let requestMethod = "";
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};
+  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+  const abortController = new AbortController();
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async (input, init) => {
@@ -15,9 +17,11 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
     requestMethod = request.method;
     requestPath = url.pathname;
     requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+    capturedRequest.signal = request.signal;
 
     return new Response(
       JSON.stringify({
+        hasMore: false,
         sessions: [],
         workspaceId: "ws-1"
       }),
@@ -38,20 +42,29 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
       })
     } as DesktopRuntimeApi);
 
-    await client.listWorkspaceAgentSessions("ws-1", {
-      limit: 30,
-      searchQuery: "mention",
-      visibleOnly: true
-    });
+    await client.listWorkspaceAgentSessionSectionPage(
+      "ws-1",
+      {
+        agentTargetId: "claude-target",
+        cursor: "1000|session-1",
+        limit: 30,
+        sectionKey: "project:/workspace/project"
+      },
+      { signal: abortController.signal }
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
 
   assert.equal(requestMethod, "GET");
-  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-sessions");
+  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-session-sections/page");
+  assert.notEqual(capturedRequest.signal, null);
+  abortController.abort();
+  assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestQueryEntries, {
+    agentTargetId: "claude-target",
+    cursor: "1000|session-1",
     limit: "30",
-    searchQuery: "mention",
-    visibleOnly: "true"
+    sectionKey: "project:/workspace/project"
   });
 });

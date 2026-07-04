@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
@@ -30,12 +31,12 @@ func networkProbeService(t *testing.T, rt networkRoundTripFunc) Service {
 
 func TestProbeRegistryReachableReturnsOfficial(t *testing.T) {
 	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
-		if r.Method != http.MethodHead {
-			t.Fatalf("expected HEAD, got %s", r.Method)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			t.Fatalf("expected GET or HEAD, got %s", r.Method)
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
-	got := svc.probeRegistry(context.Background())
+	got := svc.probeRegistry(context.Background(), "@openai/codex")
 	if !got.Reachable || got.Endpoint != officialNPMRegistry {
 		t.Fatalf("probeRegistry() = %#v, want reachable official", got)
 	}
@@ -46,7 +47,7 @@ func TestProbeRegistryReachableEvenOnHTTPError(t *testing.T) {
 	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusMethodNotAllowed, Body: http.NoBody}, nil
 	})
-	if got := svc.probeRegistry(context.Background()); !got.Reachable {
+	if got := svc.probeRegistry(context.Background(), "@openai/codex"); !got.Reachable {
 		t.Fatalf("probeRegistry() = %#v, want reachable", got)
 	}
 }
@@ -55,7 +56,7 @@ func TestProbeRegistryUnreachableReportsNetworkError(t *testing.T) {
 	svc := networkProbeService(t, func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connect: connection refused")
 	})
-	got := svc.probeRegistry(context.Background())
+	got := svc.probeRegistry(context.Background(), "@openai/codex")
 	if got.Reachable || got.ReasonCode != "network_error" {
 		t.Fatalf("probeRegistry() = %#v, want unreachable network_error", got)
 	}
@@ -71,9 +72,23 @@ func TestProbeRegistryFallsBackToMirror(t *testing.T) {
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
-	got := svc.probeRegistry(context.Background())
+	got := svc.probeRegistry(context.Background(), "@openai/codex")
 	if !got.Reachable || got.Endpoint == officialNPMRegistry {
 		t.Fatalf("probeRegistry() = %#v, want reachable via mirror", got)
+	}
+}
+
+func TestProbeRegistryReportsRankedMirrorWhenOfficialMetadataIsSlow(t *testing.T) {
+	svc := networkProbeService(t, func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet && r.URL.Host == "registry.npmjs.org" {
+			time.Sleep(75 * time.Millisecond)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	got := svc.probeRegistry(context.Background(), "@openai/codex")
+	if !got.Reachable || got.Endpoint != npmmirrorRegistry {
+		t.Fatalf("probeRegistry() = %#v, want ranked mirror %q", got, npmmirrorRegistry)
 	}
 }
 

@@ -57,6 +57,20 @@ export function describeStageProblem(
         actionLabel: t("workspace.agentEnv.stageDoRedetect"),
         isError: true
       };
+    case "install-platform-incomplete":
+      // The launcher is present but its platform subpackage is missing. The
+      // daemon repairs this in place via the install action, so — like a
+      // missing CLI — it is a warning (not a hard error) that auto-installs.
+      return {
+        headline: t(
+          "workspace.agentEnv.stageProblemInstallPlatformIncomplete",
+          {
+            provider: providerLabel
+          }
+        ),
+        actionLabel: t("workspace.agentEnv.stageDoRepair"),
+        isError: false
+      };
     case "adapter-missing":
       return {
         headline: t("workspace.agentEnv.stageProblemAdapterMissing"),

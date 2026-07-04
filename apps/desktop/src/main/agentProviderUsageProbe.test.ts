@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { listDesktopWorkspaceAgentProbes } from "./agentProviderUsageProbe.ts";
+import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
 
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {
   const previousCodexHome = process.env.CODEX_HOME;
-  const previousFetch = globalThis.fetch;
   const directory = await mkdtemp(join(tmpdir(), "tutti-codex-usage-"));
   try {
     process.env.CODEX_HOME = directory;
@@ -20,7 +20,7 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
         }
       })
     );
-    globalThis.fetch = async (url, init) => {
+    setOutboundFetcherForTesting(async (url, init) => {
       assert.equal(
         fetchInputUrl(url),
         "https://chatgpt.com/backend-api/wham/usage"
@@ -63,7 +63,7 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
         }),
         { status: 200 }
       );
-    };
+    });
 
     const result = await listDesktopWorkspaceAgentProbes({
       includeUsage: true,
@@ -108,14 +108,13 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
     } else {
       process.env.CODEX_HOME = previousCodexHome;
     }
-    globalThis.fetch = previousFetch;
+    setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });
 
 test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", async () => {
   const previousHome = process.env.HOME;
-  const previousFetch = globalThis.fetch;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-usage-"));
   try {
     process.env.HOME = directory;
@@ -131,7 +130,7 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
         }
       })
     );
-    globalThis.fetch = async (url, init) => {
+    setOutboundFetcherForTesting(async (url, init) => {
       assert.equal(
         fetchInputUrl(url),
         "https://api.anthropic.com/api/oauth/usage"
@@ -161,7 +160,7 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
         }),
         { status: 200 }
       );
-    };
+    });
 
     const result = await listDesktopWorkspaceAgentProbes({
       includeUsage: true,
@@ -198,7 +197,7 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
     } else {
       process.env.HOME = previousHome;
     }
-    globalThis.fetch = previousFetch;
+    setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });
@@ -210,7 +209,6 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
   const previousAnthropicAPIBaseUrl = process.env.ANTHROPIC_API_BASE_URL;
   const previousAnthropicAuthToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const previousAnthropicAPIKey = process.env.ANTHROPIC_API_KEY;
-  const previousFetch = globalThis.fetch;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-custom-api-"));
   try {
     process.env.HOME = directory;
@@ -230,9 +228,9 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
         }
       })
     );
-    globalThis.fetch = async () => {
+    setOutboundFetcherForTesting(async () => {
       throw new Error("custom API probe must not call Claude OAuth usage");
-    };
+    });
 
     const result = await listDesktopWorkspaceAgentProbes({
       includeUsage: true,
@@ -263,7 +261,7 @@ test("listDesktopWorkspaceAgentProbes treats Claude custom API settings as avail
     restoreOptionalEnv("ANTHROPIC_API_BASE_URL", previousAnthropicAPIBaseUrl);
     restoreOptionalEnv("ANTHROPIC_AUTH_TOKEN", previousAnthropicAuthToken);
     restoreOptionalEnv("ANTHROPIC_API_KEY", previousAnthropicAPIKey);
-    globalThis.fetch = previousFetch;
+    setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }
 });

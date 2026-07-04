@@ -1,5 +1,7 @@
 import type { AppUpdateChannel } from "../../shared/contracts/ipc.ts";
 
+import { outboundFetch } from "../net/outboundFetch.ts";
+
 export interface PrefixedDesktopRelease {
   htmlUrl: string | null;
   name: string | null;
@@ -25,7 +27,7 @@ const desktopGithubReleasesAtomUrl =
   "https://github.com/tutti-os/tutti/releases.atom";
 
 interface PrefixedDesktopReleaseResolverOptions {
-  fetch?: typeof fetch;
+  fetch?: (input: string | URL, init?: RequestInit) => Promise<Response>;
 }
 
 export function stripDesktopReleaseTagPrefix(value: string): string {
@@ -98,7 +100,7 @@ export function createGitHubPrefixedDesktopReleaseResolver(
 ): PrefixedDesktopReleaseResolver {
   return async ({ channel, currentVersion }) => {
     const current = parseDesktopVersion(currentVersion);
-    const fetchImpl = options.fetch ?? fetch;
+    const fetchImpl = options.fetch ?? outboundFetch;
     const response = await fetchImpl(desktopGithubReleasesAtomUrl, {
       headers: {
         Accept: "application/atom+xml, application/xml, text/xml",

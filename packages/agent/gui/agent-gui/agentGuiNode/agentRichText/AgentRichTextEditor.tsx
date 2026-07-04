@@ -10,7 +10,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Extension, type Editor, type JSONContent } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import {
+  Plugin,
+  PluginKey,
+  TextSelection,
+  type EditorState,
+  type Transaction
+} from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { cn } from "../../../app/renderer/lib/utils";
@@ -27,6 +34,7 @@ import {
   plainTextToAgentRichTextInlineContent,
   plainTextToAgentRichTextDoc
 } from "./agentRichTextDocument";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 import {
   createAgentFileMentionContent,
   createAgentMentionContent
@@ -41,7 +49,9 @@ import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentCapabilityTokenOption } from "./agentCapabilityTokenExtension";
 import {
   imageFilesFromDataTransfer,
+  nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
+  systemFileDragInfoFromDataTransfer,
   type AgentRichTextPromptImage
 } from "./agentRichTextPromptImages";
 
@@ -67,12 +77,15 @@ export interface AgentRichTextEditorProps {
   promptImagesSupported?: boolean;
   onPromptImagesUnsupported?: () => void;
   onPasteImages?: (images: AgentRichTextPastedImage[]) => void;
+  getReferenceForFile?: (file: File) => WorkspaceFileReference | null;
+  onDropFiles?: (files: readonly File[]) => void;
 }
 
 export interface AgentRichTextEditorHandle {
   focusAtStart: () => void;
   focusAtEnd: () => void;
   getPromptTextBeforeSelection: () => string;
+  openMentionPalette: () => void;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;
   replaceTextBeforeSelection: (length: number, text: string) => string | null;
@@ -94,9 +107,15 @@ function buildWorkspaceFileMentionDropContent(
     path: string;
     name: string;
     kind: AgentFileMentionKind;
-  }>
+  }>,
+  options: { prefixCaretAnchor?: boolean } = {}
 ): JSONContent[] {
-  return entries.flatMap((entry) => [
+  return entries.flatMap((entry, index) => [
+    ...(index === 0 && options.prefixCaretAnchor
+      ? ([
+          { type: "text", text: AGENT_RICH_TEXT_CARET_ANCHOR }
+        ] as JSONContent[])
+      : []),
     {
       type: "agentFileMention",
       attrs: {
@@ -109,6 +128,112 @@ function buildWorkspaceFileMentionDropContent(
     },
     { type: "text", text: " " }
   ]);
+}
+
+function isPromptVisualLineStart(editor: Editor, position: number): boolean {
+  if (position <= 1) {
+    return true;
+  }
+  return (
+    editor.state.doc.textBetween(
+      Math.max(1, position - 1),
+      position,
+      "\n",
+      "\n"
+    ) === "\n"
+  );
+}
+
+function isMentionTriggerBoundaryBeforeSelection(editor: Editor): boolean {
+  const position = editor.state.selection.from;
+  if (position <= 1) {
+    return true;
+  }
+  const previous = editor.state.doc.textBetween(
+    Math.max(1, position - 1),
+    position,
+    "\n",
+    "\n"
+  );
+  return previous === "" || /\s/.test(previous);
+}
+
+function findCaretAnchorBeforeAtomicRun(
+  doc: ProseMirrorNode,
+  position: number
+): number | null {
+  let anchorPosition: number | null = null;
+  doc.descendants((node, nodePosition) => {
+    if (nodePosition >= position) {
+      return false;
+    }
+    if (node.isText) {
+      const text = node.text ?? "";
+      for (let offset = 0; offset < text.length; offset += 1) {
+        const characterPosition = nodePosition + offset;
+        if (characterPosition >= position) {
+          return false;
+        }
+        if (text[offset] === AGENT_RICH_TEXT_CARET_ANCHOR) {
+          anchorPosition = characterPosition;
+          continue;
+        }
+        if (anchorPosition !== null) {
+          anchorPosition = null;
+        }
+      }
+      return true;
+    }
+    if (node.type.name === "agentFileMention") {
+      return false;
+    }
+    if (node.isInline && anchorPosition !== null) {
+      anchorPosition = null;
+    }
+    return true;
+  });
+  return anchorPosition;
+}
+
+function moveSelectionOverCaretAnchor(
+  state: EditorState,
+  dispatch: (transaction: Transaction) => void,
+  key: string
+): boolean {
+  const { doc, selection } = state;
+  if (!selection.empty) {
+    return false;
+  }
+  const position = selection.from;
+  if (key === "ArrowLeft") {
+    const anchorPosition = findCaretAnchorBeforeAtomicRun(doc, position);
+    if (anchorPosition === null) {
+      return false;
+    }
+    dispatch(state.tr.setSelection(TextSelection.create(doc, anchorPosition)));
+    return true;
+  }
+  if (
+    key === "ArrowRight" &&
+    position < doc.content.size &&
+    doc.textBetween(position, position + 1) === AGENT_RICH_TEXT_CARET_ANCHOR
+  ) {
+    const afterAnchor = position + 1;
+    const mentionAfterAnchor = doc.resolve(afterAnchor).nodeAfter;
+    dispatch(
+      state.tr.setSelection(
+        TextSelection.create(
+          doc,
+          afterAnchor +
+            (mentionAfterAnchor?.type.name === "agentFileMention"
+              ? mentionAfterAnchor.nodeSize
+              : 0)
+        )
+      )
+    );
+    return true;
+  }
+  return false;
 }
 
 function createAgentRichTextPlaceholderExtension(
@@ -138,6 +263,43 @@ function createAgentRichTextPlaceholderExtension(
                   "data-agent-rich-text-placeholder": getPlaceholder()
                 })
               ]);
+            }
+          }
+        })
+      ];
+    }
+  });
+}
+
+function createAgentRichTextCaretAnchorExtension(): Extension {
+  return Extension.create({
+    name: "agentRichTextCaretAnchor",
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: new PluginKey("agentRichTextCaretAnchor"),
+          props: {
+            handleKeyDown(view, event) {
+              if (
+                (event.key !== "ArrowLeft" && event.key !== "ArrowRight") ||
+                event.shiftKey ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.altKey
+              ) {
+                return false;
+              }
+              if (
+                moveSelectionOverCaretAnchor(
+                  view.state,
+                  (transaction) => view.dispatch(transaction),
+                  event.key
+                )
+              ) {
+                event.preventDefault();
+                return true;
+              }
+              return false;
             }
           }
         })
@@ -312,7 +474,9 @@ export const AgentRichTextEditor = forwardRef<
     onLinkClick,
     promptImagesSupported = true,
     onPromptImagesUnsupported,
-    onPasteImages
+    onPasteImages,
+    getReferenceForFile,
+    onDropFiles
   },
   ref
 ): React.JSX.Element {
@@ -333,11 +497,14 @@ export const AgentRichTextEditor = forwardRef<
   const onLinkClickRef = useRef(onLinkClick);
   const onPromptImagesUnsupportedRef = useRef(onPromptImagesUnsupported);
   const onPasteImagesRef = useRef(onPasteImages);
+  const onDropFilesRef = useRef(onDropFiles);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
+  const getReferenceForFileRef = useRef(getReferenceForFile);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
   const availableCapabilitiesRef = useRef(availableCapabilities);
+  const suppressPastedAtSuggestionRef = useRef(false);
   const scrollFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] =
     useState<AgentRichTextContextMenuState | null>(null);
@@ -350,6 +517,13 @@ export const AgentRichTextEditor = forwardRef<
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed || !text) {
       return;
+    }
+    suppressPastedAtSuggestionRef.current =
+      text.includes("@") && !text.endsWith("@");
+    if (suppressPastedAtSuggestionRef.current) {
+      window.setTimeout(() => {
+        suppressPastedAtSuggestionRef.current = false;
+      }, 0);
     }
     currentEditor
       .chain()
@@ -454,11 +628,13 @@ export const AgentRichTextEditor = forwardRef<
             onFileMentionSuggestionChangeRef.current?.(state),
           onSuggestionKeyDown: (event) =>
             onFileMentionSuggestionKeyDownRef.current?.(event) ?? false,
-          removeActionAriaLabel: removeMentionLabelRef.current
+          removeActionAriaLabel: removeMentionLabelRef.current,
+          shouldSuppressSuggestion: () => suppressPastedAtSuggestionRef.current
         },
         { skills: availableSkillsRef.current },
         { capabilities: availableCapabilitiesRef.current }
       ),
+      createAgentRichTextCaretAnchorExtension(),
       createAgentRichTextPlaceholderExtension(() => placeholderRef.current)
     ],
     [enableFileMentionSuggestions]
@@ -473,7 +649,9 @@ export const AgentRichTextEditor = forwardRef<
   onLinkClickRef.current = onLinkClick;
   onPromptImagesUnsupportedRef.current = onPromptImagesUnsupported;
   onPasteImagesRef.current = onPasteImages;
+  onDropFilesRef.current = onDropFiles;
   promptImagesSupportedRef.current = promptImagesSupported;
+  getReferenceForFileRef.current = getReferenceForFile;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
   availableSkillsRef.current = availableSkills;
@@ -600,6 +778,46 @@ export const AgentRichTextEditor = forwardRef<
             });
             return true;
           }
+          const getReferenceForFileFn = getReferenceForFileRef.current;
+          if (getReferenceForFileFn) {
+            const nonImageFiles = nonImageFilesFromDataTransfer(
+              event.clipboardData
+            );
+            if (nonImageFiles.length > 0) {
+              const references = nonImageFiles
+                .map((file) => {
+                  try {
+                    return getReferenceForFileFn(file);
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter((reference): reference is WorkspaceFileReference =>
+                  Boolean(reference?.path)
+                );
+              if (references.length > 0) {
+                event.preventDefault();
+                const currentEditor = editorRef.current;
+                if (!currentEditor) {
+                  return true;
+                }
+                if (!currentEditor.isFocused) {
+                  currentEditor.commands.setTextSelection(
+                    currentEditor.state.doc.content.size
+                  );
+                }
+                currentEditor.commands.insertContent(
+                  createAgentFileMentionContent(references, {
+                    prefixCaretAnchor: isPromptVisualLineStart(
+                      currentEditor,
+                      currentEditor.state.selection.from
+                    )
+                  })
+                );
+                return true;
+              }
+            }
+          }
           const html = event.clipboardData?.getData("text/html") ?? "";
           if (html.includes("data-agent-file-mention")) {
             return false;
@@ -617,6 +835,13 @@ export const AgentRichTextEditor = forwardRef<
             currentEditor.commands.setTextSelection(
               currentEditor.state.doc.content.size
             );
+          }
+          suppressPastedAtSuggestionRef.current =
+            text.includes("@") && !text.endsWith("@");
+          if (suppressPastedAtSuggestionRef.current) {
+            window.setTimeout(() => {
+              suppressPastedAtSuggestionRef.current = false;
+            }, 0);
           }
           currentEditor.commands.insertContent(
             plainTextToAgentRichTextInlineContent(text, {
@@ -670,12 +895,19 @@ export const AgentRichTextEditor = forwardRef<
           if (!dataTransfer || disabled) {
             return false;
           }
-          const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          if (imageFiles.length > 0) {
+          const systemFileDragInfo =
+            systemFileDragInfoFromDataTransfer(dataTransfer);
+          const canDropRegularSystemFiles =
+            systemFileDragInfo.hasRegularFiles &&
+            Boolean(onDropFilesRef.current);
+          if (systemFileDragInfo.hasImageFiles || canDropRegularSystemFiles) {
             event.preventDefault();
-            dataTransfer.dropEffect = promptImagesSupportedRef.current
-              ? "copy"
-              : "none";
+            dataTransfer.dropEffect =
+              canDropRegularSystemFiles ||
+              (systemFileDragInfo.hasImageFiles &&
+                promptImagesSupportedRef.current)
+                ? "copy"
+                : "none";
             return true;
           }
           if (!hasWorkspaceFileDropData(dataTransfer)) {
@@ -697,8 +929,45 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           const imageFiles = imageFilesFromDataTransfer(dataTransfer);
-          if (imageFiles.length > 0) {
+          const imageFileSet = new Set(imageFiles);
+          const regularFiles = nonImageFilesFromDataTransfer(
+            dataTransfer
+          ).filter((file) => !imageFileSet.has(file));
+          const canHandleRegularFiles = Boolean(onDropFilesRef.current);
+          if (
+            imageFiles.length > 0 ||
+            (regularFiles.length > 0 && canHandleRegularFiles)
+          ) {
             event.preventDefault();
+            const currentEditor = editorRef.current;
+            if (
+              regularFiles.length > 0 &&
+              onDropFilesRef.current &&
+              currentEditor &&
+              !currentEditor.isDestroyed
+            ) {
+              const coordinatePosition = currentEditor.view.posAtCoords({
+                left: event.clientX,
+                top: event.clientY
+              })?.pos;
+              const fallbackSelectionPosition =
+                currentEditor.state.selection.from;
+              const insertPosition =
+                coordinatePosition ??
+                (Number.isInteger(fallbackSelectionPosition)
+                  ? fallbackSelectionPosition
+                  : null) ??
+                currentEditor.state.doc.content.size;
+              currentEditor
+                .chain()
+                .focus()
+                .setTextSelection(insertPosition)
+                .run();
+              onDropFilesRef.current(regularFiles);
+            }
+            if (imageFiles.length === 0) {
+              return true;
+            }
             if (!promptImagesSupportedRef.current) {
               onPromptImagesUnsupportedRef.current?.();
               return true;
@@ -740,7 +1009,12 @@ export const AgentRichTextEditor = forwardRef<
             .focus()
             .insertContentAt(
               insertPosition,
-              buildWorkspaceFileMentionDropContent(entries)
+              buildWorkspaceFileMentionDropContent(entries, {
+                prefixCaretAnchor: isPromptVisualLineStart(
+                  currentEditor,
+                  insertPosition
+                )
+              })
             )
             .run();
           return true;
@@ -776,6 +1050,28 @@ export const AgentRichTextEditor = forwardRef<
       event.preventDefault();
       event.stopPropagation();
       return;
+    }
+    if (
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      const currentEditor = editorRef.current;
+      if (
+        currentEditor &&
+        !currentEditor.isDestroyed &&
+        moveSelectionOverCaretAnchor(
+          currentEditor.state,
+          (transaction) => currentEditor.view.dispatch(transaction),
+          event.key
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
     if (
       event.key === "Enter" &&
@@ -880,6 +1176,22 @@ export const AgentRichTextEditor = forwardRef<
           "\n"
         );
       },
+      openMentionPalette() {
+        const currentEditor = editorRef.current;
+        if (
+          !currentEditor ||
+          currentEditor.isDestroyed ||
+          !currentEditor.isEditable
+        ) {
+          return;
+        }
+        const triggerText = isMentionTriggerBoundaryBeforeSelection(
+          currentEditor
+        )
+          ? "@"
+          : " @";
+        currentEditor.chain().focus().insertContent(triggerText).run();
+      },
       insertWorkspaceReferences(items) {
         const currentEditor = editorRef.current;
         if (!currentEditor || currentEditor.isDestroyed || items.length === 0) {
@@ -888,7 +1200,14 @@ export const AgentRichTextEditor = forwardRef<
         currentEditor
           .chain()
           .focus()
-          .insertContent(createAgentFileMentionContent(items))
+          .insertContent(
+            createAgentFileMentionContent(items, {
+              prefixCaretAnchor: isPromptVisualLineStart(
+                currentEditor,
+                currentEditor.state.selection.from
+              )
+            })
+          )
           .run();
       },
       insertMentionItems(items) {
@@ -899,7 +1218,14 @@ export const AgentRichTextEditor = forwardRef<
         currentEditor
           .chain()
           .focus()
-          .insertContent(createAgentMentionContent(items))
+          .insertContent(
+            createAgentMentionContent(items, {
+              prefixCaretAnchor: isPromptVisualLineStart(
+                currentEditor,
+                currentEditor.state.selection.from
+              )
+            })
+          )
           .run();
       },
       replaceTextBeforeSelection(length, text) {

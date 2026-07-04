@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,5 +47,37 @@ func TestDoJSONReportsTimeoutSeparatelyFromUnreachable(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "daemon is not reachable") {
 		t.Fatalf("error = %q, should not report daemon as unreachable", err.Error())
+	}
+}
+
+func TestDaemonRequestErrorKeepsPlainUnreachableOutsideAgent(t *testing.T) {
+	t.Setenv("TUTTI_AGENT_SESSION_ID", "")
+	t.Setenv("TUTTI_AGENT_ROUTING", "")
+
+	err := daemonRequestError(errors.New("dial tcp failed"))
+
+	if got, want := err.Error(), "daemon is not reachable"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestDaemonRequestErrorHintsLocalDaemonAccessInsideAgent(t *testing.T) {
+	t.Setenv("TUTTI_AGENT_SESSION_ID", "session-1")
+	t.Setenv("TUTTI_AGENT_ROUTING", "")
+
+	err := daemonRequestError(errors.New("dial tcp failed"))
+	message := err.Error()
+
+	for _, expected := range []string{
+		"daemon is not reachable from this agent execution environment",
+		"execution environment with localhost/IPC access",
+		"localhost/IPC",
+	} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("error = %q, want to contain %q", message, expected)
+		}
+	}
+	if strings.Contains(message, "sandbox_permissions=require_escalated") {
+		t.Fatalf("error = %q, should not contain provider-specific Codex escalation syntax", message)
 	}
 }

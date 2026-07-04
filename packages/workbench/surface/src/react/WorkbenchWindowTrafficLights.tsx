@@ -3,7 +3,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
-  TooltipTrigger
+  TooltipTrigger,
+  WindowTrafficLightIcon
 } from "@tutti-os/ui-system";
 
 type WorkbenchWindowTrafficLightTone = "close" | "minimize" | "maximize";
@@ -90,6 +91,13 @@ function WorkbenchWindowTrafficLightButton({
     event.stopPropagation();
   };
 
+  const iconName =
+    tone === "maximize"
+      ? input.pressed
+        ? "unfullscreen"
+        : "fullscreen"
+      : tone;
+
   const button = (
     <button
       aria-label={input.label}
@@ -102,7 +110,14 @@ function WorkbenchWindowTrafficLightButton({
       onClick={handleClick}
       onDoubleClick={(event) => event.stopPropagation()}
       onPointerDown={stopPointer}
-    />
+    >
+      <WindowTrafficLightIcon
+        aria-hidden="true"
+        className="workbench-window-traffic-light__icon"
+        data-workbench-traffic-light-icon={iconName}
+        iconName={iconName}
+      />
+    </button>
   );
 
   return (

@@ -871,6 +871,25 @@ test("WorkspaceAppCenterService opens workspace and package app folders", async 
   ]);
 });
 
+test("WorkspaceAppCenterService opens external URLs through host files", async () => {
+  const openedUrls: string[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway(),
+    hostFilesApi: createHostFilesApi({
+      openExternal: async (url) => {
+        openedUrls.push(url);
+      }
+    }),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.openExternalUrl(" https://github.com/tutti-os/tutti ");
+  await service.openExternalUrl("   ");
+
+  assert.deepEqual(openedUrls, ["https://github.com/tutti-os/tutti"]);
+});
+
 test("WorkspaceAppCenterService does not open package folders for builtin apps", async () => {
   const openedFolders: OpenWorkspaceAppFolderInput[] = [];
   const service = new WorkspaceAppCenterService({
@@ -1730,6 +1749,7 @@ function createHostFilesApi(
   overrides: Partial<WorkspaceAppCenterServiceDependencies["hostFilesApi"]> = {}
 ): WorkspaceAppCenterServiceDependencies["hostFilesApi"] {
   return {
+    openExternal: async () => {},
     revealInFolder: async () => {},
     selectAppArchive: async () => null,
     selectAppArchiveExportPath: async () => null,

@@ -20,6 +20,7 @@ export interface WorkspaceAppCenterServiceRegistrationInput {
   eventStreamClient: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
+    | "openExternal"
     | "revealInFolder"
     | "selectAppArchive"
     | "selectAppArchiveExportPath"

@@ -11,6 +11,7 @@ require (
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/tutti-os/tutti/packages/agentactivity/daemon v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
+	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
@@ -92,3 +93,5 @@ require (
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core
+
+replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go

@@ -1,4 +1,4 @@
-export { PredefinePageviewReporter } from "./predefine-pageview";
+export { AppPageviewReporter } from "./app-pageview";
 export { AppStartupFailedReporter } from "./app-startup-failed";
 export type { AppStartupFailedParams } from "./app-startup-failed";
 export { AppRendererErrorReporter } from "./app-renderer-error";

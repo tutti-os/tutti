@@ -134,6 +134,43 @@ describe("Agent specialized tool cards", () => {
     expect(screen.queryByRole("button", { expanded: true })).toBeNull();
   });
 
+  it("shows failed task status and fallback error when provider omits details", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentTaskCallCard
+        defaultExpanded
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Agent",
+            toolName: "Agent",
+            callType: "tool",
+            status: "Failed",
+            statusKind: null,
+            summary:
+              "Generate exactly one random integer from 1 to 10 inclusive.",
+            payload: {
+              input: {
+                prompt:
+                  "Generate exactly one random integer from 1 to 10 inclusive."
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /Agent Failed Generate exactly/i })
+    ).toBeTruthy();
+    expect(screen.getAllByText(/Failed/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Error")).toBeTruthy();
+    expect(
+      screen.getByText("The provider reported failure without details.")
+    ).toBeTruthy();
+    expect(screen.queryByText("Output")).toBeNull();
+  });
+
   it("keeps task step output hidden until the step expands", async () => {
     setAgentGuiI18nTestLocale("en");
 
@@ -201,6 +238,41 @@ describe("Agent specialized tool cards", () => {
     expect(screen.getByText("-1").className).toContain(
       "workspace-agents-status-panel__detail-tool-diff-removed"
     );
+  });
+
+  it("does not show edit diff stats on approval tool headers", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "approval",
+            status: "Completed",
+            statusKind: "completed",
+            payload: {
+              input: {
+                toolCall: {
+                  input: {
+                    file_path: "/workspace/generated.md",
+                    old_string: "const ready = false",
+                    new_string: "const ready = true"
+                  },
+                  name: "Edit",
+                  title: "Edit",
+                  toolName: "Edit"
+                }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.queryByText("+1")).toBeNull();
+    expect(screen.queryByText("-1")).toBeNull();
   });
 
   it("renders tool header icons at the shared 16px size", async () => {

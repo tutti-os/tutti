@@ -1,7 +1,13 @@
-import type { DesktopDeveloperLogKind } from "@shared/contracts/ipc";
+import type {
+  DesktopComputerUsePermissionPane,
+  DesktopComputerUseRestartDriverInput,
+  DesktopDeveloperLogKind
+} from "@shared/contracts/ipc";
 import type { DesktopLocale } from "@shared/i18n";
 import type {
   DesktopAgentProvider,
+  DesktopAgentConversationDetailMode,
+  DesktopAgentDockLayout,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
@@ -50,6 +56,7 @@ import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspace
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
+import { writeTuttiAgentSwitchEnabled } from "./tuttiAgentSwitchPreference.ts";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderConfig,
@@ -154,6 +161,39 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     return this.dependencies.client.grantComputerUsePermissions();
   }
 
+  startComputerUsePermissionGrant() {
+    return this.dependencies.client.startComputerUsePermissionGrant();
+  }
+
+  getComputerUsePermissionGrantStatus() {
+    return this.dependencies.client.getComputerUsePermissionGrantStatus();
+  }
+
+  logComputerUsePermissionDiagnostic(input: {
+    details?: Record<string, unknown>;
+    event: string;
+    level?: "debug" | "error" | "info" | "warn";
+  }): void {
+    void this.dependencies.client
+      .logComputerUsePermissionDiagnostic({
+        details: input.details,
+        event: input.event,
+        level: input.level,
+        workspaceId: this.store.workspaceID
+      })
+      .catch(() => undefined);
+  }
+
+  openComputerUsePermissionSettings(
+    pane: DesktopComputerUsePermissionPane
+  ): Promise<void> {
+    return this.dependencies.client.openComputerUsePermissionSettings(pane);
+  }
+
+  restartComputerUseDriver(input?: DesktopComputerUseRestartDriverInput) {
+    return this.dependencies.client.restartComputerUseDriver(input);
+  }
+
   syncWorkspace(workspace: WorkspaceSettingsWorkspaceInput): void {
     if (workspace.id !== this.store.workspaceID) {
       this.store.workspaceID = workspace.id;
@@ -189,6 +229,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerPanelVisible = visible;
     writeDeveloperPanelVisible(visible);
     if (!visible && this.store.activeSection === "developer") {
+      this.store.activeSection = "general";
+    }
+  }
+
+  setTuttiAgentSwitchEnabled(enabled: boolean): void {
+    if (this.store.tuttiAgentSwitchEnabled === enabled) {
+      return;
+    }
+
+    this.store.tuttiAgentSwitchEnabled = enabled;
+    writeTuttiAgentSwitchEnabled(enabled);
+    if (!enabled && this.store.activeSection === "account") {
       this.store.activeSection = "general";
     }
   }
@@ -233,6 +285,46 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.general.defaultAgentProviderSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeAgentConversationDetailMode(
+    mode: DesktopAgentConversationDetailMode
+  ): Promise<void> {
+    if (
+      this.desktopPreferences.store.agentConversationDetailMode === mode ||
+      this.desktopPreferences.store.changingAgentConversationDetailMode === mode
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setAgentConversationDetailMode(mode);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.agentConversationDetailModeSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeAgentDockLayout(layout: DesktopAgentDockLayout): Promise<void> {
+    if (
+      this.desktopPreferences.store.agentDockLayout === layout ||
+      this.desktopPreferences.store.changingAgentDockLayout === layout
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setAgentDockLayout(layout);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.agentDockLayoutSaveFailed"
         )
       });
     }
@@ -1079,8 +1171,12 @@ IWorkspaceAppCenterService(WorkspaceSettingsService, undefined, 4);
 const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   agentComposerDefaultsByProvider: {},
   agentGuiConversationRailCollapsedByProvider: {},
+  agentConversationDetailMode: "coding",
+  agentDockLayout: "legacySplit",
   appCatalogChannel: "production",
   browserUseConnectionMode: "isolated",
+  changingAgentConversationDetailMode: null,
+  changingAgentDockLayout: null,
   changingAppCatalogChannel: null,
   changingBrowserUseConnectionMode: null,
   changingDefaultAgentProvider: null,
@@ -1122,6 +1218,12 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setDefaultAgentProvider(provider) {
     return Promise.resolve(provider);
+  },
+  setAgentConversationDetailMode(mode) {
+    return Promise.resolve(mode);
+  },
+  setAgentDockLayout(layout) {
+    return Promise.resolve(layout);
   },
   setDockPlacement(placement) {
     return Promise.resolve(placement);

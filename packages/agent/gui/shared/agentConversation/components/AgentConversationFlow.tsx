@@ -24,6 +24,7 @@ interface AgentConversationFlowProps {
     processing: string;
     turnSummary: string;
     rawTimelineJson?: string;
+    userMessageLocator?: string;
   };
 }
 

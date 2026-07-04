@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AppCenterViewModel } from "../contracts/viewModel.ts";
 import {
+  isCommunityRecommendedApp,
+  sortCommunityApps,
   sortMyAppsByCreatedDesc,
   sortRecommendedApps,
   sortRecommendedAppsForAllTab
@@ -39,6 +41,11 @@ describe("sortRecommendedApps", () => {
         tags: ["coming-soon"]
       }),
       createApp({
+        id: "ai-doc",
+        name: "AI Document",
+        sourceKind: "bundled"
+      }),
+      createApp({
         id: "vibe-design",
         name: "Vibe Design",
         sourceKind: "bundled"
@@ -58,11 +65,12 @@ describe("sortRecommendedApps", () => {
     assert.deepEqual(
       sortRecommendedApps(apps).map((app) => app.id),
       [
+        "ai-slide",
+        "ai-doc",
         "ai-media-canvas",
         "vibe-design",
         "automation",
-        "daily-product-radar",
-        "ai-slide"
+        "daily-product-radar"
       ]
     );
   });
@@ -122,12 +130,6 @@ describe("sortRecommendedAppsForAllTab", () => {
   it("uses the same configured display order as category tabs", () => {
     const apps = [
       createApp({
-        id: "document-summarizer",
-        name: "Document Summarizer",
-        sourceKind: "bundled",
-        tags: ["coming-soon"]
-      }),
-      createApp({
         id: "group-chat",
         name: "Group Chat",
         sourceKind: "bundled"
@@ -147,7 +149,7 @@ describe("sortRecommendedAppsForAllTab", () => {
 
     assert.deepEqual(
       sortRecommendedAppsForAllTab(apps).map((app) => app.id),
-      ["ai-media-canvas", "group-chat", "open-cut", "document-summarizer"]
+      ["ai-media-canvas", "group-chat", "open-cut"]
     );
   });
 
@@ -169,8 +171,70 @@ describe("sortRecommendedAppsForAllTab", () => {
 
     assert.deepEqual(
       sortRecommendedAppsForAllTab(apps).map((app) => app.id),
-      ["automation", "daily-tech-radar", "ai-slide"]
+      ["ai-slide", "automation", "daily-tech-radar"]
     );
+  });
+});
+
+describe("sortCommunityApps", () => {
+  it("orders community apps by the configured community display list", () => {
+    const apps = [
+      createApp({
+        id: "product-competition",
+        name: "Competitive Analysis",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "draw-topic-app",
+        name: "抽张主意",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "daily-tech-radar",
+        name: "Daily Product Radar",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "group-chat",
+        name: "Group Chat",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "design-review",
+        name: "Design Review",
+        sourceKind: "bundled"
+      }),
+      createApp({
+        id: "omni-catcher",
+        name: "Omni Catcher",
+        sourceKind: "bundled"
+      })
+    ];
+
+    assert.deepEqual(
+      sortCommunityApps(apps).map((app) => app.id),
+      [
+        "group-chat",
+        "design-review",
+        "product-competition",
+        "daily-tech-radar",
+        "draw-topic-app",
+        "omni-catcher"
+      ]
+    );
+  });
+});
+
+describe("isCommunityRecommendedApp", () => {
+  it("identifies recommended apps that should be shown in community apps", () => {
+    assert.equal(isCommunityRecommendedApp("group-chat"), true);
+    assert.equal(isCommunityRecommendedApp(" daily-tech-radar "), true);
+    assert.equal(isCommunityRecommendedApp("product-competition"), true);
+    assert.equal(isCommunityRecommendedApp("design-review"), true);
+    assert.equal(isCommunityRecommendedApp("draw-topic-app"), true);
+    assert.equal(isCommunityRecommendedApp("omni-catcher"), true);
+    assert.equal(isCommunityRecommendedApp("automation"), false);
+    assert.equal(isCommunityRecommendedApp("vibe-design"), false);
   });
 });
 

@@ -10,12 +10,21 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 const ReasonExternalAgentRegistryUnavailable = "external_agent_registry_unavailable"
 const ReasonManagedRuntimeUnavailable = "managed_runtime_unavailable"
+const ReasonClaudeSDKSidecarUnavailable = "claude_sdk_sidecar_unavailable"
+
+const claudeCodeRuntimeEnv = "TUTTI_CLAUDE_CODE_RUNTIME"
+const claudeCodeRuntimeACP = "acp"
+const claudeCodeRuntimeSDK = "sdk"
+const claudeSDKSidecarCommandEnv = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
+const claudeSDKSidecarEntryPathEnv = "TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH"
+const claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 
 type ProviderCommandResolution struct {
 	Command []string
@@ -53,13 +62,16 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 	}
 	return ProviderCommandResolution{
 		Command: cloneStrings(spec.AdapterCommand),
-		Env:     cloneStrings(spec.AdapterEnv),
+		Env:     s.adapterCommandEnv(ctx, spec),
 	}, nil
 }
 
 func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) (ProviderSpec, error) {
+	if spec.Provider == agentprovider.ClaudeCode {
+		spec = s.resolveClaudeCodeRuntimeSpec(ctx, spec, requireManagedRuntime)
+	}
 	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
-		return spec, nil
+		return s.resolveStaticProviderSpec(ctx, spec, requireManagedRuntime), nil
 	}
 	agent, err := s.externalAgentRegistry().Agent(ctx, spec.ExternalRegistryID)
 	if err != nil {
@@ -74,6 +86,128 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	}
 	spec.AdapterUnavailableReasonCode = "external_agent_registry_distribution_unavailable"
 	return spec, nil
+}
+
+func (s Service) resolveClaudeCodeRuntimeSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	if claudeCodeAgentStatusRuntime() == claudeCodeRuntimeACP {
+		return claudeCodeACPProviderSpec(spec)
+	}
+	return s.resolveClaudeCodeSDKProviderSpec(ctx, spec, requireManagedRuntime)
+}
+
+func claudeCodeAgentStatusRuntime() string {
+	runtime := strings.TrimSpace(os.Getenv(claudeCodeRuntimeEnv))
+	if strings.EqualFold(runtime, claudeCodeRuntimeACP) {
+		return claudeCodeRuntimeACP
+	}
+	return claudeCodeRuntimeSDK
+}
+
+func claudeCodeACPProviderSpec(spec ProviderSpec) ProviderSpec {
+	spec.ExternalRegistryID = firstNonBlank(spec.ExternalRegistryID, "claude-acp")
+	if spec.AdapterInstall.Kind == "" {
+		spec.AdapterInstall.Kind = InstallerKindExternalAgentRegistryNPM
+	}
+	spec.AdapterInstall.DisplayCommand = firstNonBlank(
+		spec.AdapterInstall.DisplayCommand,
+		"Install claude-acp from ACP External Agent Registry",
+	)
+	if spec.AdapterInstall.PostInstall == InstallerPostStepNone {
+		spec.AdapterInstall.PostInstall = InstallerPostStepPatchClaudeAgentACP
+	}
+	return spec
+}
+
+func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	spec.ExternalRegistryID = ""
+	spec.AdapterPackage = AdapterPackageRequirement{}
+	spec.AdapterInstall = InstallerSpec{}
+	spec.AdapterUnavailableReasonCode = ""
+
+	if command := strings.TrimSpace(os.Getenv(claudeSDKSidecarCommandEnv)); command != "" {
+		spec.AdapterCommand = strings.Fields(command)
+		if len(spec.AdapterCommand) > 0 {
+			spec.AdapterBinaryNames = []string{spec.AdapterCommand[0]}
+		}
+		return spec
+	}
+
+	entry := s.resolveClaudeSDKSidecarEntryPath()
+	if entry == "" {
+		spec.AdapterCommand = nil
+		spec.AdapterBinaryNames = []string{"tutti-claude-sdk-sidecar-missing"}
+		spec.AdapterUnavailableReasonCode = ReasonClaudeSDKSidecarUnavailable
+		return spec
+	}
+
+	nodeBinary := nodeBinaryName()
+	nodeCommand := nodeBinary
+	if appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime); ok {
+		spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+		nodeCommand = appRuntime.Node
+	} else if requireManagedRuntime {
+		spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+	}
+	spec.AdapterCommand = []string{nodeCommand, claudeSDKSidecarDefaultNodeArg, entry}
+	spec.AdapterBinaryNames = []string{nodeBinary}
+	return spec
+}
+
+func (s Service) resolveClaudeSDKSidecarEntryPath() string {
+	env := s.commandResolver().Env(nil)
+	if entry := strings.TrimSpace(managedruntime.EnvValue(env, claudeSDKSidecarEntryPathEnv)); entry != "" {
+		if s.fileExists(entry) {
+			return entry
+		}
+		return ""
+	}
+	root := findClaudeSDKRepoRoot()
+	if root == "" {
+		return ""
+	}
+	entry := filepath.Join(root, "packages/agent/claude-sdk-sidecar/src/main.ts")
+	if s.fileExists(entry) {
+		return entry
+	}
+	return ""
+}
+
+func findClaudeSDKRepoRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if fileExistsPath(filepath.Join(dir, "pnpm-workspace.yaml")) &&
+			fileExistsPath(filepath.Join(dir, "packages/agent/claude-sdk-sidecar/src/main.ts")) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func fileExistsPath(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	if spec.Provider != agentprovider.Codex {
+		return spec
+	}
+	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
+	if !ok {
+		if requireManagedRuntime {
+			spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+		}
+		return spec
+	}
+	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+	return spec
 }
 
 func (s Service) resolveExternalRegistryNPMSpec(
@@ -134,16 +268,33 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	}
 	command = append(command, distribution.Args...)
 	spec.AdapterCommand = command
-	spec.AdapterEnv = append(appRuntime.EnvOverrides, envMapToList(distribution.Env)...)
-	// Select the registry for the `npm exec` fallback (used when the installed bin
-	// isn't found). This single-shot path can't retry a chain, so use the primary
-	// registry (override, else official). Harmless when running the installed bin
-	// directly, which never consults npm.
+	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), envMapToList(distribution.Env)...)
+	// Seed the registry for the `npm exec` fallback. Callers that actually execute
+	// this fallback re-rank providers first, because this single-shot path can't
+	// retry a chain.
 	spec.AdapterEnv = withAgentNPMRegistry(spec.AdapterEnv, s.primaryAgentNPMRegistry())
 	// Pin a dedicated cache for the `npm exec` fallback too, so it never trips over
 	// a root-owned global ~/.npm. Harmless when running the installed bin directly.
 	spec.AdapterEnv = withAgentNPMCache(spec.AdapterEnv, filepath.Join(prefixDir, agentNPMCacheDirName))
 	return spec
+}
+
+func adapterCommandUsesNPMExecFallback(command []string) bool {
+	for _, arg := range command {
+		if strings.TrimSpace(arg) == "exec" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s Service) adapterCommandEnv(ctx context.Context, spec ProviderSpec) []string {
+	env := cloneStrings(spec.AdapterEnv)
+	if spec.AdapterInstall.RegistryNPM == nil || !adapterCommandUsesNPMExecFallback(spec.AdapterCommand) {
+		return env
+	}
+	packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)
+	return withAgentNPMRegistry(env, s.preferredAgentNPMRegistry(ctx, packageName))
 }
 
 func (s Service) resolveExternalRegistryBinarySpec(spec ProviderSpec, agent externalagentregistry.Agent) ProviderSpec {
@@ -174,6 +325,78 @@ func (s Service) resolveExternalRegistryBinarySpec(spec ProviderSpec, agent exte
 	spec.AdapterCommand = command
 	spec.AdapterEnv = envMapToList(target.Env)
 	return spec
+}
+
+func (s Service) managedRuntimeAdapterEnv(appRuntime managedruntime.ResolvedRuntime) []string {
+	env := make([]string, 0, len(appRuntime.EnvOverrides)+1)
+	for _, override := range appRuntime.EnvOverrides {
+		key, _, ok := strings.Cut(override, "=")
+		if ok && strings.EqualFold(key, "PATH") {
+			continue
+		}
+		env = append(env, override)
+	}
+	basePath := managedruntime.EnvValue(s.commandResolver().Env(nil), "PATH")
+	pathDirs := append([]string{}, appRuntime.BinDirs...)
+	pathDirs = append(pathDirs, filepath.SplitList(basePath)...)
+	env = append(env, "PATH="+strings.Join(pathDirs, string(os.PathListSeparator)))
+	return env
+}
+
+func (s Service) resolveManagedNodeRuntimeForProvider(ctx context.Context, require bool) (managedruntime.ResolvedRuntime, bool) {
+	resolver := s.managedRuntimeResolver()
+	if managed, ok := resolver.(managedruntime.DefaultResolver); ok {
+		root := strings.TrimSpace(managed.RuntimeRoot)
+		if root == "" {
+			root = managed.DefaultRoot()
+		}
+		if runtime, ok := resolvedExistingManagedNodeRuntime(root, s.Environ); ok {
+			return runtime, true
+		}
+		if !require {
+			return managedruntime.ResolvedRuntime{}, false
+		}
+	}
+	runtime, err := s.resolveCodexManagedNodeRuntime(ctx)
+	if err != nil {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	return runtime, true
+}
+
+func resolvedExistingManagedNodeRuntime(root string, environ func() []string) (managedruntime.ResolvedRuntime, bool) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	nodeBinDir := filepath.Join(root, "node", "bin")
+	nodePath := filepath.Join(nodeBinDir, nodeBinaryName())
+	npmPath := filepath.Join(nodeBinDir, npmBinaryName())
+	if !isExecutablePath(nodePath) || !isExecutablePath(npmPath) {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	baseEnv := []string(nil)
+	if environ != nil {
+		baseEnv = environ()
+	}
+	basePath := managedruntime.EnvValue(baseEnv, "PATH")
+	return managedruntime.ResolvedRuntime{
+		Root:    root,
+		Node:    nodePath,
+		NPM:     npmPath,
+		BinDirs: []string{nodeBinDir},
+		EnvOverrides: []string{
+			"TUTTI_APP_RUNTIME_ROOT=" + root,
+			"TUTTI_APP_NODE=" + nodePath,
+			"TUTTI_APP_NPM=" + npmPath,
+			"PATH=" + strings.Join(append([]string{nodeBinDir}, filepath.SplitList(basePath)...), string(os.PathListSeparator)),
+		},
+	}, true
+}
+
+func isExecutablePath(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0
 }
 
 func (s Service) resolveManagedRuntimeForProvider(ctx context.Context, require bool) (managedruntime.ResolvedRuntime, bool) {

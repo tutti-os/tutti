@@ -49,19 +49,22 @@ describe("AgentSlashCommandPalette", () => {
       "min-h-9",
       "px-2.5",
       "py-2",
+      "hover:bg-[var(--transparency-block)]",
+      "focus-visible:bg-[var(--transparency-block)]",
       "data-[highlighted]:bg-[var(--transparency-block)]",
       "active:bg-[var(--transparency-active)]"
     );
-    expect(option).not.toHaveClass(
-      "hover:bg-[var(--transparency-block)]",
-      "focus:bg-[var(--transparency-block)]"
-    );
     expect(option).toHaveAttribute("data-highlighted", "");
-    expect(screen.getByText("tutti-cli")).toHaveClass(
+    expect(screen.getByText("tutti-cli").parentElement).toHaveClass(
       "max-w-[48%]",
       "shrink-0",
+      "items-center",
+      "overflow-hidden"
+    );
+    expect(screen.getByText("tutti-cli")).toHaveClass(
       "truncate",
-      "text-[11px]"
+      "text-[11px]",
+      "font-semibold"
     );
     expect(screen.getByText("Inspect tasks and agent context.")).toHaveClass(
       "flex-1",
@@ -114,6 +117,146 @@ describe("AgentSlashCommandPalette", () => {
       name: "browser",
       aliases: ["浏览器"]
     });
+    expect(
+      screen.getByRole("option", { name: /Browser/i }).querySelector("svg")
+    ).toBeTruthy();
+  });
+
+  it("renders icons for built-in slash commands", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:compact",
+            label: "compact",
+            description: "Compact the conversation.",
+            command: { name: "compact" }
+          },
+          {
+            type: "command",
+            key: "command:status",
+            label: "status",
+            description: "Show session status.",
+            command: { name: "status" }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    const compactIcon = screen
+      .getByRole("option", { name: /compact/i })
+      .querySelector("svg");
+    expect(compactIcon).toBeTruthy();
+
+    const icon = screen
+      .getByRole("option", { name: /status/i })
+      .querySelector("svg");
+    expect(icon).toBeTruthy();
+    // The svg carries its own size class so the option's
+    // `[&_svg:not([class*='size-'])]:size-4` fallback does not override it.
+    expect(icon).toHaveClass("size-3");
+    expect(icon?.parentElement).toHaveClass(
+      "flex",
+      "w-3",
+      "shrink-0",
+      "items-center",
+      "justify-center",
+      "text-[var(--text-secondary)]"
+    );
+    expect(icon?.parentElement).not.toHaveClass(
+      "bg-[var(--transparency-hover)]",
+      "rounded-[7px]"
+    );
+  });
+
+  it("renders a primary localized label with a lighter English alias", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:status",
+            label: "status",
+            primaryLabel: "状态",
+            secondaryLabel: "status",
+            command: { name: "status" }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("状态")).toHaveClass("font-semibold");
+    expect(screen.getByText("status")).toHaveClass(
+      "text-[10px]",
+      "text-[var(--text-secondary)]"
+    );
+  });
+
+  it("uses distinct icons for plan and review commands", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:plan",
+            label: "plan",
+            command: { name: "plan" }
+          },
+          {
+            type: "command",
+            key: "command:review",
+            label: "review",
+            command: { name: "review" }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    const planIcon = screen
+      .getByRole("option", { name: /plan/i })
+      .querySelector("svg");
+    const reviewIcon = screen
+      .getByRole("option", { name: /review/i })
+      .querySelector("svg");
+
+    expect(planIcon?.innerHTML).not.toBe(reviewIcon?.innerHTML);
   });
 
   it("renders inline settings on capability entries and dispatches settings selection", () => {

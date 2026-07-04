@@ -326,19 +326,28 @@ function locationNodes(
   locations: readonly WorkspaceFileLocation[],
   sourceId: string
 ): ReferenceNode[] {
-  return locations.map((location) => ({
-    ref: {
-      sourceId,
-      nodeId:
-        location.kind === "recent"
-          ? RECENT_GROUP_NODE_ID
-          : location.referenceNodeId
-    },
-    kind: "folder",
-    displayName: location.label,
-    ...(location.contextLabel ? { contextLabel: location.contextLabel } : {}),
-    hasChildren: true
-  }));
+  return locations
+    .filter(
+      (
+        location
+      ): location is Extract<
+        WorkspaceFileLocation,
+        { kind: "directory" | "recent" }
+      > => location.kind === "directory" || location.kind === "recent"
+    )
+    .map((location) => ({
+      ref: {
+        sourceId,
+        nodeId:
+          location.kind === "recent"
+            ? RECENT_GROUP_NODE_ID
+            : location.referenceNodeId
+      },
+      kind: "folder",
+      displayName: location.label,
+      ...(location.contextLabel ? { contextLabel: location.contextLabel } : {}),
+      hasChildren: true
+    }));
 }
 
 async function resolveSearchLocations(input: {

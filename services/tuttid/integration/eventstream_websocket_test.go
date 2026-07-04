@@ -105,11 +105,12 @@ func TestTuttidBlackBoxEventStreamWebSocketReadyAndValidation(t *testing.T) {
 			Version: 1,
 			Payload: mustMarshalRawJSON(t, eventprotocol.PreferencesDesktopUpdateRequestedPayload{
 				Preferences: eventprotocol.PreferencesDesktopPreferences{
-					DockPlacement:       "bottom",
-					Locale:              "fr",
-					MinimizeAnimation:   "scale",
-					SleepPreventionMode: "never",
-					ThemeSource:         "dark",
+					AgentConversationDetailMode: "coding",
+					DockPlacement:               "bottom",
+					Locale:                      "fr",
+					MinimizeAnimation:           "scale",
+					SleepPreventionMode:         "never",
+					ThemeSource:                 "dark",
 				},
 			}),
 		},
@@ -195,8 +196,10 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 			EmittedAt: time.Now().UTC().Format(time.RFC3339Nano),
 			Payload: mustMarshalRawJSON(t, eventprotocol.PreferencesDesktopUpdateRequestedPayload{
 				Preferences: eventprotocol.PreferencesDesktopPreferences{
-					AppCatalogChannel:    "staging",
-					DefaultAgentProvider: "codex",
+					AgentConversationDetailMode: "general",
+					AgentDockLayout:             "unified",
+					AppCatalogChannel:           "staging",
+					DefaultAgentProvider:        "codex",
 
 					DockIconStyle:       "default",
 					DockPlacement:       "bottom",
@@ -245,13 +248,15 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 		t.Fatal("updated initialized = false, want true")
 	}
 	if updated.Preferences.DefaultAgentProvider != "codex" ||
+		updated.Preferences.AgentConversationDetailMode != "general" ||
+		updated.Preferences.AgentDockLayout != "unified" ||
 		updated.Preferences.AppCatalogChannel != "staging" ||
 		updated.Preferences.DockPlacement != "bottom" ||
 		updated.Preferences.Locale != "zh-CN" ||
 		updated.Preferences.ThemeSource != "dark" ||
 		updated.Preferences.UpdateChannel != "stable" ||
 		updated.Preferences.UpdatePolicy != "prompt" {
-		t.Fatalf("updated payload = %#v, want staging/codex/bottom/zh-CN/dark/stable/prompt", updated)
+		t.Fatalf("updated payload = %#v, want staging/codex/general/unified/bottom/zh-CN/dark/stable/prompt", updated)
 	}
 
 	after := mustRequestJSON[tuttigenerated.DesktopPreferencesStateResponse](
@@ -268,8 +273,14 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 	if after.Preferences.Locale != tuttigenerated.ZhCN {
 		t.Fatalf("stored locale = %q, want %q", after.Preferences.Locale, tuttigenerated.ZhCN)
 	}
-	if after.Preferences.DefaultAgentProvider != tuttigenerated.Codex {
-		t.Fatalf("stored defaultAgentProvider = %q, want %q", after.Preferences.DefaultAgentProvider, tuttigenerated.Codex)
+	if after.Preferences.DefaultAgentProvider != tuttigenerated.WorkspaceAgentProviderCodex {
+		t.Fatalf("stored defaultAgentProvider = %q, want %q", after.Preferences.DefaultAgentProvider, tuttigenerated.WorkspaceAgentProviderCodex)
+	}
+	if after.Preferences.AgentConversationDetailMode != tuttigenerated.General {
+		t.Fatalf("stored agentConversationDetailMode = %q, want %q", after.Preferences.AgentConversationDetailMode, tuttigenerated.General)
+	}
+	if after.Preferences.AgentDockLayout != tuttigenerated.Unified {
+		t.Fatalf("stored agentDockLayout = %q, want %q", after.Preferences.AgentDockLayout, tuttigenerated.Unified)
 	}
 	if after.Preferences.AppCatalogChannel != tuttigenerated.Staging {
 		t.Fatalf("stored appCatalogChannel = %q, want %q", after.Preferences.AppCatalogChannel, tuttigenerated.Staging)
@@ -277,8 +288,8 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 	if after.Preferences.DockPlacement != tuttigenerated.Bottom {
 		t.Fatalf("stored dockPlacement = %q, want %q", after.Preferences.DockPlacement, tuttigenerated.Bottom)
 	}
-	if after.Preferences.ThemeSource != tuttigenerated.Dark {
-		t.Fatalf("stored themeSource = %q, want %q", after.Preferences.ThemeSource, tuttigenerated.Dark)
+	if after.Preferences.ThemeSource != tuttigenerated.DesktopThemeSourceDark {
+		t.Fatalf("stored themeSource = %q, want %q", after.Preferences.ThemeSource, tuttigenerated.DesktopThemeSourceDark)
 	}
 }
 

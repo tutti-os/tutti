@@ -186,7 +186,7 @@ export interface WorkspaceAppCenterStoreState {
   workspaceId: string | null;
 }
 
-export type WorkspaceAppCenterAppTab = "my" | "recommended";
+export type WorkspaceAppCenterAppTab = "community" | "my" | "recommended";
 
 export interface WorkspaceAppCenterViewState {
   activeAppTab: WorkspaceAppCenterAppTab;

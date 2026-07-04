@@ -16,13 +16,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	controlplanehttp "github.com/tutti-os/tutti/packages/agentactivity/daemon/internal/httpclient"
 )
 
 func NewClient(cfg Config) *Client {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultTimeout}
+		httpClient = httpx.NewClient(defaultTimeout)
 	}
 	return &Client{
 		cfg:        cfg,
@@ -322,7 +323,7 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, requestBod
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if err != nil {

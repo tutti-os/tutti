@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow } from "electron";
 import {
   initializeDesktopEnvironment,
+  resolveDesktopDevelopmentAppName,
+  resolveDesktopLoginCallbackUrl,
+  resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopUserDataPath
 } from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
@@ -24,7 +27,12 @@ import {
 } from "./desktopTheme";
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
+import { ensureMacosApplicationInstalled } from "./macosApplicationInstallGuard.ts";
 import { ensureSingleInstance } from "./singleInstance";
+import {
+  completeDesktopLoginCallbackUrl,
+  findDesktopLoginCallbackUrl
+} from "./desktopLoginCallback";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
@@ -72,18 +80,41 @@ function focusPrimaryDesktopWindow(): void {
 
 export async function bootstrapDesktopApp(): Promise<void> {
   applyElectronDiagnosticSwitches();
-  registerTuttiAssetProtocolScheme();
-  registerWorkspaceFileIconProtocolScheme();
   initializeDesktopEnvironment({
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
   });
+  registerTuttiAssetProtocolScheme();
+  registerWorkspaceFileIconProtocolScheme();
+  const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
+  const protocolClientRegistration =
+    resolveDesktopLoginProtocolClientRegistration({
+      isPackaged: app.isPackaged
+    });
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient(protocolClientRegistration.scheme);
+  }
+  const handleLoginCallbackUrl = (url: string): void => {
+    void completeDesktopLoginCallbackUrl(url).catch(() => undefined);
+  };
+  app.on("open-url", (event, url) => {
+    if (url.startsWith(loginCallbackUrl)) {
+      event.preventDefault();
+      handleLoginCallbackUrl(url);
+      focusPrimaryDesktopWindow();
+    }
+  });
+  const appName = app.getName();
   const userDataPath = resolveDesktopUserDataPath({
     appDataDir: app.getPath("appData"),
-    appName: app.getName()
+    appName
   });
   if (userDataPath) {
     app.setPath("userData", userDataPath);
+  }
+  const developmentAppName = resolveDesktopDevelopmentAppName(appName);
+  if (developmentAppName) {
+    app.setName(developmentAppName);
   }
   const logger = await setupDesktopLogger();
 
@@ -95,7 +126,13 @@ export async function bootstrapDesktopApp(): Promise<void> {
     requestSingleInstanceLock: () => app.requestSingleInstanceLock(),
     quit: () => app.quit(),
     onSecondInstance: (handler) => {
-      app.on("second-instance", handler);
+      app.on("second-instance", (_event, commandLine) => handler(commandLine));
+    },
+    handleSecondInstanceArgv: (argv) => {
+      const callbackUrl = findDesktopLoginCallbackUrl(argv, loginCallbackUrl);
+      if (callbackUrl) {
+        handleLoginCallbackUrl(callbackUrl);
+      }
     },
     focusPrimaryWindow: focusPrimaryDesktopWindow
   });
@@ -119,14 +156,26 @@ export async function bootstrapDesktopApp(): Promise<void> {
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
 
   await app.whenReady();
+  const systemLocale = getSystemDesktopLocale();
+  const canContinueStartup = await ensureMacosApplicationInstalled({
+    appPath: process.execPath,
+    isPackaged: app.isPackaged,
+    locale: systemLocale,
+    logger
+  });
+  if (!canContinueStartup) {
+    return;
+  }
+
   const workspaceFileIconCache = createWorkspaceFileIconCacheStore({
     directory: join(app.getPath("userData"), "workspace-file-icons")
   });
   registerTuttiAssetProtocol();
   registerWorkspaceFileIconProtocol(workspaceFileIconCache);
   const desktopAppServices = await createDesktopAppServices({
+    appVersion: app.getVersion(),
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,
-    fallbackLocale: getSystemDesktopLocale(),
+    fallbackLocale: systemLocale,
     browserNodeGuestPreloadPath,
     isPackaged: app.isPackaged,
     logger,

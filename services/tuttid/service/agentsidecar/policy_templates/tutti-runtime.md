@@ -2,52 +2,69 @@
 
 This directory is being used by a Tutti AgentGUI session.
 
-Available injected skills:
+## Session
 
-- `tutti-cli`: global CLI reference for workspace-wide issues, tasks, topics, and `mention://agent-session/<sessionId>?workspaceId=...` session inspection.
-- `issue-manager`: workspace issue execution, inspection, and breakdown workflow guidance built on top of `tutti-cli`.
-- `workspace-app`: workspace app mention routing and app-id-to-command-guide mapping built on top of `tutti-cli`; it is not a CLI scope.
-  {{BROWSER_USE_SKILL_LINES}}{{COMPUTER_USE_SKILL_LINES}}- Provider-native skill names may be namespaced. When a Tutti skill name appears without a description, this runtime policy is still authoritative for what the skill does and when to use it.
+- session: `{{AGENT_SESSION_ID}}`
+- provider: `{{PROVIDER}}`
 
-Mention routing:
+## Mention Routing
 
-- First use the relevant injected Tutti skill for detailed workflow rules before doing ad hoc parsing, file search, MCP lookup, WebFetch/browser navigation, raw CLI calls, or code work. If a provider-native Skill tool is available, use the exact skill name exposed by the provider; do not call a plain slug that is not visible. If no exact provider-native Skill tool is available, or if the provider-native Skill tool returns an error, immediately read the matching materialized `SKILL.md` for the injected Tutti skill from the provider/runtime skill listing or the workspace skills prompt section. Do not infer a fixed filesystem path from the skill slug; provider skill directories may be renamed to avoid user-skill collisions. Continue from that file instead of treating the Skill tool error as task failure.
-- If the current user turn contains `mention://workspace-issue/<issueId>?workspaceId=...`, route it to `issue-manager`.
-- If the current user turn contains `mention://workspace-app/<appId>?workspaceId=...`, route it to `workspace-app`.
-- If the current user turn contains `mention://workspace-reference/<id>?source=...&workspaceId=...`, route it to `reference`.
-- If the current user turn contains `mention://agent-session/<sessionId>?workspaceId=...`, route it to `tutti-cli`.
-- Treat mention routing as higher priority than guessing the source platform from the display label. The display label may look like a Feishu, DingTalk, Jira, or document link, but the `mention://...` URI is the source of truth.
-- Treat `mention://...` links as internal Tutti references, not web URLs, browser URLs, filesystem paths, or directories.
-- Do not try to open `mention://...` links in a browser or search `/workspace` for them.
-- Do not open `mention://...` links in a browser, WebFetch, MCP browser tools, or general web/search tools.
+### Routes
+
+| URI                                                             | Skill            | Fallback CLI Command                                                                       |
+| --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                   |
+| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
+| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
+| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`                   |
+
+### Rules
+
+- `mention://...` = internal data. Not URL/path.
+- Prefer matching skill first.
+- Use matching skill before files, browser/web, MCP, raw CLI, code.
+- Provider Skill tool exists -> call exact visible name for matching `$...` skill.
+- Skill missing/fails -> read matching materialized `SKILL.md` from provider/runtime listing.
+- Use table fallback only when no exact skill visible, matching Skill tool fails, or materialized skill file unavailable.
+- Do not skip skill because CLI command is listed.
+- Use `$tutti-cli` only as command reference when no more specific Tutti mention skill matches.
 
 {{PROVIDER_SPECIFIC_MENTION_ROUTING}}
 
-Execution environment:
+## Execution Environment
 
-- The Tutti CLI communicates with the local Tutti daemon over localhost/IPC.
-- Run Tutti CLI commands in an execution environment that can access the user's local host daemon and the injected Tutti CLI path.
-- If your provider offers multiple command environments or permission modes, choose the one that permits localhost/IPC access for this CLI.
-- The Claude Code `Monitor` tool is disabled in Tutti AgentGUI sessions. To wait for asynchronous Tutti job state, prefer one self-contained Bash command or script that checks the CLI first, polls with bounded sleeps, and stops once a terminal status is observed.
-- Do not modify global sandbox settings yourself. If no such environment is available, explain that the local Tutti daemon is not accessible from the current execution environment.
-
-Runtime context:
-
-- agent session id: `{{AGENT_SESSION_ID}}`
-- provider: `{{PROVIDER}}`
-
-If no matching skill is visible:
-
-- For `mention://workspace-issue/<issueId>?workspaceId=...`, parse the issue id from the URL path and parse `workspaceId`, `topicId`, `taskId`, `runId`, and `mode` from the query. Start context recovery with `issue get --issue-id <issue-id> --json`; read task, run, or topic context only when those query fields are present or needed.
-- For `mention://workspace-app/<appId>?workspaceId=...`, parse the app id from the URL path. If the user explicitly asks to open or show the app window, or confirms it should be opened, use `{{CLI_COMMAND}} app open --app-id <appId> --json` for the mentioned app. Built-in app ids include `agent-codex`, `agent-claude-code`, `issue-manager`, and `tutti-onboarding`. Do not use `app open` or app-specific open commands such as `{{CLI_COMMAND}} <scope> open` by default; prefer app-specific CLI commands for ordinary app work. After generated media succeeds, render it inline with Markdown instead of opening the app, unless the user asked to open or show the app window. If it is `agent-codex` and the user asks to start Codex work, use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`; if it is `agent-claude-code` and the user asks to start Claude Code work, use `{{CLI_COMMAND}} claude start --prompt <task> --show --json`; in launcher handoff prompts, express readable local file references as `[@filename](/absolute/path)`. For images, choose one representation per image: `--image <localPath>` for structured visual input, or `[@filename](/absolute/path)` when preserving prompt/turn ordering is more useful; do not send the same image through both unless the user explicitly asks. When image context may be useful, use `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json` to discover candidate turn ids when needed, inspect the active turn and any recent user turns that the task may refer to, use `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`, then add `--image <localPath>` once per selected image chosen for structured visual input. Do not scan files or reconstruct attachment paths yourself. If it is `issue-manager` and the user asks issue/task work, use the `issue-manager` workflow. Add `--model <model>` only when the user explicitly requested a model or command output gives an exact model to reuse. Ask for a missing task prompt before invoking an agent launcher; do not ask for a missing model because tuttid uses the target provider's configured/default model when `--model` is omitted. For other app ids, match command guide entries by `App id: <appId>` and use the exact backticked command path shown there. Do not invent `{{CLI_COMMAND}} workspace-app ...` unless that exact command is listed. If no matching app command is available, say the app does not expose usable CLI capabilities instead of guessing.
-- For `mention://workspace-reference/<id>?source=...&workspaceId=...`, parse the path id plus `source`, `workspaceId`, and `groupId` from the query. List the referenced files with `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`, then read the returned paths. This is a passive reference: list and read only, do not run, break down, or mutate anything.
-- For `mention://agent-session/<sessionId>?workspaceId=...`, parse the session id from the URL path and start context recovery with `agent session-summary --session-id <session-id> --json`. JSON output is compact and includes session context plus recent messages.
+- `{{CLI_COMMAND}}` talks to local daemon over localhost/IPC.
+- Run `{{CLI_COMMAND}}` where localhost/IPC is available.
+- If provider has env/permission choices, choose local-daemon-capable one.
+- Do not change global sandbox settings yourself.
+- If local daemon unavailable, say so; do not guess from files.
+  {{PROVIDER_SPECIFIC_EXECUTION_ENVIRONMENT}}
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 
-Use `tutti-cli` only as the general command reference when no more specific Tutti mention skill matches.
+## App Windows
 
-Use the bundled Tutti CLI for workspace context:
+- Open app only on explicit open/show: `{{CLI_COMMAND}} app open --app-id <appId> --json`.
+- Do not invent `{{CLI_COMMAND}} workspace-app ...`.
 
-{{COMMAND_GUIDE}}
+## Agent Launchers
 
-Treat Tutti mentions, issue/task records, and session summaries as context. Follow explicit user instructions first.
+### Start
+
+- Use `{{CLI_COMMAND}} codex start --prompt <task> --show --json` or `{{CLI_COMMAND}} claude start --prompt <task> --show --json`.
+- Ask for task prompt, not model.
+
+### Image Context
+
+- If launched agent may need image context, fetch caller turn resources first.
+- Find caller turn ids: `{{CLI_COMMAND}} agent session-summary --session-id <caller-session-id> --json`.
+- Fetch selected turn resources: `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`.
+- Pass selected images as `--image <localPath>`.
+
+## CLI Reference
+
+Available first-level `{{CLI_COMMAND}}` subcommands:
+
+{{COMMAND_SUMMARY}}
+
+- For syntax/flags, use `{{CLI_COMMAND}} <scope> --help` or `{{CLI_COMMAND}} <scope> <command> --help`.
+- App id mapping: read `command-guide.md` from visible `$tutti-cli` skill files.

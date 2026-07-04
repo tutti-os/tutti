@@ -219,6 +219,7 @@ func TestReporterSendsMessageOnlyReport(t *testing.T) {
 		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "agent-session-1",
 			MessageID:      "message-1",
+			TurnID:         "turn-1",
 			Seq:            1,
 			Role:           "assistant",
 			Kind:           "text",
@@ -343,6 +344,8 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		"messageId":   "thinking-message-1",
 		"streamState": messageStreamStateCompleted,
 	})
+	thinkingEvent.OwnerThreadID = "child-thread-1"
+	thinkingEvent.OwnerCallID = "spawn-call-1"
 	thinkingEvent.OccurredAtUnixMS = 103
 
 	report := reportActivityInput(session, []activityshared.Event{userEvent, assistantEvent, thinkingEvent})
@@ -381,7 +384,9 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		thinking.Role != "assistant" ||
 		thinking.Kind != "reasoning" ||
 		thinking.Payload["content"] != "checking files" ||
-		thinking.Payload["source"] != "runtime" {
+		thinking.Payload["source"] != "runtime" ||
+		thinking.Payload["ownerThreadId"] != "child-thread-1" ||
+		thinking.Payload["ownerCallId"] != "spawn-call-1" {
 		t.Fatalf("thinking message update = %#v", thinking)
 	}
 }
@@ -443,6 +448,38 @@ func TestReportActivityInputForwardsMessageKindToPayload(t *testing.T) {
 	plan := report.MessageUpdates[0]
 	if plan.Payload["messageKind"] != "plan" {
 		t.Fatalf("plan message payload = %#v, want messageKind=plan forwarded to the GUI", plan.Payload)
+	}
+}
+
+func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	marker := newTurnActivityEventWithID(session, "subagent-lifecycle:child-1:turn-1", EventMessage, "turn-1", "canceled", RoleAssistant, "", map[string]any{
+		"messageId":               "subagent-lifecycle:child-1:turn-1",
+		"contentMode":             messageContentModeSnapshot,
+		"streamState":             "canceled",
+		"messageKind":             "subAgentLifecycle",
+		"subAgentLifecycleStatus": "canceled",
+		"subAgentName":            "Repo smell analyst",
+		"detail":                  "user requested",
+		"ownerThreadId":           "child-1",
+	})
+	marker.OwnerThreadID = "child-1"
+	marker.OccurredAtUnixMS = 120
+
+	report := reportActivityInput(session, []activityshared.Event{marker})
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want one marker update", report.MessageUpdates)
+	}
+	payload := report.MessageUpdates[0].Payload
+	// The GUI settles lane status/identity from these fields; the reporter
+	// must not strip them (observed live: markers stored without
+	// subAgentLifecycleStatus left lanes running forever).
+	if payload["subAgentLifecycleStatus"] != "canceled" ||
+		payload["subAgentName"] != "Repo smell analyst" ||
+		payload["detail"] != "user requested" {
+		t.Fatalf("marker payload = %#v, want sub-agent fields forwarded", payload)
 	}
 }
 
@@ -746,8 +783,14 @@ func TestReporterProjectsCanonicalFieldsFromStartedAndCompletedCallsToMessageUpd
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "README.md\n" {
 		t.Fatalf("payload = %#v, want completed output preserved", updates[1].Payload)
 	}
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "README.md" {
+		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	}
 	if got := updates[1].Payload["error"].(map[string]any)["stderr"]; got != "warning: truncated\n" {
 		t.Fatalf("payload = %#v, want completed error preserved", updates[1].Payload)
+	}
+	if got := updates[1].Payload["error"].(map[string]any)["text"]; got != "warning: truncated" {
+		t.Fatalf("payload = %#v, want canonical error text", updates[1].Payload)
 	}
 	if got := updates[1].Status; got != "completed" {
 		t.Fatalf("completed update = %#v, want completed status preserved", updates[1])
@@ -789,6 +832,39 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	}
 	if got := updates[1].Payload["output"].(map[string]any)["stdout"]; got != "/workspace/app\n" {
 		t.Fatalf("payload = %#v, want preserved output", updates[1].Payload)
+	}
+	if got := updates[1].Payload["output"].(map[string]any)["text"]; got != "/workspace/app" {
+		t.Fatalf("payload = %#v, want canonical output text", updates[1].Payload)
+	}
+}
+
+func TestReporterCanonicalizesToolOutputTextFromContentBlocks(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	report := reportActivityInput(session, []activityshared.Event{
+		newTurnActivityEventWithID(session, "web-search-complete", EventCallCompleted, "turn-web", messageStreamStateCompleted, "", "WebSearch", map[string]any{
+			"callId":   "call-web",
+			"callType": "tool",
+			"name":     "WebSearch",
+			"toolName": "WebSearch",
+			"output": map[string]any{
+				"content": []any{
+					map[string]any{
+						"type": "tool_result",
+						"text": "Web search results for query: \"Tokyo weather\"",
+					},
+				},
+			},
+		}),
+	})
+
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want 1", report.MessageUpdates)
+	}
+	output, _ := report.MessageUpdates[0].Payload["output"].(map[string]any)
+	if got := output["text"]; got != "Web search results for query: \"Tokyo weather\"" {
+		t.Fatalf("output = %#v, want canonical output text from content blocks", output)
 	}
 }
 
@@ -990,6 +1066,18 @@ func TestReporterProjectsSessionAndTurnLifecycleToStatePatches(t *testing.T) {
 	}
 	if input.StatePatches[2].Turn == nil ||
 		input.StatePatches[2].Turn.CompletedAtUnixMS == 0 ||
+		input.StatePatches[2].Turn.ActiveTurnID != nil ||
+		input.StatePatches[2].Turn.Phase != "settled" ||
+		input.StatePatches[2].Turn.Outcome != "completed" ||
+		input.StatePatches[2].Turn.SubmitAvailability == nil ||
+		input.StatePatches[2].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[2].TurnLifecycle == nil ||
+		input.StatePatches[2].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[2].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[2].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[2].TurnLifecycle.Outcome != "completed" ||
+		input.StatePatches[2].SubmitAvailability == nil ||
+		input.StatePatches[2].SubmitAvailability.State != "available" ||
 		input.StatePatches[2].CurrentPhase != string(activityshared.TurnPhaseIdle) {
 		t.Fatalf("turn completed patch = %#v", input.StatePatches[2])
 	}
@@ -1083,7 +1171,20 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	if len(input.StatePatches) != 1 {
 		t.Fatalf("state patches = %#v, want 1", input.StatePatches)
 	}
-	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseFailed) {
+	if input.StatePatches[0].CurrentPhase != string(activityshared.TurnPhaseIdle) ||
+		input.StatePatches[0].Turn == nil ||
+		input.StatePatches[0].Turn.ActiveTurnID != nil ||
+		input.StatePatches[0].Turn.Phase != "settled" ||
+		input.StatePatches[0].Turn.Outcome != "failed" ||
+		input.StatePatches[0].Turn.SubmitAvailability == nil ||
+		input.StatePatches[0].Turn.SubmitAvailability.State != "available" ||
+		input.StatePatches[0].TurnLifecycle == nil ||
+		input.StatePatches[0].TurnLifecycle.ActiveTurnID != nil ||
+		input.StatePatches[0].TurnLifecycle.Phase != "settled" ||
+		input.StatePatches[0].TurnLifecycle.Outcome == nil ||
+		*input.StatePatches[0].TurnLifecycle.Outcome != "failed" ||
+		input.StatePatches[0].SubmitAvailability == nil ||
+		input.StatePatches[0].SubmitAvailability.State != "available" {
 		t.Fatalf("turn failed patch = %#v", input.StatePatches[0])
 	}
 	if input.StatePatches[0].LastError != "Codex request failed because a quota or rate limit was reached." {
@@ -1174,6 +1275,7 @@ func mixedMessageUpdateReportInput() agentsessionstore.ReportActivityInput {
 		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "agent-session-1",
 			MessageID:      "message-1",
+			TurnID:         "turn-1",
 			Seq:            1,
 			Role:           "assistant",
 			Kind:           "text",

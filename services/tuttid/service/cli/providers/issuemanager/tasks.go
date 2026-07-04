@@ -13,7 +13,7 @@ import (
 
 type taskListInput struct {
 	IssueID   string `cli:"issue-id" validate:"required"`
-	Status    string `cli:"status"`
+	Status    string `cli:"status" description:"Task status filter." enum:"all,not_started,running,pending_acceptance,completed,failed,canceled"`
 	Search    string `cli:"search"`
 	PageSize  int    `cli:"page-size" validate:"min=1,max=100"`
 	PageToken string `cli:"page-token"`
@@ -29,7 +29,7 @@ type taskCreateInput struct {
 	TaskID    string `cli:"task-id" description:"Stable task id to create; generated when omitted."`
 	Title     string `cli:"title" validate:"required" description:"Task title."`
 	Content   string `cli:"content" description:"Task instructions or notes."`
-	Priority  string `cli:"priority" description:"Task priority: high, medium, or low."`
+	Priority  string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
 	DueAtUnix int64  `cli:"due-at-unix" description:"Due time as a Unix timestamp in seconds."`
 }
 
@@ -51,8 +51,8 @@ type taskUpdateInput struct {
 	TaskID    string  `cli:"task-id" validate:"required" description:"Task to update."`
 	Title     *string `cli:"title" description:"Replace the task title."`
 	Content   *string `cli:"content" description:"Replace the task instructions or notes."`
-	Status    *string `cli:"status" description:"Task status: not_started, running, pending_acceptance, completed, failed, or canceled."`
-	Priority  *string `cli:"priority" description:"Task priority: high, medium, or low."`
+	Status    *string `cli:"status" description:"Task status." enum:"not_started,running,pending_acceptance,completed,failed,canceled"`
+	Priority  *string `cli:"priority" description:"Task priority." enum:"high,medium,low"`
 	DueAtUnix *int64  `cli:"due-at-unix" description:"Set due time as a Unix timestamp in seconds."`
 }
 

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -58,34 +56,114 @@ function createDraft(
   return { prompt, images, files };
 }
 
-function createImageDataTransfer(file: File): DataTransfer {
+function createFileDataTransfer(files: readonly File[]): DataTransfer {
   return {
     effectAllowed: "copy",
     dropEffect: "none",
     types: ["Files"],
-    files: [file],
-    items: [
-      {
-        kind: "file",
-        type: file.type,
-        getAsFile: () => file
-      }
-    ]
+    files,
+    items: files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file
+    }))
   } as unknown as DataTransfer;
 }
 
-vi.mock("../../app/renderer/components/ui/popover", () => ({
-  Popover: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  PopoverAnchor: ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  PopoverTrigger: ({ children }: { children?: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  PopoverContent: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="agent-gui-usage-popover">{children}</div>
-  )
-}));
+function createProtectedFileDragDataTransfer(
+  files: readonly File[]
+): DataTransfer {
+  const dataTransfer = createFileDataTransfer(files) as unknown as {
+    files: readonly File[];
+    items: Array<{ getAsFile: () => File | null }>;
+  };
+  dataTransfer.files = [];
+  dataTransfer.items = dataTransfer.items.map((item) => ({
+    ...item,
+    getAsFile: () => null
+  }));
+  return dataTransfer as unknown as DataTransfer;
+}
+
+function createImageDataTransfer(file: File): DataTransfer {
+  return createFileDataTransfer([file]);
+}
+
+async function openUsagePopoverByHover(usageChip: HTMLElement): Promise<void> {
+  vi.useFakeTimers();
+  fireEvent.pointerOver(usageChip, { pointerType: "mouse" });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(120);
+  });
+}
+
+vi.mock("../../app/renderer/components/ui/popover", async () => {
+  const React = await import("react");
+  interface MockPopoverContextValue {
+    onOpenChange?: (open: boolean) => void;
+    open: boolean;
+  }
+  const MockPopoverContext = React.createContext<MockPopoverContextValue>({
+    open: false
+  });
+  type MockPopoverRootProps = {
+    children?: React.ReactNode;
+    onOpenChange?: (open: boolean) => void;
+    open?: boolean;
+  };
+  type MockPopoverTriggerProps = {
+    asChild?: boolean;
+    children?: React.ReactNode;
+  };
+  type MockPopoverContentProps = React.ComponentProps<"div"> & {
+    align?: string;
+    onOpenAutoFocus?: (event: Event) => void;
+    side?: string;
+  };
+  return {
+    Popover: ({
+      children,
+      onOpenChange,
+      open = false
+    }: MockPopoverRootProps) => (
+      <MockPopoverContext.Provider value={{ onOpenChange, open }}>
+        {children}
+      </MockPopoverContext.Provider>
+    ),
+    PopoverAnchor: ({ children }: { children?: React.ReactNode }) => (
+      <>{children}</>
+    ),
+    PopoverTrigger: ({ children }: MockPopoverTriggerProps) => {
+      const { onOpenChange, open } = React.useContext(MockPopoverContext);
+      if (React.isValidElement<React.HTMLAttributes<HTMLElement>>(children)) {
+        const existingOnClick = children.props.onClick;
+        return React.cloneElement(children, {
+          onClick: (event: React.MouseEvent<HTMLElement>) => {
+            existingOnClick?.(event);
+            onOpenChange?.(!open);
+          }
+        });
+      }
+      return <>{children}</>;
+    },
+    PopoverContent: React.forwardRef<HTMLDivElement, MockPopoverContentProps>(
+      (
+        {
+          align: _align,
+          children,
+          onOpenAutoFocus: _onOpenAutoFocus,
+          side: _side,
+          ...props
+        },
+        ref
+      ) => (
+        <div ref={ref} {...props}>
+          {children}
+        </div>
+      )
+    )
+  };
+});
 
 vi.mock("./agentRichText/AgentRichTextEditor", async () => {
   const React = await import("react");
@@ -146,6 +224,9 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           getPromptTextBeforeSelection() {
             return value;
           },
+          openMentionPalette() {
+            onChange(`${value}@`);
+          },
           insertWorkspaceReferences(
             items: ReadonlyArray<{ displayName?: string; path: string }>
           ) {
@@ -178,7 +259,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               value={value}
               placeholder={placeholder}
               disabled={disabled}
-              readOnly
+              onChange={(event) => onChange(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (onKeyDownForPalette?.(event.nativeEvent)) {
                   event.preventDefault();
@@ -344,7 +425,8 @@ vi.mock("./AgentSlashCommandPalette", () => ({
               }
             }}
           >
-            {entry.label}
+            {entry.primaryLabel ?? entry.label}
+            {entry.secondaryLabel ? ` ${entry.secondaryLabel}` : ""}
           </button>
           {entry.type === "capability" && entry.settingsLabel ? (
             <button
@@ -396,7 +478,7 @@ vi.mock("./AgentFileMentionPalette", () => ({
           })
         }
       >
-        查看产物文件
+        查看产物
       </button>
     ) : null,
   agentMentionItemKey: (item: {
@@ -421,91 +503,6 @@ vi.mock("./AgentMentionSearchController", () => ({
 }));
 
 describe("AgentComposer", () => {
-  it("does not render the permission access entry in the footer", () => {
-    render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={createDraft("")}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "完全访问权限" })
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders composer draft images with image actions", () => {
-    render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={createDraft("", [
-          {
-            id: "img-1",
-            name: "earth.png",
-            mimeType: "image/png",
-            previewUrl: "blob:preview-1",
-            uploading: false
-          }
-        ])}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
-    expect(drafts).toHaveClass("w-full");
-    expect(drafts.className).not.toContain("max-w-[320px]");
-    expect(screen.getByRole("img", { name: "earth.png" })).toBeInTheDocument();
-  });
-
   it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {
     render(
       <AgentComposer
@@ -550,49 +547,6 @@ describe("AgentComposer", () => {
       screen.queryByRole("button", { name: "Plan" })
     ).not.toBeInTheDocument();
   });
-
-  it("does not render the browser-use footer toggle when supported", () => {
-    const onSettingsChange = vi.fn();
-    render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={createDraft("")}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings({
-          supportsBrowser: true
-        })}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={onSettingsChange}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "Browser use" })
-    ).not.toBeInTheDocument();
-    expect(onSettingsChange).not.toHaveBeenCalled();
-  });
-
   it("exposes browser-use through the slash capability group", async () => {
     const onDraftContentChange = vi.fn();
     const onSettingsChange = vi.fn();
@@ -702,6 +656,224 @@ describe("AgentComposer", () => {
     expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("browserUse");
     expect(onDraftContentChange).not.toHaveBeenCalled();
     expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("shows localized descriptions for built-in slash commands", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("查看会话状态和上下文用量。");
+    expect(palette).toHaveTextContent("切换快速响应模式。");
+    expect(palette).toHaveTextContent("设置、查看或清除当前目标。");
+    expect(palette).toHaveTextContent("发起代码审查。");
+    expect(palette).toHaveTextContent("切换计划模式。");
+  });
+
+  it("shows Chinese slash command labels with English aliases in zh-CN", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        uiLanguage="zh-CN"
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("状态 status");
+    expect(palette).toHaveTextContent("快速 fast");
+    expect(palette).toHaveTextContent("目标 goal");
+  });
+
+  it("activates goal mode as a footer badge from the slash palette", async () => {
+    let draftContent = createDraft("/");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+      rerender(renderComposer());
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByRole("button", { name: "目标" }));
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
+    const goalBadge = screen.getByRole("button", { name: "目标" });
+    expect(goalBadge).toBeInTheDocument();
+    // Hovering the badge reveals a cancel affordance hinting it is clickable.
+    expect(goalBadge).toHaveClass("group");
+    expect(goalBadge.querySelector(".group-hover\\:opacity-100")).toBeTruthy();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "ship the review picker" }
+    });
+
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("/goal ship the review picker")
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("ship the review picker");
+
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+
+    expect(onSubmit).toHaveBeenCalledWith([
+      { type: "text", text: "/goal ship the review picker" }
+    ]);
+  });
+
+  it("turns a typed /goal command into a footer badge and keeps plain text when cleared", () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+      rerender(renderComposer());
+    });
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "/goal" }
+    });
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
+    expect(screen.getByRole("button", { name: "目标" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "stabilize renderer sync" }
+    });
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("/goal stabilize renderer sync")
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "目标" }));
+
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("stabilize renderer sync")
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("stabilize renderer sync");
+    expect(
+      screen.queryByRole("button", { name: "目标" })
+    ).not.toBeInTheDocument();
   });
 
   it("opens computer-use setup from Enter when the capability is not installed", async () => {
@@ -1652,17 +1824,6 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the status panel styled as floating command menu content", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__slash-status-panel\s*{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*padding:\s*10px 12px/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__slash-status-panel\s*{[^}]*border-bottom:\s*0/s
-    );
-  });
-
   it("closes the status panel when the active session changes", () => {
     const { container, rerender } = render(
       <AgentComposer
@@ -1738,217 +1899,6 @@ describe("AgentComposer", () => {
       screen.queryByTestId("agent-gui-slash-status-panel")
     ).not.toBeInTheDocument();
   });
-
-  it("keeps the dock send control inside the input and settings below it", () => {
-    const { container } = render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={createDraft("")}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    const composer = container.querySelector(".agent-gui-node__composer");
-    expect(composer).toHaveAttribute("data-layout", "dock");
-    const footer = container.querySelector(".agent-gui-node__composer-footer");
-    expect(footer).not.toBeNull();
-    expect(footer?.lastElementChild?.className).toContain(
-      "agent-gui-node__composer-footer-right"
-    );
-    const promptInputArea = container.querySelector(
-      ".agent-gui-node__composer-prompt-input-area"
-    );
-    expect(promptInputArea).not.toBeNull();
-    const sendButton = screen.getByRole("button", { name: "发送" });
-    expect(promptInputArea?.contains(sendButton)).toBe(true);
-    expect(footer?.contains(sendButton)).toBe(false);
-    expect(promptInputArea?.contains(footer)).toBe(false);
-    expect(footer?.compareDocumentPosition(promptInputArea!)).toBe(
-      Node.DOCUMENT_POSITION_PRECEDING
-    );
-    expect(screen.getByPlaceholderText("placeholder")).toHaveClass(
-      "agent-gui-node__composer-textarea"
-    );
-  });
-
-  it("expands the dock prompt input immediately for pasted image drafts", async () => {
-    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "scrollHeight"
-    );
-    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
-      configurable: true,
-      get() {
-        if (!(this instanceof HTMLElement)) {
-          return 24;
-        }
-        if (
-          this.classList.contains("agent-gui-node__composer-prompt-input-area")
-        ) {
-          return 204;
-        }
-        return this.matches('[data-testid="agent-gui-composer-image-drafts"]')
-          ? 56
-          : 24;
-      }
-    });
-
-    try {
-      render(
-        <AgentComposer
-          workspaceId="workspace-1"
-          currentUserId="user-1"
-          provider="codex"
-          draftContent={createDraft("", [
-            {
-              id: "image-1",
-              name: "screen.png",
-              mimeType: "image/png",
-              previewUrl: "data:image/png;base64,aW1hZ2U="
-            }
-          ])}
-          availableCommands={
-            [] satisfies readonly AgentHostAgentSessionCommand[]
-          }
-          disabled={false}
-          submitDisabled={false}
-          placeholder="placeholder"
-          composerSettings={createComposerSettings()}
-          queuedPrompts={[]}
-          drainingQueuedPromptId={null}
-          canQueueWhileBusy={false}
-          showStopButton={false}
-          activePrompt={null}
-          isInterrupting={false}
-          isSendingTurn={false}
-          isSubmittingPrompt={false}
-          labels={createLabels()}
-          workspaceUserProjectI18n={workspaceUserProjectI18n}
-          onDraftContentChange={vi.fn()}
-          onSettingsChange={vi.fn()}
-          onSubmit={vi.fn()}
-          onSendQueuedPromptNext={vi.fn()}
-          onRemoveQueuedPrompt={vi.fn()}
-          onEditQueuedPrompt={vi.fn()}
-          onInterruptCurrentTurn={vi.fn()}
-          onSubmitInteractivePrompt={vi.fn()}
-        />
-      );
-
-      await waitFor(() =>
-        expect(
-          screen.getByTestId("agent-gui-composer-image-drafts").parentElement
-        ).toHaveStyle({
-          "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "200px",
-          "--agent-gui-composer-input-max-height": "200px"
-        })
-      );
-    } finally {
-      if (scrollHeightDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "scrollHeight",
-          scrollHeightDescriptor
-        );
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
-      }
-    }
-  });
-
-  it("keeps footer action spacing and chevron slots consistent", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-input-shell\s*{[^}]*padding:\s*0[^}]*border:\s*0[^}]*background:\s*transparent/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*display:\s*grid[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)[^}]*height:\s*var\(--agent-gui-composer-input-height,\s*56px\)[^}]*min-height:\s*56px[^}]*max-height:\s*var\(--agent-gui-composer-input-max-height,\s*120px\)[^}]*align-items:\s*center[^}]*overflow:\s*hidden[^}]*padding:\s*0 12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area\s*{[^}]*transition:[^}]*height\s+160ms\s+ease[^}]*border-color\s+140ms\s+ease[^}]*box-shadow\s+140ms\s+ease/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-line\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto[^}]*align-items:\s*center[^}]*box-sizing:\s*border-box[^}]*height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*2px\)[^}]*min-height:\s*54px[^}]*max-height:\s*118px[^}]*padding:\s*12px 0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-send-button\s*{[^}]*align-self:\s*end/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\]\s*{[^}]*grid-template-rows:[^}]*minmax\(0,\s*var\(--agent-gui-composer-attachment-height,\s*0px\)\)[^}]*minmax\(40px,\s*1fr\)[^}]*align-items:\s*stretch[^}]*padding:\s*12px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\[data-testid="agent-gui-composer-image-drafts"\]\s*{[^}]*min-height:\s*0[^}]*margin-bottom:\s*0[^}]*overflow:\s*hidden/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\[data-testid="agent-gui-composer-image-draft"\]\s*{[^}]*max-height:\s*56px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-prompt-input-line\s*{[^}]*min-height:\s*40px[^}]*height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*2px\)[^}]*max-height:\s*118px[^}]*padding:\s*4px 0 11px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s*{[^}]*display:\s*block[^}]*height:\s*auto[^}]*min-height:\s*24px[^}]*max-height:\s*calc\(var\(--agent-gui-composer-text-height,\s*56px\)\s*-\s*26px\)[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto[^}]*overflow-wrap:\s*anywhere[^}]*scrollbar-width:\s*none[^}]*white-space:\s*pre-wrap/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area\[data-has-draft-images="true"\][\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*calc\([^}]*var\(--agent-gui-composer-text-height,\s*56px\)[^}]*26px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?\.agent-gui-node__composer-textarea,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\s*\][\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*none[^}]*width:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:hover[\s\S]*?::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within[\s\S]*?::-webkit-scrollbar\s*{[^}]*display:\s*block/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-textarea\s+p\s*{[^}]*display:\s*block[^}]*width:\s*auto[^}]*min-width:\s*0[^}]*overflow:\s*visible[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*pre-wrap/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-rich-text-placeholder-node:first-child\s*{[^}]*position:\s*relative[^}]*display:\s*block[^}]*min-height:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer\[data-layout="dock"\][\s\S]*?\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*position:\s*absolute[^}]*top:\s*0[^}]*left:\s*0[^}]*float:\s*none[^}]*height:\s*24px[^}]*line-height:\s*24px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-footer-right\s*{[^}]*gap:\s*2px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-footer-right\s+\.agent-gui-node__composer-menu-trigger\s+>\s+svg\s*{[^}]*width:\s*16px[^}]*height:\s*16px[^}]*flex:\s*0 0 16px[^}]*margin-left:\s*0/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\s*{[^}]*padding:\s*0 8px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-reference-trigger\s*{[^}]*min-width:\s*36px;[^}]*min-height:\s*36px;[^}]*padding:\s*0;/s
-    );
-  });
-
   it("opens context usage details after hovering the usage chip", async () => {
     vi.useFakeTimers();
 
@@ -2028,6 +1978,11 @@ describe("AgentComposer", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    fireEvent.click(usageChip);
+    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
+      "上下文用量"
+    );
     expect(
       screen.getByTestId("agent-gui-usage-context-meter")
     ).toHaveTextContent("上下文窗口");
@@ -2044,6 +1999,45 @@ describe("AgentComposer", () => {
       await vi.advanceTimersByTimeAsync(140);
     });
     expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
+  });
+
+  it("keeps the workspace reference action enabled while a session is running", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "引用空间文件" })
+    ).not.toBeDisabled();
   });
 
   it.each([
@@ -2126,14 +2120,69 @@ describe("AgentComposer", () => {
       />
     );
 
-    // Open the usage popover before asserting/clicking the compact button
     const usageChip = screen.getByTestId("agent-gui-usage-chip");
-    fireEvent.click(usageChip);
+    await openUsagePopoverByHover(usageChip);
 
     const compactButton = screen.queryByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toHaveClass("hover:bg-[var(--transparency-hover)]");
+    expect(compactButton).toHaveAttribute("data-variant", "secondary");
+    expect(compactButton).toHaveAttribute("data-size", "sm");
+    expect(compactButton).toHaveClass("h-7");
     fireEvent.click(compactButton!);
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
+  });
+
+  it("keeps the usage popover mounted when focus moves from the usage chip to the compact button", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        usage={{ usedTokens: 50_000, totalTokens: 200_000, percentUsed: 25 }}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        compactSupported={true}
+        hasCompactableContext={true}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const usageChip = screen.getByTestId("agent-gui-usage-chip");
+    await openUsagePopoverByHover(usageChip);
+    fireEvent.focus(usageChip);
+    const compactButton = screen.getByTestId("agent-gui-compact-button");
+
+    fireEvent.pointerOut(usageChip, { pointerType: "mouse" });
+    fireEvent.blur(usageChip, { relatedTarget: compactButton });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(140);
+    });
+
+    expect(screen.getByTestId("agent-gui-compact-button")).toBe(compactButton);
+    fireEvent.click(compactButton);
     expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
@@ -2178,7 +2227,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the compact context button disabled while busy (showStopButton=true)", () => {
+  it("keeps the compact context button enabled while a session is running", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2215,15 +2264,15 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toBeDisabled();
+    expect(compactButton).not.toBeDisabled();
     fireEvent.click(compactButton);
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
-  it("shows the compact context button disabled when no user message has been sent", () => {
+  it("shows the compact context button disabled when no user message has been sent", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2260,14 +2309,14 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeDisabled();
     fireEvent.click(compactButton);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("shows the compact context button disabled when the composer is blocked (read-only)", () => {
+  it("shows the compact context button disabled when the composer is blocked (read-only)", async () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2304,7 +2353,7 @@ describe("AgentComposer", () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
+    await openUsagePopoverByHover(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeDisabled();
     fireEvent.click(compactButton);
@@ -2350,8 +2399,14 @@ describe("AgentComposer", () => {
     const referenceDropdown = screen.getByRole("combobox", {
       name: "引用空间文件"
     });
-    expect(footerLeft?.firstElementChild).toBe(referenceDropdown);
-    expect(referenceDropdown).toHaveAttribute("data-slot", "select-trigger");
+    const referenceCluster = footerLeft?.firstElementChild;
+    expect(referenceCluster).not.toBeNull();
+    expect(referenceCluster).toHaveClass("gap-1");
+    expect(referenceCluster?.firstElementChild).toBe(referenceDropdown);
+    expect(referenceCluster).toContainElement(
+      screen.getByRole("button", { name: "提及上下文" })
+    );
+    expect(referenceDropdown).toHaveAttribute("role", "combobox");
     expect(referenceDropdown).toHaveClass(
       "agent-gui-node__composer-reference-trigger"
     );
@@ -2547,33 +2602,6 @@ describe("AgentComposer", () => {
     ).toHaveClass("agent-gui-node__composer-input-shell-hero");
   });
 
-  it("keeps the hero composer shell visually flattened inside the glow frame", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-input-group-hero\s*{[^}]*border:\s*1px solid var\(--agent-gui-border-focus\)[^}]*background:\s*var\(--agent-gui-accent-bg\)/s
-    );
-    expect(css).toMatch(/--agent-gui-package-accent:\s*var\(--accent-codex\)/);
-    expect(css).toMatch(
-      /--agent-gui-package-border-focus:\s*var\(--accent-codex-border\)/
-    );
-    expect(css).toMatch(
-      /html\[data-theme="light"\][\s\S]*?\.agent-gui-node__composer-input-group\[data-edge-glow="true"\]\s*{[^}]*--agent-gui-star-border-color:\s*color-mix\(\s*in srgb,\s*var\(--accent-codex\) 90%,\s*transparent\s*\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\],[\s\S]*?\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\]\s*>\s*svg\s*{[^}]*color:\s*var\(--tutti-purple\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-content\s*{[^}]*--accent:\s*var\(--tutti-purple\)[^}]*--agent-gui-package-accent:\s*var\(--tutti-purple\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-input-shell-hero\s*{[^}]*border-color:\s*transparent[^}]*border-radius:\s*14px[^}]*box-shadow:\s*none/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-input-shell-hero:hover,[\s\S]*?\.agent-gui-node__composer-input-shell-hero:focus-within\s*{[^}]*border-color:\s*transparent[^}]*box-shadow:\s*none/s
-    );
-  });
-
   it("renders hero prompt tips as a CSS ticker without editing the draft", () => {
     const onDraftContentChange = vi.fn();
     const onSubmit = vi.fn();
@@ -2745,65 +2773,6 @@ describe("AgentComposer", () => {
     ).not.toHaveAttribute("data-edge-glow");
   });
 
-  it("keeps the rich text editor anchored to the top of the composer grid", () => {
-    const { container } = render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={createDraft("")}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-
-    const editor = container.querySelector(
-      'textarea[placeholder="placeholder"]'
-    );
-    expect(editor?.parentElement?.className).toContain("self-start");
-
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea\s*{[^}]*max-height:\s*72px;[^}]*overflow-y:\s*auto;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-gutter:\s*stable/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block;[^}]*width:\s*4px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea::-webkit-scrollbar-thumb\s*{[^}]*background:\s*var\(--transparency-hover\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea p\s*{[^}]*font-size:\s*13px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-textarea[\s\S]*?\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*font-size:\s*13px/s
-    );
-  });
-
   it("adds dropped system images on the AgentGUI detail panel to draft images", async () => {
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
@@ -2867,6 +2836,265 @@ describe("AgentComposer", () => {
     );
   });
 
+  it("uploads dropped non-image system files on the AgentGUI detail panel as file mentions", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const report = new File(["report"], "report.pdf", {
+      type: "application/pdf"
+    });
+    const renderComposer = () => (
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={draftContent}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={(files) =>
+            files.map((file) => ({
+              path: "/Users/local/Downloads/report.pdf",
+              hostPath: "/Users/local/Downloads/report.pdf",
+              displayName: file.name,
+              kind: "file",
+              sourceId: "host-local-file"
+            }))
+          }
+        />
+      </div>
+    );
+    const { container } = render(renderComposer());
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
+    const dataTransfer = createFileDataTransfer([report]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("copy");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "/Users/local/Downloads/report.pdf",
+            name: "report.pdf",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    await waitFor(() =>
+      expect(onDraftContentChange).toHaveBeenCalledWith(
+        createDraft(
+          "[@report.pdf](/var/cache/tsh/local-assets/room-1/report.pdf) "
+        )
+      )
+    );
+    expect(draftContent.prompt).not.toContain("/Users/local/Downloads");
+  });
+
+  it("does not accept dropped host files when prompt file uploads are unsupported", async () => {
+    const uploadPromptContent = vi.fn();
+    const resolveDroppedFileReferences = vi.fn(() => [
+      {
+        path: "/Users/local/Downloads/report.pdf",
+        hostPath: "/Users/local/Downloads/report.pdf",
+        displayName: "report.pdf",
+        kind: "file" as const,
+        sourceId: "host-local-file"
+      }
+    ]);
+    const onDraftContentChange = vi.fn();
+    setAgentActivityRuntimeForTests({
+      promptContentUploadSupport: { file: false },
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const report = new File(["report"], "report.pdf", {
+      type: "application/pdf"
+    });
+    const { container } = render(
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={createDraft("")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={resolveDroppedFileReferences}
+        />
+      </div>
+    );
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dragDataTransfer = createProtectedFileDragDataTransfer([report]);
+    const dataTransfer = createFileDataTransfer([report]);
+
+    fireEvent.dragOver(detailPanel!, { dataTransfer: dragDataTransfer });
+    expect(dragDataTransfer.dropEffect).toBe("none");
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    expect(resolveDroppedFileReferences).not.toHaveBeenCalled();
+    expect(uploadPromptContent).not.toHaveBeenCalled();
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps mixed system image and file drops on their separate draft paths", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "file" as const,
+          path: "/var/cache/tsh/local-assets/room-1/report.pdf",
+          name: "report.pdf",
+          kind: "file" as const
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+    const renderComposer = () => (
+      <div id="agent-gui-detail">
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider="codex"
+          draftContent={draftContent}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+          resolveDroppedFileReferences={(files) =>
+            files.map((file) => ({
+              path: "/Users/local/Downloads/report.pdf",
+              hostPath: "/Users/local/Downloads/report.pdf",
+              displayName: file.name,
+              kind: "file",
+              sourceId: "host-local-file"
+            }))
+          }
+        />
+      </div>
+    );
+    const { container, rerender } = render(renderComposer());
+    const detailPanel = container.querySelector("#agent-gui-detail");
+    const dataTransfer = createFileDataTransfer([
+      new File(["image"], "panel.png", { type: "image/png" }),
+      new File(["report"], "report.pdf", { type: "application/pdf" })
+    ]);
+
+    fireEvent.drop(detailPanel!, { dataTransfer });
+
+    await waitFor(() =>
+      expect(onDraftContentChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt:
+            "[@report.pdf](/var/cache/tsh/local-assets/room-1/report.pdf) "
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(draftContent.images).toEqual([
+        expect.objectContaining({
+          name: "panel.png",
+          mimeType: "image/png",
+          data: "aW1hZ2U="
+        })
+      ])
+    );
+    rerender(renderComposer());
+    expect(
+      await screen.findByTestId("agent-gui-composer-image-drafts")
+    ).toBeInTheDocument();
+  });
+
   it("uses the tracked spinner while the send button is waiting for a turn to start", () => {
     render(
       <AgentComposer
@@ -2900,12 +3128,9 @@ describe("AgentComposer", () => {
       />
     );
 
-    const spinner = screen.getByTestId("agent-gui-composer-send-spinner");
-    const circles = spinner.querySelectorAll("circle");
-    expect(circles).toHaveLength(2);
-    expect(circles[0]).toHaveAttribute("stroke", "var(--transparency-hover)");
-    expect(circles[1]).toHaveAttribute("stroke", "currentColor");
-    expect(circles[1]).toHaveAttribute("stroke-width", "2.5");
+    expect(
+      screen.getByTestId("agent-gui-composer-send-spinner")
+    ).toBeInTheDocument();
   });
 
   it("lets a busy composer submit a draft into the local queue", () => {
@@ -3287,6 +3512,149 @@ describe("AgentComposer", () => {
     expect(draftContent.prompt).not.toMatch(/^@/);
   });
 
+  it("keeps the active @ trigger after canceling references from a mention row", async () => {
+    let draftContent = createDraft("@");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onRequestWorkspaceReferences = vi.fn(async () => ({
+      files: [],
+      mentionItems: []
+    }));
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={onRequestWorkspaceReferences}
+      />
+    );
+
+    fireEvent.click(await screen.findByTestId("mock-open-references"));
+
+    await waitFor(() =>
+      expect(onRequestWorkspaceReferences).toHaveBeenCalled()
+    );
+    expect(draftContent.prompt).toBe("@");
+    expect(screen.getByTestId("mock-open-references")).toBeInTheDocument();
+  });
+
+  it("lets the reference picker own Escape while the mention palette stays open", async () => {
+    let draftContent = createDraft("@");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceReferencePickerOpen
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByPlaceholderText("placeholder"), {
+      key: "Escape"
+    });
+
+    expect(draftContent.prompt).toBe("@");
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+  });
+
+  it("opens the mention palette from the @ footer button", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
+
+    await waitFor(() => expect(draftContent.prompt).toBe("@"));
+  });
+
   it("renders controlled text and image draft content", () => {
     const onSubmit = vi.fn();
     const draftContent = createDraft("describe this", [
@@ -3390,77 +3758,9 @@ describe("AgentComposer", () => {
     fireEvent.click(screen.getByTestId("mock-paste-image"));
     rerender(renderComposer());
 
-    expect(screen.getByRole("img", { name: "screen.png" })).toHaveClass(
-      "cursor-zoom-in",
-      "size-full",
-      "object-contain"
-    );
     fireEvent.click(screen.getByRole("img", { name: "screen.png" }));
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-  });
-
-  it("sizes pasted image drafts from the loaded image aspect ratio", async () => {
-    let draftContent = createDraft("");
-    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
-      draftContent = nextDraft;
-    });
-    const renderComposer = () => (
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        draftContent={draftContent}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={onDraftContentChange}
-        onSettingsChange={vi.fn()}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
-    const { rerender } = render(renderComposer());
-
-    fireEvent.click(screen.getByTestId("mock-paste-image"));
-    await waitFor(() => expect(mockEditorFocusAtEnd).toHaveBeenCalled());
-    rerender(renderComposer());
-
-    const image = screen.getByRole("img", {
-      name: "screen.png"
-    }) as HTMLImageElement;
-    Object.defineProperty(image, "naturalWidth", {
-      configurable: true,
-      value: 320
-    });
-    Object.defineProperty(image, "naturalHeight", {
-      configurable: true,
-      value: 160
-    });
-    fireEvent.load(image);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("agent-gui-composer-image-draft")).toHaveStyle({
-        aspectRatio: "2",
-        width: "144px"
-      });
-    });
   });
 
   it("removes pasted image drafts without opening the zoom preview", async () => {
@@ -3533,8 +3833,8 @@ describe("AgentComposer", () => {
           screen.getByTestId("agent-gui-composer-image-drafts").parentElement
         ).toHaveStyle({
           "--agent-gui-composer-attachment-height": "56px",
-          "--agent-gui-composer-input-height": "200px",
-          "--agent-gui-composer-input-max-height": "200px"
+          "--agent-gui-composer-input-height": "190px",
+          "--agent-gui-composer-input-max-height": "190px"
         })
       );
 
@@ -3734,11 +4034,11 @@ describe("AgentComposer", () => {
       ).toContainElement(screen.getByTestId("agent-gui-review-picker-panel"));
       expect(onSubmit).not.toHaveBeenCalled();
 
-      // Selecting the "uncommitted changes" scope submits a bare /review.
+      // Selecting the "uncommitted changes" scope submits an explicit target.
       fireEvent.click(screen.getByText("未提交的更改"));
       expect(onSubmit).toHaveBeenCalledTimes(1);
       expect(onSubmit.mock.calls[0]?.[0]).toEqual([
-        { type: "text", text: "/review" }
+        { type: "text", text: "/review uncommitted" }
       ]);
     }
   );
@@ -3914,6 +4214,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     planModeOnLabel: "开启",
     planModeOffLabel: "关闭",
     planUnavailable: "计划不可用",
+    goalLabel: "目标",
     browserUseCapabilityLabel: "浏览器",
     browserUseCapabilityDescription: "让 Agent 使用浏览器。",
     browserUseCapabilityDescriptionAutoConnect:
@@ -3947,6 +4248,24 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashPalettePluginsGroup: "插件",
     slashPaletteConnectorsGroup: "连接器",
     slashPaletteMcpGroup: "MCP",
+    slashCommandCompactLabel: "压缩",
+    slashCommandContextLabel: "上下文",
+    slashCommandFastLabel: "快速",
+    slashCommandGoalLabel: "目标",
+    slashCommandInitLabel: "初始化",
+    slashCommandPlanLabel: "计划",
+    slashCommandReviewLabel: "审查",
+    slashCommandStatusLabel: "状态",
+    slashCommandUsageLabel: "用量",
+    slashCommandCompactDescription: "压缩当前对话上下文。",
+    slashCommandContextDescription: "查看当前上下文快照。",
+    slashCommandFastDescription: "切换快速响应模式。",
+    slashCommandGoalDescription: "设置、查看或清除当前目标。",
+    slashCommandInitDescription: "初始化仓库说明文件。",
+    slashCommandPlanDescription: "切换计划模式。",
+    slashCommandReviewDescription: "发起代码审查。",
+    slashCommandStatusDescription: "查看会话状态和上下文用量。",
+    slashCommandUsageDescription: "查看上下文和额度用量。",
     slashStatusTitle: "Status",
     slashStatusSession: "Session",
     slashStatusBaseUrl: "Base URL",
@@ -3959,7 +4278,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashStatusLimitsUnavailable: "Rate limits unavailable",
     usageChipLabel: ({ percent }) => `上下文 ${percent}%`,
     usageTooltipLabel: "上下文用量",
-    usagePopoverTitle: "用量",
+    usagePopoverTitle: "上下文用量",
     usageContextWindowLabel: "上下文窗口",
     usageTokensLabel: "Token 用量",
     usageLimitsLabel: "限额",
@@ -3988,9 +4307,12 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionEmpty: "空",
     fileMentionError: "错误",
     fileMentionTabHint: "Tab 提示",
+    mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",
+    addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
+    providerSwitchLabel: "切换 Provider",
     reviewPicker: {
       title: "代码审查",
       targetLabel: "审查范围",

@@ -13,16 +13,52 @@ type pendingToolCallSnapshot struct {
 }
 
 type acpTurnNormalizer struct {
-	assistantMessageID        string
-	assistantContent          strings.Builder
-	assistantSegmentCompleted bool
-	thinkingMessageID         string
-	thinkingContent           strings.Builder
-	thinkingSegmentCompleted  bool
-	thinkingMessageKind       string
-	toolItemIDs               map[string]string
-	toolCallsSeen             map[string]bool
-	pendingToolCalls          map[string]pendingToolCallSnapshot
+	assistantMessageID         string
+	assistantContent           strings.Builder
+	assistantSegmentCompleted  bool
+	thinkingMessageID          string
+	thinkingContent            strings.Builder
+	thinkingSegmentCompleted   bool
+	thinkingMessageKind        string
+	toolItemIDs                map[string]string
+	toolCallsSeen              map[string]bool
+	pendingToolCalls           map[string]pendingToolCallSnapshot
+	pendingCompactionMessageID string
+}
+
+// TrackCompactionNotice remembers the in-flight compaction banner so a turn
+// that dies mid-compaction settles the banner instead of leaving a live
+// "Compacting context." row ticking in the transcript forever.
+func (n *acpTurnNormalizer) TrackCompactionNotice(messageID string, completed bool) {
+	if n == nil {
+		return
+	}
+	if completed {
+		n.pendingCompactionMessageID = ""
+		return
+	}
+	n.pendingCompactionMessageID = strings.TrimSpace(messageID)
+}
+
+// settlePendingCompactionEvents replaces a still-in-progress compaction banner
+// in place (same messageId) when the turn ends without the compaction item
+// completing.
+func (n *acpTurnNormalizer) settlePendingCompactionEvents(session Session, turnID string, title string) []activityshared.Event {
+	if n == nil || n.pendingCompactionMessageID == "" {
+		return nil
+	}
+	messageID := n.pendingCompactionMessageID
+	n.pendingCompactionMessageID = ""
+	event, ok := acpSystemNoticeEvent(session, turnID, map[string]any{
+		"kind":       "agent_system_notice",
+		"noticeKind": "system_notice",
+		"title":      title,
+		"messageId":  messageID,
+	}, "system_notice", true)
+	if !ok {
+		return nil
+	}
+	return []activityshared.Event{event}
 }
 
 // SetThinkingPresentation tags thinking snapshots with an optional messageKind
@@ -88,6 +124,35 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	}
 	n.assistantContent.Reset()
 	_, _ = n.assistantContent.WriteString(finalText)
+}
+
+func (n *acpTurnNormalizer) AppendAssistantSnapshot(
+	session Session,
+	turnID string,
+	text string,
+	messageID string,
+) []activityshared.Event {
+	if n == nil {
+		return nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	current := strings.TrimSpace(n.assistantContent.String())
+	if current == text && n.assistantMessageID != "" {
+		if n.assistantSegmentCompleted {
+			return nil
+		}
+		return n.Finish(session, turnID, messageStreamStateCompleted)
+	}
+	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
+		n.assistantMessageID = firstNonEmpty(strings.TrimSpace(messageID), newID())
+		n.assistantSegmentCompleted = false
+	}
+	n.assistantContent.Reset()
+	_, _ = n.assistantContent.WriteString(text)
+	return n.Finish(session, turnID, messageStreamStateCompleted)
 }
 
 func (n *acpTurnNormalizer) mergeAssistantText(next string) {
@@ -166,6 +231,9 @@ func (n *acpTurnNormalizer) FinalizeThinkingItem(session Session, turnID string,
 func (n *acpTurnNormalizer) FinishCompleted(session Session, turnID string) []activityshared.Event {
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, n.completedToolCallEvents(session, turnID)...)
+	// A turn that completed normally implies the compaction it ran finished;
+	// no-op in the usual flow because item/completed already cleared the id.
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerContextCompactedTitle)...)
 	return events
 }
 
@@ -279,6 +347,7 @@ func (n *acpTurnNormalizer) finishTerminal(
 ) []activityshared.Event {
 	events := n.Finish(session, turnID, streamState)
 	events = append(events, n.terminalToolCallEvents(session, turnID, toolStatus, reason)...)
+	events = append(events, n.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle)...)
 	return events
 }
 

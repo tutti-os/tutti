@@ -136,7 +136,7 @@ export function AgentReviewPickerPanel({
         {
           key: "uncommitted",
           label: labels.uncommitted,
-          onSelect: () => submit("/review")
+          onSelect: () => submit("/review uncommitted")
         },
         {
           key: "base",

@@ -2,6 +2,9 @@ package references
 
 import (
 	"context"
+	"errors"
+	"reflect"
+	"strings"
 	"testing"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -100,6 +103,24 @@ func TestReferenceListAppRecursesAndFlattens(t *testing.T) {
 	}
 }
 
+func TestReferenceListCommandAdvertisesAndValidatesSource(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "ws-1"}}, &fakeAppReferences{}, &fakeIssueOutputs{}).newReferenceListCommand()
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	source := properties["source"].(map[string]any)
+	if !reflect.DeepEqual(source["enum"], []string{"app", "task"}) {
+		t.Fatalf("source schema = %#v", source)
+	}
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"source": "bogus", "id": "x"},
+		OutputMode: cliservice.OutputModeJSON,
+		Context:    cliservice.InvokeContext{Source: "cli"},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), `invalid input "source": must be one of app, task`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestReferenceListTaskIssueUsesLatestOutputs(t *testing.T) {
 	issues := &fakeIssueOutputs{detail: workspaceissues.IssueDetail{LatestOutputs: []workspaceissues.RunOutput{
 		{Path: "/out-a.png", DisplayName: "out-a.png", MediaType: "image/png", SizeBytes: 10},
@@ -151,7 +172,7 @@ func TestReferenceListRejectsUnknownSource(t *testing.T) {
 		OutputMode: cliservice.OutputModeJSON,
 		Context:    cliservice.InvokeContext{Source: "cli"},
 	})
-	if err == nil {
-		t.Fatal("expected error for unknown source")
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("err = %v, want ErrInvalidInput", err)
 	}
 }

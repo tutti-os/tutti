@@ -151,6 +151,11 @@ command; the calling agent decides which turns to inspect and which returned
 Provider launcher commands such as `codex start` and `claude start` should keep
 `--model` optional. When omitted, tuttid resolves the model from composer
 defaults or the provider configured/default model before starting the session.
+These provider launchers must create sessions through their fixed local agent
+targets (`local:codex` and `local:claude-code`). Generic provider-shaped launch
+commands such as `agent start --provider ...` must not create a provider-only
+session when no agent target is available; return a CLI invalid-input error that
+points callers to the provider launcher commands or a target-first launch path.
 
 ## Naming Rules
 

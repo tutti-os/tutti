@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agentactivity/daemon/httpx"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -69,7 +70,7 @@ func downloadAppArtifactWithPolicy(ctx context.Context, client *http.Client, art
 		return errors.New("app artifact url and destination path are required")
 	}
 	if client == nil {
-		client = http.DefaultClient
+		client = httpx.Default()
 	}
 	policy = normalizeAppArtifactDownloadPolicy(policy)
 

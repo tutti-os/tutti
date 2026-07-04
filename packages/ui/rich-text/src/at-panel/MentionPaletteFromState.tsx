@@ -5,6 +5,7 @@ import {
   type MentionPaletteStateAdapterInput
 } from "./mentionPaletteStateAdapter.ts";
 import type {
+  MentionPaletteGroup,
   MentionPaletteProps,
   MentionPaletteTheme
 } from "./mentionPaletteTypes.ts";
@@ -15,7 +16,10 @@ export interface MentionPaletteFromStateProps<
   labels: MentionPaletteProps<TItem>["labels"];
   hintLabels: MentionPaletteProps<TItem>["hintLabels"];
   maxHeightPx: number;
-  renderItem: (item: TItem, ctx: { active: boolean }) => ReactNode;
+  renderItem: (
+    item: TItem,
+    ctx: { active: boolean; group: MentionPaletteGroup<TItem> }
+  ) => ReactNode;
   renderListFooter?: () => ReactNode;
   loadingBanner?: ReactNode;
   scrollHighlightedIntoViewCentered?: boolean;

@@ -1,4 +1,7 @@
-import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
+import {
+  normalizeAgentActivityDisplayStatus,
+  resolveLatestAgentActivityMessageDisplayStatus
+} from "@tutti-os/agent-activity-core";
 import type { AgentHostUserInfo } from "./contracts/dto";
 import { translate } from "../i18n/index";
 import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload";
@@ -136,7 +139,7 @@ export function buildWorkspaceAgentActivityListViewModel(
         options.sessionMessagesById,
         session
       );
-      const status = resolveWorkspaceAgentActivityStatus(session);
+      const status = resolveWorkspaceAgentActivityStatus(session, messages);
       if (
         shouldHideEmptyRuntimePlaceholderSession(
           session,
@@ -385,13 +388,19 @@ function normalizeProvider(provider: string | undefined): string | null {
 }
 
 export function resolveWorkspaceAgentActivityStatus(
-  session: WorkspaceAgentActivitySession
+  session: WorkspaceAgentActivitySession,
+  messages: readonly WorkspaceAgentActivityMessage[] = []
 ): WorkspaceAgentActivityStatus {
-  const normalized = normalizeAgentActivityDisplayStatus(session.status, {
+  const sessionStatus = normalizeAgentActivityDisplayStatus(session.status, {
     currentPhase: session.currentPhase,
     turnLifecycleOutcome: session.turnLifecycle?.outcome,
     turnLifecyclePhase: session.turnLifecycle?.phase ?? session.turnPhase
   });
+  const normalized =
+    sessionStatus === "failed"
+      ? (resolveLatestAgentActivityMessageDisplayStatus(messages) ??
+        sessionStatus)
+      : sessionStatus;
   switch (normalized) {
     case "failed":
       return "failed";

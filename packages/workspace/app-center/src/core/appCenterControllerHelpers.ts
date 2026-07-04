@@ -118,8 +118,12 @@ export function areWorkspaceAppCenterAppsEqual(
 export function normalizeWorkspaceAppCenterViewState(
   value: Partial<WorkspaceAppCenterViewState> | null | undefined
 ): WorkspaceAppCenterViewState {
+  const activeAppTab =
+    value?.activeAppTab === "community" || value?.activeAppTab === "my"
+      ? value.activeAppTab
+      : "recommended";
   return {
-    activeAppTab: value?.activeAppTab === "my" ? "my" : "recommended"
+    activeAppTab
   };
 }
 

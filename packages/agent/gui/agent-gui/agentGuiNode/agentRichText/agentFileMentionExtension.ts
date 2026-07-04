@@ -13,8 +13,10 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
+import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { translate } from "../../../i18n/index";
 import { AgentMentionNodeView } from "./AgentMentionNodeView";
+import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 
 export type AgentFileMentionKind = "file" | "directory" | "unknown";
 export type AgentMentionFileNavigationAction =
@@ -23,11 +25,13 @@ export type AgentMentionFileNavigationAction =
 export type AgentMentionScope = "my_sessions" | "collab_sessions";
 export type AgentMentionKind =
   | "file"
+  | "agent-target"
   | "session"
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
-  | "workspace-issue";
+  | "workspace-issue"
+  | "custom";
 
 export type AgentMentionReferenceSource = "app" | "task";
 
@@ -84,8 +88,19 @@ export interface AgentMentionWorkspaceAppItem {
   name: string;
   description?: string;
   iconUrl?: string;
-  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物文件」入口。 */
+  /** 应用是否能够提供产物文件(reference),决定 @ 面板行末尾是否展示「查看产物」入口。 */
   referencesListSupported?: boolean;
+}
+
+export interface AgentMentionAgentTargetItem {
+  kind: "agent-target";
+  href: string;
+  workspaceId: string;
+  targetId: string;
+  name: string;
+  description?: string;
+  agentProviderId?: string;
+  iconUrl?: string;
 }
 
 export interface AgentMentionWorkspaceReferenceItem {
@@ -114,13 +129,30 @@ export interface AgentMentionWorkspaceAppFactoryItem {
   contextPath?: string;
 }
 
+// 宿主注册的自定义 mention(见 shared/agentCustomMentionKinds):href 是完整信息源
+// (round-trip 无损),item 只承载通用展示字段;业务细节由宿主在注册的钩子里从 href 还原。
+export interface AgentMentionCustomItem {
+  kind: "custom";
+  /** 注册表里的 kind(= mention:// providerId)。 */
+  customKind: string;
+  href: string;
+  workspaceId: string;
+  targetId: string;
+  /** chip 第一行。 */
+  name: string;
+  /** chip 第二行(通用双行卡)。 */
+  summary?: string;
+}
+
 export type AgentContextMentionItem =
   | AgentMentionFileItem
+  | AgentMentionAgentTargetItem
   | AgentMentionSessionItem
   | AgentMentionWorkspaceAppItem
   | AgentMentionWorkspaceReferenceItem
   | AgentMentionWorkspaceAppFactoryItem
-  | AgentMentionWorkspaceIssueItem;
+  | AgentMentionWorkspaceIssueItem
+  | AgentMentionCustomItem;
 
 export type AgentFileMentionItem = AgentContextMentionItem;
 
@@ -141,6 +173,7 @@ export interface AgentFileMentionExtensionOptions {
   onSuggestionKeyDown?: (event: KeyboardEvent) => boolean;
   removeActionAriaLabel?: string;
   renderAsLink?: boolean;
+  shouldSuppressSuggestion?: () => boolean;
 }
 
 export interface ParsedAgentMentionMarkdown {
@@ -190,6 +223,7 @@ export function createAgentFileMentionExtension(
         creatorName: { default: "" },
         topicId: { default: "" },
         appId: { default: "" },
+        agentProviderId: { default: "" },
         jobId: { default: "" },
         action: { default: "" },
         contextPath: { default: "" },
@@ -199,7 +233,9 @@ export function createAgentFileMentionExtension(
         thumbnailUrl: { default: "" },
         source: { default: "" },
         groupId: { default: "" },
-        fileCount: { default: "" }
+        fileCount: { default: "" },
+        customKind: { default: "" },
+        preview: { default: "" }
       };
     },
 
@@ -250,6 +286,7 @@ export function createAgentFileMentionExtension(
             : {}),
           ...(options.renderAsLink ? { href } : {}),
           ...((item.kind === "workspace-app" ||
+            item.kind === "agent-target" ||
             item.kind === "workspace-reference") &&
           item.iconUrl
             ? { "data-agent-mention-icon-url": item.iconUrl }
@@ -378,6 +415,9 @@ export function createAgentFileMentionExtension(
           allowSpaces: true,
           items: () => [],
           allow: ({ state, range }) => {
+            if (options.shouldSuppressSuggestion?.()) {
+              return false;
+            }
             if (range.from <= 1) {
               return true;
             }
@@ -390,10 +430,26 @@ export function createAgentFileMentionExtension(
             return isRichTextTriggerPrefixBoundary(previous, "whitespace");
           },
           command: ({ editor, range, props }) => {
+            const prefixCaretAnchor =
+              range.from <= 1 ||
+              editor.state.doc.textBetween(
+                Math.max(1, range.from - 1),
+                range.from,
+                "\n",
+                "\n"
+              ) === "\n";
             editor
               .chain()
               .focus()
               .insertContentAt(range, [
+                ...(prefixCaretAnchor
+                  ? ([
+                      {
+                        type: "text",
+                        text: AGENT_RICH_TEXT_CARET_ANCHOR
+                      }
+                    ] as const)
+                  : []),
                 {
                   type: this.name,
                   attrs: mentionItemToAttrs(props)
@@ -481,6 +537,14 @@ export function formatAgentMentionMarkdown(
         ...(item.groupId?.trim() ? { groupId: item.groupId.trim() } : {}),
         ...(item.fileCount > 0 ? { count: String(item.fileCount) } : {})
       }
+    });
+  }
+  if (item.kind === "agent-target") {
+    return createRichTextMentionMarkdown({
+      providerId: "agent-target",
+      entityId: item.targetId,
+      label: item.name,
+      scope: { workspaceId: item.workspaceId }
     });
   }
   const identity = parseRichTextMentionHref(item.href, item.name);
@@ -644,6 +708,18 @@ export function parseMentionItemFromHref(input: {
       name
     };
   }
+  if (resource === "agent-target") {
+    if (!workspaceId) {
+      return null;
+    }
+    return {
+      kind: "agent-target",
+      href,
+      workspaceId,
+      targetId,
+      name
+    };
+  }
   if (resource === "workspace-reference") {
     if (!workspaceId) {
       return null;
@@ -676,6 +752,22 @@ export function parseMentionItemFromHref(input: {
         translate("agentHost.agentGui.workspaceAppFactoryMentionFallback"),
       action: mention.scope?.action?.trim() || undefined,
       contextPath: mention.scope?.contextPath?.trim() || undefined
+    };
+  }
+  const customDefinition = getAgentCustomMentionKind(resource);
+  if (customDefinition) {
+    const presentation = customDefinition.present(mention, href);
+    if (!presentation) {
+      return null;
+    }
+    return {
+      kind: "custom",
+      customKind: resource,
+      href,
+      workspaceId: presentation.workspaceId?.trim() || workspaceId,
+      targetId,
+      name: presentation.name.trim() || name,
+      summary: presentation.summary?.trim() || undefined
     };
   }
   return null;
@@ -727,6 +819,18 @@ export function mentionItemToAttrs(
       iconUrl: item.iconUrl ?? ""
     };
   }
+  if (item.kind === "agent-target") {
+    return {
+      name: item.name,
+      kind: item.kind,
+      href: item.href,
+      ...workspaceMentionAttrs(item.workspaceId),
+      targetId: item.targetId,
+      description: item.description ?? "",
+      agentProviderId: item.agentProviderId ?? "",
+      iconUrl: item.iconUrl ?? ""
+    };
+  }
   if (item.kind === "workspace-reference") {
     return {
       name: item.name,
@@ -750,6 +854,17 @@ export function mentionItemToAttrs(
       jobId: item.jobId,
       action: item.action ?? "",
       contextPath: item.contextPath ?? ""
+    };
+  }
+  if (item.kind === "custom") {
+    return {
+      name: item.name,
+      kind: item.kind,
+      customKind: item.customKind,
+      href: item.href,
+      ...workspaceMentionAttrs(item.workspaceId),
+      targetId: item.targetId,
+      preview: item.summary ?? ""
     };
   }
   return {
@@ -811,6 +926,26 @@ export function attrsToMentionItem(
           : undefined
     };
   }
+  if (kind === "custom") {
+    const workspaceId = workspaceIdFromMentionAttrs(attrs);
+    const targetId =
+      typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
+    const customKind =
+      typeof attrs.customKind === "string" ? attrs.customKind.trim() : "";
+    const summary =
+      typeof attrs.preview === "string" && attrs.preview.trim()
+        ? attrs.preview.trim()
+        : undefined;
+    return {
+      kind,
+      customKind,
+      href,
+      workspaceId,
+      targetId,
+      name,
+      summary
+    };
+  }
   if (kind === "workspace-issue") {
     const workspaceId = workspaceIdFromMentionAttrs(attrs);
     const targetId = typeof attrs.targetId === "string" ? attrs.targetId : "";
@@ -855,6 +990,28 @@ export function attrsToMentionItem(
       name,
       description:
         typeof attrs.description === "string" ? attrs.description : undefined,
+      iconUrl:
+        typeof attrs.iconUrl === "string" && attrs.iconUrl.trim()
+          ? attrs.iconUrl.trim()
+          : undefined
+    };
+  }
+  if (kind === "agent-target") {
+    const workspaceId = workspaceIdFromMentionAttrs(attrs);
+    const targetId = typeof attrs.targetId === "string" ? attrs.targetId : "";
+    return {
+      kind,
+      href,
+      workspaceId,
+      targetId,
+      name,
+      description:
+        typeof attrs.description === "string" ? attrs.description : undefined,
+      agentProviderId:
+        typeof attrs.agentProviderId === "string" &&
+        attrs.agentProviderId.trim()
+          ? attrs.agentProviderId.trim()
+          : undefined,
       iconUrl:
         typeof attrs.iconUrl === "string" && attrs.iconUrl.trim()
           ? attrs.iconUrl.trim()
@@ -988,11 +1145,17 @@ function normalizeMentionKind(value: unknown): AgentMentionKind {
   if (value === "workspace-app") {
     return "workspace-app";
   }
+  if (value === "agent-target") {
+    return "agent-target";
+  }
   if (value === "workspace-reference") {
     return "workspace-reference";
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
+  }
+  if (value === "custom") {
+    return "custom";
   }
   return "file";
 }
@@ -1024,6 +1187,12 @@ function mentionVisual(item: AgentContextMentionItem): {
       primary: item.name
     };
   }
+  if (item.kind === "agent-target") {
+    return {
+      kindLabel: "Agent",
+      primary: item.name
+    };
+  }
   if (item.kind === "workspace-app-factory") {
     return {
       kindLabel: "App Factory",
@@ -1031,6 +1200,12 @@ function mentionVisual(item: AgentContextMentionItem): {
     };
   }
   if (item.kind === "workspace-reference") {
+    return {
+      kindLabel: "Reference",
+      primary: item.name
+    };
+  }
+  if (item.kind === "custom") {
     return {
       kindLabel: "Reference",
       primary: item.name

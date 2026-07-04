@@ -5,6 +5,7 @@ import {
   getFileChangeRenderData,
   getSearchRenderData,
   getSkillRenderData,
+  getTaskRenderData,
   getToolFallbackText,
   getWebSearchRenderData,
   getWebFetchRenderData
@@ -580,6 +581,120 @@ describe("agentToolRenderData", () => {
 
     expect(web.query).toBe("today top news");
     expect(web.queries).toEqual(["today top news", "agent renderer parity"]);
+  });
+
+  it("extracts SDK web search output from canonical output text", () => {
+    const web = getWebSearchRenderData(
+      makeCall({
+        toolName: "WebSearch",
+        input: {
+          query: "current weather in Tokyo Japan today"
+        },
+        output: {
+          text: 'Web search results for query: "current weather in Tokyo Japan today"'
+        }
+      })
+    );
+
+    expect(web.output).toContain(
+      'Web search results for query: "current weather in Tokyo Japan today"'
+    );
+  });
+
+  it("extracts SDK web search output from top-level tool result content", () => {
+    const web = getWebSearchRenderData(
+      makeCall({
+        toolName: "WebSearch",
+        input: {
+          query: "Tokyo weather now July 2026"
+        },
+        content: [
+          {
+            type: "tool_result",
+            text: 'Web search results for query: "Tokyo weather now July 2026"'
+          }
+        ]
+      })
+    );
+
+    expect(web.output).toContain(
+      'Web search results for query: "Tokyo weather now July 2026"'
+    );
+  });
+
+  it("does not render task summary as output when output and error are missing", () => {
+    const prompt =
+      "Generate one random integer from 1 to 10 inclusive. Use your own randomness.";
+    const data = getTaskRenderData(
+      makeCall({
+        toolName: "Agent",
+        status: "failed",
+        statusKind: "failed",
+        summary: prompt,
+        input: {
+          prompt,
+          task: prompt
+        },
+        output: null,
+        error: null,
+        task: {
+          kind: "task",
+          id: "call-1",
+          turnId: "turn-1",
+          title: prompt,
+          status: "failed",
+          prompt,
+          delegateSessionId: null,
+          steps: [],
+          result: null,
+          resultMarkdown: null,
+          durationMs: null,
+          occurredAtUnixMs: null
+        }
+      })
+    );
+
+    expect(data.prompt).toBe(prompt);
+    expect(data.resultMarkdown).toBeNull();
+    expect(data.errorMarkdown).toBeNull();
+  });
+
+  it("renders task failures from error payloads instead of output", () => {
+    const data = getTaskRenderData(
+      makeCall({
+        toolName: "Agent",
+        status: "failed",
+        statusKind: "failed",
+        input: {
+          prompt: "Generate one random integer."
+        },
+        output: null,
+        error: {
+          rawOutput: {
+            message: "collab spawn failed: agent thread limit reached"
+          }
+        },
+        task: {
+          kind: "task",
+          id: "call-1",
+          turnId: "turn-1",
+          title: "Agent",
+          status: "failed",
+          prompt: "Generate one random integer.",
+          delegateSessionId: null,
+          steps: [],
+          result: null,
+          resultMarkdown: null,
+          durationMs: null,
+          occurredAtUnixMs: null
+        }
+      })
+    );
+
+    expect(data.resultMarkdown).toBeNull();
+    expect(data.errorMarkdown).toBe(
+      "collab spawn failed: agent thread limit reached"
+    );
   });
 
   it("extracts skill render data from legacy rawInput/rawOutput payloads", () => {

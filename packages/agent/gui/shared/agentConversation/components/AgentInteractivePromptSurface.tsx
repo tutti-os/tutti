@@ -521,6 +521,22 @@ function ExitPlanPromptSurface({
   const trimmed = feedback.trim();
   const continueLabel =
     trimmed === "" ? labels.stayInPlan : labels.sendFeedback;
+  // Render the permission modes the runtime actually offered ("Yes, and ...")
+  // so newly added modes (e.g. "auto") appear automatically. Localized
+  // label/description are looked up by option id, falling back to the runtime's
+  // own label for ids we don't have copy for. Only when the runtime sent no
+  // options (Codex plan / legacy exitplanmode) do we use the curated defaults.
+  const modes =
+    prompt.options.length > 0
+      ? prompt.options.map((option) => {
+          const known = labels.planModes.find((mode) => mode.id === option.id);
+          return {
+            id: option.id,
+            label: known?.label ?? option.label,
+            description: known?.description ?? option.description ?? ""
+          };
+        })
+      : labels.planModes;
 
   useEffect(() => {
     setSubmittingOptionId(null);
@@ -533,7 +549,7 @@ function ExitPlanPromptSurface({
           {stripPromptTitlePunctuation(labels.planLead)}
         </div>
         <div className={styles.interactivePromptOptions}>
-          {labels.planModes.map((mode) => {
+          {modes.map((mode) => {
             const showSpinner = submittingOptionId === mode.id;
             return (
               <button
@@ -581,7 +597,14 @@ function ExitPlanPromptSurface({
                 onClick={() =>
                   onSubmit({
                     requestId: prompt.requestId,
+                    // The runtime models exit-plan as an approval that requires
+                    // an option id, so "keep planning" submits its `plan` option
+                    // id (when present) rather than a bare deny. `action: deny`
+                    // is kept so the controller doesn't flip plan mode off.
                     action: "deny",
+                    ...(prompt.keepPlanningOptionId
+                      ? { optionId: prompt.keepPlanningOptionId }
+                      : {}),
                     payload: trimmed ? { denyMessage: trimmed } : undefined
                   })
                 }
@@ -590,7 +613,28 @@ function ExitPlanPromptSurface({
               </button>
             </div>
           </div>
-        ) : null}
+        ) : (
+          // Compact (deck): no textarea, but keep declining reachable — the deck
+          // must still let the user keep planning (refining/feedback is deferred
+          // to the conversation via the card's "open conversation" jump).
+          <div className={styles.interactivePromptActions}>
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={() =>
+                onSubmit({
+                  requestId: prompt.requestId,
+                  action: "deny",
+                  ...(prompt.keepPlanningOptionId
+                    ? { optionId: prompt.keepPlanningOptionId }
+                    : {})
+                })
+              }
+            >
+              {labels.stayInPlan}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -9,6 +9,8 @@ NODE_VERSION_FILE="${ROOT_DIR}/.node-version"
 GO_MOD_FILE="${TUTTID_DIR}/go.mod"
 PACKAGE_JSON_FILE="${ROOT_DIR}/package.json"
 
+export TUTTI_ENV="${DEV_GUI_TUTTI_ENV:-development}"
+
 GO_BIN=""
 DEV_GUI_CHILD_PID=""
 DEV_GUI_PID_PATH=""
@@ -264,6 +266,9 @@ NODE
 prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
+  fi
 }
 
 resolve_required_node_major() {

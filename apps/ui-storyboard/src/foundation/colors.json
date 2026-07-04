@@ -12,7 +12,7 @@
         {
           "label": "--background-1",
           "dark": "rgb(24, 24, 24)",
-          "light": "rgb(245, 245, 245)",
+          "light": "rgb(244, 245, 247)",
           "usage": "应用主底、画布舞台底"
         },
         {
@@ -20,6 +20,18 @@
           "dark": "rgb(42, 42, 43)",
           "light": "rgb(248, 250, 252)",
           "usage": "面板、弹窗等实底"
+        },
+        {
+          "label": "--background-session-flow",
+          "dark": "rgb(24, 24, 24)",
+          "light": "rgb(252, 253, 255)",
+          "usage": "Agent session 右侧会话流区域"
+        },
+        {
+          "label": "--background-session-sidepanel",
+          "dark": "rgb(42, 42, 43)",
+          "light": "rgb(244, 245, 247)",
+          "usage": "Agent session 左侧会话侧栏区域"
         },
         {
           "label": "--background-fronted",
@@ -192,7 +204,7 @@
         {
           "label": "--backdrop",
           "dark": "rgba(0, 0, 0, 0.60)",
-          "light": "rgba(255, 255, 255, 0.60)",
+          "light": "rgba(0, 0, 0, 0.60)",
           "usage": "弹窗遮罩"
         },
         {

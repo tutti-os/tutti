@@ -22,6 +22,9 @@ describe("agent gui workbench state", () => {
     expect(
       normalizeAgentGuiWorkbenchNodeState({
         composerOverrides: { model: "gpt-5" },
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "target-model" }
+        },
         composerOverridesByProvider: {
           gemini: { permissionModeId: "read-only" },
           unsupported: { model: "ignored" }
@@ -32,6 +35,9 @@ describe("agent gui workbench state", () => {
     ).toEqual({
       ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
       composerOverrides: { model: "gpt-5" },
+      composerOverridesByAgentTargetId: {
+        "target-a": { model: "target-model" }
+      },
       composerOverridesByProvider: {
         gemini: { permissionModeId: "read-only" }
       },
@@ -44,27 +50,34 @@ describe("agent gui workbench state", () => {
       projectAgentGuiWorkbenchState({
         ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
         composerOverrides: { permissionModeId: "read-only" },
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "target-model" }
+        },
         composerOverridesByProvider: {
           gemini: { model: "gemini-2.5-pro" }
         },
         conversationCount: 3,
         conversationRailCollapsed: true,
         conversationRailWidthPx: 360.4,
+        agentTargetId: "shared-agent:agent-1",
         lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "A title"
+        lastActiveConversationTitle: "A title",
+        providerTargetId: "legacy-target",
+        providerTargetRef: {
+          kind: "shared-agent",
+          provider: "gemini",
+          sharedAgentId: "agent-1"
+        }
       })
     ).toEqual({
-      composerOverrides: { permissionModeId: "read-only" },
-      composerOverridesByProvider: {
-        gemini: { model: "gemini-2.5-pro" }
-      },
+      agentTargetId: "shared-agent:agent-1",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
     });
   });
 
-  it("persists provider target references as opaque state", () => {
+  it("migrates legacy provider target ids to agent target selection", () => {
     const providerTargetRef = {
       kind: "shared-agent",
       provider: "codex" as const,
@@ -78,8 +91,7 @@ describe("agent gui workbench state", () => {
         providerTargetRef
       })
     ).toMatchObject({
-      providerTargetId: "shared-agent:agent-1",
-      providerTargetRef
+      agentTargetId: "shared-agent:agent-1"
     });
 
     expect(
@@ -89,6 +101,7 @@ describe("agent gui workbench state", () => {
         providerTargetRef
       })
     ).toMatchObject({
+      agentTargetId: "shared-agent:agent-1",
       provider: "codex",
       providerTargetId: "shared-agent:agent-1",
       providerTargetRef
@@ -115,6 +128,9 @@ describe("agent gui workbench state", () => {
       areAgentGuiWorkbenchStatesEqual(
         normalizeAgentGuiWorkbenchState({
           composerOverrides: { permissionModeId: "auto" },
+          composerOverridesByAgentTargetId: {
+            "target-a": { model: "target-model" }
+          },
           composerOverridesByProvider: {
             codex: { model: "gpt-5" }
           },
@@ -122,10 +138,6 @@ describe("agent gui workbench state", () => {
           lastActiveAgentSessionId: "session-1"
         }),
         normalizeAgentGuiWorkbenchState({
-          composerOverrides: { permissionModeId: "auto" },
-          composerOverridesByProvider: {
-            codex: { model: "gpt-5" }
-          },
           lastActiveAgentSessionId: "session-1",
           provider: "gemini"
         })
@@ -135,11 +147,11 @@ describe("agent gui workbench state", () => {
       areAgentGuiWorkbenchStatesEqual(
         normalizeAgentGuiWorkbenchState({
           lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "First"
+          providerTargetId: "legacy-target"
         }),
         normalizeAgentGuiWorkbenchState({
           lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Second"
+          agentTargetId: "legacy-target"
         })
       )
     ).toBe(true);
@@ -171,14 +183,10 @@ describe("agent gui workbench state", () => {
     source.writeNodeState({
       instanceId: "agent-gui:gemini",
       state: {
-        composerOverrides: { permissionModeId: "full-access" },
-        composerOverridesByProvider: {
-          gemini: { model: "gemini-2.5-pro" }
-        },
+        agentTargetId: "daemon-gemini",
         conversationRailCollapsed: true,
         conversationRailWidthPx: 360,
-        lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "A title"
+        lastActiveAgentSessionId: "session-1"
       },
       typeId: "agent-gui"
     });
@@ -192,10 +200,7 @@ describe("agent gui workbench state", () => {
         workspaceId: "workspace-1"
       })
     ).toEqual({
-      composerOverrides: { permissionModeId: "full-access" },
-      composerOverridesByProvider: {
-        gemini: { model: "gemini-2.5-pro" }
-      },
+      agentTargetId: "daemon-gemini",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
@@ -205,11 +210,10 @@ describe("agent gui workbench state", () => {
       instanceId: "agent-gui:gemini",
       nodeId: "node-1",
       state: {
-        composerOverrides: { permissionModeId: "read-only" },
+        agentTargetId: "daemon-gemini-2",
         conversationRailCollapsed: false,
         conversationRailWidthPx: 420,
-        lastActiveAgentSessionId: "session-2",
-        lastActiveConversationTitle: "Node title"
+        lastActiveAgentSessionId: "session-2"
       },
       typeId: "agent-gui"
     });
@@ -224,12 +228,10 @@ describe("agent gui workbench state", () => {
         workspaceId: "workspace-1"
       })
     ).toEqual({
-      composerOverrides: { permissionModeId: "read-only" },
-      composerOverridesByProvider: null,
+      agentTargetId: "daemon-gemini-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
-      lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: "Node title"
+      lastActiveAgentSessionId: "session-2"
     });
     expect(
       source.externalStateSource.getSnapshotNodeState?.({
@@ -239,8 +241,8 @@ describe("agent gui workbench state", () => {
         workspaceId: "workspace-1"
       })
     ).toMatchObject({
-      lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: "Node title"
+      agentTargetId: "daemon-gemini-2",
+      lastActiveAgentSessionId: "session-2"
     });
     expect(
       source.readNodeState({
@@ -264,8 +266,7 @@ describe("agent gui workbench state", () => {
       instanceId: "agent-gui",
       nodeId: "node-1",
       state: {
-        lastActiveAgentSessionId: "session-1",
-        lastActiveConversationTitle: "First title"
+        lastActiveAgentSessionId: "session-1"
       },
       typeId: "agent-gui"
     });
@@ -273,8 +274,7 @@ describe("agent gui workbench state", () => {
       instanceId: "agent-gui",
       nodeId: "node-2",
       state: {
-        lastActiveAgentSessionId: "session-2",
-        lastActiveConversationTitle: "Second title"
+        lastActiveAgentSessionId: "session-2"
       },
       typeId: "agent-gui"
     });
@@ -282,8 +282,7 @@ describe("agent gui workbench state", () => {
       instanceId: "agent-gui",
       nodeId: "node-2",
       state: {
-        lastActiveAgentSessionId: "session-2",
-        lastActiveConversationTitle: "Second title"
+        lastActiveAgentSessionId: "session-2"
       },
       typeId: "agent-gui"
     });
@@ -298,8 +297,7 @@ describe("agent gui workbench state", () => {
         workspaceId: "workspace-1"
       })
     ).toMatchObject({
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "First title"
+      lastActiveAgentSessionId: "session-1"
     });
     expect(
       source.externalStateSource.getNodeState({
@@ -309,8 +307,7 @@ describe("agent gui workbench state", () => {
         workspaceId: "workspace-1"
       })
     ).toMatchObject({
-      lastActiveAgentSessionId: "session-2",
-      lastActiveConversationTitle: "Second title"
+      lastActiveAgentSessionId: "session-2"
     });
   });
 

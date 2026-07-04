@@ -3,6 +3,8 @@ package agentsidecar
 import (
 	"os"
 	"strings"
+
+	computerservice "github.com/tutti-os/tutti/services/tuttid/service/computer"
 )
 
 // Computer use is delivered to agents through the daemon-owned `tutti computer`
@@ -21,18 +23,18 @@ const (
 	computerUseEnabledSessionEnv = "TUTTI_COMPUTER_USE_ENABLED"
 )
 
-// computerUseEnv returns the per-session env advertising computer use, or nil when
-// it is disabled (by the per-session toggle or the operator master switch).
+// computerUseEnv returns the per-session env advertising computer use, or nil
+// when it is disabled or unavailable.
 func computerUseEnv(sessionEnabled bool) []string {
-	if !sessionEnabled || !ComputerUseDefaultEnabled() {
+	if !sessionEnabled || !ComputerUseAvailable() {
 		return nil
 	}
 	return []string{computerUseEnabledSessionEnv + "=1"}
 }
 
 // ComputerUseDefaultEnabled reports whether computer use is on. Defaults to true;
-// only an explicit falsy value disables it. Used by the composer (to advertise
-// the capability) and by CLI/skill gating.
+// only an explicit falsy value disables it. This is the operator master switch,
+// not the runtime availability check.
 func ComputerUseDefaultEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(computerUseSwitchEnv))) {
 	case "0", "false", "off", "no":
@@ -40,4 +42,11 @@ func ComputerUseDefaultEnabled() bool {
 	default:
 		return true
 	}
+}
+
+// ComputerUseAvailable reports whether computer use should be advertised to an
+// agent session. It combines the operator switch with the local cua-driver
+// reachability check so agents do not see a computer-use skill they cannot run.
+func ComputerUseAvailable() bool {
+	return ComputerUseDefaultEnabled() && computerservice.CheckReady() == nil
 }
