@@ -898,7 +898,7 @@ function EntryRow({
     gridClassName,
     isInlineRenaming
       ? "cursor-default"
-      : "cursor-pointer hover:bg-transparency-block",
+      : "cursor-pointer hover:bg-transparency-hover active:bg-[var(--transparency-active)]",
     canMove && moveDragActive && "cursor-grabbing",
     selected || contextMenuActive || isInlineRenaming
       ? "bg-transparency-block text-[var(--text-primary)]"

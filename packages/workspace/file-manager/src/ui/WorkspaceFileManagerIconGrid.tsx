@@ -182,7 +182,7 @@ function WorkspaceFileManagerIconTile({
     "flex min-w-0 max-w-[148px] flex-col items-center gap-1.5 rounded-md border border-transparent px-2 py-2 text-center transition-colors",
     isInlineRenaming
       ? "cursor-default"
-      : "cursor-pointer hover:bg-transparency-block",
+      : "cursor-pointer hover:bg-transparency-hover active:bg-[var(--transparency-active)]",
     moveDragActive && "cursor-grabbing",
     selected || contextMenuActive || isInlineRenaming
       ? "border-[var(--border-focus)] bg-transparency-block text-[var(--text-primary)]"
