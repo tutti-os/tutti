@@ -87,3 +87,25 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   assert.doesNotMatch(handler, /submitInteractive/);
   assert.match(source, /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/);
 });
+
+test("workspace chrome gates the agent decision toast on window focus, not just message center visibility", () => {
+  // The decision toast must consult both message-center visibility and window
+  // focus (via shouldShowWorkspaceAgentDecisionToast) before popping up, so
+  // it does not interrupt the user while the workspace window is unfocused.
+  assert.match(
+    source,
+    /shouldShowWorkspaceAgentDecisionToast\(\{\s*messageCenterOpen: open,\s*windowForeground: windowForegroundVisibility\.isForeground\(\)\s*\}\)/
+  );
+  // The OS notification path (background-only presentation) must remain
+  // unconditional here — it is the mechanism that already correctly gates on
+  // focus for the OS face, and the message-center model/list must keep
+  // reflecting pending items regardless of toast visibility.
+  assert.match(
+    source,
+    /notifications\.notify\(osMessage\);\s*if \(\s*!shouldShowWorkspaceAgentDecisionToast/
+  );
+  assert.match(
+    source,
+    /createDocumentNotificationVisibilityState\(\{\s*hasFocus: \(\) => document\.hasFocus\(\),\s*visibilityState: \(\) => document\.visibilityState\s*\}\)/
+  );
+});
