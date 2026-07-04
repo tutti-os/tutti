@@ -1,6 +1,9 @@
-// Agent GUI controller — activity stream message and timeline helpers.
+// Agent GUI controller — session control state, message, and timeline helpers.
 
-import type { AgentActivityMessageUpdate } from "../../../shared/agentSessionTypes";
+import type {
+  AgentActivityMessageUpdate,
+  AgentSessionState
+} from "../../../shared/agentSessionTypes";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
 import type {
   WorkspaceAgentActivityMessage,
@@ -70,6 +73,27 @@ export function messageFromMessageUpdate(
   };
 }
 
+export function mergeAgentSessionControlStateSnapshot(
+  current: AgentSessionState | null,
+  snapshot: AgentSessionState
+): AgentSessionState {
+  const incomingUsage = recordValue(snapshot.runtimeContext?.usage);
+  if (incomingUsage || !current) {
+    return snapshot;
+  }
+  const previousUsage = recordValue(current.runtimeContext?.usage);
+  if (!previousUsage) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    runtimeContext: {
+      ...(snapshot.runtimeContext ?? {}),
+      usage: previousUsage
+    }
+  };
+}
+
 export function normalizedPositiveNumber(
   value: number | undefined
 ): number | null {
@@ -82,4 +106,10 @@ export function timelineItemTime(
   item: WorkspaceAgentActivityTimelineItem
 ): number {
   return item.occurredAtUnixMs ?? item.createdAtUnixMs ?? 0;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }

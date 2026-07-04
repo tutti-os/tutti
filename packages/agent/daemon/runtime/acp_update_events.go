@@ -608,7 +608,7 @@ func promptTitleSnippet(prompt string) string {
 		return ""
 	}
 	title := strings.Join(fields, " ")
-	const maxRunes = 48
+	const maxRunes = 160
 	runes := []rune(title)
 	if len(runes) <= maxRunes {
 		return title

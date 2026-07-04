@@ -1759,6 +1759,7 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	session := standardTestSession(ProviderClaudeCode)
 	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
 	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapterSession.applyConfigOption("model", "sonnet")
 
 	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
 		Type: "usage_updated",
@@ -1771,6 +1772,9 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 				"cache_creation_input_tokens": 17466,
 			},
 			"modelUsage": map[string]any{
+				"claude-haiku-4-5-20251001": map[string]any{
+					"contextWindow": 200_000,
+				},
 				"claude-sonnet-5": map[string]any{
 					"contextWindow": 1_000_000,
 				},
@@ -1791,6 +1795,73 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	}
 	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
 		t.Fatalf("totalTokens = %#v, want model usage context window", contextWindow["totalTokens"])
+	}
+}
+
+func TestClaudeCodeSDKAdapterDoesNotCarryContextWindowAcrossModelChange(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	adapterSession.applyConfigOption("model", "haiku")
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"contextWindow": map[string]any{
+				"usedTokens":  20_000,
+				"totalTokens": 200_000,
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("haiku usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+
+	adapterSession.applyConfigOption("model", "sonnet")
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-2", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-2",
+			"usage": map[string]any{
+				"input_tokens":                2,
+				"output_tokens":               13,
+				"cache_read_input_tokens":     18_622,
+				"cache_creation_input_tokens": 17_466,
+			},
+			"modelUsage": map[string]any{
+				"claude-sonnet-5": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("sonnet usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+
+	adapterSession.applyConfigOption("model", "haiku")
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-3", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-3",
+			"contextWindow": map[string]any{
+				"usedTokens": 29_538,
+			},
+		},
+	})
+	if err != nil || terminal || len(events) != 1 {
+		t.Fatalf("haiku context usage events=%#v terminal=%v err=%v, want session.updated", events, terminal, err)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["usedTokens"]); !ok || got != 29_538 {
+		t.Fatalf("usedTokens = %#v, want latest haiku context usage", contextWindow["usedTokens"])
+	}
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 200_000 {
+		t.Fatalf("totalTokens = %#v, want default context window after model switch", contextWindow["totalTokens"])
 	}
 }
 

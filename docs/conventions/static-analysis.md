@@ -51,6 +51,11 @@ upstream artifacts can coexist with repository Prettier formatting. Do not
 hand-edit generated `*_gen.go` files; update the vendored schema or generator,
 then regenerate.
 
+The codexproto generator runs during `pnpm check:full` alongside full-repository
+boundary scanners. Generator scratch files must stay outside the repository
+tree, even when they are removed before the generator exits, so parallel checks
+cannot observe transient files and fail nondeterministically.
+
 Historical or ported-source snapshots that are intentionally kept outside a
 package's active `tsconfig.json` during migration should also stay out of the
 type-aware TypeScript lint target. Treat those directories as migration inputs,

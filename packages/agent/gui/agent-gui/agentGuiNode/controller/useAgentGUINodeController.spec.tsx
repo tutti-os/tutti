@@ -10381,6 +10381,156 @@ describe("useAgentGUINodeController", () => {
     expect(listModels).not.toHaveBeenCalled();
   });
 
+  it("keeps a submitted Claude model selected while the live settings refresh is in flight", async () => {
+    let resolveRefresh:
+      | ((value: ReturnType<typeof agentSessionState>) => void)
+      | null = null;
+    const getState = vi
+      .fn()
+      .mockResolvedValueOnce(
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          settings: {
+            model: "haiku",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          },
+          runtimeContext: {
+            cwd: "/workspace",
+            configOptions: [
+              {
+                id: "model",
+                name: "Model",
+                currentValue: "haiku",
+                options: [
+                  { value: "default", name: "Default (recommended)" },
+                  { value: "opus", name: "Opus" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              }
+            ]
+          }
+        })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+    const updateSettings = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      settings: {
+        model: "default",
+        reasoningEffort: "high",
+        speed: null,
+        planMode: false,
+        permissionModeId: "default"
+      }
+    }));
+    const getComposerOptions = vi.fn(async () => ({
+      provider: "claude-code",
+      runtimeContext: {
+        configOptions: [
+          {
+            id: "model",
+            options: [
+              { value: "default", name: "Default (recommended)" },
+              { value: "opus", name: "Opus" },
+              { value: "haiku", name: "Haiku" }
+            ]
+          }
+        ]
+      }
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions,
+      getState,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "haiku"
+      );
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "opus" });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          model: "opus"
+        }
+      });
+      expect(getState).toHaveBeenCalledTimes(2);
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "opus"
+      );
+    });
+
+    await act(async () => {
+      resolveRefresh?.(
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          settings: {
+            model: "default",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          },
+          runtimeContext: {
+            cwd: "/workspace",
+            configOptions: [
+              {
+                id: "model",
+                name: "Model",
+                currentValue: "opus",
+                options: [
+                  { value: "default", name: "Default (recommended)" },
+                  { value: "opus", name: "Opus" },
+                  { value: "haiku", name: "Haiku" }
+                ]
+              }
+            ]
+          }
+        })
+      );
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "opus"
+    );
+  });
+
   it("reloads active ACP options after switching the live model", async () => {
     const getState = vi
       .fn()

@@ -890,13 +890,18 @@ func sanitizeSchemaFile(path string) (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
+	tempDir, err := os.MkdirTemp("", "tutti-codexproto-sanitized-*")
+	if err != nil {
+		return "", nil, err
+	}
 	sanitizedName := "sanitized-" + filepath.Base(path)
-	sanitizedPath := filepath.Join(filepath.Dir(path), sanitizedName)
+	sanitizedPath := filepath.Join(tempDir, sanitizedName)
 	if err := os.WriteFile(sanitizedPath, out, 0o644); err != nil {
+		_ = os.RemoveAll(tempDir)
 		return "", nil, err
 	}
 	cleanup := func() {
-		_ = os.Remove(sanitizedPath)
+		_ = os.RemoveAll(tempDir)
 	}
 	return sanitizedPath, cleanup, nil
 }

@@ -29,6 +29,7 @@ type acpUsageState struct {
 	contextUsedTokens   int64
 	contextWindowTokens int64
 	contextKnown        bool
+	contextModel        string
 	quotas              []map[string]any
 }
 
@@ -162,11 +163,13 @@ func mergeACPUsageState(previous acpUsageState, next acpUsageState) acpUsageStat
 		previous.contextKnown &&
 		previous.contextWindowTokens > 0 {
 		merged.contextWindowTokens = previous.contextWindowTokens
+		merged.contextModel = previous.contextModel
 	}
 	if !merged.contextKnown && previous.contextKnown {
 		merged.contextKnown = true
 		merged.contextUsedTokens = previous.contextUsedTokens
 		merged.contextWindowTokens = previous.contextWindowTokens
+		merged.contextModel = previous.contextModel
 	}
 	if len(merged.quotas) == 0 && len(previous.quotas) > 0 {
 		merged.quotas = cloneACPUsageQuotas(previous.quotas)
