@@ -313,30 +313,35 @@ func TestClaudeSDKGoalCompletesWhenTurnSettles(t *testing.T) {
 	}
 }
 
-// An interrupted turn keeps the goal active — matching the CLI, where an
-// interrupted goal stays armed and resumes after the next user message.
-func TestClaudeSDKGoalSurvivesInterrupt(t *testing.T) {
+// A manually stopped or failed turn keeps the goal active — matching the
+// CLI, where an interrupted goal stays armed and resumes after the next user
+// message. Interrupting an unmet goal surfaces as turn_canceled or
+// turn_failed (the CLI returns an error_during_execution result), never as
+// turn_completed, so a manual stop can never be read as achievement.
+func TestClaudeSDKGoalSurvivesInterruptAndFailure(t *testing.T) {
 	t.Parallel()
 
-	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
-	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
-	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
+	for _, sidecarType := range []string{"turn_canceled", "turn_failed"} {
+		adapter := NewClaudeCodeSDKAdapter(nil)
+		conn := &recordingClaudeSDKConnection{}
+		session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+		adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 
-	events, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
-		Type:    "turn_canceled",
-		Payload: map[string]any{"turnId": "turn-goal"},
-	})
-	if err != nil {
-		t.Fatalf("turn_canceled: %v", err)
-	}
-	for _, event := range events {
-		if event.Payload.Metadata["acpSessionUpdate"] != nil {
-			t.Fatalf("interrupt must not touch the goal mirror: %#v", events)
+		events, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-goal", claudeSDKSidecarEvent{
+			Type:    sidecarType,
+			Payload: map[string]any{"turnId": "turn-goal"},
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", sidecarType, err)
 		}
-	}
-	if goal := adapter.localGoal(adapterSession); goal["status"] != "active" {
-		t.Fatalf("goal after interrupt = %#v", goal)
+		for _, event := range events {
+			if event.Payload.Metadata["acpSessionUpdate"] != nil {
+				t.Fatalf("%s must not touch the goal mirror: %#v", sidecarType, events)
+			}
+		}
+		if goal := adapter.localGoal(adapterSession); goal["status"] != "active" {
+			t.Fatalf("goal after %s = %#v", sidecarType, goal)
+		}
 	}
 }
 

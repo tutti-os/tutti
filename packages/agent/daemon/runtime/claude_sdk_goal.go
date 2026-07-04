@@ -146,11 +146,15 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 // goalEventsOnTurnSettled reconciles the goal mirror when a turn settles.
 // This Claude Code version emits no goal_status attachment on achievement
 // (verified against claude CLI stream-json output): the goal loop holds the
-// turn open through Stop-hook feedback until the condition is met, so a
-// normally completed turn IS the achievement signal, while an interrupted
-// turn keeps the goal active CLI-side (it resumes after the next user
-// message). A canceled arm turn means the /goal set never reached the CLI,
-// so the mirror clears instead of claiming a goal the CLI never received.
+// turn open through Stop-hook feedback until the condition is met, so a turn
+// settling as turn_completed IS the achievement signal. A manual stop cannot
+// be mistaken for it — interrupting an unmet goal yields a result with
+// subtype error_during_execution / terminal_reason aborted_streaming
+// (verified empirically), which the sidecar maps to turn_canceled or
+// turn_failed, never turn_completed — and those keep the goal active
+// CLI-side (it resumes after the next user message). A canceled arm turn
+// means the /goal set never reached the CLI, so the mirror clears instead of
+// claiming a goal the CLI never received.
 func (a *ClaudeCodeSDKAdapter) goalEventsOnTurnSettled(
 	adapterSession *claudeSDKAdapterSession,
 	session Session,
