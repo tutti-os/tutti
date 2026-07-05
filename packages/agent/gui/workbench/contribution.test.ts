@@ -550,9 +550,9 @@ describe("agent GUI workbench contribution copy", () => {
     expect(screen.queryByTestId("agent-gui-window-title-icon")).toBeNull();
   });
 
-  it("opens at the enlarged default width and 88.6 percent height when the workbench area can fit the default frame", () => {
+  it("opens at the widened default width and 88.6 percent height when the workbench area can fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1316, x: 140, y: 48 },
+      frame: { height: 708, width: 1448, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -574,7 +574,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 734,
-      width: 1316,
+      width: 1448,
       x: 140,
       y: 48
     });
@@ -582,7 +582,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1316, x: 140, y: 48 },
+      frame: { height: 708, width: 1448, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -612,7 +612,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("uses 90 percent of the visible height when the remaining workbench height is compact", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1316, x: 140, y: 48 },
+      frame: { height: 708, width: 1448, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -627,15 +627,15 @@ describe("agent GUI workbench contribution copy", () => {
         },
         surfaceSize: {
           height: 747,
-          width: 1440
+          width: 1600
         }
       }
     });
 
     expect(frame).toEqual({
       height: 554,
-      width: 1316,
-      x: 62,
+      width: 1448,
+      x: 76,
       y: 83
     });
   });

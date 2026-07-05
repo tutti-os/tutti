@@ -47,7 +47,7 @@ import type {
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   height: 708,
-  width: 1316,
+  width: 1448,
   x: 140,
   y: 48
 };
