@@ -90,8 +90,45 @@ func TestServiceDeleteNormalizesPathAndRemovesRecentProject(t *testing.T) {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
-	if strings.Join(store.deletedIDs, ",") != projectID(expectedPath) {
-		t.Fatalf("deleted IDs = %#v, want %q", store.deletedIDs, projectID(expectedPath))
+	if strings.Join(store.deletedPaths, ",") != expectedPath {
+		t.Fatalf("deleted paths = %#v, want %q", store.deletedPaths, expectedPath)
+	}
+}
+
+// TestServiceDeleteDoesNotDependOnRecomputedID guards against a regression
+// where Delete looked a project up by re-deriving projectID(path) instead of
+// using the table's actual UNIQUE path key. If a stored row's id ever ends up
+// out of sync with a freshly recomputed hash of its path (for example because
+// id derivation changed, or drifted for any other reason), deleting by that
+// recomputed id silently affects zero rows and the "removed" project never
+// goes away. Deleting by path sidesteps that entire class of mismatch.
+func TestServiceDeleteDoesNotDependOnRecomputedID(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "tutti")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	expectedPath, err := filepath.EvalSymlinks(projectDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks() error = %v", err)
+	}
+	store := &recordingUserProjectStore{
+		projects: []userprojectbiz.Project{
+			{ID: "user_project_stale-mismatched-id", Path: expectedPath, Label: "tutti"},
+		},
+	}
+	service := Service{Store: store}
+
+	if err := service.Delete(ctx, DeleteInput{Path: projectDir}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	if len(store.deletedIDs) != 0 {
+		t.Fatalf("deleted IDs = %#v, want none (delete must key off path)", store.deletedIDs)
+	}
+	if strings.Join(store.deletedPaths, ",") != expectedPath {
+		t.Fatalf("deleted paths = %#v, want %q", store.deletedPaths, expectedPath)
 	}
 }
 
@@ -178,15 +215,21 @@ func TestServiceCheckPathReportsDirectoryStatusWithoutStore(t *testing.T) {
 }
 
 type recordingUserProjectStore struct {
-	projects   []userprojectbiz.Project
-	deletedIDs []string
-	put        struct {
+	projects     []userprojectbiz.Project
+	deletedIDs   []string
+	deletedPaths []string
+	put          struct {
 		Project userprojectbiz.Project
 	}
 }
 
 func (s *recordingUserProjectStore) DeleteUserProject(_ context.Context, id string) error {
 	s.deletedIDs = append(s.deletedIDs, id)
+	return nil
+}
+
+func (s *recordingUserProjectStore) DeleteUserProjectByPath(_ context.Context, path string) error {
+	s.deletedPaths = append(s.deletedPaths, path)
 	return nil
 }
 

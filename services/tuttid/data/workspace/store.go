@@ -62,6 +62,7 @@ type ManagedCredentialsStore interface {
 
 type UserProjectStore interface {
 	DeleteUserProject(context.Context, string) error
+	DeleteUserProjectByPath(context.Context, string) error
 	ListUserProjects(context.Context) ([]userprojectbiz.Project, error)
 	PutUserProject(context.Context, userprojectbiz.Project) (userprojectbiz.Project, error)
 	TouchUserProject(context.Context, string, int64) error

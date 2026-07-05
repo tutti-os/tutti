@@ -61,6 +61,26 @@ WHERE id = ?
 	return nil
 }
 
+// DeleteUserProjectByPath removes a user project by its unique path rather
+// than by a recomputed id. The `path` column carries the table's UNIQUE
+// constraint (see applyUserProjectsV1), so it is the durable lookup key for a
+// caller-supplied path; deleting by an id that gets recomputed from the path
+// on every call can silently miss the row if that derivation ever drifts from
+// what was actually stored, leaving the "removed" project in place.
+func (s *SQLiteStore) DeleteUserProjectByPath(ctx context.Context, path string) error {
+	if s == nil || s.db == nil {
+		return errors.New("workspace database is not initialized")
+	}
+	_, err := s.db.ExecContext(ctx, `
+DELETE FROM user_projects
+WHERE path = ?
+`, path)
+	if err != nil {
+		return fmt.Errorf("delete user project by path: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) PutUserProject(ctx context.Context, project userprojectbiz.Project) (userprojectbiz.Project, error) {
 	if s == nil || s.db == nil {
 		return userprojectbiz.Project{}, errors.New("workspace database is not initialized")
