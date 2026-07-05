@@ -1901,6 +1901,110 @@ func TestSQLiteStoreListSessionSectionFiltersAgentTargetBeforePagination(t *test
 	}
 }
 
+func TestSQLiteStoreListSessionSectionFiltersHiddenSessionsBeforePagination(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-section-hidden-filter",
+		Name: "Workspace Agent Section Hidden Filter",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "project-app",
+		Path:  "/workspace/app",
+		Label: "App",
+	}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+
+	for _, input := range []agentactivitybiz.SessionStateReport{
+		{
+			WorkspaceID:      "ws-agent-section-hidden-filter",
+			AgentSessionID:   "bbb-visible-newer",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Title:            "visible newer",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-agent-section-hidden-filter",
+			AgentSessionID:   "ccc-visible-older",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Title:            "visible older",
+			Status:           "completed",
+			RuntimeContext:   map[string]any{"visible": true},
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-agent-section-hidden-filter",
+			AgentSessionID:   "aaa-hidden",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "claude-code",
+			Cwd:              "/workspace/app",
+			Title:            "hidden",
+			Status:           "completed",
+			RuntimeContext:   map[string]any{"visible": false},
+			OccurredAtUnixMS: 100,
+		},
+	} {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET updated_at_unix_ms = 1000
+WHERE workspace_id = ?`, "ws-agent-section-hidden-filter"); err != nil {
+		t.Fatalf("normalize updated_at_unix_ms error = %v", err)
+	}
+
+	page, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: "ws-agent-section-hidden-filter",
+		SectionKey:  "project:/workspace/app",
+		Limit:       1,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(first) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(first) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(page.Sessions), []string{"bbb-visible-newer"}; !slices.Equal(got, want) {
+		t.Fatalf("first page sessions = %#v, want %#v", got, want)
+	}
+	if !page.HasMore || !strings.HasSuffix(page.NextCursor, "|bbb-visible-newer") {
+		t.Fatalf("first page state = hasMore %v cursor %q, want visible cursor with more", page.HasMore, page.NextCursor)
+	}
+
+	next, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:       "ws-agent-section-hidden-filter",
+		SectionKey:        "project:/workspace/app",
+		CursorUpdatedAtMS: page.Sessions[0].UpdatedAtUnixMS,
+		CursorSessionID:   page.Sessions[0].ID,
+		Limit:             1,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(next) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(next) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(next.Sessions), []string{"ccc-visible-older"}; !slices.Equal(got, want) {
+		t.Fatalf("next page sessions = %#v, want %#v", got, want)
+	}
+	if next.HasMore || next.NextCursor != "" {
+		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+}
+
 func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) {
 	t.Parallel()
 

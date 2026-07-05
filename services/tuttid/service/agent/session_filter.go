@@ -13,12 +13,22 @@ func filterSessions(
 	}
 	filtered := make([]Session, 0, len(sessions))
 	for _, session := range sessions {
+		if !sessionVisibleInLists(session) {
+			continue
+		}
 		if !matchesSessionSearch(session, input.SearchQuery) {
 			continue
 		}
 		filtered = append(filtered, session)
 	}
 	return filtered
+}
+
+func sessionVisibleInLists(session Session) bool {
+	if !session.Visible {
+		return false
+	}
+	return visibleFromRuntimeContext(session.RuntimeContext, true)
 }
 
 func matchesSessionSearch(session Session, rawQuery string) bool {

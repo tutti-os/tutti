@@ -39,6 +39,7 @@ WHERE workspace_id = ?
   AND rail_section_key = ?
   AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
   AND (? = '' OR updated_at_unix_ms < ? OR (updated_at_unix_ms = ? AND agent_session_id > ?))
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	args := []any{

@@ -134,7 +134,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		PinnedAtUnixMS:    session.PinnedAtUnixMS,
 		CreatedAtUnixMS:   createdAtUnixMS,
 		UpdatedAtUnixMS:   updatedAtUnixMS,
-		Visible:           session.Visible,
+		Visible:           visibleFromRuntimeContext(session.RuntimeContext, true),
 	}, resumable)
 }
 
