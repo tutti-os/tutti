@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -177,6 +178,7 @@ describe("AgentGUINodeView layout persistence", () => {
     conversationMetaMock.calls = [];
     composerMock.calls = [];
     statusDotMock.calls = [];
+    vi.useRealTimers();
   });
 
   it("does not persist the initial layout callback on mount", () => {
@@ -1548,12 +1550,33 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("data-slot", "tooltip-trigger");
   });
 
-  it("renders a fishbone loading skeleton for the initial conversation list load", () => {
+  it("delays the conversation list skeleton during initial loading", async () => {
+    vi.useFakeTimers();
+
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
         isLoadingConversations: true
       }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
 
     expect(
@@ -1562,7 +1585,47 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByText("loadingConversations")).not.toBeInTheDocument();
   });
 
-  it("does not render cwd-derived project sections while runtime sections are loading", () => {
+  it("skips the conversation list skeleton when conversations load within 300ms", async () => {
+    vi.useFakeTimers();
+
+    const { rerender } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        isLoadingConversations: true
+      }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: {
+          ...createViewModel(),
+          conversations: [createConversationSummary("session-1")]
+        }
+      })
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    ).toBeInTheDocument();
+  });
+
+  it("does not render cwd-derived project sections while runtime sections are loading", async () => {
+    vi.useFakeTimers();
+
     const project = {
       id: "project-app",
       path: "/workspace/app",
@@ -1601,6 +1664,17 @@ describe("AgentGUINodeView layout persistence", () => {
           }
         ]
       }
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(300);
     });
 
     expect(
@@ -1955,6 +2029,137 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(listSessionSections).toHaveBeenLastCalledWith(
       expect.objectContaining({ agentTargetId: "local:codex" })
     );
+  });
+
+  it("keeps the project rail header mounted before slow provider-filtered reloads show a skeleton", async () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeAgentTargetId = claudeTarget.agentTargetId ?? "";
+    const project = {
+      id: "project-app",
+      path: "/workspace/app",
+      label: "App"
+    };
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >((input) => {
+      if (input.agentTargetId === claudeAgentTargetId) {
+        return new Promise<AgentActivityRuntimeSessionSectionsResult>(
+          () => undefined
+        );
+      }
+      return Promise.resolve({
+        workspaceId: input.workspaceId,
+        sections: [
+          createRuntimeProjectSection({
+            project,
+            sessions: [
+              {
+                ...createRuntimeSession(
+                  input.workspaceId,
+                  "codex-project-session",
+                  "/workspace/app/package",
+                  {
+                    agentTargetId: codexTarget.agentTargetId ?? undefined,
+                    provider: "codex"
+                  }
+                ),
+                updatedAtUnixMs: 100
+              }
+            ],
+            hasMore: false,
+            workspaceId: input.workspaceId
+          })
+        ]
+      });
+    });
+    const activityRuntime = {
+      ...createNoopAgentActivityRuntime(),
+      listSessionSections,
+      listSessionSectionPage: async (
+        input: Parameters<
+          NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+        >[0]
+      ) => ({
+        kind: "project" as const,
+        sectionKey: input.sectionKey,
+        userProject: createRuntimeUserProject(project),
+        sessions: [],
+        hasMore: false
+      })
+    };
+    const labels = createLabels();
+    const baseViewModel = {
+      ...createViewModel(),
+      selectedProviderTarget: codexTarget,
+      providerTargets: [codexTarget, claudeTarget],
+      userProjects: [project],
+      conversations: []
+    };
+    const rendered = renderAgentGUINodeView({
+      activityRuntime,
+      labels,
+      viewModel: baseViewModel
+    });
+
+    expect(
+      await screen.findByTestId(
+        "agent-gui-conversation-item-codex-project-session"
+      )
+    ).toBeInTheDocument();
+    const projectHeaderLabel = workspaceUserProjectI18n.tFirst([
+      "projectSelect.projectLabel"
+    ]);
+    const projectHeader = screen
+      .getByText(projectHeaderLabel)
+      .closest(".agent-gui-node__project-rail-header");
+    expect(projectHeader).not.toBeNull();
+
+    vi.useFakeTimers();
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        activityRuntime,
+        labels,
+        viewModel: {
+          ...baseViewModel,
+          conversationFilter: {
+            kind: "agentTarget",
+            agentTargetId: claudeAgentTargetId
+          },
+          selectedProviderTarget: claudeTarget
+        }
+      })
+    );
+
+    expect(listSessionSections).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(listSessionSections).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agentTargetId: claudeAgentTargetId })
+    );
+    expect(
+      screen.queryByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-codex-project-session")
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByText(projectHeaderLabel)
+        .closest(".agent-gui-node__project-rail-header")
+    ).toBe(projectHeader);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-list-loading-skeleton")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-codex-project-session")
+    ).not.toBeInTheDocument();
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {

@@ -4380,7 +4380,13 @@ aside.workspace-agents-status-panel
   --agent-gui-workbench-header-title-max-width: calc(100% - 32px);
   --agent-gui-workbench-header-text: var(--text-primary);
   --agent-gui-workbench-header-muted: var(--text-secondary);
+  --agent-gui-workbench-header-divider: color-mix(
+    in srgb,
+    var(--text-primary) 4%,
+    transparent
+  );
 
+  position: relative;
   display: grid;
   width: 100%;
   height: var(--agent-gui-workbench-header-height, 44px);
@@ -4397,12 +4403,27 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
+.agent-gui-workbench-header::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: var(--agent-gui-workbench-header-rail-width);
+  height: 1px;
+  background: var(--agent-gui-workbench-header-divider);
+  content: "";
+  pointer-events: none;
+}
+
 .agent-gui-workbench-header:active {
   cursor: grabbing;
 }
 
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"] {
   grid-template-columns: minmax(0, 0px) minmax(0, 1fr);
+}
+
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]::after {
+  left: 0;
 }
 
 .agent-gui-workbench-header__primary {

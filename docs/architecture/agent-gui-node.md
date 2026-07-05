@@ -480,6 +480,12 @@ already-rendered row props locally while preserving backend section membership.
 First-page section refetches are reserved for workspace, rail filter, user
 project, or session membership changes; Show more continues to use the section
 page endpoint.
+During rail-filter refetches, keep the previously rendered section chrome in
+place for short reloads. Provider/agent switching should not briefly unmount
+the project rail header or replace a populated rail with an empty/skeleton
+rail; if the new first page takes longer than the rail skeleton delay, show the
+skeleton so the user sees loading feedback. Only workspace changes may clear
+the section cache immediately.
 Conversation-list read-state metadata is notification-style UI state. Historical
 imports that carry `runtimeContext.imported === true` should remain visible in
 the rail, but they must not seed unread completion lamps as though they just

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import {
   Children,
   createElement,
@@ -552,7 +553,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("opens at the widened default width and 88.6 percent height when the workbench area can fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1448, x: 140, y: 48 },
+      frame: { height: 708, width: 1678, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -567,14 +568,14 @@ describe("agent GUI workbench contribution copy", () => {
         },
         surfaceSize: {
           height: 960,
-          width: 1600
+          width: 1900
         }
       }
     });
 
     expect(frame).toEqual({
       height: 734,
-      width: 1448,
+      width: 1678,
       x: 140,
       y: 48
     });
@@ -582,7 +583,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1448, x: 140, y: 48 },
+      frame: { height: 708, width: 1678, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -612,7 +613,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("uses 90 percent of the visible height when the remaining workbench height is compact", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
-      frame: { height: 708, width: 1448, x: 140, y: 48 },
+      frame: { height: 708, width: 1678, x: 140, y: 48 },
       request: {
         layoutConstraints: {
           minHeight: 160,
@@ -627,15 +628,15 @@ describe("agent GUI workbench contribution copy", () => {
         },
         surfaceSize: {
           height: 747,
-          width: 1600
+          width: 1900
         }
       }
     });
 
     expect(frame).toEqual({
       height: 554,
-      width: 1448,
-      x: 76,
+      width: 1678,
+      x: 111,
       y: 83
     });
   });
@@ -735,6 +736,76 @@ describe("agent GUI workbench contribution copy", () => {
         agentSessionId: "session-1"
       },
       type: "agent-gui:open-session"
+    });
+    expect(
+      contribution.externalStateSource?.getNodeState({
+        instanceId: newWindowLaunch?.instanceId ?? "",
+        nodeId: "agent-gui-node-new-window",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      conversationRailWidthPx: AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
+      lastActiveAgentSessionId: "session-1"
+    });
+  });
+
+  it("seeds fresh dock-launched agent windows with the minimum conversation rail width", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const launchResult = await contribution.onLaunchRequest?.({
+      ...testLaunchLayout,
+      payload: null,
+      reason: "dock",
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(launchResult?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(
+      contribution.externalStateSource?.getNodeState({
+        instanceId: launchResult?.instanceId ?? "",
+        nodeId: "agent-gui-node-dock-new-window",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      conversationRailWidthPx: AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX
+    });
+  });
+
+  it("seeds empty new agent windows with the minimum conversation rail width", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const launchResult = await contribution.onLaunchRequest?.({
+      ...testLaunchLayout,
+      payload: {
+        openInNewWindow: true,
+        provider: "codex"
+      },
+      reason: "host",
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(launchResult?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(
+      contribution.externalStateSource?.getNodeState({
+        instanceId: launchResult?.instanceId ?? "",
+        nodeId: "agent-gui-node-empty-new-window",
+        typeId: "agent-gui",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
+      lastActiveAgentSessionId: null
     });
   });
 
@@ -1336,6 +1407,20 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(css).toMatch(
       /\.workbench-window:has\(\[data-workbench-node-render-error="true"\]\)\s+\.agent-gui-workbench-header__rail-toggle\s*{[^}]*display:\s*none !important;/s
+    );
+  });
+
+  it("draws a subtle divider below the workbench detail titlebar", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /--agent-gui-workbench-header-divider:\s*color-mix\(\s*in srgb,\s*var\(--text-primary\)\s+4%,\s*transparent\s*\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s
     );
   });
 

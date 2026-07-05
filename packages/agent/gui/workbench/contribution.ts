@@ -10,6 +10,7 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import {
+  AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX,
   clampAgentGUIConversationRailWidthPx,
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
@@ -47,7 +48,7 @@ import type {
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   height: 708,
-  width: 1448,
+  width: 1678,
   x: 140,
   y: 48
 };
@@ -380,40 +381,46 @@ export function createAgentGuiWorkbenchContribution(
         launchPayload,
         provider
       );
-      if (targetAgentSessionId) {
-        const previousState = nodeStateSource.readNodeState({
-          instanceId,
-          typeId: agentGuiWorkbenchTypeId
-        });
+      const previousState = nodeStateSource.readNodeState({
+        instanceId,
+        typeId: agentGuiWorkbenchTypeId
+      });
+      const normalizedPreviousState =
+        normalizeAgentGuiWorkbenchState(previousState);
+      const hasProviderTargetLaunch =
+        Boolean(providerTarget.agentTargetId) ||
+        Boolean(providerTarget.providerTargetId) ||
+        Boolean(providerTarget.providerTargetRef);
+      const isEmptyAgentLaunch =
+        activation === null &&
+        !targetAgentSessionId &&
+        !hasProviderTargetLaunch;
+      const canSeedEmptyLaunchConversationRail =
+        isEmptyAgentLaunch &&
+        input.providerTargetsLoading !== true &&
+        (input.providerTargets?.length ?? 1) > 0;
+      const shouldSeedMinimumConversationRailWidth =
+        existingInstanceId === null &&
+        normalizedPreviousState.conversationRailWidthPx === null &&
+        (openInNewWindow || canSeedEmptyLaunchConversationRail);
+      const shouldSeedLaunchState =
+        shouldSeedMinimumConversationRailWidth ||
+        targetAgentSessionId ||
+        hasProviderTargetLaunch;
+      if (shouldSeedLaunchState) {
         nodeStateSource.writeNodeState({
           instanceId,
           state: {
-            ...normalizeAgentGuiWorkbenchState(previousState),
+            ...normalizedPreviousState,
+            ...(shouldSeedMinimumConversationRailWidth
+              ? {
+                  conversationRailWidthPx:
+                    AGENT_GUI_CONVERSATION_RAIL_MIN_WIDTH_PX
+                }
+              : {}),
             ...(targetAgentSessionId
               ? { lastActiveAgentSessionId: targetAgentSessionId }
               : {}),
-            ...(providerTarget.agentTargetId
-              ? { agentTargetId: providerTarget.agentTargetId }
-              : {}),
-            ...(providerTarget.providerTargetId
-              ? { agentTargetId: providerTarget.providerTargetId }
-              : {})
-          },
-          typeId: agentGuiWorkbenchTypeId
-        });
-      } else if (
-        providerTarget.agentTargetId ||
-        providerTarget.providerTargetId ||
-        providerTarget.providerTargetRef
-      ) {
-        const previousState = nodeStateSource.readNodeState({
-          instanceId,
-          typeId: agentGuiWorkbenchTypeId
-        });
-        nodeStateSource.writeNodeState({
-          instanceId,
-          state: {
-            ...normalizeAgentGuiWorkbenchState(previousState),
             ...(providerTarget.agentTargetId
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),
