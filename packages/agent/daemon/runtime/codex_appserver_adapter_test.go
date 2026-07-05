@@ -828,6 +828,37 @@ func TestCodexAppServerAdapterWireFormatOmitsJSONRPCVersion(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterExecRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来 review"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	input, _ := turnStart["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/start input = %#v, want user prompt plus internal routing prompt", turnStart["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/start user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/start routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
+}
+
 func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T) {
 	t.Parallel()
 

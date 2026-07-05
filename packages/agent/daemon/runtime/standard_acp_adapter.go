@@ -3740,6 +3740,20 @@ func appendTuttiMentionRoutingPrompt(content []map[string]any, skills []string) 
 	return out
 }
 
+func appendTuttiMentionRoutingContent(content []PromptContentBlock, skills []string) []PromptContentBlock {
+	routingPrompt := strings.TrimSpace(tuttiMentionRoutingPrompt(skills))
+	if routingPrompt == "" {
+		return content
+	}
+	out := make([]PromptContentBlock, 0, len(content)+1)
+	out = append(out, content...)
+	out = append(out, PromptContentBlock{
+		Type: "text",
+		Text: routingPrompt,
+	})
+	return out
+}
+
 func tuttiMentionRoutingPrompt(skills []string) string {
 	for _, skill := range skills {
 		if strings.TrimSpace(skill) != "" {
