@@ -11497,6 +11497,84 @@ describe("useAgentGUINodeController", () => {
     );
   });
 
+  it("prefers an imported session's persisted model over a differing live config option", async () => {
+    // Regression test: an imported Codex conversation persists the model
+    // (and reasoning effort) the user's local CLI actually used
+    // (`services/tuttid/service/agent/external_import.go`,
+    // `TestServiceImportPreservesLocalCodexModelAndReasoningEffort`). That
+    // persisted value must win in the composer even if the live
+    // app-server-reported "model" config option differs — e.g. because the
+    // provider session hasn't resumed yet, or reports a different session's
+    // config. Before this fix, `draftModel` in useAgentGUINodeController.ts
+    // unconditionally preferred the live config option's `currentValue`
+    // over the persisted session settings, silently discarding the carried
+    // over model.
+    const getState = vi.fn(async () =>
+      agentSessionState("session-1", {
+        provider: "codex",
+        settings: {
+          model: "gpt-5.4",
+          reasoningEffort: "xhigh",
+          speed: null,
+          planMode: false,
+          permissionModeId: "auto"
+        },
+        runtimeContext: {
+          cwd: "/workspace",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              currentValue: "gpt-5-codex",
+              options: [
+                { value: "gpt-5-codex", name: "GPT-5 Codex" },
+                { value: "gpt-5.4", name: "GPT-5.4" }
+              ]
+            }
+          ]
+        }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Imported Codex conversation"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        runtimeContext: { configOptions: [] }
+      })),
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+        "gpt-5.4"
+      );
+    });
+    expect(
+      result.current.viewModel.composerSettings.selectedReasoningEffortValue
+    ).toBe("xhigh");
+  });
+
   it("reloads active ACP options after switching the live model", async () => {
     const getState = vi
       .fn()
