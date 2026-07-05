@@ -168,7 +168,7 @@ func (s *AppFactoryService) agentSessionHasCompletedFactoryOutput(workspaceID st
 		return false
 	}
 	latest := page.Messages[0]
-	return isCompletedAssistantTextMessage(latest.Role, latest.Kind, latest.Status)
+	return isCompletedAssistantTextMessage(latest.Role, latest.Kind, latest.Status, latest.Payload)
 }
 
 func (s *AppFactoryService) runValidation(ctx context.Context, workspaceID string, job workspacebiz.AppFactoryJob) (workspacebiz.AppFactoryJob, error) {
@@ -319,17 +319,40 @@ func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionSta
 
 func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
 	for _, update := range updates {
-		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status) {
+		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status, update.Payload) {
 			return true
 		}
 	}
 	return false
 }
 
-func isCompletedAssistantTextMessage(role string, kind string, status string) bool {
+// isCompletedAssistantTextMessage reports whether a message update looks like
+// the agent's completed final answer text. System notices (skill/context
+// budget warnings, model reroutes, compaction banners, etc.) are reported
+// through the same role=assistant/kind=text/status=completed shape as real
+// task narration — see acpSystemNoticeEvent in
+// packages/agent/daemon/runtime/acp_update_events.go, which always tags its
+// payload with "kind": "agent_system_notice". Treating one of those as the
+// signal that the whole App Factory job finished caused jobs to be marked
+// failed within seconds of creation (validating against a manifest the
+// agent hadn't written yet) while the agent kept working in the background
+// and went on to succeed. Excluding tagged system notices here keeps the
+// heuristic scoped to genuine assistant output.
+func isCompletedAssistantTextMessage(role string, kind string, status string, payload map[string]any) bool {
+	if isAppFactorySystemNoticeMessagePayload(payload) {
+		return false
+	}
 	return strings.ToLower(strings.TrimSpace(role)) == "assistant" &&
 		strings.ToLower(strings.TrimSpace(kind)) == "text" &&
 		strings.ToLower(strings.TrimSpace(status)) == "completed"
+}
+
+func isAppFactorySystemNoticeMessagePayload(payload map[string]any) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	kind, _ := payload["kind"].(string)
+	return strings.EqualFold(strings.TrimSpace(kind), "agent_system_notice")
 }
 
 func firstNonEmptyString(values ...string) string {
