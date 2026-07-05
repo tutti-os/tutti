@@ -112,6 +112,63 @@ func TestAppendAssistantChunkReplacesCumulativeSnapshotChunk(t *testing.T) {
 	}
 }
 
+// TestFinishCompletedFailsDanglingToolCall reproduces the sub-agent
+// "permanently queued" bug: codex can send tool_call item/started for a
+// spawnAgent-style delegation and then reject it out-of-band (a schema
+// conflict resolved as plain model-visible text, confirmed via exported
+// session transcripts), with no item/completed ever following for that call
+// id. Before this fix, a turn that otherwise completed normally silently
+// reported such a still-pending call as EventCallCompleted (a false
+// success); the GUI has no way to tell that apart from a genuine result, so
+// a rejected/never-run delegation rendered as stuck "running"/"queued"
+// forever instead of failed. FinishCompleted must close it out as
+// EventCallFailed, the same terminal shape an interrupted/failed turn
+// already uses.
+func TestFinishCompletedFailsDanglingToolCall(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+
+	started, ok := normalizer.ToolCallEvents(session, "turn-1", map[string]any{
+		"sessionUpdate": "tool_call",
+		"toolCallId":    "call_rejected_spawn",
+		"status":        "in_progress",
+		"title":         "spawnAgent",
+		"kind":          "execute",
+	})
+	if !ok {
+		t.Fatalf("ToolCallEvents(started) ok = false")
+	}
+	var startedEvent *activityshared.Event
+	for i := range started {
+		if started[i].Type == EventCallStarted {
+			startedEvent = &started[i]
+		}
+	}
+	if startedEvent == nil {
+		t.Fatalf("expected an EventCallStarted event, got %+v", started)
+	}
+
+	completed := normalizer.FinishCompleted(session, "turn-1")
+
+	var callEvent *activityshared.Event
+	for i := range completed {
+		if completed[i].EventID == startedEvent.EventID {
+			callEvent = &completed[i]
+		}
+	}
+	if callEvent == nil {
+		t.Fatalf("FinishCompleted did not emit any event for the dangling call %q: %+v", startedEvent.EventID, completed)
+	}
+	if callEvent.Type != EventCallFailed {
+		t.Fatalf("dangling call event type = %q, want %q (a call with no item/completed must never be reported as a successful completion)", callEvent.Type, EventCallFailed)
+	}
+	if got := callEvent.Payload.Metadata["status"]; got != messageStreamStateFailed {
+		t.Fatalf("dangling call payload status = %#v, want %q", got, messageStreamStateFailed)
+	}
+}
+
 func TestAppendThinkingChunkStillStreamsWithoutReviewPresentation(t *testing.T) {
 	t.Parallel()
 
