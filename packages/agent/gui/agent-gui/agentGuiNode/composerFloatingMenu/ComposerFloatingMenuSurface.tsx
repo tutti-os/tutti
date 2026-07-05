@@ -11,9 +11,18 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../../app/renderer/lib/utils";
+import { DESKTOP_WINDOW_TOP_MARGIN } from "../../workspaceDesktop/constants";
 
 const COMPOSER_MENU_GAP_PX = 8;
 const COMPOSER_MENU_VIEWPORT_PADDING_PX = 8;
+// Keep the menu clear of the workspace window's own header, where the macOS
+// traffic lights live (see `workspaceWindowHeaderHeightPx` in
+// apps/desktop/src/main/windows/workspaceWindow.ts and the matching
+// `DESKTOP_WINDOW_TOP_MARGIN` reserve used to place node windows below that
+// header). Anchors near the top of the canvas otherwise collapse this menu's
+// top offset down to the bare viewport padding, landing it on top of the
+// traffic lights and drag region.
+const COMPOSER_MENU_TOP_SAFE_AREA_PX = DESKTOP_WINDOW_TOP_MARGIN;
 const COMPOSER_MENU_MIN_HEIGHT_PX = 280;
 
 export interface ComposerAnchoredMenuFrame {
@@ -98,7 +107,7 @@ function computeComposerAnchoredMenuFrame(
     )
   );
   const availableAbove =
-    rect.top - COMPOSER_MENU_GAP_PX - COMPOSER_MENU_VIEWPORT_PADDING_PX;
+    rect.top - COMPOSER_MENU_GAP_PX - COMPOSER_MENU_TOP_SAFE_AREA_PX;
   const height =
     availableAbove >= maxHeight
       ? maxHeight
@@ -116,7 +125,7 @@ function computeComposerAnchoredMenuFrame(
     left,
     portalTarget: resolveComposerMenuPortalTarget(anchor),
     top: Math.max(
-      COMPOSER_MENU_VIEWPORT_PADDING_PX,
+      COMPOSER_MENU_TOP_SAFE_AREA_PX,
       Math.min(
         rect.top - COMPOSER_MENU_GAP_PX - height,
         viewportHeight - COMPOSER_MENU_VIEWPORT_PADDING_PX - height
