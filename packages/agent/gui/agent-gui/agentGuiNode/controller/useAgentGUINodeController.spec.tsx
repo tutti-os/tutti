@@ -6020,11 +6020,15 @@ describe("useAgentGUINodeController", () => {
         title: "hello from hero"
       })
     );
-    // No durable history entry yet (activation is still pending)...
-    expect(result.current.viewModel.conversations).toEqual([]);
-    // ...but the user is already on the conversation surface with their
-    // optimistic message shown immediately.
+    // No durable history entry yet (activation is still pending), but the
+    // optimistic conversation already appears in the sidebar list so it does
+    // not look like the new chat vanished while it activates.
     const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.conversations).toEqual([
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    ]);
+    // ...and the user is already on the conversation surface with their
+    // optimistic message shown immediately.
     expect(result.current.viewModel.activeConversationId).toBe(createdId);
     expect(result.current.viewModel.activeConversation).toEqual(
       expect.objectContaining({ id: createdId, title: "hello from hero" })
@@ -6033,6 +6037,160 @@ describe("useAgentGUINodeController", () => {
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
     ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
+  });
+
+  it("applies a composer settings change locally during the pre-activation window and flushes it once the session attaches", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        })
+    );
+    // Mutable so getState reflects whatever the daemon last applied, like a
+    // real backend would: the pre-activation window's queued settings patch
+    // is flushed in the same tick as the unconditional post-activation
+    // getSessionControlState reload (see startConversation), and a
+    // realistic daemon would already reflect the just-applied model there
+    // too instead of momentarily reverting it.
+    let appliedSettings = {
+      model: "gpt-5",
+      reasoningEffort: "medium",
+      speed: null as string | null,
+      planMode: false,
+      permissionModeId: "auto"
+    };
+    const updateSettings = vi.fn(async ({ settings }) => {
+      appliedSettings = { ...appliedSettings, ...settings };
+      return { settings: appliedSettings };
+    });
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId, { settings: appliedSettings })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings,
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    // Still mid-activation: activeConversationId is already the optimistic
+    // id, but there is no backend session yet.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+
+    // Local/optimistic feedback happens immediately, without waiting for the
+    // session to attach: the user's click is not silently swallowed.
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+    // Nothing to send an RPC to yet: no backend session exists.
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, { status: "working" }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledTimes(1);
+      expect(updateSettings).toHaveBeenNthCalledWith(1, {
+        workspaceId: "room-1",
+        agentSessionId: createdId,
+        settings: { model: "gpt-5.1" }
+      });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+  });
+
+  it("drops a composer settings change queued during the pre-activation window if activation fails", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((_resolve, reject) => {
+          rejectActivation = reject;
+        })
+    );
+    const updateSettings = vi.fn(async ({ settings }) => ({ settings }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+
+    act(() => {
+      rejectActivation?.(
+        createAppError("common.unexpected", { debugMessage: "boom" })
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+    // The session never attached, so the queued patch must not fire once
+    // some later, unrelated session happens to reuse RPC plumbing: nothing
+    // should ever be sent for the abandoned create.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it("keeps OpenClaw static catalog target disabled even when the gateway is ready", async () => {
