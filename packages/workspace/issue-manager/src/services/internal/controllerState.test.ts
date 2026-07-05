@@ -13,7 +13,7 @@ import {
   applyIssueManagerIssueDetailResultToNodeState,
   applyIssueManagerIssueListResultToNodeState,
   applyIssueManagerIssueSelection,
-  applyIssueManagerSelectedAgentProvider,
+  applyIssueManagerSelectedAgentTargetId,
   applyIssueManagerIssueSaved,
   applyIssueManagerTaskDeleted,
   applyIssueManagerTaskEditorModeToNodeState,
@@ -180,9 +180,9 @@ test("controllerState applies issue and task selection in canonical order", () =
     })
   );
   assert.deepEqual(
-    applyIssueManagerSelectedAgentProvider(current, "claude"),
+    applyIssueManagerSelectedAgentTargetId(current, "local:claude-code"),
     createNodeState({
-      selectedAgentProvider: "claude",
+      selectedAgentTargetId: "local:claude-code",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-2"
     })
@@ -415,7 +415,7 @@ function createNodeState(
   return {
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: null,
     selectedTaskId: null,
     ...input

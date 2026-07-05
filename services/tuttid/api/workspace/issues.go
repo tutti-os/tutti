@@ -172,6 +172,7 @@ func GeneratedIssueManagerRunFromDomain(item workspaceissues.Run) tuttigenerated
 		WorkspaceId:        item.WorkspaceID,
 		RequesterUserId:    item.RequesterUserID,
 		AgentUserId:        item.AgentUserID,
+		AgentTargetId:      item.AgentTargetID,
 		AgentSessionId:     item.AgentSessionID,
 		AgentProvider:      item.AgentProvider,
 		Status:             tuttigenerated.IssueManagerStatus(item.Status),

@@ -1,36 +1,42 @@
 import type {
-  IssueManagerAgentProviderOption,
+  IssueManagerAgentTargetOption,
   IssueManagerFileAdapter
 } from "../../../../contracts/index.ts";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 
-export const defaultIssueManagerAgentProviderOptions = [
+export const defaultIssueManagerAgentTargetOptions = [
   {
+    agentTargetId: "local:codex",
     label: "Codex",
     provider: "codex"
   }
-] as const satisfies readonly IssueManagerAgentProviderOption[];
+] as const satisfies readonly IssueManagerAgentTargetOption[];
 
-export function resolveIssueManagerAgentProviderOptions(
+export function resolveIssueManagerAgentTargetOptions(
   feature: IssueManagerFeature
-): readonly IssueManagerAgentProviderOption[] {
-  if (!feature.agentProviderOptions) {
-    return defaultIssueManagerAgentProviderOptions;
+): readonly IssueManagerAgentTargetOption[] {
+  if (!feature.agentTargetOptions) {
+    return defaultIssueManagerAgentTargetOptions;
   }
 
-  const configuredOptions = feature.agentProviderOptions.getOptions();
-  const normalizedOptions = configuredOptions
-    .map((option) => {
-      const disabledReason = option.disabledReason?.trim();
-      return {
-        ...(option.disabled === true ? { disabled: true } : {}),
-        ...(disabledReason ? { disabledReason } : {}),
-        ...(option.iconUrl?.trim() ? { iconUrl: option.iconUrl.trim() } : {}),
-        label: option.label.trim() || option.provider.trim(),
-        provider: option.provider.trim()
-      };
-    })
-    .filter((option) => option.provider && option.label);
+  const configuredOptions = feature.agentTargetOptions.getOptions();
+  const normalizedOptions: IssueManagerAgentTargetOption[] = [];
+  for (const option of configuredOptions) {
+    const agentTargetId = option.agentTargetId?.trim();
+    const disabledReason = option.disabledReason?.trim();
+    const provider = option.provider.trim();
+    if (!agentTargetId) {
+      continue;
+    }
+    normalizedOptions.push({
+      agentTargetId,
+      ...(option.disabled === true ? { disabled: true } : {}),
+      ...(disabledReason ? { disabledReason } : {}),
+      ...(option.iconUrl?.trim() ? { iconUrl: option.iconUrl.trim() } : {}),
+      label: option.label.trim() || provider || agentTargetId,
+      provider
+    });
+  }
 
   return normalizedOptions;
 }

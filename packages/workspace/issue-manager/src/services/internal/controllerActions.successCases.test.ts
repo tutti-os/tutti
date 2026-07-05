@@ -35,7 +35,7 @@ test("controller actions insert task references directly into the task draft", a
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -72,7 +72,7 @@ test("controller actions insert task references into created subtask drafts with
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     },
@@ -122,7 +122,7 @@ test("controller actions upload task references into created subtask drafts", as
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     },
@@ -206,7 +206,7 @@ test("controller actions save edited issues and sync only issue-scoped missing r
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-7"
     }
@@ -255,7 +255,7 @@ test("controller actions save edited issues and sync only issue-scoped missing r
     issueDraftTitle: null,
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-1",
     selectedTaskId: "task-7"
   });
@@ -290,7 +290,7 @@ test("controller actions save created tasks and attach extracted task references
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null,
       taskDraftContent: "persisted body",
@@ -344,7 +344,7 @@ test("controller actions save created tasks and attach extracted task references
   assert.deepEqual(harness.nodeState.current, {
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-1",
     selectedTaskId: "task-2",
     taskDraftContent: null,

@@ -346,6 +346,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
 		AppCenter:             appCenterService,
 		AgentSessionService:   agentSessionService,
+		AgentTargetStore:      agentTargetStore,
 		AgentMessageReader:    agentActivityProjection,
 		AgentSessionReader:    agentActivityProjection,
 		AgentSessionState:     agentActivityProjection,

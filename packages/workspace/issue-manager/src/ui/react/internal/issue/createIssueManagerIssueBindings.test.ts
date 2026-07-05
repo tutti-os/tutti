@@ -93,7 +93,7 @@ function createIssueHarness(
     issueDraftTitle: null,
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: null,
     selectedTaskId: null,
     taskDraftContent: null,

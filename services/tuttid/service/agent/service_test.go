@@ -1970,6 +1970,26 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceGetComposerOptionsResolvesProviderFromAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.CapabilityLister = &recordingComposerCapabilityLister{}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.Provider != "codex" {
+		t.Fatalf("provider = %q, want codex", options.Provider)
+	}
+	if options.RuntimeContext["agentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("runtimeContext agentTargetId = %#v, want %q", options.RuntimeContext["agentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
 func TestServiceGetComposerOptionsDoesNotCarryConversationDetailMode(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)

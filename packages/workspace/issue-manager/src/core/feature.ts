@@ -11,7 +11,7 @@ import {
 } from "../i18n/issueManagerI18n.ts";
 import type {
   IssueManagerAgentBreakdownLauncher,
-  IssueManagerAgentProviderOptionsAdapter,
+  IssueManagerAgentTargetOptionsAdapter,
   IssueManagerAnalyticsAdapter,
   IssueManagerExecutionDirectoryPicker,
   IssueManagerAgentSessionOpener,
@@ -42,7 +42,7 @@ export interface IssueManagerFeatureUIConfig {
 export interface IssueManagerFeature {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
-  agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -62,7 +62,7 @@ export interface IssueManagerFeature {
 export interface CreateIssueManagerFeatureInput {
   agentBreakdownLauncher?: IssueManagerAgentBreakdownLauncher;
   analytics?: IssueManagerAnalyticsAdapter;
-  agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
   agentSessionOpener?: IssueManagerAgentSessionOpener;
   agentRunner: IssueManagerAgentRunner;
   backend: IssueManagerBackend;
@@ -82,7 +82,7 @@ export const defaultIssueManagerNodeState: IssueManagerNodeState = {
   activeTopicId: null,
   issueSearchQuery: "",
   issueStatusFilter: "all",
-  selectedAgentProvider: "codex",
+  selectedAgentTargetId: "local:codex",
   selectedExecutionDirectory: null,
   selectedIssueId: null,
   selectedTaskId: null,
@@ -95,7 +95,7 @@ export function createIssueManagerFeature(
   return {
     agentBreakdownLauncher: input.agentBreakdownLauncher,
     analytics: input.analytics,
-    agentProviderOptions: input.agentProviderOptions,
+    agentTargetOptions: input.agentTargetOptions,
     agentSessionOpener: input.agentSessionOpener,
     agentRunner: input.agentRunner,
     backend: input.backend,
@@ -124,7 +124,10 @@ export function normalizeIssueManagerNodeState(
     activeTopicId: normalizeNullableString(state?.activeTopicId),
     issueSearchQuery: state?.issueSearchQuery?.trim() ?? "",
     issueStatusFilter: state?.issueStatusFilter ?? "all",
-    selectedAgentProvider: state?.selectedAgentProvider?.trim() || "codex",
+    selectedAgentTargetId:
+      state?.selectedAgentTargetId?.trim() ||
+      legacySelectedAgentTargetId(state) ||
+      "local:codex",
     selectedExecutionDirectory: normalizeNullableString(
       state?.selectedExecutionDirectory
     ),
@@ -132,6 +135,15 @@ export function normalizeIssueManagerNodeState(
     selectedTaskId: normalizeNullableString(state?.selectedTaskId),
     taskListCollapsed: state?.taskListCollapsed === true
   };
+}
+
+function legacySelectedAgentTargetId(
+  state: Partial<IssueManagerNodeState> | null | undefined
+): string | null {
+  const legacyProvider = (
+    state as { selectedAgentProvider?: string | null } | null | undefined
+  )?.selectedAgentProvider?.trim();
+  return legacyProvider ? `local:${legacyProvider}` : null;
 }
 
 function normalizeNullableString(

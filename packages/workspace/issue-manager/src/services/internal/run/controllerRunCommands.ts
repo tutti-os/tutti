@@ -5,6 +5,7 @@ import type {
 import type { IssueManagerFeature } from "../../../core/index.ts";
 
 export async function executeIssueManagerRunTask(input: {
+  agentTargetId: string;
   executionDirectory?: string | null;
   feature: IssueManagerFeature;
   issue: IssueManagerIssueDetail["issue"];
@@ -13,6 +14,7 @@ export async function executeIssueManagerRunTask(input: {
   workspaceId: string;
 }): Promise<{ errorMessage?: string; status: string }> {
   const result = await input.feature.agentRunner.runTask({
+    agentTargetId: input.agentTargetId,
     ...(input.executionDirectory?.trim()
       ? { executionDirectory: input.executionDirectory.trim() }
       : {}),

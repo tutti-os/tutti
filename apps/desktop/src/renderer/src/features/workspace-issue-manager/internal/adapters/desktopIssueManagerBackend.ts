@@ -87,12 +87,19 @@ export function createDesktopIssueManagerBackend(
       const taskId = input.taskId?.trim();
       if (!taskId) {
         const executionDirectory = input.executionDirectory?.trim();
+        const agentTargetId = requireIssueManagerCreateRunAgentTargetId(
+          input.agentTargetId,
+          input.agentProvider
+        );
         return tuttidClient.createWorkspaceIssueRun(
           input.workspaceId,
           input.issueId,
           {
-            agentProvider: input.agentProvider,
+            ...(input.agentProvider?.trim()
+              ? { agentProvider: input.agentProvider.trim() }
+              : {}),
             agentSessionId: input.agentSessionId,
+            agentTargetId,
             agentUserId: input.agentUserId,
             ...(executionDirectory ? { executionDirectory } : {}),
             runId: input.runId
@@ -100,13 +107,20 @@ export function createDesktopIssueManagerBackend(
         );
       }
       const executionDirectory = input.executionDirectory?.trim();
+      const agentTargetId = requireIssueManagerCreateRunAgentTargetId(
+        input.agentTargetId,
+        input.agentProvider
+      );
       return tuttidClient.createWorkspaceIssueTaskRun(
         input.workspaceId,
         input.issueId,
         taskId,
         {
-          agentProvider: input.agentProvider,
+          ...(input.agentProvider?.trim()
+            ? { agentProvider: input.agentProvider.trim() }
+            : {}),
           agentSessionId: input.agentSessionId,
+          agentTargetId,
           agentUserId: input.agentUserId,
           ...(executionDirectory ? { executionDirectory } : {}),
           runId: input.runId
@@ -241,6 +255,38 @@ export function createDesktopIssueManagerBackend(
       return normalizeTask(task);
     }
   };
+}
+
+function resolveIssueManagerCreateRunAgentTargetId(
+  agentTargetId: string | null | undefined,
+  provider: string | null | undefined
+): string {
+  const normalizedAgentTargetId = agentTargetId?.trim();
+  if (normalizedAgentTargetId) {
+    return normalizedAgentTargetId;
+  }
+  switch (provider?.trim()) {
+    case "codex":
+      return "local:codex";
+    case "claude-code":
+      return "local:claude-code";
+    default:
+      return "";
+  }
+}
+
+function requireIssueManagerCreateRunAgentTargetId(
+  agentTargetId: string | null | undefined,
+  provider: string | null | undefined
+): string {
+  const resolvedAgentTargetId = resolveIssueManagerCreateRunAgentTargetId(
+    agentTargetId,
+    provider
+  );
+  if (!resolvedAgentTargetId) {
+    throw new Error("issue manager agentTargetId is required to create a run");
+  }
+  return resolvedAgentTargetId;
 }
 
 function normalizeTopicList(

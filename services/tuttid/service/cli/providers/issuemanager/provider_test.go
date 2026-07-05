@@ -483,15 +483,15 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 			AgentSessionID: "SESSION-1",
 		},
 		Input: map[string]any{
-			"issue-id":       "ISS-1",
-			"agent-provider": "codex",
-			"agent-user-id":  "local",
+			"issue-id":        "ISS-1",
+			"agent-target-id": "local:codex",
+			"agent-user-id":   "local",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if issues.created.AgentProvider != "codex" || issues.created.AgentSessionID != "SESSION-1" || issues.created.AgentUserID != "local" {
+	if issues.created.AgentTargetID != "local:codex" || issues.created.AgentSessionID != "SESSION-1" || issues.created.AgentUserID != "local" {
 		t.Fatalf("created = %#v", issues.created)
 	}
 	run := output.Value["run"].(map[string]any)
@@ -520,9 +520,9 @@ func TestTaskRunCreateDefaultsAgentSessionIDFromInvokeContext(t *testing.T) {
 			AgentSessionID: "SESSION-CONTEXT",
 		},
 		Input: map[string]any{
-			"issue-id":       "ISS-1",
-			"task-id":        "TASK-1",
-			"agent-provider": "codex",
+			"issue-id":        "ISS-1",
+			"task-id":         "TASK-1",
+			"agent-target-id": "local:codex",
 		},
 	})
 	if err != nil {

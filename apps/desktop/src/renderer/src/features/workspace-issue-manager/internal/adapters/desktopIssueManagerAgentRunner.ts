@@ -30,6 +30,7 @@ export interface DesktopIssueManagerAgentSessionCreator {
 
 export interface DesktopIssueManagerAgentGuiLaunchInput {
   agentSessionId?: string;
+  agentTargetId?: string | null;
   draftPrompt?: string;
   provider: string;
   userProjectPath?: string | null;
@@ -46,6 +47,10 @@ export function createDesktopIssueManagerAgentRunner(input: {
 }): IssueManagerAgentRunner {
   return {
     async runTask(request): Promise<IssueManagerAgentRunResult> {
+      const agentTargetId = resolveIssueManagerRequestAgentTargetId(
+        request.agentTargetId,
+        request.provider
+      );
       const prompt = buildIssueManagerRunPrompt({
         copy: createIssueManagerI18nRuntime(input.i18n),
         issue: request.issue,
@@ -53,6 +58,7 @@ export function createDesktopIssueManagerAgentRunner(input: {
         workspaceRoot: "."
       });
       return openIssueManagerAgentDraft({
+        agentTargetId,
         draftPrompt: prompt,
         launchAgentGui: input.launchAgentGui,
         provider: request.provider,
@@ -64,6 +70,7 @@ export function createDesktopIssueManagerAgentRunner(input: {
 }
 
 function openIssueManagerAgentDraft(input: {
+  agentTargetId: string;
   draftPrompt: string;
   launchAgentGui?: (
     input: DesktopIssueManagerAgentGuiLaunchInput
@@ -87,6 +94,7 @@ function openIssueManagerAgentDraft(input: {
   return Promise.resolve()
     .then(() =>
       launchAgentGui({
+        agentTargetId: input.agentTargetId,
         draftPrompt: input.draftPrompt,
         provider: input.provider,
         userProjectPath: input.userProjectPath,
@@ -118,6 +126,10 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
         workspaceId: input.workspaceId
       });
       const session = await openIssueManagerAgentDraft({
+        agentTargetId: resolveIssueManagerRequestAgentTargetId(
+          request.agentTargetId,
+          request.provider
+        ),
         draftPrompt: prompt,
         launchAgentGui: input.launchAgentGui,
         provider: request.provider,
@@ -129,4 +141,22 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
         : { status: session.status };
     }
   };
+}
+
+function resolveIssueManagerRequestAgentTargetId(
+  agentTargetId: string | null | undefined,
+  provider: string
+): string {
+  const normalizedAgentTargetId = agentTargetId?.trim();
+  if (normalizedAgentTargetId) {
+    return normalizedAgentTargetId;
+  }
+  switch (provider.trim()) {
+    case "codex":
+      return "local:codex";
+    case "claude-code":
+      return "local:claude-code";
+    default:
+      return "";
+  }
 }

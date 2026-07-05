@@ -19,7 +19,7 @@ type AppFactoryService interface {
 	Delete(context.Context, string, string) error
 	Fix(context.Context, string, string, workspaceservice.FixAppFactoryJobInput) (workspacebiz.AppFactoryJob, error)
 	Get(context.Context, string, string) (workspacebiz.AppFactoryJob, error)
-	GetProviderComposerOptions(context.Context, string, workspaceservice.AppFactoryProviderComposerOptionsInput) (agentservice.ComposerOptions, error)
+	GetAgentTargetComposerOptions(context.Context, string, workspaceservice.AppFactoryAgentTargetComposerOptionsInput) (agentservice.ComposerOptions, error)
 	List(context.Context, string) ([]workspacebiz.AppFactoryJob, error)
 	PrepareModification(context.Context, string, string) (workspacebiz.AppFactoryJob, error)
 	Publish(context.Context, string, string) (workspacebiz.AppFactoryJob, workspacebiz.WorkspaceApp, error)
@@ -66,12 +66,18 @@ func (api DaemonAPI) CreateWorkspaceAppFactoryJob(ctx context.Context, request t
 	if strings.TrimSpace(request.Body.DisplayName) == "" {
 		return tuttigenerated.CreateWorkspaceAppFactoryJob400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(apierrors.WithDeveloperMessage("app factory display name is required")))}, nil
 	}
+	if strings.TrimSpace(request.Body.AgentTargetId) == "" {
+		return tuttigenerated.CreateWorkspaceAppFactoryJob400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(
+			apierrors.WithDeveloperMessage("agent target id is required"),
+			apierrors.WithParams(map[string]any{"field": "agentTargetId"}),
+		))}, nil
+	}
 	job, err := api.AppFactoryService.Create(ctx, workspaceID, workspaceservice.CreateAppFactoryJobInput{
-		Prompt:      request.Body.Prompt,
-		DisplayName: request.Body.DisplayName,
-		Description: optionalStringValue(request.Body.Description),
-		Provider:    optionalStringValue(request.Body.Provider),
-		Model:       optionalStringValue(request.Body.Model),
+		Prompt:        request.Body.Prompt,
+		DisplayName:   request.Body.DisplayName,
+		Description:   optionalStringValue(request.Body.Description),
+		AgentTargetID: request.Body.AgentTargetId,
+		Model:         optionalStringValue(request.Body.Model),
 		PermissionModeID: optionalStringValue(
 			request.Body.PermissionModeId,
 		),
@@ -86,24 +92,24 @@ func (api DaemonAPI) CreateWorkspaceAppFactoryJob(ctx context.Context, request t
 	}, nil
 }
 
-func (api DaemonAPI) GetWorkspaceAppFactoryProviderComposerOptions(ctx context.Context, request tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsRequestObject) (tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsResponseObject, error) {
+func (api DaemonAPI) GetWorkspaceAppFactoryAgentTargetComposerOptions(ctx context.Context, request tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestObject) (tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptionsResponseObject, error) {
 	if api.AppFactoryService == nil {
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions503JSONResponse{ServiceUnavailableErrorJSONResponse: workspaceAppFactoryServiceUnavailableError()}, nil
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions503JSONResponse{ServiceUnavailableErrorJSONResponse: workspaceAppFactoryServiceUnavailableError()}, nil
 	}
 	workspaceID := strings.TrimSpace(string(request.WorkspaceID))
 	if workspaceID == "" {
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidWorkspaceIDError()}, nil
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidWorkspaceIDError()}, nil
 	}
-	provider := strings.TrimSpace(string(request.Provider))
-	if provider == "" {
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{
+	agentTargetID := strings.TrimSpace(request.AgentTargetID)
+	if agentTargetID == "" {
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.MalformedRequest(
-				apierrors.WithDeveloperMessage("agent provider is required"),
-				apierrors.WithParams(map[string]any{"field": "provider"}),
+				apierrors.WithDeveloperMessage("agent target id is required"),
+				apierrors.WithParams(map[string]any{"field": "agentTargetId"}),
 			)),
 		}, nil
 	}
-	settings := api.composerDefaultsForProvider(ctx, provider)
+	settings := agentservice.ComposerSettings{}
 	if request.Body != nil && request.Body.Settings != nil {
 		settings = mergeComposerSettings(settings, composerSettingsFromGenerated(*request.Body.Settings))
 	}
@@ -111,15 +117,15 @@ func (api DaemonAPI) GetWorkspaceAppFactoryProviderComposerOptions(ctx context.C
 	if request.Body != nil && request.Body.Locale != nil {
 		locale = string(*request.Body.Locale)
 	}
-	options, err := api.AppFactoryService.GetProviderComposerOptions(ctx, workspaceID, workspaceservice.AppFactoryProviderComposerOptionsInput{
-		Locale:   locale,
-		Provider: provider,
-		Settings: settings,
+	options, err := api.AppFactoryService.GetAgentTargetComposerOptions(ctx, workspaceID, workspaceservice.AppFactoryAgentTargetComposerOptionsInput{
+		AgentTargetID: agentTargetID,
+		Locale:        locale,
+		Settings:      settings,
 	})
 	if err != nil {
-		return writeGetWorkspaceAppFactoryProviderComposerOptionsError(err), nil
+		return writeGetWorkspaceAppFactoryAgentTargetComposerOptionsError(err), nil
 	}
-	return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions200JSONResponse(
+	return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions200JSONResponse(
 		generatedAgentProviderComposerOptions(options),
 	), nil
 }
@@ -273,6 +279,7 @@ func generatedAppFactoryJob(job workspacebiz.AppFactoryJob) tuttigenerated.Works
 		Description:      nullableGeneratedString(job.Description),
 		DisplayName:      strings.TrimSpace(job.DisplayName),
 		FailureReason:    nullableGeneratedString(job.FailureReason),
+		AgentTargetId:    nullableGeneratedString(job.AgentTargetID),
 		JobId:            job.JobID,
 		Model:            nullableGeneratedString(job.Model),
 		Prompt:           job.Prompt,
@@ -348,15 +355,15 @@ func writeCreateWorkspaceAppFactoryJobError(err error) tuttigenerated.CreateWork
 	}
 }
 
-func writeGetWorkspaceAppFactoryProviderComposerOptionsError(err error) tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptionsResponseObject {
+func writeGetWorkspaceAppFactoryAgentTargetComposerOptionsError(err error) tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptionsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound:
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions404JSONResponse{WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr)}
 	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions400JSONResponse{InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr)}
 	default:
-		return tuttigenerated.GetWorkspaceAppFactoryProviderComposerOptions502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
+		return tuttigenerated.GetWorkspaceAppFactoryAgentTargetComposerOptions502JSONResponse{WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr)}
 	}
 }
 

@@ -74,7 +74,7 @@ import {
 } from "./controllerUtils.ts";
 import {
   applyIssueManagerIssueDeleted,
-  applyIssueManagerSelectedAgentProvider,
+  applyIssueManagerSelectedAgentTargetId,
   applyIssueManagerSelectedExecutionDirectory,
   applyIssueManagerTaskDeleted
 } from "./controllerState.ts";
@@ -598,6 +598,7 @@ export function createIssueManagerControllerActions(
       try {
         await feature.agentSessionOpener.openSession({
           agentSessionId,
+          agentTargetId: run.agentTargetId,
           provider: run.agentProvider,
           workspaceId
         });
@@ -649,11 +650,12 @@ export function createIssueManagerControllerActions(
       }
     },
 
-    async runTask(providerOverride?: string) {
+    async runTask(agentTargetIdOverride?: string) {
       const runPlan = createIssueManagerRunTaskPlan({
+        agentTargetOptions: feature.agentTargetOptions?.getOptions(),
+        agentTargetIdOverride,
         issueDetail: issueDetail.value,
-        providerOverride,
-        selectedAgentProvider: nodeState.selectedAgentProvider,
+        selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
       if (runPlan.kind !== "ready") {
@@ -664,9 +666,9 @@ export function createIssueManagerControllerActions(
       if (!currentIssueDetail) {
         return;
       }
-      if (runPlan.shouldUpdateSelectedAgentProvider) {
+      if (runPlan.shouldUpdateSelectedAgentTargetId) {
         updateNodeState((current) =>
-          applyIssueManagerSelectedAgentProvider(current, runPlan.provider)
+          applyIssueManagerSelectedAgentTargetId(current, runPlan.agentTargetId)
         );
       }
 
@@ -684,6 +686,7 @@ export function createIssueManagerControllerActions(
           }
         });
         const result = await executeIssueManagerRunTask({
+          agentTargetId: runPlan.agentTargetId,
           feature,
           issue: currentIssueDetail.issue,
           provider: runPlan.provider,
@@ -709,11 +712,12 @@ export function createIssueManagerControllerActions(
       }
     },
 
-    async startTaskBreakdown(providerOverride?: string) {
+    async startTaskBreakdown(agentTargetIdOverride?: string) {
       const breakdownPlan = createIssueManagerRunTaskPlan({
+        agentTargetOptions: feature.agentTargetOptions?.getOptions(),
+        agentTargetIdOverride,
         issueDetail: issueDetail.value,
-        providerOverride,
-        selectedAgentProvider: nodeState.selectedAgentProvider,
+        selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
       if (breakdownPlan.kind !== "ready") {
@@ -728,11 +732,11 @@ export function createIssueManagerControllerActions(
         notifyTip(copy.t("messages.breakdownUnavailable"));
         return;
       }
-      if (breakdownPlan.shouldUpdateSelectedAgentProvider) {
+      if (breakdownPlan.shouldUpdateSelectedAgentTargetId) {
         updateNodeState((current) =>
-          applyIssueManagerSelectedAgentProvider(
+          applyIssueManagerSelectedAgentTargetId(
             current,
-            breakdownPlan.provider
+            breakdownPlan.agentTargetId
           )
         );
       }
@@ -747,6 +751,7 @@ export function createIssueManagerControllerActions(
           }
         });
         const result = await breakdownLauncher.startBreakdown({
+          agentTargetId: breakdownPlan.agentTargetId,
           ...(nodeState.selectedExecutionDirectory?.trim()
             ? {
                 executionDirectory: nodeState.selectedExecutionDirectory.trim()

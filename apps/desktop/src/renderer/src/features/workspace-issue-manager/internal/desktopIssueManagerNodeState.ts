@@ -13,7 +13,7 @@ type DesktopIssueManagerRestorableNodeState = Pick<
   IssueManagerNodeState,
   | "issueSearchQuery"
   | "issueStatusFilter"
-  | "selectedAgentProvider"
+  | "selectedAgentTargetId"
   | "selectedExecutionDirectory"
   | "selectedIssueId"
   | "taskListCollapsed"
@@ -98,7 +98,7 @@ function defaultIssueManagerNodeState(
   defaultAgentProvider: string | null | undefined
 ): Partial<IssueManagerNodeState> | null {
   const provider = defaultAgentProvider?.trim() ?? "";
-  return provider ? { selectedAgentProvider: provider } : null;
+  return provider ? { selectedAgentTargetId: `local:${provider}` } : null;
 }
 
 function liveIssueManagerNodeState(
@@ -107,7 +107,7 @@ function liveIssueManagerNodeState(
   return {
     issueSearchQuery: state.issueSearchQuery,
     issueStatusFilter: state.issueStatusFilter,
-    selectedAgentProvider: state.selectedAgentProvider,
+    selectedAgentTargetId: state.selectedAgentTargetId,
     selectedExecutionDirectory: state.selectedExecutionDirectory ?? null,
     selectedIssueId: state.selectedIssueId,
     selectedTaskId: state.selectedTaskId,
@@ -122,7 +122,7 @@ function areIssueManagerLiveNodeStatesEqual(
   return (
     previous.issueSearchQuery === next.issueSearchQuery &&
     previous.issueStatusFilter === next.issueStatusFilter &&
-    previous.selectedAgentProvider === next.selectedAgentProvider &&
+    previous.selectedAgentTargetId === next.selectedAgentTargetId &&
     previous.selectedExecutionDirectory === next.selectedExecutionDirectory &&
     previous.selectedIssueId === next.selectedIssueId &&
     previous.selectedTaskId === next.selectedTaskId &&
@@ -136,7 +136,7 @@ function restorableIssueManagerNodeState(
   return {
     issueSearchQuery: state.issueSearchQuery,
     issueStatusFilter: state.issueStatusFilter,
-    selectedAgentProvider: state.selectedAgentProvider,
+    selectedAgentTargetId: state.selectedAgentTargetId,
     selectedExecutionDirectory: state.selectedExecutionDirectory ?? null,
     selectedIssueId: state.selectedIssueId,
     taskListCollapsed: state.taskListCollapsed === true

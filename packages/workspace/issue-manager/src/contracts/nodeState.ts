@@ -7,7 +7,7 @@ export interface IssueManagerNodeState {
   issueListNextPageToken?: string | null;
   issueSearchQuery: string;
   issueStatusFilter: IssueManagerStatus | "all";
-  selectedAgentProvider: string;
+  selectedAgentTargetId: string;
   selectedExecutionDirectory?: string | null;
   selectedIssueId: string | null;
   selectedTaskId: string | null;

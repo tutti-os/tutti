@@ -190,6 +190,7 @@ func defaultRuntimeEnv(input PrepareInput, stateDir string) []string {
 	env := []string{
 		"TUTTI_WORKSPACE_ID=" + strings.TrimSpace(input.WorkspaceID),
 		"TUTTI_AGENT_SESSION_ID=" + strings.TrimSpace(input.AgentSessionID),
+		"TUTTI_AGENT_TARGET_ID=" + strings.TrimSpace(input.AgentTargetID),
 		"TUTTI_AGENT_PROVIDER=" + strings.TrimSpace(input.Provider),
 		"TUTTI_AGENT_CWD=" + strings.TrimSpace(input.Cwd),
 	}

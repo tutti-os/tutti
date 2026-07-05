@@ -251,6 +251,7 @@ export function normalizeWorkspaceAppFactoryJob(
   job: TuttidWorkspaceAppFactoryJob
 ): WorkspaceAppFactoryJob {
   return {
+    agentTargetId: job.agentTargetId,
     agentSessionId: job.agentSessionId,
     appId: job.appId,
     createdAtUnixMs: job.createdAtUnixMs,

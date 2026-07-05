@@ -51,8 +51,8 @@ MVP does not include:
 - Factory job lifecycle
 - generated package staging
 - package validation
-- App Factory provider composer configuration context, including the
-  daemon-owned working directory used for Claude Code live model discovery
+- App Factory agent-target composer configuration context, including the
+  daemon-owned working directory used for provider live model discovery
 - publish, rollback, and catalog pointer changes
 - app package persistence
 - factory and app runtime logs
@@ -64,7 +64,7 @@ MVP does not include:
 - Workbench and Dock behavior
 - host actions such as opening data, log, package, and job folders
 - adapting generated tuttid client calls into package UI actions
-- App Factory provider composer configuration loading through the tuttid
+- App Factory agent-target composer configuration loading through the tuttid
   App Factory endpoint and the shared desktop composer-options projection used
   by Agent GUI
 
@@ -285,14 +285,14 @@ not by a generated app.
 - workspace id and workspace root provided as context
 - package contract instructions
 - current app package content for iteration jobs
-- selected provider and model
+- selected agent target and model; provider is derived from the stored target
 
-Provider/model selection:
+Agent target/model selection:
 
-- the UI may allow explicit provider/model selection
+- the UI may allow explicit agent-target/model selection
 - the default should follow the existing workspace Agent configuration when
   available
-- Codex is the fallback provider
+- Codex's local system target is the fallback target
 
 Factory job progress should expose simplified job state in App Center and link
 to the Agent Session transcript in job details.
@@ -346,7 +346,7 @@ Generated app metadata should include:
 - `source`
 - `createdInWorkspaceId`
 - `factoryJobId`
-- provider/model used for generation
+- `agentTargetId` used for generation plus derived provider/model metadata
 - active version
 - previous versions retained for rollback
 

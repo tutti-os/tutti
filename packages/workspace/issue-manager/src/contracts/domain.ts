@@ -88,6 +88,7 @@ export interface IssueManagerRun {
   workspaceId: string;
   requesterUserId: string;
   agentUserId: string;
+  agentTargetId?: string | null;
   agentSessionId?: string;
   agentProvider: string;
   status: IssueManagerStatus;
@@ -253,8 +254,9 @@ export type IssueManagerAddContextRefsInput =
     });
 
 export interface IssueManagerCreateRunInput extends IssueManagerScope {
-  agentProvider: string;
+  agentProvider?: string;
   agentSessionId?: string;
+  agentTargetId?: string;
   agentUserId?: string;
   executionDirectory?: string;
   issueId: string;

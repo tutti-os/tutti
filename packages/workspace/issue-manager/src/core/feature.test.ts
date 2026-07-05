@@ -12,7 +12,7 @@ describe("normalizeIssueManagerNodeState", () => {
     assert.deepEqual(
       normalizeIssueManagerNodeState({
         issueSearchQuery: "  checkout ",
-        selectedAgentProvider: "  openclaw ",
+        selectedAgentTargetId: "  openclaw ",
         selectedIssueId: " issue-1 ",
         selectedTaskId: "   "
       }),
@@ -20,7 +20,7 @@ describe("normalizeIssueManagerNodeState", () => {
         activeTopicId: null,
         issueSearchQuery: "checkout",
         issueStatusFilter: "all",
-        selectedAgentProvider: "openclaw",
+        selectedAgentTargetId: "openclaw",
         selectedExecutionDirectory: null,
         selectedIssueId: "issue-1",
         selectedTaskId: null,
@@ -34,7 +34,7 @@ describe("normalizeIssueManagerNodeState", () => {
       normalizeIssueManagerNodeState({
         issueSearchQuery: "",
         issueStatusFilter: "all",
-        selectedAgentProvider: "codex",
+        selectedAgentTargetId: "local:codex",
         selectedIssueId: null,
         selectedTaskId: null,
         taskListCollapsed: true
@@ -46,7 +46,7 @@ describe("normalizeIssueManagerNodeState", () => {
       normalizeIssueManagerNodeState({
         issueSearchQuery: "",
         issueStatusFilter: "all",
-        selectedAgentProvider: "codex",
+        selectedAgentTargetId: "local:codex",
         selectedIssueId: null,
         selectedTaskId: null,
         taskListCollapsed: null

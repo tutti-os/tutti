@@ -104,7 +104,7 @@ test("createIssueManagerControllerService creates sessions with a live store", a
   await Promise.resolve();
   await Promise.resolve();
 
-  assert.equal(session.store.nodeState.selectedAgentProvider, "codex");
+  assert.equal(session.store.nodeState.selectedAgentTargetId, "local:codex");
   assert.deepEqual(session.getSnapshot().issues.value, []);
 
   session.release();

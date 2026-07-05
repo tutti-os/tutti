@@ -77,6 +77,7 @@ export interface WorkspaceAppCardViewModel {
   readonly errorMessage?: string;
   readonly installProgress?: WorkspaceAppInstallProgress | null;
   readonly factoryEditAction?: WorkspaceAppFactoryEditAction | null;
+  readonly factoryAgentTargetId?: string | null;
   readonly factoryAgentSessionId?: string | null;
   readonly factoryJobId?: string | null;
   readonly factoryProvider?: string | null;
@@ -109,6 +110,7 @@ export interface WorkspaceAppFactoryJobViewModel {
   readonly appId?: string | null;
   readonly title: string;
   readonly prompt: string;
+  readonly agentTargetId?: string | null;
   readonly provider?: string | null;
   readonly status: WorkspaceAppFactoryJobStatus;
   readonly statusLabelKey: string;

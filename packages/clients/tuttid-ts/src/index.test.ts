@@ -1076,9 +1076,9 @@ test("shared tuttid client loads app factory provider composer options", async (
     }
   });
 
-  const result = await client.getWorkspaceAppFactoryProviderComposerOptions(
+  const result = await client.getWorkspaceAppFactoryAgentTargetComposerOptions(
     "workspace-1",
-    "claude-code",
+    "local:claude-code",
     {
       settings: {
         reasoningEffort: "high"
@@ -1089,7 +1089,7 @@ test("shared tuttid client loads app factory provider composer options", async (
   assert.equal(requestMethod, "POST");
   assert.equal(
     requestPath,
-    "/v1/workspaces/workspace-1/app-factory/providers/claude-code/composer-options"
+    "/v1/workspaces/workspace-1/app-factory/agent-targets/local%3Aclaude-code/composer-options"
   );
   assert.deepEqual(requestBody, {
     settings: {

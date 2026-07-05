@@ -30,9 +30,9 @@ creator_avatar_url, latest_run_id, created_at_unix_ms, updated_at_unix_ms`
 
 const runSelectColumns = `
 id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-agent_session_id, agent_provider, status, summary, error_message, output_dir,
-execution_directory, created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
-updated_at_unix_ms`
+agent_target_id, agent_session_id, agent_provider, status, summary,
+error_message, output_dir, execution_directory, created_at_unix_ms,
+started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms`
 
 const runOutputSelectColumns = `
 id, output_id, run_id, task_id, issue_id, workspace_id, path, display_name,
@@ -466,14 +466,14 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run workspaceissues.Run) (w
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO workspace_issue_runs (
   run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_session_id, agent_provider, status, summary, error_message, output_dir,
-  execution_directory, created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
-  updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  agent_target_id, agent_session_id, agent_provider, status, summary,
+  error_message, output_dir, execution_directory, created_at_unix_ms,
+  started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, run.RunID, run.TaskID, run.IssueID, run.WorkspaceID, run.RequesterUserID, run.AgentUserID,
-		run.AgentSessionID, run.AgentProvider, string(run.Status), run.Summary, run.ErrorMessage,
-		run.OutputDir, run.ExecutionDirectory, run.CreatedAtUnixMS, run.StartedAtUnixMS,
-		run.CompletedAtUnixMS, run.UpdatedAtUnixMS)
+		run.AgentTargetID, run.AgentSessionID, run.AgentProvider, string(run.Status), run.Summary,
+		run.ErrorMessage, run.OutputDir, run.ExecutionDirectory, run.CreatedAtUnixMS,
+		run.StartedAtUnixMS, run.CompletedAtUnixMS, run.UpdatedAtUnixMS)
 	if err != nil {
 		if isSQLiteUniqueConstraintError(err) {
 			return workspaceissues.Run{}, workspaceissues.ErrRunAlreadyExists

@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS app_factory_jobs (
   app_id TEXT NOT NULL DEFAULT '',
   display_name TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
+  agent_target_id TEXT NOT NULL DEFAULT '',
   provider TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
   agent_session_id TEXT NOT NULL DEFAULT '',
@@ -252,6 +253,45 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationAppFactoryJobsV2, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database app factory jobs v2: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyAppFactoryJobsV3(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationAppFactoryJobsV3)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	hasAgentTargetID, err := s.hasColumn(ctx, "app_factory_jobs", "agent_target_id")
+	if err != nil {
+		return err
+	}
+	if !hasAgentTargetID {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE app_factory_jobs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT '';
+`); err != nil {
+			return fmt.Errorf("migrate workspace app factory jobs agent target id: %w", err)
+		}
+	}
+
+	now := unixMs(time.Now().UTC())
+	_, err = s.db.ExecContext(ctx, `
+UPDATE app_factory_jobs
+SET agent_target_id = CASE provider
+  WHEN 'codex' THEN 'local:codex'
+  WHEN 'claude-code' THEN 'local:claude-code'
+  ELSE agent_target_id
+END
+WHERE agent_target_id = '';
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationAppFactoryJobsV3, now)
+	if err != nil {
+		return fmt.Errorf("record workspace app factory jobs v3 migration: %w", err)
 	}
 	return nil
 }

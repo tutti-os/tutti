@@ -25,6 +25,19 @@ test("app factory provider defaults prefer configured provider when available", 
   );
 });
 
+test("app factory provider defaults map legacy configured provider to agent target", () => {
+  assert.equal(
+    resolveDefaultAppFactoryProvider(
+      [
+        { agentTargetId: "local:codex", provider: "codex" },
+        { agentTargetId: "local:claude-code", provider: "claude-code" }
+      ],
+      "claude-code"
+    ),
+    "local:claude-code"
+  );
+});
+
 test("app factory provider defaults fall back to first enabled provider", () => {
   assert.equal(
     resolveDefaultAppFactoryProvider([
@@ -52,6 +65,16 @@ test("app factory selected provider keeps valid existing selection", () => {
       { provider: "codex" }
     ]),
     "claude-code"
+  );
+});
+
+test("app factory selected provider maps legacy selection to agent target", () => {
+  assert.equal(
+    resolveSelectedAppFactoryProvider("claude-code", [
+      { agentTargetId: "local:claude-code", provider: "claude-code" },
+      { agentTargetId: "local:codex", provider: "codex" }
+    ]),
+    "local:claude-code"
   );
 });
 

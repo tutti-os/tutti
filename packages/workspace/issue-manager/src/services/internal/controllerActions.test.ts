@@ -104,7 +104,7 @@ test("controller actions attach task references through requestReferences and re
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-9"
     }
@@ -165,7 +165,7 @@ test("controller actions open the reference picker when the adapter supports bro
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     }
@@ -186,7 +186,7 @@ test("controller actions create task drafts from snapshot node state", () => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1",
       taskDraftContent: "Resume task body",
@@ -279,7 +279,7 @@ test("controller actions save created issues and sync extracted issue references
     issueDraftTitle: null,
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-2",
     selectedTaskId: null
   });
@@ -313,7 +313,7 @@ test("controller actions save edited issues without reporting created", async ()
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -382,7 +382,7 @@ test("controller actions save edited issues removes stale content references wit
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -431,7 +431,7 @@ test("controller actions delete selected issues after confirmation", async (t) =
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     }
@@ -455,7 +455,7 @@ test("controller actions delete selected issues after confirmation", async (t) =
   assert.deepEqual(harness.nodeState.current, {
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: null,
     selectedTaskId: null
   });
@@ -486,7 +486,7 @@ test("controller actions delete selected tasks after confirmation", async (t) =>
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-7"
     }
@@ -514,7 +514,7 @@ test("controller actions delete selected tasks after confirmation", async (t) =>
   assert.deepEqual(harness.nodeState.current, {
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-1",
     selectedTaskId: null
   });
@@ -550,7 +550,7 @@ test("controller actions save edited tasks and only attach missing task referenc
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -645,7 +645,7 @@ test("controller actions save edited tasks removes stale content references with
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -812,6 +812,7 @@ test("controller actions open agent sessions from issue runs", async () => {
   assert.deepEqual(openCalls, [
     {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
+      agentTargetId: "local:codex",
       provider: "codex",
       workspaceId: "workspace-1"
     }
@@ -857,7 +858,7 @@ test("controller actions update an issue-level execution task status without sel
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -927,7 +928,7 @@ test("controller actions move tasks within one status column and persist sort or
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -1002,7 +1003,7 @@ test("controller actions move done tasks back into review", async () => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -1092,7 +1093,7 @@ test("controller actions run selected task through task-scoped handoff", async (
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -1186,7 +1187,7 @@ test("controller actions run selected issues without selected subtasks", async (
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     },
@@ -1266,7 +1267,7 @@ test("controller actions run issue once when no task is selected", async () => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     },
@@ -1324,7 +1325,7 @@ test("controller actions honor provider overrides from the run entry menu", asyn
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -1336,15 +1337,19 @@ test("controller actions honor provider overrides from the run entry menu", asyn
     }
   });
 
-  await harness.actions.runTask("claude");
+  await harness.actions.runTask("local:claude-code");
 
   assert.equal(runnerCalls.length, 1);
   assert.equal("agentSessionId" in (runnerCalls[0] ?? {}), false);
   assert.deepEqual(runnerCalls[0]?.issue, issue);
-  assert.equal(runnerCalls[0]?.provider, "claude");
+  assert.equal(runnerCalls[0]?.agentTargetId, "local:claude-code");
+  assert.equal(runnerCalls[0]?.provider, "claude-code");
   assert.deepEqual(runnerCalls[0]?.task, task);
   assert.deepEqual(createRunCalls, []);
-  assert.equal(harness.nodeState.current.selectedAgentProvider, "claude");
+  assert.equal(
+    harness.nodeState.current.selectedAgentTargetId,
+    "local:claude-code"
+  );
 });
 
 test("controller actions open agent task breakdown with a provider override", async () => {
@@ -1384,17 +1389,18 @@ test("controller actions open agent task breakdown with a provider override", as
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
   });
 
-  await harness.actions.startTaskBreakdown("gemini");
+  await harness.actions.startTaskBreakdown("local:gemini");
 
   assert.deepEqual(breakdownCalls, [
     {
+      agentTargetId: "local:gemini",
       executionDirectory: "/Users/example/project/tutti",
       issueDetail: {
         contextRefs: [createIssueContextRef({ path: "/workspace/spec.md" })],
@@ -1416,7 +1422,7 @@ test("controller actions open agent task breakdown with a provider override", as
       }
     }
   ]);
-  assert.equal(harness.nodeState.current.selectedAgentProvider, "gemini");
+  assert.equal(harness.nodeState.current.selectedAgentTargetId, "local:gemini");
   assert.deepEqual(harness.isRunningTaskState.history, [true, false]);
   assert.deepEqual(harness.notificationState.history, []);
 });
@@ -1436,7 +1442,7 @@ test("controller actions report unavailable agent task breakdown", async () => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -1478,7 +1484,7 @@ test("controller actions report run result error messages", async () => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -1552,7 +1558,7 @@ test("controller actions report run failures when the runner throws", async () =
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -1598,7 +1604,7 @@ test("controller actions share the selected issue and task through the clipboard
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },

@@ -194,7 +194,7 @@ function createTransportClient(
     async getWorkspaceAppFactoryJob() {
       throw new Error("not used");
     },
-    async getWorkspaceAppFactoryProviderComposerOptions() {
+    async getWorkspaceAppFactoryAgentTargetComposerOptions() {
       throw new Error("not used");
     },
     async getAgentProviderComposerOptions() {

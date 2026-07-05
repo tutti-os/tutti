@@ -304,10 +304,11 @@ func scanWorkspaceIssueRun(scanner issueScanner) (workspaceissues.Run, error) {
 	var status string
 	err := scanner.Scan(
 		&id, &item.RunID, &item.TaskID, &item.IssueID, &item.WorkspaceID,
-		&item.RequesterUserID, &item.AgentUserID, &item.AgentSessionID,
-		&item.AgentProvider, &status, &item.Summary, &item.ErrorMessage,
-		&item.OutputDir, &item.ExecutionDirectory, &item.CreatedAtUnixMS,
-		&item.StartedAtUnixMS, &item.CompletedAtUnixMS, &item.UpdatedAtUnixMS,
+		&item.RequesterUserID, &item.AgentUserID, &item.AgentTargetID,
+		&item.AgentSessionID, &item.AgentProvider, &status, &item.Summary,
+		&item.ErrorMessage, &item.OutputDir, &item.ExecutionDirectory,
+		&item.CreatedAtUnixMS, &item.StartedAtUnixMS, &item.CompletedAtUnixMS,
+		&item.UpdatedAtUnixMS,
 	)
 	item.ID = uint64(id)
 	item.Status = workspaceissues.Status(status)

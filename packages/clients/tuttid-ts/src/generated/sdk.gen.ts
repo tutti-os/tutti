@@ -142,12 +142,12 @@ import type {
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
   GetWorkspaceAppFactoryJobData,
   GetWorkspaceAppFactoryJobErrors,
   GetWorkspaceAppFactoryJobResponses,
-  GetWorkspaceAppFactoryProviderComposerOptionsData,
-  GetWorkspaceAppFactoryProviderComposerOptionsErrors,
-  GetWorkspaceAppFactoryProviderComposerOptionsResponses,
   GetWorkspaceData,
   GetWorkspaceErrors,
   GetWorkspaceFileTreeSnapshotData,
@@ -1316,26 +1316,26 @@ export const createWorkspaceAppFactoryJob = <
   });
 
 /**
- * Get App Factory provider composer options
+ * Get App Factory agent target composer options
  *
- * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and provider selection, while tuttid owns the working directory used for provider discovery.
+ * Resolves provider composer options for App Factory using daemon-owned workspace and factory draft context. Clients provide workspace and agent target selection, while tuttid owns the working directory used for provider discovery.
  *
  */
-export const getWorkspaceAppFactoryProviderComposerOptions = <
+export const getWorkspaceAppFactoryAgentTargetComposerOptions = <
   ThrowOnError extends boolean = false
 >(
   options: Options<
-    GetWorkspaceAppFactoryProviderComposerOptionsData,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
     ThrowOnError
   >
 ) =>
   (options.client ?? client).post<
-    GetWorkspaceAppFactoryProviderComposerOptionsResponses,
-    GetWorkspaceAppFactoryProviderComposerOptionsErrors,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options",
+    url: "/v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",

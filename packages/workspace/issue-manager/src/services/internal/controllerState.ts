@@ -80,13 +80,13 @@ export function applyIssueManagerTaskDeleted(
   };
 }
 
-export function applyIssueManagerSelectedAgentProvider(
+export function applyIssueManagerSelectedAgentTargetId(
   current: IssueManagerNodeState,
-  provider: string
+  agentTargetId: string
 ): IssueManagerNodeState {
   return {
     ...current,
-    selectedAgentProvider: provider
+    selectedAgentTargetId: agentTargetId
   };
 }
 

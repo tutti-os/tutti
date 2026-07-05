@@ -122,6 +122,7 @@ type CreateRunInput struct {
 	IssueID            string
 	WorkspaceID        string
 	ActorUserID        string
+	AgentTargetID      string
 	AgentProvider      string
 	AgentUserID        string
 	AgentSessionID     string
@@ -245,8 +246,15 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 	issueID := strings.TrimSpace(input.IssueID)
 	taskID := strings.TrimSpace(input.TaskID)
 	actorUserID := strings.TrimSpace(input.ActorUserID)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	agentProvider := strings.ToLower(strings.TrimSpace(input.AgentProvider))
-	if workspaceID == "" || issueID == "" || actorUserID == "" || agentProvider == "" {
+	if agentTargetID == "" {
+		agentTargetID = legacyAgentTargetIDForProvider(agentProvider)
+	}
+	if agentProvider == "" {
+		agentProvider = agentProviderForAgentTargetID(agentTargetID)
+	}
+	if workspaceID == "" || issueID == "" || actorUserID == "" || agentTargetID == "" {
 		return Run{}, ErrInvalidArgument
 	}
 	issue, task, err := getRunParent(ctx, store, workspaceID, issueID, taskID)
@@ -268,6 +276,7 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		IssueID:            issue.IssueID,
 		WorkspaceID:        issue.WorkspaceID,
 		RequesterUserID:    actorUserID,
+		AgentTargetID:      agentTargetID,
 		AgentProvider:      agentProvider,
 		AgentUserID:        firstNonEmpty(input.AgentUserID, actorUserID),
 		AgentSessionID:     strings.TrimSpace(input.AgentSessionID),
@@ -297,6 +306,26 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		return Run{}, err
 	}
 	return created, nil
+}
+
+func legacyAgentTargetIDForProvider(provider string) string {
+	switch strings.TrimSpace(provider) {
+	case "codex":
+		return "local:codex"
+	case "claude-code":
+		return "local:claude-code"
+	default:
+		return ""
+	}
+}
+
+func agentProviderForAgentTargetID(agentTargetID string) string {
+	const localPrefix = "local:"
+	agentTargetID = strings.TrimSpace(agentTargetID)
+	if strings.HasPrefix(agentTargetID, localPrefix) {
+		return strings.TrimPrefix(agentTargetID, localPrefix)
+	}
+	return ""
 }
 
 func (s Service) ensureIssueRunTask(ctx context.Context, store Store, issue Issue, actorUserID string) (*Task, error) {

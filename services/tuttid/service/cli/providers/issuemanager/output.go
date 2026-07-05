@@ -34,6 +34,7 @@ var runColumns = []cliservice.TableColumn{
 	{Key: "id", Label: "ID"},
 	{Key: "status", Label: "Status"},
 	{Key: "agentProvider", Label: "Provider"},
+	{Key: "agentTargetId", Label: "Target"},
 	{Key: "agentSessionId", Label: "Session"},
 	{Key: "updatedAt", Label: "Updated"},
 }
@@ -87,6 +88,7 @@ func runRows(items []workspaceissues.Run) []map[string]any {
 			"id":             run.RunID,
 			"status":         string(run.Status),
 			"agentProvider":  run.AgentProvider,
+			"agentTargetId":  run.AgentTargetID,
 			"agentSessionId": run.AgentSessionID,
 			"updatedAt":      run.UpdatedAtUnixMS,
 		})
@@ -187,6 +189,7 @@ func runSummaryValue(item workspaceissues.Run) map[string]any {
 		"issueId":        item.IssueID,
 		"status":         string(item.Status),
 		"agentProvider":  item.AgentProvider,
+		"agentTargetId":  item.AgentTargetID,
 		"agentSessionId": item.AgentSessionID,
 	}
 }
@@ -199,6 +202,7 @@ func runDetailValue(item workspaceissues.Run) map[string]any {
 		"workspaceId":        item.WorkspaceID,
 		"requesterUserId":    item.RequesterUserID,
 		"agentUserId":        item.AgentUserID,
+		"agentTargetId":      item.AgentTargetID,
 		"agentSessionId":     item.AgentSessionID,
 		"agentProvider":      item.AgentProvider,
 		"status":             string(item.Status),

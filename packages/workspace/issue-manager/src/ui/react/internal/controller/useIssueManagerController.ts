@@ -6,7 +6,7 @@ import type {
 import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
-  IssueManagerAgentProviderOption,
+  IssueManagerAgentTargetOption,
   IssueManagerContextRef,
   IssueManagerFileReference,
   IssueManagerIssueDetail,
@@ -27,7 +27,7 @@ import type { IssueManagerFeature } from "../../../../core/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../../i18n/issueManagerI18n.ts";
 import type { IssueManagerControllerService } from "../../../../services/issueManagerControllerService.interface.ts";
 import {
-  resolveIssueManagerAgentProviderOptions,
+  resolveIssueManagerAgentTargetOptions,
   resolveIssueManagerControllerCapabilities
 } from "./IssueManagerControllerCapabilities.ts";
 import type { IssueManagerFloatingNoticeViewState } from "../shell/IssueManagerNoticeState.ts";
@@ -98,13 +98,13 @@ export interface IssueManagerController {
     taskId: string;
     visibleTaskIds?: readonly string[];
   }) => Promise<void>;
-  providerOptions: readonly IssueManagerAgentProviderOption[];
+  agentTargetOptions: readonly IssueManagerAgentTargetOption[];
   executionDirectoryProjectService: WorkspaceUserProjectService | null;
   reportIssueSearchUsage: (query: string) => void;
   refreshAll: () => void;
   referenceTarget: IssueManagerReferenceTarget | null;
   removeContextRef: (ref: IssueManagerContextRef) => Promise<void>;
-  runTask: (providerOverride?: string) => Promise<void>;
+  runTask: (agentTargetIdOverride?: string) => Promise<void>;
   saveIssue: () => Promise<void>;
   saveTask: () => Promise<void>;
   setTaskStatus: (
@@ -129,7 +129,7 @@ export interface IssueManagerController {
   ) => void;
   setIssueTitle: (title: string) => void;
   setReferenceTarget: (target: IssueManagerReferenceTarget | null) => void;
-  setSelectedAgentProvider: (provider: string) => void;
+  setSelectedAgentTargetId: (agentTargetId: string) => void;
   useExecutionDirectory: (path: string | null) => Promise<void>;
   setTaskContent: (content: string) => void;
   setTaskDraft: (patch: Partial<TaskDraft>) => void;
@@ -138,7 +138,7 @@ export interface IssueManagerController {
   setTaskPriority: (priority: IssueManagerPriority) => void;
   setTaskTitle: (title: string) => void;
   shareSelection: () => Promise<void>;
-  startTaskBreakdown: (providerOverride?: string) => Promise<void>;
+  startTaskBreakdown: (agentTargetIdOverride?: string) => Promise<void>;
   submitReferenceSelection: (
     refs: IssueManagerFileReference[]
   ) => Promise<void>;
@@ -206,14 +206,14 @@ export function useIssueManagerController({
     () => resolveIssueManagerControllerCapabilities(feature),
     [feature]
   );
-  const [providerOptions, setProviderOptions] = useState(() =>
-    resolveIssueManagerAgentProviderOptions(feature)
+  const [agentTargetOptions, setAgentTargetOptions] = useState(() =>
+    resolveIssueManagerAgentTargetOptions(feature)
   );
 
   useEffect(() => {
-    setProviderOptions(resolveIssueManagerAgentProviderOptions(feature));
-    return feature.agentProviderOptions?.subscribe?.(() => {
-      setProviderOptions(resolveIssueManagerAgentProviderOptions(feature));
+    setAgentTargetOptions(resolveIssueManagerAgentTargetOptions(feature));
+    return feature.agentTargetOptions?.subscribe?.(() => {
+      setAgentTargetOptions(resolveIssueManagerAgentTargetOptions(feature));
     });
   }, [feature]);
 
@@ -315,7 +315,7 @@ export function useIssueManagerController({
         workspaceId
       });
     },
-    providerOptions,
+    agentTargetOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,
     workspaceUserProjectI18n: feature.workspaceUserProjectI18n,

@@ -48,7 +48,7 @@ test("controllerOutcomes applies controller glue in one place", () => {
   let currentNodeState: IssueManagerNodeState = {
     issueSearchQuery: "",
     issueStatusFilter: "all" as const,
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-1",
     selectedTaskId: "task-1"
   };
@@ -176,7 +176,7 @@ test("controllerOutcomes describe issue-save local transitions", () => {
       issueDraftTitle: "Draft title",
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-2"
     }),
@@ -185,7 +185,7 @@ test("controllerOutcomes describe issue-save local transitions", () => {
       issueDraftTitle: null,
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-9",
       selectedTaskId: "task-2"
     }
@@ -201,7 +201,7 @@ test("controllerOutcomes describe task-save local transitions", () => {
     outcome.nodeState!({
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-2",
       taskDraftContent: "Draft",
@@ -210,7 +210,7 @@ test("controllerOutcomes describe task-save local transitions", () => {
     {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-9",
       taskDraftContent: null,

@@ -1388,33 +1388,34 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options:
+  /v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
-      - name: provider
+      - name: agentTargetID
         in: path
         required: true
         schema:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
+          type: string
+          minLength: 1
     post:
-      operationId: getWorkspaceAppFactoryProviderComposerOptions
+      operationId: getWorkspaceAppFactoryAgentTargetComposerOptions
       tags:
         - app-factory
-      summary: Get App Factory provider composer options
+      summary: Get App Factory agent target composer options
       description: >
         Resolves provider composer options for App Factory using daemon-owned
         workspace and factory draft context. Clients provide workspace and
-        provider selection, while tuttid owns the working directory used for
-        provider discovery.
+        agent target selection, while tuttid owns the working directory used
+        for provider discovery.
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GetWorkspaceAppFactoryProviderComposerOptionsRequest"
+              $ref: "#/components/schemas/GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest"
       responses:
         "200":
-          description: App Factory provider composer options
+          description: App Factory agent target composer options
           content:
             application/json:
               schema:
@@ -5160,6 +5161,7 @@ components:
         - appId
         - displayName
         - description
+        - agentTargetId
         - provider
         - model
         - reasoningEffort
@@ -5187,6 +5189,9 @@ components:
           type: string
           minLength: 1
         description:
+          type: string
+          nullable: true
+        agentTargetId:
           type: string
           nullable: true
         provider:
@@ -5221,6 +5226,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - agentTargetId
         - displayName
         - prompt
       properties:
@@ -5232,8 +5238,12 @@ components:
           minLength: 1
         description:
           type: string
+        agentTargetId:
+          type: string
+          minLength: 1
         provider:
           type: string
+          deprecated: true
         model:
           type: string
         permissionModeId:
@@ -5644,7 +5654,7 @@ components:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
-    GetWorkspaceAppFactoryProviderComposerOptionsRequest:
+    GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest:
       type: object
       additionalProperties: false
       properties:

@@ -148,10 +148,10 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
   }
 
   async createFactoryJob(input: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
-    provider?: string;
     prompt: string;
     reasoningEffort?: string;
     workspaceId: string;
@@ -163,13 +163,11 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
       await this.dependencies.gateway.createWorkspaceAppFactoryJob(
         input.workspaceId,
         {
+          agentTargetId: input.agentTargetId,
           displayName: input.displayName,
           ...(input.model?.trim() ? { model: input.model.trim() } : {}),
           ...(input.permissionModeId?.trim()
             ? { permissionModeId: input.permissionModeId.trim() }
-            : {}),
-          ...(input.provider?.trim()
-            ? { provider: input.provider.trim() }
             : {}),
           prompt: input.prompt,
           ...(input.reasoningEffort?.trim()

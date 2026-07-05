@@ -553,7 +553,7 @@ func TestRunDynamicScopeHelpShowsRequiredFlagsForBuiltinCommands(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/cli/capabilities":
 			_, _ = w.Write([]byte(`{"commands":[
-        {"id":"issue-manager.issue.run.create","path":["issue","run","create"],"summary":"Create issue run","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"},"agent-provider":{"type":"string"},"agent-session-id":{"type":"string"}},"required":["agent-provider","agent-session-id","issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
+        {"id":"issue-manager.issue.run.create","path":["issue","run","create"],"summary":"Create issue run","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"},"agent-target-id":{"type":"string"},"agent-session-id":{"type":"string"}},"required":["agent-target-id","agent-session-id","issue-id"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
         {"id":"issue-manager.issue.run.complete","path":["issue","run","complete"],"summary":"Complete issue run","inputSchema":{"type":"object","properties":{"issue-id":{"type":"string"},"run-id":{"type":"string"},"status":{"type":"string"}},"required":["issue-id","run-id","status"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
         {"id":"issue-manager.issue.topic.list","path":["issue","topic","list"],"summary":"List issue topics","output":{"defaultMode":"table","json":true},"source":{"kind":"builtin"}},
         {"id":"issue-manager.issue.topic.create","path":["issue","topic","create"],"summary":"Create issue topic","inputSchema":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]},"output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}},
@@ -588,7 +588,7 @@ func TestRunDynamicScopeHelpShowsRequiredFlagsForBuiltinCommands(t *testing.T) {
 		"get    Get issue detail  required: --issue-id <value>",
 		"list   List issues  required: --topic-id <value>",
 		"run    2 commands",
-		"create    Create issue run  required: --agent-provider <value> --agent-session-id <value> --issue-id <value>",
+		"create    Create issue run  required: --agent-target-id <value> --agent-session-id <value> --issue-id <value>",
 		"complete  Complete issue run  required: --issue-id <value> --run-id <value> --status <value>",
 		"topic  4 commands",
 		"create  Create issue topic  required: --title <value>",

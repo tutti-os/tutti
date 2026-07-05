@@ -73,7 +73,7 @@ export function createControllerActionsHarness(input?: {
     input?.nodeState ?? {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: null,
       selectedTaskId: null
     }
@@ -390,6 +390,7 @@ export function createTaskSummary(
 export function createRun(input: {
   agentProvider?: string;
   agentSessionId?: string;
+  agentTargetId?: string;
   agentUserId?: string;
   completedAtUnix?: number;
   createdAtUnix?: number;
@@ -408,6 +409,7 @@ export function createRun(input: {
 }): IssueManagerRun {
   const run: IssueManagerRun = {
     agentProvider: input.agentProvider ?? "codex",
+    agentTargetId: input.agentTargetId ?? "local:codex",
     agentUserId: input.agentUserId ?? "local",
     issueId: input.issueId,
     requesterUserId: input.requesterUserId ?? "local",

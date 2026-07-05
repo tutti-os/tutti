@@ -3,7 +3,7 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type {
-  IssueManagerAgentProviderOptionsAdapter,
+  IssueManagerAgentTargetOptionsAdapter,
   IssueManagerFileReference
 } from "@tutti-os/workspace-issue-manager/contracts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -41,7 +41,7 @@ export { createDesktopIssueManagerNodeStateSource } from "./internal/desktopIssu
 export { createDesktopIssueManagerIdentityAdapter };
 
 export function createDesktopIssueManagerFeature(input: {
-  agentProviderOptions?: IssueManagerAgentProviderOptionsAdapter;
+  agentTargetOptions?: IssueManagerAgentTargetOptionsAdapter;
   agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   hostFilesApi: DesktopHostFilesApi;
   i18n: I18nRuntime<string>;
@@ -107,7 +107,7 @@ export function createDesktopIssueManagerFeature(input: {
       reporterNow: input.reporterNow,
       reporterService: input.reporterService
     }),
-    agentProviderOptions: input.agentProviderOptions,
+    agentTargetOptions: input.agentTargetOptions,
     agentRunner: createDesktopIssueManagerAgentRunner({
       agentSessionCreator: input.agentSessionCreator,
       i18n: input.i18n,
@@ -119,6 +119,7 @@ export function createDesktopIssueManagerFeature(input: {
           openSession: (request) =>
             input.launchAgentGui?.({
               agentSessionId: request.agentSessionId,
+              agentTargetId: request.agentTargetId,
               provider: request.provider?.trim() || "codex",
               workspaceId: request.workspaceId
             })

@@ -90,7 +90,7 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Path:        []string{"issue", "task", "run", "create"},
 			Summary:     "Create an issue task run",
 			Description: "Create a task run.",
-			InputSchema: map[string]any{"required": []any{"issue-id", "task-id", "agent-provider"}},
+			InputSchema: map[string]any{"required": []any{"issue-id", "task-id", "agent-target-id"}},
 		},
 		{
 			ID:          "agent-context.agent.sessions",
@@ -168,10 +168,10 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 		!strings.Contains(guide, "array order") {
 		t.Fatalf("guide missing breakdown task create-batch guidance: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti issue task run create --agent-provider <agent-provider> --issue-id <issue-id> --task-id <task-id> --json") {
+	if !strings.Contains(guide, "tutti issue task run create --agent-target-id <agent-target-id> --issue-id <issue-id> --task-id <task-id> --json") {
 		t.Fatalf("guide missing issue task run create: %q", guide)
 	}
-	if strings.Contains(guide, "run create --agent-provider <agent-provider> --agent-session-id") {
+	if strings.Contains(guide, "run create --agent-target-id <agent-target-id> --agent-session-id") {
 		t.Fatalf("guide should not require explicit agent session ids for run create: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti issue task run complete --issue-id <issue-id> --run-id <run-id> --status <status> --task-id <task-id> --summary <summary>") {
@@ -354,11 +354,11 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	if !strings.Contains(guide, "tutti-dev issue update --issue-id <issue-id> --status completed --json") {
 		t.Fatalf("guide = %q, want tutti-dev issue update fallback command", guide)
 	}
-	if !strings.Contains(guide, "tutti-dev issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --json") ||
+	if !strings.Contains(guide, "tutti-dev issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id <agent-target-id> --json") ||
 		!strings.Contains(guide, "binds the current AgentGUI session from runtime context") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run create fallback command", guide)
 	}
-	if strings.Contains(guide, "run create --issue-id <issue-id> --task-id <task-id> --agent-provider <provider> --agent-session-id") {
+	if strings.Contains(guide, "run create --issue-id <issue-id> --task-id <task-id> --agent-target-id <agent-target-id> --agent-session-id") {
 		t.Fatalf("fallback guide should not require explicit agent session ids: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev issue task create --issue-id <issue-id> --title <title> --content <content> --json") ||

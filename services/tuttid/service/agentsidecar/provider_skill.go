@@ -31,6 +31,7 @@ func tuttiCLISkill(input PrepareInput) string {
 		map[string]string{
 			"{{COMMAND_SUMMARY}}":  commandGuideSummary(input),
 			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
+			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},
@@ -41,6 +42,7 @@ func issueManagerSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/issue-manager.md",
 		map[string]string{
+			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},

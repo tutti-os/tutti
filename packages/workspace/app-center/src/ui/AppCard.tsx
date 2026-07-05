@@ -40,6 +40,7 @@ import { isCommunityRecommendedApp } from "../core/appCenterAppOrdering.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 
 export interface AppCenterFactoryProviderOption {
+  readonly agentTargetId: string;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
   readonly iconUrl?: string | null;
@@ -75,10 +76,10 @@ export interface AppCenterFactoryProviderConfiguration {
 export interface AppCenterHostActions {
   readonly cancelFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly createFactoryJob?: (input: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
-    provider?: string;
     prompt: string;
     reasoningEffort?: string;
   }) => Promise<void> | void;
@@ -105,12 +106,14 @@ export interface AppCenterHostActions {
   readonly openExternalUrl?: (url: string) => Promise<void> | void;
   readonly openFactoryJobAgentSession?: (
     agentSessionId: string,
-    provider?: string | null
+    provider?: string | null,
+    agentTargetId?: string | null
   ) => Promise<void> | void;
   readonly modifyAppWithAgent?: (
     jobId: string,
     agentSessionId: string,
-    provider?: string | null
+    provider?: string | null,
+    agentTargetId?: string | null
   ) => Promise<void> | void;
   readonly publishFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly repairLocalApp?: (
@@ -787,14 +790,16 @@ function AppCardMoreActions({
         if (app.factoryEditAction === "open_session") {
           void actions.openFactoryJobAgentSession?.(
             app.factoryAgentSessionId ?? "",
-            app.factoryProvider
+            app.factoryProvider,
+            app.factoryAgentTargetId
           );
           return;
         }
         void actions.modifyAppWithAgent?.(
           app.factoryJobId ?? "",
           app.factoryAgentSessionId ?? "",
-          app.factoryProvider
+          app.factoryProvider,
+          app.factoryAgentTargetId
         );
       }
     });

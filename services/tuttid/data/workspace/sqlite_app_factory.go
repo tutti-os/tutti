@@ -36,17 +36,18 @@ func (s *SQLiteStore) PutAppFactoryJob(ctx context.Context, job workspacebiz.App
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO app_factory_jobs (
   workspace_id, job_id, status, prompt, app_id, display_name, description,
-  provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
+  agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
   package_dir, validation_result_json, failure_reason, published_version,
   created_at_unix_ms, updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, job_id) DO UPDATE SET
   status = excluded.status,
   prompt = excluded.prompt,
   app_id = excluded.app_id,
   display_name = excluded.display_name,
   description = excluded.description,
+  agent_target_id = excluded.agent_target_id,
   provider = excluded.provider,
   model = excluded.model,
   reasoning_effort = excluded.reasoning_effort,
@@ -62,6 +63,7 @@ ON CONFLICT(workspace_id, job_id) DO UPDATE SET
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, workspaceID, jobID, status, strings.TrimSpace(job.Prompt), strings.TrimSpace(job.AppID),
 		strings.TrimSpace(job.DisplayName), strings.TrimSpace(job.Description),
+		strings.TrimSpace(job.AgentTargetID),
 		strings.TrimSpace(job.Provider), strings.TrimSpace(job.Model), strings.TrimSpace(job.ReasoningEffort),
 		strings.TrimSpace(job.AgentSessionID), strings.TrimSpace(job.DraftDir),
 		strings.TrimSpace(job.RuntimeDir), strings.TrimSpace(job.DataDir),
@@ -86,7 +88,7 @@ func (s *SQLiteStore) GetAppFactoryJob(ctx context.Context, workspaceID string, 
 
 	row := s.db.QueryRowContext(ctx, `
 SELECT workspace_id, job_id, status, prompt, app_id, display_name, description,
-  provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
+  agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
   package_dir, validation_result_json, failure_reason, published_version,
   created_at_unix_ms, updated_at_unix_ms
 FROM app_factory_jobs
@@ -113,7 +115,7 @@ func (s *SQLiteStore) ListAppFactoryJobs(ctx context.Context, workspaceID string
 
 	rows, err := s.db.QueryContext(ctx, `
 SELECT workspace_id, job_id, status, prompt, app_id, display_name, description,
-  provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
+  agent_target_id, provider, model, reasoning_effort, agent_session_id, draft_dir, runtime_dir, data_dir, log_dir,
   package_dir, validation_result_json, failure_reason, published_version,
   created_at_unix_ms, updated_at_unix_ms
 FROM app_factory_jobs
@@ -181,6 +183,7 @@ func scanAppFactoryJob(scanner appFactoryJobScanner) (workspacebiz.AppFactoryJob
 		&job.AppID,
 		&job.DisplayName,
 		&job.Description,
+		&job.AgentTargetID,
 		&job.Provider,
 		&job.Model,
 		&job.ReasoningEffort,

@@ -110,7 +110,7 @@ function createTaskHarness(
     issueDraftTitle: null,
     issueSearchQuery: "",
     issueStatusFilter: "all",
-    selectedAgentProvider: "codex",
+    selectedAgentTargetId: "local:codex",
     selectedIssueId: "issue-1",
     selectedTaskId: null,
     taskDraftContent: null,

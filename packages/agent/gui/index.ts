@@ -19,6 +19,7 @@ export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets,
+  localAgentGUIAgentTargetId,
   localAgentGUIProviderTargetId,
   normalizeAgentGUIProviderTargets,
   resolveAgentGUIProviderTarget

@@ -1,5 +1,8 @@
 import { createElement } from "react";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import {
+  agentGuiDockIconUrls,
+  type AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
@@ -63,6 +66,7 @@ export function createWorkspaceIssueManagerContribution(input: {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
+  providerTargets?: readonly AgentGUIProviderTarget[];
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -72,10 +76,11 @@ export function createWorkspaceIssueManagerContribution(input: {
   workspaceId: string;
 }): WorkbenchContribution {
   const feature = createDesktopIssueManagerFeature({
-    agentProviderOptions: {
+    agentTargetOptions: {
       getOptions: () =>
-        resolveIssueManagerReadyAgentProviderOptions(
+        resolveIssueManagerReadyAgentTargetOptions(
           input.agentProviderStatusService.getSnapshot().statuses,
+          input.providerTargets,
           input.defaultAgentProvider
         ),
       subscribe: (listener) =>
@@ -89,6 +94,7 @@ export function createWorkspaceIssueManagerContribution(input: {
       const launched = await requestWorkspaceAgentGuiLaunch({
         agentSessionId: request.agentSessionId,
         draftPrompt: request.draftPrompt,
+        agentTargetId: request.agentTargetId,
         provider: normalizeDesktopAgentGUIProvider(request.provider),
         userProjectPath: request.userProjectPath,
         workspaceId: request.workspaceId
@@ -228,8 +234,9 @@ export function createWorkspaceIssueManagerContribution(input: {
   return contribution;
 }
 
-function resolveIssueManagerReadyAgentProviderOptions(
+function resolveIssueManagerReadyAgentTargetOptions(
   statuses: readonly AgentProviderStatus[],
+  providerTargets: readonly AgentGUIProviderTarget[] | undefined,
   defaultAgentProvider?: string | null
 ) {
   const readyProviders = new Set<WorkspaceAgentProvider>(
@@ -238,22 +245,41 @@ function resolveIssueManagerReadyAgentProviderOptions(
       .map((status) => status.provider)
   );
 
-  const options = workspaceAgentGuiProviders
-    .filter((provider) => readyProviders.has(provider))
-    .map((provider) => ({
-      iconUrl: agentGuiDockIconUrls[provider],
-      label: resolveWorkspaceAgentGuiLabel(provider),
-      provider
+  const targetSource =
+    providerTargets && providerTargets.length > 0
+      ? providerTargets
+      : workspaceAgentGuiProviders.map((provider) => ({
+          agentTargetId: `local:${provider}`,
+          disabled: false,
+          iconUrl: agentGuiDockIconUrls[provider],
+          label: resolveWorkspaceAgentGuiLabel(provider),
+          provider
+        }));
+  const options = targetSource
+    .filter(
+      (target) =>
+        target.disabled !== true &&
+        Boolean(target.agentTargetId?.trim()) &&
+        readyProviders.has(target.provider)
+    )
+    .map((target) => ({
+      agentTargetId: target.agentTargetId?.trim() ?? "",
+      iconUrl: target.iconUrl ?? agentGuiDockIconUrls[target.provider],
+      label:
+        target.label.trim() || resolveWorkspaceAgentGuiLabel(target.provider),
+      provider: target.provider
     }));
-  const defaultProvider = resolveDefaultAppFactoryProvider(
+  const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
     options,
     defaultAgentProvider
   );
-  if (!defaultProvider) {
+  if (!defaultAgentTargetId) {
     return options;
   }
   return [
-    ...options.filter((option) => option.provider === defaultProvider),
-    ...options.filter((option) => option.provider !== defaultProvider)
+    ...options.filter(
+      (option) => option.agentTargetId === defaultAgentTargetId
+    ),
+    ...options.filter((option) => option.agentTargetId !== defaultAgentTargetId)
   ];
 }

@@ -25,6 +25,7 @@ export interface CreateAppCenterViewModelInput {
 }
 
 export interface WorkspaceAppFactoryJobInput {
+  readonly agentTargetId?: string | null;
   readonly agentSessionId?: string | null;
   readonly appId?: string | null;
   readonly displayName: string;
@@ -166,6 +167,9 @@ export function createAppCenterViewModel({
         canUninstall: installed && !installBusy,
         canRetry,
         canUpdate,
+        ...(factoryJob?.agentTargetId
+          ? { factoryAgentTargetId: factoryJob.agentTargetId }
+          : {}),
         ...(factoryAgentSessionId ? { factoryAgentSessionId } : {}),
         ...(factoryEditAction ? { factoryEditAction } : {}),
         ...(factoryJob?.jobId ? { factoryJobId: factoryJob.jobId } : {}),
@@ -485,6 +489,7 @@ function createFactoryJobViewModel(
     job.status === "failed" && job.validationResult != null;
   return {
     id: job.jobId,
+    agentTargetId: job.agentTargetId,
     agentSessionId,
     appId: job.appId,
     title,

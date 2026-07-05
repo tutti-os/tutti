@@ -297,6 +297,7 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
     "appId",
     "displayName",
     "description",
+    "agentTargetId",
     "provider",
     "model",
     "reasoningEffort",
@@ -340,6 +341,9 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
       minLength: 1
     },
     description: {
+      type: ["string", "null"]
+    },
+    agentTargetId: {
       type: ["string", "null"]
     },
     provider: {
@@ -1857,6 +1861,7 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
         "appId",
         "displayName",
         "description",
+        "agentTargetId",
         "provider",
         "model",
         "reasoningEffort",
@@ -1900,6 +1905,9 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
           minLength: 1
         },
         description: {
+          type: ["string", "null"]
+        },
+        agentTargetId: {
           type: ["string", "null"]
         },
         provider: {

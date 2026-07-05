@@ -7,7 +7,7 @@ description: Issue-manager for Tutti workspace issues — `mention://workspace-i
 
 Owns issue **handoff** interpretation, **mode** selection, and **run** lifecycle. Before choosing issue commands, use injected `$tutti-cli`; exact syntax and flags live in its `command-guide.md` file.
 
-Run metadata: use `--agent-provider {{AGENT_PROVIDER}}`. Do not pass `--agent-session-id` in normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
+Run metadata: use `--agent-target-id {{AGENT_TARGET_ID}}`. The daemon derives the provider from that target; do not use `--agent-provider` for new runs. Do not pass `--agent-session-id` in normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 
 If the user explicitly asks to open or show the Task Manager app window, use `app open --app-id issue-manager --json`. Do not use app opening as a substitute for issue inspection, breakdown, execution, or run reporting.
 
@@ -43,9 +43,9 @@ Use when the turn asks you to implement, fix, execute, process, complete, or oth
 
 **Run open:**
 
-- Handoff includes `taskId` → `issue task run create --issue-id <issue-id> --task-id <task-id> --agent-provider {{AGENT_PROVIDER}} --json`
+- Handoff includes `taskId` → `issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id {{AGENT_TARGET_ID}} --json`
 - Handoff omits `taskId` → inspect issue tasks before creating a run:
-  - no child tasks → `issue run create --issue-id <issue-id> --agent-provider {{AGENT_PROVIDER}} --json`
+  - no child tasks → `issue run create --issue-id <issue-id> --agent-target-id {{AGENT_TARGET_ID}} --json`
   - child tasks present → execute each child task in issue order: one `issue task run create` → work → `issue task run complete` per task before the next
 
 **Run complete:**

@@ -56,6 +56,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            cwd,
 		ExtraSkills: []ProviderSkillBundle{
@@ -237,7 +238,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
 		!strings.Contains(string(issueSkill), "inspect issue tasks before creating a run") ||
 		!strings.Contains(string(issueSkill), "execute each child task in issue order") ||
-		!strings.Contains(string(issueSkill), "--agent-provider codex --json") ||
+		!strings.Contains(string(issueSkill), "--agent-target-id local:codex --json") ||
 		!strings.Contains(string(issueSkill), "current AgentGUI session from the runtime context") ||
 		!strings.Contains(string(issueSkill), "complete that same run") ||
 		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
@@ -249,6 +250,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_PROVIDER") != "codex" {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_PROVIDER", prepared.Env)
+	}
+	if envValue(prepared.Env, "TUTTI_AGENT_TARGET_ID") != "local:codex" {
+		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_TARGET_ID", prepared.Env)
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_CWD") != cwd {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_CWD", prepared.Env)

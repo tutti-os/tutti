@@ -1209,6 +1209,7 @@ components:
         - workspaceId
         - requesterUserId
         - agentUserId
+        - agentTargetId
         - agentSessionId
         - agentProvider
         - status
@@ -1232,6 +1233,8 @@ components:
         requesterUserId:
           type: string
         agentUserId:
+          type: string
+        agentTargetId:
           type: string
         agentSessionId:
           type: string
@@ -1757,13 +1760,16 @@ components:
       type: object
       additionalProperties: false
       required:
-        - agentProvider
+        - agentTargetId
       properties:
         runId:
           type: string
-        agentProvider:
+        agentTargetId:
           type: string
           minLength: 1
+        agentProvider:
+          type: string
+          description: Legacy display/provider analytics hint. New run authority is agentTargetId.
         agentUserId:
           type: string
         agentSessionId:

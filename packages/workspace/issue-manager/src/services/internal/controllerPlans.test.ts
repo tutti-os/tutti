@@ -17,11 +17,11 @@ import {
   createTaskDetail
 } from "./controllerActionTestHarness.ts";
 
-test("controllerPlans create run-task plans from detail and provider intent", () => {
+test("controllerPlans create run-task plans from detail and agent target intent", () => {
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
       issueDetail: null,
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       taskDetail: createTaskDetail()
     }),
     { kind: "skip" }
@@ -29,27 +29,29 @@ test("controllerPlans create run-task plans from detail and provider intent", ()
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
       issueDetail: createIssueDetail(),
-      providerOverride: " claude ",
-      selectedAgentProvider: "codex",
+      agentTargetIdOverride: " local:claude-code ",
+      selectedAgentTargetId: "local:codex",
       taskDetail: createTaskDetail()
     }),
     {
+      agentTargetId: "local:claude-code",
       kind: "ready",
-      provider: "claude",
-      shouldUpdateSelectedAgentProvider: true
+      provider: "claude-code",
+      shouldUpdateSelectedAgentTargetId: true
     }
   );
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
       issueDetail: createIssueDetail(),
-      providerOverride: "   ",
-      selectedAgentProvider: "codex",
+      agentTargetIdOverride: "   ",
+      selectedAgentTargetId: "local:codex",
       taskDetail: createTaskDetail()
     }),
     {
+      agentTargetId: "local:codex",
       kind: "ready",
       provider: "codex",
-      shouldUpdateSelectedAgentProvider: false
+      shouldUpdateSelectedAgentTargetId: false
     }
   );
 });

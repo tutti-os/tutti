@@ -203,6 +203,7 @@ CREATE TABLE workspace_issue_runs (
   workspace_id TEXT NOT NULL,
   requester_user_id TEXT NOT NULL DEFAULT '',
   agent_user_id TEXT NOT NULL DEFAULT '',
+  agent_target_id TEXT NOT NULL DEFAULT '',
   agent_session_id TEXT NOT NULL DEFAULT '',
   agent_provider TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL,
@@ -221,14 +222,15 @@ CREATE INDEX idx_workspace_issue_runs_task_created
   ON workspace_issue_runs(workspace_id, issue_id, task_id, created_at_unix_ms DESC, id DESC);
 INSERT INTO workspace_issue_runs (
   id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_session_id, agent_provider, status, summary, error_message, output_dir,
-  execution_directory, created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
-  updated_at_unix_ms
+  agent_target_id, agent_session_id, agent_provider, status, summary,
+  error_message, output_dir, execution_directory, created_at_unix_ms,
+  started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
 )
 SELECT
   id, run_id, task_id, issue_id, workspace_id, requester_user_id, agent_user_id,
-  agent_session_id, agent_provider, status, summary, error_message, output_dir,
-  '', created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms, updated_at_unix_ms
+  '', agent_session_id, agent_provider, status, summary, error_message,
+  output_dir, '', created_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+  updated_at_unix_ms
 FROM workspace_issue_runs_v2;
 
 CREATE TABLE workspace_issue_run_outputs (
@@ -314,6 +316,42 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV4, now); err != nil {
 		return fmt.Errorf("record workspace issues v4 migration: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyWorkspaceIssuesV5(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceIssuesV5)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	hasAgentTargetID, err := s.hasColumn(ctx, "workspace_issue_runs", "agent_target_id")
+	if err != nil {
+		return err
+	}
+
+	now := unixMs(time.Now().UTC())
+	if !hasAgentTargetID {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_issue_runs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT '';`); err != nil {
+			return fmt.Errorf("migrate workspace issue runs agent target id: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE workspace_issue_runs
+SET agent_target_id = CASE agent_provider
+  WHEN 'codex' THEN 'local:codex'
+  WHEN 'claude-code' THEN 'local:claude-code'
+  ELSE agent_target_id
+END
+WHERE agent_target_id = '';
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceIssuesV5, now); err != nil {
+		return fmt.Errorf("record workspace issues v5 migration: %w", err)
 	}
 	return nil
 }

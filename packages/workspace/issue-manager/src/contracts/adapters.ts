@@ -83,13 +83,15 @@ export interface IssueManagerFileAdapter extends WorkspaceFileReferenceAdapter {
 }
 
 export interface IssueManagerAgentRunRequest extends IssueManagerScope {
+  agentTargetId?: string;
   executionDirectory?: string | null;
   issue: IssueManagerIssueSummary;
   provider: string;
   task?: IssueManagerTaskSummary;
 }
 
-export interface IssueManagerAgentProviderOption {
+export interface IssueManagerAgentTargetOption {
+  agentTargetId?: string;
   disabled?: boolean;
   disabledReason?: string;
   iconUrl?: string | null;
@@ -97,8 +99,8 @@ export interface IssueManagerAgentProviderOption {
   provider: string;
 }
 
-export interface IssueManagerAgentProviderOptionsAdapter {
-  getOptions(): readonly IssueManagerAgentProviderOption[];
+export interface IssueManagerAgentTargetOptionsAdapter {
+  getOptions(): readonly IssueManagerAgentTargetOption[];
   subscribe?(listener: () => void): () => void;
 }
 
@@ -197,6 +199,7 @@ export interface IssueManagerAgentRunner {
 
 export interface IssueManagerAgentSessionOpenInput extends IssueManagerScope {
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider?: string | null;
 }
 
@@ -214,6 +217,7 @@ export type IssueManagerExecutionDirectoryPicker = Pick<
 };
 
 export interface IssueManagerAgentBreakdownRequest extends IssueManagerScope {
+  agentTargetId?: string;
   executionDirectory?: string | null;
   issueDetail: {
     contextRefs: readonly IssueManagerContextRef[];

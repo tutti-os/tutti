@@ -404,7 +404,8 @@ func (api DaemonAPI) CreateWorkspaceIssueRun(ctx context.Context, request tuttig
 
 	run, err := api.IssueService.CreateRun(ctx, string(request.WorkspaceID), string(request.IssueID), "", workspaceservice.CreateIssueManagerRunInput{
 		RunID:              optionalString(request.Body.RunId),
-		AgentProvider:      request.Body.AgentProvider,
+		AgentTargetID:      request.Body.AgentTargetId,
+		AgentProvider:      optionalString(request.Body.AgentProvider),
 		AgentUserID:        optionalString(request.Body.AgentUserId),
 		AgentSessionID:     optionalString(request.Body.AgentSessionId),
 		ExecutionDirectory: optionalString(request.Body.ExecutionDirectory),
@@ -477,7 +478,8 @@ func (api DaemonAPI) CreateWorkspaceIssueTaskRun(ctx context.Context, request tu
 
 	run, err := api.IssueService.CreateRun(ctx, string(request.WorkspaceID), string(request.IssueID), string(request.TaskID), workspaceservice.CreateIssueManagerRunInput{
 		RunID:              optionalString(request.Body.RunId),
-		AgentProvider:      request.Body.AgentProvider,
+		AgentTargetID:      request.Body.AgentTargetId,
+		AgentProvider:      optionalString(request.Body.AgentProvider),
 		AgentUserID:        optionalString(request.Body.AgentUserId),
 		AgentSessionID:     optionalString(request.Body.AgentSessionId),
 		ExecutionDirectory: optionalString(request.Body.ExecutionDirectory),

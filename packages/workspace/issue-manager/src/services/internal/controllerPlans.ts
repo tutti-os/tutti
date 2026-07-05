@@ -1,5 +1,6 @@
 import type {
   IssueManagerIssueDetail,
+  IssueManagerAgentTargetOption,
   IssueManagerTaskDetail
 } from "../../contracts/index.ts";
 import type { IssueDraft, TaskDraft } from "./controllerTypes.ts";
@@ -12,32 +13,49 @@ export type IssueManagerSavePlan<TResult> =
   | ({ kind: "ready" } & TResult);
 
 export function createIssueManagerRunTaskPlan(input: {
+  agentTargetOptions?: readonly IssueManagerAgentTargetOption[];
+  agentTargetIdOverride?: string;
   issueDetail: IssueManagerIssueDetail | null;
-  providerOverride?: string;
-  selectedAgentProvider: string;
+  selectedAgentTargetId: string;
   taskDetail: IssueManagerTaskDetail | null;
 }):
   | {
       kind: "ready";
+      agentTargetId: string;
       provider: string;
-      shouldUpdateSelectedAgentProvider: boolean;
+      shouldUpdateSelectedAgentTargetId: boolean;
     }
   | { kind: "skip" } {
   if (!input.issueDetail) {
     return { kind: "skip" };
   }
 
-  const provider =
-    input.providerOverride?.trim() || input.selectedAgentProvider.trim();
-  if (!provider) {
+  const agentTargetId =
+    input.agentTargetIdOverride?.trim() || input.selectedAgentTargetId.trim();
+  if (!agentTargetId) {
     return { kind: "skip" };
   }
+  const option = input.agentTargetOptions?.find(
+    (candidate) => candidate.agentTargetId?.trim() === agentTargetId
+  );
+  const provider =
+    option?.provider.trim() || legacyProviderFromTargetId(agentTargetId);
 
   return {
+    agentTargetId,
     kind: "ready",
     provider,
-    shouldUpdateSelectedAgentProvider: provider !== input.selectedAgentProvider
+    shouldUpdateSelectedAgentTargetId:
+      agentTargetId !== input.selectedAgentTargetId
   };
+}
+
+function legacyProviderFromTargetId(agentTargetId: string): string {
+  const targetId = agentTargetId.trim();
+  if (targetId.startsWith("local:")) {
+    return targetId.slice("local:".length);
+  }
+  return targetId.includes(":") ? "" : targetId;
 }
 
 export function createIssueManagerSaveIssuePlan(input: {

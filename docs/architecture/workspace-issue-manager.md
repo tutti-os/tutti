@@ -98,6 +98,10 @@ Files and issue references should stay on their explicit reference actions
 instead of appearing in this `@` picker, and the Task Center app itself should
 be excluded from issue-manager app mentions.
 
+Issue run creation is target-first. UI, CLI, and AgentGUI sidecar flows pass
+`agentTargetId`/`--agent-target-id` as the launch authority; the daemon derives
+and persists the provider for display, filtering, and legacy compatibility.
+
 The npm package name should be `@tutti-os/workspace-issue-manager`.
 It participates in the shared public npm release group documented in
 [npm Package Release](../conventions/npm-package-release.md).

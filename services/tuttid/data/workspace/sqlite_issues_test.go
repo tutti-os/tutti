@@ -68,6 +68,7 @@ func TestSQLiteIssueStoreLifecycle(t *testing.T) {
 		TaskID:        task.TaskID,
 		ActorUserID:   "user-1",
 		AgentProvider: "codex",
+		AgentTargetID: "local:codex",
 	})
 	if err != nil {
 		t.Fatalf("CreateRun() error = %v", err)
@@ -151,6 +152,7 @@ func TestSQLiteIssueStoreSearchRunOutputs(t *testing.T) {
 			TaskID:        task.TaskID,
 			ActorUserID:   "user-1",
 			AgentProvider: "codex",
+			AgentTargetID: "local:codex",
 		})
 		if err != nil {
 			t.Fatalf("CreateRun(%q) error = %v", title, err)
@@ -276,6 +278,7 @@ func TestSQLiteIssueStoreRunLifecycleForIssueWithoutTasks(t *testing.T) {
 		ActorUserID:        "user-1",
 		RunID:              "run-issue-1",
 		AgentProvider:      "codex",
+		AgentTargetID:      "local:codex",
 		ExecutionDirectory: "/Users/test/project",
 	})
 	if err != nil {
@@ -362,6 +365,7 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 		ActorUserID:    "user-1",
 		RunID:          "run-running",
 		AgentProvider:  "codex",
+		AgentTargetID:  "local:codex",
 		AgentSessionID: "session-1",
 	})
 	if err != nil {
@@ -374,6 +378,7 @@ func TestSQLiteIssueStoreListRunningRunsFiltersByWorkspaceAndSession(t *testing.
 		ActorUserID:   "user-1",
 		RunID:         "run-no-session",
 		AgentProvider: "codex",
+		AgentTargetID: "local:codex",
 	})
 	if err != nil {
 		t.Fatalf("CreateRun() no session error = %v", err)
@@ -753,6 +758,7 @@ func TestSQLiteIssueStoreDuplicateResourceIDsReturnTypedErrors(t *testing.T) {
 		ActorUserID:   "user-1",
 		RunID:         "run-fixed",
 		AgentProvider: "codex",
+		AgentTargetID: "local:codex",
 	}); err != nil {
 		t.Fatalf("CreateRun() error = %v", err)
 	}
@@ -763,6 +769,7 @@ func TestSQLiteIssueStoreDuplicateResourceIDsReturnTypedErrors(t *testing.T) {
 		ActorUserID:   "user-1",
 		RunID:         "run-fixed",
 		AgentProvider: "codex",
+		AgentTargetID: "local:codex",
 	}); !errors.Is(err, workspaceissues.ErrRunAlreadyExists) {
 		t.Fatalf("CreateRun() duplicate error = %v, want ErrRunAlreadyExists", err)
 	}

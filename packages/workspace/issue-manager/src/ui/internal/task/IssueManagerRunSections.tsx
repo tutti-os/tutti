@@ -48,7 +48,7 @@ export function IssueManagerRunActionTrigger({
       label={controller.copy.t("actions.askAgentToRun")}
       triggerClassName={triggerClassName}
       triggerVariant={triggerVariant}
-      onSelectProvider={(provider) => controller.runTask(provider)}
+      onSelectAgentTarget={(agentTargetId) => controller.runTask(agentTargetId)}
     />
   );
 }
@@ -73,7 +73,9 @@ export function IssueManagerBreakdownActionTrigger({
       triggerClassName={triggerClassName}
       triggerVariant={triggerVariant}
       triggerButtonVariant="secondary"
-      onSelectProvider={(provider) => controller.startTaskBreakdown(provider)}
+      onSelectAgentTarget={(agentTargetId) =>
+        controller.startTaskBreakdown(agentTargetId)
+      }
     />
   );
 }
@@ -85,7 +87,7 @@ function IssueManagerProviderActionMenu({
   disabled,
   icon,
   label,
-  onSelectProvider,
+  onSelectAgentTarget,
   triggerButtonVariant,
   triggerClassName,
   triggerVariant
@@ -94,12 +96,12 @@ function IssueManagerProviderActionMenu({
   disabled: boolean;
   icon: ReactNode;
   label: string;
-  onSelectProvider: (provider: string) => Promise<void>;
+  onSelectAgentTarget: (agentTargetId: string) => Promise<void>;
   triggerButtonVariant?: "secondary";
   triggerClassName?: string;
   triggerVariant: IssueManagerProviderActionTriggerVariant;
 }): JSX.Element {
-  const providerOptions = controller.providerOptions;
+  const agentTargetOptions = controller.agentTargetOptions;
 
   return (
     <DropdownMenu>
@@ -130,19 +132,22 @@ function IssueManagerProviderActionMenu({
         className="w-[220px] min-w-[220px]"
         style={{ zIndex: "var(--z-panel-popover)" }}
       >
-        {providerOptions.length === 0 ? (
+        {agentTargetOptions.length === 0 ? (
           <DropdownMenuItem className={providerMenuItemClassName} disabled>
             {controller.copy.t("messages.noAgentProviders")}
           </DropdownMenuItem>
         ) : (
-          providerOptions.map((option) => (
+          agentTargetOptions.map((option) => (
             <DropdownMenuItem
               className={providerMenuItemClassName}
               disabled={option.disabled === true}
-              key={option.provider}
+              key={option.agentTargetId ?? option.provider}
               title={option.disabledReason}
               onSelect={() => {
-                void onSelectProvider(option.provider);
+                const agentTargetId = option.agentTargetId?.trim();
+                if (agentTargetId) {
+                  void onSelectAgentTarget(agentTargetId);
+                }
               }}
             >
               <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">

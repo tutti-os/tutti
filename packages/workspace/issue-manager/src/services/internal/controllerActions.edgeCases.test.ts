@@ -21,7 +21,7 @@ test("controller actions skip attachReferences when task selection is missing", 
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     }
@@ -62,7 +62,7 @@ test("controller actions stop deleteIssue when confirmation is rejected", async 
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     }
@@ -91,7 +91,7 @@ test("controller actions stop deleteTask when confirmation is rejected", async (
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     }
@@ -134,7 +134,7 @@ test("controller actions surface clipboard unavailable errors", async (t) => {
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1"
     },
@@ -198,7 +198,7 @@ test("controller actions skip saveTask when the selected issue is missing", asyn
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: null,
       selectedTaskId: null
     },
@@ -233,7 +233,7 @@ test("controller actions show a validation tip when the task title is missing", 
     nodeState: {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null
     },

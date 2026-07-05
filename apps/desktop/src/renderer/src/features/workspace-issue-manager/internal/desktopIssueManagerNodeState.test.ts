@@ -16,7 +16,7 @@ test("desktop issue-manager node state source keeps whitelisted live node state 
       issueDraftContent: "notes",
       issueSearchQuery: "render",
       issueStatusFilter: "running",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1",
@@ -35,7 +35,7 @@ test("desktop issue-manager node state source keeps whitelisted live node state 
     {
       issueSearchQuery: "render",
       issueStatusFilter: "running",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       selectedTaskId: "task-1",
@@ -52,7 +52,7 @@ test("desktop issue-manager node state source keeps whitelisted live node state 
     {
       issueSearchQuery: "render",
       issueStatusFilter: "running",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: "/Users/example/project/tutti",
       selectedIssueId: "issue-1",
       taskListCollapsed: false
@@ -80,7 +80,7 @@ test("desktop issue-manager node state source ignores other type ids", (t) => {
     state: {
       issueSearchQuery: "ignored",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: null,
       selectedTaskId: null
     },
@@ -137,7 +137,7 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
       issueDraftTitle: null,
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: null,
       selectedIssueId: "issue-1",
       selectedTaskId: null,
@@ -155,7 +155,7 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
       issueDraftTitle: null,
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: null,
       selectedIssueId: "issue-1",
       selectedTaskId: null,
@@ -177,7 +177,7 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
     {
       issueSearchQuery: "",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedExecutionDirectory: null,
       selectedIssueId: "issue-1",
       selectedTaskId: null,
@@ -192,7 +192,7 @@ test("desktop issue-manager node state source drops non-whitelisted updates", (t
       issueDraftTitle: null,
       issueSearchQuery: "updated",
       issueStatusFilter: "all",
-      selectedAgentProvider: "codex",
+      selectedAgentTargetId: "local:codex",
       selectedIssueId: "issue-1",
       selectedTaskId: null,
       taskDraftContent: "拼音 composing",

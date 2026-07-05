@@ -92,6 +92,7 @@ type Run struct {
 	WorkspaceID        string
 	RequesterUserID    string
 	AgentUserID        string
+	AgentTargetID      string
 	AgentSessionID     string
 	AgentProvider      string
 	Status             Status

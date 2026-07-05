@@ -26,6 +26,7 @@ func (p WorkspaceAppFactoryPublisher) PublishWorkspaceAppFactoryJobUpdated(ctx c
 			"appId":            nullableString(strings.TrimSpace(job.AppID)),
 			"displayName":      strings.TrimSpace(job.DisplayName),
 			"description":      nullableString(strings.TrimSpace(job.Description)),
+			"agentTargetId":    nullableString(strings.TrimSpace(job.AgentTargetID)),
 			"provider":         nullableString(strings.TrimSpace(job.Provider)),
 			"model":            nullableString(strings.TrimSpace(job.Model)),
 			"reasoningEffort":  nullableString(strings.TrimSpace(job.ReasoningEffort)),

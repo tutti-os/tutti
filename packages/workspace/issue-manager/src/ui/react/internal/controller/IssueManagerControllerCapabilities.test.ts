@@ -3,7 +3,7 @@ import test from "node:test";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 import {
-  resolveIssueManagerAgentProviderOptions,
+  resolveIssueManagerAgentTargetOptions,
   resolveIssueManagerControllerCapabilities
 } from "./IssueManagerControllerCapabilities.ts";
 
@@ -93,9 +93,9 @@ test("controller capabilities detect execution directory support from the projec
   );
 });
 
-test("agent provider options default to Codex only when no host adapter is configured", () => {
+test("agent target options default to Codex only when no host adapter is configured", () => {
   assert.deepEqual(
-    resolveIssueManagerAgentProviderOptions(
+    resolveIssueManagerAgentTargetOptions(
       createFeature({
         fileAdapter: undefined,
         shareAdapter: undefined,
@@ -104,7 +104,7 @@ test("agent provider options default to Codex only when no host adapter is confi
         }
       })
     ),
-    [{ label: "Codex", provider: "codex" }]
+    [{ agentTargetId: "local:codex", label: "Codex", provider: "codex" }]
   );
 });
 
@@ -125,9 +125,9 @@ test("controller capabilities detect agent session opener support", () => {
   assert.equal(capabilities.canOpenAgentSessions, true);
 });
 
-test("agent provider options preserve an explicitly empty host list", () => {
+test("agent target options preserve an explicitly empty host list", () => {
   assert.deepEqual(
-    resolveIssueManagerAgentProviderOptions({
+    resolveIssueManagerAgentTargetOptions({
       ...createFeature({
         fileAdapter: undefined,
         shareAdapter: undefined,
@@ -135,7 +135,7 @@ test("agent provider options preserve an explicitly empty host list", () => {
           showInviteCollaborator: false
         }
       }),
-      agentProviderOptions: {
+      agentTargetOptions: {
         getOptions: () => []
       }
     }),
@@ -143,9 +143,9 @@ test("agent provider options preserve an explicitly empty host list", () => {
   );
 });
 
-test("agent provider options trim labels and providers from the host adapter", () => {
+test("agent target options trim labels and providers from the host adapter", () => {
   assert.deepEqual(
-    resolveIssueManagerAgentProviderOptions({
+    resolveIssueManagerAgentTargetOptions({
       ...createFeature({
         fileAdapter: undefined,
         shareAdapter: undefined,
@@ -153,21 +153,35 @@ test("agent provider options trim labels and providers from the host adapter", (
           showInviteCollaborator: false
         }
       }),
-      agentProviderOptions: {
+      agentTargetOptions: {
         getOptions: () => [
           {
+            agentTargetId: " local:claude-code ",
             iconUrl: " claude.png ",
             label: "  Claude Code ",
             provider: " claude-code "
           },
-          { label: "   ", provider: " gemini " },
-          { label: "missing provider", provider: "   " }
+          {
+            agentTargetId: " local:gemini ",
+            label: "   ",
+            provider: " gemini "
+          },
+          { agentTargetId: "   ", label: "missing target", provider: " codex " }
         ]
       }
     }),
     [
-      { iconUrl: "claude.png", label: "Claude Code", provider: "claude-code" },
-      { label: "gemini", provider: "gemini" }
+      {
+        agentTargetId: "local:claude-code",
+        iconUrl: "claude.png",
+        label: "Claude Code",
+        provider: "claude-code"
+      },
+      {
+        agentTargetId: "local:gemini",
+        label: "gemini",
+        provider: "gemini"
+      }
     ]
   );
 });

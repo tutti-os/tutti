@@ -93,10 +93,10 @@ export function createIssueManagerControllerBindings(input: {
     setReferenceTarget(target: IssueManagerReferenceTarget | null) {
       controllerSession.setReferenceTarget(target);
     },
-    setSelectedAgentProvider(provider: string) {
+    setSelectedAgentTargetId(agentTargetId: string) {
       controllerSession.updateNodeState((current) => ({
         ...current,
-        selectedAgentProvider: provider
+        selectedAgentTargetId: agentTargetId
       }));
     }
   };

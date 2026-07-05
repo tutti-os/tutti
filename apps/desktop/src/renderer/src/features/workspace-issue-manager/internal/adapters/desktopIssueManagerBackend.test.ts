@@ -174,6 +174,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
   const run = await backend.createRun({
     agentProvider: "codex",
     agentSessionId: "session-1",
+    agentTargetId: "local:codex",
     agentUserId: "local",
     issueId: "issue-1",
     runId: "run-1",
@@ -249,6 +250,7 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
         {
           agentProvider: "codex",
           agentSessionId: "session-1",
+          agentTargetId: "local:codex",
           agentUserId: "local",
           runId: "run-1"
         }
@@ -280,6 +282,30 @@ test("desktop issue-manager backend maps list, update, run, and status payloads"
       method: "completeRun"
     }
   ]);
+});
+
+test("desktop issue-manager backend rejects run creation without agent target id", async () => {
+  const calls: string[] = [];
+  const backend = createDesktopIssueManagerBackend(
+    createTuttidClient({
+      async createWorkspaceIssueTaskRun() {
+        calls.push("createRun");
+        return { runId: "run-1" } as never;
+      }
+    })
+  );
+
+  await assert.rejects(
+    () =>
+      backend.createRun({
+        agentProvider: "unknown-provider",
+        issueId: "issue-1",
+        taskId: "task-1",
+        workspaceId: "workspace-1"
+      }),
+    /agentTargetId is required/
+  );
+  assert.deepEqual(calls, []);
 });
 
 function createTuttidClient(overrides: Partial<TuttidClient>): TuttidClient {

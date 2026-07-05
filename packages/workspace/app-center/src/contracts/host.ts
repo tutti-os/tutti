@@ -107,6 +107,7 @@ export interface WorkspaceAppCenterSnapshot {
 }
 
 export interface WorkspaceAppFactoryJob {
+  agentTargetId?: string | null;
   agentSessionId?: string | null;
   appId?: string | null;
   createdAtUnixMs: number;
@@ -241,11 +242,11 @@ export interface WorkspaceAppCenterGateway {
   createWorkspaceAppFactoryJob(
     workspaceId: string,
     input: {
+      agentTargetId: string;
       displayName: string;
       model?: string;
       permissionModeId?: string;
       prompt: string;
-      provider?: string;
       reasoningEffort?: string;
     }
   ): Promise<WorkspaceAppFactorySnapshot>;

@@ -103,6 +103,7 @@ type AddIssueManagerContextRefsInput struct {
 
 type CreateIssueManagerRunInput struct {
 	RunID              string
+	AgentTargetID      string
 	AgentProvider      string
 	AgentUserID        string
 	AgentSessionID     string
@@ -426,6 +427,7 @@ func (s IssueManagerService) CreateRun(ctx context.Context, workspaceID string, 
 		IssueID:            issueID,
 		WorkspaceID:        workspaceID,
 		ActorUserID:        issueManagerLocalActorUserID,
+		AgentTargetID:      input.AgentTargetID,
 		AgentProvider:      input.AgentProvider,
 		AgentUserID:        input.AgentUserID,
 		AgentSessionID:     input.AgentSessionID,

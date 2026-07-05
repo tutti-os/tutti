@@ -141,6 +141,7 @@ export interface WorkspaceWorkspaceAppFactoryJobV1 {
   appId: string | null;
   displayName: string;
   description: string | null;
+  agentTargetId: string | null;
   provider: string | null;
   model: string | null;
   reasoningEffort: string | null;

@@ -464,6 +464,7 @@ type AppFactoryJob struct {
 	AppID                string
 	DisplayName          string
 	Description          string
+	AgentTargetID        string
 	Provider             string
 	Model                string
 	ReasoningEffort      string

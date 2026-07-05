@@ -63,6 +63,7 @@ type ComposerSettings struct {
 }
 
 type ComposerOptionsInput struct {
+	AgentTargetID            string
 	Cwd                      string
 	Locale                   string
 	Provider                 string
@@ -110,6 +111,19 @@ type ComposerOptions struct {
 
 func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsInput) (ComposerOptions, error) {
 	provider := agentprovider.Normalize(input.Provider)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if agentTargetID != "" {
+		launch, err := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+			AgentTargetID: agentTargetID,
+			Provider:      provider,
+		})
+		if err != nil {
+			return ComposerOptions{}, err
+		}
+		provider = agentprovider.Normalize(launch.Provider)
+		input.Provider = provider
+		input.AgentTargetID = agentTargetID
+	}
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
 	}
@@ -141,6 +155,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
+	}
+	if agentTargetID != "" {
+		runtimeContext["agentTargetId"] = agentTargetID
 	}
 	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
 	capabilityCatalog := []ComposerCapabilityOption{}

@@ -29,6 +29,10 @@ type workspaceAppFactoryPublisherStub struct {
 	workspaces []string
 }
 
+type appFactoryAgentTargetStoreStub struct {
+	targets map[string]agenttargetbiz.Target
+}
+
 type factoryAgentSessionServiceStub struct {
 	createdWorkspaceID string
 	createInput        agentservice.CreateSessionInput
@@ -76,6 +80,38 @@ func (s factoryAgentSessionReaderStub) ListSessions(workspaceID string) ([]agent
 func (s factoryAgentMessageReaderStub) ListSessionMessages(input agentactivitybiz.ListSessionMessagesInput) (agentservice.SessionMessagesPage, bool) {
 	page, ok := s.pages[appFactoryJobStoreKey(input.WorkspaceID, input.AgentSessionID)]
 	return page, ok
+}
+
+func newAppFactoryAgentTargetStoreStub() appFactoryAgentTargetStoreStub {
+	targets := make(map[string]agenttargetbiz.Target)
+	for _, target := range agenttargetbiz.DefaultSystemTargets(1) {
+		targets[target.ID] = target
+	}
+	return appFactoryAgentTargetStoreStub{targets: targets}
+}
+
+func (s appFactoryAgentTargetStoreStub) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := s.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
+}
+
+func (s appFactoryAgentTargetStoreStub) ListAgentTargets(context.Context) ([]agenttargetbiz.Target, error) {
+	targets := make([]agenttargetbiz.Target, 0, len(s.targets))
+	for _, target := range s.targets {
+		targets = append(targets, target)
+	}
+	return targets, nil
+}
+
+func (appFactoryAgentTargetStoreStub) PutAgentTarget(_ context.Context, target agenttargetbiz.Target) (agenttargetbiz.Target, error) {
+	return target, nil
+}
+
+func (appFactoryAgentTargetStoreStub) DeleteAgentTarget(context.Context, string) error {
+	return nil
 }
 
 func newAppFactoryStoreStub() *appFactoryStoreStub {
@@ -161,7 +197,7 @@ func (s workspaceRootResolverStub) ResolveWorkspaceRoot(context.Context, string)
 	return s.root, nil
 }
 
-func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *testing.T) {
+func TestAppFactoryServiceGetAgentTargetComposerOptionsUsesFactoryDraftContext(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -169,15 +205,16 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 	sessions := &factoryAgentSessionServiceStub{}
 	service := AppFactoryService{
 		AgentSessionService: sessions,
+		AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 		StateDir:            stateDir,
 		WorkspaceStore: &catalogStoreStub{
 			getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"},
 		},
 	}
 
-	options, err := service.GetProviderComposerOptions(ctx, "ws-1", AppFactoryProviderComposerOptionsInput{
-		Locale:   "zh-CN",
-		Provider: "claude-code",
+	options, err := service.GetAgentTargetComposerOptions(ctx, "ws-1", AppFactoryAgentTargetComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Locale:        "zh-CN",
 		Settings: agentservice.ComposerSettings{
 			Model:            "sonnet",
 			PermissionModeID: "default",
@@ -185,7 +222,7 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 		},
 	})
 	if err != nil {
-		t.Fatalf("GetProviderComposerOptions() error = %v", err)
+		t.Fatalf("GetAgentTargetComposerOptions() error = %v", err)
 	}
 
 	expectedCwd := filepath.Join(stateDir, "apps", "factory", "composer", "ws-1", "draft")
@@ -200,6 +237,9 @@ func TestAppFactoryServiceGetProviderComposerOptionsUsesFactoryDraftContext(t *t
 	}
 	if sessions.composerInput.Provider != "claude-code" {
 		t.Fatalf("composer provider = %q, want claude-code", sessions.composerInput.Provider)
+	}
+	if sessions.composerInput.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("composer agentTargetId = %q, want %q", sessions.composerInput.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
 	if sessions.composerInput.Locale != "zh-CN" {
 		t.Fatalf("composer locale = %q, want zh-CN", sessions.composerInput.Locale)
@@ -222,6 +262,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	service := AppFactoryService{
 		Store:               store,
 		AgentSessionService: sessions,
+		AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 		StateDir:            stateDir,
 		WorkspaceRootResolver: workspaceRootResolverStub{root: workspacefiles.WorkspaceRoot{
 			LogicalRoot:  "/workspace",
@@ -233,6 +274,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 
 	job, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{
+		AgentTargetID:    agenttargetbiz.IDLocalCodex,
 		DisplayName:      "Weather Watch",
 		Model:            "gpt-5",
 		PermissionModeID: "auto",
@@ -444,8 +486,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 
 	secondJob, err := service.Create(ctx, "ws-1", CreateAppFactoryJobInput{
-		DisplayName: "Second App",
-		Prompt:      "Create another app.",
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		DisplayName:   "Second App",
+		Prompt:        "Create another app.",
 	})
 	if err != nil {
 		t.Fatalf("Create(second) error = %v", err)
@@ -459,28 +502,19 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		provider     string
-		wantTargetID string
-		wantProvider string
+		name          string
+		agentTargetID string
+		wantProvider  string
 	}{
 		{
-			name:         "codex",
-			provider:     "codex",
-			wantTargetID: agenttargetbiz.IDLocalCodex,
-			wantProvider: "codex",
+			name:          "codex",
+			agentTargetID: agenttargetbiz.IDLocalCodex,
+			wantProvider:  "codex",
 		},
 		{
-			name:         "claude code",
-			provider:     "claude-code",
-			wantTargetID: agenttargetbiz.IDLocalClaudeCode,
-			wantProvider: "claude-code",
-		},
-		{
-			name:         "default provider",
-			provider:     "",
-			wantTargetID: agenttargetbiz.IDLocalCodex,
-			wantProvider: "codex",
+			name:          "claude code",
+			agentTargetID: agenttargetbiz.IDLocalClaudeCode,
+			wantProvider:  "claude-code",
 		},
 	}
 	for _, tt := range tests {
@@ -491,6 +525,7 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			service := AppFactoryService{
 				Store:               newAppFactoryStoreStub(),
 				AgentSessionService: sessions,
+				AgentTargetStore:    newAppFactoryAgentTargetStoreStub(),
 				StateDir:            t.TempDir(),
 				WorkspaceRootResolver: workspaceRootResolverStub{root: workspacefiles.WorkspaceRoot{
 					LogicalRoot:  "/workspace",
@@ -502,9 +537,9 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			}
 
 			job, err := service.Create(context.Background(), "ws-1", CreateAppFactoryJobInput{
-				DisplayName: "Target App",
-				Prompt:      "Create an app.",
-				Provider:    tt.provider,
+				AgentTargetID: tt.agentTargetID,
+				DisplayName:   "Target App",
+				Prompt:        "Create an app.",
 			})
 			if err != nil {
 				t.Fatalf("Create() error = %v", err)
@@ -512,8 +547,8 @@ func TestAppFactoryServiceCreateLaunchesSessionsWithAgentTargetID(t *testing.T) 
 			if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
 				t.Fatalf("status = %q, want generating", job.Status)
 			}
-			if sessions.createInput.AgentTargetID != tt.wantTargetID {
-				t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, tt.wantTargetID)
+			if sessions.createInput.AgentTargetID != tt.agentTargetID {
+				t.Fatalf("CreateSession agentTargetId = %q, want %q", sessions.createInput.AgentTargetID, tt.agentTargetID)
 			}
 			if sessions.createInput.Provider != tt.wantProvider {
 				t.Fatalf("CreateSession provider = %q, want %q", sessions.createInput.Provider, tt.wantProvider)
