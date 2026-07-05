@@ -3111,6 +3111,67 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 	}
 }
 
+// TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn
+// locks in the contract the composer UI's live permission-mode switch now
+// relies on: the app-server protocol has no RPC to change approval/sandbox
+// policy for a turn that's already running, so ApplyPermissionMode must still
+// succeed while a turn is in flight (rather than error or block), and the
+// new policy must only take effect starting with the *next* turn/start --
+// matching the "applies starting with your next message" copy shown to the
+// user when they change permission mode mid-turn.
+func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "read-only"
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "go",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+
+	session.PermissionModeID = "full-access"
+	if err := adapter.ApplyPermissionMode(context.Background(), session); err != nil {
+		t.Fatalf("ApplyPermissionMode mid-turn: %v", err)
+	}
+
+	transport.conn.completePendingTurn()
+	<-execDone
+
+	// The turn that was already running is unaffected by the change: exactly
+	// one turn/start was sent for it.
+	if turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(turnStarts) != 1 {
+		t.Fatalf("turn/start calls = %d, want 1 before the next turn", len(turnStarts))
+	}
+
+	transport.conn.holdTurn = false
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go again",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec (second turn): %v", err)
+	}
+
+	turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	if len(turnStarts) != 2 {
+		t.Fatalf("turn/start calls = %d, want 2 after the next turn", len(turnStarts))
+	}
+	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
+		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
+	}
+}
+
 func TestCodexAppServerAdapterCloseShutsDownSession(t *testing.T) {
 	t.Parallel()
 
