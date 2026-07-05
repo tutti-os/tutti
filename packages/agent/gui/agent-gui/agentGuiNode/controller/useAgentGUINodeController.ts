@@ -9290,21 +9290,31 @@ export function useAgentGUINodeController({
       if (!normalizedPath || !remove) {
         return;
       }
-      const previousProjects = userProjectsRef.current;
       setListError(null);
-      setUserProjectsSnapshot(
-        previousProjects.filter((project) => project.path !== normalizedPath)
-      );
+      // Filter the visible list only after the backend confirms the delete
+      // (mirroring registerProjectPath's "backend confirm -> local store
+      // update" ordering). Filtering optimistically before the delete
+      // resolves would flip userProjectPathKey early and race the runtime
+      // rail sections refetch against the in-flight backend delete: if the
+      // section list query lands before the delete commits, it still
+      // reports the removed project's section, and nothing re-triggers a
+      // refetch afterwards, so the row stays visible until an unrelated
+      // remount forces a fresh fetch.
       const handleRemoveError = (error: unknown) => {
         const message = getAgentGUIErrorMessage(error);
-        setUserProjectsSnapshot(previousProjects);
         setListError(message);
         toast.error(message);
       };
       try {
-        void Promise.resolve(remove({ path: normalizedPath })).catch(
-          handleRemoveError
-        );
+        void Promise.resolve(remove({ path: normalizedPath }))
+          .then(() => {
+            setUserProjectsSnapshot(
+              userProjectsRef.current.filter(
+                (project) => project.path !== normalizedPath
+              )
+            );
+          })
+          .catch(handleRemoveError);
       } catch (error) {
         handleRemoveError(error);
       }

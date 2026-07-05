@@ -1621,6 +1621,71 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("keeps a removed project visible until the backend confirms deletion, then drops it without a remount", async () => {
+    let resolveRemove: (() => void) | null = null;
+    const removeProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemove = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: vi.fn(async () => ({
+          projects: [
+            { id: "app", path: "/workspace/app", label: "App" },
+            { id: "web", path: "/workspace/web", label: "Web" }
+          ]
+        })),
+        remove: removeProject,
+        subscribe: vi.fn(() => vi.fn()),
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(2);
+    });
+
+    await act(async () => {
+      result.current.actions.removeProject("/workspace/app");
+      await Promise.resolve();
+    });
+
+    expect(removeProject).toHaveBeenCalledWith({ path: "/workspace/app" });
+    // The backend delete has not resolved yet: the project must still be
+    // present. Filtering it out before the backend confirms is what let a
+    // concurrent, in-flight section-list refetch race the delete and
+    // reinstate the row with nothing left to re-sync it afterwards.
+    expect(result.current.viewModel.userProjects).toHaveLength(2);
+
+    await act(async () => {
+      resolveRemove?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(1);
+    });
+    expect(result.current.viewModel.userProjects[0]?.path).toBe(
+      "/workspace/web"
+    );
+  });
+
   it("ignores stale user project list responses after a newer refresh completes", async () => {
     let userProjectListener: (() => void) | null = null;
     const pendingUserProjectLoads: Array<
