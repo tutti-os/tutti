@@ -248,11 +248,24 @@ function subAgentStatusLabel(status: AgentTaskSubAgentVM["status"]): string {
   }
 }
 
+// A sub-agent that is merely `queued` has been accepted but has not been
+// dispatched to a provider yet (codex caps concurrent sub-agents and queues
+// spawns beyond the cap - see AgentTaskSubAgentVM.queued). Its `status` still
+// reads "running" (there is no child lifecycle yet to say otherwise) and its
+// `startedAtUnixMs` is stamped from the spawn call itself, i.e. dispatch/
+// queued time, not from when the sub-agent actually started running. Ticking
+// a live clock off that timestamp would count queued wait time as elapsed
+// run time, so the clock must stay off until the sub-agent is no longer
+// queued.
+function isSubAgentActivelyRunning(subAgent: AgentTaskSubAgentVM): boolean {
+  return subAgent.status === "running" && !subAgent.queued;
+}
+
 function useRunningSubAgentNowUnixMs(
   subAgent: AgentTaskSubAgentVM
 ): number | null {
   const shouldTick =
-    subAgent.status === "running" &&
+    isSubAgentActivelyRunning(subAgent) &&
     typeof subAgent.startedAtUnixMs === "number";
   const [nowUnixMs, setNowUnixMs] = useState<number | null>(() =>
     shouldTick ? Date.now() : null
@@ -287,7 +300,8 @@ function subAgentElapsedText(
   const ended =
     typeof terminal === "number"
       ? terminal
-      : subAgent.status === "running" && typeof runningNowUnixMs === "number"
+      : isSubAgentActivelyRunning(subAgent) &&
+          typeof runningNowUnixMs === "number"
         ? Math.max(latest ?? started, runningNowUnixMs)
         : latest;
   if (typeof ended !== "number" || ended <= started) {
