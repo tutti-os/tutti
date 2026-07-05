@@ -147,6 +147,7 @@ import {
 import {
   ConversationMeta,
   groupConversations,
+  normalizeConversationProjectPath,
   type ConversationSection
 } from "./agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
@@ -4226,9 +4227,10 @@ function stabilizeConversationSectionItems(
   return changed ? stable : previous;
 }
 
-function updateConversationSectionsFromSummaries(
+export function updateConversationSectionsFromSummaries(
   previous: ConversationSection[] | null,
-  conversations: readonly AgentGUINodeViewModel["conversations"][number][]
+  conversations: readonly AgentGUINodeViewModel["conversations"][number][],
+  options: { sectionConversationsLabel: string }
 ): ConversationSection[] | null {
   if (!previous || conversations.length === 0) {
     return previous;
@@ -4236,10 +4238,12 @@ function updateConversationSectionsFromSummaries(
   const summariesById = new Map(
     conversations.map((conversation) => [conversation.id, conversation])
   );
+  const seenIds = new Set<string>();
   let changed = false;
   const nextSections = previous.map((section) => {
     let sectionChanged = false;
     const items = section.items.map((item) => {
+      seenIds.add(item.id);
       const summary = summariesById.get(item.id);
       if (!summary) {
         return item;
@@ -4263,7 +4267,49 @@ function updateConversationSectionsFromSummaries(
       items
     };
   });
-  return changed ? nextSections : (previous as ConversationSection[]);
+
+  // A conversation can go from not-existing to existing between two runtime
+  // section fetches (e.g. the optimistic pre-activation entry created by
+  // the first-message flow, whose id never changes once the real backend
+  // session lands). The loop above only patches items that are already
+  // present in some section; without this, such a conversation would never
+  // appear in the sidebar until the next full runtimeListSessionSections
+  // refetch happens to include it, which -- because that refetch is keyed
+  // off conversation membership -- may never happen again for the same id.
+  const newConversations = conversations.filter(
+    (conversation) =>
+      !seenIds.has(conversation.id) && (conversation.pinnedAtUnixMs ?? 0) <= 0
+  );
+  if (newConversations.length === 0) {
+    return changed ? nextSections : previous;
+  }
+
+  const sectionsWithInsertions = [...nextSections];
+  for (const conversation of newConversations) {
+    const targetSectionId = conversation.project
+      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
+      : "conversations";
+    const targetIndex = sectionsWithInsertions.findIndex(
+      (section) => section.id === targetSectionId
+    );
+    const target =
+      targetIndex !== -1 ? sectionsWithInsertions[targetIndex] : undefined;
+    if (targetIndex !== -1 && target) {
+      sectionsWithInsertions[targetIndex] = {
+        ...target,
+        items: [conversation, ...target.items]
+      };
+      continue;
+    }
+    sectionsWithInsertions.push({
+      id: targetSectionId,
+      kind: conversation.project ? "project" : "conversations",
+      label: conversation.project?.label ?? options.sectionConversationsLabel,
+      project: conversation.project ?? null,
+      items: [conversation]
+    });
+  }
+  return sectionsWithInsertions;
 }
 
 function projectRuntimeSectionsToConversationSections(input: {
@@ -4866,9 +4912,11 @@ function useAgentGUIConversationRail({
       return;
     }
     setRuntimeRailSections((current) =>
-      updateConversationSectionsFromSummaries(current, conversations)
+      updateConversationSectionsFromSummaries(current, conversations, {
+        sectionConversationsLabel: labels.sectionConversations
+      })
     );
-  }, [conversations, runtimeSectionsEnabled]);
+  }, [conversations, labels.sectionConversations, runtimeSectionsEnabled]);
 
   const loadMoreSectionConversations = useCallback(
     (section: ConversationSection) => {
