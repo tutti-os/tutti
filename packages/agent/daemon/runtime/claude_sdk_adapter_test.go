@@ -1996,6 +1996,86 @@ func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	}
 }
 
+// TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult
+// reproduces the context-usage popover bug reported after PR #749: on a
+// "[1m]" (1M-context) model alias, every usage_updated delta streamed before
+// the turn's final result message (the only one carrying an authoritative
+// modelUsage.contextWindow) used to fall back to the flat 200k default,
+// so the popover showed e.g. "38,551 / 200,000 (19%)" for a model whose real
+// window is 1,000,000 — for the entire duration of the turn. Once the final
+// message with modelUsage landed, the total would jump to 1,000,000, only to
+// reset back to the wrong 200k default on the next turn/session. This test
+// pins the fix: even the very first, modelUsage-less delta on a "[1m]" alias
+// must assume the 1,000,000 window, not the flat 200k default.
+func TestClaudeCodeSDKAdapterAssumes1MWindowForOneMillionModelAliasBeforeResult(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	// Mirrors a user-configured custom model alias such as the reported
+	// "claude-fable-5[1m]", following the same "[1m]" suffix convention as
+	// the built-in "opus[1m]"/"sonnet[1m]" aliases.
+	adapterSession.applyConfigOption("model", "claude-fable-5[1m]")
+
+	// First streamed usage delta of a brand-new turn/session: no
+	// modelUsage yet (previous.contextKnown is false), matching the
+	// "agent session Claude SDK usage update" log lines observed at
+	// current_context_known=false in the field report.
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  30_000,
+				"output_tokens": 8_551,
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("usage events = %#v, want session.updated", events)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens = %#v, want assumed 1,000,000 window for a [1m] model alias before modelUsage is known", contextWindow["totalTokens"])
+	}
+
+	// The turn's final result message now reports the authoritative
+	// modelUsage window: it must agree with the assumed value, not flip
+	// the denominator mid-turn.
+	events, terminal, err = adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":  32_000,
+				"output_tokens": 8_859,
+			},
+			"modelUsage": map[string]any{
+				"claude-fable-5[1m]": map[string]any{
+					"contextWindow": 1_000_000,
+				},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated (final) terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("usage events (final) = %#v", events)
+	}
+	state = adapter.SessionState(session)
+	usage, _ = state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ = usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != 1_000_000 {
+		t.Fatalf("totalTokens (final) = %#v, want 1,000,000 from modelUsage", contextWindow["totalTokens"])
+	}
+}
+
 func TestClaudeCodeSDKAdapterDoesNotCarryContextWindowAcrossModelChange(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
