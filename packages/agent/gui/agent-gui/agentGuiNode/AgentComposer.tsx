@@ -158,6 +158,7 @@ import handoffLinedIconUrl from "../../app/renderer/assets/icons/handoff-lined.s
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
+import { resolvePermissionModeControlsDisabled } from "./model/composerModeSelection";
 import {
   MANAGED_AGENT_ICON_FALLBACK_URL,
   MANAGED_AGENT_ICON_URLS
@@ -1434,6 +1435,12 @@ export function AgentComposer({
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
+  const permissionModeControlsDisabled = resolvePermissionModeControlsDisabled({
+    provider,
+    isSendingTurn,
+    isSubmittingPrompt,
+    showStopButton
+  });
   const composerControlsHardDisabled =
     isSelectedProjectMissing ||
     isSubmittingPrompt ||
@@ -3833,7 +3840,7 @@ export function AgentComposer({
               {composerSettings.supportsPermissionMode ? (
                 <AgentPermissionModeDropdown
                   composerSettings={composerSettings}
-                  disabled={settingsControlsDisabled}
+                  disabled={permissionModeControlsDisabled}
                   previewMode={previewMode}
                   labels={{
                     permissionLabel: labels.permissionLabel,

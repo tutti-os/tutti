@@ -10987,6 +10987,184 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("tells the user a codex permission-mode change will apply on the next message when a turn is in flight", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "gpt-5.4",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "auto"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Codex"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "codex",
+          permissionModeId: "auto",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "auto"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex", {
+          composerOverrides: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            permissionModeId: "auto"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "full-access"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "full-access"
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(onShowMessage).toHaveBeenCalledWith(
+        "Permission mode will apply starting with your next message.",
+        "info"
+      );
+    });
+  });
+
+  it("does not show the deferred-apply tip for claude-code, which applies permission mode live mid-turn", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "sonnet",
+          reasoningEffort: "medium",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "default"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          permissionModeId: "default",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code", {
+          composerOverrides: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            permissionModeId: "default"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "acceptEdits"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "acceptEdits"
+        }
+      });
+    });
+    expect(onShowMessage).not.toHaveBeenCalledWith(
+      "Permission mode will apply starting with your next message.",
+      "info"
+    );
+  });
+
   it("uses active ACP model options for live sessions", async () => {
     const listModels = vi.fn();
     const getComposerOptions = vi.fn(async () => ({

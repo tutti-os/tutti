@@ -7,6 +7,8 @@ export const enMessages = {
     "This session cannot be resumed on this device. Start a new session and @this session to keep going.",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
+  agentPermissionModeAppliesNextTurn:
+    "Permission mode will apply starting with your next message.",
   agentThisSessionMentionLabel: "this session",
   terminalLaunchFailed: "Terminal launch failed: {{message}}",
   fallbackTerminalFailed: "Fallback terminal launch also failed: {{message}}",

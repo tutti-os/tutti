@@ -8949,6 +8949,22 @@ export function useAgentGUINodeController({
       ) {
         sessionSettingsPatch.permissionModeId =
           normalizePermissionModeId(nextPermission);
+        // Codex has no live mid-turn RPC for approval/sandbox policy: the
+        // daemon only re-derives it fresh on the *next* turn/start call, so a
+        // change made while a turn is actively running won't affect that
+        // turn. Claude Code applies it immediately via query.setPermissionMode
+        // even mid-turn, so no such gap exists there. Surface the deferral
+        // honestly instead of letting the optimistic UI update imply the
+        // change is already in effect.
+        const turnPhase = activeSessionState.turnLifecycle?.phase;
+        const isTurnInFlight =
+          turnPhase === "running" || turnPhase === "submitted";
+        if (dataRef.current.provider === "codex" && isTurnInFlight) {
+          onShowMessageRef.current?.(
+            translate("messages.agentPermissionModeAppliesNextTurn"),
+            "info"
+          );
+        }
       }
       if (
         Object.keys(sessionSettingsPatch).length > 0 &&
