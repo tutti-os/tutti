@@ -1944,3 +1944,139 @@ func appFactoryManifestForMetadataTest(appID string, version string, name string
 	manifest.Description = description
 	return manifest
 }
+
+// systemNoticeMessagePayload reproduces the exact payload shape codex/ACP
+// system notices are persisted with (see acpSystemNoticeEvent in
+// packages/agent/daemon/runtime/acp_update_events.go), e.g. the
+// "Skill descriptions were shortened to fit the 2% skills context budget."
+// warning observed in a real App Factory job (答案之书) that was marked
+// failed within ~6 seconds of creation, before the agent had written any
+// app files.
+func systemNoticeMessagePayload() map[string]any {
+	return map[string]any{
+		"kind":       "agent_system_notice",
+		"noticeKind": "warning",
+		"severity":   "warning",
+		"title":      "Skill descriptions were shortened to fit the 2% skills context budget.",
+		"source":     "runtime",
+	}
+}
+
+func TestIsCompletedAssistantTextMessageIgnoresSystemNotice(t *testing.T) {
+	t.Parallel()
+
+	if isCompletedAssistantTextMessage("assistant", "text", "completed", systemNoticeMessagePayload()) {
+		t.Fatal("system notice message was treated as completed assistant text, want ignored")
+	}
+	if !isCompletedAssistantTextMessage("assistant", "text", "completed", nil) {
+		t.Fatal("genuine completed assistant text message was ignored, want treated as completed")
+	}
+	if !isCompletedAssistantTextMessage("assistant", "text", "completed", map[string]any{"content": "done"}) {
+		t.Fatal("genuine completed assistant text message with unrelated payload was ignored, want treated as completed")
+	}
+}
+
+func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNotice(t *testing.T) {
+	t.Parallel()
+
+	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		{
+			Role:    "assistant",
+			Kind:    "text",
+			Status:  "completed",
+			Payload: systemNoticeMessagePayload(),
+		},
+	}
+	if factoryAgentMessageUpdatesContainCompletedAssistantText(updates) {
+		t.Fatal("system notice update was treated as completed assistant text, want ignored")
+	}
+
+	updates = append(updates, agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		Role:   "assistant",
+		Kind:   "text",
+		Status: "completed",
+	})
+	if !factoryAgentMessageUpdatesContainCompletedAssistantText(updates) {
+		t.Fatal("genuine completed assistant text update was ignored, want treated as completed")
+	}
+}
+
+// TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompletionDetection
+// reproduces the exact false-failure sequence found in a real diagnostic log
+// bundle (tutti-logs-20260706-012540.zip) for the "答案之书" App Factory job:
+// the codex agent emitted only a "skills context budget" system notice
+// (role=assistant, kind=text, status=completed) a few seconds into a job,
+// long before writing any app files. Before this fix, that notice alone was
+// enough to make the App Factory service believe the agent session had
+// completed and immediately run validation — failing with "read app
+// manifest: ... no such file or directory" while the agent kept working (and
+// went on to succeed) in the background. The job's status then stayed
+// "failed" forever with no way to reconcile once the agent actually
+// finished.
+func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompletionDetection(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	draftDir := t.TempDir()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		DraftDir:       draftDir,
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	publisher := &workspaceAppFactoryPublisherStub{}
+	service := AppFactoryService{
+		Store:     store,
+		AppStore:  newAppStoreStub(),
+		Publisher: publisher,
+		// Even if the session's reported canonical status momentarily reads
+		// "completed" (the suspected upstream race), the observer must not
+		// act on it when the only new message is a system notice.
+		AgentSessionReader: factoryAgentSessionReaderStub{
+			sessions: map[string]agentservice.PersistedSession{
+				appFactoryJobStoreKey("ws-1", "session-1"): {
+					ID:          "session-1",
+					WorkspaceID: "ws-1",
+					Status:      "completed",
+				},
+			},
+		},
+		AgentMessageReader: factoryAgentMessageReaderStub{},
+	}
+
+	service.ObserveAgentSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+			{
+				MessageID: "notice-1",
+				Role:      "assistant",
+				Kind:      "text",
+				Status:    "completed",
+				Payload:   systemNoticeMessagePayload(),
+			},
+		},
+	}, agentsessionstore.ReportSessionMessagesReply{AcceptedCount: 1})
+
+	// The guard in ObserveAgentSessionMessages returns synchronously (no
+	// goroutine spawned) when the update slice contains no genuine completed
+	// assistant text, so the job status is safe to assert immediately.
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating (job must not fail on a system notice alone)", job.Status)
+	}
+	if strings.TrimSpace(job.FailureReason) != "" {
+		t.Fatalf("failure reason = %q, want empty", job.FailureReason)
+	}
+	if len(publisher.published) != 0 {
+		t.Fatalf("published updates = %d, want 0", len(publisher.published))
+	}
+}
