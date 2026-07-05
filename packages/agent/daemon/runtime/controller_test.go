@@ -1457,7 +1457,8 @@ func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T
 	t.Run("with opt-in a fresh provider session is created in place", func(t *testing.T) {
 		t.Parallel()
 		adapter := newRecreatableResumeAdapter(restoreErr)
-		controller := NewController([]Adapter{adapter}, nil)
+		reporter := &recordingReporter{}
+		controller := NewController([]Adapter{adapter}, reporter)
 		session, err := controller.Resume(context.Background(), ResumeInput{
 			RoomID:            "room-1",
 			AgentSessionID:    "imported-1",
@@ -1478,6 +1479,29 @@ func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T
 		}
 		if session.ProviderSessionID != "fresh-provider-session" {
 			t.Fatalf("provider session id = %q, want fresh-provider-session", session.ProviderSessionID)
+		}
+		// A silently recreated provider session has no memory of anything the
+		// user said before this point, even though the transcript still shows
+		// the old (imported) messages seamlessly joined with new ones. Without
+		// a visible notice this looks exactly like the agent forgot the
+		// conversation, so recreation must surface a system notice message.
+		reports := reporter.waitForCalls(t, 1)
+		var notice *agentsessionstore.WorkspaceAgentMessageUpdate
+		for _, call := range reports {
+			for i, update := range call.report.MessageUpdates {
+				if update.AgentSessionID != "imported-1" {
+					continue
+				}
+				if asString(update.Payload["kind"]) == "agent_system_notice" {
+					notice = &call.report.MessageUpdates[i]
+				}
+			}
+		}
+		if notice == nil {
+			t.Fatalf("no agent_system_notice message reported for recreated session; reports = %#v", reports)
+		}
+		if title := asString(notice.Payload["title"]); title == "" {
+			t.Fatalf("recreated-session notice has empty title: %#v", notice.Payload)
 		}
 		// The recreated session must be live so a turn can run on it.
 		result, err := controller.Exec(context.Background(), ExecInput{

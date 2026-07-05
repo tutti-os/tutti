@@ -930,6 +930,14 @@ func isResumeRecreatableError(err error) bool {
 // agent session, clearing the stale provider session id so the adapter mints a
 // fresh one. The new provider session id is captured from the started events and
 // persisted via the session report, keeping the conversation continuable.
+//
+// The freshly started provider session has no memory of anything said before
+// this point (e.g. an externally-imported conversation whose rollout only
+// ever existed on another device, or local history retention pruning it) even
+// though the transcript keeps showing the old messages joined seamlessly with
+// new ones. Without an explicit notice this looks to the user like the agent
+// silently forgot the conversation, so a visible system notice is appended
+// alongside the started events.
 func (c *Controller) recreateAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
 	fresh := session
 	fresh.ProviderSessionID = ""
@@ -943,6 +951,9 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	fresh = applySessionEvents(fresh, events)
 	fresh.Status = SessionStatusReady
 	fresh.UpdatedAtUnixMS = unixMS(now())
+	if notice, ok := sessionRecreatedNoticeEvent(fresh); ok {
+		events = append(events, notice)
+	}
 	c.store(fresh)
 	c.publish(fresh, events)
 	c.publishPendingConfigOptionsUpdates(fresh)
@@ -951,6 +962,22 @@ func (c *Controller) recreateAdapterSession(ctx context.Context, session Session
 	}
 	c.enqueueSessionReport(ctx, fresh, events)
 	return nil
+}
+
+// sessionRecreatedNoticeEvent builds the visible system notice that
+// accompanies a recreated provider session (see recreateAdapterSession). It
+// reuses the same synthetic "agent_system_notice" message shape the ACP
+// adapters already use for compaction/goal/transport notices
+// (acpSystemNoticeEvent), so it renders through the existing generic notice
+// card with no GUI changes required.
+func sessionRecreatedNoticeEvent(session Session) (activityshared.Event, bool) {
+	return acpSystemNoticeEvent(session, "", map[string]any{
+		"sessionUpdate": "system_notice",
+		"kind":          "agent_system_notice",
+		"noticeKind":    "warning",
+		"title":         "Conversation history could not be restored",
+		"detail":        "The assistant could not resume this conversation's earlier messages locally (for example, if it was imported from another device or the local session data is no longer available), so this reply is starting fresh without that context.",
+	}, "system_notice", true)
 }
 
 func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) error {
