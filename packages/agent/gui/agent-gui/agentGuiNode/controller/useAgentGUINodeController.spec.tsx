@@ -14553,6 +14553,66 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
   });
 
+  it("does not queue when a settled control state keeps stale active-turn submit block", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "ready",
+          turnPhase: "settled"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          status: "working",
+          turnLifecycle: {
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "completed"
+          },
+          submitAvailability: { state: "blocked", reason: "active_turn" }
+        })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("send immediately"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("send immediately")
+      });
+    });
+    expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
   it("reflects pending interactive prompts from state patch events", async () => {
     let emitEvent:
       | ((event: AgentHostAgentActivityStreamEvent) => void)
