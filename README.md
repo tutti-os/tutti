@@ -243,7 +243,7 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 <!-- TODO: download link for Tutti · Local -->
 
-[Download Tutti](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
+[Download Tutti · Local](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
 
 <!-- TODO: waitlist link for Tutti · VM -->
 
