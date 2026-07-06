@@ -1107,6 +1107,85 @@ func TestDaemonAPIGeneratedRoutesCreateAgentSessionAllowsTargetOnlyRequest(t *te
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesCreateAgentSessionFillsPermissionModeFromPreferences(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			createFn: func(_ context.Context, _ string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+				if input.PermissionModeID == nil || *input.PermissionModeID != "bypassPermissions" {
+					t.Fatalf("permissionModeID = %v, want bypassPermissions", stringPtrValue(input.PermissionModeID))
+				}
+				return agentservice.Session{
+					ID:            input.AgentSessionID,
+					AgentTargetID: input.AgentTargetID,
+					Provider:      "claude-code",
+					Status:        "created",
+					CreatedAt:     createdAt,
+				}, nil
+			},
+		},
+		PreferencesService: stubPreferencesService{
+			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
+				return preferencesbiz.DesktopPreferences{
+					AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+						agenttargetbiz.IDLocalClaudeCode: {PermissionModeID: "bypassPermissions"},
+					},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
+		"agentSessionId": "22222222-2222-4222-8222-222222222222",
+		"agentTargetId":  agenttargetbiz.IDLocalClaudeCode,
+		"provider":       "claude-code",
+	})
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesCreateAgentSessionExplicitPermissionModeWinsOverPreferences(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			createFn: func(_ context.Context, _ string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
+				if input.PermissionModeID == nil || *input.PermissionModeID != "default" {
+					t.Fatalf("permissionModeID = %v, want default", stringPtrValue(input.PermissionModeID))
+				}
+				return agentservice.Session{
+					ID:            input.AgentSessionID,
+					AgentTargetID: input.AgentTargetID,
+					Provider:      "claude-code",
+					Status:        "created",
+					CreatedAt:     createdAt,
+				}, nil
+			},
+		},
+		PreferencesService: stubPreferencesService{
+			getFn: func(context.Context) (preferencesbiz.DesktopPreferences, error) {
+				return preferencesbiz.DesktopPreferences{
+					AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+						agenttargetbiz.IDLocalClaudeCode: {PermissionModeID: "bypassPermissions"},
+					},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/agent-sessions", map[string]any{
+		"agentSessionId":   "33333333-3333-4333-8333-333333333333",
+		"agentTargetId":    agenttargetbiz.IDLocalClaudeCode,
+		"permissionModeId": "default",
+		"provider":         "claude-code",
+	})
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesUpdateAgentSessionPin(t *testing.T) {
 	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
 	mux := http.NewServeMux()

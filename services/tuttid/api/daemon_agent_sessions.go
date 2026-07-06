@@ -507,6 +507,23 @@ func (api DaemonAPI) composerDefaultsForProvider(ctx context.Context, provider s
 	}
 }
 
+func (api DaemonAPI) composerDefaultsForAgentTarget(ctx context.Context, agentTargetID string) agentservice.ComposerSettings {
+	if api.PreferencesService == nil {
+		return agentservice.ComposerSettings{}
+	}
+	preferences, err := api.PreferencesService.Get(ctx)
+	if err != nil {
+		return agentservice.ComposerSettings{}
+	}
+	defaults := preferences.AgentComposerDefaultsByAgentTarget[strings.TrimSpace(agentTargetID)]
+	return agentservice.ComposerSettings{
+		Model:            defaults.Model,
+		PermissionModeID: defaults.PermissionModeID,
+		ReasoningEffort:  defaults.ReasoningEffort,
+		Speed:            defaults.Speed,
+	}
+}
+
 func (api DaemonAPI) composerDefaultLocale(ctx context.Context) string {
 	if api.PreferencesService == nil {
 		return ""

@@ -39,6 +39,17 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	metadata := mapValue(request.Body.Metadata)
 	provider := workspaceAgentProviderString(request.Body.Provider)
+	// A request without an explicit permission mode falls back to the
+	// remembered per-target default, mirroring GetAgentProviderComposerOptions
+	// (which seeds the composer display) and the CLI start path. Otherwise the
+	// composer shows the remembered mode but the session silently starts on
+	// the provider default.
+	permissionModeID := request.Body.PermissionModeId
+	if strings.TrimSpace(stringPtrValue(permissionModeID)) == "" {
+		if fallback := strings.TrimSpace(api.composerDefaultsForAgentTarget(ctx, agentTargetID).PermissionModeID); fallback != "" {
+			permissionModeID = &fallback
+		}
+	}
 	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, provider, "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
@@ -48,7 +59,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		InitialDisplayPrompt:   stringPtrValue(request.Body.InitialDisplayPrompt),
 		Metadata:               metadata,
 		Model:                  request.Body.Model,
-		PermissionModeID:       request.Body.PermissionModeId,
+		PermissionModeID:       permissionModeID,
 		PlanMode:               request.Body.PlanMode,
 		BrowserUse:             request.Body.BrowserUse,
 		Provider:               provider,
