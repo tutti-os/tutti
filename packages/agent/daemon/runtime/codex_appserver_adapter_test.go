@@ -70,6 +70,7 @@ type scriptedAppServerConnection struct {
 	holdTurn                     bool              // do not finish the turn until released
 	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
 	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	hangSteer                    bool              // never even acknowledge the turn/steer RPC (steer races the running turn's own completion)
 	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
@@ -485,6 +486,15 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			}
 			c.completePendingTurn()
 		case appServerMethodTurnSteer:
+			c.mu.Lock()
+			hang := c.hangSteer
+			c.mu.Unlock()
+			if hang {
+				// Fully wedged: codex no longer has a turn matching
+				// expectedTurnId (it raced the running turn's own
+				// completion) and never answers turn/steer at all.
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -1888,6 +1898,63 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	// arrive for a steered turn id.
 	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
 		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
+// TestCodexAppServerAdapterSteerTimesOutInsteadOfWedgingForever reproduces a
+// submission that arrives while another turn is running, at the exact moment
+// that running turn is completing server-side: codex no longer has a turn
+// matching expectedTurnId, so it never answers turn/steer at all (this is not
+// hypothetical — it is the same class of "fully wedged, no ack" behavior the
+// hangInterrupt tests already pin for turn/interrupt). Before
+// TurnSteerNoHandler accepted a bounded timeout, this RPC waited forever
+// (timeout=0), so the steered submission's own Exec call — and therefore its
+// controller turn record and the composer's blocked submit state — never
+// settled until the daemon restarted. Bounding the RPC turns that hang into a
+// prompt, ordinary turn failure instead.
+func TestCodexAppServerAdapterSteerTimesOutInsteadOfWedgingForever(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.turnSteerTimeout = 100 * time.Millisecond
+	transport.conn.holdTurn = true
+	transport.conn.hangSteer = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	steerDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "also update the docs",
+		}}, "", "turn-local-2", nil, nil)
+		steerDone <- err
+	}()
+
+	// The bounded RPC must fail on its own timeout, not hang until the test
+	// itself times out — that distinction is the entire point of this test.
+	select {
+	case err := <-steerDone:
+		if err == nil {
+			t.Fatalf("steer Exec = nil error, want a timeout error when codex never acks turn/steer")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("steer Exec wedged forever instead of timing out (turnSteerTimeout=%s)", adapter.turnSteerTimeout)
 	}
 
 	transport.conn.completePendingTurn()

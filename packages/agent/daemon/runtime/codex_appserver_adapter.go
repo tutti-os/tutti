@@ -97,6 +97,18 @@ const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
 const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 
+// defaultCodexAppServerTurnSteerTimeout bounds turn/steer, the RPC that
+// appends a new submission's input into an already-running turn instead of
+// starting a fresh one. turn/steer is meant to be a quick acknowledgment, not
+// a call that lives for the turn's whole duration like turn/start — so unlike
+// turn/start (unbounded), this must time out. Without a bound, a submission
+// steered at the exact moment the running turn completes server-side (codex
+// no longer has a turn matching expectedTurnId) can leave codex silently
+// never answering, and the unbounded RPC then wedges that submission's own
+// turn record forever: the composer stays blocked and every subsequent Exec
+// fails with ErrSessionActiveTurn until the daemon restarts.
+const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
+
 // startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
 // the initial fast ramp before the background refresh gives up (~18 minutes
 // total), bounding the goroutine while covering realistic transient outages.
@@ -124,6 +136,11 @@ type CodexAppServerAdapter struct {
 	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
 	// Overridable in tests to drive the loop without real delays.
 	startupModelRetryBackoffs []time.Duration
+	// turnSteerTimeout bounds the turn/steer RPC steerActiveTurn issues when a
+	// submission arrives while another turn is already running. Zero falls
+	// back to the default. Overridable in tests to drive the timeout without
+	// real delays.
+	turnSteerTimeout time.Duration
 }
 
 type codexAppServerSessionLock struct {
@@ -226,6 +243,7 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
+		turnSteerTimeout:  defaultCodexAppServerTurnSteerTimeout,
 	}
 }
 
@@ -1587,7 +1605,7 @@ func appServerTurnStatusTerminal(turn map[string]any) bool {
 	}
 }
 
-func (*CodexAppServerAdapter) steerActiveTurn(
+func (a *CodexAppServerAdapter) steerActiveTurn(
 	ctx context.Context,
 	appSession *codexAppServerSession,
 	session Session,
@@ -1599,12 +1617,25 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	activeTurnID string,
 	emit EventSink,
 ) ([]activityshared.Event, error) {
-	_, err := appSession.client.TurnSteerNoHandler(ctx, map[string]any{
+	timeout := a.turnSteerTimeout
+	if timeout <= 0 {
+		timeout = defaultCodexAppServerTurnSteerTimeout
+	}
+	_, err := appSession.client.TurnSteerNoHandler(ctx, timeout, map[string]any{
 		"threadId":       appSession.threadID,
 		"expectedTurnId": activeTurnID,
 		"input":          appServerUserInput(providerContent),
 	})
 	if err != nil {
+		// A codex that no longer has a turn matching expectedTurnId (for
+		// example this steer raced the running turn's own completion) may
+		// never answer turn/steer at all; TurnSteerNoHandler's bounded
+		// timeout turns that into a plain error here instead of hanging
+		// forever. The caller (execBlocking) surfaces this as a normal turn
+		// failure for THIS submission's own turn id, so ExecAsync's error
+		// path emits turn.failed and the controller's existing
+		// turnHasTerminalEvent check settles the record — the composer
+		// unblocks instead of staying wedged until a daemon restart.
 		return nil, err
 	}
 	events := []activityshared.Event{
