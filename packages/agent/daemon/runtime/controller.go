@@ -76,6 +76,14 @@ type ReleaseIdleLiveSessionsResult struct {
 	Failed             int
 }
 
+// CloseAllLiveSessionsResult reports the outcome of CloseAllLiveSessions.
+type CloseAllLiveSessionsResult struct {
+	// Scanned counts sessions whose adapter reported a live provider process.
+	Scanned int
+	Closed  int
+	Failed  int
+}
+
 type asyncActivityReporter interface {
 	ActivityReporter
 	AsyncActivityReporter()
@@ -751,6 +759,65 @@ func liveSessionReleaseAdapter(adapter Adapter) (LiveSessionReleaseAdapter, Live
 	releaseAdapter, releaseOK := adapter.(LiveSessionReleaseAdapter)
 	probe, probeOK := adapter.(LiveSessionProbeAdapter)
 	return releaseAdapter, probe, releaseOK && probeOK
+}
+
+// CloseAllLiveSessions force-terminates every live provider process across
+// all sessions, regardless of idle time, active turns, or pending approval
+// requests. Unlike ReleaseIdleLiveSessions (the periodic reaper, which only
+// reclaims idle, non-busy sessions so it never interrupts work in
+// progress), this exists for daemon shutdown: an OS process is not killed
+// automatically just because its parent (tuttid) exits — it is reparented
+// and keeps running. A provider subprocess (e.g. a Codex app-server) left
+// behind here would keep running unmanaged, still able to act on the
+// session's working directory, until something else notices and kills it.
+// Call this once, during shutdown, before the daemon process exits.
+//
+// This only closes the provider-side process; it deliberately does not
+// mark sessions completed or delete their records, so providers that
+// support live-session resume (see LiveSessionReleaseAdapter) reconnect
+// normally the next time the daemon starts and the session resumes.
+func (c *Controller) CloseAllLiveSessions(ctx context.Context) CloseAllLiveSessionsResult {
+	var result CloseAllLiveSessionsResult
+	if c == nil {
+		return result
+	}
+	type candidate struct {
+		session Session
+		adapter Adapter
+	}
+	c.mu.Lock()
+	candidates := make([]candidate, 0, len(c.sessions))
+	for _, session := range c.sessions {
+		candidates = append(candidates, candidate{
+			session: session,
+			adapter: c.adapters[session.Provider],
+		})
+	}
+	c.mu.Unlock()
+
+	for _, cand := range candidates {
+		probe, ok := cand.adapter.(LiveSessionProbeAdapter)
+		if !ok || !probe.HasLiveSession(cand.session) {
+			continue
+		}
+		result.Scanned++
+		releaseLifecycleLock := c.acquireLifecycleLock(cand.session.RoomID, cand.session.AgentSessionID)
+		err := cand.adapter.Close(ctx, cand.session)
+		releaseLifecycleLock()
+		if err != nil {
+			result.Failed++
+			slog.Warn("agent live session shutdown close failed",
+				"event", "agent_session.shutdown_close.failed",
+				"room_id", cand.session.RoomID,
+				"agent_session_id", cand.session.AgentSessionID,
+				"provider", cand.session.Provider,
+				"error", err.Error(),
+			)
+			continue
+		}
+		result.Closed++
+	}
+	return result
 }
 
 func sessionIdleFor(session Session, nowUnixMS int64, idleAfterMS int64) bool {

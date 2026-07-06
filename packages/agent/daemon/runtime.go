@@ -17,6 +17,14 @@ var ErrProcessTransportRequired = errors.New("agent daemon process transport is 
 const (
 	defaultLiveSessionReaperIdleAfter     = 30 * time.Minute
 	defaultLiveSessionReaperSweepInterval = 5 * time.Minute
+
+	// shutdownCloseAllLiveSessionsTimeout bounds how long Runtime.Close waits
+	// for CloseAllLiveSessions to force-terminate every live provider
+	// process. Each process close is already internally bounded (SIGTERM,
+	// then SIGKILL after a short grace period; see localProcessConnection),
+	// so this is a backstop against an unexpectedly large number of live
+	// sessions, not the primary timeout mechanism.
+	shutdownCloseAllLiveSessionsTimeout = 15 * time.Second
 )
 
 type ActivityReporter = agentruntime.ActivityReporter
@@ -99,6 +107,7 @@ func (r *Runtime) Close() {
 		return
 	}
 	r.closeOnce.Do(func() {
+		r.closeAllLiveSessions()
 		if r.cancel != nil {
 			r.cancel()
 		}
@@ -106,6 +115,32 @@ func (r *Runtime) Close() {
 			<-r.done
 		}
 	})
+}
+
+// closeAllLiveSessions force-terminates every live provider process (Codex
+// app-server, Claude Code SDK sidecar, other ACP subprocess adapters) before
+// the daemon process exits. A spawned subprocess is not killed automatically
+// just because tuttid exits — it is reparented to init and keeps running —
+// so without this step, every daemon shutdown (or a desktop-parent-monitor
+// triggered shutdown after the host app disappears) would orphan any
+// in-flight provider processes, leaving them running unmanaged against the
+// session's working directory indefinitely.
+func (r *Runtime) closeAllLiveSessions() {
+	if r == nil || r.controller == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownCloseAllLiveSessionsTimeout)
+	defer cancel()
+	result := r.controller.CloseAllLiveSessions(ctx)
+	if result.Scanned == 0 {
+		return
+	}
+	slog.Info("agent live session shutdown close completed",
+		"event", "agent_session.shutdown_close.completed",
+		"scanned", result.Scanned,
+		"closed", result.Closed,
+		"failed", result.Failed,
+	)
 }
 
 func (r *Runtime) startLiveSessionReaper(config LiveSessionReaperConfig) {
