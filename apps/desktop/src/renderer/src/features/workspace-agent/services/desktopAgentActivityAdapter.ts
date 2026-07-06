@@ -369,17 +369,12 @@ export function createDesktopAgentActivityAdapter({
         workspaceId: input.workspaceId
       });
       try {
-        const promoted = await promoteClaudeDraft(input);
-        if (promoted) {
-          reportDesktopAgentSubmitTrace(runtimeApi, {
-            agentSessionId: promoted.agentSessionId,
-            event: "renderer_adapter.create.promoted_draft",
-            metadata: input.metadata,
-            provider: promoted.provider,
-            workspaceId: input.workspaceId
-          });
-          return promoted;
-        }
+        // Always resync the pre-warmed draft's settings (model/permission/etc.)
+        // to what was just submitted before promoting it. The draft is patched
+        // in place asynchronously whenever composer settings change (see
+        // ensureClaudeDraft above), so promoting the cached entry directly here
+        // could race ahead of an in-flight settings patch and send the message
+        // to a session still running the previous (e.g. default) model.
         if (
           workspaceAgentProvider(input.provider) === "claude-code" &&
           (input.initialContent?.length ?? 0) > 0
@@ -404,8 +399,26 @@ export function createDesktopAgentActivityAdapter({
             agentSessionId: draft.id
           });
           if (promotedDraft) {
+            reportDesktopAgentSubmitTrace(runtimeApi, {
+              agentSessionId: promotedDraft.agentSessionId,
+              event: "renderer_adapter.create.promoted_draft",
+              metadata: input.metadata,
+              provider: promotedDraft.provider,
+              workspaceId: input.workspaceId
+            });
             return promotedDraft;
           }
+        }
+        const promoted = await promoteClaudeDraft(input);
+        if (promoted) {
+          reportDesktopAgentSubmitTrace(runtimeApi, {
+            agentSessionId: promoted.agentSessionId,
+            event: "renderer_adapter.create.promoted_draft",
+            metadata: input.metadata,
+            provider: promoted.provider,
+            workspaceId: input.workspaceId
+          });
+          return promoted;
         }
         const agentSessionId =
           input.agentSessionId?.trim() || createDesktopAgentActivitySessionId();

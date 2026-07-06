@@ -204,6 +204,7 @@ import {
 const EMPTY_AGENT_GUI_MESSAGES: readonly WorkspaceAgentActivityMessage[] = [];
 const EMPTY_AGENT_GUI_AVAILABLE_COMMANDS: AgentSessionCommand[] = [];
 const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
+const ACTIVITY_STREAM_STATE_RELOAD_MAX_WAIT_MS = 1000;
 const AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE = 100;
 const AGENT_GUI_DETAIL_MISSING_USER_BACKFILL_PAGE_LIMIT = 3;
 const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
@@ -6531,7 +6532,13 @@ export function useAgentGUINodeController({
           }
           void loadSessionState(agentSessionId, cause);
         },
-        ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS
+        ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS,
+        // Without a maxWait, a turn that keeps emitting qualifying events
+        // (tool calls, usage updates, ...) faster than the debounce window
+        // never gets a quiet gap to fire, so the control-state reload (and
+        // with it the usage/limit display) silently stalls until the turn
+        // settles instead of refreshing throughout the reply.
+        { maxWait: ACTIVITY_STREAM_STATE_RELOAD_MAX_WAIT_MS }
       ),
     [loadSessionState]
   );
