@@ -551,6 +551,7 @@ export const zhCN = {
       planImplementationSkip: "留在计划模式",
       noRunningResponse: "当前没有正在运行的回复。",
       composerTextMenu: "输入框文本操作",
+      pastedTextPromptAttachment: "粘贴的文本附件：{{name}}",
       copyMessage: "复制消息",
       copyImage: "复制图片",
       messageCopied: "已复制",

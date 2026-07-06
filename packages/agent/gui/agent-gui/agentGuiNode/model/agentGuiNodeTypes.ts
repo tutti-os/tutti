@@ -103,10 +103,18 @@ export interface AgentComposerDraftFile {
   uploadError?: string;
 }
 
+export interface AgentComposerDraftLargeText {
+  id: string;
+  name: string;
+  text: string;
+  sizeBytes?: number;
+}
+
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];
   files?: AgentComposerDraftFile[];
+  largeTexts?: AgentComposerDraftLargeText[];
 }
 
 export interface AgentGUIComposerSettingsVM {

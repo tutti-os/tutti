@@ -1,7 +1,9 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { translate } from "../../../i18n/index";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
+  AgentComposerDraftLargeText,
   AgentComposerDraftImage,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
@@ -29,7 +31,8 @@ export function agentComposerDraftHasContent(
   return (
     draft.prompt.trim() !== "" ||
     draft.images.length > 0 ||
-    (draft.files?.length ?? 0) > 0
+    (draft.files?.length ?? 0) > 0 ||
+    (draft.largeTexts?.some((item) => item.text.trim() !== "") ?? false)
   );
 }
 
@@ -188,8 +191,43 @@ export function agentComposerDraftToPromptContent(input: {
         ...(file.sizeBytes ? { sizeBytes: file.sizeBytes } : {}),
         name: file.name,
         kind: "file"
-      }))
+      })),
+    ...largeTextPromptContent(input.draft.largeTexts ?? [])
   ]);
+}
+
+export function agentComposerDraftSubmittedText(
+  draft: AgentComposerDraft
+): string {
+  return agentPromptContentDisplayText(
+    normalizeAgentPromptContentBlocks([
+      ...textPromptContent(draft.prompt),
+      ...largeTextPromptContent(draft.largeTexts ?? [])
+    ])
+  );
+}
+
+export function agentComposerDraftDisplayPrompt(
+  draft: AgentComposerDraft
+): string | undefined {
+  const largeTexts = draft.largeTexts?.filter(
+    (item) => item.text.trim() !== ""
+  );
+  if (!largeTexts?.length) {
+    return undefined;
+  }
+  const parts = [draft.prompt.trim()].filter(Boolean);
+  parts.push(
+    ...largeTexts.map((item, index) => {
+      const name = item.name.trim() || `pasted-text-${index + 1}.txt`;
+      const sizeLabel =
+        typeof item.sizeBytes === "number" && Number.isFinite(item.sizeBytes)
+          ? ` · ${formatAgentComposerDraftBytes(item.sizeBytes)}`
+          : "";
+      return `[${name}${sizeLabel}]`;
+    })
+  );
+  return parts.join("\n");
 }
 
 function agentPromptFileBlocks(
@@ -240,6 +278,34 @@ function escapeRegExp(value: string): string {
 export function textPromptContent(prompt: string): AgentPromptContentBlock[] {
   const text = prompt.trim();
   return text ? [{ type: "text", text }] : [];
+}
+
+function largeTextPromptContent(
+  largeTexts: readonly AgentComposerDraftLargeText[]
+): AgentPromptContentBlock[] {
+  return largeTexts
+    .filter((item) => item.text.trim() !== "")
+    .map((item, index) => {
+      const name = item.name.trim() || `pasted-text-${index + 1}.txt`;
+      return {
+        type: "text" as const,
+        text: `${translate("agentHost.agentGui.pastedTextPromptAttachment", {
+          name
+        })}\n\n${item.text}`
+      };
+    });
+}
+
+function formatAgentComposerDraftBytes(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  const kib = sizeBytes / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(kib >= 10 ? 0 : 1)} KB`;
+  }
+  const mib = kib / 1024;
+  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
 }
 
 function agentPromptImageBlockToDraftImage(

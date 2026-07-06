@@ -52,9 +52,12 @@ const workspaceUserProjectI18n = createWorkspaceUserProjectI18nRuntime(
 function createDraft(
   prompt: string,
   images: AgentComposerDraft["images"] = [],
-  files: AgentComposerDraft["files"] = []
+  files: AgentComposerDraft["files"] = [],
+  largeTexts?: AgentComposerDraft["largeTexts"]
 ): AgentComposerDraft {
-  return { prompt, images, files };
+  return largeTexts
+    ? { prompt, images, files, largeTexts }
+    : { prompt, images, files };
 }
 
 function createFileDataTransfer(files: readonly File[]): DataTransfer {
@@ -177,6 +180,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           disabled,
           onChange,
           onPasteImages,
+          onPasteLargeText,
           onFileMentionSuggestionChange,
           onKeyDownForPalette,
           onSubmit,
@@ -190,6 +194,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           onChange: (value: string) => void;
           onFileMentionSuggestionChange?: (state: any) => void;
           onPasteImages?: (images: unknown[]) => void;
+          onPasteLargeText?: (text: string) => void;
           onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
           onSubmit?: () => void;
           onSubmitGuidance?: () => void;
@@ -304,6 +309,15 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               }
             >
               paste image
+            </button>
+            <button
+              type="button"
+              data-testid="mock-paste-large-text"
+              onClick={() =>
+                onPasteLargeText?.("first pasted line\nsecond pasted line")
+              }
+            >
+              paste large text
             </button>
           </>
         );
@@ -3780,6 +3794,81 @@ describe("AgentComposer", () => {
     expect(
       screen.queryByTestId("agent-gui-composer-image-drafts")
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps pasted large text compact and submits the full text", () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-large-text"));
+    rerender(renderComposer());
+
+    expect(draftContent).toEqual(
+      createDraft(
+        "",
+        [],
+        [],
+        [
+          {
+            id: "pasted-text-1",
+            name: "pasted-text-1.txt",
+            text: "first pasted line\nsecond pasted line",
+            sizeBytes: 36
+          }
+        ]
+      )
+    );
+    expect(
+      screen.getByTestId("agent-gui-composer-large-text-draft")
+    ).toHaveTextContent("pasted-text-1.txt");
+
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      [
+        {
+          type: "text",
+          text: "Pasted text attachment: pasted-text-1.txt\n\nfirst pasted line\nsecond pasted line"
+        }
+      ],
+      "[pasted-text-1.txt · 36 B]"
+    );
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(createDraft(""));
   });
 
   it("uploads pasted images immediately and submits the staged path", async () => {

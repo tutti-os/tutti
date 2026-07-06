@@ -102,6 +102,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import {
   agentComposerDraftHasContent,
+  agentComposerDraftSubmittedText,
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
@@ -1020,7 +1021,9 @@ function shouldClearSubmittedDraft(input: {
   const submittedPrompt = agentPromptContentDisplayText(
     input.submittedContent
   ).trim();
-  if (currentDraft.prompt.trim() !== submittedPrompt) {
+  if (
+    agentComposerDraftSubmittedText(currentDraft).trim() !== submittedPrompt
+  ) {
     return false;
   }
   const submittedImages = input.submittedContent.filter(
@@ -3186,6 +3189,8 @@ function areAgentComposerDraftsEqual(
 ): boolean {
   const leftFiles = left.files ?? [];
   const rightFiles = right.files ?? [];
+  const leftLargeTexts = left.largeTexts ?? [];
+  const rightLargeTexts = right.largeTexts ?? [];
   return (
     left.prompt === right.prompt &&
     left.images.length === right.images.length &&
@@ -3221,6 +3226,19 @@ function areAgentComposerDraftsEqual(
         file.sizeBytes === other.sizeBytes &&
         file.uploading === other.uploading &&
         file.uploadError === other.uploadError
+      );
+    }) &&
+    leftLargeTexts.length === rightLargeTexts.length &&
+    leftLargeTexts.every((item, index) => {
+      const other = rightLargeTexts[index];
+      if (!other) {
+        return false;
+      }
+      return (
+        item.id === other.id &&
+        item.name === other.name &&
+        item.text === other.text &&
+        item.sizeBytes === other.sizeBytes
       );
     })
   );
