@@ -3699,29 +3699,41 @@ export function updateConversationSectionsFromSummaries(
   let changed = false;
   const nextSections = previous.map((section) => {
     let sectionChanged = false;
-    const items = section.items.map((item) => {
-      seenIds.add(item.id);
-      const summary = summariesById.get(item.id);
-      if (!summary) {
-        return item;
-      }
-      const nextItem = {
-        ...summary,
-        project: item.project
-      };
-      if (conversationSummariesRenderEqual(item, nextItem)) {
-        return item;
-      }
-      sectionChanged = true;
-      return nextItem;
-    });
+    const summaryItems = summarySectionItemsById.get(section.id) ?? [];
+    const summaryIdsForSection = new Set(summaryItems.map((item) => item.id));
+    const items = section.items
+      .map((item) => {
+        seenIds.add(item.id);
+        const summary = summariesById.get(item.id);
+        if (!summary) {
+          return item;
+        }
+        const nextItem = section.project
+          ? {
+              ...summary,
+              project: section.project
+            }
+          : summary;
+        if (conversationSummariesRenderEqual(item, nextItem)) {
+          return item;
+        }
+        sectionChanged = true;
+        return nextItem;
+      })
+      .filter((item) => {
+        const summary = summariesById.get(item.id);
+        if (!summary || summaryIdsForSection.has(item.id)) {
+          return true;
+        }
+        sectionChanged = true;
+        return false;
+      });
     const nextSection = sectionChanged
       ? {
           ...section,
           items
         }
       : section;
-    const summaryItems = summarySectionItemsById.get(section.id) ?? [];
     if (section.kind === "pinned" || summaryItems.length === 0) {
       if (sectionChanged) {
         changed = true;
@@ -3730,14 +3742,16 @@ export function updateConversationSectionsFromSummaries(
     }
     const summaryIds = new Set(summaryItems.map((item) => item.id));
     const mergedItems = [
-      ...summaryItems.map((item) => ({
-        ...item,
-        project: section.project
-      })),
+      ...summaryItems.map((item) =>
+        section.project ? { ...item, project: section.project } : item
+      ),
       ...items.filter((item) => !summaryIds.has(item.id))
     ];
-    const stableItems = stabilizeConversationSectionItems(items, mergedItems);
-    if (stableItems === items) {
+    const stableItems = stabilizeConversationSectionItems(
+      section.items,
+      mergedItems
+    );
+    if (stableItems === section.items) {
       if (sectionChanged) {
         changed = true;
       }

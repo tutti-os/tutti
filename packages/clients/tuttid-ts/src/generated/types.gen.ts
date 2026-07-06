@@ -1397,6 +1397,12 @@ export type CreateWorkspaceAgentSessionRequest = {
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  /**
+   * Optional durable runtime context hints for session classification and provider startup.
+   */
+  runtimeContext?: {
+    [key: string]: unknown;
+  } | null;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;

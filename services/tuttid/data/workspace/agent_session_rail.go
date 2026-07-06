@@ -197,10 +197,15 @@ func agentSessionRailPathContains(parent string, child string) bool {
 }
 
 func isAgentSessionNoProjectRuntimeContext(runtimeContext map[string]any) bool {
-	value, ok := runtimeContext["externalImportNoProject"]
-	if !ok {
-		return false
+	for _, key := range []string{"noProject", "externalImportNoProject"} {
+		if runtimeContextBool(runtimeContext[key]) {
+			return true
+		}
 	}
+	return false
+}
+
+func runtimeContextBool(value any) bool {
 	switch typed := value.(type) {
 	case bool:
 		return typed

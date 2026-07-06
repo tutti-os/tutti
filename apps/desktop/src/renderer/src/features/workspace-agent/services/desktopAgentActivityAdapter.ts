@@ -73,8 +73,9 @@ export function createDesktopAgentActivityAdapter({
       createDesktopAgentActivitySessionId();
     const agentTargetId = requiredAgentTargetId(input.agentTargetId);
     const promise = withAbortableRequestTimeout(
-      (signal) =>
-        tuttidClient.createWorkspaceAgentSession(
+      (signal) => {
+        const runtimeContext = createSessionRuntimeContext({ cwd });
+        return tuttidClient.createWorkspaceAgentSession(
           input.workspaceId,
           {
             agentSessionId,
@@ -86,12 +87,14 @@ export function createDesktopAgentActivityAdapter({
             planMode: input.settings.planMode,
             provider: "claude-code",
             reasoningEffort: input.settings.reasoningEffort,
+            ...(runtimeContext ? { runtimeContext } : {}),
             speed: input.settings.speed,
             title: null,
             visible: false
           },
           { signal }
-        ),
+        );
+      },
       {
         signal: input.signal,
         timeoutMessage: "Agent session create request timed out.",
@@ -431,8 +434,9 @@ export function createDesktopAgentActivityAdapter({
         });
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
         const session = await withAbortableRequestTimeout(
-          (signal) =>
-            tuttidClient.createWorkspaceAgentSession(
+          (signal) => {
+            const runtimeContext = createSessionRuntimeContext(input);
+            return tuttidClient.createWorkspaceAgentSession(
               input.workspaceId,
               {
                 agentSessionId,
@@ -448,12 +452,14 @@ export function createDesktopAgentActivityAdapter({
                 permissionModeId: input.permissionModeId ?? null,
                 provider: workspaceAgentProvider(input.provider),
                 reasoningEffort: input.reasoningEffort ?? null,
+                ...(runtimeContext ? { runtimeContext } : {}),
                 speed: input.speed ?? null,
                 title: input.title ?? null,
                 visible: input.visible ?? null
               },
               { signal }
-            ),
+            );
+          },
           {
             signal: input.signal,
             timeoutMessage: "Agent session create request timed out.",
@@ -773,6 +779,17 @@ function requiredAgentTargetId(value: string | null | undefined): string {
     throw new Error("Agent target id is required to create an agent session.");
   }
   return agentTargetId;
+}
+
+function createSessionRuntimeContext(input: {
+  cwd?: string | null;
+  runtimeContext?: Record<string, unknown> | null;
+}): Record<string, unknown> | undefined {
+  const runtimeContext = { ...(input.runtimeContext ?? {}) };
+  if (!normalizeText(input.cwd)) {
+    runtimeContext.noProject = true;
+  }
+  return Object.keys(runtimeContext).length > 0 ? runtimeContext : undefined;
 }
 
 function providerTargetRefKey(

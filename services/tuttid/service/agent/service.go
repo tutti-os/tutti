@@ -151,6 +151,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			BrowserUse:        input.BrowserUse,
 			ComputerUse:       input.ComputerUse,
 			ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+			RuntimeContext:    clonePayload(input.RuntimeContext),
 			Speed: normalizeSpeedForProvider(
 				provider,
 				value(input.Speed),

@@ -394,6 +394,7 @@ type CreateSessionInput struct {
 	ComputerUse            *bool
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
+	RuntimeContext         map[string]any
 	Speed                  *string
 	ConversationDetailMode string
 	Visible                *bool

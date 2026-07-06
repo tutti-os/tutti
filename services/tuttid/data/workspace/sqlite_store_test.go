@@ -832,6 +832,11 @@ func TestSQLiteStoreAgentSessionRailNoProjectPrecedesParentProject(t *testing.T)
 			cwd:            importedNoProjectCwd,
 			runtimeContext: map[string]any{"externalImportNoProject": true},
 		},
+		{
+			sessionID:      "session-no-project-marker-under-home",
+			cwd:            importedNoProjectCwd,
+			runtimeContext: map[string]any{"noProject": true},
+		},
 	} {
 		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 			WorkspaceID:      "ws-agent-rail-no-project",

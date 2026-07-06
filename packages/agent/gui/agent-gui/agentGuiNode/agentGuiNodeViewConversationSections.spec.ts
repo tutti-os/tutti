@@ -150,6 +150,39 @@ describe("updateConversationSectionsFromSummaries", () => {
     expect(result?.[0]?.items).toHaveLength(1);
   });
 
+  it("moves a summary to its resolved section instead of leaving a stale copy behind", () => {
+    const appProject = project("/workspace/app", "App");
+    const staleConversation = conversation("moving-convo", 1000);
+    const resolvedConversation = conversation("moving-convo", 2000, {
+      project: appProject
+    });
+    const previous: ConversationSection[] = [
+      {
+        id: "project:/workspace/app",
+        kind: "project",
+        label: "App",
+        project: appProject,
+        items: []
+      },
+      {
+        id: "conversations",
+        kind: "conversations",
+        label: sectionConversationsLabel,
+        project: null,
+        items: [staleConversation]
+      }
+    ];
+
+    const result = updateConversationSectionsFromSummaries(
+      previous,
+      [resolvedConversation],
+      { sectionConversationsLabel }
+    );
+
+    expect(result?.[0]?.items.map((item) => item.id)).toEqual(["moving-convo"]);
+    expect(result?.[1]?.items).toEqual([]);
+  });
+
   it("returns the same reference when there is nothing new and nothing changed", () => {
     const existing = conversation("existing", 1000);
     const previous: ConversationSection[] = [

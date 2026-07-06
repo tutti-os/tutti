@@ -299,6 +299,34 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
   ]);
 });
 
+test("desktop agent activity adapter marks empty-cwd creates as no-project", async () => {
+  let createBody: unknown = null;
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, body) {
+        createBody = body;
+        return createSession({
+          cwd: "/Users/local/Documents/tutti/session-agent-session-1"
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await adapter.createSession({
+    agentSessionId: "agent-session-1",
+    agentTargetId: "local:codex",
+    initialContent: [{ type: "text", text: "hi" }],
+    provider: "codex",
+    workspaceId
+  });
+
+  assert.deepEqual(
+    (createBody as { runtimeContext?: Record<string, unknown> }).runtimeContext,
+    { noProject: true }
+  );
+});
+
 test("desktop agent activity adapter refreshes provider status and localizes adapter mismatch create failures", async () => {
   const refreshCalls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
@@ -1118,6 +1146,7 @@ test("desktop agent activity adapter forwards agent target id when creating Clau
       planMode: null,
       provider: "claude-code",
       reasoningEffort: null,
+      runtimeContext: { noProject: true },
       speed: null,
       title: null,
       visible: false

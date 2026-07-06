@@ -1309,6 +1309,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
           planMode: null,
           provider: "codex",
           reasoningEffort: null,
+          runtimeContext: { noProject: true },
           speed: null,
           title: "Scratch",
           visible: true

@@ -589,7 +589,10 @@ function isExternalImportNoProjectSession(
 ): boolean {
   const runtimeContext =
     session && "runtimeContext" in session ? session.runtimeContext : undefined;
-  return runtimeContext?.externalImportNoProject === true;
+  return (
+    runtimeContext?.noProject === true ||
+    runtimeContext?.externalImportNoProject === true
+  );
 }
 
 function isImportedWorkspaceAgentSession(

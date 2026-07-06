@@ -53,6 +53,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		BrowserUse:             request.Body.BrowserUse,
 		Provider:               provider,
 		ReasoningEffort:        request.Body.ReasoningEffort,
+		RuntimeContext:         mapValue(request.Body.RuntimeContext),
 		Speed:                  request.Body.Speed,
 		Title:                  request.Body.Title,
 		Visible:                request.Body.Visible,

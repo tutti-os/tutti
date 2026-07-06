@@ -3,6 +3,7 @@ import {
   normalizeAgentActivityDisplayStatus,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
+  type AgentActivityCreateSessionInput,
   type AgentActivityController,
   type AgentActivityMessage,
   type AgentActivityMessagePage,
@@ -384,9 +385,13 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
-    const adapterInput = input.agentTargetId
-      ? { ...input, providerTargetRef: null }
-      : input;
+    const sessionInput = withNoProjectRuntimeContext(
+      input,
+      this.dependencies.workspaceUserProjectService
+    );
+    const adapterInput = sessionInput.agentTargetId
+      ? { ...sessionInput, providerTargetRef: null }
+      : sessionInput;
     const session = await entry.adapter.createSession(adapterInput);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
@@ -481,6 +486,9 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
           ? {}
           : { providerTargetRef: input.providerTargetRef ?? null }),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
+        ...(resolvedCwd?.noProject
+          ? { runtimeContext: { noProject: true } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true
@@ -808,7 +816,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     agentSessionId: string;
     cwd: string | null | undefined;
     workspaceId: string;
-  }): Promise<{ cwd: string | null }> {
+  }): Promise<{ cwd: string | null; noProject: boolean }> {
     const trimmed = input.cwd?.trim() ?? "";
     if (!trimmed) {
       const directory =
@@ -821,17 +829,17 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       this.dependencies.workspaceUserProjectService?.rememberNoProjectPath(
         directory?.path
       );
-      return { cwd: directory?.path ?? null };
+      return { cwd: directory?.path ?? null, noProject: true };
     }
     if (trimmed !== "/") {
-      return { cwd: trimmed };
+      return { cwd: trimmed, noProject: false };
     }
     const response =
       await this.dependencies.tuttidClient.listWorkspaceFileDirectory(
         input.workspaceId,
         {}
       );
-    return { cwd: response.root };
+    return { cwd: response.root, noProject: false };
   }
 
   private async fetchActivitySession(
@@ -1791,6 +1799,27 @@ function hostMessageEventFromCore(message: AgentActivityMessage): unknown {
       workspaceId: message.workspaceId
     },
     eventType: "message_update"
+  };
+}
+
+function withNoProjectRuntimeContext<T extends AgentActivityCreateSessionInput>(
+  input: T,
+  workspaceUserProjectService:
+    | Pick<IWorkspaceUserProjectService, "isNoProjectPath">
+    | undefined
+): T {
+  const cwd = input.cwd?.trim() ?? "";
+  const noProject =
+    !cwd || workspaceUserProjectService?.isNoProjectPath(cwd) === true;
+  if (!noProject) {
+    return input;
+  }
+  return {
+    ...input,
+    runtimeContext: {
+      ...(input.runtimeContext ?? {}),
+      noProject: true
+    }
   };
 }
 

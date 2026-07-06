@@ -2402,9 +2402,12 @@ type CreateWorkspaceAgentSessionRequest struct {
 	// ProviderTargetRef Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
 	ProviderTargetRef *map[string]interface{} `json:"providerTargetRef,omitempty"`
 	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
-	Speed             *string                 `json:"speed,omitempty"`
-	Title             *string                 `json:"title,omitempty"`
-	Visible           *bool                   `json:"visible,omitempty"`
+
+	// RuntimeContext Optional durable runtime context hints for session classification and provider startup.
+	RuntimeContext *map[string]interface{} `json:"runtimeContext,omitempty"`
+	Speed          *string                 `json:"speed,omitempty"`
+	Title          *string                 `json:"title,omitempty"`
+	Visible        *bool                   `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.

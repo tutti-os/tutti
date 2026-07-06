@@ -284,6 +284,7 @@ export interface AgentActivityCreateSessionInput {
    */
   providerTargetRef?: AgentActivityProviderTargetRef | null;
   reasoningEffort?: string | null;
+  runtimeContext?: Record<string, unknown> | null;
   speed?: string | null;
   title?: string | null;
   visible?: boolean | null;

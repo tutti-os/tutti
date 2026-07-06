@@ -6825,6 +6825,11 @@ components:
         reasoningEffort:
           type: string
           nullable: true
+        runtimeContext:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Optional durable runtime context hints for session classification and provider startup.
         speed:
           type: string
           nullable: true
