@@ -125,8 +125,16 @@ export function createMentionPaletteStateAdapter<TItem>(
     const fallbackCategoryId = categoryIdFromKey(input.highlightedKey);
 
     if (!activeEntry) {
+      // A highlighted key that decodes to the *already-active* filter is not
+      // a pending "drill into this category" action — it means the active
+      // category resolved to having nothing flatten-able (e.g. a
+      // structurally empty category like "No tasks yet", not a query that
+      // filtered a category down to zero). Re-selecting the same category
+      // would be a no-op that silently swallows Enter forever, so treat it
+      // the same as a zero-result search: nothing to commit.
       if (
         fallbackCategoryId !== null &&
+        fallbackCategoryId !== input.state.filter &&
         input.state.categories.some(
           (category) => category.id === fallbackCategoryId
         )

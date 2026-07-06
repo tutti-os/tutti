@@ -4,13 +4,20 @@ import type {
 } from "./mentionPaletteTypes.ts";
 
 /**
- * Returns true when at least one group has items or a "load more" trigger,
- * i.e. there is something interactive to render beyond category headers.
+ * Returns true when the group list reflects a *resolved* answer for the
+ * active category — either because a group has interactive content, or
+ * because a group is present with an explicit `emptyLabel` (i.e. "we looked,
+ * there is nothing here", as opposed to "we haven't looked yet"). Groups
+ * with no items, no `hasMore`, and no `emptyLabel` are placeholders for
+ * content that hasn't loaded, not a genuinely empty category.
  */
-function hasInteractiveGroupEntries<TItem>(
+function hasResolvedGroupData<TItem>(
   groups: MentionPaletteState<TItem>["groups"]
 ): boolean {
-  return groups.some((group) => group.items.length > 0 || group.hasMore);
+  return groups.some(
+    (group) =>
+      group.items.length > 0 || group.hasMore || group.emptyLabel != null
+  );
 }
 
 /**
@@ -28,8 +35,15 @@ export function flattenMentionPaletteEntries<TItem>(
   state: MentionPaletteState<TItem>,
   getItemKey: (item: TItem, groupId: string) => string
 ): MentionPaletteEntry[] {
-  // Browse mode with no interactive group content → show category nav only
-  if (state.mode === "browse" && !hasInteractiveGroupEntries(state.groups)) {
+  // Browse mode with no resolved group content → show category nav only.
+  // This only applies while the active category truly has no answer yet
+  // (e.g. still loading). A category that has resolved to "structurally
+  // empty" (a group carrying an `emptyLabel`, like "No tasks yet") falls
+  // through to the loop below, which naturally yields zero entries —
+  // signalling callers (e.g. the composer's Enter handler) that there is
+  // nothing to select, rather than re-surfacing the already-active category
+  // as though it still needed picking.
+  if (state.mode === "browse" && !hasResolvedGroupData(state.groups)) {
     return state.categories.map((category) => ({
       key: `category:${category.id}`,
       type: "category" as const,

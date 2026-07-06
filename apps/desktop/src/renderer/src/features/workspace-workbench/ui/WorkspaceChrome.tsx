@@ -42,7 +42,10 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import type { CompositeNotificationMessage } from "@renderer/lib/compositeNotificationService";
+import {
+  createDocumentNotificationVisibilityState,
+  type CompositeNotificationMessage
+} from "@renderer/lib/compositeNotificationService";
 import { useService } from "@tutti-os/infra/di";
 import { MessageCenterOpenedReporter } from "@renderer/features/analytics/reporters/message-center-opened/messageCenterOpenedReporter.ts";
 import { MessageCenterNotificationActionedReporter } from "@renderer/features/analytics/reporters/message-center-notification-actioned/messageCenterNotificationActionedReporter.ts";
@@ -62,6 +65,7 @@ import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
 } from "../services/workspaceAgentDecisionNotification";
+import { shouldShowWorkspaceAgentDecisionToast } from "../services/workspaceAgentDecisionToastVisibility";
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
 import { registerWorkspaceMessageCenterOpenHandler } from "../services/workspaceMessageCenterCoordinator";
@@ -266,6 +270,14 @@ function WorkspaceAgentMessageCenterAction({
   const reporterService = useService(IReporterService);
   const notifications = useService(INotificationService);
   const workbenchHostService = useWorkspaceWorkbenchHostService();
+  const windowForegroundVisibility = useMemo(
+    () =>
+      createDocumentNotificationVisibilityState({
+        hasFocus: () => document.hasFocus(),
+        visibilityState: () => document.visibilityState
+      }),
+    []
+  );
   const [highlightedMessageCenterItemId, setHighlightedMessageCenterItemId] =
     useState<string | null>(null);
   const snapshotRef = useRef<{
@@ -478,7 +490,12 @@ function WorkspaceAgentMessageCenterAction({
         })
       };
       notifications.notify(osMessage);
-      if (open) {
+      if (
+        !shouldShowWorkspaceAgentDecisionToast({
+          messageCenterOpen: open,
+          windowForeground: windowForegroundVisibility.isForeground()
+        })
+      ) {
         continue;
       }
       const toastId = `workspace-agent-waiting:${workspace.id}:${notificationKey}`;
@@ -537,6 +554,7 @@ function WorkspaceAgentMessageCenterAction({
     open,
     t,
     waitingItems,
+    windowForegroundVisibility,
     workspace.id,
     workspaceAgentActivityService
   ]);

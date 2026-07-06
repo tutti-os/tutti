@@ -196,6 +196,34 @@ test("browse mode with no groups at all produces only category entries", () => {
   assert.equal(entries[1]?.type, "category");
 });
 
+// browse mode, active category is *structurally* empty (e.g. "No tasks yet")
+// → zero entries, not a fallback to the category nav. This is distinct from
+// the "no groups at all" / "not loaded yet" case above: here a group is
+// present and carries an emptyLabel, meaning the category was resolved and
+// genuinely has nothing in it. Regressing this would make the currently
+// highlighted category's own header re-resolve as "selectable", so Enter
+// re-selects the same category as a no-op forever instead of signalling
+// "nothing to commit" to callers (who then treat it as dismiss-then-send).
+test("browse mode with a structurally empty active category produces zero entries", () => {
+  const state = browseState([
+    { ...makeGroup("issues", []), emptyLabel: "No tasks yet" }
+  ]);
+  const entries = flattenMentionPaletteEntries(state, getItemKey);
+  assert.equal(entries.length, 0);
+});
+
+// browse mode, structurally empty category alongside an unrelated group that
+// still hasn't resolved → the resolved empty group is enough to skip the
+// category-nav fallback for the whole flatten call.
+test("browse mode with one resolved-empty group among groups produces zero entries", () => {
+  const state = browseState([
+    { ...makeGroup("opened_files", []), emptyLabel: "No files yet" },
+    makeGroup("agent_generated_files", [])
+  ]);
+  const entries = flattenMentionPaletteEntries(state, getItemKey);
+  assert.equal(entries.length, 0);
+});
+
 // entry key format matches expected pattern
 test("item entry key is groupId:getItemKey result", () => {
   const item: Item = { id: "myId", kind: "workspace-app" };
