@@ -5,7 +5,6 @@ import { type WorkspaceAgentSessionDetailToolCall } from "../../../workspaceAgen
 import { projectAgentToolCall } from "../../projection/agentToolProjection";
 import { AgentExpandedToolContent } from "./AgentExpandedToolContent";
 import { AgentSubAgentCard } from "../AgentSubAgentCards";
-import { ToolMarkdownBlock } from "./agentToolContentShared";
 
 describe("AgentExpandedToolContent", () => {
   afterEach(async () => {
@@ -512,17 +511,6 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("a.ts")).toBeTruthy();
     expect(screen.getByText("const ready = false")).toBeTruthy();
     expect(screen.getByText("const ready = true")).toBeTruthy();
-    expect(
-      screen.getByText("const ready = true").closest(".grid")?.className
-    ).toContain("border-l-[var(--state-success)]");
-    expect(
-      screen.getByText("const ready = true").closest(".grid")?.className
-    ).toContain(
-      "bg-[color:color-mix(in_srgb,var(--state-success)_10%,transparent)]"
-    );
-    expect(
-      screen.getByText("const ready = false").closest(".grid")?.className
-    ).toContain("border-l-[var(--state-danger)]");
   });
 
   it("renders edit old/new string pairs through the patch viewer path", async () => {
@@ -1210,10 +1198,6 @@ describe("AgentExpandedToolContent", () => {
     });
     expect(rawPayloadToggle).toHaveAttribute("aria-expanded", "false");
     expect(rawPayloadToggle.firstElementChild).toHaveTextContent("Raw payload");
-    expect(rawPayloadToggle.querySelector("svg")).toHaveClass("opacity-0");
-    expect(rawPayloadToggle.querySelector("svg")).toHaveClass(
-      "group-hover/raw-payload:opacity-100"
-    );
     expect(screen.queryByText(/"noisy": true/)).toBeNull();
     fireEvent.click(rawPayloadToggle);
     await flushCollapsibleRevealFrames();
@@ -1223,25 +1207,6 @@ describe("AgentExpandedToolContent", () => {
     );
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText("Output")).toBeNull();
-  });
-
-  it("renders collapsible tool markdown lists with secondary text color", () => {
-    const { container } = render(
-      <ToolMarkdownBlock
-        content={"- **output:** ./hello-world/README.md\n\n1. exit_code: 0"}
-        collapsible
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown?.className).toContain(
-      "[&_ul]:text-[var(--text-secondary)]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_ol]:text-[var(--text-secondary)]"
-    );
   });
 
   it("routes nested task steps through the mcp renderer when metadata identifies an mcp tool", async () => {

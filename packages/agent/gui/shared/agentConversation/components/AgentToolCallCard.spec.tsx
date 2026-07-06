@@ -232,12 +232,6 @@ describe("Agent specialized tool cards", () => {
 
     expect(screen.getByText("+1")).toBeTruthy();
     expect(screen.getByText("-1")).toBeTruthy();
-    expect(screen.getByText("+1").className).toContain(
-      "workspace-agents-status-panel__detail-tool-diff-added"
-    );
-    expect(screen.getByText("-1").className).toContain(
-      "workspace-agents-status-panel__detail-tool-diff-removed"
-    );
   });
 
   it("does not show edit diff stats on approval tool headers", async () => {

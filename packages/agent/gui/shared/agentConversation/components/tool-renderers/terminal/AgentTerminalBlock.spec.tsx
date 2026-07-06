@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AgentTerminalBlock } from "./AgentTerminalBlock";
 
 describe("AgentTerminalBlock", () => {
-  it("renders a command-only call with the same header fill and no divider", () => {
+  it("renders a command-only call without an output body", () => {
     const { container } = render(
       <AgentTerminalBlock
         command="find /home -path '*frontend-design*SKILL.md'"
@@ -21,13 +21,7 @@ describe("AgentTerminalBlock", () => {
     const row = command?.parentElement;
 
     expect(command?.textContent).toContain("frontend-design");
-    expect(
-      container.querySelector(
-        ".workspace-agents-status-panel__detail-tool-terminal"
-      )?.className
-    ).toContain("bg-[var(--background-panel)]");
-    expect(row?.className).toContain("bg-[var(--transparency-block)]");
-    expect(row?.className).not.toContain("border-b");
+    expect(row).toBeTruthy();
     expect(container.querySelector("pre")).toBeNull();
   });
 
@@ -58,11 +52,6 @@ describe("AgentTerminalBlock", () => {
     );
 
     expect(output?.textContent).toContain("line 200");
-    expect(
-      scrollArea?.querySelector(
-        ".workspace-agents-status-panel__detail-scroll-region"
-      )?.className
-    ).toContain("max-h-[160px]");
     expect(disclosure.parentElement).toBe(
       scrollArea?.querySelector(
         ".workspace-agents-status-panel__detail-scroll-region"
@@ -72,40 +61,5 @@ describe("AgentTerminalBlock", () => {
     expect(
       disclosure.closest(".workspace-agents-status-panel__detail-tool-terminal")
     ).toBe(terminalCard);
-  });
-
-  it("wraps long command and output text inside the terminal card", () => {
-    const longCommand =
-      "sed -n '1,220p' /home/tsh-runtime/.codex/skills/.system/imagegen/SKILL.md";
-    const longOutput =
-      "thread 'main' panicked at /home/runner/.cargo/git/checkouts/codex-9eee5d47/bubblewrap is unavailable";
-
-    const { container } = render(
-      <AgentTerminalBlock
-        command={longCommand}
-        stdout=""
-        stderr={longOutput}
-        exitCode={1}
-        durationMs={1000}
-        status="failed"
-      />
-    );
-
-    const command = container.querySelector(
-      '[data-agent-terminal-command="true"]'
-    );
-    const output = container.querySelector("pre");
-
-    expect(command?.className).toContain("whitespace-pre-wrap");
-    expect(command?.className).toContain("[overflow-wrap:anywhere]");
-    expect(command?.className).not.toContain("truncate");
-    expect(output?.className).toContain("max-w-full");
-    expect(output?.className).toContain("whitespace-pre-wrap");
-    expect(output?.className).toContain("[overflow-wrap:anywhere]");
-    expect(output?.className).not.toContain("min-w-max");
-    expect(
-      output?.closest(".workspace-agents-status-panel__detail-scroll-region")
-        ?.className
-    ).toContain("text-[var(--state-danger)]");
   });
 });

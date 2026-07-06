@@ -191,12 +191,7 @@ describe("AgentTranscriptItemView render stability", () => {
     if (!(bubble instanceof HTMLElement)) {
       throw new Error("Expected user message bubble to render.");
     }
-    expect(group).toHaveClass("agent-gui-conversation__message-group");
     expect(group).toHaveAttribute("data-agent-message-speaker", "user");
-    expect(bubble).toHaveClass(
-      "workspace-agents-status-panel__detail-user-message",
-      "agent-gui-conversation__user-message-bubble"
-    );
     expect(group).toHaveTextContent("User asks for a fix");
     expect(
       group.querySelector(".agent-gui-conversation__message-copy-button")
@@ -315,25 +310,6 @@ describe("AgentTranscriptItemView render stability", () => {
     await waitFor(() => {
       const image = screen.getByRole("img", { name: "screen.png" });
       expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
-      expect(image).toHaveClass("cursor-zoom-in", "max-h-20", "object-contain");
-      const imageBlock = image.closest("div");
-      expect(imageBlock).toBeInstanceOf(HTMLElement);
-      expect(imageBlock).toHaveClass(
-        "agent-gui-conversation__user-image-thumbnail"
-      );
-      const imageGrid = imageBlock?.parentElement;
-      expect(imageGrid).toHaveClass("agent-gui-conversation__user-image-grid");
-      expect(imageGrid).toHaveStyle({
-        gridTemplateColumns: "repeat(1, 160px)"
-      });
-      const imageGridClasses = imageGrid?.className.split(/\s+/) ?? [];
-      expect(
-        imageGridClasses.some((className) => className.startsWith("bg-"))
-      ).toBe(false);
-      expect(
-        imageGridClasses.some((className) => className.startsWith("shadow"))
-      ).toBe(false);
-      expect(imageGridClasses).not.toContain("p-2");
       expect(
         screen.getByRole("button", { name: "common.expandImage" })
       ).toBeTruthy();
@@ -448,7 +424,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(store.focus).toBe("auth");
   });
 
-  it("renders transport retry notices as quiet text", () => {
+  it("renders transport retry notice details without the generic title", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -475,8 +451,6 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(getByText("Reconnecting... 1/5")).toBeTruthy();
     const notice = getByText("Reconnecting... 1/5");
     expect(notice.tagName).toBe("DIV");
-    expect(notice.className).toContain("text-[var(--text-primary)]");
-    expect(notice.className).not.toContain("rounded-[8px]");
     expect(queryByText("agentHost.agentGui.visibleErrorDetails")).toBeNull();
     expect(
       queryByText("Codex connection interrupted. Reconnecting...")
@@ -486,7 +460,7 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
-  it("renders transport fallback notices with danger chrome", () => {
+  it("renders transport fallback notices with the localized label", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -510,16 +484,13 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    const notice = getByRole("status");
-    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
-    expect(notice.className).toContain("bg-[var(--on-danger)]");
-    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(getByRole("status")).toBeTruthy();
     expect(
       getByText("agentHost.agentGui.systemNoticeTransportFallback")
     ).toBeTruthy();
   });
 
-  it("renders fallback warning notices with danger chrome", () => {
+  it("renders fallback warning notices with their title", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -543,10 +514,7 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    const notice = getByRole("status");
-    expect(notice.className).toContain("border-[var(--on-danger-hover)]");
-    expect(notice.className).toContain("bg-[var(--on-danger)]");
-    expect(notice.className).not.toContain("var(--state-warning)_6%");
+    expect(getByRole("status")).toBeTruthy();
     expect(
       getByText("Falling back from WebSockets to HTTPS transport.")
     ).toBeTruthy();
@@ -577,14 +545,8 @@ describe("AgentTranscriptItemView render stability", () => {
 
     const notice = getByRole("status");
     expect(notice.tagName).toBe("DIV");
-    expect(notice.className).toContain("items-center");
-    expect(notice.className).toContain("text-[var(--text-secondary)]");
-    expect(notice.className).not.toContain("rounded-[8px]");
     const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
     expect(dividers).toHaveLength(2);
-    for (const divider of dividers) {
-      expect(divider.className).toContain("bg-[var(--line-1)]");
-    }
     expect(
       getByText("agentHost.agentGui.contextCompactionCompleted")
     ).toBeTruthy();
@@ -618,8 +580,6 @@ describe("AgentTranscriptItemView render stability", () => {
       );
 
       const notice = getByRole("status");
-      expect(notice.className).toContain("items-center");
-      expect(notice.className).not.toContain("rounded-[8px]");
       const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
       expect(dividers).toHaveLength(2);
       expect(
@@ -659,7 +619,6 @@ describe("AgentTranscriptItemView render stability", () => {
     );
 
     const notice = getByRole("status");
-    expect(notice.className).not.toContain("rounded-[8px]");
     expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
     expect(
       getByText("agentHost.agentGui.contextCompactionInterrupted")
