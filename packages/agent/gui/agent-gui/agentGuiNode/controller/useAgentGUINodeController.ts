@@ -3017,6 +3017,36 @@ function agentActivityDisplayStatusBusy(
   return status === "working" || status === "waiting";
 }
 
+function agentSessionControlStateHasLiveTurn(
+  state: AgentSessionState | null | undefined
+): boolean {
+  const lifecycle = state?.turnLifecycle;
+  if (lifecycle?.phase) {
+    return (
+      Boolean(lifecycle.activeTurnId) ||
+      isLiveAgentSessionTurnPhase(lifecycle.phase)
+    );
+  }
+  return agentSessionStatusBusy({
+    status: state?.status
+  });
+}
+
+function isLiveAgentSessionTurnPhase(phase: unknown): boolean {
+  const normalized =
+    typeof phase === "string" ? phase.trim().toLowerCase() : "";
+  return (
+    normalized === "submitted" ||
+    normalized === "running" ||
+    normalized === "waiting_approval" ||
+    normalized === "waiting_input" ||
+    normalized === "working" ||
+    normalized === "streaming" ||
+    normalized === "waiting" ||
+    normalized === "awaiting_approval"
+  );
+}
+
 function conversationBusyStatusFromAgentActivityDisplayStatus(
   status: AgentActivityDisplayStatus | null | undefined
 ): "working" | "waiting" | null {
@@ -10183,7 +10213,8 @@ export function useAgentGUINodeController({
     ? Boolean(pendingTurnIdBySessionIdRef.current[activeConversationId])
     : false;
   const activeSubmitBlocked =
-    activeSessionState?.submitAvailability?.state === "blocked";
+    activeSessionState?.submitAvailability?.state === "blocked" &&
+    agentSessionControlStateHasLiveTurn(activeSessionState);
   const activeConversationBusy =
     agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
     activeHasPendingSubmittedTurn ||
