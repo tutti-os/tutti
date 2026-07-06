@@ -96,6 +96,11 @@ export interface WorkspaceAgentActivityAttachment {
   data: string;
 }
 
+export interface WorkspaceAgentModelCatalogInvalidatedEvent {
+  providers: string[];
+  occurredAtUnixMs: number;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
@@ -165,6 +170,9 @@ export interface IWorkspaceAgentActivityService {
   onSessionEvent(
     workspaceId: string,
     listener: (event: unknown) => void
+  ): () => void;
+  onModelCatalogInvalidated(
+    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
   ): () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput

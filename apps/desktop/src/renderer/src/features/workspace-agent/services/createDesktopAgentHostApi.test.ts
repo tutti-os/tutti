@@ -526,6 +526,63 @@ test("desktop agent host api routes session commands through injected tuttid cli
   ]);
 });
 
+test("desktop agent host api forwards model catalog invalidation as a host event", async () => {
+  const topicHandlers = new Map<string, (event: unknown) => void>();
+  const tuttidClient = createTuttidClient();
+  const activityService = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        topicHandlers.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient,
+    runtimeApi: createRuntimeApi()
+  });
+  const api = createAgentHostApi({
+    tuttidClient,
+    workspaceAgentActivityService: activityService
+  }) as unknown as {
+    onHostEvent?: (listener: (event: unknown) => void) => () => void;
+  };
+
+  // The stream subscription starts with the first workspace controller.
+  await activityService.getComposerOptions({
+    provider: "codex",
+    workspaceId
+  });
+  const invalidationHandler = topicHandlers.get(
+    "agent.model.catalog.invalidated"
+  );
+  assert.ok(invalidationHandler, "expected model catalog topic subscription");
+
+  const hostEvents: unknown[] = [];
+  const unsubscribe = api.onHostEvent?.((event) => {
+    hostEvents.push(event);
+  });
+  invalidationHandler({
+    payload: { providers: ["codex", "claude-code"], occurredAtUnixMs: 4200 }
+  });
+
+  assert.deepEqual(hostEvents, [
+    {
+      scope: "global",
+      type: "agent-model-catalog-invalidated",
+      providers: ["codex", "claude-code"],
+      occurredAtUnixMs: 4200
+    }
+  ]);
+  unsubscribe?.();
+  invalidationHandler({
+    payload: { providers: ["codex"], occurredAtUnixMs: 4300 }
+  });
+  assert.equal(hostEvents.length, 1);
+});
+
 test("desktop agent host api writes images through the host clipboard", async () => {
   const copiedImages: DesktopClipboardImagePayload[] = [];
   const api = createAgentHostApi({

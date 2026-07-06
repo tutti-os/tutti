@@ -106,6 +106,37 @@ Use this shape for new entries:
   [controller.go](../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
 
+### Claude composer model list stays stale after credential switch
+
+- Symptom:
+  After an external credential switcher rewrites Claude Code auth or config
+  files, the AgentGUI composer still shows the previous model list even though
+  `tuttid.log` contains `agent.model_catalog.invalidated` for `claude-code`.
+- Quick checks:
+  Search `tuttid.log` for `CLAUDE_MODEL_CATALOG_INVALIDATION_DEBUG`. If
+  `live_composer_models_invalidated` is followed by
+  `running_session_model_options_reused`, inspect that session's
+  `createdAtUnixMs` and `updatedAtUnixMs` against the invalidation timestamp.
+- Root cause:
+  Claude composer model discovery reuses model options from a live Claude
+  runtime session to avoid spawning overlapping credential-touching processes.
+  After a credential switch, a pre-switch runtime session can still carry the
+  old `runtimeContext.configOptions`; reusing it repopulates the just-cleared
+  live model cache with stale models.
+- Fix:
+  Track provider model-catalog invalidation time in `tuttid`. When loading
+  Claude composer options, skip running-session model options whose session
+  timestamp is older than the provider invalidation, and allow hidden live
+  discovery to query the current credentials.
+- Validation:
+  Add daemon service coverage where invalidation happens after a Claude session
+  has advertised old model options; the next composer options request must
+  start hidden discovery and return the freshly discovered model list. Run
+  `cd services/tuttid && go test ./service/agent`.
+- References:
+  [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
+  [composer_live_model_cache.go](../../services/tuttid/service/agent/composer_live_model_cache.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:

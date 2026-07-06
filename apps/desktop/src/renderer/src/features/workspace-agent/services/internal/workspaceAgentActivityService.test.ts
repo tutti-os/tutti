@@ -214,6 +214,64 @@ test("WorkspaceAgentActivityService composer options cache is agent target keyed
   );
 });
 
+test("WorkspaceAgentActivityService model catalog invalidation drops composer cache and notifies listeners", async () => {
+  const topicHandlers = new Map<string, (event: unknown) => void>();
+  let composerOptionCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {},
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (topic: string, listener: (event: unknown) => void) => {
+        topicHandlers.set(topic, listener);
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getAgentProviderComposerOptions: async (provider: string) => {
+        composerOptionCalls += 1;
+        return {
+          provider,
+          modelConfig: {
+            configurable: true,
+            options: [{ value: `model-${composerOptionCalls}` }]
+          },
+          runtimeContext: {}
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
+  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
+  assert.equal(composerOptionCalls, 1);
+
+  const invalidationHandler = topicHandlers.get(
+    "agent.model.catalog.invalidated"
+  );
+  assert.ok(
+    invalidationHandler,
+    "service must subscribe to the model catalog invalidation topic"
+  );
+  const received: unknown[] = [];
+  service.onModelCatalogInvalidated((event) => {
+    received.push(event);
+  });
+  invalidationHandler({
+    payload: { providers: ["codex"], occurredAtUnixMs: 1000 }
+  });
+
+  assert.deepEqual(received, [
+    { providers: ["codex"], occurredAtUnixMs: 1000 }
+  ]);
+  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
+  assert.equal(composerOptionCalls, 2);
+});
+
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {
   const importCalls: unknown[] = [];
   let listCalls = 0;

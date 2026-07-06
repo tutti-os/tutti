@@ -200,7 +200,18 @@ export function createDesktopAgentHostApi({
         )
     },
     agentSessions,
-    onHostEvent: () => () => {},
+    // The desktop host forwards daemon business events the Agent GUI event bus
+    // understands. Today that is the model-catalog invalidation broadcast; the
+    // GUI reacts by force-reloading composer options and session state.
+    onHostEvent: (listener: (event: unknown) => void) =>
+      agentActivityService.onModelCatalogInvalidated((event) => {
+        listener({
+          scope: "global",
+          type: "agent-model-catalog-invalidated",
+          providers: event.providers,
+          occurredAtUnixMs: event.occurredAtUnixMs
+        });
+      }),
     persistence: {
       readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
       writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState

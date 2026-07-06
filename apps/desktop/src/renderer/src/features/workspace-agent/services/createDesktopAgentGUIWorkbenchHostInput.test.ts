@@ -2144,6 +2144,9 @@ function createWorkspaceAgentActivityService(
     onSessionEvent() {
       return () => {};
     },
+    onModelCatalogInvalidated() {
+      return () => {};
+    },
     ensureSessionSynchronized() {
       return () => {};
     },

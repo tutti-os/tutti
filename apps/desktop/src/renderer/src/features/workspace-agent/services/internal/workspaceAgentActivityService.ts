@@ -41,7 +41,8 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentActivityRetainSessionInput
+  WorkspaceAgentActivityRetainSessionInput,
+  WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import { planDecisionOps } from "@tutti-os/agent-gui/plan-decision-ops";
@@ -106,6 +107,9 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   private readonly deletedSessionTombstones = new Map<
     string,
     DeletedSessionTombstone
+  >();
+  private readonly modelCatalogInvalidatedListeners = new Set<
+    (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
   >();
   private eventStreamConnectedOnce = false;
   private eventStreamStarted = false;
@@ -1045,6 +1049,33 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
   }
 
+  onModelCatalogInvalidated(
+    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  ): () => void {
+    this.modelCatalogInvalidatedListeners.add(listener);
+    return () => {
+      this.modelCatalogInvalidatedListeners.delete(listener);
+    };
+  }
+
+  private handleModelCatalogInvalidated(
+    event: WorkspaceAgentModelCatalogInvalidatedEvent
+  ): void {
+    // Drop cached composer options in every workspace controller first so a
+    // listener-triggered (or later non-forced) load refetches from the daemon.
+    for (const entry of this.controllerEntries.values()) {
+      entry.controller.invalidateComposerOptions({
+        providers: event.providers
+      });
+    }
+    for (const listener of this.modelCatalogInvalidatedListeners) {
+      listener({
+        providers: [...event.providers],
+        occurredAtUnixMs: event.occurredAtUnixMs
+      });
+    }
+  }
+
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.dependencies.eventStreamClient;
     if (!eventStreamClient) {
@@ -1074,6 +1105,14 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       return;
     }
     this.eventStreamStarted = true;
+    // Global (scope-less) topic: the daemon invalidates its model catalog when
+    // provider auth/config files change on disk (for example via cc-switch).
+    eventStreamClient.subscribe("agent.model.catalog.invalidated", (event) => {
+      this.handleModelCatalogInvalidated({
+        providers: [...event.payload.providers],
+        occurredAtUnixMs: event.payload.occurredAtUnixMs
+      });
+    });
     eventStreamClient.subscribeConnectionState((state) => {
       if (state === "disconnected") {
         if (this.eventStreamConnectedOnce) {

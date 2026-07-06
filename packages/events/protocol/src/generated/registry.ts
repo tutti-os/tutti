@@ -10,6 +10,8 @@ import type {
 
 export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
+export const businessEventTopicAgentModelCatalogInvalidated =
+  "agent.model.catalog.invalidated" as const;
 export const businessEventTopicAnalyticsDebugReported =
   "analytics.debug.reported" as const;
 export const businessEventTopicPreferencesDesktopUpdateRequested =
@@ -33,7 +35,7 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:35d5063078199898" as const;
+export const businessEventCatalogRevision = "sha256:6eb58925aa2f14d7" as const;
 
 export const businessEventDefinitions = [
   {
@@ -42,6 +44,13 @@ export const businessEventDefinitions = [
     direction: "server->client",
     owner: "agent",
     scope: "workspace"
+  },
+  {
+    topic: "agent.model.catalog.invalidated",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "global"
   },
   {
     topic: "analytics.debug.reported",
@@ -101,6 +110,13 @@ export const businessEventDefinitionByTopic = {
     direction: "server->client",
     owner: "agent",
     scope: "workspace"
+  },
+  "agent.model.catalog.invalidated": {
+    topic: "agent.model.catalog.invalidated",
+    version: 1,
+    direction: "server->client",
+    owner: "agent",
+    scope: "global"
   },
   "analytics.debug.reported": {
     topic: "analytics.debug.reported",

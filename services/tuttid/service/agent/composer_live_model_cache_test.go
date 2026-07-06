@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 // Claude Code keeps its live model cache for the daemon's lifetime: a real
@@ -131,5 +133,40 @@ func TestGetComposerOptionsClaudeRunningSessionOverridesStaleCache(t *testing.T)
 	}
 	if got := composerConfigOptionModelValues(cached); !slices.Equal(got, wantValues) {
 		t.Fatalf("cache after refresh = %v, want %v", got, wantValues)
+	}
+}
+
+func TestInvalidateLiveComposerModelsDropsCacheAndAttemptMarkers(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	service := &Service{}
+	now := time.UnixMilli(1000)
+	options := []ComposerConfigOptionValue{{ID: "opus", Label: "Opus", Value: "opus"}}
+	service.setLiveComposerModelOptions(agentprovider.ClaudeCode, "ws-1", "/repo", now, options)
+	cacheKey := composerLiveModelCacheKey(agentprovider.ClaudeCode, "ws-1", "/repo", liveModelAuthScope(agentprovider.ClaudeCode))
+	if !service.markLiveModelDiscoveryAttempted(cacheKey) {
+		t.Fatal("first markLiveModelDiscoveryAttempted must succeed")
+	}
+
+	service.InvalidateLiveComposerModels(agentprovider.ClaudeCode)
+
+	if _, ok := service.getLiveComposerModelOptions(agentprovider.ClaudeCode, "ws-1", "/repo", now); ok {
+		t.Fatal("cached live models must be dropped after invalidation")
+	}
+	if !service.markLiveModelDiscoveryAttempted(cacheKey) {
+		t.Fatal("discovery attempt marker must be cleared after invalidation")
+	}
+}
+
+func TestInvalidateLiveComposerModelsKeepsOtherProviders(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	service := &Service{}
+	now := time.UnixMilli(1000)
+	options := []ComposerConfigOptionValue{{ID: "opus", Label: "Opus", Value: "opus"}}
+	service.setLiveComposerModelOptions(agentprovider.ClaudeCode, "ws-1", "/repo", now, options)
+
+	service.InvalidateLiveComposerModels(agentprovider.Codex)
+
+	if _, ok := service.getLiveComposerModelOptions(agentprovider.ClaudeCode, "ws-1", "/repo", now); !ok {
+		t.Fatal("claude cache must survive a codex-only invalidation")
 	}
 }

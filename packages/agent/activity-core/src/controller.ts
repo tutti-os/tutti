@@ -35,6 +35,7 @@ export interface AgentActivityController {
       force?: boolean;
     }
   ): Promise<AgentActivityComposerOptions>;
+  invalidateComposerOptions(input?: { providers?: readonly string[] }): void;
   listSessionMessages(input: {
     agentSessionId: string;
     afterVersion?: number;
@@ -249,6 +250,47 @@ export function createAgentActivityController({
       activeComposerOptionsLoads.set(primaryCacheKey, load);
       activeComposerOptionsLoadCwds.set(primaryCacheKey, requestedCwd);
       return load.then(cloneAgentActivityComposerOptions);
+    },
+    invalidateComposerOptions(input) {
+      // Drop the freshness markers, not the cached options themselves: the
+      // composer keeps rendering the last known list while the next
+      // loadComposerOptions call misses the cache and refetches.
+      const providers = input?.providers?.length
+        ? new Set(input.providers)
+        : null;
+      const matchesProvider = (provider: string | null | undefined): boolean =>
+        providers === null || (!!provider && providers.has(provider));
+      const staleCacheKeys = new Set<string>();
+      for (const provider of Object.keys(
+        snapshot.composerOptionsByProvider ?? {}
+      )) {
+        if (matchesProvider(provider)) {
+          staleCacheKeys.add(composerOptionsProviderCacheKey(provider));
+        }
+      }
+      for (const [agentTargetId, options] of Object.entries(
+        snapshot.composerOptionsByAgentTargetId ?? {}
+      )) {
+        if (matchesProvider(options?.provider)) {
+          staleCacheKeys.add(composerOptionsTargetCacheKey(agentTargetId));
+        }
+      }
+      for (const cacheKey of composerOptionsCwdByCacheKey.keys()) {
+        // Provider cache keys may have no snapshot entry yet (load in flight);
+        // match them directly so those are invalidated too.
+        if (providers === null) {
+          staleCacheKeys.add(cacheKey);
+          continue;
+        }
+        for (const provider of providers) {
+          if (cacheKey === composerOptionsProviderCacheKey(provider)) {
+            staleCacheKeys.add(cacheKey);
+          }
+        }
+      }
+      for (const cacheKey of staleCacheKeys) {
+        composerOptionsCwdByCacheKey.delete(cacheKey);
+      }
     },
     async listSessionMessages({
       agentSessionId,

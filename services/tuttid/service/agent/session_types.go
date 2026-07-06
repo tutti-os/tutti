@@ -37,6 +37,7 @@ type Service struct {
 	claudeStartupLock             *claudeStartupSerializer
 	liveModelDiscoveryMu          sync.Mutex
 	liveModelDiscoveryAttempted   map[string]struct{}
+	liveModelInvalidatedAtUnixMS  map[string]int64
 }
 
 type StaleTurnResumeReconciler interface {

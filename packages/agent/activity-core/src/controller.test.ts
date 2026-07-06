@@ -1268,6 +1268,70 @@ test("controller caches composer options by provider and clones snapshots", asyn
   );
 });
 
+test("controller invalidateComposerOptions makes the next non-forced load refetch", async () => {
+  let loadCount = 0;
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        loadCount += 1;
+        return createComposerOptions({
+          provider: input.provider,
+          models: [{ value: `model-${loadCount}`, label: `Model ${loadCount}` }]
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({ provider: "codex" });
+  assert.equal(loadCount, 1);
+
+  controller.invalidateComposerOptions({ providers: ["codex"] });
+  // The stale snapshot stays available for rendering until the refetch lands.
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex?.models[0]?.value,
+    "model-1"
+  );
+  const reloaded = await controller.loadComposerOptions({ provider: "codex" });
+  assert.equal(loadCount, 2);
+  assert.equal(reloaded.models[0]?.value, "model-2");
+});
+
+test("controller invalidateComposerOptions only touches matching providers and their targets", async () => {
+  let loadCount = 0;
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        loadCount += 1;
+        return createComposerOptions({
+          provider: input.provider,
+          models: [{ value: `model-${loadCount}`, label: `Model ${loadCount}` }]
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({ provider: "claude-code" });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "codex-target"
+  });
+  assert.equal(loadCount, 3);
+
+  controller.invalidateComposerOptions({ providers: ["codex"] });
+  await controller.loadComposerOptions({ provider: "claude-code" });
+  assert.equal(loadCount, 3);
+  await controller.loadComposerOptions({ provider: "codex" });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    agentTargetId: "codex-target"
+  });
+  assert.equal(loadCount, 5);
+});
+
 test("controller caches composer options by agent target without mutating provider cache", async () => {
   const adapterCalls: Array<{
     agentTargetId: string | null | undefined;
