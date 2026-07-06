@@ -183,6 +183,28 @@ func (s *AppFactoryService) trackAgentSessionTurnLifecycle(workspaceID string, a
 	if s == nil {
 		return
 	}
+	if lifecycle == nil {
+		// No TurnLifecycle snapshot accompanied this state report at all.
+		// This is not the same thing as "the turn just settled": plenty of
+		// legitimate session-level state reports carry no turn info
+		// whatsoever, e.g. CodexAppServerAdapter.refreshStartupMetadataAsync
+		// (packages/agent/daemon/runtime/codex_appserver_adapter.go), a
+		// background goroutine that periodically refreshes rate
+		// limits/model list/goal info and emits a plain EventSessionUpdated
+		// with no TurnID on every retry. statePatchFromSessionEvent
+		// (packages/agent/daemon/runtime/reporter.go) only populates
+		// TurnLifecycle when the event carries a TurnID, so such updates
+		// always arrive here with lifecycle == nil, including mid-turn.
+		// Treating that as "clear the live marker" reintroduced the exact
+		// premature-completion bug this guard was built to close (see the
+		// package doc above trackAgentSessionTurnLifecycle): the marker set
+		// by the turn-started update got wiped by the very next unrelated
+		// session-level update, before the turn actually finished. Do
+		// nothing here and leave whatever live/settled state we already
+		// have untouched until an update that actually carries a
+		// TurnLifecycle snapshot says otherwise.
+		return
+	}
 	key := agentSessionTurnTrackerKey(workspaceID, agentSessionID)
 	if agentSessionTurnLifecycleIsLive(lifecycle) {
 		s.liveTurnAgentSessions.Store(key, struct{}{})

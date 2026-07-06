@@ -2244,3 +2244,151 @@ func TestAppFactoryServiceIgnoresCompletedTextMidLiveTurn(t *testing.T) {
 		t.Fatalf("status = %q, want failed once the turn genuinely settles (validation runs and fails against the still-empty draft)", job.Status)
 	}
 }
+
+// TestAppFactoryServiceKeepsLiveTurnMarkerAcrossNilLifecycleUpdate
+// reproduces the follow-up bug PR #782 itself introduced (confirmed live in
+// diagnostic bundle tutti-logs-20260706-115814.zip against jobs for
+// "答案之书" and "天气查询", including at least one incident timestamped
+// after #782 had already merged): trackAgentSessionTurnLifecycle wrote
+// s.liveTurnAgentSessions.Delete(key) unconditionally whenever
+// agentSessionTurnLifecycleIsLive(lifecycle) was false, including when
+// lifecycle itself was nil. But a nil TurnLifecycle does not mean "the turn
+// settled" -- it means this particular state report simply carries no turn
+// info, which is exactly what
+// CodexAppServerAdapter.refreshStartupMetadataAsync's background rate-limit/
+// model-list refresh reports
+// (packages/agent/daemon/runtime/codex_appserver_adapter.go:1083-1148,
+// emitStartupMetadataRefreshEvent -> EventSessionUpdated with no TurnID ->
+// statePatchFromSessionEvent leaves TurnLifecycle nil,
+// packages/agent/daemon/runtime/reporter.go:751-772). That background
+// goroutine runs on every app-factory session and fires repeatedly (1s, 2s,
+// 5s, 10s... backoff), so it reliably raced the genuine live-turn marker set
+// moments earlier by the turn-started state update, wiping it mid-turn and
+// letting the message-triggered fast path (handleAgentSessionCompletedMessage)
+// trust the persisted session's racy "completed" status again -- the same
+// premature-completion failure mode #782 was supposed to have closed for
+// good.
+func TestAppFactoryServiceKeepsLiveTurnMarkerAcrossNilLifecycleUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	draftDir := t.TempDir()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		DraftDir:       draftDir,
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	publisher := &workspaceAppFactoryPublisherStub{}
+	service := AppFactoryService{
+		Store:     store,
+		AppStore:  newAppStoreStub(),
+		Publisher: publisher,
+		AgentSessionReader: factoryAgentSessionReaderStub{
+			sessions: map[string]agentservice.PersistedSession{
+				appFactoryJobStoreKey("ws-1", "session-1"): {
+					ID:          "session-1",
+					WorkspaceID: "ws-1",
+					Status:      "completed",
+				},
+			},
+		},
+		AgentMessageReader: factoryAgentMessageReaderStub{},
+	}
+
+	activeTurnID := "596f2132-32e5-4bfb-8e13-e4a60063ac5a"
+
+	// The turn genuinely starts: TurnLifecycle reports it live.
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "active",
+			CurrentPhase:    "working",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "running",
+			},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	if !service.agentSessionHasLiveTurn("ws-1", "session-1") {
+		t.Fatalf("agentSessionHasLiveTurn() = false immediately after a live TurnLifecycle update, want true")
+	}
+
+	// A session-level state report arrives mid-turn that carries no turn
+	// info at all -- e.g. the startup-metadata-refresh background goroutine
+	// reporting an updated rate-limit snapshot. This must be a no-op for the
+	// live-turn marker, not an implicit "the turn settled."
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "active",
+			CurrentPhase:    "working",
+			TurnLifecycle:   nil,
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	if !service.agentSessionHasLiveTurn("ws-1", "session-1") {
+		t.Fatalf("agentSessionHasLiveTurn() = false after a nil-TurnLifecycle session update mid-turn, want true (nil lifecycle must be a no-op, not an implicit clear)")
+	}
+
+	// The agent's ordinary opening narration completes mid-turn, just like
+	// TestAppFactoryServiceIgnoresCompletedTextMidLiveTurn. With the live
+	// marker intact, this must still be ignored.
+	if err := service.handleAgentSessionCompletedMessage(ctx, "ws-1", "session-1"); err != nil {
+		t.Fatalf("handleAgentSessionCompletedMessage() error = %v", err)
+	}
+
+	job, err := store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusGenerating {
+		t.Fatalf("status = %q, want generating (a nil-TurnLifecycle update must not wipe the live-turn marker and let stale completed text fail the job mid-turn)", job.Status)
+	}
+	if strings.TrimSpace(job.FailureReason) != "" {
+		t.Fatalf("failure reason = %q, want empty", job.FailureReason)
+	}
+	if len(publisher.published) != 0 {
+		t.Fatalf("published updates = %d, want 0", len(publisher.published))
+	}
+
+	// Once the turn genuinely settles (a present TurnLifecycle reports a
+	// real outcome), the marker must clear and the completed-session-status
+	// signal must be trusted again.
+	service.ObserveAgentSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus: "active",
+			CurrentPhase:    "idle",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "settled",
+				Outcome:      stringPtr("completed"),
+			},
+		},
+	}, agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true})
+
+	if service.agentSessionHasLiveTurn("ws-1", "session-1") {
+		t.Fatalf("agentSessionHasLiveTurn() = true after a settled TurnLifecycle update, want false")
+	}
+
+	if err := service.handleAgentSessionCompletedMessage(ctx, "ws-1", "session-1"); err != nil {
+		t.Fatalf("handleAgentSessionCompletedMessage() error = %v", err)
+	}
+	job, err = store.GetAppFactoryJob(ctx, "ws-1", "job-1")
+	if err != nil {
+		t.Fatalf("GetAppFactoryJob() error = %v", err)
+	}
+	if job.Status != workspacebiz.AppFactoryJobStatusFailed {
+		t.Fatalf("status = %q, want failed once the turn genuinely settles (validation runs and fails against the still-empty draft)", job.Status)
+	}
+}
