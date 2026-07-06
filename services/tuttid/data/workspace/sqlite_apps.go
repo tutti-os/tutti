@@ -369,6 +369,46 @@ ORDER BY updated_at_unix_ms DESC, version DESC
 	return result, nil
 }
 
+func (s *SQLiteStore) ListAppPackageFileRecords(ctx context.Context, appID string) ([]workspacebiz.AppPackageFileRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return nil, errors.New("workspace app id is required")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT app_id, version, package_dir, source
+FROM app_packages
+WHERE app_id = ?
+ORDER BY updated_at_unix_ms DESC, version DESC
+`, appID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace app package file records: %w", err)
+	}
+	defer rows.Close()
+
+	var result []workspacebiz.AppPackageFileRecord
+	for rows.Next() {
+		var record workspacebiz.AppPackageFileRecord
+		var source string
+		if err := rows.Scan(&record.AppID, &record.Version, &record.PackageDir, &source); err != nil {
+			return nil, fmt.Errorf("scan workspace app package file record: %w", err)
+		}
+		source = strings.TrimSpace(source)
+		if source == "" {
+			source = string(workspacebiz.AppPackageSourceBuiltin)
+		}
+		record.Source = workspacebiz.AppPackageSource(source)
+		result = append(result, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace app package file records: %w", err)
+	}
+	return result, nil
+}
+
 func (s *SQLiteStore) SetActiveAppPackageVersion(ctx context.Context, appID string, version string) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")

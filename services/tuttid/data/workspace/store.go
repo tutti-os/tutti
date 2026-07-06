@@ -78,6 +78,7 @@ type AppStore interface {
 	DeleteWorkspaceAppInstallation(context.Context, string, string) error
 	GetAppPackage(context.Context, string) (workspacebiz.AppPackage, error)
 	GetAppPackageVersion(context.Context, string, string) (workspacebiz.AppPackage, error)
+	ListAppPackageFileRecords(context.Context, string) ([]workspacebiz.AppPackageFileRecord, error)
 	ListAppPackageVersions(context.Context, string) ([]workspacebiz.AppPackage, error)
 	ListAppPackages(context.Context) ([]workspacebiz.AppPackage, error)
 	ListWorkspaceAppInstallationsByApp(context.Context, string) ([]workspacebiz.AppInstallation, error)

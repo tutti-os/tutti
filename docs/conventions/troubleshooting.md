@@ -282,6 +282,35 @@ Use this shape for new entries:
   [apps.go](../../services/tuttid/service/workspace/apps.go)
   [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
 
+### Workspace app uninstall fails on cached manifest validation
+
+- Symptom:
+  App Center uninstall fails with a renderer `TuttidProtocolError` such as
+  `scan workspace app package version: app manifest references.listEndpoint is required when references is provided`.
+- Quick checks:
+  Inspect `tuttid.db` `app_packages.manifest_json` for the target app. A legacy
+  row may have `references` without `references.listEndpoint`, even when the
+  currently published catalog manifest is valid.
+- Root cause:
+  The unused remote built-in uninstall cleanup path needs durable file metadata
+  such as `package_dir`, but a full package-version read parses and validates
+  `manifest_json`. If an old cached package was valid under an older manifest
+  contract but invalid under the current one, cleanup can be blocked before it
+  deletes the installation.
+- Fix:
+  Keep normal package reads strict, but use a manifest-free file-record query
+  for the unused remote built-in uninstall cleanup path that only needs package
+  directories. Do not treat historical manifest validation failures as a reason
+  to prevent uninstall.
+- Validation:
+  Add SQLite coverage that file records can be listed for an invalid manifest
+  while full package-version reads still fail, plus App Center service coverage
+  for uninstalling an unused remote built-in app with an invalid cached package
+  version.
+- References:
+  [sqlite_apps.go](../../services/tuttid/data/workspace/sqlite_apps.go)
+  [app_packages.go](../../services/tuttid/service/workspace/app_packages.go)
+
 ### Workspace app update reopens the old dock window
 
 - Symptom:
