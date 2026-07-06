@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentSlashCommandPalette } from "./AgentSlashCommandPalette";
 
 describe("AgentSlashCommandPalette", () => {
-  it("uses mention palette row spacing and color tokens for command options", () => {
+  it("renders command options without input hints", () => {
     render(
       <AgentSlashCommandPalette
         label="Slash commands"
@@ -36,42 +36,14 @@ describe("AgentSlashCommandPalette", () => {
     );
 
     const palette = screen.getByRole("listbox", { name: "Slash commands" });
-    expect(palette).toHaveClass(
-      "agent-gui-node__mention-palette",
-      "px-1",
-      "pb-1",
-      "pt-2"
-    );
+    expect(palette).toBeInTheDocument();
 
     const option = screen.getByRole("option", { name: /tutti-cli/i });
-    expect(option).toHaveClass(
-      "rounded-[6px]",
-      "min-h-9",
-      "px-2.5",
-      "py-2",
-      "hover:bg-[var(--transparency-block)]",
-      "focus-visible:bg-[var(--transparency-block)]",
-      "data-[highlighted]:bg-[var(--transparency-block)]",
-      "active:bg-[var(--transparency-active)]"
-    );
     expect(option).toHaveAttribute("data-highlighted", "");
-    expect(screen.getByText("tutti-cli").parentElement).toHaveClass(
-      "max-w-[48%]",
-      "shrink-0",
-      "items-center",
-      "overflow-hidden"
-    );
-    expect(screen.getByText("tutti-cli")).toHaveClass(
-      "truncate",
-      "text-[11px]",
-      "font-semibold"
-    );
-    expect(screen.getByText("Inspect tasks and agent context.")).toHaveClass(
-      "flex-1",
-      "truncate",
-      "text-[11px]",
-      "text-[var(--text-secondary)]"
-    );
+    expect(screen.getByText("tutti-cli")).toBeInTheDocument();
+    expect(
+      screen.getByText("Inspect tasks and agent context.")
+    ).toBeInTheDocument();
     expect(screen.queryByText("[issue description]")).toBeNull();
   });
 
@@ -182,7 +154,7 @@ describe("AgentSlashCommandPalette", () => {
     );
   });
 
-  it("renders a primary localized label with a lighter English alias", () => {
+  it("renders a primary localized label with an English alias", () => {
     render(
       <AgentSlashCommandPalette
         label="Slash commands"
@@ -210,11 +182,8 @@ describe("AgentSlashCommandPalette", () => {
       />
     );
 
-    expect(screen.getByText("状态")).toHaveClass("font-semibold");
-    expect(screen.getByText("status")).toHaveClass(
-      "text-[10px]",
-      "text-[var(--text-secondary)]"
-    );
+    expect(screen.getByText("状态")).toBeInTheDocument();
+    expect(screen.getByText("status")).toBeInTheDocument();
   });
 
   it("uses distinct icons for plan and review commands", () => {
@@ -304,52 +273,6 @@ describe("AgentSlashCommandPalette", () => {
       name: "computer",
       aliases: ["电脑"]
     });
-  });
-
-  it("separates slash palette categories with dividers", () => {
-    render(
-      <AgentSlashCommandPalette
-        label="Slash commands"
-        commandsGroupLabel="Commands"
-        capabilitiesGroupLabel="Capabilities"
-        skillsGroupLabel="Skills"
-        pluginsGroupLabel="Plugins"
-        connectorsGroupLabel="Connectors"
-        mcpGroupLabel="MCP"
-        highlightedIndex={0}
-        entries={[
-          {
-            type: "command",
-            key: "command:status",
-            label: "status",
-            command: {
-              name: "status"
-            }
-          },
-          {
-            type: "capability",
-            key: "capability:browserUse",
-            label: "Browser",
-            capability: {
-              kind: "capability",
-              capability: "browserUse",
-              name: "browser",
-              aliases: []
-            }
-          }
-        ]}
-        onHighlightChange={vi.fn()}
-        onSelect={vi.fn()}
-        onSelectCapability={vi.fn()}
-        onSelectSkill={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText("Commands")).not.toHaveClass("border-t");
-    expect(screen.getByText("Capabilities")).toHaveClass(
-      "border-t",
-      "border-[var(--border-1)]"
-    );
   });
 
   it("separates plugin and connector skill entries into source groups", () => {

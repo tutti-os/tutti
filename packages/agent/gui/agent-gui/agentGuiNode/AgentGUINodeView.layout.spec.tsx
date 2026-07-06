@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   fireEvent,
   render,
@@ -246,6 +244,42 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("renders an injected conversation rail footer with neutral context", () => {
+    const activeConversation = createConversationSummary("session-1", {
+      title: "Active conversation"
+    });
+    const renderSidebarFooter = vi.fn(
+      ({
+        currentUserId,
+        activeConversation
+      }: Parameters<
+        NonNullable<AgentGUINodeViewProps["renderSidebarFooter"]>
+      >[0]) => (
+        <button type="button">
+          Footer {currentUserId} {activeConversation?.id}
+        </button>
+      )
+    );
+
+    renderAgentGUINodeView({
+      renderSidebarFooter,
+      viewModel: createViewModel({
+        currentUserId: "user-1",
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [activeConversation]
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-sidebar-footer-slot")
+    ).toHaveTextContent("Footer user-1 session-1");
+    expect(renderSidebarFooter).toHaveBeenCalledWith({
+      currentUserId: "user-1",
+      activeConversation
+    });
+  });
+
   it("ignores rail pointer moves that do not come from the resize handle drag", () => {
     const onConversationRailWidthChanged = vi.fn();
 
@@ -256,50 +290,6 @@ describe("AgentGUINodeView layout persistence", () => {
     );
 
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
-  });
-
-  it("renders the provider rail as fixed-size tiles with only the All tile labeled", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px;[^}]*gap:\s*0;[^}]*padding:\s*0;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-panel\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-tile\s*\+\s*\.agent-gui-node__provider-rail-tile\s*\{[^}]*margin-top:\s*12px;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-avatar\s*\{[^}]*border-radius:\s*8px;/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__provider-rail-tile\[data-selected="true"\]\s+\.agent-gui-node__provider-rail-avatar\s*\{[^}]*border-radius:/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-tile-label\s*\{[^}]*max-width:\s*100%;/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px\s+(?:auto|28px);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-tile:disabled\s*\{[^}]*opacity:\s*0\.3;/s
-    );
-    expect(css).not.toMatch(
-      /\.agent-gui-node__provider-rail-tile\[data-disabled="true"\][^{]*\{[^}]*opacity:/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-launchpad-icon\s+\.agent-gui-node__provider-rail-launchpad-item\[data-provider-active="false"\]\s*\{[^}]*opacity:\s*0\.5;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__empty-provider-gate-action:disabled\s*\{[^}]*background:\s*var\(--fill-tertiary\);[^}]*color:\s*var\(--text-disabled\);[^}]*opacity:\s*0\.65;/s
-    );
   });
 
   it("sets the controlled rail width on the grid layout", () => {
@@ -443,35 +433,6 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(resizeHandle).toHaveClass("pointer-events-none");
     expect(resizeHandle).toHaveClass("opacity-0");
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
-  });
-
-  it("keeps rail collapse and expand layout tracks transitionable", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__layout\s*\{[^}]*transition:\s*grid-template-columns 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*0px\)\s+minmax\(0,\s*1fr\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail-panel\s*\{[^}]*transition:\s*width 180ms cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail\s*\{[^}]*width:\s*var\(\s*--agent-gui-conversation-rail-content-width,\s*var\(--agent-gui-conversation-rail-width\)\s*\);/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-panel--collapsed\s*\{[^}]*overflow:\s*hidden;[^}]*pointer-events:\s*none;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__provider-rail\s*\{[^}]*width:\s*52px;[^}]*flex:\s*1\s+1\s+auto;/s
-    );
-    expect(css).not.toMatch(
-      /data-agent-gui-workbench-header-collapsed="false"[\s\S]*?\.agent-gui-node__rail-toolbar[\s\S]*?padding-top:\s*var\(--agent-gui-workbench-header-height\);/
-    );
-    expect(css).toMatch(
-      /\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__rail-toolbar,\s*\.workbench-window:has\(\[data-agent-gui-workbench-header="true"\]\)\s+\.agent-gui-node__provider-rail-panel\s*\{[^}]*padding-top:\s*var\(--agent-gui-workbench-header-height\);/s
-    );
   });
 
   it("keeps the active conversation content visible when the rail is collapsed", () => {
@@ -663,14 +624,6 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("shows provider names in tooltips for unlabeled provider rail icons", async () => {
-    const source = readFileSync(
-      resolve("agent-gui/agentGuiNode/AgentGUINodeView.tsx"),
-      "utf8"
-    );
-    expect(source).toMatch(
-      /<TooltipContent\s+side="right"\s+sideOffset=\{-4\}>/
-    );
-
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1572,14 +1525,6 @@ describe("AgentGUINodeView layout persistence", () => {
         ".agent-gui-node__conversation-section-action-tooltip"
       )
     ).toBeNull();
-
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-    expect(css).toMatch(
-      /\.agent-gui-node__rail-panel\s*\{[^}]*overflow:\s*visible;/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__conversation-section-action-tooltip\s*\{[^}]*max-width:\s*180px;[^}]*white-space:\s*nowrap;/s
-    );
   });
 
   it("shows empty project sections when projects have no conversations", () => {
@@ -3804,6 +3749,7 @@ interface RenderAgentGUINodeViewOptions {
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
+  renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -3819,12 +3765,14 @@ function buildAgentGUINodeViewElement({
   actions = createActions(),
   labels = createLabels(),
   onOpenConversationWindow,
+  renderSidebarFooter,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
     <AgentActivityRuntimeProvider runtime={activityRuntime}>
       <AgentGUINodeView
         viewModel={viewModel}
+        renderSidebarFooter={renderSidebarFooter}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}

@@ -28,7 +28,7 @@ func (s *Store) ListSessionSection(
 	}
 	query := `
 SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
-       settings_json, runtime_context_json, cwd,
+       user_id, settings_json, runtime_context_json, cwd,
        title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
        created_at_unix_ms, updated_at_unix_ms

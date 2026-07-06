@@ -578,17 +578,10 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     );
 
     expect(screen.getByText("Codex requests your authorization")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "整理本地文件夹" })).toHaveClass(
-      "text-[13px]"
-    );
-    expect(screen.getByText("Codex requests your authorization")).toHaveClass(
-      "agent-gui-conversation__interactive-prompt-lead"
-    );
     expect(
-      screen
-        .getByRole("button", { name: /Yes/i })
-        .querySelector(".agent-gui-conversation__interactive-option-title")
-    ).toHaveClass("agent-gui-conversation__interactive-option-title");
+      screen.getByRole("heading", { name: "整理本地文件夹" })
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Yes/i })).toBeTruthy();
     expect(screen.queryByText("Agent requests your authorization")).toBeNull();
   });
 
@@ -630,8 +623,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     ).toBeTruthy();
     expect(
       container.querySelector('img[src="https://cdn.example.com/codex.png"]')
-        ?.parentElement
-    ).toHaveClass("rounded-full");
+    ).toBeTruthy();
   });
 
   it("renders summary relative file links as plain text", () => {

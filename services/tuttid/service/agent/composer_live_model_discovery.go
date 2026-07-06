@@ -106,7 +106,7 @@ func (s *Service) discoverLiveComposerModels(
 		return nil, ErrInvalidArgument
 	}
 	provider = agentprovider.Normalize(provider)
-	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd)
+	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd, liveModelAuthScope(provider))
 	resultCh := liveComposerModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
 		now := time.Now().UTC()
 		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {
@@ -441,26 +441,39 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	modelSource := "claude-static"
 	if strings.TrimSpace(input.WorkspaceID) != "" {
 		now := time.Now().UTC()
-		cached, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now)
-		if ok {
-			liveModels = cached
+		reused, hasProviderSession := s.liveModelOptionsFromRunningSession(input.WorkspaceID, provider)
+		switch {
+		case len(reused) > 0:
+			// A running session's advertised list is the freshest source. Use it
+			// and refresh the cache so the last-known-good entry tracks live
+			// changes (this is the only refresh path now that the Claude cache
+			// never expires — do not let a stale cache shadow a live session).
+			liveModels = reused
+			s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, reused)
 			modelSource = "acp-live-discovery"
-		} else if reused, hasProviderSession := s.liveModelOptionsFromRunningSession(input.WorkspaceID, provider); hasProviderSession {
-			if len(reused) > 0 {
-				liveModels = reused
-				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, reused)
+		case hasProviderSession:
+			// A real session exists but has not advertised models yet. Prefer the
+			// last-known-good cache over the static fallback, but never spawn a
+			// hidden discovery session next to a live session.
+			if cached, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now); ok {
+				liveModels = cached
 				modelSource = "acp-live-discovery"
 			}
-			// If a real provider session exists but has not advertised a model
-			// list yet, do not spawn a hidden discovery session next to it.
-		} else {
-			discovered, err := s.discoverLiveComposerModels(ctx, provider, input.WorkspaceID, input.Cwd, effectiveSettings)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return ComposerOptions{}, err
-			}
-			if err == nil && len(discovered) > 0 {
-				liveModels = discovered
+		default:
+			// No running session: prefer the cache, else one hidden discovery,
+			// else fall through to the static fallback below.
+			if cached, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now); ok {
+				liveModels = cached
 				modelSource = "acp-live-discovery"
+			} else {
+				discovered, err := s.discoverLiveComposerModels(ctx, provider, input.WorkspaceID, input.Cwd, effectiveSettings)
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return ComposerOptions{}, err
+				}
+				if err == nil && len(discovered) > 0 {
+					liveModels = discovered
+					modelSource = "acp-live-discovery"
+				}
 			}
 		}
 	}

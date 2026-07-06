@@ -118,9 +118,12 @@ func (p *ActivityProjection) ReportSessionState(
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
 	result, err := p.repo.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
-		WorkspaceID:       strings.TrimSpace(input.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
-		Origin:            strings.TrimSpace(input.SessionOrigin),
+		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
+		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		Origin:         strings.TrimSpace(input.SessionOrigin),
+		// Tutti local workspaces intentionally leave Source.UserID empty. Cloud
+		// collaboration hosts may provide real account user ids on this wire.
+		UserID:            strings.TrimSpace(input.Source.UserID),
 		AgentTargetID:     strings.TrimSpace(firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID)),
 		Provider:          strings.TrimSpace(firstNonEmptyString(input.State.Provider, input.Source.Provider)),
 		ProviderSessionID: strings.TrimSpace(firstNonEmptyString(input.State.ProviderSessionID, input.Source.ProviderSessionID)),

@@ -205,6 +205,13 @@ Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
 single provider target to inspect.
+AgentGuiNode may also receive a neutral `renderSidebarFooter` slot for host or
+product affordances that belong at the bottom of the conversation rail. This
+slot must stay outside the controller view model and conversation rail valtio
+store: pass it as a direct function prop and give it only existing neutral
+context such as `currentUserId` and `activeConversation`. Product concepts such
+as sharing, ownership, availability, quota, or authorization live entirely
+inside the React node supplied by the host.
 Unified empty-home provider readiness is a host-projected, provider-scoped gate,
 not a durable session rule. Desktop may subscribe to its
 `agentProviderStatusService` and pass a narrow readiness map plus install,

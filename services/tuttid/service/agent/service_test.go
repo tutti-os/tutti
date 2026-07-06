@@ -4043,6 +4043,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-1": {
 				ID:              "session-1",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-1",
 				Provider:        "codex",
 				Status:          "working",
 				Title:           "Active work",
@@ -4052,6 +4053,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-2": {
 				ID:              "session-2",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-2",
 				Provider:        "claude",
 				Status:          "completed",
 				Title:           "Done",
@@ -4065,11 +4067,11 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListActivePeers returned error: %v", err)
 	}
-	if len(peers.Agents) != 1 || peers.Agents[0].Session.ID != "session-1" {
+	if len(peers.Agents) != 1 {
 		t.Fatalf("peers = %#v", peers)
 	}
-	if peers.Agents[0].SelfRelation != "unknown" {
-		t.Fatalf("self relation = %q", peers.Agents[0].SelfRelation)
+	if peers.Agents[0].Session.ID != "session-1" || peers.Agents[0].SelfRelation != "unknown" {
+		t.Fatalf("peers = %#v", peers)
 	}
 	if peers.SelfKnown || !peers.MayIncludeSelf || peers.Warning != "SELF_IDENTITY_UNAVAILABLE" {
 		t.Fatalf("peer identity metadata = %#v", peers)

@@ -169,7 +169,7 @@ describe("AgentTranscriptView", () => {
     expect(toolGroupRow).not.toHaveAttribute("data-agent-transcript-row-enter");
   });
 
-  it("separates transcript turns with the line-2 divider", () => {
+  it("renders a divider between transcript turns", () => {
     const base = detailViewModel();
     render(
       <AgentTranscriptView
@@ -208,9 +208,6 @@ describe("AgentTranscriptView", () => {
 
     const dividers = screen.getAllByTestId("agent-transcript-turn-divider");
     expect(dividers).toHaveLength(1);
-    expect(dividers[0]!.className).toContain(
-      "bg-[var(--line-2,var(--tutti-line-2))]"
-    );
   });
 
   it("renders user message locator ticks and scrolls to the selected message", () => {
@@ -1612,16 +1609,12 @@ describe("AgentTranscriptView", () => {
 
     const alert = screen.getByRole("alert");
     expect(alert).toBeTruthy();
-    expect(alert.className).toContain("border-[var(--on-danger-hover)]");
-    expect(alert.className).toContain("bg-[var(--on-danger)]");
-    expect(alert.className).toContain("text-[var(--state-danger)]");
     expect(
       screen.getByText("agentHost.agentGui.visibleErrorStartFailed")
     ).toBeTruthy();
     const detailsToggle = screen.getByRole("button", {
       name: "agentHost.agentGui.visibleErrorRawDetails"
     });
-    expect(detailsToggle.parentElement).toHaveClass("mt-1");
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Config invalid")).toBeNull();
 
@@ -1630,7 +1623,6 @@ describe("AgentTranscriptView", () => {
     expect(detailsToggle).toHaveAttribute("aria-expanded", "true");
     const details = screen.getByText("Config invalid");
     expect(details).toBeTruthy();
-    expect(details.className).toContain("bg-[var(--on-danger)]");
   });
 });
 

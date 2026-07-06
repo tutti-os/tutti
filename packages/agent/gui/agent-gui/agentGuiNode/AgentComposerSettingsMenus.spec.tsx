@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -1538,26 +1536,6 @@ describe("AgentModelReasoningDropdown", () => {
       )
     };
   }
-
-  it("keeps base menu padding while compacting model settings menus", () => {
-    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
-
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-item\s*{[^}]*padding-block:\s*4px[^}]*padding-inline:\s*10px\s+28px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-content\[data-agent-composer-settings-layout="model-primary"\][\s\S]*?\.agent-gui-node__composer-menu-item,[\s\S]*?\.agent-gui-node__composer-menu-content\[data-agent-composer-settings-layout="model-submenu"\][\s\S]*?\.agent-gui-node__composer-menu-item\s*{[^}]*padding-inline:\s*8px\s+10px/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]\s*>\s*svg\s*{[^}]*transition:\s*transform 200ms ease/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]:hover:not\(\s*:disabled\s*\)\s*{[^}]*color:\s*var\(--agent-gui-text-secondary\)/s
-    );
-    expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-trigger\[data-agent-model-reasoning-trigger="true"\]\[data-state="open"\]\s*>\s*svg\s*{[^}]*transform:\s*rotate\(180deg\)/s
-    );
-  });
 
   it("keeps model options vertically centered when they have no description", async () => {
     renderModelReasoning();

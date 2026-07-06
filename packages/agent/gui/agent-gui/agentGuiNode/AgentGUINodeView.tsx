@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -550,6 +551,7 @@ export interface AgentGUIViewLabels {
 
 interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
+  renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -991,8 +993,18 @@ function handoffProjectPathForConversation(
   );
 }
 
+export interface AgentGUISidebarFooterContext {
+  currentUserId?: string | null;
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+}
+
+export type AgentGUISidebarFooterRenderer = (
+  ctx: AgentGUISidebarFooterContext
+) => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
+  renderSidebarFooter,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1612,6 +1624,9 @@ export function AgentGUINodeView({
         >
           <AgentGUIConversationRailStorePane
             conversations={viewModel.conversations}
+            currentUserId={viewModel.currentUserId}
+            activeConversation={viewModel.activeConversation}
+            renderSidebarFooter={renderSidebarFooter}
             store={conversationRailStore}
             storeState={conversationRailStoreState}
             userProjects={viewModel.userProjects}
@@ -3939,6 +3954,9 @@ interface AgentGUIConversationRailPaneProps {
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
   previewMode: boolean;
+  currentUserId?: string | null;
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+  renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
@@ -4002,7 +4020,12 @@ type OpenclawGatewayViewModel =
 
 type AgentGUIConversationRailDataProps = Pick<
   AgentGUIConversationRailPaneProps,
-  "conversations" | "userProjects" | "workspaceId"
+  | "activeConversation"
+  | "conversations"
+  | "currentUserId"
+  | "renderSidebarFooter"
+  | "userProjects"
+  | "workspaceId"
 >;
 
 type AgentGUIConversationRailStoreSnapshot = Omit<
@@ -4077,7 +4100,10 @@ function agentGUIConversationRailStoreSnapshotsEqual(
 }
 
 interface AgentGUIConversationRailStorePaneProps {
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
   conversations: AgentGUINodeViewModel["conversations"];
+  currentUserId?: string | null;
+  renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
   userProjects: AgentGUINodeViewModel["userProjects"];
@@ -4086,7 +4112,10 @@ interface AgentGUIConversationRailStorePaneProps {
 
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
+    activeConversation,
     conversations,
+    currentUserId,
+    renderSidebarFooter,
     store,
     storeState: _storeState,
     userProjects,
@@ -4097,7 +4126,10 @@ const AgentGUIConversationRailStorePane = memo(
     return (
       <AgentGUIConversationRailPane
         {...state}
+        activeConversation={activeConversation}
         conversations={conversations}
+        currentUserId={currentUserId}
+        renderSidebarFooter={renderSidebarFooter}
         userProjects={userProjects}
         workspaceId={workspaceId}
       />
@@ -5147,6 +5179,9 @@ const AgentGUIConversationRailPane = memo(
     conversations,
     workspaceId,
     userProjects,
+    currentUserId,
+    activeConversation,
+    renderSidebarFooter,
     activeConversationId,
     pendingDeleteConversationId,
     isLoadingConversations,
@@ -5591,6 +5626,17 @@ const AgentGUIConversationRailPane = memo(
             </Popover>
           </div>
         )}
+        {renderSidebarFooter ? (
+          <div
+            className="shrink-0 px-2 py-1.5"
+            data-testid="agent-gui-sidebar-footer-slot"
+          >
+            {renderSidebarFooter({
+              currentUserId,
+              activeConversation
+            })}
+          </div>
+        ) : null}
         <ConfirmationDialog
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}

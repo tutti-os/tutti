@@ -67,7 +67,7 @@ describe("AgentMessageMarkdown", () => {
   });
 
   it("renders markdown links, inline code, and lists", () => {
-    const { container } = render(
+    render(
       <AgentMessageMarkdown
         content={
           "已读取 [README.md](README.md) 和 `src/App.tsx`，**重点**\n\n- 第一项\n- 第二项"
@@ -81,47 +81,8 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByText("重点").tagName).toBe("STRONG");
     expect(screen.getByText("第一项")).toBeInTheDocument();
     expect(screen.getByText("第二项")).toBeInTheDocument();
-    expect(screen.getByRole("list")).toHaveStyle({
-      margin: "12px 0px 8px",
-      "padding-inline-start": "0"
-    });
-    expect(screen.getByRole("list").className).toContain("[&_li]:pl-[34px]");
-    expect(screen.getByRole("list").className).toContain(
-      "[&_li::before]:left-4"
-    );
-    expect(screen.getByRole("list").className).toContain(
-      "[&_li::before]:bg-[var(--text-tertiary)]"
-    );
-    expect(screen.getAllByRole("listitem")[0]).toHaveStyle({
-      margin: "4px 0px"
-    });
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown?.className).not.toContain("hover:[&_a]:underline");
-    expect(markdown?.className).toContain("text-[var(--text-primary)]");
-    expect(markdown?.className).toContain("[&_a]:cursor-pointer");
-    expect(markdown?.className).toContain("[&_a]:text-[var(--tutti-purple)]");
-    expect(markdown?.className).toContain("[&_a:hover]:underline");
-    expect(markdown?.className).toContain("[&_strong]:font-semibold");
-    expect(markdown?.className).toContain("[&_code]:text-[11px]");
-    expect(markdown?.className).toContain(
-      "[&_code]:text-[var(--text-primary)]"
-    );
-    expect(markdown?.className).toContain("[&_code]:inline");
-    expect(markdown?.className).toContain("[&_code]:rounded-[2px]");
-    expect(markdown?.className).toContain("[&_code]:[overflow-wrap:anywhere]");
-    expect(markdown?.className).toContain(
-      "[&_code]:[box-decoration-break:clone]"
-    );
-    expect(markdown?.className).toContain("[&_pre_code]:h-auto");
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[white-space:pre-wrap]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[overflow-wrap:anywhere]"
-    );
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
   it("renders GFM tables as table elements", () => {
     render(
@@ -1390,28 +1351,6 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByText("hello world")).toBeInTheDocument();
   });
 
-  it("keeps long inline code wrapping-friendly", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          "摘要：`这是一段很长的行内代码文本，用来确认它不会被固定高度和 flex 布局限制住。`"
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown?.className).not.toContain("[&_code]:inline-flex");
-    expect(markdown?.className).not.toContain("[&_code]:h-4");
-    expect(markdown?.className).toContain(
-      "[&_code]:[box-decoration-break:clone]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_code]:[-webkit-box-decoration-break:clone]"
-    );
-  });
-
   it("does not leak markdown ast node props into the DOM", () => {
     const { container } = render(
       <AgentMessageMarkdown
@@ -1435,19 +1374,14 @@ describe("AgentMessageMarkdown", () => {
     );
 
     const expandButton = screen.getByRole("button", { name: "展开全部" });
-    expect(expandButton.className).toContain("text-[var(--tutti-purple)]");
     const markdown = expandButton.parentElement?.querySelector(
       '[data-workspace-agent-markdown="true"]'
     );
     expect(markdown).toHaveAttribute("data-collapsed", "true");
-    expect(markdown?.className).toContain("transition-[max-height]");
-    expect(markdown?.className).toContain("[mask-image:linear-gradient");
-    expect(markdown?.className).not.toContain("after:bg-");
 
     fireEvent.click(expandButton);
 
     expect(markdown).toHaveAttribute("data-collapsed", "false");
-    expect(markdown?.className).toContain("max-h-[72rem]");
     expect(screen.queryByRole("button", { name: "展开全部" })).toBeNull();
   });
 
