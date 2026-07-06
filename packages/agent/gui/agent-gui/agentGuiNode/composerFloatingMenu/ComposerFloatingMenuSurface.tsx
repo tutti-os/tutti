@@ -29,6 +29,7 @@ export interface ComposerAnchoredMenuFrame {
   bottom: number;
   height: number;
   left: number;
+  minHeight: number;
   portalTarget: Element;
   top: number;
   width: number;
@@ -57,12 +58,17 @@ export interface ComposerFloatingMenuSurfaceProps {
   testId: string;
 }
 
+const COMPOSER_MENU_WINDOW_FRAME_SELECTOR =
+  "[data-workbench-window-id], [data-workspace-node-window-root='true']";
+
+function resolveComposerMenuWindowFrame(anchor: HTMLElement): Element | null {
+  return anchor.closest(COMPOSER_MENU_WINDOW_FRAME_SELECTOR);
+}
+
 function resolveComposerMenuPortalTarget(anchor: HTMLElement): Element {
   return (
     anchor.closest('[data-slot="viewport-menu-boundary"]') ??
-    anchor.closest(
-      "[data-workbench-window-id], [data-workspace-node-window-root='true']"
-    ) ??
+    resolveComposerMenuWindowFrame(anchor) ??
     document.body
   );
 }
@@ -70,11 +76,7 @@ function resolveComposerMenuPortalTarget(anchor: HTMLElement): Element {
 function resolveComposerMenuZIndex(anchor: HTMLElement): number | string {
   let current: HTMLElement | null = anchor;
   while (current) {
-    if (
-      current.matches(
-        "[data-workbench-window-id], [data-workspace-node-window-root='true']"
-      )
-    ) {
+    if (current.matches(COMPOSER_MENU_WINDOW_FRAME_SELECTOR)) {
       const windowZIndex = Number.parseInt(
         window.getComputedStyle(current).zIndex,
         10
@@ -86,6 +88,30 @@ function resolveComposerMenuZIndex(anchor: HTMLElement): number | string {
     current = current.parentElement;
   }
   return "var(--z-popover)";
+}
+
+// Mirrors the real workspace window's `COMPOSER_MENU_TOP_SAFE_AREA_PX` floor,
+// but scoped to a virtual node window on the workspace canvas
+// (`WorkspaceNodeWindow.tsx`). Each node draws its own decorative header with
+// fake traffic-light buttons (`data-workspace-node-window-header="true"`);
+// clamping only against the real viewport's 52px chrome ignores that a
+// compact node's header can sit well below (or, rarer, above) that mark.
+// Falls back to the enclosing frame's own top edge when no explicit header
+// is found, so the menu never renders above the window/node it lives in.
+function resolveComposerMenuTopSafeArea(anchor: HTMLElement): number {
+  const windowFrame = resolveComposerMenuWindowFrame(anchor);
+  if (!windowFrame) {
+    return COMPOSER_MENU_TOP_SAFE_AREA_PX;
+  }
+
+  const header = windowFrame.querySelector(
+    '[data-workspace-node-window-header="true"]'
+  );
+  const localFloor = (header ?? windowFrame).getBoundingClientRect()[
+    header ? "bottom" : "top"
+  ];
+
+  return Math.max(COMPOSER_MENU_TOP_SAFE_AREA_PX, localFloor);
 }
 
 function computeComposerAnchoredMenuFrame(
@@ -106,15 +132,20 @@ function computeComposerAnchoredMenuFrame(
       viewportWidth - COMPOSER_MENU_VIEWPORT_PADDING_PX - width
     )
   );
-  const availableAbove =
-    rect.top - COMPOSER_MENU_GAP_PX - COMPOSER_MENU_TOP_SAFE_AREA_PX;
+  const topSafeArea = resolveComposerMenuTopSafeArea(anchor);
+  const availableAbove = rect.top - COMPOSER_MENU_GAP_PX - topSafeArea;
+  // Never demand more minimum height than the enclosing window/node actually
+  // has room for above its own safe area — otherwise a compact node (as
+  // short as `DESKTOP_WINDOW_MIN_HEIGHT`) is forced to render the menu past
+  // its own header, regardless of the safe-area clamp below.
+  const minHeight = Math.max(
+    0,
+    Math.min(COMPOSER_MENU_MIN_HEIGHT_PX, availableAbove)
+  );
   const height =
     availableAbove >= maxHeight
       ? maxHeight
-      : Math.max(
-          COMPOSER_MENU_MIN_HEIGHT_PX,
-          Math.min(maxHeight, availableAbove)
-        );
+      : Math.max(minHeight, Math.min(maxHeight, availableAbove));
 
   return {
     bottom: Math.max(
@@ -123,9 +154,10 @@ function computeComposerAnchoredMenuFrame(
     ),
     height,
     left,
+    minHeight,
     portalTarget: resolveComposerMenuPortalTarget(anchor),
     top: Math.max(
-      COMPOSER_MENU_TOP_SAFE_AREA_PX,
+      topSafeArea,
       Math.min(
         rect.top - COMPOSER_MENU_GAP_PX - height,
         viewportHeight - COMPOSER_MENU_VIEWPORT_PADDING_PX - height
@@ -148,7 +180,8 @@ function sameComposerAnchoredMenuFrame(
     Math.abs(left.top - right.top) < 0.5 &&
     Math.abs(left.bottom - right.bottom) < 0.5 &&
     Math.abs(left.width - right.width) < 0.5 &&
-    Math.abs(left.height - right.height) < 0.5
+    Math.abs(left.height - right.height) < 0.5 &&
+    Math.abs(left.minHeight - right.minHeight) < 0.5
   );
 }
 
@@ -311,7 +344,7 @@ export const ComposerFloatingMenuSurface = forwardRef<
       return {
         ...baseStyle,
         top: `${frame?.top ?? 0}px`,
-        minHeight: `${COMPOSER_MENU_MIN_HEIGHT_PX}px`,
+        minHeight: `${frame?.minHeight ?? COMPOSER_MENU_MIN_HEIGHT_PX}px`,
         height: `${frame?.height ?? maxHeight}px`,
         maxHeight: `${maxHeight}px`
       };
