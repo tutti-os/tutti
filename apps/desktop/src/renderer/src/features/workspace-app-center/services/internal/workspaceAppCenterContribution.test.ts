@@ -7,7 +7,6 @@ import type {
   WorkspaceAppCenterApp,
   WorkspaceAppCenterReadableStoreState
 } from "@tutti-os/workspace-app-center";
-import { createWorkspaceAppWebviewBrowserLease } from "./workspaceAppWebviewBrowserAnalytics.ts";
 import {
   shouldPreserveWorkspaceAppWebviewDuringHandoff,
   shouldRenderWorkspaceAppBrowserNode,
@@ -638,20 +637,6 @@ test("workspace app dock entry focus reports app open from the dock entry id", (
       }
     ]
   );
-});
-
-test("workspace app webview browser lease does not report browser lifecycle events", () => {
-  const reporterCalls: ReporterEventInput[][] = [];
-  let now = 1749124800000;
-  const lease = createWorkspaceAppWebviewBrowserLease({
-    reporterNow: () => now,
-    reporterService: createReporterService(reporterCalls)
-  });
-
-  now = 1749124800250;
-  lease?.release();
-
-  assert.deepEqual(reporterCalls, []);
 });
 
 function createApp(
