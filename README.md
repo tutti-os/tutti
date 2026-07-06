@@ -243,25 +243,11 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 <!-- TODO: download link for Tutti · Local -->
 
-Download Tutti · Local — coming soon.
+[Download Tutti · Local](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
 
 <!-- TODO: waitlist link for Tutti · VM -->
 
 Join the waitlist for Tutti · VM — coming soon.
-
-### Build from source
-
-Prerequisites:
-
-- Node.js `24` or newer (`.node-version` pins the baseline)
-- pnpm `10.11.0`
-- Go `1.24`
-
-```sh
-pnpm install
-pnpm setup:dev
-make dev-gui
-```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
