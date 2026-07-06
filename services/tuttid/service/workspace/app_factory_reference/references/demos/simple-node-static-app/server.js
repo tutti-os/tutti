@@ -6,6 +6,7 @@ const host = process.env.TUTTI_APP_HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.TUTTI_APP_PORT || "", 10);
 const packageDir = process.env.TUTTI_APP_PACKAGE_DIR;
 const dataDir = process.env.TUTTI_APP_DATA_DIR;
+const instanceToken = process.env.TUTTI_APP_INSTANCE_TOKEN || "";
 
 if (!Number.isInteger(port)) {
   throw new Error("TUTTI_APP_PORT is required");
@@ -45,6 +46,9 @@ function readState() {
 const server = http.createServer((request, response) => {
   const url = new URL(request.url || "/", `http://${host}:${port}`);
   if (request.method === "GET" && url.pathname === "/healthz") {
+    if (instanceToken) {
+      response.setHeader("X-Tutti-App-Instance", instanceToken);
+    }
     writeJson(response, { ok: true });
     return;
   }

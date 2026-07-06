@@ -14,7 +14,7 @@ Before finishing:
 - `bootstrap.sh` launches the prepared app and does not install dependencies.
 - `bootstrap.sh` and `prepare.sh`, when present, use `TUTTI_APP_PYTHON`, `TUTTI_APP_NODE`, or `TUTTI_APP_NPM` instead of bare system `python`, `python3`, `node`, or `npm` commands.
 - The server binds `127.0.0.1:$TUTTI_APP_PORT` or `$TUTTI_APP_HOST:$TUTTI_APP_PORT`.
-- The healthcheck endpoint returns a 2xx response.
+- The healthcheck endpoint returns a 2xx response and echoes `$TUTTI_APP_INSTANCE_TOKEN` in the `X-Tutti-App-Instance` response header.
 - If `tutti.app.json` declares `references.listEndpoint`, that endpoint accepts JSON `POST` requests with optional `parentGroupId`, `filterText`, `cursor`, `timeRange`, and returns direct group/reference items using `location`, not host absolute `path`.
 - If `tutti.app.json` declares `references.searchEndpoint`, that endpoint accepts JSON `POST` requests with a required `query` plus optional `cursor`, `limit`, `kinds`, `timeRange`, and returns a flat, relevance-ordered list of reference items (no group items) using `location`, not host absolute `path`.
 - The `searchEndpoint` matches `query` against each file's **own name** only (the `displayName`), never against `location.path`, the containing folder/project, or `parentGroupLabel` — searching `2` must not return a file named `cover.svg` just because it lives in a project named `2222`.
