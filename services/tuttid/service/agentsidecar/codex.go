@@ -60,6 +60,11 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 		return err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
+	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
+		return err
+	}
+	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
 	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
 		return err
@@ -128,6 +133,58 @@ func exposeUserCodexFiles(codexHome string) error {
 		return err
 	}
 	return exposeUserCodexConfig(codexHome, userCodexHome)
+}
+
+// exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
+// (conversation transcript) file that an imported session was read from into
+// the sandboxed CODEX_HOME, at the same path it has relative to the real
+// `~/.codex` tree (e.g. `sessions/2026/07/04/rollout-...jsonl` or
+// `archived_sessions/...`). Codex CLI resolves rollouts for `thread/resume`
+// relative to CODEX_HOME, so mirroring the real relative layout lets it find
+// the transcript by thread id without needing this code to know or guess
+// Codex's internal sharding/naming scheme, and without exposing any other
+// unrelated conversation under ~/.codex/sessions into a sandbox scoped to
+// this one session/run.
+//
+// sourcePath is empty for every non-imported session, so this is a no-op for
+// the overwhelming majority of sessions. When it is set but the file can't be
+// resolved or no longer exists (moved, pruned by the user's own Codex CLI
+// retention, or a custom CODEX_HOME was in effect on another device at import
+// time), this intentionally returns nil rather than an error: resume still
+// falls back to the existing documented "recreatable" path (a fresh thread
+// with a visible notice) exactly as it did before this file existed.
+func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
+	sourcePath = strings.TrimSpace(sourcePath)
+	if sourcePath == "" {
+		return nil
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(userHome) == "" {
+		return nil
+	}
+	userCodexHome := filepath.Join(userHome, ".codex")
+	rel, err := filepath.Rel(userCodexHome, sourcePath)
+	if err != nil || rel == ".." || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// Not under the real ~/.codex tree we know how to mirror - leave it to
+		// the recreate fallback rather than guessing at a different layout.
+		return nil
+	}
+	if info, err := os.Stat(sourcePath); err != nil || info.IsDir() {
+		// Original rollout is gone or was never a real file - fall back to
+		// recreate, same as before this fix.
+		return nil
+	}
+	target := filepath.Join(codexHome, rel)
+	if _, err := os.Lstat(target); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return fmt.Errorf("create codex imported rollout parent dir: %w", err)
+	}
+	if err := os.Symlink(sourcePath, target); err != nil {
+		return fmt.Errorf("expose codex imported rollout file: %w", err)
+	}
+	return nil
 }
 
 func exposeUserCodexPluginState(codexHome string, userCodexHome string) error {

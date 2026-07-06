@@ -70,7 +70,19 @@ func externalSessionProjectPath(session externalImportedSession) (string, bool) 
 func nearestExternalImportGitRoot(cwd string) (string, bool) {
 	current := filepath.Clean(cwd)
 	for current != "" {
-		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+		gitPath := filepath.Join(current, ".git")
+		if info, err := os.Lstat(gitPath); err == nil {
+			if !info.IsDir() {
+				// A `.git` *file* (rather than directory) at the nearest git
+				// root means current is a linked worktree, not the main
+				// checkout — resolve back to the main checkout so callers
+				// never treat an ephemeral per-task worktree as its own
+				// independent project. Fall back to current, unresolved, if
+				// that fails for any reason (e.g. malformed metadata).
+				if mainRoot, ok := resolveGitWorktreeMainRoot(gitPath); ok {
+					return mainRoot, true
+				}
+			}
 			return current, true
 		}
 		parent := filepath.Dir(current)
@@ -80,6 +92,97 @@ func nearestExternalImportGitRoot(cwd string) (string, bool) {
 		current = parent
 	}
 	return "", false
+}
+
+// resolveExternalImportWorktreeCwd walks up from cwd looking for the nearest
+// git root — a directory containing a `.git` entry, whether a real
+// directory (a normal/main checkout) or a `.git` *file* (the pointer git
+// leaves at the root of a linked worktree created via `git worktree add`).
+// When the nearest root turns out to be a linked worktree, it resolves back
+// to the *main* checkout's working-tree root and maps cwd onto the
+// equivalent path under that root, preserving any subdirectory depth.
+//
+// This matters because a coding agent (Codex, in particular) commonly runs
+// each task inside its own throwaway worktree, e.g.
+// ~/.codex/worktrees/8db5/tsh. That directory has its own `.git` file, so
+// naively it looks like its own independent git root/project — but it is
+// not the directory the user actually registered as their "tsh" project;
+// the main checkout is. Without this resolution, every session imported
+// from such a worktree gets grouped under (and, if registered, creates a
+// brand-new project card for) the ephemeral worktree path instead of lining
+// up with the user's real, already-registered project — leaving the real
+// project empty and the imported sessions stranded in the no-project
+// bucket.
+//
+// Returns ok=false whenever there's nothing to resolve — no git root found,
+// the root is a normal checkout, or the worktree's metadata can't be read
+// for any reason (malformed, main checkout since removed) — so callers can
+// safely keep using cwd unchanged.
+func resolveExternalImportWorktreeCwd(cwd string) (string, bool) {
+	current := filepath.Clean(cwd)
+	for current != "" {
+		gitPath := filepath.Join(current, ".git")
+		info, err := os.Lstat(gitPath)
+		if err != nil {
+			parent := filepath.Dir(current)
+			if parent == current {
+				return "", false
+			}
+			current = parent
+			continue
+		}
+		if info.IsDir() {
+			return "", false
+		}
+		mainRoot, ok := resolveGitWorktreeMainRoot(gitPath)
+		if !ok {
+			return "", false
+		}
+		rel, err := filepath.Rel(current, filepath.Clean(cwd))
+		if err != nil {
+			return "", false
+		}
+		return filepath.Clean(filepath.Join(mainRoot, rel)), true
+	}
+	return "", false
+}
+
+// resolveGitWorktreeMainRoot resolves a linked worktree's `.git` pointer
+// file (gitFilePath) back to the main checkout's working-tree root. It
+// follows the same two-step lookup git itself uses: the pointer file's
+// "gitdir: <path>" line names the worktree's private metadata directory
+// (<main>/.git/worktrees/<name>), and that directory's `commondir` file
+// names the shared .git directory it's relative to (normally "../.."). The
+// main checkout's root is that shared directory's parent.
+func resolveGitWorktreeMainRoot(gitFilePath string) (string, bool) {
+	data, err := os.ReadFile(gitFilePath)
+	if err != nil {
+		return "", false
+	}
+	const prefix = "gitdir:"
+	line := strings.TrimSpace(string(data))
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	worktreeGitDir := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+	if worktreeGitDir == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(worktreeGitDir) {
+		worktreeGitDir = filepath.Join(filepath.Dir(gitFilePath), worktreeGitDir)
+	}
+	commonDirRaw, err := os.ReadFile(filepath.Join(worktreeGitDir, "commondir"))
+	if err != nil {
+		return "", false
+	}
+	commonDir := strings.TrimSpace(string(commonDirRaw))
+	if commonDir == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(worktreeGitDir, commonDir)
+	}
+	return canonicalExistingDir(filepath.Dir(filepath.Clean(commonDir)))
 }
 
 func externalImportSessionSummary(session externalImportedSession, projectPath string) ExternalImportSession {

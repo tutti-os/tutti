@@ -90,3 +90,34 @@ func TestSQLiteStoreDeleteUserProjectRemovesRecentProject(t *testing.T) {
 		t.Fatalf("ListUserProjects() len = %d, want 0", len(projects))
 	}
 }
+
+// TestSQLiteStoreDeleteUserProjectByPathRemovesRowWithMismatchedID guards
+// against the "remove project" no-op regression: the `path` column is the
+// table's UNIQUE key (see applyUserProjectsV1), so deleting by path must
+// still remove the row even if the stored `id` doesn't match whatever a
+// caller would recompute from the path. Deleting by a recomputed id instead
+// is exactly the bug this store method exists to avoid.
+func TestSQLiteStoreDeleteUserProjectByPathRemovesRowWithMismatchedID(t *testing.T) {
+	ctx := context.Background()
+	store := openTestSQLiteStore(t)
+
+	_, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "user_project_stale-mismatched-id",
+		Path:  "/workspace/mismatched",
+		Label: "mismatched",
+	})
+	if err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+
+	if err := store.DeleteUserProjectByPath(ctx, "/workspace/mismatched"); err != nil {
+		t.Fatalf("DeleteUserProjectByPath() error = %v", err)
+	}
+	projects, err := store.ListUserProjects(ctx)
+	if err != nil {
+		t.Fatalf("ListUserProjects() error = %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("ListUserProjects() len = %d, want 0", len(projects))
+	}
+}

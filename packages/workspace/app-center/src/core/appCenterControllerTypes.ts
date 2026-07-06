@@ -15,6 +15,7 @@ export type WorkspaceAppCenterOperation =
   | "app_center.refresh"
   | "app_center.refresh_catalog"
   | "app_center.start_workspace_updates"
+  | "app_factory.create"
   | "app_factory.prepare_modification"
   | "app_factory.publish"
   | "workspace_app.delete"
@@ -33,6 +34,7 @@ export type WorkspaceAppCenterOperation =
   | "workspace_app.update";
 
 export type WorkspaceAppCenterUiAction =
+  | "create_factory_job"
   | "delete_app"
   | "export_app"
   | "import_app"

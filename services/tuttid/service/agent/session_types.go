@@ -398,6 +398,12 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	ExtraSkills            []SessionSkillBundle
+	// ExternalRolloutSourcePath is the absolute path to the original provider
+	// CLI rollout/transcript file this session was imported from, when known.
+	// Populated from the persisted session's RuntimeContext when resuming an
+	// imported conversation (see createSessionInputFromPersisted); empty for
+	// brand-new sessions.
+	ExternalRolloutSourcePath string
 }
 
 type SessionSkillBundle struct {

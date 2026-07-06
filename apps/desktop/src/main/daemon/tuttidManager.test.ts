@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
 import {
   access,
   chmod,
@@ -18,7 +19,8 @@ import {
   resolveBrowserMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
-  resolveManagedDaemonProcessEnv
+  resolveManagedDaemonProcessEnv,
+  signalProcessTree
 } from "./tuttidManager.ts";
 
 const repoRoot = resolve(
@@ -320,6 +322,53 @@ test("isLikelyTuttidProcess only matches tuttid executables", () => {
   assert.equal(isLikelyTuttidProcess(""), false);
 });
 
+// Regression coverage for the "lingering codex server processes" report:
+// stopStaleTuttid used to signal only the recovered pid, not its process
+// group, so a stale tuttid's own subprocesses (Codex app-server, etc.)
+// survived being reaped and kept running against the workspace indefinitely.
+// This spawns a detached leader (mirroring how ManagedTuttid.start spawns
+// tuttid) with a grandchild of its own, then asserts signalProcessTree kills
+// both in one shot instead of orphaning the grandchild.
+test("signalProcessTree kills the whole process group, not just the leader", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("process groups are POSIX-only; win32 falls back to a direct kill");
+    return;
+  }
+
+  const leader = spawn("sh", ["-c", "sleep 60 & wait"], {
+    detached: true,
+    stdio: "ignore"
+  });
+  const leaderPid = leader.pid;
+  assert.ok(leaderPid, "expected the leader process to have a pid");
+  leader.unref();
+
+  try {
+    const childPid = await waitForChildPid(leaderPid, 2_000);
+    assert.ok(
+      childPid,
+      "expected the leader to have spawned a grandchild (sleep) sharing its process group"
+    );
+
+    signalProcessTree(leaderPid, "SIGKILL");
+
+    assert.equal(
+      await waitForPidGone(leaderPid, 2_000),
+      true,
+      "leader should be dead after signalProcessTree"
+    );
+    assert.equal(
+      await waitForPidGone(childPid, 2_000),
+      true,
+      "grandchild should be dead too, not left running as an orphan"
+    );
+  } finally {
+    if (isPidRunning(leaderPid)) {
+      process.kill(leaderPid, "SIGKILL");
+    }
+  }
+});
+
 test("resolveManagedDaemonProcessEnv passes the shared desktop app version", () => {
   const previousEnv = { ...process.env };
 
@@ -399,4 +448,56 @@ async function developmentBinaryIsFresh(binaryPath: string): Promise<boolean> {
   } catch {
     return true;
   }
+}
+
+function isPidRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function directChildPid(parentPid: number): number | null {
+  const result = spawnSync("pgrep", ["-P", String(parentPid)], {
+    encoding: "utf8"
+  });
+  const pid = Number.parseInt(result.stdout.trim().split(/\s+/)[0] ?? "", 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+async function waitForChildPid(
+  parentPid: number,
+  timeoutMs: number
+): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pid = directChildPid(parentPid);
+    if (pid !== null) {
+      return pid;
+    }
+    await sleep(20);
+  }
+  return null;
+}
+
+async function waitForPidGone(
+  pid: number,
+  timeoutMs: number
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidRunning(pid)) {
+      return true;
+    }
+    await sleep(20);
+  }
+  return !isPidRunning(pid);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
 }

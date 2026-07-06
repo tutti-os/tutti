@@ -138,6 +138,16 @@ const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
   avoidGroupingEdits: false
 } satisfies NonNullable<AgentGUIProps["agentSettings"]>;
 const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+function handleDesktopAgentGUIShowMessage(
+  message: string,
+  tone?: "info" | "warning" | "error"
+): void {
+  if (tone === "error") {
+    Toast.Error(message);
+    return;
+  }
+  Toast.tips(message);
+}
 const AGENT_PROBE_REFRESH_DEBOUNCE_MS = 300;
 const DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS =
   [] satisfies NonNullable<AgentGUIProps["contextMentionProviders"]>;
@@ -1080,7 +1090,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         onClose={DESKTOP_AGENT_GUI_NOOP}
         onLinkAction={previewMode ? undefined : onLinkAction}
         onResize={DESKTOP_AGENT_GUI_NOOP}
-        onShowMessage={DESKTOP_AGENT_GUI_NOOP}
+        onShowMessage={handleDesktopAgentGUIShowMessage}
         onUpdateNode={handleUpdateNode}
         onRememberComposerDefaults={handleRememberComposerDefaults}
         onOpenConversationWindow={

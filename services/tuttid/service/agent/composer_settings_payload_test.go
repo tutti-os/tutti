@@ -78,3 +78,27 @@ func TestCreateSessionInputFromPersistedPreservesBrowserUse(t *testing.T) {
 		t.Fatalf("Model = %#v, want gpt-5", input.Model)
 	}
 }
+
+func TestCreateSessionInputFromPersistedCarriesExternalRolloutSourcePath(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "codex",
+		RuntimeContext: map[string]any{
+			"imported":           true,
+			"externalSourcePath": "/home/user/.codex/sessions/2026/07/04/rollout-abc.jsonl",
+		},
+	})
+	if input.ExternalRolloutSourcePath != "/home/user/.codex/sessions/2026/07/04/rollout-abc.jsonl" {
+		t.Fatalf("ExternalRolloutSourcePath = %q, want imported source path preserved", input.ExternalRolloutSourcePath)
+	}
+}
+
+func TestCreateSessionInputFromPersistedLeavesExternalRolloutSourcePathEmptyForNonImportedSession(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "codex",
+	})
+	if input.ExternalRolloutSourcePath != "" {
+		t.Fatalf("ExternalRolloutSourcePath = %q, want empty for a session with no RuntimeContext", input.ExternalRolloutSourcePath)
+	}
+}

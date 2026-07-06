@@ -1207,6 +1207,142 @@ func TestCodexPreparerSkipsUserBrowserSkillWhenBrowserUseEnabled(t *testing.T) {
 	}
 }
 
+func TestExposeCodexImportedRolloutFileSymlinksMatchingRelativePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
+	sourcePath := filepath.Join(home, ".codex", rel)
+	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
+	}
+
+	target := filepath.Join(codexHome, rel)
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("imported rollout file not exposed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
+	}
+	linkTarget, err := os.Readlink(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != sourcePath {
+		t.Fatalf("symlink target = %q, want %q", linkTarget, sourcePath)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileNoopWhenSourcePathEmpty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, ""); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
+	}
+	entries, err := os.ReadDir(codexHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("codexHome entries = %#v, want none created for empty source path", entries)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileGracefulWhenSourceFileMissing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	sourcePath := filepath.Join(home, ".codex", "sessions", "2026", "07", "04", "rollout-gone.jsonl")
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil when source is gone", err)
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, "sessions", "2026", "07", "04", "rollout-gone.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("expected no symlink for a missing source rollout, err = %v", err)
+	}
+}
+
+func TestExposeCodexImportedRolloutFileGracefulWhenSourceOutsideRealCodexHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	outsidePath := filepath.Join(t.TempDir(), "rollout.jsonl")
+	writeSidecarTestFile(t, outsidePath, `{"type":"session_meta"}`)
+
+	codexHome := t.TempDir()
+	if err := exposeCodexImportedRolloutFile(codexHome, outsidePath); err != nil {
+		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil for a path outside ~/.codex", err)
+	}
+	entries, err := os.ReadDir(codexHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("codexHome entries = %#v, want none created for a source path outside ~/.codex", entries)
+	}
+}
+
+func TestDefaultPreparerCodexExposesImportedRolloutFileFromPrepareInput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	rel := filepath.Join("sessions", "2026", "07", "04", "rollout-abc.jsonl")
+	sourcePath := filepath.Join(home, ".codex", rel)
+	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:               "workspace-1",
+		AgentSessionID:            "session-1",
+		AgentTargetID:             "local:codex",
+		Provider:                  "codex",
+		Cwd:                       cwd,
+		ExternalRolloutSourcePath: sourcePath,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	target := filepath.Join(codexHome, rel)
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("imported rollout file not exposed via Prepare(): %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("imported rollout file mode = %v, want symlink", info.Mode())
+	}
+}
+
+func TestDefaultPreparerCodexSkipsRolloutExposureForNonImportedSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "sessions")); !os.IsNotExist(err) {
+		t.Fatalf("non-imported session should not create a sessions dir, err = %v", err)
+	}
+}
+
 func envValue(env []string, key string) string {
 	prefix := key + "="
 	for _, item := range env {

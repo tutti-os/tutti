@@ -49,6 +49,12 @@ type AppFactoryService struct {
 	Publisher             WorkspaceAppFactoryEventPublisher
 
 	publishLocks keyedOperationLocks
+
+	// liveTurnAgentSessions tracks, per agent session, whether the most
+	// recently observed TurnLifecycle snapshot (see ObserveAgentSessionState)
+	// reports a live turn. See agentSessionHasLiveTurn in
+	// app_factory_agent_state.go for why this exists.
+	liveTurnAgentSessions sync.Map
 }
 
 type keyedOperationLocks struct {

@@ -485,6 +485,118 @@ func TestControllerReleaseIdleLiveSessionsWaitsForExecLifecycle(t *testing.T) {
 	waitForSessionStatus(t, controller, started.Session.RoomID, started.Session.AgentSessionID, SessionStatusReady)
 }
 
+func TestControllerCloseAllLiveSessionsClosesEveryLiveSession(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	unsupported := &recordingStartAdapter{provider: ProviderHermes}
+	controller := NewController([]Adapter{adapter, unsupported}, nil)
+	fresh := startReleasableSession(t, controller, "fresh-session")
+	notLive := startReleasableSession(t, controller, "not-live-session")
+	adapter.dropLiveSession(notLive.Session.AgentSessionID)
+	unsupportedStarted, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "unsupported-session",
+		Provider:       ProviderHermes,
+	})
+	if err != nil {
+		t.Fatalf("Start unsupported: %v", err)
+	}
+
+	// A freshly started, non-idle session with a live process is exactly the
+	// case ReleaseIdleLiveSessions would skip (SkippedFresh); shutdown must
+	// still force it closed since there is no "later" to defer to.
+	result := controller.CloseAllLiveSessions(context.Background())
+	if result.Scanned != 1 || result.Closed != 1 || result.Failed != 0 {
+		t.Fatalf("close-all result = %#v, want exactly the live session closed", result)
+	}
+	if adapter.hasLiveSession(fresh.Session.AgentSessionID) {
+		t.Fatalf("adapter still reports live session after CloseAllLiveSessions")
+	}
+	if calls := adapter.closeCallCount(fresh.Session.AgentSessionID); calls != 1 {
+		t.Fatalf("close calls = %d, want exactly one", calls)
+	}
+	if adapter.closeCallCount(notLive.Session.AgentSessionID) != 0 {
+		t.Fatalf("Close called for a session with no live process")
+	}
+
+	stored, ok := controller.Session(fresh.Session.RoomID, fresh.Session.AgentSessionID)
+	if !ok {
+		t.Fatalf("controller session was deleted by CloseAllLiveSessions")
+	}
+	if stored.Status == SessionStatusCompleted {
+		t.Fatalf("session status = completed, want CloseAllLiveSessions to be non-destructive to the session record")
+	}
+	if stored.ProviderSessionID != "provider-session-"+fresh.Session.AgentSessionID {
+		t.Fatalf("provider session id = %q, want preserved for resume", stored.ProviderSessionID)
+	}
+
+	// Unsupported/no-live-session-probe adapters must be scanned over
+	// without panicking or being counted.
+	if _, ok := controller.Session(unsupportedStarted.Session.RoomID, unsupportedStarted.Session.AgentSessionID); !ok {
+		t.Fatalf("unsupported provider session missing after CloseAllLiveSessions")
+	}
+}
+
+func TestControllerCloseAllLiveSessionsForcesClosureDuringActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "agent-session-1")
+
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := controller.Exec(context.Background(), ExecInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+			Content:        textPrompt("in flight"),
+		})
+		execDone <- err
+	}()
+	adapter.waitForExec(t, "in flight")
+
+	// Unlike ReleaseIdleLiveSessions (which would report SkippedActiveTurn
+	// here), shutdown cannot wait for the turn to finish: the daemon process
+	// is about to exit either way, so CloseAllLiveSessions must terminate
+	// the process even mid-turn rather than leave it running unmanaged.
+	result := controller.CloseAllLiveSessions(context.Background())
+	if result.Scanned != 1 || result.Closed != 1 {
+		t.Fatalf("close-all result = %#v, want the in-flight session force-closed", result)
+	}
+	if adapter.hasLiveSession(started.Session.AgentSessionID) {
+		t.Fatalf("adapter still reports live session after forced close during active turn")
+	}
+
+	adapter.releaseNext()
+	select {
+	case <-execDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for in-flight Exec to finish")
+	}
+}
+
+func TestControllerCloseAllLiveSessionsFailureIsCountedAndDoesNotStopOtherSessions(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	failing := startReleasableSession(t, controller, "failing-session")
+	closes := startReleasableSession(t, controller, "closes-session")
+	adapter.closeErrByAgentSessionID[failing.Session.AgentSessionID] = errors.New("close failed")
+
+	result := controller.CloseAllLiveSessions(context.Background())
+	if result.Scanned != 2 || result.Failed != 1 || result.Closed != 1 {
+		t.Fatalf("close-all result = %#v, want one failure and one closed session", result)
+	}
+	if !adapter.hasLiveSession(failing.Session.AgentSessionID) {
+		t.Fatalf("failing session should remain live since Close returned an error")
+	}
+	if adapter.hasLiveSession(closes.Session.AgentSessionID) {
+		t.Fatalf("closes-session still live, want it closed despite the other session's failure")
+	}
+}
+
 func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing.T) {
 	t.Parallel()
 
@@ -1802,6 +1914,8 @@ type releasableAdapter struct {
 	resumeCalls                int
 	releaseCalls               int
 	releaseErrByAgentSessionID map[string]error
+	closeCalls                 map[string]int
+	closeErrByAgentSessionID   map[string]error
 	resumeEntered              chan struct{}
 	resumeRelease              chan struct{}
 	validateEntered            chan struct{}
@@ -1814,6 +1928,8 @@ func newReleasableAdapter() *releasableAdapter {
 	return &releasableAdapter{
 		live:                       make(map[string]bool),
 		releaseErrByAgentSessionID: make(map[string]error),
+		closeCalls:                 make(map[string]int),
+		closeErrByAgentSessionID:   make(map[string]error),
 		execStarted:                make(chan string, 8),
 		execRelease:                make(chan struct{}, 8),
 	}
@@ -1849,7 +1965,26 @@ func (a *releasableAdapter) Resume(_ context.Context, session Session) error {
 	return nil
 }
 
-func (*releasableAdapter) Close(context.Context, Session) error { return nil }
+// Close mirrors what a real adapter's Close does to a live provider process
+// (terminate it) regardless of pending work, unlike ReleaseLiveSession which
+// providers may gate on busy state. It always clears live-ness so tests can
+// assert CloseAllLiveSessions actually forced the process down.
+func (a *releasableAdapter) Close(_ context.Context, session Session) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.closeCalls[session.AgentSessionID]++
+	if err := a.closeErrByAgentSessionID[session.AgentSessionID]; err != nil {
+		return err
+	}
+	a.live[session.AgentSessionID] = false
+	return nil
+}
+
+func (a *releasableAdapter) closeCallCount(agentSessionID string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closeCalls[agentSessionID]
+}
 
 func (a *releasableAdapter) ValidatePromptContent(Session, []PromptContentBlock) error {
 	if a.validateEntered != nil {
@@ -4590,5 +4725,120 @@ func TestControllerRejectsUnsupportedProvider(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Start returned nil error for unsupported provider")
+	}
+}
+
+// TestControllerCancelReconcilesStuckTurnView reproduces the desync where a turn
+// finished in the runtime (no active turn remains) but the GUI-facing view stayed
+// blocked/running because the turn-completed update never reached the persisted
+// session state. Pressing stop must settle the stale view instead of being a
+// no-op, otherwise the composer stays blocked forever.
+func TestControllerCancelReconcilesStuckTurnView(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, reporter)
+
+	turnID := "stuck-turn-1"
+	controller.store(Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-1",
+		Provider:           ProviderCodex,
+		ProviderSessionID:  "prov-1",
+		Status:             SessionStatusWorking,
+		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &turnID, Phase: "running"},
+		SubmitAvailability: blockedSubmitAvailability("active_turn"),
+		UpdatedAtUnixMS:    1,
+	})
+
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-1",
+		Reason:         "user",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if result.Canceled {
+		t.Fatalf("Cancel result = %#v, want Canceled=false (no live turn to cancel)", result)
+	}
+
+	settled, ok := controller.get("room-1", "agent-1")
+	if !ok {
+		t.Fatal("session missing after cancel")
+	}
+	if settled.SubmitAvailability == nil || settled.SubmitAvailability.State != "available" {
+		t.Fatalf("SubmitAvailability = %#v, want available", settled.SubmitAvailability)
+	}
+	if settled.TurnLifecycle == nil || settled.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("TurnLifecycle = %#v, want settled phase", settled.TurnLifecycle)
+	}
+	if settled.TurnLifecycle.ActiveTurnID != nil {
+		t.Fatalf("settled TurnLifecycle.ActiveTurnID = %v, want nil", settled.TurnLifecycle.ActiveTurnID)
+	}
+
+	calls := reporter.waitForCalls(t, 1)
+	if len(calls[len(calls)-1].report.StatePatches) == 0 {
+		t.Fatalf("reconcile report = %#v, want a state patch", calls[len(calls)-1].report)
+	}
+}
+
+// TestControllerCancelLeavesSettledSessionUntouched guards against the
+// reconciliation disturbing healthy sessions: a session that is already settled
+// must not be re-settled or re-reported when stop is pressed with no active turn.
+func TestControllerCancelLeavesSettledSessionUntouched(t *testing.T) {
+	t.Parallel()
+
+	reporter := &recordingReporter{}
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, reporter)
+
+	outcome := "completed"
+	controller.store(Session{
+		RoomID:             "room-1",
+		AgentSessionID:     "agent-1",
+		Provider:           ProviderCodex,
+		ProviderSessionID:  "prov-1",
+		Status:             SessionStatusReady,
+		TurnLifecycle:      &TurnLifecycle{Phase: "settled", Outcome: &outcome},
+		SubmitAvailability: availableSubmitAvailability(),
+		UpdatedAtUnixMS:    1,
+	})
+
+	if _, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-1",
+		Reason:         "user",
+	}); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+
+	if calls := reporter.snapshot(); len(calls) != 0 {
+		t.Fatalf("reporter calls = %d, want 0 for an already-settled session", len(calls))
+	}
+}
+
+func TestSessionViewHasUnsettledTurn(t *testing.T) {
+	t.Parallel()
+
+	active := "turn-1"
+	cases := []struct {
+		name    string
+		session Session
+		want    bool
+	}{
+		{"blocked submit", Session{SubmitAvailability: blockedSubmitAvailability("active_turn")}, true},
+		{"active turn id", Session{TurnLifecycle: &TurnLifecycle{ActiveTurnID: &active, Phase: "running"}}, true},
+		{"running phase only", Session{TurnLifecycle: &TurnLifecycle{Phase: "running"}}, true},
+		{"settled", Session{SubmitAvailability: availableSubmitAvailability(), TurnLifecycle: &TurnLifecycle{Phase: "settled"}}, false},
+		{"empty", Session{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sessionViewHasUnsettledTurn(tc.session); got != tc.want {
+				t.Fatalf("sessionViewHasUnsettledTurn(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
 	}
 }

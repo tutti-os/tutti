@@ -3960,6 +3960,25 @@ export function useAgentGUINodeController({
   const queuedComposerSettingsUpdatesRef = useRef<
     Record<string, QueuedComposerSettingsUpdate>
   >({});
+  // Composer settings changed while a session is still mid-activation (the
+  // optimistic pre-activation window: activeConversationId is set but no
+  // backend session exists yet, so there is nothing to send an
+  // updateSessionSettings RPC to). Held here and flushed once activation
+  // resolves into a real session; dropped if activation fails or is
+  // superseded, since there is then nothing left to apply the patch to.
+  const pendingActivationComposerSettingsPatchRef = useRef<
+    Record<string, AgentSessionComposerSettings>
+  >({});
+  // Indirection so startConversation (declared above
+  // flushQueuedComposerSettingsUpdate in this file) can flush a settings
+  // patch queued during the pre-activation window once the real session
+  // attaches, without reordering the two useCallback declarations.
+  const flushQueuedComposerSettingsUpdateRef = useRef<
+    | ((
+        input: QueuedComposerSettingsUpdate & { agentSessionId: string }
+      ) => void)
+    | null
+  >(null);
   const [pendingDeleteConversation, setPendingDeleteConversation] =
     useState<AgentGUIConversationSummary | null>(null);
   const [
@@ -4286,6 +4305,11 @@ export function useAgentGUINodeController({
     transientConversation
   );
   const startingConversationIdRef = useRef<string | null>(null);
+  // Stashes the error message from a failed first-message create so the
+  // activeConversationId-null effect (which otherwise clears detailError on
+  // every home transition) can surface it on the home composer instead of
+  // wiping it out during the optimistic-entry revert.
+  const pendingHomeErrorRef = useRef<string | null>(null);
   const activatedConversationIdsRef = useRef(new Set<string>());
   const failedNewConversationIdsRef = useRef(new Set<string>());
   const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
@@ -6921,7 +6945,11 @@ export function useAgentGUINodeController({
       return;
     }
     if (!activeConversationId) {
-      setDetailError(null);
+      // When a failed first-message create reverts to the home composer, the
+      // pending error should be surfaced there instead of being cleared.
+      const pendingHomeError = pendingHomeErrorRef.current;
+      pendingHomeErrorRef.current = null;
+      setDetailError(pendingHomeError ?? null);
       return;
     }
     if (failedNewConversationIdsRef.current.has(activeConversationId)) {
@@ -7222,6 +7250,23 @@ export function useAgentGUINodeController({
           workspaceId,
           fields: { mode: "new" }
         });
+        // Enter the conversation surface immediately so the user sees their
+        // message without waiting for the backend session-creation round-trip.
+        // The home draft is intentionally left intact so a failed activation
+        // can revert to the composer with the user's input preserved. The
+        // activation promise below still owns durable session state and the
+        // clientSubmitId reconciliation once the real turn arrives.
+        setTransientConversation(optimisticConversation);
+        setDraftBySessionId((current) => ({
+          ...current,
+          [agentSessionId]: emptyAgentComposerDraft()
+        }));
+        isComposerHomeRef.current = false;
+        setIsComposerHome(false);
+        activeConversationIdRef.current = agentSessionId;
+        setActiveConversationId(agentSessionId);
+        setIntent({ tag: "active", id: agentSessionId });
+        persistActiveConversation(agentSessionId);
         reportAgentSubmitTraceDiagnostic({
           event: "activation.requested",
           runtime: agentActivityRuntime,
@@ -7284,6 +7329,12 @@ export function useAgentGUINodeController({
           }
           if (activationFailed) {
             failedNewConversationIdsRef.current.add(agentSessionId);
+            // There is no session for a queued pre-activation settings patch
+            // to apply to; drop it rather than leaking it to a future
+            // session that happens to reuse this id.
+            delete pendingActivationComposerSettingsPatchRef.current[
+              agentSessionId
+            ];
             resetAgentSessionViewDetailMessages(sessionViewRef(agentSessionId));
             setAgentSessionViewOverlayMessages(
               sessionViewRef(agentSessionId),
@@ -7292,19 +7343,35 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
-            if (
+            const shouldRevertToHome =
               isMountedRef.current &&
-              activeConversationIdRef.current === null &&
-              isComposerHomeRef.current
-            ) {
+              (isCurrentConversation(agentSessionId) ||
+                (activeConversationIdRef.current === null &&
+                  isComposerHomeRef.current));
+            if (shouldRevertToHome) {
+              const homeErrorMessage =
+                result.error?.message?.trim() || "Session activation failed.";
+              if (isCurrentConversation(agentSessionId)) {
+                // Stash the error so the activeConversationId-null effect
+                // surfaces it on the home composer instead of clearing it.
+                pendingHomeErrorRef.current = homeErrorMessage;
+                // Undo the optimistic entry: send the user back to the home
+                // composer. The home draft was never cleared, so their input
+                // is preserved; only the error is surfaced there.
+                isComposerHomeRef.current = true;
+                setIsComposerHome(true);
+                activeConversationIdRef.current = null;
+                setActiveConversationId(null);
+                setIntent({ tag: "home" });
+                persistActiveConversation(null);
+                setTransientConversation(null);
+              }
               setIsLoadingMessages(false);
               setAgentSessionViewMessagesLoading(
                 sessionViewRef(agentSessionId),
                 false
               );
-              setDetailError(
-                result.error?.message?.trim() || "Session activation failed."
-              );
+              setDetailError(homeErrorMessage);
             }
             return;
           }
@@ -7327,6 +7394,9 @@ export function useAgentGUINodeController({
             startingConversationIdRef.current === agentSessionId;
           if (!isMountedRef.current) {
             void activation.unactivate(conversation.id);
+            delete pendingActivationComposerSettingsPatchRef.current[
+              conversation.id
+            ];
             if (isPendingCreatedConversation) {
               startingConversationIdRef.current = null;
             }
@@ -7343,12 +7413,48 @@ export function useAgentGUINodeController({
             if (isPendingCreatedConversation) {
               startingConversationIdRef.current = null;
             }
+            // The user navigated away from the optimistic create before it
+            // resolved. Drop the optimistic messages recorded for it: the
+            // optimistic user prompt keeps a pending turn id that retarget
+            // never rewrote (the session wasn't watched), so if it lingered
+            // it would reappear as a duplicate when the session is later
+            // reopened from the conversation list and reloaded from durable
+            // history.
+            resetAgentSessionViewDetailMessages(
+              sessionViewRef(conversation.id)
+            );
+            setAgentSessionViewOverlayMessages(
+              sessionViewRef(conversation.id),
+              []
+            );
+            if (transientConversationRef.current?.id === conversation.id) {
+              setTransientConversation(null);
+            }
+            delete pendingActivationComposerSettingsPatchRef.current[
+              conversation.id
+            ];
             return;
           }
           if (isPendingCreatedConversation) {
             startingConversationIdRef.current = null;
           }
           activatedConversationIdsRef.current.add(conversation.id);
+          // The real session now exists: flush any composer settings the
+          // user changed while this conversation was still in the
+          // pre-activation window (updateComposerSettings queued them here
+          // instead of sending an RPC the daemon had no session for yet).
+          const pendingComposerSettingsPatch =
+            pendingActivationComposerSettingsPatchRef.current[conversation.id];
+          if (pendingComposerSettingsPatch) {
+            delete pendingActivationComposerSettingsPatchRef.current[
+              conversation.id
+            ];
+            markSessionSettingsRequestState(conversation.id, true);
+            flushQueuedComposerSettingsUpdateRef.current?.({
+              agentSessionId: conversation.id,
+              sessionSettingsPatch: pendingComposerSettingsPatch
+            });
+          }
           setTransientConversation(conversation);
           if (conversationListQuery) {
             upsertLocalCreatedAgentGUIConversation({
@@ -7418,9 +7524,20 @@ export function useAgentGUINodeController({
               conversationId: pendingCreateAgentSessionId ?? agentSessionId
             });
           }
+          // The create failed outright: there is no session for a queued
+          // pre-activation settings patch to apply to.
+          delete pendingActivationComposerSettingsPatchRef.current[
+            agentSessionId
+          ];
+          // Surface the failure only on the failed create's own surface —
+          // either the user is still on it (the optimistic entry), or
+          // they're back at the home composer where the create started. If
+          // they navigated to another conversation, the error must not leak
+          // onto that conversation; the create is cleaned up silently below.
           const shouldShowErrorOnHome =
-            startingConversationIdRef.current === agentSessionId ||
-            activeConversationIdRef.current === null;
+            isCurrentConversation(agentSessionId) ||
+            (activeConversationIdRef.current === null &&
+              isComposerHomeRef.current);
           const submitTrace = submitTraceBySessionIdRef.current[agentSessionId];
           if (submitTrace) {
             const nextTraces = { ...submitTraceBySessionIdRef.current };
@@ -7476,6 +7593,20 @@ export function useAgentGUINodeController({
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
           }
+          if (isCurrentConversation(agentSessionId)) {
+            // Stash the error so the activeConversationId-null effect
+            // surfaces it on the home composer instead of clearing it.
+            pendingHomeErrorRef.current = message;
+            // Undo the optimistic entry: send the user back to the home
+            // composer. The home draft was never cleared, so their input is
+            // preserved; only the error is surfaced there.
+            isComposerHomeRef.current = true;
+            setIsComposerHome(true);
+            activeConversationIdRef.current = null;
+            setActiveConversationId(null);
+            setIntent({ tag: "home" });
+            persistActiveConversation(null);
+          }
           if (transientConversationRef.current?.id === agentSessionId) {
             setTransientConversation(null);
           }
@@ -7507,6 +7638,7 @@ export function useAgentGUINodeController({
       conversationListQuery,
       isCurrentConversation,
       agentActivityRuntime,
+      markSessionSettingsRequestState,
       pendingCreateOwnerKey,
       recordLocalMessages,
       unactivateIfStale,
@@ -8704,6 +8836,8 @@ export function useAgentGUINodeController({
       sessionViewRef
     ]
   );
+  flushQueuedComposerSettingsUpdateRef.current =
+    flushQueuedComposerSettingsUpdate;
 
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
@@ -8787,6 +8921,15 @@ export function useAgentGUINodeController({
       const activeSessionState =
         getAgentSessionView(sessionViewRef(agentSessionId))?.controlState ??
         null;
+      // The optimistic pre-activation window (see startConversation): the id
+      // is already the active conversation but the backend session has not
+      // attached yet, so there is no control state to read settings from or
+      // send an update RPC against. Composer changes here are still applied
+      // to the local view (so the control reflects the click immediately)
+      // and queued for the flush once activation resolves.
+      const isPreActivationSession =
+        activeSessionState === null &&
+        activation.stateFor(agentSessionId) === "activating";
       const sessionSettings = cloneComposerSettings(
         activeSessionState?.settings ?? null
       );
@@ -8851,35 +8994,62 @@ export function useAgentGUINodeController({
         nextPermission !== undefined &&
         nextPermission &&
         nextPermission !== currentPermission &&
-        activeSessionState !== null
+        (activeSessionState !== null || isPreActivationSession)
       ) {
         sessionSettingsPatch.permissionModeId =
           normalizePermissionModeId(nextPermission);
+        // Codex has no live mid-turn RPC for approval/sandbox policy: the
+        // daemon only re-derives it fresh on the *next* turn/start call, so a
+        // change made while a turn is actively running won't affect that
+        // turn. Claude Code applies it immediately via query.setPermissionMode
+        // even mid-turn, so no such gap exists there. Surface the deferral
+        // honestly instead of letting the optimistic UI update imply the
+        // change is already in effect. There is no turn at all yet during
+        // the pre-activation window, so this deferral notice does not apply.
+        const turnPhase = activeSessionState?.turnLifecycle?.phase;
+        const isTurnInFlight =
+          turnPhase === "running" || turnPhase === "submitted";
+        if (dataRef.current.provider === "codex" && isTurnInFlight) {
+          onShowMessageRef.current?.(
+            translate("messages.agentPermissionModeAppliesNextTurn"),
+            "info"
+          );
+        }
       }
       if (
         Object.keys(sessionSettingsPatch).length > 0 &&
-        activeSessionState !== null
+        (activeSessionState !== null || isPreActivationSession)
       ) {
         updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
-          (existing) =>
-            existing
-              ? {
-                  ...existing,
-                  permissionModeId:
-                    sessionSettingsPatch.permissionModeId ??
-                    existing.permissionModeId,
-                  runtimeContext: mergeRuntimeContextComposerSettings(
-                    dataRef.current.provider,
-                    existing.runtimeContext,
-                    sessionSettingsPatch
-                  ),
-                  settings: {
-                    ...(existing.settings ?? {}),
-                    ...sessionSettingsPatch
-                  }
-                }
-              : existing
+          (existing) => {
+            // Synthesize a minimal control-state entry when none exists yet
+            // (the pre-activation window) so the composer reflects the change
+            // immediately instead of waiting for the real session to attach.
+            const base: AgentSessionState = existing ?? {
+              workspaceId,
+              agentSessionId,
+              provider: dataRef.current.provider,
+              status: "working",
+              updatedAtUnixMs: Date.now(),
+              settings: {}
+            };
+            const nextState = {
+              ...base,
+              permissionModeId:
+                sessionSettingsPatch.permissionModeId ?? base.permissionModeId,
+              runtimeContext: mergeRuntimeContextComposerSettings(
+                dataRef.current.provider,
+                base.runtimeContext,
+                sessionSettingsPatch
+              ),
+              settings: {
+                ...(base.settings ?? {}),
+                ...sessionSettingsPatch
+              }
+            };
+            return nextState;
+          }
         );
         // A switch inside an active session also becomes the remembered
         // default for this agent target. Only the fields the user changed
@@ -8931,7 +9101,22 @@ export function useAgentGUINodeController({
             nodeDataFromComposerSettings(current, nextNodeDefaults)
           );
         }
-        if (updatingSessionSettingsIdsRef.current[agentSessionId]) {
+        if (isPreActivationSession) {
+          // No backend session exists yet: hold the patch until activation
+          // resolves (flushed from startConversation's success handler) or
+          // discard it if activation fails/is superseded, rather than firing
+          // an updateSessionSettings RPC against a session id the daemon
+          // does not know about yet.
+          const pendingPatch =
+            pendingActivationComposerSettingsPatchRef.current[agentSessionId];
+          pendingActivationComposerSettingsPatchRef.current = {
+            ...pendingActivationComposerSettingsPatchRef.current,
+            [agentSessionId]: {
+              ...(pendingPatch ?? {}),
+              ...sessionSettingsPatch
+            }
+          };
+        } else if (updatingSessionSettingsIdsRef.current[agentSessionId]) {
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId];
           queuedComposerSettingsUpdatesRef.current[agentSessionId] = {
@@ -8951,6 +9136,7 @@ export function useAgentGUINodeController({
       }
     },
     [
+      activation,
       defaultReasoningEffort,
       activeTimelineItems,
       flushQueuedComposerSettingsUpdate,
@@ -9135,21 +9321,31 @@ export function useAgentGUINodeController({
       if (!normalizedPath || !remove) {
         return;
       }
-      const previousProjects = userProjectsRef.current;
       setListError(null);
-      setUserProjectsSnapshot(
-        previousProjects.filter((project) => project.path !== normalizedPath)
-      );
+      // Filter the visible list only after the backend confirms the delete
+      // (mirroring registerProjectPath's "backend confirm -> local store
+      // update" ordering). Filtering optimistically before the delete
+      // resolves would flip userProjectPathKey early and race the runtime
+      // rail sections refetch against the in-flight backend delete: if the
+      // section list query lands before the delete commits, it still
+      // reports the removed project's section, and nothing re-triggers a
+      // refetch afterwards, so the row stays visible until an unrelated
+      // remount forces a fresh fetch.
       const handleRemoveError = (error: unknown) => {
         const message = getAgentGUIErrorMessage(error);
-        setUserProjectsSnapshot(previousProjects);
         setListError(message);
         toast.error(message);
       };
       try {
-        void Promise.resolve(remove({ path: normalizedPath })).catch(
-          handleRemoveError
-        );
+        void Promise.resolve(remove({ path: normalizedPath }))
+          .then(() => {
+            setUserProjectsSnapshot(
+              userProjectsRef.current.filter(
+                (project) => project.path !== normalizedPath
+              )
+            );
+          })
+          .catch(handleRemoveError);
       } catch (error) {
         handleRemoveError(error);
       }
@@ -9721,12 +9917,19 @@ export function useAgentGUINodeController({
     null
   );
   const visibleConversations = useMemo(() => {
-    const source = isLoadingConversations
-      ? mergeVisibleConversations(
-          conversations,
-          transientConversationRef.current
-        )
-      : conversations;
+    // Merge in the transient (optimistic pre-activation, or not-yet-synced)
+    // conversation unconditionally, not just while the initial conversation
+    // list is still loading: activeConversation (see
+    // resolveConversationSummaryById) already falls back to it
+    // unconditionally, and the sidebar must stay in sync with the main pane
+    // so a newly started conversation appears in both at once instead of
+    // only after the real backend record lands in `conversations`.
+    // mergeVisibleConversations already no-ops once the real conversation
+    // with a matching id is present, so this never duplicates an entry.
+    const source = mergeVisibleConversations(
+      conversations,
+      transientConversationRef.current
+    );
     const mapped = source.map((conversation) => {
       const withRuntime = mergeConversationSummaryWithRuntimeSession({
         conversation,
@@ -9757,7 +9960,6 @@ export function useAgentGUINodeController({
   }, [
     agentActivityDisplayStatuses,
     conversations,
-    isLoadingConversations,
     isNoProjectPath,
     stableRuntimeSyncStateBySessionId,
     transientConversation,
@@ -10270,7 +10472,12 @@ export function useAgentGUINodeController({
             : null,
       approval: pendingApproval,
       recovery:
-        activeLiveState === "activating"
+        activeLiveState === "activating" &&
+        // Suppress the "reconnecting" banner during a first-message create:
+        // the user just submitted and is already seeing their optimistic
+        // message, so an activation-in-flight state on the conversation they
+        // just entered is not a recovery event.
+        startingConversationIdRef.current !== activeConversationId
           ? {
               kind: "activating",
               // i18n-check-ignore: Legacy recovery fallback copy; localized presentation should move to view labels.
@@ -10293,6 +10500,7 @@ export function useAgentGUINodeController({
     activationError,
     activationErrorCode,
     activeLiveState,
+    activeConversationId,
     activeConversationResumeUnavailable,
     activeSessionState,
     hasProviderSessionNotFoundError,

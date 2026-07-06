@@ -322,9 +322,10 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 			provider,
 			value(input.ReasoningEffort),
 		),
-		ConversationDetailMode: input.ConversationDetailMode,
-		ExtraSkills:            sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
-		Metadata:               input.Metadata,
+		ConversationDetailMode:    input.ConversationDetailMode,
+		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
+		Metadata:                  input.Metadata,
+		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
 	})
 	if err != nil {
 		return preparedRuntime{}, err

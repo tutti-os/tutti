@@ -70,6 +70,9 @@ type scriptedAppServerConnection struct {
 	holdTurn                     bool              // do not finish the turn until released
 	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
 	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	hangSteer                    bool              // never even acknowledge the turn/steer RPC (steer races the running turn's own completion)
+	interruptTurnIDMismatch      string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
+	interruptAttempts            []string          // turnId requested on every turn/interrupt call, in order
 	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
@@ -473,9 +476,30 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.turnStatus = "interrupted"
 			ignore := c.ignoreInterrupt
 			hang := c.hangInterrupt
+			mismatchTurnID := c.interruptTurnIDMismatch
+			requestedTurnID := asString(message.Params["turnId"])
+			c.interruptAttempts = append(c.interruptAttempts, requestedTurnID)
 			c.mu.Unlock()
 			if hang {
 				// Fully wedged codex: never even acknowledge the interrupt RPC.
+				continue
+			}
+			if mismatchTurnID != "" && requestedTurnID != mismatchTurnID {
+				// Mirror codex rejecting a stale expected turn id (live
+				// -32600 "invalid request" shape): the client's own turn
+				// bookkeeping raced ahead of what codex still considers
+				// active (e.g. a slow-to-terminate wait_agent call kept the
+				// real turn alive past our local cancel). Only the retry
+				// against the reported id (mismatchTurnID) is honored.
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code": -32600,
+						"message": fmt.Sprintf(
+							"expected active turn id %s but found %s", requestedTurnID, mismatchTurnID,
+						),
+					},
+				})
 				continue
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -485,6 +509,15 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			}
 			c.completePendingTurn()
 		case appServerMethodTurnSteer:
+			c.mu.Lock()
+			hang := c.hangSteer
+			c.mu.Unlock()
+			if hang {
+				// Fully wedged: codex no longer has a turn matching
+				// expectedTurnId (it raced the running turn's own
+				// completion) and never answers turn/steer at all.
+				continue
+			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"turnId": "turn-1"}})
 		case appServerMethodThreadCompact:
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -1795,6 +1828,79 @@ func TestCodexAppServerAdapterCancelForceCloseIsBoundedByGrace(t *testing.T) {
 	}
 }
 
+// TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID reproduces a
+// real production incident: our own turn bookkeeping settles a turn locally
+// as soon as its Go context is canceled (Cancel/interruptActiveTurn), without
+// waiting for the app-server to confirm the turn actually stopped. When a
+// slow-to-terminate tool call (live case: wait_agent blocking on several
+// dispatched sub-agents) keeps the real app-server turn alive past that
+// point, the *next* interrupt we send — aimed at the turn id we believe is
+// active — gets rejected with "expected active turn id X but found Y"
+// (live-captured, codex 0.142.5, JSON-RPC -32600). Left unhandled, the real
+// stale turn is never actually interrupted and keeps running/emitting items
+// on its own timeline, which is what left a session stuck reporting "regulat-
+// ing next step" long after the visible conversation looked finished. The
+// adapter must retry the interrupt against the turn id codex reports as
+// actually active.
+func TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	// codex reports "turn-stale" as its real active turn, not the "turn-1" id
+	// our own bookkeeping expects — mirrors the daemon racing ahead of the
+	// app-server's turn teardown.
+	transport.conn.interruptTurnIDMismatch = "turn-stale"
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	cancelReturned := make(chan error, 1)
+	go func() {
+		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		cancelReturned <- err
+	}()
+	select {
+	case err := <-cancelReturned:
+		if err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Cancel did not return")
+	}
+
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		return len(transport.conn.interruptAttempts) >= 2
+	})
+	transport.conn.mu.Lock()
+	attempts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(attempts) != 2 || attempts[0] != "turn-1" || attempts[1] != "turn-stale" {
+		t.Fatalf("interrupt attempts = %#v, want [turn-1 turn-stale]", attempts)
+	}
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventTurnCompleted)
+		if len(completed) != 1 ||
+			completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
+			t.Fatalf("expected interrupted outcome, got %#v", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after retried interrupt")
+	}
+}
+
 func TestCodexAppServerAdapterCancelQueuesInterruptUntilTurnIDArrives(t *testing.T) {
 	t.Parallel()
 
@@ -1888,6 +1994,63 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	// arrive for a steered turn id.
 	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
 		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
+// TestCodexAppServerAdapterSteerTimesOutInsteadOfWedgingForever reproduces a
+// submission that arrives while another turn is running, at the exact moment
+// that running turn is completing server-side: codex no longer has a turn
+// matching expectedTurnId, so it never answers turn/steer at all (this is not
+// hypothetical — it is the same class of "fully wedged, no ack" behavior the
+// hangInterrupt tests already pin for turn/interrupt). Before
+// TurnSteerNoHandler accepted a bounded timeout, this RPC waited forever
+// (timeout=0), so the steered submission's own Exec call — and therefore its
+// controller turn record and the composer's blocked submit state — never
+// settled until the daemon restarted. Bounding the RPC turns that hang into a
+// prompt, ordinary turn failure instead.
+func TestCodexAppServerAdapterSteerTimesOutInsteadOfWedgingForever(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.turnSteerTimeout = 100 * time.Millisecond
+	transport.conn.holdTurn = true
+	transport.conn.hangSteer = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	steerDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "also update the docs",
+		}}, "", "turn-local-2", nil, nil)
+		steerDone <- err
+	}()
+
+	// The bounded RPC must fail on its own timeout, not hang until the test
+	// itself times out — that distinction is the entire point of this test.
+	select {
+	case err := <-steerDone:
+		if err == nil {
+			t.Fatalf("steer Exec = nil error, want a timeout error when codex never acks turn/steer")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("steer Exec wedged forever instead of timing out (turnSteerTimeout=%s)", adapter.turnSteerTimeout)
 	}
 
 	transport.conn.completePendingTurn()
@@ -3108,6 +3271,67 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 	state := adapter.SessionState(session)
 	if asString(state.RuntimeContext["mode"]) != "full-access" {
 		t.Fatalf("mode = %#v, want full-access", state.RuntimeContext["mode"])
+	}
+}
+
+// TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn
+// locks in the contract the composer UI's live permission-mode switch now
+// relies on: the app-server protocol has no RPC to change approval/sandbox
+// policy for a turn that's already running, so ApplyPermissionMode must still
+// succeed while a turn is in flight (rather than error or block), and the
+// new policy must only take effect starting with the *next* turn/start --
+// matching the "applies starting with your next message" copy shown to the
+// user when they change permission mode mid-turn.
+func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "read-only"
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "go",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+
+	session.PermissionModeID = "full-access"
+	if err := adapter.ApplyPermissionMode(context.Background(), session); err != nil {
+		t.Fatalf("ApplyPermissionMode mid-turn: %v", err)
+	}
+
+	transport.conn.completePendingTurn()
+	<-execDone
+
+	// The turn that was already running is unaffected by the change: exactly
+	// one turn/start was sent for it.
+	if turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(turnStarts) != 1 {
+		t.Fatalf("turn/start calls = %d, want 1 before the next turn", len(turnStarts))
+	}
+
+	transport.conn.holdTurn = false
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go again",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec (second turn): %v", err)
+	}
+
+	turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	if len(turnStarts) != 2 {
+		t.Fatalf("turn/start calls = %d, want 2 after the next turn", len(turnStarts))
+	}
+	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
+		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
 	}
 }
 

@@ -192,6 +192,44 @@ test("WorkspaceAppCenterController sorts factory jobs and reports snapshot appli
   );
 });
 
+test("WorkspaceAppCenterController reports a create-factory-job failure instead of throwing", async () => {
+  const failures: Array<{
+    error: unknown;
+    toastMessage: string;
+  }> = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async createWorkspaceAppFactoryJob() {
+        throw new Error("agent target id is required for agent session launch");
+      }
+    }),
+    hooks: {
+      onOperationFailure(input) {
+        failures.push({ error: input.error, toastMessage: input.toastMessage });
+      }
+    }
+  });
+
+  await controller.createFactoryJob({
+    agentTargetId: "local:codex",
+    displayName: "My App",
+    prompt: "build me an app",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(controller.store.factoryJobs.length, 0);
+  assert.equal(
+    controller.store.error,
+    "agent target id is required for agent session launch"
+  );
+  assert.equal(failures.length, 1);
+  assert.equal(
+    failures[0]?.toastMessage,
+    "agent target id is required for agent session launch"
+  );
+});
+
 test("WorkspaceAppCenterController prepares app launch through launch gateway", async () => {
   const launchCalls: Array<{ appId: string; workspaceId: string }> = [];
   const controller = createWorkspaceAppCenterController({

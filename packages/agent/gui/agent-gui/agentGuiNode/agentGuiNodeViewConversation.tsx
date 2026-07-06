@@ -244,7 +244,7 @@ function resolveConversationProjectUpdatedAtUnixMs(
   );
 }
 
-function normalizeConversationProjectPath(path: string): string {
+export function normalizeConversationProjectPath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "") || "/";
 }
 

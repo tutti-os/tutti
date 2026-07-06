@@ -159,26 +159,34 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     const previousJobIds = new Set(
       this.store.factoryJobs.map((job) => job.jobId)
     );
-    const snapshot =
-      await this.dependencies.gateway.createWorkspaceAppFactoryJob(
-        input.workspaceId,
-        {
-          agentTargetId: input.agentTargetId,
-          displayName: input.displayName,
-          ...(input.model?.trim() ? { model: input.model.trim() } : {}),
-          ...(input.permissionModeId?.trim()
-            ? { permissionModeId: input.permissionModeId.trim() }
-            : {}),
-          prompt: input.prompt,
-          ...(input.reasoningEffort?.trim()
-            ? { reasoningEffort: input.reasoningEffort.trim() }
-            : {})
-        }
+    try {
+      const snapshot =
+        await this.dependencies.gateway.createWorkspaceAppFactoryJob(
+          input.workspaceId,
+          {
+            agentTargetId: input.agentTargetId,
+            displayName: input.displayName,
+            ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+            ...(input.permissionModeId?.trim()
+              ? { permissionModeId: input.permissionModeId.trim() }
+              : {}),
+            prompt: input.prompt,
+            ...(input.reasoningEffort?.trim()
+              ? { reasoningEffort: input.reasoningEffort.trim() }
+              : {})
+          }
+        );
+      this.applyFactorySnapshot(input.workspaceId, snapshot);
+      this.dependencies.hooks?.onFactoryJobCreated?.(
+        snapshot.jobs.find((job) => !previousJobIds.has(job.jobId)) ?? null
       );
-    this.applyFactorySnapshot(input.workspaceId, snapshot);
-    this.dependencies.hooks?.onFactoryJobCreated?.(
-      snapshot.jobs.find((job) => !previousJobIds.has(job.jobId)) ?? null
-    );
+    } catch (error) {
+      this.setOperationError(error, {
+        operation: "app_factory.create",
+        uiAction: "create_factory_job",
+        workspaceId: input.workspaceId
+      });
+    }
   }
 
   async cancelFactoryJob(input: {

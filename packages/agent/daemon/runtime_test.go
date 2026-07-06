@@ -3,6 +3,7 @@ package agentdaemon
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -91,6 +92,41 @@ func TestNewRuntimeCanDisableLiveSessionReaper(t *testing.T) {
 	}
 }
 
+// TestRuntimeCloseForceClosesLiveProviderSessions guards against orphaned
+// provider subprocesses (e.g. a Codex app-server) surviving daemon
+// shutdown. An OS process spawned by the daemon is not killed just because
+// the daemon exits — it is reparented and keeps running — so Runtime.Close
+// must proactively close every live session's provider process first.
+func TestRuntimeCloseForceClosesLiveProviderSessions(t *testing.T) {
+	t.Parallel()
+
+	adapter := &liveSessionTestAdapter{provider: "test-agent", live: make(map[string]bool)}
+	runtime, err := NewRuntime(Config{
+		Adapters: []agentruntime.Adapter{adapter},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	started, err := runtime.Controller().Start(context.Background(), agentruntime.StartInput{
+		RoomID:         "workspace-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       "test-agent",
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	adapter.setLive(started.Session.AgentSessionID, true)
+
+	runtime.Close()
+
+	if adapter.closeCallCount(started.Session.AgentSessionID) != 1 {
+		t.Fatalf("adapter Close called %d times for live session, want exactly once", adapter.closeCallCount(started.Session.AgentSessionID))
+	}
+	if adapter.isLive(started.Session.AgentSessionID) {
+		t.Fatal("adapter still reports live session after Runtime.Close")
+	}
+}
+
 func testHostMetadata() HostMetadata {
 	return HostMetadata{
 		ClientInfo: ClientInfo{
@@ -141,4 +177,77 @@ func (testAdapter) Cancel(
 	string,
 ) ([]activityshared.Event, error) {
 	return nil, nil
+}
+
+// liveSessionTestAdapter is a testAdapter variant that also implements
+// agentruntime.LiveSessionProbeAdapter, so it can stand in for a provider
+// (Codex app-server, Claude Code SDK) that holds a live, long-running
+// subprocess per session.
+type liveSessionTestAdapter struct {
+	provider string
+
+	mu         sync.Mutex
+	live       map[string]bool
+	closeCalls map[string]int
+}
+
+func (a *liveSessionTestAdapter) Provider() string { return a.provider }
+
+func (*liveSessionTestAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*liveSessionTestAdapter) Resume(context.Context, agentruntime.Session) error { return nil }
+
+func (a *liveSessionTestAdapter) Close(_ context.Context, session agentruntime.Session) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closeCalls == nil {
+		a.closeCalls = make(map[string]int)
+	}
+	a.closeCalls[session.AgentSessionID]++
+	a.live[session.AgentSessionID] = false
+	return nil
+}
+
+func (*liveSessionTestAdapter) Exec(
+	context.Context,
+	agentruntime.Session,
+	[]agentruntime.PromptContentBlock,
+	string,
+	string,
+	agentruntime.EventSink,
+	agentruntime.CommandSnapshotSink,
+) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*liveSessionTestAdapter) Cancel(
+	context.Context,
+	agentruntime.Session,
+	string,
+) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *liveSessionTestAdapter) HasLiveSession(session agentruntime.Session) bool {
+	return a.isLive(session.AgentSessionID)
+}
+
+func (a *liveSessionTestAdapter) setLive(agentSessionID string, live bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.live[agentSessionID] = live
+}
+
+func (a *liveSessionTestAdapter) isLive(agentSessionID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.live[agentSessionID]
+}
+
+func (a *liveSessionTestAdapter) closeCallCount(agentSessionID string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closeCalls[agentSessionID]
 }

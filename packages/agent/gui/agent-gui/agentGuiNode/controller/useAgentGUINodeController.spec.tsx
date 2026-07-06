@@ -1621,6 +1621,71 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("keeps a removed project visible until the backend confirms deletion, then drops it without a remount", async () => {
+    let resolveRemove: (() => void) | null = null;
+    const removeProject = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemove = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: vi.fn(async () => ({
+          projects: [
+            { id: "app", path: "/workspace/app", label: "App" },
+            { id: "web", path: "/workspace/web", label: "Web" }
+          ]
+        })),
+        remove: removeProject,
+        subscribe: vi.fn(() => vi.fn()),
+        use: vi.fn()
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(2);
+    });
+
+    await act(async () => {
+      result.current.actions.removeProject("/workspace/app");
+      await Promise.resolve();
+    });
+
+    expect(removeProject).toHaveBeenCalledWith({ path: "/workspace/app" });
+    // The backend delete has not resolved yet: the project must still be
+    // present. Filtering it out before the backend confirms is what let a
+    // concurrent, in-flight section-list refetch race the delete and
+    // reinstate the row with nothing left to re-sync it afterwards.
+    expect(result.current.viewModel.userProjects).toHaveLength(2);
+
+    await act(async () => {
+      resolveRemove?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.userProjects).toHaveLength(1);
+    });
+    expect(result.current.viewModel.userProjects[0]?.path).toBe(
+      "/workspace/web"
+    );
+  });
+
   it("ignores stale user project list responses after a newer refresh completes", async () => {
     let userProjectListener: (() => void) | null = null;
     const pendingUserProjectLoads: Array<
@@ -2420,28 +2485,97 @@ describe("useAgentGUINodeController", () => {
     expect(releaseEventStream).not.toHaveBeenCalled();
   });
 
-  it("keeps the first created conversation on home before activation resolves", async () => {
-    let resolveActivate:
-      | ((result: AgentHostActivateAgentSessionResult) => void)
-      | undefined;
-    let capturedAgentSessionId = "";
-    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
-      capturedAgentSessionId = input.agentSessionId;
-      return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
-        resolveActivate = resolve;
+  it.each([["codex"], ["claude-code"]] as const)(
+    "enters the first created conversation immediately before activation resolves (provider: %s)",
+    async (provider) => {
+      let resolveActivate:
+        | ((result: AgentHostActivateAgentSessionResult) => void)
+        | undefined;
+      let capturedAgentSessionId = "";
+      const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+        capturedAgentSessionId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        });
       });
-    });
+      installAgentHostApi({
+        list: vi.fn(async () => ({ presences: [], sessions: [] })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+        subscribeEvents: vi.fn(() => vi.fn()),
+        activate,
+        exec: vi.fn(async () => ({
+          accepted: true,
+          agentSessionId: capturedAgentSessionId,
+          sessionStatus: "working",
+          status: "started"
+        }))
+      });
+
+      const { result } = renderHook(() =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData(null, provider),
+          onDataChange: vi.fn()
+        })
+      );
+
+      act(() => {
+        result.current.actions.submitPrompt(
+          promptBlocks("start the first turn")
+        );
+      });
+
+      await waitFor(() => {
+        expect(capturedAgentSessionId).not.toBe("");
+        expect(result.current.viewModel.activeConversationId).toBe(
+          capturedAgentSessionId
+        );
+      });
+      // The optimistic user message is shown immediately, before activation
+      // resolves, and no per-session loading flag is left on. This holds
+      // identically for every provider: the entry timing lives entirely in
+      // the shared controller, with no provider-specific branching.
+      expect(
+        getAgentSessionView({
+          workspaceId: "room-1",
+          agentSessionId: capturedAgentSessionId
+        })?.isLoadingMessages
+      ).not.toBe(true);
+      expect(result.current.viewModel.isCreatingConversation).toBe(true);
+      expect(
+        result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+      ).toEqual([expect.objectContaining({ body: "start the first turn" })]);
+
+      await act(async () => {
+        resolveActivate?.({
+          session: agentSession(capturedAgentSessionId),
+          activation: { mode: "new", status: "attached" }
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.activeConversationId).toBe(
+          capturedAgentSessionId
+        );
+      });
+    }
+  );
+
+  it("suppresses the connecting banner during a first-message create while activation is pending", async () => {
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep activation pending so the live state stays "activating".
+        })
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
-      activate,
-      exec: vi.fn(async () => ({
-        accepted: true,
-        agentSessionId: capturedAgentSessionId,
-        sessionStatus: "working",
-        status: "started"
-      }))
+      activate
     });
 
     const { result } = renderHook(() =>
@@ -2456,33 +2590,174 @@ describe("useAgentGUINodeController", () => {
     );
 
     act(() => {
-      result.current.actions.submitPrompt(promptBlocks("start the first turn"));
+      result.current.actions.submitPrompt(promptBlocks("first turn"));
     });
 
     await waitFor(() => {
-      expect(capturedAgentSessionId).not.toBe("");
-      expect(
-        getAgentSessionView({
-          workspaceId: "room-1",
-          agentSessionId: capturedAgentSessionId
-        })?.isLoadingMessages
-      ).not.toBe(true);
+      expect(activate).toHaveBeenCalledTimes(1);
     });
-    expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    // The live state is "activating" (session creation in flight), but the
+    // initial first-message create must NOT surface the "reconnecting" banner —
+    // the user just submitted and is already seeing their optimistic message.
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+    expect(result.current.viewModel.sessionChrome.recovery).toBeNull();
+  });
 
-    await act(async () => {
+  it("drops the optimistic entry and keeps the user put when they navigate away before a first-message create resolves", async () => {
+    let resolveActivate:
+      | ((result: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        });
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    // The optimistic user message is recorded before the user navigates away.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    // The create resolves while the user is on session-1.
+    act(() => {
       resolveActivate?.({
-        session: agentSession(capturedAgentSessionId),
+        session: agentSession(createdId),
         activation: { mode: "new", status: "attached" }
       });
     });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The abandoned create's optimistic messages are dropped — its pending-turn
+    // user prompt was never retargeted (the session wasn't watched), so it
+    // would reappear as a duplicate when the session is reopened — and the
+    // user stays where they navigated.
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages ?? []
+    ).toEqual([]);
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+  });
+
+  it("does not leak a first-message create error onto the conversation the user switched to during pending", async () => {
+    let rejectActivate: ((error: unknown) => void) | undefined;
+    let createdId = "";
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        createdId = input.agentSessionId;
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivate = reject;
+          }
+        );
+      }
+      return Promise.resolve<AgentHostActivateAgentSessionResult>({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" }
+      });
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
 
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(
-        capturedAgentSessionId
-      );
+      expect(
+        result.current.viewModel.conversations.some((c) => c.id === "session-1")
+      ).toBe(true);
     });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("abandoned turn"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    expect(
+      getAgentSessionView({ workspaceId: "room-1", agentSessionId: createdId })
+        ?.overlayMessages.length
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      rejectActivate?.(new Error("runtime not connected"));
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The failure belongs to the abandoned create, not session-1: it is not
+    // surfaced on the conversation the user is now looking at, and the user
+    // stays where they navigated.
+    expect(result.current.viewModel.detailError).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
   });
 
   it("keeps background session timeline events in the activity snapshot", async () => {
@@ -5131,7 +5406,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps home active while activation is pending and switches after activation succeeds", async () => {
+  it("enters the conversation immediately while activation is pending and stays after it succeeds", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -5178,9 +5453,11 @@ describe("useAgentGUINodeController", () => {
     });
 
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    // The active surface is now the new session, whose draft was cleared; the
+    // optimistic user message is already present in the first turn.
+    expect(result.current.viewModel.draftPrompt).toBe("");
     expect(
       getAgentSessionView({
         workspaceId: "room-1",
@@ -5195,7 +5472,7 @@ describe("useAgentGUINodeController", () => {
     ]);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
     expect(exec).not.toHaveBeenCalled();
 
     act(() => {
@@ -5215,15 +5492,15 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("preserves home draft edits made while first conversation activation is pending", async () => {
-    let resolveActivation:
-      | ((value: AgentHostActivateAgentSessionResult) => void)
-      | undefined;
+  it("restores the original home draft when first conversation activation fails after pending", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
     const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
       if (input.mode === "new") {
-        return new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
-          resolveActivation = resolve;
-        });
+        return new Promise<AgentHostActivateAgentSessionResult>(
+          (_resolve, reject) => {
+            rejectActivation = reject;
+          }
+        );
       }
       return Promise.resolve({
         session: agentSession(input.agentSessionId),
@@ -5259,27 +5536,27 @@ describe("useAgentGUINodeController", () => {
       );
     });
     const createdId = activate.mock.calls[0]![0].agentSessionId;
-
+    // During pending the user is already on the new session surface.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    // Typing while pending edits the in-flight session draft, not the home
+    // draft, which retains the original submitted prompt for restore-on-failure.
     act(() => {
       result.current.actions.updateDraftContent(
-        draftContent("keep this draft")
+        draftContent("a different next turn")
       );
-      resolveActivation?.({
-        session: agentSession(createdId),
-        activation: { mode: "new", status: "attached" }
-      });
+    });
+
+    act(() => {
+      rejectActivation?.(new Error("runtime not connected"));
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
     });
-
-    act(() => {
-      result.current.actions.createConversation();
-    });
-
+    // Reverted to the home composer with the ORIGINAL submitted draft preserved.
     expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
+    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
   });
 
   it("keeps first conversation creation busy after the controller remounts before activation resolves", async () => {
@@ -5414,7 +5691,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("passes the submitted prompt as the activation title without showing a pending history entry", async () => {
+  it("passes the submitted prompt as the activation title and shows an optimistic history entry immediately", async () => {
     const activate = vi.fn(
       (_input: AgentHostActivateAgentSessionInput) =>
         new Promise<AgentHostActivateAgentSessionResult>(() => {
@@ -5453,13 +5730,177 @@ describe("useAgentGUINodeController", () => {
         title: "hello from hero"
       })
     );
-    expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toBeNull();
-    expect(result.current.viewModel.activeConversationId).toBeNull();
+    // No durable history entry yet (activation is still pending), but the
+    // optimistic conversation already appears in the sidebar list so it does
+    // not look like the new chat vanished while it activates.
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.conversations).toEqual([
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    ]);
+    // ...and the user is already on the conversation surface with their
+    // optimistic message shown immediately.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeConversation).toEqual(
+      expect.objectContaining({ id: createdId, title: "hello from hero" })
+    );
     expect(result.current.viewModel.isCreatingConversation).toBe(true);
     expect(
       result.current.viewModel.conversationDetail?.turns[0]?.userMessages
-    ).toBeUndefined();
+    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
+  });
+
+  it("applies a composer settings change locally during the pre-activation window and flushes it once the session attaches", async () => {
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        })
+    );
+    // Mutable so getState reflects whatever the daemon last applied, like a
+    // real backend would: the pre-activation window's queued settings patch
+    // is flushed in the same tick as the unconditional post-activation
+    // getSessionControlState reload (see startConversation), and a
+    // realistic daemon would already reflect the just-applied model there
+    // too instead of momentarily reverting it.
+    let appliedSettings = {
+      model: "gpt-5",
+      reasoningEffort: "medium",
+      speed: null as string | null,
+      planMode: false,
+      permissionModeId: "auto"
+    };
+    const updateSettings = vi.fn(async ({ settings }) => {
+      appliedSettings = { ...appliedSettings, ...settings };
+      return { settings: appliedSettings };
+    });
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId, { settings: appliedSettings })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings,
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    // Still mid-activation: activeConversationId is already the optimistic
+    // id, but there is no backend session yet.
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.activeLiveState).toBe("activating");
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+
+    // Local/optimistic feedback happens immediately, without waiting for the
+    // session to attach: the user's click is not silently swallowed.
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+    // Nothing to send an RPC to yet: no backend session exists.
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, { status: "working" }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledTimes(1);
+      expect(updateSettings).toHaveBeenNthCalledWith(1, {
+        workspaceId: "room-1",
+        agentSessionId: createdId,
+        settings: { model: "gpt-5.1" }
+      });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+  });
+
+  it("drops a composer settings change queued during the pre-activation window if activation fails", async () => {
+    let rejectActivation: ((error: unknown) => void) | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((_resolve, reject) => {
+          rejectActivation = reject;
+        })
+    );
+    const updateSettings = vi.fn(async ({ settings }) => ({ settings }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("hello from hero"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({ model: "gpt-5.1" });
+    });
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.1"
+    );
+
+    act(() => {
+      rejectActivation?.(
+        createAppError("common.unexpected", { debugMessage: "boom" })
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+    // The session never attached, so the queued patch must not fire once
+    // some later, unrelated session happens to reuse RPC plumbing: nothing
+    // should ever be sent for the abandoned create.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
@@ -8547,7 +8988,9 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.conversations).toEqual([]);
     expect(result.current.viewModel.activeConversation).toBeNull();
     expect(result.current.viewModel.draftPrompt).toBe("create one");
-    expect(result.current.viewModel.detailError).toBeNull();
+    // The optimistic entry is reverted and the failure is surfaced on the
+    // home composer instead of being silently swallowed.
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -8588,8 +9031,10 @@ describe("useAgentGUINodeController", () => {
 
     const failedId = activate.mock.calls.at(-1)?.[0]?.agentSessionId;
     expect(failedId).toBeTruthy();
-    // The failed create must not leave global or per-session loading state behind.
-    expect(result.current.viewModel.detailError).toBeNull();
+    // The failed create must not leave global or per-session loading state
+    // behind, but it does surface the error on the home composer it reverted
+    // to.
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
     expect(result.current.viewModel.isLoadingMessages).toBe(false);
     expect(
       getAgentSessionView({
@@ -10356,6 +10801,184 @@ describe("useAgentGUINodeController", () => {
       reasoningEffort: "high",
       permissionModeId: "full-access"
     });
+  });
+
+  it("tells the user a codex permission-mode change will apply on the next message when a turn is in flight", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "gpt-5.4",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "auto"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "codex",
+            title: "Codex"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "codex",
+          permissionModeId: "auto",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            speed: null,
+            planMode: false,
+            permissionModeId: "auto"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex", {
+          composerOverrides: {
+            model: "gpt-5.4",
+            reasoningEffort: "high",
+            permissionModeId: "auto"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "full-access"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "full-access"
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(onShowMessage).toHaveBeenCalledWith(
+        "Permission mode will apply starting with your next message.",
+        "info"
+      );
+    });
+  });
+
+  it("does not show the deferred-apply tip for claude-code, which applies permission mode live mid-turn", async () => {
+    const updateSettings = vi.fn(
+      async ({ settings }: { settings: { permissionModeId?: string } }) => ({
+        settings: {
+          model: "sonnet",
+          reasoningEffort: "medium",
+          speed: null,
+          planMode: false,
+          permissionModeId: settings.permissionModeId ?? "default"
+        }
+      })
+    );
+    const onShowMessage = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            provider: "claude-code",
+            title: "Claude Code"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          provider: "claude-code",
+          permissionModeId: "default",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          settings: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            speed: null,
+            planMode: false,
+            permissionModeId: "default"
+          }
+        })
+      ),
+      updateSettings
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "claude-code", {
+          composerOverrides: {
+            model: "sonnet",
+            reasoningEffort: "medium",
+            permissionModeId: "default"
+          }
+        }),
+        onDataChange: vi.fn(),
+        onShowMessage
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.rawState).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        permissionModeId: "acceptEdits"
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        settings: {
+          permissionModeId: "acceptEdits"
+        }
+      });
+    });
+    expect(onShowMessage).not.toHaveBeenCalledWith(
+      "Permission mode will apply starting with your next message.",
+      "info"
+    );
   });
 
   it("uses active ACP model options for live sessions", async () => {

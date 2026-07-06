@@ -131,7 +131,18 @@ func TestReportableActivityEventsReportsInterruptedOpenToolCalls(t *testing.T) {
 	}
 }
 
-func TestReportableActivityEventsReportsCompletedOpenToolCalls(t *testing.T) {
+// TestReportableActivityEventsReportsFailedOpenToolCalls covers a tool call
+// that is still open (no item/completed ever arrived for it) when its own
+// turn otherwise reaches a normal terminal state - for example codex
+// silently declining a spawnAgent delegation for a schema conflict, with no
+// further notification tied to that call id for the rest of the turn
+// (confirmed via exported session transcripts). Reporting it as a
+// successful completion would paint a rejected/never-run call as having
+// succeeded, which is exactly what previously left rejected sub-agent
+// delegations rendered as stuck "running"/"queued" forever instead of
+// failed. It must close out as failed, matching how an interrupted/failed
+// turn already handles dangling calls.
+func TestReportableActivityEventsReportsFailedOpenToolCalls(t *testing.T) {
 	t.Parallel()
 
 	session := reportTestSession()
@@ -153,21 +164,21 @@ func TestReportableActivityEventsReportsCompletedOpenToolCalls(t *testing.T) {
 	report := reportActivityInput(session, events)
 	completedCalls := messageUpdatesWithKind(report, "tool_call")
 	if len(completedCalls) != 2 {
-		t.Fatalf("completed call message updates = %#v, want start and completed final", completedCalls)
+		t.Fatalf("completed call message updates = %#v, want start and failed final", completedCalls)
 	}
 	if completedCalls[1].MessageID != completedCalls[0].MessageID ||
 		completedCalls[1].CallID != completedCalls[0].CallID {
 		t.Fatalf("completed call identity = start:%#v completed:%#v, want same message and call IDs", completedCalls[0], completedCalls[1])
 	}
 	completedCall := completedCalls[1]
-	if completedCall.Status != messageStreamStateCompleted {
-		t.Fatalf("completed call status = %q, want completed", completedCall.Status)
+	if completedCall.Status != messageStreamStateFailed {
+		t.Fatalf("dangling call status = %q, want failed", completedCall.Status)
 	}
-	if got := payloadString(completedCall.Payload, "status"); got != messageStreamStateCompleted {
-		t.Fatalf("completed call payload status = %q, want completed", got)
+	if got := payloadString(completedCall.Payload, "status"); got != messageStreamStateFailed {
+		t.Fatalf("dangling call payload status = %q, want failed", got)
 	}
-	if got := payloadMap(completedCall.Payload, "error"); got != nil {
-		t.Fatalf("completed call payload error = %#v, want nil", got)
+	if got := payloadMap(completedCall.Payload, "error"); got == nil {
+		t.Fatalf("dangling call payload error = %#v, want a non-nil error detail", got)
 	}
 }
 

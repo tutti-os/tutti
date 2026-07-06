@@ -375,12 +375,18 @@ func (c *codexAppServerClient) TurnStart(
 	return caller.rawResult, nil
 }
 
-func (c *codexAppServerClient) TurnSteerNoHandler(ctx context.Context, params map[string]any) (json.RawMessage, error) {
+// TurnSteerNoHandler is bounded by timeout (0 waits forever): turn/steer is
+// meant to be a quick "append this input to the running turn" acknowledgment,
+// not a call that runs for the turn's whole lifetime like turn/start. A codex
+// that no longer has a turn matching expectedTurnId (for example a race where
+// the running turn just completed) may never answer at all, so the caller
+// must bound this to avoid wedging the submission forever.
+func (c *codexAppServerClient) TurnSteerNoHandler(ctx context.Context, timeout time.Duration, params map[string]any) (json.RawMessage, error) {
 	typedParams, err := codexProtoParams[codexproto.TurnSteerParams](params)
 	if err != nil {
 		return nil, err
 	}
-	client, caller := c.typed(0, nil, true)
+	client, caller := c.typed(timeout, nil, true)
 	_, err = client.TurnSteer(ctx, typedParams)
 	if err != nil {
 		return nil, err

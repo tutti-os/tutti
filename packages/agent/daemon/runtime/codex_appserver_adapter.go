@@ -97,6 +97,23 @@ const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
 const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 
+// defaultCodexAppServerTurnSteerTimeout bounds turn/steer, the RPC that
+// appends a new submission's input into an already-running turn instead of
+// starting a fresh one. turn/steer is meant to be a quick acknowledgment, not
+// a call that lives for the turn's whole duration like turn/start — so unlike
+// turn/start (unbounded), this must time out. Without a bound, a submission
+// steered at the exact moment the running turn completes server-side (codex
+// no longer has a turn matching expectedTurnId) can leave codex silently
+// never answering, and the unbounded RPC then wedges that submission's own
+// turn record forever: the composer stays blocked and every subsequent Exec
+// fails with ErrSessionActiveTurn until the daemon restarts.
+const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
+
+// startupModelSteadyRetryCount is how many 30s-spaced model/list retries follow
+// the initial fast ramp before the background refresh gives up (~18 minutes
+// total), bounding the goroutine while covering realistic transient outages.
+const startupModelSteadyRetryCount = 36
+
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
@@ -114,6 +131,16 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// startupModelRetryBackoffs is the wait schedule between background model/list
+	// refetches when the initial probe came back empty; the slice length bounds
+	// the number of retries. Nil falls back to defaultStartupModelRetryBackoffs.
+	// Overridable in tests to drive the loop without real delays.
+	startupModelRetryBackoffs []time.Duration
+	// turnSteerTimeout bounds the turn/steer RPC steerActiveTurn issues when a
+	// submission arrives while another turn is already running. Zero falls
+	// back to the default. Overridable in tests to drive the timeout without
+	// real delays.
+	turnSteerTimeout time.Duration
 }
 
 type codexAppServerSessionLock struct {
@@ -216,6 +243,7 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
+		turnSteerTimeout:  defaultCodexAppServerTurnSteerTimeout,
 	}
 }
 
@@ -1041,32 +1069,107 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 				})
 			}
 		}()
-		appSession := a.getSession(agentSessionID)
-		if appSession == nil || appSession.client == nil {
-			return
-		}
 		ctx := context.Background()
-		updated := false
-		if fetchModels {
-			models := a.fetchModelsNoHandler(ctx, appSession.client, trace)
-			if a.applyStartupModels(agentSessionID, session, threadResult, models) {
-				updated = true
-			}
-		}
 		if fetchRateLimits {
-			rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
-			if a.applyRateLimits(agentSessionID, rateLimits) {
-				updated = true
+			if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
+				rateLimits := a.fetchRateLimitsNoHandler(ctx, appSession.client, trace)
+				if a.applyRateLimits(agentSessionID, rateLimits) {
+					a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+				}
 			}
 		}
-		if updated {
-			a.emitSessionEvents(agentSessionID, []activityshared.Event{
-				newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-					"appServerMetadataRefresh": true,
-				}),
-			})
+		if fetchModels {
+			// fetchModels re-resolves the session each attempt so the loop keeps
+			// working against a live client and stops once the session is gone.
+			fetch := func(ctx context.Context) []map[string]any {
+				appSession := a.getSession(agentSessionID)
+				if appSession == nil || appSession.client == nil {
+					return nil
+				}
+				return a.fetchModelsNoHandler(ctx, appSession.client, trace)
+			}
+			sleep := func(ctx context.Context, d time.Duration) bool {
+				return sleepWithContext(ctx, d) == nil
+			}
+			if a.retryStartupModels(ctx, agentSessionID, session, threadResult, fetch, sleep) {
+				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
+			}
 		}
 	}()
+}
+
+// retryStartupModels re-fetches the codex model/list until it returns a
+// non-empty list (and the startup state resolves to "ready"), the session is
+// torn down, the context is canceled, or the bounded backoff budget is
+// exhausted. A single transient empty/slow response therefore no longer pins
+// the composer's model options at "loading" forever — the previous code fetched
+// exactly once and silently left the state stuck on failure.
+func (a *CodexAppServerAdapter) retryStartupModels(
+	ctx context.Context,
+	agentSessionID string,
+	session Session,
+	threadResult json.RawMessage,
+	fetch func(context.Context) []map[string]any,
+	sleep func(context.Context, time.Duration) bool,
+) bool {
+	if a == nil || fetch == nil {
+		return false
+	}
+	backoffs := a.startupModelRetryBackoffs
+	if backoffs == nil {
+		backoffs = defaultStartupModelRetryBackoffs()
+	}
+	for attempt := 0; attempt <= len(backoffs); attempt++ {
+		if a.getSession(agentSessionID) == nil {
+			return false
+		}
+		models := fetch(ctx)
+		if a.applyStartupModels(agentSessionID, session, threadResult, models) {
+			if attempt > 0 {
+				slog.Info("agent session app-server model list resolved after retry",
+					"agent_session_id", agentSessionID,
+					"attempts", attempt+1,
+				)
+			}
+			return true
+		}
+		if attempt == len(backoffs) {
+			break
+		}
+		if sleep != nil && !sleep(ctx, backoffs[attempt]) {
+			return false
+		}
+	}
+	slog.Warn("agent session app-server model list never resolved",
+		"agent_session_id", agentSessionID,
+		"attempts", len(backoffs)+1,
+	)
+	return false
+}
+
+func (a *CodexAppServerAdapter) emitStartupMetadataRefreshEvent(session Session, agentSessionID string) {
+	a.emitSessionEvents(agentSessionID, []activityshared.Event{
+		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+			"appServerMetadataRefresh": true,
+		}),
+	})
+}
+
+// defaultStartupModelRetryBackoffs ramps quickly then settles at a steady 30s
+// cadence, giving codex time to recover from transient hiccups (rate limits,
+// a still-materializing platform package, a slow first model/list) while
+// keeping the background goroutine bounded.
+func defaultStartupModelRetryBackoffs() []time.Duration {
+	backoffs := []time.Duration{
+		time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+	}
+	for i := 0; i < startupModelSteadyRetryCount; i++ {
+		backoffs = append(backoffs, 30*time.Second)
+	}
+	return backoffs
 }
 
 func (a *CodexAppServerAdapter) applyStartupModels(
@@ -1502,7 +1605,7 @@ func appServerTurnStatusTerminal(turn map[string]any) bool {
 	}
 }
 
-func (*CodexAppServerAdapter) steerActiveTurn(
+func (a *CodexAppServerAdapter) steerActiveTurn(
 	ctx context.Context,
 	appSession *codexAppServerSession,
 	session Session,
@@ -1514,12 +1617,25 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	activeTurnID string,
 	emit EventSink,
 ) ([]activityshared.Event, error) {
-	_, err := appSession.client.TurnSteerNoHandler(ctx, map[string]any{
+	timeout := a.turnSteerTimeout
+	if timeout <= 0 {
+		timeout = defaultCodexAppServerTurnSteerTimeout
+	}
+	_, err := appSession.client.TurnSteerNoHandler(ctx, timeout, map[string]any{
 		"threadId":       appSession.threadID,
 		"expectedTurnId": activeTurnID,
 		"input":          appServerUserInput(providerContent),
 	})
 	if err != nil {
+		// A codex that no longer has a turn matching expectedTurnId (for
+		// example this steer raced the running turn's own completion) may
+		// never answer turn/steer at all; TurnSteerNoHandler's bounded
+		// timeout turns that into a plain error here instead of hanging
+		// forever. The caller (execBlocking) surfaces this as a normal turn
+		// failure for THIS submission's own turn id, so ExecAsync's error
+		// path emits turn.failed and the controller's existing
+		// turnHasTerminalEvent check settles the record — the composer
+		// unblocks instead of staying wedged until a daemon restart.
 		return nil, err
 	}
 	events := []activityshared.Event{
@@ -1957,12 +2073,32 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 	if client == nil || threadID == "" {
 		return
 	}
-	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
-	defer cancel()
-	if _, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
-		"threadId": threadID,
-		"turnId":   strings.TrimSpace(turnID),
-	}); err != nil {
+	turnID = strings.TrimSpace(turnID)
+	err := codexSendTurnInterruptOnce(client, threadID, turnID)
+	if err != nil {
+		// Our own turn bookkeeping settles a turn locally as soon as its Go
+		// context is canceled (see Cancel/interruptActiveTurn), without
+		// waiting for the app-server to actually confirm the turn stopped.
+		// When a slow-to-terminate tool call (for example wait_agent on
+		// several dispatched sub-agents) keeps the app-server's real turn
+		// alive past that point, a subsequent interrupt aimed at the turn id
+		// we *think* is active gets rejected with "expected active turn id X
+		// but found Y". Retry once against Y so the real, still-running turn
+		// actually gets interrupted instead of being abandoned to die on its
+		// own — which otherwise can leave it running for minutes.
+		if foundTurnID, ok := codexExpectedActiveTurnIDMismatch(err); ok && foundTurnID != turnID {
+			slog.Warn("agent session app-server interrupt turn id stale, retrying",
+				"event", "agent_session.app_server.interrupt.turn_id_stale",
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", threadID,
+				"requested_turn_id", turnID,
+				"actual_turn_id", foundTurnID,
+				"reason", reason,
+			)
+			err = codexSendTurnInterruptOnce(client, threadID, foundTurnID)
+		}
+	}
+	if err != nil {
 		slog.Warn("agent session app-server interrupt failed",
 			"event", "agent_session.app_server.interrupt.failed",
 			"agent_session_id", session.AgentSessionID,
@@ -1972,6 +2108,49 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 			"error", err.Error(),
 		)
 	}
+}
+
+func codexSendTurnInterruptOnce(client *codexAppServerClient, threadID, turnID string) error {
+	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
+	defer cancel()
+	_, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
+		"threadId": threadID,
+		"turnId":   turnID,
+	})
+	return err
+}
+
+// codexExpectedActiveTurnIDMismatch recognizes the codex app-server's
+// turn/interrupt rejection for a stale expected turn id: "expected active
+// turn id <requested> but found <actual>". It reports actual so the caller
+// can retry against the turn codex itself considers active. JSON-RPC -32600
+// is the generic "invalid request" code the app-server reuses for several
+// distinct rejections (see isACPProviderSessionNotFound), so this keys off
+// the distinctive message text rather than the code.
+func codexExpectedActiveTurnIDMismatch(err error) (string, bool) {
+	var callErr *acpCallError
+	if !errors.As(err, &callErr) || callErr == nil {
+		return "", false
+	}
+	message := strings.TrimSpace(callErr.Err.Message)
+	lower := strings.ToLower(message)
+	if !strings.Contains(lower, "expected active turn id") {
+		return "", false
+	}
+	const marker = "but found "
+	idx := strings.LastIndex(lower, marker)
+	if idx < 0 {
+		return "", false
+	}
+	rest := strings.TrimSpace(message[idx+len(marker):])
+	if sp := strings.IndexAny(rest, " \t\n"); sp >= 0 {
+		rest = rest[:sp]
+	}
+	rest = strings.Trim(rest, ".,;")
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }
 
 func (a *CodexAppServerAdapter) interruptLinkedChildThreads(

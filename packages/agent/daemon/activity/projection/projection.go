@@ -315,8 +315,24 @@ func mergeSessionRuntimeState(
 		incomingEventUnixMS < existingLastEventUnixMS {
 		return existingStatus, existingCurrentPhase
 	}
-	existingCanonical := CanonicalSessionStatus(existingStatus, existingCurrentPhase)
-	if isTerminalSessionStatus(existingCanonical) {
+	// Freeze runtime state only once the *session* itself has reached a
+	// terminal lifecycle status (completed/failed/canceled/errored) — that
+	// is permanent and must never be reopened by a later, stray patch.
+	//
+	// This intentionally checks the raw lifecycle status rather than
+	// CanonicalSessionStatus(existingStatus, existingCurrentPhase), which
+	// also folds a single failed *turn* (currentPhase == "failed") into
+	// "failed" for display purposes. A turn failing does not end the
+	// session — the session's own lifecycle status stays "active" (see
+	// reporter.go's EventTurnFailed handling) so more turns can still run.
+	// Freezing on the canonical (turn-inclusive) status would permanently
+	// lock a session's badge on "failed" the moment any single turn errors,
+	// even after a later turn on the same session starts and completes
+	// successfully — that later, genuinely newer state is exactly what
+	// should win. See
+	// TestProjectSessionStateRecoversAfterTurnFailureWhenSessionStaysActive
+	// and TestProjectSessionStateClearsFailedPhaseAfterLaterTurnCompletes.
+	if isTerminalSessionStatus(existingStatus) {
 		return existingStatus, existingCurrentPhase
 	}
 	return incomingStatus, incomingCurrentPhase

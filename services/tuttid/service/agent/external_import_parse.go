@@ -223,6 +223,18 @@ func normalizeExternalParsedSession(session externalImportedSession) (externalIm
 	if !ok {
 		return externalImportedSession{}, false, nil
 	}
+	// A session that ran inside a linked git worktree (e.g. a coding agent's
+	// own per-task checkout under ~/.codex/worktrees/<id>/<repo>) still has
+	// its own `.git` file, so left unresolved it looks like an independent
+	// project rooted at the worktree instead of lining up with the main
+	// checkout the user actually registered as their project. Resolve it
+	// upfront so every downstream consumer of this cwd (project-path
+	// grouping, selection matching, and the persisted session record the GUI
+	// groups conversations by) agrees on the same canonical project
+	// identity.
+	if resolved, ok := resolveExternalImportWorktreeCwd(cwd); ok {
+		cwd = resolved
+	}
 	session.Cwd = cwd
 	session.NoProject = isExternalImportNoProjectCwd(session.Provider, cwd)
 	messages := make([]externalImportedMessage, 0, len(session.Messages))

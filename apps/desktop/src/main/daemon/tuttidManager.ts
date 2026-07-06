@@ -614,14 +614,14 @@ async function stopStaleTuttid(pidPath: string): Promise<void> {
     command
   });
 
-  signalProcess(pid, "SIGTERM");
+  signalProcessTree(pid, "SIGTERM");
   await waitForProcessExit(pid, staleProcessShutdownTimeoutMs);
   if (isProcessRunning(pid) && isLikelyTuttidProcess(readProcessCommand(pid))) {
     getDesktopLogger().warn("force stopping stale tuttid process", {
       pid,
       pid_path: pidPath
     });
-    signalProcess(pid, "SIGKILL");
+    signalProcessTree(pid, "SIGKILL");
     await waitForProcessExit(pid, staleProcessShutdownTimeoutMs);
   }
 
@@ -723,7 +723,25 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-function signalProcess(pid: number, signal: NodeJS.Signals): void {
+// signalProcessTree signals a stale tuttid pid recovered from disk (i.e. not
+// a ChildProcess we hold a handle to). A managed tuttid is always spawned
+// with `detached: true` (see ManagedTuttid.start), which makes it the leader
+// of its own process group, so signaling the negated pid reaches tuttid and
+// every subprocess it spawned (Codex app-server, Claude SDK sidecar, etc.)
+// in one shot. Without this, killing just the leader pid would leave any of
+// its live provider subprocesses orphaned: an OS process does not exit just
+// because its parent did, it is simply reparented and keeps running.
+export function signalProcessTree(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct pid: the process group may already be
+      // gone, or (defensively) this pid was not actually a group leader.
+    }
+  }
+
   try {
     process.kill(pid, signal);
   } catch {
