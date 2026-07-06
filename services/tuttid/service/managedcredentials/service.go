@@ -299,7 +299,7 @@ func (s *Service) Exchange(ctx context.Context, input ExchangeInput) (ExchangeRe
 		return ExchangeResult{}, err
 	}
 	return ExchangeResult{
-		ExpiresAt: s.now().Add(GrantCodeTTL),
+		ExpiresAt: grant.ExpiresAt,
 		GrantRef:  grant.GrantRef,
 		Providers: append([]managedcredentialsbiz.ProviderID(nil), grant.ProviderIDs...),
 		Models:    s.modelsForProviders(ctx, workspaceID, grant.ProviderIDs),
@@ -312,7 +312,7 @@ func (s *Service) ListGrantModels(ctx context.Context, workspaceID string, appID
 		return ModelCatalogResult{}, err
 	}
 	return ModelCatalogResult{
-		ExpiresAt: s.now().Add(GrantCodeTTL),
+		ExpiresAt: grant.ExpiresAt,
 		Models:    s.modelsForProviders(ctx, grant.WorkspaceID, grant.ProviderIDs),
 	}, nil
 }
@@ -351,7 +351,7 @@ func (s *Service) Credential(ctx context.Context, input CredentialInput) (Creden
 		return CredentialResult{}, ErrProviderNotConfigured
 	}
 	return CredentialResult{
-		ExpiresAt: s.now().Add(GrantCodeTTL),
+		ExpiresAt: grant.ExpiresAt,
 		Credential: managedcredentialsbiz.ProviderCredential{
 			Provider: config.Provider,
 			APIKey:   config.APIKey,
@@ -369,6 +369,9 @@ func (s *Service) readActiveGrant(ctx context.Context, workspaceID string, appID
 	}
 	if grant.RevokedAt != nil {
 		return managedcredentialsbiz.Grant{}, ErrGrantRevoked
+	}
+	if !grant.ExpiresAt.After(s.now()) {
+		return managedcredentialsbiz.Grant{}, ErrGrantExpired
 	}
 	return grant, nil
 }

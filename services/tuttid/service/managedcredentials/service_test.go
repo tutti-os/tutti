@@ -93,7 +93,9 @@ func TestServiceGrantCodeIsOneTimeAndGrantRefRefreshes(t *testing.T) {
 		t.Fatalf("second Exchange with same code error = %v, want %v", err, ErrGrantCodeInvalid)
 	}
 
-	now = now.Add(8 * time.Hour)
+	// Within the grant lease the grantRef can be reused, but the reported
+	// expiry stays pinned to the original lease rather than rolling forward.
+	now = now.Add(1 * time.Hour)
 	refreshCatalog, err := service.ListGrantModels(ctx,
 		"workspace-1",
 		"app-1",
@@ -102,8 +104,8 @@ func TestServiceGrantCodeIsOneTimeAndGrantRefRefreshes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refresh ListGrantModels: %v", err)
 	}
-	if !refreshCatalog.ExpiresAt.Equal(now.Add(GrantCodeTTL)) {
-		t.Fatalf("refresh expiry = %s, want %s", refreshCatalog.ExpiresAt, now.Add(GrantCodeTTL))
+	if !refreshCatalog.ExpiresAt.Equal(grant.Grant.ExpiresAt) {
+		t.Fatalf("refresh expiry = %s, want fixed grant expiry %s", refreshCatalog.ExpiresAt, grant.Grant.ExpiresAt)
 	}
 	refreshCredential, err := service.Credential(ctx, CredentialInput{
 		WorkspaceID: "workspace-1",
@@ -116,8 +118,78 @@ func TestServiceGrantCodeIsOneTimeAndGrantRefRefreshes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refresh Credential: %v", err)
 	}
-	if !refreshCredential.ExpiresAt.Equal(now.Add(GrantCodeTTL)) {
-		t.Fatalf("credential expiry = %s, want %s", refreshCredential.ExpiresAt, now.Add(GrantCodeTTL))
+	if !refreshCredential.ExpiresAt.Equal(grant.Grant.ExpiresAt) {
+		t.Fatalf("credential expiry = %s, want fixed grant expiry %s", refreshCredential.ExpiresAt, grant.Grant.ExpiresAt)
+	}
+}
+
+func TestServiceRejectsExpiredGrant(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	store := newManagedCredentialsMemoryStore()
+	service := &Service{
+		Store: store,
+		Now: func() time.Time {
+			return now
+		},
+	}
+	apiKey := "agnes-secret"
+	if _, err := service.PutProvider(ctx, PutProviderInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "agnes",
+		Enabled:     true,
+		APIKey:      &apiKey,
+		BaseURL:     "https://agnes.example/v1",
+		Models: []managedcredentialsbiz.Model{{
+			ID:       "agnes-2.0-flash",
+			Name:     "Agnes 2.0 Flash",
+			Provider: managedcredentialsbiz.ProviderAgnes,
+		}},
+	}); err != nil {
+		t.Fatalf("PutProvider: %v", err)
+	}
+
+	grant, err := service.CreateGrant(ctx, CreateGrantInput{
+		ContextToken: "context-token",
+		WorkspaceID:  "workspace-1",
+		AppID:        "app-1",
+		Nonce:        "nonce-1",
+		ProviderIDs:  []string{"agnes"},
+		Scopes:       []string{"models:use"},
+		State:        "state-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+
+	// Exchange the one-time code within the lease so we hold a live grantRef.
+	if _, err := service.Exchange(ctx, ExchangeInput{
+		ContextToken: "context-token",
+		WorkspaceID:  "workspace-1",
+		AppID:        "app-1",
+		GrantCode:    grant.GrantCode,
+		Nonce:        "nonce-1",
+		State:        "state-1",
+	}); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	// Advancing past the lease must stop the grantRef from minting credentials.
+	now = now.Add(GrantCodeTTL + time.Second)
+
+	if _, err := service.Credential(ctx, CredentialInput{
+		WorkspaceID: "workspace-1",
+		AppID:       "app-1",
+		GrantRef:    grant.Grant.GrantRef,
+		Provider:    "agnes",
+		Model:       "agnes-2.0-flash",
+		Capability:  "agent",
+	}); !errors.Is(err, ErrGrantExpired) {
+		t.Fatalf("Credential after expiry error = %v, want %v", err, ErrGrantExpired)
+	}
+
+	if _, err := service.ListGrantModels(ctx, "workspace-1", "app-1", grant.Grant.GrantRef); !errors.Is(err, ErrGrantExpired) {
+		t.Fatalf("ListGrantModels after expiry error = %v, want %v", err, ErrGrantExpired)
 	}
 }
 
