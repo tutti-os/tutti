@@ -246,6 +246,47 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("renders an injected provider rail footer with neutral context", () => {
+    const activeConversation = createConversationSummary("session-1", {
+      title: "Active conversation"
+    });
+    const renderSidebarFooter = vi.fn(
+      ({
+        currentUserId,
+        activeConversation
+      }: Parameters<
+        NonNullable<AgentGUINodeViewProps["renderSidebarFooter"]>
+      >[0]) => (
+        <button type="button">
+          Footer {currentUserId} {activeConversation?.id}
+        </button>
+      )
+    );
+
+    const { container } = renderAgentGUINodeView({
+      renderSidebarFooter,
+      viewModel: createViewModel({
+        currentUserId: "user-1",
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [activeConversation]
+      })
+    });
+
+    const footer = screen.getByTestId("agent-gui-sidebar-footer-slot");
+    expect(footer).toHaveTextContent("Footer user-1 session-1");
+    expect(
+      container.querySelector(".agent-gui-node__provider-rail-panel")
+    ).toContainElement(footer);
+    expect(
+      container.querySelector(".agent-gui-node__rail")
+    ).not.toContainElement(footer);
+    expect(renderSidebarFooter).toHaveBeenCalledWith({
+      currentUserId: "user-1",
+      activeConversation
+    });
+  });
+
   it("ignores rail pointer moves that do not come from the resize handle drag", () => {
     const onConversationRailWidthChanged = vi.fn();
 
@@ -269,6 +310,15 @@ describe("AgentGUINodeView layout persistence", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-node__provider-rail\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail\s*\{[^}]*flex:\s*1\s+1\s+auto;[^}]*overflow-y:\s*auto;[^}]*mask-image:\s*linear-gradient\(/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail\s*\{[^}]*-webkit-mask-image:\s*linear-gradient\(/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-footer\s*\{[^}]*width:\s*52px;[^}]*flex:\s*0\s+0\s+auto;[^}]*-webkit-app-region:\s*no-drag;/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__provider-rail-tile\s*\{[^}]*-webkit-app-region:\s*no-drag;/s
@@ -3804,6 +3854,7 @@ interface RenderAgentGUINodeViewOptions {
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
+  renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -3819,12 +3870,14 @@ function buildAgentGUINodeViewElement({
   actions = createActions(),
   labels = createLabels(),
   onOpenConversationWindow,
+  renderSidebarFooter,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
     <AgentActivityRuntimeProvider runtime={activityRuntime}>
       <AgentGUINodeView
         viewModel={viewModel}
+        renderSidebarFooter={renderSidebarFooter}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}

@@ -78,6 +78,7 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 	)
 	return Session{
 		ID:                 strings.TrimSpace(session.ID),
+		UserID:             strings.TrimSpace(session.UserID),
 		AgentTargetID:      strings.TrimSpace(session.AgentTargetID),
 		Provider:           normalizedProvider,
 		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
@@ -122,6 +123,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	return serviceSession(RuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
+		UserID:            strings.TrimSpace(session.UserID),
 		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
@@ -152,6 +154,9 @@ func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {
+	if strings.TrimSpace(session.UserID) == "" {
+		session.UserID = strings.TrimSpace(persisted.UserID)
+	}
 	if strings.TrimSpace(session.AgentTargetID) == "" {
 		session.AgentTargetID = strings.TrimSpace(persisted.AgentTargetID)
 	}

@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -550,6 +551,7 @@ export interface AgentGUIViewLabels {
 
 interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
+  renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -991,8 +993,18 @@ function handoffProjectPathForConversation(
   );
 }
 
+export interface AgentGUISidebarFooterContext {
+  currentUserId?: string | null;
+  activeConversation: AgentGUINodeViewModel["activeConversation"];
+}
+
+export type AgentGUISidebarFooterRenderer = (
+  ctx: AgentGUISidebarFooterContext
+) => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
+  renderSidebarFooter,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1600,6 +1612,17 @@ export function AgentGUINodeView({
               }
               onUpdateConversationFilter={actions.updateConversationFilter}
             />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.currentUserId,
+                  activeConversation: viewModel.activeConversation
+                })}
+              </div>
+            ) : null}
           </aside>
         ) : null}
         <aside

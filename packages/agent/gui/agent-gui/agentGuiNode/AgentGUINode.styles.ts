@@ -143,6 +143,7 @@ const styles = {
   providerRailLaunchpadIcon: "agent-gui-node__provider-rail-launchpad-icon",
   emptyHeroLaunchpadIcon: "agent-gui-node__empty-hero-launchpad-icon",
   providerRailLaunchpadItem: "agent-gui-node__provider-rail-launchpad-item",
+  providerRailFooter: "agent-gui-node__provider-rail-footer",
   providerRailPanel: "agent-gui-node__provider-rail-panel",
   providerRailSeparator: "agent-gui-node__provider-rail-separator",
   providerRailTile: "agent-gui-node__provider-rail-tile",

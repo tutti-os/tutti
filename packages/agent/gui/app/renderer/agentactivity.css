@@ -8360,6 +8360,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 0 0 12px;
   overflow-x: hidden;
   overflow-y: auto;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-app-region: no-drag;
+}
+
+.agent-gui-node__provider-rail-footer {
+  display: flex;
+  width: 52px;
+  min-width: 0;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 0 0 12px;
   -webkit-app-region: no-drag;
 }
 

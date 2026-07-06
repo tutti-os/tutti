@@ -246,6 +246,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ManagedRuntime:    managedRuntimeResolver,
 		RunOutcomes:       runOutcomes,
 	}
+	accountService := accountservice.NewService("")
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			inner: agentActivityProjection,
@@ -398,7 +399,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	terminalService := &workspaceservice.TerminalService{}
 
 	return tuttiapi.DaemonAPI{
-		AccountService:            accountservice.NewService(""),
+		AccountService:            accountService,
 		UserProjectService:        userProjectService,
 		AgentTargetService:        agentTargets,
 		PreferencesService:        preferences,
