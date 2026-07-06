@@ -2433,12 +2433,32 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 	if client == nil || threadID == "" {
 		return
 	}
-	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
-	defer cancel()
-	if _, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
-		"threadId": threadID,
-		"turnId":   strings.TrimSpace(turnID),
-	}); err != nil {
+	turnID = strings.TrimSpace(turnID)
+	err := codexSendTurnInterruptOnce(client, threadID, turnID)
+	if err != nil {
+		// Our own turn bookkeeping settles a turn locally as soon as its Go
+		// context is canceled (see Cancel/interruptActiveTurn), without
+		// waiting for the app-server to actually confirm the turn stopped.
+		// When a slow-to-terminate tool call (for example wait_agent on
+		// several dispatched sub-agents) keeps the app-server's real turn
+		// alive past that point, a subsequent interrupt aimed at the turn id
+		// we *think* is active gets rejected with "expected active turn id X
+		// but found Y". Retry once against Y so the real, still-running turn
+		// actually gets interrupted instead of being abandoned to die on its
+		// own — which otherwise can leave it running for minutes.
+		if foundTurnID, ok := codexExpectedActiveTurnIDMismatch(err); ok && foundTurnID != turnID {
+			slog.Warn("agent session app-server interrupt turn id stale, retrying",
+				"event", "agent_session.app_server.interrupt.turn_id_stale",
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", threadID,
+				"requested_turn_id", turnID,
+				"actual_turn_id", foundTurnID,
+				"reason", reason,
+			)
+			err = codexSendTurnInterruptOnce(client, threadID, foundTurnID)
+		}
+	}
+	if err != nil {
 		slog.Warn("agent session app-server interrupt failed",
 			"event", "agent_session.app_server.interrupt.failed",
 			"agent_session_id", session.AgentSessionID,
@@ -2448,6 +2468,49 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 			"error", err.Error(),
 		)
 	}
+}
+
+func codexSendTurnInterruptOnce(client *codexAppServerClient, threadID, turnID string) error {
+	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
+	defer cancel()
+	_, err := client.TurnInterruptNoHandler(interruptCtx, acpPermissionModeTimeout, map[string]any{
+		"threadId": threadID,
+		"turnId":   turnID,
+	})
+	return err
+}
+
+// codexExpectedActiveTurnIDMismatch recognizes the codex app-server's
+// turn/interrupt rejection for a stale expected turn id: "expected active
+// turn id <requested> but found <actual>". It reports actual so the caller
+// can retry against the turn codex itself considers active. JSON-RPC -32600
+// is the generic "invalid request" code the app-server reuses for several
+// distinct rejections (see isACPProviderSessionNotFound), so this keys off
+// the distinctive message text rather than the code.
+func codexExpectedActiveTurnIDMismatch(err error) (string, bool) {
+	var callErr *acpCallError
+	if !errors.As(err, &callErr) || callErr == nil {
+		return "", false
+	}
+	message := strings.TrimSpace(callErr.Err.Message)
+	lower := strings.ToLower(message)
+	if !strings.Contains(lower, "expected active turn id") {
+		return "", false
+	}
+	const marker = "but found "
+	idx := strings.LastIndex(lower, marker)
+	if idx < 0 {
+		return "", false
+	}
+	rest := strings.TrimSpace(message[idx+len(marker):])
+	if sp := strings.IndexAny(rest, " \t\n"); sp >= 0 {
+		rest = rest[:sp]
+	}
+	rest = strings.Trim(rest, ".,;")
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }
 
 func (a *CodexAppServerAdapter) interruptLinkedChildThreads(

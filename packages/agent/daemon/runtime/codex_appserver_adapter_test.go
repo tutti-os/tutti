@@ -71,6 +71,8 @@ type scriptedAppServerConnection struct {
 	steeredTurnStart             bool              // turn/start returns a queued stub turn (input steered into the running turn): no turn/started, no auto-completion
 	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
 	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	interruptTurnIDMismatch      string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
+	interruptAttempts            []string          // turnId requested on every turn/interrupt call, in order
 	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
@@ -494,9 +496,30 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.turnStatus = "interrupted"
 			ignore := c.ignoreInterrupt
 			hang := c.hangInterrupt
+			mismatchTurnID := c.interruptTurnIDMismatch
+			requestedTurnID := asString(message.Params["turnId"])
+			c.interruptAttempts = append(c.interruptAttempts, requestedTurnID)
 			c.mu.Unlock()
 			if hang {
 				// Fully wedged codex: never even acknowledge the interrupt RPC.
+				continue
+			}
+			if mismatchTurnID != "" && requestedTurnID != mismatchTurnID {
+				// Mirror codex rejecting a stale expected turn id (live
+				// -32600 "invalid request" shape): the client's own turn
+				// bookkeeping raced ahead of what codex still considers
+				// active (e.g. a slow-to-terminate wait_agent call kept the
+				// real turn alive past our local cancel). Only the retry
+				// against the reported id (mismatchTurnID) is honored.
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code": -32600,
+						"message": fmt.Sprintf(
+							"expected active turn id %s but found %s", requestedTurnID, mismatchTurnID,
+						),
+					},
+				})
 				continue
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -1893,6 +1916,79 @@ func TestCodexAppServerAdapterCancelForceCloseIsBoundedByGrace(t *testing.T) {
 	case <-execDone:
 	case <-time.After(2 * time.Second):
 		t.Fatalf("Exec did not finish after force cancel")
+	}
+}
+
+// TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID reproduces a
+// real production incident: our own turn bookkeeping settles a turn locally
+// as soon as its Go context is canceled (Cancel/interruptActiveTurn), without
+// waiting for the app-server to confirm the turn actually stopped. When a
+// slow-to-terminate tool call (live case: wait_agent blocking on several
+// dispatched sub-agents) keeps the real app-server turn alive past that
+// point, the *next* interrupt we send — aimed at the turn id we believe is
+// active — gets rejected with "expected active turn id X but found Y"
+// (live-captured, codex 0.142.5, JSON-RPC -32600). Left unhandled, the real
+// stale turn is never actually interrupted and keeps running/emitting items
+// on its own timeline, which is what left a session stuck reporting "regulat-
+// ing next step" long after the visible conversation looked finished. The
+// adapter must retry the interrupt against the turn id codex reports as
+// actually active.
+func TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	// codex reports "turn-stale" as its real active turn, not the "turn-1" id
+	// our own bookkeeping expects — mirrors the daemon racing ahead of the
+	// app-server's turn teardown.
+	transport.conn.interruptTurnIDMismatch = "turn-stale"
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	cancelReturned := make(chan error, 1)
+	go func() {
+		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		cancelReturned <- err
+	}()
+	select {
+	case err := <-cancelReturned:
+		if err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Cancel did not return")
+	}
+
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		return len(transport.conn.interruptAttempts) >= 2
+	})
+	transport.conn.mu.Lock()
+	attempts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(attempts) != 2 || attempts[0] != "turn-1" || attempts[1] != "turn-stale" {
+		t.Fatalf("interrupt attempts = %#v, want [turn-1 turn-stale]", attempts)
+	}
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventTurnCompleted)
+		if len(completed) != 1 ||
+			completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
+			t.Fatalf("expected interrupted outcome, got %#v", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after retried interrupt")
 	}
 }
 
