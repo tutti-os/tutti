@@ -1315,6 +1315,33 @@ func (a *CodexAppServerAdapter) ExecAsync(
 	return nil
 }
 
+func (a *CodexAppServerAdapter) GuideActiveTurn(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	_ CommandSnapshotSink,
+) ([]activityshared.Event, error) {
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, ErrSessionDisconnected
+	}
+	activeTurnID := a.sessionActiveTurnID(session.AgentSessionID)
+	if activeTurnID == "" {
+		return nil, ErrSessionNoActiveTurn
+	}
+	session.ProviderSessionID = appSession.threadID
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	mentionRoutingApplied, mentionRoutingSkills := tuttiMentionRoutingSkills(visibleText)
+	providerContent := content
+	if mentionRoutingApplied {
+		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+	}
+	return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+}
+
 func (appTurn *codexAppServerActiveTurn) markTerminated() {
 	appTurn.terminatedOnce.Do(func() { close(appTurn.terminated) })
 }
@@ -1719,7 +1746,8 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, displayPrompt, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
-			"steered": true,
+			"guidance": true,
+			"steered":  true,
 		}))),
 	}
 	if emit != nil {

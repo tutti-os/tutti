@@ -57,6 +57,7 @@ type sessionIDInput struct {
 
 type sendInput struct {
 	SessionID string   `cli:"session-id" validate:"required"`
+	Guidance  bool     `cli:"guidance" description:"Send this prompt as guidance to the currently active turn instead of starting a new turn."`
 	Images    []string `cli:"image" description:"Image file to attach to this prompt. May be passed multiple times."`
 	Prompt    string   `cli:"prompt" validate:"required"`
 }
@@ -291,7 +292,7 @@ func (p Provider) newSendCommand() cliservice.Command {
 		ID:          appID + ".agent.send",
 		Path:        []string{"agent", "send"},
 		Summary:     "Send input to an agent session",
-		Description: "Send user input to an existing agent session.",
+		Description: "Send user input to an existing agent session. Use --guidance to guide the currently active turn without attaching to output.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -310,7 +311,8 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
-		Content: content,
+		Content:  content,
+		Guidance: input.Guidance,
 	})
 	if err != nil {
 		return nil, err

@@ -128,6 +128,11 @@ such as `turnLifecycle` and `submitAvailability` when the daemon has them. Keep
 their field names aligned with the HTTP/OpenAPI session shape so CLI callers can
 reason about active turns without switching transports.
 
+`agent send --guidance` sends a one-shot prompt as active-turn guidance for an
+existing running session. It requires an active turn, does not attach to stdout
+or subscribe to session events, and must fail instead of falling back to a normal
+next-turn send when no active turn is present.
+
 Issue-manager breakdown commands should preserve authored task order in the
 daemon instead of relying on callers to serialize several single-task creates.
 Use `issue task create-batch` for multiple new child tasks. Its `tasks-json`

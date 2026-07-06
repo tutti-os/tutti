@@ -6926,6 +6926,9 @@ components:
           type: string
           nullable: true
           description: Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
+        guidance:
+          type: boolean
+          description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
         metadata:
           type: object
           additionalProperties: true

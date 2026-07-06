@@ -101,6 +101,7 @@ func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.Runtim
 		AgentSessionID: input.AgentSessionID,
 		Content:        runtimePromptContentFromService(input.Content),
 		DisplayPrompt:  input.DisplayPrompt,
+		Guidance:       input.Guidance,
 		Metadata:       cloneRuntimeContext(input.Metadata),
 	})
 	if err != nil {
@@ -462,6 +463,12 @@ func mapAgentRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrSessionNotFound) {
 		return agentservice.ErrSessionNotFound
+	}
+	if errors.Is(err, agentruntime.ErrSessionNoActiveTurn) {
+		return agentservice.ErrSessionNoActiveTurn
+	}
+	if errors.Is(err, agentruntime.ErrActiveTurnGuidanceUnsupported) {
+		return agentservice.ErrActiveTurnGuidanceUnsupported
 	}
 	if errors.Is(err, agentruntime.ErrSessionSettingsRequireNewSession) {
 		return agentservice.ErrSessionSettingsRequireNewSession

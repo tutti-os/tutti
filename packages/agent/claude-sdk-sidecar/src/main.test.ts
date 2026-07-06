@@ -69,6 +69,51 @@ test("late delegated task notification keeps original parent turn id", async () 
   }
 });
 
+test("guidance prompt stays on the active SDK turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const prompts: string[] = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeGuidancePromptQuery(prompt, prompts)
+    );
+
+    await session.start();
+    session.exec("turn-1", "start working");
+    session.guide("prefer the focused path");
+    await waitForEvent(events, "turn_completed");
+
+    assert.deepEqual(prompts, ["start working", "prefer the focused path"]);
+    const completed = events.find((event) => event.type === "turn_completed");
+    assert.equal(completed?.payload?.turnId, "turn-1");
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_completed" && event.payload?.turnId !== "turn-1"
+      ),
+      false
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
 test("delegated child result completes background agent, not mid-run child assistant messages", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1785,6 +1830,68 @@ function fakeQueryWithInitializationModels(
     },
     close() {}
   };
+}
+
+function fakeGuidancePromptQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  prompts: string[]
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const iterator = prompt[Symbol.asyncIterator]();
+      const firstPrompt = await iterator.next();
+      const firstPromptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      prompts.push(userPromptText(firstPromptMessage));
+      yield {
+        ...firstPromptMessage,
+        uuid: firstPromptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+
+      const guidancePrompt = await iterator.next();
+      const guidancePromptMessage = guidancePrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      prompts.push(userPromptText(guidancePromptMessage));
+      yield {
+        ...guidancePromptMessage,
+        uuid: guidancePromptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield consolidatedAssistant("assistant-guided", "msg-guided", [
+        { type: "text", text: "Guided response" }
+      ]);
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function userPromptText(message: SDKUserMessage): string {
+  const content = (message as { message?: { content?: unknown } }).message
+    ?.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) =>
+      isRecord(block) && block.type === "text" && typeof block.text === "string"
+        ? block.text
+        : ""
+    )
+    .join("");
 }
 
 function fakeCompactBoundaryQuery(

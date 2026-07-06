@@ -81,6 +81,7 @@ type stubAgentSessionService struct {
 	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	scanExternalFn                  func(context.Context, agentservice.ExternalImportScanInput) (agentservice.ExternalImportScanResult, error)
+	sendInputFn                     func(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	listGitBranchesFn               func(context.Context, string, string) (agentservice.GitBranches, error)
 	listGitBranchesForPathFn        func(context.Context, string, string) (agentservice.GitBranches, error)
 	resolveGitPatchSupportForPathFn func(context.Context, string, string) (agentservice.GitPatchSupport, error)
@@ -334,7 +335,10 @@ func (stubAgentSessionService) GoalControl(context.Context, string, string, stri
 	return agentservice.GoalControlSessionResult{}, nil
 }
 
-func (stubAgentSessionService) SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error) {
+func (s stubAgentSessionService) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+	if s.sendInputFn != nil {
+		return s.sendInputFn(ctx, workspaceID, agentSessionID, input)
+	}
 	return agentservice.SendInputResult{}, nil
 }
 
@@ -675,6 +679,54 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {
 		http.MethodGet,
 		"/v1/workspaces/ws-1/agent-sessions?searchQuery=mention&limit=30",
 		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testing.T) {
+	mux := http.NewServeMux()
+	updatedAt := time.UnixMilli(1000)
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, workspaceID string, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+				if workspaceID != "ws-1" || agentSessionID != "agent-session-1" {
+					t.Fatalf("workspace/session = %q/%q", workspaceID, agentSessionID)
+				}
+				if !input.Guidance {
+					t.Fatal("input guidance = false, want true")
+				}
+				if len(input.Content) != 1 || input.Content[0].Text != "guide current turn" {
+					t.Fatalf("input content = %#v", input.Content)
+				}
+				return agentservice.SendInputResult{
+					Session: agentservice.Session{
+						ID:        agentSessionID,
+						Provider:  "codex",
+						Status:    "working",
+						Visible:   true,
+						CreatedAt: time.UnixMilli(1000),
+						UpdatedAt: &updatedAt,
+					},
+					TurnID: "turn-guidance",
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{
+			"content": []map[string]any{{
+				"type": "text",
+				"text": "guide current turn",
+			}},
+			"guidance": true,
+		},
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())

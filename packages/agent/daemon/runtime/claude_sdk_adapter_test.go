@@ -1751,6 +1751,55 @@ func TestClaudeCodeSDKAdapterApplySessionSettingsSpeedSendsSidecarAndUpdatesRunt
 	}
 }
 
+func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	conn := newBlockingClaudeSDKConnection()
+	defer conn.Close()
+	adapterSession := &claudeSDKAdapterSession{
+		conn:             conn,
+		reader:           &claudeSDKLineReader{conn: conn},
+		pendingRequests:  make(map[string]*pendingACPRequest),
+		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
+		liveState:        newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	type guidanceResult struct {
+		events []activityshared.Event
+		err    error
+	}
+	results := make(chan guidanceResult, 1)
+	go func() {
+		events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
+		results <- guidanceResult{events: events, err: err}
+	}()
+
+	request := waitForClaudeSDKSentRequest(t, conn, "guide")
+	if _, ok := request.Payload["turnId"]; ok || request.Payload["prompt"] != "guide current turn" {
+		t.Fatalf("guide payload = %#v", request.Payload)
+	}
+	conn.pushEvent(claudeSDKSidecarEvent{ID: request.ID, Type: "ok"})
+
+	var events []activityshared.Event
+	select {
+	case result := <-results:
+		if result.err != nil {
+			t.Fatalf("GuideActiveTurn: %v", result.err)
+		}
+		events = result.events
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for GuideActiveTurn")
+	}
+	messages := eventsOfType(events, activityshared.EventMessageAppended)
+	if len(messages) != 1 {
+		t.Fatalf("guidance events = %#v, want one message", events)
+	}
+	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
+		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	}
+}
+
 func TestClaudeCodeSDKAdapterApplyPermissionModeSendsSidecar(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

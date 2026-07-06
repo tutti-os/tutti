@@ -2080,6 +2080,7 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
 		Content:       TextPromptContent("real repair prompt"),
 		DisplayPrompt: "Fix the app",
+		Guidance:      true,
 		Metadata: map[string]any{
 			"clientSubmitId":             "submit-1",
 			"clientSubmittedAtUnixMs":    int64(1234),
@@ -2099,6 +2100,9 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if call.DisplayPrompt != "Fix the app" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+	if !call.Guidance {
+		t.Fatal("runtime guidance = false, want true")
 	}
 	if call.Metadata["clientSubmitId"] != "submit-1" ||
 		call.Metadata["clientSubmittedAtUnixMs"] != int64(1234) ||

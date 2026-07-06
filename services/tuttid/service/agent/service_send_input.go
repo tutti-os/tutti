@@ -62,6 +62,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 			AgentSessionID: agentSessionID,
 			Content:        content,
 			DisplayPrompt:  displayPrompt,
+			Guidance:       input.Guidance,
 			Metadata:       cloneMetadata(input.Metadata),
 		})
 	}()

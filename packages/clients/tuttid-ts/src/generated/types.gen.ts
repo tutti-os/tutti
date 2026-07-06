@@ -1432,6 +1432,10 @@ export type SendWorkspaceAgentSessionInputRequest = {
    */
   displayPrompt?: string | null;
   /**
+   * When true, send this input as guidance to the currently active turn instead of starting a new turn.
+   */
+  guidance?: boolean;
+  /**
    * Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
    */
   metadata?: {

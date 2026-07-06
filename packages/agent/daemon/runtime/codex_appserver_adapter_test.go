@@ -2086,12 +2086,54 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
 		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
 	}
+	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
+		t.Fatalf("steer message metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	}
 
 	transport.conn.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):
 		t.Fatalf("original Exec did not finish")
+	}
+}
+
+func TestCodexAppServerAdapterGuideActiveTurnUsesTurnSteer(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
+	if err != nil {
+		t.Fatalf("GuideActiveTurn: %v", err)
+	}
+	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
+	if asString(steer["expectedTurnId"]) != "turn-1" {
+		t.Fatalf("turn/steer params = %#v", steer)
+	}
+	messages := eventsOfType(events, activityshared.EventMessageAppended)
+	if len(messages) != 1 {
+		t.Fatalf("guidance events = %#v, want one message", events)
+	}
+	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
+		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after guidance")
 	}
 }
 

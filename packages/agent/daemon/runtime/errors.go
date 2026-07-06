@@ -8,8 +8,9 @@ const (
 )
 
 var (
-	ErrSessionDisconnected = errors.New("agent session is not connected")
-	ErrSessionNoActiveTurn = errors.New("agent session has no active turn")
+	ErrSessionDisconnected           = errors.New("agent session is not connected")
+	ErrSessionNoActiveTurn           = errors.New("agent session has no active turn")
+	ErrActiveTurnGuidanceUnsupported = errors.New("agent provider does not support active-turn guidance")
 )
 
 type AppError struct {

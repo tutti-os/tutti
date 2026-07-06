@@ -482,6 +482,59 @@ export class SessionRuntime {
       });
   }
 
+  guide(prompt: string, content?: unknown): void {
+    if (this.testDriver) {
+      emit({
+        type: "assistant_delta",
+        payload: {
+          turnId: this.activeTurnId,
+          content: `Echo: ${prompt}`,
+          snapshot: `Echo: ${prompt}`
+        }
+      });
+      return;
+    }
+    if (this.queryClosed) {
+      emit({
+        type: "error",
+        payload: {
+          error: "Claude SDK query is closed"
+        }
+      });
+      return;
+    }
+    void this.ensureQuery()
+      .then(() => this.applyPendingFlagSettings())
+      .then(() => {
+        const sdkContent = sdkContentFromPromptBlocks(
+          content,
+          prompt
+        ) as unknown as SDKUserMessage["message"]["content"];
+        this.promptQueue.push({
+          uuid: crypto.randomUUID(),
+          type: "user",
+          session_id: this.providerSessionId,
+          parent_tool_use_id: null,
+          message: {
+            role: "user",
+            content: sdkContent
+          }
+        } as SDKUserMessage);
+      })
+      .then(() => this.consume())
+      .catch((error) => {
+        this.logAuthRefresh("guide.ensure_query_failed", {
+          error: errorPayload(error)
+        });
+        emit({
+          type: "error",
+          payload: {
+            error: errorMessage(error)
+          }
+        });
+      });
+  }
+
   async cancel(): Promise<void> {
     if (this.queryClosed) {
       return;
@@ -2875,6 +2928,17 @@ async function handleRequest(request: RequestEnvelope): Promise<void> {
         const session = requireSession(stringValue(payload.agentSessionId));
         session.exec(
           stringValue(payload.turnId),
+          // Prefer structured content; prompt is the legacy text fallback.
+          stringValue(payload.prompt),
+          payload.content
+        );
+        emit({ id, type: "ok" });
+        return;
+      }
+      case "guide": {
+        const payload = request.payload ?? {};
+        const session = requireSession(stringValue(payload.agentSessionId));
+        session.guide(
           // Prefer structured content; prompt is the legacy text fallback.
           stringValue(payload.prompt),
           payload.content

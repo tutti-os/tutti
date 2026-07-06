@@ -1511,6 +1511,7 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
+			"guidance":   true,
 			"image":      []any{imagePath},
 			"prompt":     "continue with this",
 			"session-id": "SESSION-1",
@@ -1523,6 +1524,9 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	if output.Rows[0]["id"] != "SESSION-1" || sessions.workspaceID != "workspace-1" || sessions.sessionID != "SESSION-1" {
 		t.Fatalf("output = %#v sessions = %#v", output.Rows, sessions)
 	}
+	if !sessions.sendInput.Guidance {
+		t.Fatalf("send guidance = false, want true")
+	}
 	content := sessions.sendInput.Content
 	if len(content) != 2 {
 		t.Fatalf("send content = %#v, want text + image", content)
@@ -1533,6 +1537,29 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	decoded, err := base64.StdEncoding.DecodeString(content[1].Data)
 	if err != nil || string(decoded) != "webp-bytes" {
 		t.Fatalf("image block data decoded = %q err=%v", string(decoded), err)
+	}
+}
+
+func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
+	command := NewProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{},
+	).newSendCommand()
+
+	properties, ok := command.Capability.InputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("input schema properties = %#v", command.Capability.InputSchema["properties"])
+	}
+	guidance, ok := properties["guidance"].(map[string]any)
+	if !ok {
+		t.Fatalf("guidance schema = %#v", properties["guidance"])
+	}
+	if guidance["type"] != "boolean" {
+		t.Fatalf("guidance type = %#v, want boolean", guidance["type"])
+	}
+	description, _ := guidance["description"].(string)
+	if !strings.Contains(description, "currently active turn") {
+		t.Fatalf("guidance description = %#v", guidance["description"])
 	}
 }
 

@@ -632,10 +632,11 @@ When an existing conversation is busy, normal composer submits may be captured
 as local queued prompts so the next turn can run after the current one settles.
 Composer guidance is different: `Cmd+Enter` on macOS, or `Ctrl+Enter` on other
 platforms, sends the draft as active-turn guidance and bypasses the local queue.
-For Codex app-server sessions this reaches `RuntimeController.Exec` while an
-active provider turn is registered, so the adapter sends `turn/steer` and emits
-a user message with `steered: true`. `Shift+Enter` remains the multiline
-composer shortcut and must not submit either a normal prompt or guidance.
+The submit request sets the daemon `guidance` flag so runtime handling can
+dispatch to provider-specific active-turn guidance without opening a normal next
+turn. Codex app-server maps this to `turn/steer`; Claude SDK maps it through the
+sidecar live prompt queue. `Shift+Enter` remains the multiline composer shortcut
+and must not submit either a normal prompt or guidance.
 
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is

@@ -413,6 +413,10 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, agentservice.ErrPromptImageUnsupported):
 		return InvalidRequest("agent.prompt_image_unsupported", WithCause(err))
+	case errors.Is(err, agentservice.ErrSessionNoActiveTurn):
+		return InvalidRequest("agent.no_active_turn", WithCause(err))
+	case errors.Is(err, agentservice.ErrActiveTurnGuidanceUnsupported):
+		return InvalidRequest("agent.active_turn_guidance_unsupported", WithCause(err))
 	case errors.Is(err, agentservice.ErrSessionNotFound):
 		return WorkspaceNotFound(ReasonWorkspaceAgentSessionNotFound, WithCause(err))
 	case errors.Is(err, agentservice.ErrSessionSettingsRequireNewSession):

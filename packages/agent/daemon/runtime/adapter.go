@@ -62,6 +62,10 @@ type AsyncExecAdapter interface {
 	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
 }
 
+type ActiveTurnGuidanceAdapter interface {
+	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
+}
+
 type ResumeProbeAdapter interface {
 	CanResume(Session) bool
 }

@@ -277,6 +277,7 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
     workspaceId,
     agentSessionId: "agent-session-1",
     content: [{ type: "text", text: "hello" }],
+    guidance: true,
     metadata: {
       clientSubmitId: "submit-1",
       clientSubmittedAtUnixMs: 1234
@@ -289,6 +290,7 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
       request: {
         content: [{ type: "text", text: "hello" }],
         displayPrompt: null,
+        guidance: true,
         metadata: {
           clientSubmitId: "submit-1",
           clientSubmittedAtUnixMs: 1234

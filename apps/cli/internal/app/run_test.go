@@ -416,6 +416,38 @@ func TestRunDynamicAgentSendSplitsPositionalPromptBeforeImageFlags(t *testing.T)
 	}
 }
 
+func TestRunDynamicAgentSendSplitsPositionalPromptBeforeGuidanceFlag(t *testing.T) {
+	var invokedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"agent-context.agent.send","path":["agent","send"],"summary":"Send input","inputSchema":{"type":"object","required":["session-id","prompt"],"properties":{"session-id":{"type":"string"},"prompt":{"type":"string"},"guidance":{"type":"boolean"},"image":{"type":"array","items":{"type":"string"}}}},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/agent-context.agent.send/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "guide", "current", "turn", "--guidance"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	input := invokedBody["input"].(map[string]any)
+	if input["session-id"] != "SESSION-1" || input["prompt"] != "guide current turn" || input["guidance"] != true {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
 func TestRunDynamicAgentSendKeepsFlagLikeTokensInPositionalPrompt(t *testing.T) {
 	var invokedBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

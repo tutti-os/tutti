@@ -301,6 +301,7 @@ type RuntimeExecInput struct {
 	Content        []PromptContentBlock
 	DisplayPrompt  string
 	Metadata       map[string]any
+	Guidance       bool
 }
 
 type RuntimeExecResult struct {
@@ -433,6 +434,7 @@ type SendInput struct {
 	Content       []PromptContentBlock
 	DisplayPrompt string
 	Metadata      map[string]any
+	Guidance      bool
 }
 
 type SendInputResult struct {

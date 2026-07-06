@@ -492,6 +492,7 @@ export function createDesktopAgentActivityAdapter({
         {
           content: toTuttidPromptContentBlocks(input.content),
           displayPrompt: input.displayPrompt ?? null,
+          ...(input.guidance === true ? { guidance: true } : {}),
           ...(input.metadata ? { metadata: input.metadata } : {})
         }
       );

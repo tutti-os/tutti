@@ -102,6 +102,7 @@ type ExecInput struct {
 	Content        []PromptContentBlock
 	DisplayPrompt  string
 	Metadata       map[string]any
+	Guidance       bool
 }
 
 type CancelInput struct {

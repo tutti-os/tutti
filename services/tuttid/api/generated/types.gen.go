@@ -3161,6 +3161,9 @@ type SendWorkspaceAgentSessionInputRequest struct {
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
 
+	// Guidance When true, send this input as guidance to the currently active turn instead of starting a new turn.
+	Guidance *bool `json:"guidance,omitempty"`
+
 	// Metadata Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 }

@@ -17,7 +17,9 @@ import (
 
 var (
 	ErrInvalidArgument                  = errors.New("invalid agent session request")
+	ErrActiveTurnGuidanceUnsupported    = errors.New("agent provider does not support active-turn guidance")
 	ErrPromptImageUnsupported           = errors.New("agent prompt image input is unsupported")
+	ErrSessionNoActiveTurn              = errors.New("agent session has no active turn")
 	ErrSessionNotFound                  = errors.New("workspace agent session not found")
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")

@@ -366,6 +366,50 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 }
 
+func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	_ CommandSnapshotSink,
+) ([]activityshared.Event, error) {
+	adapterSession := a.getSession(session.AgentSessionID)
+	if adapterSession == nil {
+		return nil, ErrSessionDisconnected
+	}
+	session.ProviderSessionID = adapterSession.providerSessionID
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	events := []activityshared.Event{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
+			"adapter":  claudeSDKSidecarAdapterName,
+			"guidance": true,
+			"steered":  true,
+		}))),
+	}
+	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
+		return events, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
+	defer cancel()
+	if err := a.roundTripClaudeSDK(ctx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
+		ID:   newID(),
+		Type: "guide",
+		Payload: map[string]any{
+			"agentSessionId": session.AgentSessionID,
+			"prompt":         promptTextForClaudeSDK(content, visibleText),
+			"content":        promptContentForClaudeSDK(content, visibleText),
+		},
+	}); err != nil {
+		return events, err
+	}
+	if emit != nil {
+		emit(events)
+	}
+	return events, nil
+}
+
 func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, turnID string) ([]activityshared.Event, error) {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {

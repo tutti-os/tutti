@@ -16265,6 +16265,7 @@ describe("useAgentGUINodeController", () => {
       expect(exec).toHaveBeenCalledWith({
         workspaceId: "room-1",
         agentSessionId: "session-1",
+        guidance: true,
         ...promptContent("steer the current turn")
       });
     });
@@ -18033,7 +18034,8 @@ function installAgentActivityRuntimeForHostMocks({
       const result = await exec({
         workspaceId: input.workspaceId,
         agentSessionId: input.agentSessionId,
-        content: input.content
+        content: input.content,
+        ...(input.guidance === true ? { guidance: true } : {})
       });
       const status =
         typeof result?.sessionStatus === "string"
