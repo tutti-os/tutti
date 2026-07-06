@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -60,10 +61,11 @@ func (a *ClaudeCodeSDKAdapter) GoalControl(
 		}
 		events = a.goalMirrorEvents(session, "thread_goal_update")
 	case GoalControlClear:
+		events = a.interruptLiveTurnsForGoalClear(ctx, session, adapterSession)
 		if err := a.applyGoalMirrorAndSend(ctx, session, adapterSession, nil, appServerSlashGoal+" clear"); err != nil {
 			return nil, nil, err
 		}
-		events = a.goalMirrorEvents(session, "thread_goal_cleared")
+		events = append(events, a.goalMirrorEvents(session, "thread_goal_cleared")...)
 	case GoalControlPause, GoalControlResume:
 		return nil, nil, fmt.Errorf("goal %s is not supported for claude sessions: Claude Code has no paused goal state (stop the turn, or clear the goal)", action)
 	default:
@@ -105,7 +107,7 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	turnID string,
 ) ([]activityshared.Event, bool, error) {
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	command, _ := splitSlashCommand(visibleText)
+	command, args := splitSlashCommand(visibleText)
 	if command != appServerSlashGoal {
 		return nil, false, nil
 	}
@@ -127,10 +129,74 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		events = append(events, event)
 	}
+	if isGoalClearCommandArgs(args) {
+		events = append(events, a.interruptLiveTurnsForGoalClear(ctx, session, adapterSession)...)
+	}
 	if err := a.sendGoalCommandExec(ctx, session, adapterSession, visibleText); err != nil {
 		return events, true, err
 	}
 	return events, true, nil
+}
+
+// isGoalClearCommandArgs mirrors claudeGoalSlashPromptUpdate's reserved
+// clear keywords.
+func isGoalClearCommandArgs(args string) bool {
+	switch strings.ToLower(strings.TrimSpace(args)) {
+	case "clear", "reset":
+		return true
+	default:
+		return false
+	}
+}
+
+// interruptLiveTurnsForGoalClear stops the running turn before a /goal clear
+// is forwarded. The sidecar queues goal command execs behind the live turn,
+// and a goal turn only settles once its condition is met — a queued clear
+// would never run while the goal loop keeps working (the stall users see:
+// clear sent, goal still driving new work). The sidecar processes its pipe
+// in order, so the cancel lands before the clear exec; and an interrupted
+// goal stays active CLI-side, so the clear that follows still reaches the
+// CLI and clears it. Reuses Cancel for the sidecar interrupt, the
+// pending-approval rejection, and the settle-guarded terminal synthesis.
+func (a *ClaudeCodeSDKAdapter) interruptLiveTurnsForGoalClear(
+	ctx context.Context,
+	session Session,
+	adapterSession *claudeSDKAdapterSession,
+) []activityshared.Event {
+	var events []activityshared.Event
+	for _, turnID := range a.liveClaudeSDKTurnIDs(adapterSession) {
+		cancelEvents, err := a.Cancel(ctx, session, turnID)
+		if err != nil {
+			slog.Warn("agent session claude sdk goal clear interrupt failed",
+				"event", "agent_session.claude_sdk.goal.clear_interrupt_failed",
+				"agent_session_id", session.AgentSessionID,
+				"turn_id", turnID,
+				"error", err.Error(),
+			)
+			continue
+		}
+		events = append(events, cancelEvents...)
+	}
+	return events
+}
+
+// liveClaudeSDKTurnIDs returns the turns with a registered waiter whose
+// terminal event has not left this adapter yet — the sidecar work a goal
+// clear must interrupt.
+func (a *ClaudeCodeSDKAdapter) liveClaudeSDKTurnIDs(
+	adapterSession *claudeSDKAdapterSession,
+) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ids := make([]string, 0, len(adapterSession.turns))
+	for turnID := range adapterSession.turns {
+		if _, settled := adapterSession.settledTurns[turnID]; settled {
+			continue
+		}
+		ids = append(ids, turnID)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // sendGoalCommandExec forwards a /goal command to the sidecar as its own
@@ -152,7 +218,7 @@ func (a *ClaudeCodeSDKAdapter) sendGoalCommandExec(
 	args := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(command), appServerSlashGoal))
 	a.mu.Lock()
 	previousArm := adapterSession.goalArmTurnID
-	if strings.EqualFold(args, "clear") {
+	if isGoalClearCommandArgs(args) {
 		adapterSession.goalArmTurnID = ""
 	} else {
 		adapterSession.goalArmTurnID = turnID

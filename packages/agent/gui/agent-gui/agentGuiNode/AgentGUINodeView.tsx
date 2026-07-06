@@ -3916,7 +3916,6 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           tokensUsed={goalTokensUsed ?? undefined}
           timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
-          onEditObjective={(objective) => onGoalControl("set", objective)}
           onPauseGoal={
             goalPauseSupported ? () => onGoalControl("pause") : undefined
           }

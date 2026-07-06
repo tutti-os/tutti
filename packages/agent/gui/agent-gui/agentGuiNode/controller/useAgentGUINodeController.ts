@@ -208,6 +208,9 @@ const ACTIVITY_STREAM_STATE_RELOAD_DEBOUNCE_MS = 150;
 const AGENT_GUI_DETAIL_MESSAGES_PAGE_SIZE = 100;
 const AGENT_GUI_DETAIL_MISSING_USER_BACKFILL_PAGE_LIMIT = 3;
 const AGENT_GUI_SUBMIT_RETARGET_EARLY_MESSAGE_TOLERANCE_MS = 5_000;
+// The literal goal-clear command every adapter parses (see the daemon's
+// claudeGoalSlashPromptUpdate / ExecGoalControl); sent as a visible prompt.
+const GOAL_CLEAR_PROMPT = "/goal clear";
 
 function mergeAgentModelCatalogInvalidationEvents(
   events: AgentModelCatalogInvalidatedEvent[]
@@ -8568,9 +8571,13 @@ export function useAgentGUINodeController({
   // Goal control commands (/goal clear|paused|active) act on the running
   // thread immediately; the local prompt queue would defer them until the
   // turn ends, defeating their purpose (e.g. stopping a runaway goal).
-  // Goal banner controls act directly on the session's goal (like the stop
-  // button acts on the turn): a dedicated control API, no prompt, no queue,
-  // no transcript entry — matching the codex desktop goal bar.
+  // Clearing sends a visible "/goal clear" prompt so the transcript shows
+  // what was sent: executePrompt skips the local queue (and its resume
+  // side effect), and mid-turn the daemon steers the command as a
+  // thread-level exec instead of opening a competing turn. The remaining
+  // controls (set/pause/resume) stay on the dedicated control API — no
+  // prompt, no queue, no transcript entry — matching the codex desktop
+  // goal bar.
   const goalControl = useCallback(
     (action: AgentActivityGoalControlAction, objective?: string) => {
       if (previewMode) {
@@ -8581,6 +8588,14 @@ export function useAgentGUINodeController({
         return;
       }
       setDetailError(null);
+      if (action === "clear") {
+        executePrompt(
+          agentSessionId,
+          textPromptContent(GOAL_CLEAR_PROMPT),
+          GOAL_CLEAR_PROMPT
+        );
+        return;
+      }
       void agentActivityRuntime
         .goalControl({
           workspaceId,
@@ -8597,6 +8612,7 @@ export function useAgentGUINodeController({
     },
     [
       agentActivityRuntime,
+      executePrompt,
       isCurrentConversation,
       previewMode,
       setDetailError,

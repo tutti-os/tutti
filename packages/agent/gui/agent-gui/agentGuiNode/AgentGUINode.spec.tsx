@@ -1294,6 +1294,48 @@ describe("AgentGUINode", () => {
     expect(panel).not.toHaveTextContent("Rate limits unavailable");
   });
 
+  it("offers only clear on the goal banner — no objective editing", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      sessionChrome: {
+        auth: null,
+        approval: null,
+        recovery: null,
+        rawState: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          provider: "claude-code",
+          status: "working",
+          updatedAtUnixMs: 1,
+          runtimeContext: {
+            goal: {
+              objective: "帮我赚一个亿",
+              status: "active"
+            }
+          }
+        }
+      }
+    });
+
+    renderAgentGUINode({
+      title: "Claude Code",
+      state: {
+        provider: "claude-code",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    const banner = screen.getByTestId("agent-gui-goal-banner");
+    expect(banner).toHaveTextContent("帮我赚一个亿");
+    expect(
+      screen.getByTestId("agent-gui-goal-banner-clear")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-goal-banner-edit")
+    ).not.toBeInTheDocument();
+  });
+
   it("uses the generic Agent label as the Agent GUI window title", () => {
     const { container } = renderAgentGUINode({
       title: "Agent",
