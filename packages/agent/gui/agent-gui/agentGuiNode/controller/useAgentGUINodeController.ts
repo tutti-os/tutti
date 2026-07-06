@@ -8589,10 +8589,7 @@ export function useAgentGUINodeController({
       }
       const activeTurnId =
         activeSessionState?.turnLifecycle?.activeTurnId?.trim() ?? "";
-      const canSteerActiveTurn =
-        activeTurnId !== "" ||
-        activeSessionState?.submitAvailability?.reason === "active_turn";
-      if (!canSteerActiveTurn) {
+      if (activeTurnId === "") {
         return;
       }
       const displayPromptText =

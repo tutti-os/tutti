@@ -429,12 +429,7 @@ function sessionCanReceiveInput(session: AgentActivitySession): boolean {
   if (!submitState || submitState === "available") {
     return true;
   }
-  if (submitState !== "blocked") {
-    return false;
-  }
-  return (
-    normalizeActivityToken(session.submitAvailability?.reason) === "active_turn"
-  );
+  return false;
 }
 
 function sessionLooksBusy(session: AgentActivitySession): boolean {
@@ -444,7 +439,7 @@ function sessionLooksBusy(session: AgentActivitySession): boolean {
   const lifecycle = session.turnLifecycle;
   if (lifecycle?.phase) {
     return (
-      Boolean(lifecycle.activeTurnId) &&
+      Boolean(lifecycle.activeTurnId) ||
       isLiveTurnLifecyclePhase(lifecycle.phase)
     );
   }
