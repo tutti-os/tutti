@@ -1650,13 +1650,17 @@ describe("AgentComposer", () => {
   });
 
   it("keeps the submitted text visible when starting a brand-new conversation, until the view catches up", () => {
-    // Starting a new conversation is async (session create + activation
-    // round trip) — see startConversation in useAgentGUINodeController and
-    // AgentGUINodeView wiring hasActiveConversation from
-    // viewModel.activeConversationId. Regression coverage for Feishu bug
-    // UUl2Oc: previously the composer cleared its text synchronously on
-    // submit regardless, leaving a visible gap where the input was empty
-    // and the conversation view had not appeared yet.
+    // hasActiveConversation is derived from viewModel.activeConversationId
+    // (see AgentGUINodeView wiring). startConversation in
+    // useAgentGUINodeController now flips activeConversationId synchronously
+    // on submit (optimistic entry), so in practice this prop goes true
+    // almost immediately for a brand-new conversation. This test still pins
+    // the composer's own contract — it must not eagerly clear the draft
+    // while hasActiveConversation is false — as defensive/fallback coverage
+    // for any path where the flip is delayed. Regression coverage for
+    // Feishu bug UUl2Oc: previously the composer cleared its text
+    // synchronously on submit regardless, leaving a visible gap where the
+    // input was empty and the conversation view had not appeared yet.
     let draftContent = createDraft("start a new session");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
