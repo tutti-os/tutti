@@ -91,17 +91,18 @@ type TurnStartParamsInputElem interface{}
 // TurnStartParams is maintained manually because the raw schema currently
 // exceeds the generator's capabilities.
 type TurnStartParams struct {
-	ThreadID          string                     `json:"threadId"`
-	Input             []TurnStartParamsInputElem `json:"input"`
-	Cwd               *string                    `json:"cwd,omitempty"`
-	ApprovalPolicy    json.RawMessage            `json:"approvalPolicy,omitempty"`
-	SandboxPolicy     json.RawMessage            `json:"sandboxPolicy,omitempty"`
-	Model             *string                    `json:"model,omitempty"`
-	Effort            json.RawMessage            `json:"effort,omitempty"`
-	Summary           json.RawMessage            `json:"summary,omitempty"`
-	ApprovalsReviewer *string                    `json:"approvalsReviewer,omitempty"`
-	CollaborationMode json.RawMessage            `json:"collaborationMode,omitempty"`
-	OutputSchema      json.RawMessage            `json:"outputSchema,omitempty"`
+	ThreadID                   string                     `json:"threadId"`
+	Input                      []TurnStartParamsInputElem `json:"input"`
+	Cwd                        *string                    `json:"cwd,omitempty"`
+	ApprovalPolicy             json.RawMessage            `json:"approvalPolicy,omitempty"`
+	SandboxPolicy              json.RawMessage            `json:"sandboxPolicy,omitempty"`
+	Model                      *string                    `json:"model,omitempty"`
+	Effort                     json.RawMessage            `json:"effort,omitempty"`
+	Summary                    json.RawMessage            `json:"summary,omitempty"`
+	ApprovalsReviewer          *string                    `json:"approvalsReviewer,omitempty"`
+	CollaborationMode          json.RawMessage            `json:"collaborationMode,omitempty"`
+	OutputSchema               json.RawMessage            `json:"outputSchema,omitempty"`
+	ResponsesAPIClientMetadata map[string]string          `json:"responsesapiClientMetadata,omitempty"`
 }
 
 // ReviewStartParams is maintained manually because tutti sends the live

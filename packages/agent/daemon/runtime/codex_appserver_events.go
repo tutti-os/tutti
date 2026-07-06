@@ -1562,6 +1562,7 @@ func appServerTurnStartParams(
 	session Session,
 	threadID string,
 	content []PromptContentBlock,
+	visibleText string,
 	planModeMask map[string]any,
 	defaultModeMask map[string]any,
 	defaultModel string,
@@ -1570,6 +1571,11 @@ func appServerTurnStartParams(
 	params := map[string]any{
 		"threadId": threadID,
 		"input":    appServerUserInput(content),
+	}
+	if preview := appServerUserPromptPreview(content, visibleText); preview != "" {
+		params["responsesapiClientMetadata"] = map[string]string{
+			"user_prompt_preview": preview,
+		}
 	}
 	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel); collaborationMode != nil {
 		params["collaborationMode"] = collaborationMode
@@ -1593,6 +1599,23 @@ func appServerTurnStartParams(
 		params["approvalsReviewer"] = approvalsReviewer
 	}
 	return params
+}
+
+const appServerUserPromptPreviewMaxRunes = 120
+
+func appServerUserPromptPreview(content []PromptContentBlock, visibleText string) string {
+	text := strings.TrimSpace(visibleText)
+	if text == "" {
+		text = strings.TrimSpace(promptDisplayText(content))
+	}
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= appServerUserPromptPreviewMaxRunes {
+		return text
+	}
+	return strings.TrimSpace(string(runes[:appServerUserPromptPreviewMaxRunes-3])) + "..."
 }
 
 // appServerCollaborationMode assembles the turn/start collaborationMode
