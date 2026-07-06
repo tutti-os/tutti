@@ -171,9 +171,6 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		if !session.NoProject && session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
-			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
-		}
 		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
@@ -182,6 +179,18 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 				Message:    err.Error(),
 			})
 			continue
+		}
+		// Only mark projectPath as a candidate for ProjectPaths once its session
+		// has actually landed in the store without error. Marking it here
+		// unconditionally (before knowing whether importExternalSession
+		// succeeded) let a project whose only session failed to import (a
+		// transient store error, a write timeout, etc.) still come back in
+		// ProjectPaths — and registerExternalImportUserProjects registers
+		// whatever ProjectPaths contains, so that project would surface as a
+		// folder card with "No chats yet" and no way to tell it apart from a
+		// project that imported cleanly.
+		if !session.NoProject && session.UpdatedAtUnixMS > validProjectPaths[projectPath] {
+			validProjectPaths[projectPath] = session.UpdatedAtUnixMS
 		}
 		if imported {
 			result.ImportedSessions++
