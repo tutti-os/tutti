@@ -389,10 +389,10 @@ func normalizeComposerModelForProvider(provider string, model string) string {
 		return strings.TrimSpace(model)
 	}
 	switch strings.TrimSpace(model) {
-	case "opus", "opusplan":
-		// Retired Claude Code aliases; Opus tier is exposed as "default" in
-		// newer claude-agent-acp builds.
-		return "default"
+	case "opusplan":
+		// Retired Claude Code alias; keep it on the explicit Opus tier instead
+		// of falling back to the runtime's mutable Default choice.
+		return "opus"
 	default:
 		return strings.TrimSpace(model)
 	}
