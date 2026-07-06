@@ -140,6 +140,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		WorkspaceID:       "ws-1",
 		AgentSessionID:    "session-1",
 		Origin:            "runtime",
+		UserID:            "user-1",
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
 		Cwd:               "/workspace",
@@ -152,6 +153,9 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 	if !state.Accepted || state.LastEventUnixMS != 100 {
 		t.Fatalf("state result = %#v", state)
+	}
+	if state.Session.UserID != "user-1" {
+		t.Fatalf("state session user id = %q", state.Session.UserID)
 	}
 
 	first, err := store.ReportSessionMessages(ctx, SessionMessageReport{
@@ -202,6 +206,10 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 	if len(page.Messages) != 1 || page.LatestVersion != 2 || page.Messages[0].Payload["text"] != "hello" {
 		t.Fatalf("page = %#v, want merged message payload", page)
+	}
+	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !ok || session.UserID != "user-1" {
+		t.Fatalf("GetSession() = %#v ok=%v error=%v, want user id", session, ok, err)
 	}
 
 	pinned, ok, err := store.UpdateSessionPinned(ctx, "ws-1", "session-1", true)

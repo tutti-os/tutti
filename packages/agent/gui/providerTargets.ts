@@ -55,6 +55,43 @@ export function createDisabledPlaceholderAgentGUIProviderTarget(
   };
 }
 
+export function createSharedAgentGUIProviderTarget(input: {
+  provider: AgentGUIProvider;
+  sharedAgentId: string;
+  label: string;
+  agentTargetId?: string | null;
+  ownerLabel?: string | null;
+  iconUrl?: string | null;
+  unavailableReason?: string | null;
+  disabled?: boolean;
+  ref?: Record<string, unknown> | null;
+}): AgentGUIProviderTarget {
+  const sharedAgentId = input.sharedAgentId.trim();
+  const targetId = `shared-agent:${sharedAgentId}`;
+  return {
+    targetId,
+    ...(input.agentTargetId?.trim()
+      ? { agentTargetId: input.agentTargetId.trim() }
+      : {}),
+    provider: input.provider,
+    ref: {
+      ...(input.ref ?? {}),
+      kind: "shared-agent",
+      provider: input.provider,
+      sharedAgentId
+    },
+    label: input.label,
+    ...(input.ownerLabel?.trim()
+      ? { ownerLabel: input.ownerLabel.trim() }
+      : {}),
+    ...(input.iconUrl?.trim() ? { iconUrl: input.iconUrl.trim() } : {}),
+    ...(input.unavailableReason?.trim()
+      ? { unavailableReason: input.unavailableReason.trim() }
+      : {}),
+    ...(input.disabled === true ? { disabled: true } : {})
+  };
+}
+
 export function createLocalAgentGUIProviderTargets(
   providers: readonly AgentGUIProvider[] = agentGUIDefaultTargetProviders
 ): AgentGUIProviderTarget[] {
@@ -206,6 +243,18 @@ export function agentGUIProviderTargetRefsEqual(
 function normalizeAgentGUIProviderTarget(
   target: AgentGUIProviderTarget
 ): AgentGUIProviderTarget | null {
+  const {
+    targetId: _targetId,
+    agentTargetId: _agentTargetId,
+    provider: _provider,
+    ref: _ref,
+    label: _label,
+    description,
+    iconUrl,
+    ownerLabel,
+    unavailableReason,
+    ...rest
+  } = target;
   const targetId = target.targetId.trim();
   const agentTargetId = target.agentTargetId?.trim();
   const label = target.label.trim();
@@ -215,7 +264,7 @@ function normalizeAgentGUIProviderTarget(
     return null;
   }
   return {
-    ...target,
+    ...rest,
     targetId,
     ...(agentTargetId ? { agentTargetId } : {}),
     provider: target.provider,
@@ -225,14 +274,11 @@ function normalizeAgentGUIProviderTarget(
       provider: target.provider
     },
     label,
-    ...(target.description?.trim()
-      ? { description: target.description.trim() }
-      : {}),
-    ...(target.ownerLabel?.trim()
-      ? { ownerLabel: target.ownerLabel.trim() }
-      : {}),
-    ...(target.unavailableReason?.trim()
-      ? { unavailableReason: target.unavailableReason.trim() }
+    ...(description?.trim() ? { description: description.trim() } : {}),
+    ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
+    ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
+    ...(unavailableReason?.trim()
+      ? { unavailableReason: unavailableReason.trim() }
       : {})
   };
 }

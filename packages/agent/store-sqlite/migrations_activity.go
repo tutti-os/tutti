@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
   workspace_id TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
   origin TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
   agent_target_id TEXT,
   provider TEXT NOT NULL DEFAULT '',
   provider_session_id TEXT NOT NULL DEFAULT '',
@@ -174,6 +175,28 @@ func (s *Store) applyWorkspaceAgentActivityV5(ctx context.Context) error {
 	}
 
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV5)
+}
+
+func (s *Store) applyWorkspaceAgentActivityV6(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV6)
+	if err != nil {
+		return err
+	}
+
+	hasUserID, err := s.hasColumn(ctx, "workspace_agent_sessions", "user_id")
+	if err != nil {
+		return err
+	}
+
+	if !hasUserID {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN user_id TEXT NOT NULL DEFAULT '';`); err != nil {
+			return fmt.Errorf("migrate workspace agent activity to v6 user id: %w", err)
+		}
+	}
+	if applied {
+		return nil
+	}
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV6)
 }
 
 func (s *Store) backfillSystemAgentTargetIDs(ctx context.Context) error {

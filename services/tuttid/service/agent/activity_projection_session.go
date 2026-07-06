@@ -12,6 +12,7 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		Origin:            strings.TrimSpace(session.Origin),
+		UserID:            strings.TrimSpace(session.UserID),
 		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),

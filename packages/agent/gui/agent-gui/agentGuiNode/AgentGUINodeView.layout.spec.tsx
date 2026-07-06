@@ -246,6 +246,42 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("renders an injected conversation rail footer with neutral context", () => {
+    const activeConversation = createConversationSummary("session-1", {
+      title: "Active conversation"
+    });
+    const renderSidebarFooter = vi.fn(
+      ({
+        currentUserId,
+        activeConversation
+      }: Parameters<
+        NonNullable<AgentGUINodeViewProps["renderSidebarFooter"]>
+      >[0]) => (
+        <button type="button">
+          Footer {currentUserId} {activeConversation?.id}
+        </button>
+      )
+    );
+
+    renderAgentGUINodeView({
+      renderSidebarFooter,
+      viewModel: createViewModel({
+        currentUserId: "user-1",
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversations: [activeConversation]
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-sidebar-footer-slot")
+    ).toHaveTextContent("Footer user-1 session-1");
+    expect(renderSidebarFooter).toHaveBeenCalledWith({
+      currentUserId: "user-1",
+      activeConversation
+    });
+  });
+
   it("ignores rail pointer moves that do not come from the resize handle drag", () => {
     const onConversationRailWidthChanged = vi.fn();
 
@@ -3804,6 +3840,7 @@ interface RenderAgentGUINodeViewOptions {
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
+  renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -3819,12 +3856,14 @@ function buildAgentGUINodeViewElement({
   actions = createActions(),
   labels = createLabels(),
   onOpenConversationWindow,
+  renderSidebarFooter,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
     <AgentActivityRuntimeProvider runtime={activityRuntime}>
       <AgentGUINodeView
         viewModel={viewModel}
+        renderSidebarFooter={renderSidebarFooter}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}

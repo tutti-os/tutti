@@ -74,6 +74,7 @@ type ComposerCapabilityLister interface {
 
 type Session struct {
 	ID                 string
+	UserID             string
 	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
@@ -149,6 +150,7 @@ type PersistedSession struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	UserID            string
 	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
@@ -219,6 +221,7 @@ type SessionPinUpdater interface {
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
+	UserID             string
 	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string

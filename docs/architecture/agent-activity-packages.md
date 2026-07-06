@@ -248,6 +248,14 @@ ownership or ordering fields, but those gaps must be filled before events enter
 `agent-activity-core` or `@tutti-os/agent-gui`. Session-level notices and
 statuses should use state patches or explicit notice semantics; they should not
 be published as ordinary assistant transcript messages without a turn scope.
+Activity reports may carry a host-defined user id in the activity source before
+they reach durable session projection. Local single-user hosts should leave the
+field empty instead of deriving it from account login state; cloud
+collaboration hosts may inject real account user ids so downstream views can
+distinguish self-owned and peer-owned sessions. Reporters run on the streaming
+persistence hot path, so identity enrichment there must use host-provided local
+state; it must not call account refresh or user-info APIs that perform network
+round-trips or write refreshed auth state.
 
 ## Stream Lifecycle
 
