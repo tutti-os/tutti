@@ -37,7 +37,7 @@ activity data:
 
 Production AgentGUI must receive `agentActivityRuntime` and must not use legacy
 Host API methods as an agent data fallback. Compatibility helpers remain only
-for projection boundaries, desktop bridge code, and tests.
+for projection boundaries, non-desktop legacy hosts, and tests.
 
 ## Boundary Rule
 

@@ -116,8 +116,6 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       hostFilesApi,
       tuttidClient,
       platformApi,
-      reporterNow,
-      reporterService,
       runtimeApi,
       workspaceAgentActivityService,
       workspaceUserProjectService,
