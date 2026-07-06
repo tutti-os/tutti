@@ -2496,9 +2496,16 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 		context["usage"] = usage
 	}
 	if adapterSession != nil {
-		if backgroundAgents := claudeSDKBackgroundAgentsRuntimeContext(adapterSession.backgroundAgents); len(backgroundAgents) > 0 {
-			context["backgroundAgents"] = backgroundAgents
+		backgroundAgents := claudeSDKBackgroundAgentsRuntimeContext(adapterSession.backgroundAgents)
+		if backgroundAgents == nil {
+			// Session runtimeContext merges per-key (mergeRuntimeContextPatch):
+			// omitting the key would keep a stale persisted backgroundAgents
+			// snapshot alive forever (a "waiting for N background agents"
+			// banner that survives restarts). An explicit empty state on
+			// session start/resume clears it.
+			backgroundAgents = map[string]any{"count": 0, "items": []any{}}
 		}
+		context["backgroundAgents"] = backgroundAgents
 	}
 	if resumeCursor := claudeSDKResumeCursor(session, adapterSession); len(resumeCursor) > 0 {
 		context["resumeCursor"] = resumeCursor

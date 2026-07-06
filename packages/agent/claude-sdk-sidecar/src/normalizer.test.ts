@@ -281,6 +281,79 @@ test("toolPayload extracts async subagent launch metadata", () => {
   });
 });
 
+test("toolPayload never marks a known non-delegate tool as a subagent launch", () => {
+  // A Read/Bash result can quote a launch confirmation verbatim (reading a
+  // test fixture, dumping test logs). That must not fabricate a background
+  // agent - phantom "running" agents never complete and wedge the
+  // "waiting for N background agents" banner.
+  const payload = toolPayload(
+    "turn-1",
+    {
+      id: "toolu-read",
+      name: "Read",
+      input: { file_path: "/repo/adapter_test.go" },
+      partialInputJson: "",
+      started: true
+    },
+    "completed",
+    {
+      content:
+        'fixture: "Async agent launched successfully\nagentId: agent-1" quoted mid-file'
+    }
+  );
+
+  const metadata = payload.metadata as Record<string, unknown>;
+  assert.equal(metadata.subagentAsync, undefined);
+  assert.equal(metadata.agentId, undefined);
+});
+
+test("toolPayload ignores a launch phrase buried inside longer output", () => {
+  const payload = toolPayload(
+    "turn-1",
+    {
+      id: "toolu-agent-2",
+      name: "Agent",
+      input: { prompt: "Inspect workspace" },
+      partialInputJson: "",
+      started: true
+    },
+    "completed",
+    {
+      content:
+        "--- FAIL: TestAdapter (0.00s)\n  output: Async agent launched successfully\nagentId: agent-1"
+    }
+  );
+
+  assert.equal(
+    (payload.metadata as Record<string, unknown>).subagentAsync,
+    undefined
+  );
+});
+
+test("toolPayload keeps launch detection for tools without a known name", () => {
+  // Nested launches can stream through the parent query without a locally
+  // observed tool_use block; the anchored launch text stays authoritative.
+  const payload = toolPayload(
+    "turn-1",
+    {
+      id: "toolu-nested",
+      name: "",
+      input: {},
+      partialInputJson: "",
+      started: true
+    },
+    "completed",
+    {
+      content:
+        "Async agent launched successfully\nagentId: agent-9\noutput_file: /tmp/agent-9.output"
+    }
+  );
+
+  const metadata = payload.metadata as Record<string, unknown>;
+  assert.equal(metadata.subagentAsync, true);
+  assert.equal(metadata.agentId, "agent-9");
+});
+
 test("toolPayload ignores Claude async subagent agentId suffix", () => {
   const payload = toolPayload(
     "turn-1",

@@ -488,6 +488,22 @@ func TestClaudeCodeSDKAdapterFlattensNestedSubagentsIntoRootLane(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKRuntimeContextWritesEmptyBackgroundAgents(t *testing.T) {
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+
+	// runtimeContext merges per-key into the persisted session record; the
+	// empty state must be written explicitly or a stale "waiting for N
+	// background agents" snapshot survives restarts forever.
+	backgroundAgents, ok := claudeSDKRuntimeContext(session, adapterSession)["backgroundAgents"].(map[string]any)
+	if !ok {
+		t.Fatal("runtimeContext omitted backgroundAgents; stale persisted state would never clear")
+	}
+	if backgroundAgents["count"] != 0 {
+		t.Fatalf("backgroundAgents = %#v, want explicit empty state", backgroundAgents)
+	}
+}
+
 func TestClaudeCodeSDKAdapterSettlesRunningLanesOnTurnCancel(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
