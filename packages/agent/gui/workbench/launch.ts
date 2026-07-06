@@ -163,8 +163,10 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
 }
 
 export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  openInNewWindow?: boolean;
   provider: unknown;
   userProjectPath?: string | null;
 }) {
@@ -177,7 +179,11 @@ export function createAgentGuiWorkbenchDraftLaunchRequest(input: {
     payload: {
       draftPrompt: input.draftPrompt,
       provider,
+      ...(input.agentTargetId?.trim()
+        ? { agentTargetId: input.agentTargetId.trim() }
+        : {}),
       ...(input.autoSubmit ? { autoSubmit: true } : {}),
+      ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       ...(userProjectPath ? { userProjectPath } : {})
     },
     reason: "host" as const,
@@ -217,6 +223,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   });
   const prefillPrompt = prefillPromptFromLaunchPayload(request.payload);
   if (prefillPrompt) {
+    const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
     return {
       activation: {
         payload: prefillPrompt,
@@ -224,16 +231,18 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       },
       dockEntryId,
       instanceId: createAgentGuiWorkbenchInstanceId({
-        agentTargetId: agentTargetIdFromLaunchPayload(request.payload),
+        agentTargetId: openInNewWindow
+          ? null
+          : agentTargetIdFromLaunchPayload(request.payload),
         provider
       }),
-      openInNewWindow: false,
+      openInNewWindow,
       provider,
       reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
         dockEntryId,
         launchKind: "prefill"
       }),
-      reuseExistingSessionNode: true,
+      reuseExistingSessionNode: !openInNewWindow,
       targetAgentSessionId: null
     };
   }
