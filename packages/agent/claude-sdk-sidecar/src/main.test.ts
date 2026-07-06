@@ -321,6 +321,61 @@ test("context usage prefers result modelUsage window over SDK maxTokens", async 
   }
 });
 
+test("stream usage requests context window snapshot before result", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "sonnet",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeStreamUsageContextQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-1", "hi");
+    await waitForMatchingEvent(
+      events,
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    await waitForEvent(events, "turn_completed");
+
+    const usage = events.find(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    const contextWindow = isRecord(usage?.payload?.contextWindow)
+      ? usage.payload.contextWindow
+      : undefined;
+    assert.equal(contextWindow?.usedTokens, 36_664);
+    assert.equal(contextWindow?.totalTokens, 1_000_000);
+    const contextIndex = events.findIndex(
+      (event) =>
+        event.type === "usage_updated" && isRecord(event.payload?.contextWindow)
+    );
+    const completionIndex = events.findIndex(
+      (event) => event.type === "turn_completed"
+    );
+    assert(contextIndex >= 0 && contextIndex < completionIndex);
+  } finally {
+    restoreSink();
+  }
+});
+
 test("late compact boundary still attaches to slash compact turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
@@ -1334,6 +1389,56 @@ function fakeContextUsageQuery(
     async getContextUsage() {
       return {
         totalTokens: 36_092,
+        maxTokens: 200_000,
+        rawMaxTokens: 1_000_000
+      };
+    },
+    close() {}
+  };
+}
+
+function fakeStreamUsageContextQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & {
+  getContextUsage: () => Promise<unknown>;
+  close: () => void;
+} {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "stream_event",
+        uuid: "stream-message-delta",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1",
+        event: {
+          type: "message_delta",
+          usage: {
+            input_tokens: 2,
+            output_tokens: 18,
+            cache_read_input_tokens: 18_000,
+            cache_creation_input_tokens: 600
+          }
+        }
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    async getContextUsage() {
+      return {
+        totalTokens: 36_664,
         maxTokens: 200_000,
         rawMaxTokens: 1_000_000
       };
@@ -2670,5 +2775,24 @@ async function waitForEvent(
   }
   assert.fail(
     `timed out waiting for ${type}; events=${JSON.stringify(events)}`
+  );
+}
+
+async function waitForMatchingEvent(
+  events: Array<{ type: string; payload?: Record<string, unknown> }>,
+  predicate: (event: {
+    type: string;
+    payload?: Record<string, unknown>;
+  }) => boolean
+): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (events.some(predicate)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(
+    `timed out waiting for matching event; events=${JSON.stringify(events)}`
   );
 }

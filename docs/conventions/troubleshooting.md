@@ -67,22 +67,31 @@ Use this shape for new entries:
   map keyed by model id, for example
   `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
   only parses array-shaped `modelUsage`, the context-window total is missing and
-  daemon normalization falls back to 200k.
+  daemon normalization falls back to 200k. Streaming `message_delta` usage can
+  also arrive before the result `modelUsage`; in that phase, the live SDK
+  context snapshot may not reach the daemon before the user inspects usage, so
+  daemon normalization still needs a model-option context-window fallback.
 - Fix:
   Parse `modelUsage` recursively as both arrays and maps before using fallback
   context-window values. Track the model associated with a cached context
   window, and only reuse the previous total for the same model or when the model
   is unknown. Treat `runtimeContext.usage` as incremental telemetry in AgentGUI
   reload races: a full session-control snapshot that omits usage should not
-  clear the previous usage display. Do not hard-code alias-to-model mappings in
-  Tutti.
+  clear the previous usage display. Trigger one best-effort context-usage
+  snapshot when stream usage first appears for a turn, and read
+  `rawMaxTokens` before falling back to `maxTokens`. In the daemon, use explicit
+  context-window fallbacks for canonical Claude Code model options such as
+  `sonnet` only when the payload has no total and there is no model-specific
+  `modelUsage` value. Do not hard-code alias-to-model-id mappings in Tutti.
 - Validation:
   Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
   `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
-  usage updates where the last payload lacks `totalTokens`. Add AgentGUI
-  coverage for session-control reloads that omit `runtimeContext.usage`. Then
-  run the Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and
-  typechecks.
+  usage updates where the last payload lacks `totalTokens`. Add daemon coverage
+  for stream `sonnet` usage with no total resolving to the 1M context window.
+  Add sidecar coverage for stream usage that emits a context snapshot with
+  `rawMaxTokens` before `turn_completed`, and AgentGUI coverage for
+  session-control reloads that omit `runtimeContext.usage`. Then run the Claude
+  SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
 - References:
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)

@@ -674,6 +674,13 @@ Inline state patches are fast-path updates; message and session updates may
 require a fetch so the controller snapshot remains authoritative. UI code
 should debug both the event payload and the reconcile fetch before treating a
 missing transcript row as a rendering-only bug.
+Active-conversation control state, including `runtimeContext.usage`, is a
+separate session-state read layered over the transcript stream. Both
+`state_patch` and `message_update` activity events must be treated as signals
+to refresh that state for the active AgentGuiNode, because provider usage can
+advance while assistant text or tool calls are streaming and before a terminal
+session-state patch arrives. Debounce these refreshes, but do not filter out
+message updates just because the transcript projection already consumed them.
 
 When a session status bug mentions "still processing", "queued", or a disabled
 composer after a turn finishes, inspect the full runtime tuple:
@@ -926,6 +933,10 @@ User-visible rules:
 - Active session settings are session state. Opening, restoring, or editing an
   active session must not promote that session's model, permission mode, or
   reasoning setting into user defaults.
+- Claude Code model aliases must stay explicit end to end. Treat `default` as
+  the runtime's mutable default choice, not as an alias for Opus or any other
+  tier; if an Opus selection is submitted, daemon validation, session settings,
+  runtime prepare, and runtime start should all carry `opus`.
 - Workbench node `composerOverrides` are UI-local home/new composer draft state,
   not an authoritative source for desktop preferences.
 - Draft clearing happens only after the submitted content still matches the

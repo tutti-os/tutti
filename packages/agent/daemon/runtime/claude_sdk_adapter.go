@@ -31,6 +31,7 @@ const (
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKDefaultContextWindow  = int64(200000)
+	claudeSDKLargeContextWindow    = int64(1000000)
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
 )
 
@@ -1602,8 +1603,8 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 	}
 	if contextWindow := payloadMap(payload, "contextWindow"); len(contextWindow) > 0 {
 		if _, ok := firstACPInt64(contextWindow, "totalTokens", "total_tokens", "size", "limit", "max"); !ok {
-			total := int64(0)
-			if claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
+			total := claudeSDKFallbackContextWindowTokens(contextModel)
+			if total <= 0 && claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
 				total = previous.contextWindowTokens
 			}
 			if total <= 0 {
@@ -1632,6 +1633,9 @@ func claudeSDKUsageUpdate(payload map[string]any, previous acpUsageState, contex
 	if total <= 0 {
 		total = claudeSDKContextWindowTokens(usage, contextModel)
 	}
+	if total <= 0 {
+		total = claudeSDKFallbackContextWindowTokens(contextModel)
+	}
 	if total <= 0 && claudeSDKCanReusePreviousContextWindow(previous, contextModel) {
 		total = previous.contextWindowTokens
 	}
@@ -1654,6 +1658,19 @@ func claudeSDKCanReusePreviousContextWindow(previous acpUsageState, contextModel
 	contextModel = claudeSDKCanonicalModel(contextModel)
 	previousModel := claudeSDKCanonicalModel(previous.contextModel)
 	return previousModel == "" || contextModel == "" || previousModel == contextModel
+}
+
+func claudeSDKFallbackContextWindowTokens(contextModel string) int64 {
+	model := strings.ToLower(strings.TrimSpace(claudeSDKCanonicalModel(contextModel)))
+	switch model {
+	case "sonnet", "sonnet[1m]", "opus", "opusplan", "opus[1m]":
+		return claudeSDKLargeContextWindow
+	default:
+		if strings.Contains(model, "sonnet-5") {
+			return claudeSDKLargeContextWindow
+		}
+		return 0
+	}
 }
 
 func claudeSDKUsageTokens(usage map[string]any) int64 {

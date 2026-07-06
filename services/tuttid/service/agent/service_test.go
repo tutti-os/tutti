@@ -1187,6 +1187,45 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	}
 }
 
+func TestServiceCreatePreservesClaudeOpusAlias(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", time.Now().UTC(), []ComposerConfigOptionValue{
+		{Value: "default", Label: "Default"},
+		{Value: "opus", Label: "Opus"},
+		{Value: "haiku", Label: "Haiku"},
+	})
+	var prepareInput agentsidecarservice.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input: &prepareInput,
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "44444444-4444-4444-8444-444444444444",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		Provider:       "claude-code",
+		Model:          stringRef("opus"),
+		Cwd:            stringRef("/repo"),
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if runtime.startCalls[0].Model != "opus" {
+		t.Fatalf("runtime model = %q, want opus", runtime.startCalls[0].Model)
+	}
+	if prepareInput.Model != "opus" {
+		t.Fatalf("prepare model = %q, want opus", prepareInput.Model)
+	}
+	if session.Settings == nil || session.Settings.Model != "opus" {
+		t.Fatalf("session settings = %#v, want opus model", session.Settings)
+	}
+}
+
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()

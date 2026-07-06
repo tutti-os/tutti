@@ -264,6 +264,7 @@ export class SessionRuntime {
   private compactionInProgress = false;
   private compactCommandTurnId = "";
   private readonly completedCompactTurnIds = new Set<string>();
+  private readonly contextUsageSnapshotTurnIds = new Set<string>();
   private pendingOrphanResults = 0;
   private consuming = false;
   private initialized = false;
@@ -1166,6 +1167,7 @@ export class SessionRuntime {
               usage
             }
           });
+          this.requestContextUsageSnapshot(this.activeTurnId);
         }
         return;
       }
@@ -1866,6 +1868,7 @@ export class SessionRuntime {
       const usedTokens = numberValue(contextUsage.totalTokens);
       const contextWindowTokens =
         contextWindowTokensFromModelUsage(options.modelUsage) ||
+        numberValue(contextUsage.rawMaxTokens) ||
         numberValue(contextUsage.maxTokens);
       if (usedTokens <= 0 && contextWindowTokens <= 0) {
         return;
@@ -1882,6 +1885,14 @@ export class SessionRuntime {
     } catch {
       // Context usage is best-effort; result usage remains available.
     }
+  }
+
+  private requestContextUsageSnapshot(turnId: string): void {
+    if (!turnId || this.contextUsageSnapshotTurnIds.has(turnId)) {
+      return;
+    }
+    this.contextUsageSnapshotTurnIds.add(turnId);
+    void this.emitContextUsageSnapshot(turnId);
   }
 
   private appendAssistantSegmentDelta(

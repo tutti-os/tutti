@@ -112,8 +112,14 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
 		Model: "opus",
 	})
-	if claude.Model != "default" {
-		t.Fatalf("claude legacy opus model = %q, want default", claude.Model)
+	if claude.Model != "opus" {
+		t.Fatalf("claude opus model = %q, want opus", claude.Model)
+	}
+	claudeLegacy := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
+		Model: "opusplan",
+	})
+	if claudeLegacy.Model != "opus" {
+		t.Fatalf("claude legacy opusplan model = %q, want opus", claudeLegacy.Model)
 	}
 }
 

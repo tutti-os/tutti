@@ -6797,6 +6797,76 @@ describe("useAgentGUINodeController", () => {
     expect(getState).toHaveBeenCalledTimes(2);
   });
 
+  it("reloads session state after streamed message updates", async () => {
+    vi.useFakeTimers();
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    const subscribeEvents = vi.fn((_payload, listener) => {
+      activityListener = listener;
+      return vi.fn();
+    });
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId)
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents,
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.retryActivation();
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(activityListener).toBeDefined();
+    expect(getState).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      activityListener?.({
+        eventType: "message_update",
+        data: {
+          agentSessionId: "session-1",
+          messageId: "message-1",
+          seq: 20,
+          turnId: "turn-1",
+          role: "assistant",
+          kind: "message",
+          status: "completed",
+          payload: { text: "Done" },
+          occurredAtUnixMs: 20,
+          completedAtUnixMs: 20
+        }
+      });
+      vi.advanceTimersByTime(149);
+    });
+
+    expect(getState).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+
+    expect(getState).toHaveBeenCalledTimes(2);
+  });
+
   it("does not reload session list or timeline for streamed state patches", async () => {
     vi.useFakeTimers();
     let activityListener:

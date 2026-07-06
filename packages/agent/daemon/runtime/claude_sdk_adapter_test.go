@@ -1754,6 +1754,42 @@ func TestClaudeCodeSDKAdapterMapsUsageUpdatedIntoRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterUsesSonnetContextWindowForStreamUsage(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapterSession.applyConfigOption("model", "sonnet")
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-1", claudeSDKSidecarEvent{
+		Type: "usage_updated",
+		Payload: map[string]any{
+			"turnId": "turn-1",
+			"usage": map[string]any{
+				"input_tokens":                2,
+				"output_tokens":               145,
+				"cache_read_input_tokens":     18_622,
+				"cache_creation_input_tokens": 17_688,
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("usage_updated terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionUpdated {
+		t.Fatalf("usage events = %#v, want session.updated", events)
+	}
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+	if got, ok := acpInt64Value(contextWindow["usedTokens"]); !ok || got != 36_457 {
+		t.Fatalf("usedTokens = %#v, want 36457", contextWindow["usedTokens"])
+	}
+	if got, ok := acpInt64Value(contextWindow["totalTokens"]); !ok || got != claudeSDKLargeContextWindow {
+		t.Fatalf("totalTokens = %#v, want large context window", contextWindow["totalTokens"])
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

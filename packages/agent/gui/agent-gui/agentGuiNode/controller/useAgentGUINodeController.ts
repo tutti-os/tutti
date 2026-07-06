@@ -6929,10 +6929,7 @@ export function useAgentGUINodeController({
         ) {
           continue;
         }
-        if (
-          event.eventType === "message_update" ||
-          event.eventType === "available_commands_update"
-        ) {
+        if (event.eventType === "available_commands_update") {
           continue;
         }
         scheduleActivityStreamStateReload(activeConversationId, {
