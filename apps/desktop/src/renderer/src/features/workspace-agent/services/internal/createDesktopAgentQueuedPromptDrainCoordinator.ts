@@ -428,44 +428,49 @@ function sessionCanReceiveInput(session: AgentActivitySession): boolean {
   if (!submitState || submitState === "available") {
     return true;
   }
-  if (submitState !== "blocked") {
-    return false;
-  }
-  return (
-    normalizeActivityToken(session.submitAvailability?.reason) === "active_turn"
-  );
+  return false;
 }
 
 function sessionLooksBusy(session: AgentActivitySession): boolean {
-  const status = normalizeActivityToken(session.status);
-  const turnPhase = normalizeActivityToken(session.turnLifecycle?.phase);
-  const currentPhase = normalizeActivityToken(session.currentPhase);
-  const hasActiveTurnWithoutSettledPhase =
-    Boolean(session.turnLifecycle?.activeTurnId) &&
-    !(
-      turnPhase === "idle" ||
-      turnPhase === "completed" ||
-      turnPhase === "canceled" ||
-      turnPhase === "failed" ||
-      turnPhase === "settled"
+  // The turn lifecycle is the source of truth (ADR 0008): a present
+  // lifecycle decides entirely; the status/currentPhase token lists apply
+  // only to records without a lifecycle (non-migrated providers).
+  const lifecycle = session.turnLifecycle;
+  if (lifecycle?.phase) {
+    return (
+      Boolean(lifecycle.activeTurnId) ||
+      isLiveTurnLifecyclePhase(lifecycle.phase)
     );
+  }
+  const status = normalizeActivityToken(session.status);
+  const currentPhase = normalizeActivityToken(session.currentPhase);
   return (
     status === "queued" ||
     status === "working" ||
     status === "running" ||
     status === "waiting" ||
-    turnPhase === "queued" ||
-    turnPhase === "submitted" ||
-    turnPhase === "running" ||
-    turnPhase === "working" ||
-    turnPhase === "waiting" ||
     currentPhase === "queued" ||
     currentPhase === "submitted" ||
     currentPhase === "running" ||
     currentPhase === "working" ||
-    currentPhase === "waiting" ||
-    hasActiveTurnWithoutSettledPhase
+    currentPhase === "waiting"
   );
+}
+
+function isLiveTurnLifecyclePhase(phase: unknown): boolean {
+  switch (normalizeActivityToken(phase)) {
+    case "submitted":
+    case "running":
+    case "waiting_approval":
+    case "waiting_input":
+    case "working":
+    case "streaming":
+    case "waiting":
+    case "awaiting_approval":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function sessionActivityVersion(

@@ -689,6 +689,11 @@ Daemon terminal turn reports must settle the tuple atomically: clear
 Message Center and AgentGUI should keep AgentActivityRuntime as the source of
 truth instead of guessing that a completed turn with stale active-turn fields is
 safe to treat as finished.
+When a runtime snapshot regresses after a terminal turn, first inspect
+`agent.activity.reconcile.trace` for the exact source that upserted the older
+session state. Reconcile fixes should target that owner and ordering path; do
+not add broad UI-side stale-active-turn exceptions that hide an upstream state
+or reconciliation bug.
 
 When the visible symptom is a sticky error badge on a rail row, dock preview, or
 message-center trigger, also inspect the latest loaded turn messages. A
@@ -970,20 +975,18 @@ active conversation's draft, detail error, or submit spinner. Drain readiness
 must follow activity projection and retry-block timestamps instead of raw
 `controlState` fields such as
 `pendingInteractive`, because those fields are not guaranteed to be cleared by
-every activity `state_patch`. Likewise, stale `submitAvailability` values must
-not block a drain when the only blocked reason is `active_turn` and activity
-status plus turn lifecycle already show the session is idle. Other blocked
-reasons such as auth, quota, provider setup, or permission gates must still
-block queued prompt sending. An old `turnLifecycle.activeTurnId` is not busy by
-itself when `turnLifecycle.phase` has already settled to idle, completed,
-canceled, or failed. When a drain attempt hits an active-turn conflict, the
-retry block must be recorded from the ready activity version observed before
-calling `sendInput`, using the same activity-version source that the next drain
-gate compares. Do not read a mutable activity snapshot after the awaited send
-fails: the failure may arrive with a newer settled/available activity update,
-and blocking that newer version would strand the queued prompt until another
-unrelated activity event. The retry block still prevents immediately
-re-claiming against the exact same pre-send ready state.
+every activity `state_patch`. Queued-prompt drainers must not locally decide
+that an `active_turn` block or a lingering `turnLifecycle.activeTurnId` is
+stale; they should wait until the shared activity projection reports
+`submitAvailability.state = "available"` and no active turn remains. When a
+drain attempt hits an active-turn conflict, the retry block must be recorded
+from the ready activity version observed before calling `sendInput`, using the
+same activity-version source that the next drain gate compares. Do not read a
+mutable activity snapshot after the awaited send fails: the failure may arrive
+with a newer settled/available activity update, and blocking that newer version
+would strand the queued prompt until another unrelated activity event. The
+retry block still prevents immediately re-claiming against the exact same
+pre-send ready state.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
