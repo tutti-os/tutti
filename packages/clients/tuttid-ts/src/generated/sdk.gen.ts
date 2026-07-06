@@ -121,6 +121,9 @@ import type {
   GetAccountLoginStatusData,
   GetAccountLoginStatusErrors,
   GetAccountLoginStatusResponses,
+  GetAccountProductSummaryData,
+  GetAccountProductSummaryErrors,
+  GetAccountProductSummaryResponses,
   GetAccountUserInfoData,
   GetAccountUserInfoErrors,
   GetAccountUserInfoResponses,
@@ -509,6 +512,24 @@ export const getAccountUserInfo = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/user_info",
+    ...options
+  });
+
+/**
+ * Get current account membership and credits summary
+ *
+ * Returns desktop-safe account product state. tuttid reads the local account session and calls supported Tutti web APIs with the session cookie; session credentials are never returned to the renderer.
+ */
+export const getAccountProductSummary = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAccountProductSummaryData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetAccountProductSummaryResponses,
+    GetAccountProductSummaryErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/product_summary",
     ...options
   });
 

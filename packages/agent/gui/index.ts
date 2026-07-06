@@ -15,6 +15,7 @@ export {
 } from "./shared/agentCustomMentionKinds";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
+export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
 export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,

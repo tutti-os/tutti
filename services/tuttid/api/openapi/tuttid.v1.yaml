@@ -132,6 +132,26 @@ paths:
           $ref: "#/components/responses/MethodNotAllowedError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/product_summary:
+    get:
+      operationId: getAccountProductSummary
+      tags:
+        - account
+      summary: Get current account membership and credits summary
+      description: Returns desktop-safe account product state. tuttid reads the local account session and calls supported Tutti web APIs with the session cookie; session credentials are never returned to the renderer.
+      responses:
+        "200":
+          description: Current account product summary, if signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountProductSummaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/account/logout:
     post:
       operationId: logoutAccount
@@ -3638,6 +3658,118 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountUserInfo"
           nullable: true
+    AccountMembershipSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - tier_key
+        - display_name
+      properties:
+        tier_key:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+          minLength: 1
+        billing_period:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        access_status:
+          type: string
+          nullable: true
+        current_period_end:
+          type: string
+          nullable: true
+        cancel_at_period_end:
+          type: boolean
+          nullable: true
+    AccountCreditsSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - available_credits
+      properties:
+        available_credits:
+          type: integer
+          format: int64
+          nullable: true
+        expiring_credits_within_24h:
+          type: integer
+          format: int64
+          nullable: true
+        next_expire_at:
+          type: string
+          nullable: true
+        refreshed_at:
+          type: string
+          nullable: true
+    AccountProductSummaryLinks:
+      type: object
+      additionalProperties: false
+      required:
+        - plan_url
+        - usage_url
+        - settings_url
+      properties:
+        plan_url:
+          type: string
+          minLength: 1
+        usage_url:
+          type: string
+          minLength: 1
+        settings_url:
+          type: string
+          minLength: 1
+    AccountProductSummaryPartialError:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - code
+      properties:
+        scope:
+          type: string
+          enum:
+            - membership
+            - credits
+            - links
+            - unknown
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          nullable: true
+    AccountProductSummaryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+        - membership
+        - credits
+        - links
+      properties:
+        user:
+          allOf:
+            - $ref: "#/components/schemas/AccountUserInfo"
+          nullable: true
+        membership:
+          allOf:
+            - $ref: "#/components/schemas/AccountMembershipSummary"
+          nullable: true
+        credits:
+          allOf:
+            - $ref: "#/components/schemas/AccountCreditsSummary"
+          nullable: true
+        partial_error:
+          allOf:
+            - $ref: "#/components/schemas/AccountProductSummaryPartialError"
+          nullable: true
+        links:
+          $ref: "#/components/schemas/AccountProductSummaryLinks"
     AccountLoginStartResponse:
       type: object
       additionalProperties: false

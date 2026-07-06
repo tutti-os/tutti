@@ -4,6 +4,7 @@ import type { IAccountService } from "../accountService.interface";
 import { createAccountStore } from "./accountStore.ts";
 
 const loginStatusPollMs = 1000;
+const productSummaryRefreshTtlMs = 15_000;
 
 type ActiveLoginAttempt = {
   attemptID: string;
@@ -16,6 +17,7 @@ export interface AccountServiceDependencies {
   tuttidClient: Pick<
     TuttidClient,
     | "getAccountLoginStatus"
+    | "getAccountProductSummary"
     | "getAccountUserInfo"
     | "logoutAccount"
     | "startAccountLogin"
@@ -30,6 +32,9 @@ export class AccountService implements IAccountService {
   private activeLoginAttempt: ActiveLoginAttempt | null = null;
   private loginPoll: Promise<void> | null = null;
   private loginGeneration = 0;
+  private productSummaryRefresh: Promise<void> | null = null;
+  private productSummaryGeneration = 0;
+  private productSummaryRefreshedAt = 0;
 
   constructor(dependencies: AccountServiceDependencies) {
     this.dependencies = dependencies;
@@ -45,6 +50,49 @@ export class AccountService implements IAccountService {
       this.store.error = readAccountError(error);
     } finally {
       this.store.loading = false;
+    }
+  }
+
+  async refreshProductSummary(options?: { force?: boolean }): Promise<void> {
+    if (this.productSummaryRefresh) {
+      return this.productSummaryRefresh;
+    }
+    if (
+      !options?.force &&
+      Date.now() - this.productSummaryRefreshedAt < productSummaryRefreshTtlMs
+    ) {
+      return;
+    }
+    const generation = this.productSummaryGeneration;
+    const refresh = this.doRefreshProductSummary(generation).finally(() => {
+      if (this.productSummaryRefresh === refresh) {
+        this.productSummaryRefresh = null;
+      }
+    });
+    this.productSummaryRefresh = refresh;
+    return refresh;
+  }
+
+  private async doRefreshProductSummary(generation: number): Promise<void> {
+    this.store.productSummaryLoading = true;
+    this.store.productSummaryError = null;
+    try {
+      const summary =
+        await this.dependencies.tuttidClient.getAccountProductSummary();
+      if (this.productSummaryGeneration !== generation) {
+        return;
+      }
+      this.store.productSummary = summary;
+      this.productSummaryRefreshedAt = Date.now();
+    } catch (error) {
+      if (this.productSummaryGeneration !== generation) {
+        return;
+      }
+      this.store.productSummaryError = readAccountError(error);
+    } finally {
+      if (this.productSummaryGeneration === generation) {
+        this.store.productSummaryLoading = false;
+      }
     }
   }
 
@@ -76,6 +124,12 @@ export class AccountService implements IAccountService {
     try {
       await this.dependencies.tuttidClient.logoutAccount();
       this.store.user = null;
+      this.productSummaryGeneration += 1;
+      this.productSummaryRefresh = null;
+      this.store.productSummary = null;
+      this.store.productSummaryError = null;
+      this.store.productSummaryLoading = false;
+      this.productSummaryRefreshedAt = 0;
       this.store.loginStatus = null;
     } catch (error) {
       this.store.error = readAccountError(error);
@@ -142,6 +196,13 @@ export class AccountService implements IAccountService {
         if (status.status === "completed") {
           this.activeLoginAttempt = null;
           await this.refreshUserInfo();
+          this.productSummaryGeneration += 1;
+          this.productSummaryRefresh = null;
+          this.store.productSummary = null;
+          this.store.productSummaryError = null;
+          this.store.productSummaryLoading = false;
+          this.productSummaryRefreshedAt = 0;
+          await this.refreshProductSummary({ force: true });
           return;
         }
         if (status.status === "failed" || status.status === "expired") {

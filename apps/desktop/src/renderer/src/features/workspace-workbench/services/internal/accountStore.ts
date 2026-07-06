@@ -6,6 +6,9 @@ export function createAccountStore(): AccountStoreState {
     error: null,
     loading: false,
     loginStatus: null,
+    productSummary: null,
+    productSummaryError: null,
+    productSummaryLoading: false,
     signingIn: false,
     signingOut: false,
     user: null

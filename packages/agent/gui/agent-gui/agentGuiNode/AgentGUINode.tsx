@@ -49,6 +49,7 @@ import {
   type AgentMentionReferenceTargetResolver,
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
+import type { AgentGUIAccountMenuState } from "./accountMenuState";
 import {
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIDockConversationTitle,
@@ -189,6 +190,7 @@ export interface AgentGUINodeProps {
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
   onAgentProviderLogin?: (provider: AgentProvider) => void;
+  accountMenuState?: AgentGUIAccountMenuState | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
   comingSoonProviders?: readonly AgentGUIProvider[];
@@ -568,6 +570,7 @@ function areAgentGUINodePropsEqual(
     previous.onHandoffConversation === next.onHandoffConversation &&
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onAgentProviderLogin === next.onAgentProviderLogin &&
+    previous.accountMenuState === next.accountMenuState &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.comingSoonProviders === next.comingSoonProviders &&
@@ -626,6 +629,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   capabilityMenuState,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
+  accountMenuState = null,
   providerTargets,
   providerTargetsLoading = false,
   comingSoonProviders,
@@ -1084,6 +1088,24 @@ export const AgentGUINode = memo(function AgentGUINode({
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
+      accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
+      accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
+      accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
+      accountMenuCreditsBalance: t(
+        "agentHost.agentGui.accountMenuCreditsBalance"
+      ),
+      accountMenuAccountCenter: t(
+        "agentHost.agentGui.accountMenuAccountCenter"
+      ),
+      accountMenuSettings: t("agentHost.agentGui.accountMenuSettings"),
+      accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
+      accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
+      accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
+      accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
+      accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
+      accountMenuDataUnavailable: t(
+        "agentHost.agentGui.accountMenuDataUnavailable"
+      ),
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
@@ -1696,6 +1718,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             onAgentProviderLogin={
               onAgentProviderLogin ? handleAgentProviderLogin : undefined
             }
+            accountMenuState={accountMenuState}
             conversationRailCollapsed={isRenderedConversationRailCollapsed}
             conversationRailWidthPx={clampAgentGUIConversationRailWidthPx(
               state.conversationRailWidthPx,

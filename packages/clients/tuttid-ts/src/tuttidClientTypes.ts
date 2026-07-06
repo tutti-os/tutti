@@ -2,6 +2,7 @@ import type {
   AddIssueManagerContextRefsRequest,
   AccountLoginStartResponse,
   AccountLoginStatusResponse,
+  AccountProductSummaryResponse,
   AccountUserInfo,
   AgentProviderComposerOptionsResponse,
   AgentProviderProbeResponse,
@@ -141,6 +142,7 @@ export interface TuttidClient {
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;
+  getAccountProductSummary(): Promise<AccountProductSummaryResponse>;
   logoutAccount(): Promise<void>;
   listCliCapabilities(
     workspaceID?: string,

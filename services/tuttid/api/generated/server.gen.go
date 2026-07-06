@@ -28,6 +28,9 @@ type ServerInterface interface {
 	// Sign out current desktop account
 	// (POST /v1/account/logout)
 	LogoutAccount(w http.ResponseWriter, r *http.Request)
+	// Get current account membership and credits summary
+	// (GET /v1/account/product_summary)
+	GetAccountProductSummary(w http.ResponseWriter, r *http.Request)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
@@ -502,6 +505,26 @@ func (siw *ServerInterfaceWrapper) LogoutAccount(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LogoutAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountProductSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountProductSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountProductSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6054,6 +6077,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/login/start", wrapper.StartAccountLogin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/login/status", wrapper.GetAccountLoginStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/logout", wrapper.LogoutAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/product_summary", wrapper.GetAccountProductSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
@@ -6414,6 +6438,73 @@ type LogoutAccount503JSONResponse struct {
 }
 
 func (response LogoutAccount503JSONResponse) VisitLogoutAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountProductSummaryRequestObject struct {
+}
+
+type GetAccountProductSummaryResponseObject interface {
+	VisitGetAccountProductSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetAccountProductSummary200JSONResponse AccountProductSummaryResponse
+
+func (response GetAccountProductSummary200JSONResponse) VisitGetAccountProductSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountProductSummary401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAccountProductSummary401JSONResponse) VisitGetAccountProductSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountProductSummary405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAccountProductSummary405JSONResponse) VisitGetAccountProductSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountProductSummary503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAccountProductSummary503JSONResponse) VisitGetAccountProductSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -21339,6 +21430,9 @@ type StrictServerInterface interface {
 	// Sign out current desktop account
 	// (POST /v1/account/logout)
 	LogoutAccount(ctx context.Context, request LogoutAccountRequestObject) (LogoutAccountResponseObject, error)
+	// Get current account membership and credits summary
+	// (GET /v1/account/product_summary)
+	GetAccountProductSummary(ctx context.Context, request GetAccountProductSummaryRequestObject) (GetAccountProductSummaryResponseObject, error)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
@@ -21830,6 +21924,30 @@ func (sh *strictHandler) LogoutAccount(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogoutAccountResponseObject); ok {
 		if err := validResponse.VisitLogoutAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountProductSummary operation middleware
+func (sh *strictHandler) GetAccountProductSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetAccountProductSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountProductSummary(ctx, request.(GetAccountProductSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountProductSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountProductSummaryResponseObject); ok {
+		if err := validResponse.VisitGetAccountProductSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

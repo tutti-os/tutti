@@ -17,8 +17,13 @@ import { proxy } from "valtio/vanilla";
 import {
   ChevronRight,
   ChevronsDown,
+  Coins,
+  Crown,
   ExternalLink,
   Info,
+  LogIn,
+  LogOut,
+  Settings,
   Wrench
 } from "lucide-react";
 import {
@@ -27,6 +32,7 @@ import {
   PopoverTrigger
 } from "../../app/renderer/components/ui/popover";
 import { AgentUsageMeter } from "./AgentUsageMeter";
+import { AccountMembershipBadge } from "./AccountMembershipBadge";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import {
   createDisabledPlaceholderAgentGUIProviderTarget,
@@ -113,6 +119,7 @@ import type {
 import { formatAgentGUIConversationPlainTitle } from "./model/agentGuiProviderIdentity";
 import { CanvasNodeTrashLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { AgentSessionChrome } from "./AgentSessionChrome";
+import type { AgentGUIAccountMenuState } from "./accountMenuState";
 import {
   AgentGoalBanner,
   isGoalBannerVisible,
@@ -362,6 +369,18 @@ export interface AgentGUIViewLabels {
   emptyProviderForProvider?: (provider: string) => string;
   conversations: string;
   newConversation: string;
+  accountMenuTitle: string;
+  accountMenuMember: string;
+  accountMenuUpgrade: string;
+  accountMenuCreditsBalance: string;
+  accountMenuAccountCenter: string;
+  accountMenuSettings: string;
+  accountMenuFree: string;
+  accountMenuSignIn: string;
+  accountMenuSignOut: string;
+  accountMenuLoading: string;
+  accountMenuUnavailable: string;
+  accountMenuDataUnavailable: string;
   agentConfig: string;
   agentEnvSetup: string;
   noConversations: string;
@@ -566,6 +585,7 @@ interface AgentGUINodeViewProps {
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   onAgentConfigMenuOpen?: () => void;
+  accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
@@ -1004,6 +1024,7 @@ export function AgentGUINodeView({
   railConfigProvider,
   railSlashStatusLimits,
   onAgentConfigMenuOpen,
+  accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
   actions,
@@ -1610,6 +1631,15 @@ export function AgentGUINodeView({
             storeState={conversationRailStoreState}
             userProjects={viewModel.userProjects}
             workspaceId={viewModel.workspaceId}
+            footer={
+              accountMenuState?.user ? (
+                <AgentGUIAccountRailMenu
+                  accountMenuState={accountMenuState}
+                  labels={labels}
+                  previewMode={previewMode}
+                />
+              ) : null
+            }
           />
         </aside>
         <div
@@ -3922,6 +3952,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
 
 interface AgentGUIConversationRailPaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
+  footer?: React.ReactNode;
   workspaceId: string;
   userProjects: AgentGUINodeViewModel["userProjects"];
   activeConversationId: string | null;
@@ -4070,6 +4101,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
 
 interface AgentGUIConversationRailStorePaneProps {
   conversations: AgentGUINodeViewModel["conversations"];
+  footer?: React.ReactNode;
   store: AgentGUIConversationRailStore;
   storeState: AgentGUIConversationRailStoreSnapshot;
   userProjects: AgentGUINodeViewModel["userProjects"];
@@ -4079,6 +4111,7 @@ interface AgentGUIConversationRailStorePaneProps {
 const AgentGUIConversationRailStorePane = memo(
   function AgentGUIConversationRailStorePane({
     conversations,
+    footer,
     store,
     storeState: _storeState,
     userProjects,
@@ -4090,6 +4123,7 @@ const AgentGUIConversationRailStorePane = memo(
       <AgentGUIConversationRailPane
         {...state}
         conversations={conversations}
+        footer={footer}
         userProjects={userProjects}
         workspaceId={workspaceId}
       />
@@ -4677,6 +4711,14 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       );
     });
   }, [railProviderTargets]);
+  const visibleProviderTiles = useMemo(() => {
+    if (!providerTiles.some((target) => target.provider === "tutti-agent")) {
+      return providerTiles;
+    }
+    return providerTiles.filter(
+      (target) => target.provider !== "nexight" || target.disabled !== true
+    );
+  }, [providerTiles]);
   const selectedProviderTargetIsPlaceholder =
     selectedProviderTarget?.disabled === true;
   const allTileSelected =
@@ -4710,99 +4752,308 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   );
 
   return (
-    <div
-      className={styles.providerRail}
-      role="tablist"
-      aria-label={labels.providerSwitchLabel}
-      aria-busy={providerTargetsLoading}
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-label={labels.conversationFilterAll}
-        aria-selected={allTileSelected}
-        className={styles.providerRailTile}
-        data-selected={allTileSelected ? "true" : "false"}
-        disabled={previewMode}
-        onClick={selectAllProviders}
+    <div className={styles.providerRail}>
+      <div
+        className="flex min-h-0 w-full flex-col items-center"
+        role="tablist"
+        aria-label={labels.providerSwitchLabel}
+        aria-busy={providerTargetsLoading}
       >
-        <AgentGUIUnifiedProviderIcon />
-        <span className={styles.providerRailTileLabel}>
-          {labels.conversationFilterAll}
-        </span>
-      </button>
-      <span aria-hidden="true" className={styles.providerRailSeparator} />
-      {providerTargetsLoading
-        ? [0, 1, 2].map((index) => (
+        <button
+          type="button"
+          role="tab"
+          aria-label={labels.conversationFilterAll}
+          aria-selected={allTileSelected}
+          className={styles.providerRailTile}
+          data-selected={allTileSelected ? "true" : "false"}
+          disabled={previewMode}
+          onClick={selectAllProviders}
+        >
+          <AgentGUIUnifiedProviderIcon />
+          <span className={styles.providerRailTileLabel}>
+            {labels.conversationFilterAll}
+          </span>
+        </button>
+        <span aria-hidden="true" className={styles.providerRailSeparator} />
+        {providerTargetsLoading
+          ? [0, 1, 2].map((index) => (
+              <button
+                key={`provider-target-loading-${index}`}
+                type="button"
+                role="tab"
+                aria-selected="false"
+                className={styles.providerRailTile}
+                data-loading="true"
+                data-selected="false"
+                disabled
+              >
+                <span
+                  aria-hidden="true"
+                  className={styles.providerRailAvatar}
+                />
+              </button>
+            ))
+          : null}
+        {visibleProviderTiles.map((target) => {
+          const providerSelected =
+            target.disabled === true
+              ? selectedProviderTarget?.provider === target.provider &&
+                selectedProviderTarget?.targetId === target.targetId
+              : agentGUIProviderTargetMatchesConversationFilter(
+                  target,
+                  conversationFilter
+                );
+          const label = agentGUIProviderRailLabel(
+            target.provider,
+            target.label,
+            labels
+          );
+          const tile = (
             <button
-              key={`provider-target-loading-${index}`}
+              key={`${target.provider}:${target.targetId}`}
               type="button"
               role="tab"
-              aria-selected="false"
+              aria-label={label}
+              aria-selected={providerSelected}
               className={styles.providerRailTile}
-              data-loading="true"
-              data-selected="false"
-              disabled
+              data-disabled={target.disabled === true ? "true" : undefined}
+              data-provider-tile="true"
+              data-selected={providerSelected ? "true" : "false"}
+              disabled={previewMode}
+              onClick={() => selectAgentTargetTile(target)}
             >
-              <span aria-hidden="true" className={styles.providerRailAvatar} />
+              <span className={styles.providerRailAvatar}>
+                <AgentGUIProviderIconVisual
+                  ariaHidden
+                  imageClassName={styles.providerRailAvatarImage}
+                  icon={agentGUIProviderRailIconPresentation(
+                    target.provider,
+                    target.iconUrl
+                  )}
+                />
+              </span>
             </button>
-          ))
-        : null}
-      {providerTiles.map((target) => {
-        const providerSelected =
-          target.disabled === true
-            ? selectedProviderTarget?.provider === target.provider &&
-              selectedProviderTarget?.targetId === target.targetId
-            : agentGUIProviderTargetMatchesConversationFilter(
-                target,
-                conversationFilter
-              );
-        const label = agentGUIProviderRailLabel(
-          target.provider,
-          target.label,
-          labels
-        );
-        const tile = (
-          <button
-            key={`${target.provider}:${target.targetId}`}
-            type="button"
-            role="tab"
-            aria-label={label}
-            aria-selected={providerSelected}
-            className={styles.providerRailTile}
-            data-disabled={target.disabled === true ? "true" : undefined}
-            data-provider-tile="true"
-            data-selected={providerSelected ? "true" : "false"}
-            disabled={previewMode}
-            onClick={() => selectAgentTargetTile(target)}
-          >
-            <span className={styles.providerRailAvatar}>
-              <AgentGUIProviderIconVisual
-                ariaHidden
-                imageClassName={styles.providerRailAvatarImage}
-                icon={agentGUIProviderRailIconPresentation(
-                  target.provider,
-                  target.iconUrl
-                )}
-              />
-            </span>
-          </button>
-        );
-        if (previewMode) {
-          return tile;
-        }
-        return (
-          <Tooltip key={`${target.provider}:${target.targetId}:tooltip`}>
-            <TooltipTrigger asChild>{tile}</TooltipTrigger>
-            <TooltipContent side="right" sideOffset={-4}>
-              {label}
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
+          );
+          if (previewMode) {
+            return tile;
+          }
+          return (
+            <Tooltip key={`${target.provider}:${target.targetId}:tooltip`}>
+              <TooltipTrigger asChild>{tile}</TooltipTrigger>
+              <TooltipContent side="right" sideOffset={-4}>
+                {label}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
     </div>
   );
 });
+
+interface AgentGUIAccountRailMenuProps {
+  accountMenuState: AgentGUIAccountMenuState;
+  labels: AgentGUIViewLabels;
+  previewMode: boolean;
+}
+
+const AgentGUIAccountRailMenu = memo(function AgentGUIAccountRailMenu({
+  accountMenuState,
+  labels,
+  previewMode
+}: AgentGUIAccountRailMenuProps): React.JSX.Element {
+  "use memo";
+  const userLabel = agentGUIAccountUserLabel(accountMenuState, labels);
+  const initials = agentGUIAccountInitials(userLabel);
+  const membershipLabel =
+    accountMenuState.membershipLabel.trim() || labels.accountMenuFree;
+  const creditsLabel =
+    accountMenuState.loading && !accountMenuState.creditsLabel
+      ? labels.accountMenuLoading
+      : (accountMenuState.creditsLabel ?? labels.accountMenuUnavailable);
+  const errorLabel =
+    accountMenuState.error ||
+    (accountMenuState.partialError ? labels.accountMenuDataUnavailable : null);
+  const openExternal = useCallback(
+    (url: string) => {
+      accountMenuState.onOpenExternal(url);
+    },
+    [accountMenuState]
+  );
+  return (
+    <Popover onOpenChange={accountMenuState.onOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={userLabel}
+          className="nodrag mx-2 mt-2 flex min-h-12 w-[calc(100%-16px)] min-w-0 items-center gap-2 rounded-[8px] px-2 text-left text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:opacity-50 [-webkit-app-region:no-drag]"
+          data-account-menu-trigger="true"
+          disabled={previewMode}
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[var(--background-fronted)] text-[13px] font-semibold">
+            {accountMenuState.user?.avatar ? (
+              <img
+                alt=""
+                className="h-full w-full object-cover"
+                src={accountMenuState.user.avatar}
+              />
+            ) : (
+              <span aria-hidden="true">{initials}</span>
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold leading-4">
+              {userLabel}
+            </span>
+            <AccountMembershipBadge
+              className="mt-0.5"
+              label={membershipLabel}
+            />
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="end"
+        sideOffset={8}
+        className="w-[232px] max-w-[calc(100vw-32px)] p-1 text-xs"
+        data-testid="agent-gui-account-menu"
+      >
+        <div className="flex min-w-0 flex-col">
+          <div className="flex min-w-0 items-center gap-2 px-2 py-2">
+            <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[8px] bg-[var(--background-fronted)] text-[13px] font-semibold text-[var(--text-primary)]">
+              {accountMenuState.user?.avatar ? (
+                <img
+                  alt=""
+                  className="h-full w-full object-cover"
+                  src={accountMenuState.user.avatar}
+                />
+              ) : (
+                initials
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                {userLabel}
+              </span>
+              <AccountMembershipBadge
+                className="mt-1"
+                label={membershipLabel}
+              />
+            </span>
+          </div>
+          <span aria-hidden="true" className="mx-2 h-px bg-[var(--border-1)]" />
+          {accountMenuState.user ? (
+            <>
+              <button
+                type="button"
+                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                onClick={() => openExternal(accountMenuState.links.planUrl)}
+              >
+                <Crown aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {labels.accountMenuMember}
+                </span>
+                <span className="shrink-0 rounded-[6px] bg-[color-mix(in_srgb,var(--tutti-purple)_24%,transparent)] px-2 py-0.5 text-[12px] font-semibold text-[var(--tutti-purple)]">
+                  {labels.accountMenuUpgrade}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                onClick={() => openExternal(accountMenuState.links.usageUrl)}
+              >
+                <Coins aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {labels.accountMenuCreditsBalance}
+                </span>
+                <span className="truncate text-[var(--text-secondary)]">
+                  {creditsLabel}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                onClick={() => openExternal(accountMenuState.links.settingsUrl)}
+              >
+                <Settings aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {labels.accountMenuAccountCenter}
+                </span>
+                <ExternalLink aria-hidden="true" size={14} strokeWidth={1.8} />
+              </button>
+              {accountMenuState.onSettings ? (
+                <button
+                  type="button"
+                  className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                  onClick={accountMenuState.onSettings}
+                >
+                  <Settings aria-hidden="true" size={15} strokeWidth={1.8} />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {labels.accountMenuSettings}
+                  </span>
+                </button>
+              ) : null}
+              {accountMenuState.onLogout ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="mx-2 my-1 h-px bg-[var(--border-1)]"
+                  />
+                  <button
+                    type="button"
+                    className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+                    onClick={accountMenuState.onLogout}
+                  >
+                    <LogOut aria-hidden="true" size={15} strokeWidth={1.8} />
+                    <span className="truncate">
+                      {labels.accountMenuSignOut}
+                    </span>
+                  </button>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              className="nodrag flex h-8 items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] [-webkit-app-region:no-drag]"
+              onClick={accountMenuState.onLogin}
+            >
+              <LogIn aria-hidden="true" size={15} strokeWidth={1.8} />
+              <span className="truncate">{labels.accountMenuSignIn}</span>
+            </button>
+          )}
+          {errorLabel ? (
+            <span className="px-2 py-1 text-[11px] leading-4 text-[var(--text-danger)]">
+              {errorLabel}
+            </span>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+});
+
+function agentGUIAccountUserLabel(
+  accountMenuState: AgentGUIAccountMenuState,
+  labels: Pick<AgentGUIViewLabels, "accountMenuTitle">
+): string {
+  const user = accountMenuState.user;
+  return (
+    user?.name?.trim() ||
+    user?.email?.trim() ||
+    user?.userId?.trim() ||
+    labels.accountMenuTitle
+  );
+}
+
+function agentGUIAccountInitials(label: string): string {
+  const normalized = label.trim();
+  if (!normalized) {
+    return "T";
+  }
+  return normalized.slice(0, 2).toUpperCase();
+}
 
 interface AgentGUIConversationRailInput {
   conversationFilter: AgentGUINodeViewModel["conversationFilter"];
@@ -5120,6 +5371,7 @@ function useAgentGUIConversationRail({
 const AgentGUIConversationRailPane = memo(
   function AgentGUIConversationRailPane({
     conversations,
+    footer,
     workspaceId,
     userProjects,
     activeConversationId,
@@ -5563,6 +5815,7 @@ const AgentGUIConversationRailPane = memo(
             )}
           </div>
         ) : null}
+        {footer ? <div className="shrink-0 pb-2">{footer}</div> : null}
         <ConfirmationDialog
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}

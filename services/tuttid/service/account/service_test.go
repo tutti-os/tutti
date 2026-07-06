@@ -120,6 +120,97 @@ func TestLoginStatusCompletedTriggersCallbackOnce(t *testing.T) {
 	}
 }
 
+func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
+	var commerceUserInfoCookie string
+	var creditsOverviewCookie string
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/user/v1/user_info":
+			if got := r.Header.Get("Cookie"); got != "session_id=session-1" {
+				t.Fatalf("account user info Cookie = %q, want session cookie", got)
+			}
+			_, _ = w.Write([]byte(`{"code":0,"data":{"userId":"user-1","name":"Jane","email":"jane@example.com","avatar":"https://example.com/avatar.png"}}`))
+		case "/v1/user-info":
+			commerceUserInfoCookie = r.Header.Get("Cookie")
+			_, _ = w.Write([]byte(`{
+				"membership": {
+					"tier_key": "basic",
+					"billing_period": "month",
+					"status": "active",
+					"access_status": "active",
+					"current_period_end": "2026-08-01T00:00:00Z",
+					"cancel_at_period_end": false
+				},
+				"available_credits": 1200
+			}`))
+		case "/v1/credits/overview":
+			creditsOverviewCookie = r.Header.Get("Cookie")
+			_, _ = w.Write([]byte(`{
+				"available_credits": 2450,
+				"expiring_credits_within_24h": 100,
+				"next_expire_at": "2026-07-07T00:00:00Z"
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+
+	authPath := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"session_id":"session-1","cookie":"session_id=session-1","user_id":"user-1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(authPath)
+	service.AccountBaseURL = account.URL
+	service.CommerceBaseURL = account.URL
+	service.WebBaseURL = "https://staging.tutti.sh"
+
+	summary, err := service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.User == nil || summary.User.UserID != "user-1" || summary.User.Name != "Jane" {
+		t.Fatalf("summary user = %#v", summary.User)
+	}
+	if summary.Membership == nil || summary.Membership.TierKey != "basic" || summary.Membership.DisplayName != "Lite" {
+		t.Fatalf("summary membership = %#v", summary.Membership)
+	}
+	if summary.Credits == nil || summary.Credits.AvailableCredits == nil || *summary.Credits.AvailableCredits != 2450 {
+		t.Fatalf("summary credits = %#v", summary.Credits)
+	}
+	if commerceUserInfoCookie != "session_id=session-1" || creditsOverviewCookie != "session_id=session-1" {
+		t.Fatalf("commerce cookies = (%q, %q), want session cookie", commerceUserInfoCookie, creditsOverviewCookie)
+	}
+	if summary.Links.PlanURL != "https://staging.tutti.sh/profile/plan" ||
+		summary.Links.UsageURL != "https://staging.tutti.sh/profile/usage" ||
+		summary.Links.SettingsURL != "https://staging.tutti.sh/profile/settings" {
+		t.Fatalf("summary links = %#v", summary.Links)
+	}
+	if summary.PartialError != nil {
+		t.Fatalf("partial error = %#v, want nil", summary.PartialError)
+	}
+}
+
+func TestGetProductSummaryReturnsLinksWhenSignedOut(t *testing.T) {
+	service := NewService(filepath.Join(t.TempDir(), "auth.json"))
+	service.WebBaseURL = "https://tutti.sh"
+
+	summary, err := service.GetProductSummary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.User != nil || summary.Membership != nil || summary.Credits != nil {
+		t.Fatalf("summary = %#v, want signed-out summary", summary)
+	}
+	if summary.Links.PlanURL != "https://tutti.sh/profile/plan" {
+		t.Fatalf("plan url = %q", summary.Links.PlanURL)
+	}
+}
+
 func TestLogoutTriggersCallbackAfterAuthCleared(t *testing.T) {
 	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

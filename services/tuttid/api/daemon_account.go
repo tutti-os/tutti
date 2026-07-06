@@ -11,6 +11,7 @@ import (
 )
 
 type AccountService interface {
+	GetProductSummary(context.Context) (accountservice.ProductSummary, error)
 	GetUserInfo(context.Context) (*authbridge.UserInfo, error)
 	LoginStatus(string) (authbridge.LoginStatus, error)
 	Logout(context.Context) error
@@ -81,6 +82,31 @@ func (api DaemonAPI) GetAccountUserInfo(ctx context.Context, _ tuttigenerated.Ge
 	}, nil
 }
 
+func (api DaemonAPI) GetAccountProductSummary(ctx context.Context, _ tuttigenerated.GetAccountProductSummaryRequestObject) (tuttigenerated.GetAccountProductSummaryResponseObject, error) {
+	if api.AccountService == nil {
+		return tuttigenerated.GetAccountProductSummary503JSONResponse{ServiceUnavailableErrorJSONResponse: accountServiceUnavailableError()}, nil
+	}
+	summary, err := api.AccountService.GetProductSummary(ctx)
+	if err != nil {
+		return tuttigenerated.GetAccountProductSummary503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: serviceUnavailableError(
+				apierrors.ServiceUnavailable("account_product_summary_failed", apierrors.WithCause(err)),
+			),
+		}, nil
+	}
+	return tuttigenerated.GetAccountProductSummary200JSONResponse{
+		User:         generatedAccountUser(summary.User),
+		Membership:   generatedAccountMembership(summary.Membership),
+		Credits:      generatedAccountCredits(summary.Credits),
+		PartialError: generatedAccountProductPartialError(summary.PartialError),
+		Links: tuttigenerated.AccountProductSummaryLinks{
+			PlanUrl:     summary.Links.PlanURL,
+			UsageUrl:    summary.Links.UsageURL,
+			SettingsUrl: summary.Links.SettingsURL,
+		},
+	}, nil
+}
+
 func (api DaemonAPI) LogoutAccount(ctx context.Context, _ tuttigenerated.LogoutAccountRequestObject) (tuttigenerated.LogoutAccountResponseObject, error) {
 	if api.AccountService == nil {
 		return tuttigenerated.LogoutAccount503JSONResponse{ServiceUnavailableErrorJSONResponse: accountServiceUnavailableError()}, nil
@@ -110,5 +136,56 @@ func generatedAccountUser(user *authbridge.UserInfo) *tuttigenerated.AccountUser
 		Email:  stringPointer(user.Email),
 		Name:   stringPointer(user.Name),
 		UserId: user.UserID,
+	}
+}
+
+func generatedAccountMembership(membership *accountservice.MembershipSummary) *tuttigenerated.AccountMembershipSummary {
+	if membership == nil || membership.TierKey == "" {
+		return nil
+	}
+	return &tuttigenerated.AccountMembershipSummary{
+		TierKey:           membership.TierKey,
+		DisplayName:       membership.DisplayName,
+		BillingPeriod:     stringPointer(membership.BillingPeriod),
+		Status:            stringPointer(membership.Status),
+		AccessStatus:      stringPointer(membership.AccessStatus),
+		CurrentPeriodEnd:  stringPointer(membership.CurrentPeriodEnd),
+		CancelAtPeriodEnd: membership.CancelAtPeriodEnd,
+	}
+}
+
+func generatedAccountCredits(credits *accountservice.CreditsSummary) *tuttigenerated.AccountCreditsSummary {
+	if credits == nil {
+		return nil
+	}
+	return &tuttigenerated.AccountCreditsSummary{
+		AvailableCredits:         credits.AvailableCredits,
+		ExpiringCreditsWithin24h: credits.ExpiringCreditsWithin24h,
+		NextExpireAt:             stringPointer(credits.NextExpireAt),
+		RefreshedAt:              stringPointer(credits.RefreshedAt),
+	}
+}
+
+func generatedAccountProductPartialError(partialError *accountservice.ProductSummaryPartialError) *tuttigenerated.AccountProductSummaryPartialError {
+	if partialError == nil || partialError.Code == "" {
+		return nil
+	}
+	return &tuttigenerated.AccountProductSummaryPartialError{
+		Scope:   generatedAccountProductPartialErrorScope(partialError.Scope),
+		Code:    partialError.Code,
+		Message: stringPointer(partialError.Message),
+	}
+}
+
+func generatedAccountProductPartialErrorScope(scope string) tuttigenerated.AccountProductSummaryPartialErrorScope {
+	switch scope {
+	case "membership":
+		return tuttigenerated.AccountProductSummaryPartialErrorScopeMembership
+	case "credits":
+		return tuttigenerated.AccountProductSummaryPartialErrorScopeCredits
+	case "links":
+		return tuttigenerated.AccountProductSummaryPartialErrorScopeLinks
+	default:
+		return tuttigenerated.AccountProductSummaryPartialErrorScopeUnknown
 	}
 }

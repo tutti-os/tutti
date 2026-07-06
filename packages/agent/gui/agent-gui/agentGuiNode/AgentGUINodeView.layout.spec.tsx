@@ -302,6 +302,123 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("renders the account menu and refreshes it on open", async () => {
+    const onOpenChange = vi.fn();
+    const onSettings = vi.fn();
+    const openedUrls: string[] = [];
+
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "Pro",
+        creditsLabel: "2,450",
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange,
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onSettings,
+        onOpenExternal(url) {
+          openedUrls.push(url);
+        }
+      }
+    });
+
+    const trigger = screen.getByRole("button", { name: "Jane" });
+    expect(trigger).toHaveTextContent("Jane");
+    expect(trigger).toHaveTextContent("Pro");
+    expect(trigger).not.toHaveTextContent("jane@example.com");
+    expect(
+      trigger.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    fireEvent.click(trigger);
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Jane");
+    expect(menu).toHaveTextContent("Pro");
+    expect(
+      menu.querySelector("[data-account-membership-badge='true']")
+    ).not.toBeNull();
+    expect(menu).toHaveTextContent("Upgrade");
+    expect(menu).toHaveTextContent("2,450");
+    expect(menu).toHaveTextContent("Settings");
+
+    fireEvent.click(within(menu).getByText("Member"));
+    expect(openedUrls).toEqual(["https://tutti.sh/profile/plan"]);
+    fireEvent.click(within(menu).getByText("Settings"));
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the account rail menu when no signed-in user is available", () => {
+    const { container } = renderAgentGUINodeView({
+      accountMenuState: {
+        user: null,
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    expect(
+      container.querySelector("[data-account-menu-trigger='true']")
+    ).toBeNull();
+    expect(screen.queryByText("Tutti Agent")).toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("shows a localized account data warning for partial summary failures", async () => {
+    renderAgentGUINodeView({
+      accountMenuState: {
+        user: {
+          userId: "user-1",
+          name: "Jane",
+          email: "jane@example.com",
+          avatar: null
+        },
+        membershipLabel: "",
+        creditsLabel: null,
+        loading: false,
+        error: null,
+        partialError: true,
+        links: {
+          planUrl: "https://tutti.sh/profile/plan",
+          usageUrl: "https://tutti.sh/profile/usage",
+          settingsUrl: "https://tutti.sh/profile/settings"
+        },
+        onOpenChange: vi.fn(),
+        onLogin: vi.fn(),
+        onLogout: vi.fn(),
+        onOpenExternal: vi.fn()
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Jane" }));
+
+    const menu = await screen.findByTestId("agent-gui-account-menu");
+    expect(menu).toHaveTextContent("Some account data is unavailable");
+  });
+
   it("sets the controlled rail width on the grid layout", () => {
     const onConversationRailWidthChanged = vi.fn();
 
@@ -574,6 +691,26 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
+  it("hides the legacy disabled Tutti rail target when Tutti Agent is available", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [
+          createLocalAgentGUIProviderTarget("tutti-agent"),
+          {
+            ...createLocalAgentGUIProviderTarget("nexight"),
+            disabled: true
+          }
+        ]
+      }
+    });
+
+    expect(screen.getAllByRole("tab", { name: "Tutti Agent" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("tab", { name: "Tutti" })
+    ).not.toBeInTheDocument();
   });
 
   it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
@@ -3792,6 +3929,7 @@ interface RenderAgentGUINodeViewOptions {
   onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
+  accountMenuState?: AgentGUINodeViewProps["accountMenuState"];
   labels?: AgentGUIViewLabels;
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
@@ -3807,6 +3945,7 @@ function buildAgentGUINodeViewElement({
   onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
+  accountMenuState = null,
   labels = createLabels(),
   onOpenConversationWindow,
   slashStatusLimits = []
@@ -3819,6 +3958,7 @@ function buildAgentGUINodeViewElement({
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
         slashStatusLimits={slashStatusLimits}
+        accountMenuState={accountMenuState}
         actions={actions}
         workspaceUserProjectI18n={workspaceUserProjectI18n}
         conversationRailCollapsed={conversationRailCollapsed}
@@ -4353,6 +4493,18 @@ function createLabels(): AgentGUIViewLabels {
     empty: "empty",
     conversations: "conversations",
     newConversation: "newConversation",
+    accountMenuTitle: "Tutti Agent",
+    accountMenuMember: "Member",
+    accountMenuUpgrade: "Upgrade",
+    accountMenuCreditsBalance: "Credits",
+    accountMenuAccountCenter: "Account center",
+    accountMenuSettings: "Settings",
+    accountMenuFree: "Free",
+    accountMenuSignIn: "Sign in",
+    accountMenuSignOut: "Sign out",
+    accountMenuLoading: "Loading",
+    accountMenuUnavailable: "--",
+    accountMenuDataUnavailable: "Some account data is unavailable",
     agentConfig: "agentConfig",
     agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",

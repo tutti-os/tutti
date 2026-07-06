@@ -40,6 +40,30 @@ func (e AccountLoginStatusValue) Valid() bool {
 	}
 }
 
+// Defines values for AccountProductSummaryPartialErrorScope.
+const (
+	AccountProductSummaryPartialErrorScopeCredits    AccountProductSummaryPartialErrorScope = "credits"
+	AccountProductSummaryPartialErrorScopeLinks      AccountProductSummaryPartialErrorScope = "links"
+	AccountProductSummaryPartialErrorScopeMembership AccountProductSummaryPartialErrorScope = "membership"
+	AccountProductSummaryPartialErrorScopeUnknown    AccountProductSummaryPartialErrorScope = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the AccountProductSummaryPartialErrorScope enum.
+func (e AccountProductSummaryPartialErrorScope) Valid() bool {
+	switch e {
+	case AccountProductSummaryPartialErrorScopeCredits:
+		return true
+	case AccountProductSummaryPartialErrorScopeLinks:
+		return true
+	case AccountProductSummaryPartialErrorScopeMembership:
+		return true
+	case AccountProductSummaryPartialErrorScopeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentPromptContentBlockMimeType.
 const (
 	AgentPromptContentBlockMimeTypeImagejpeg AgentPromptContentBlockMimeType = "image/jpeg"
@@ -300,25 +324,25 @@ func (e AgentProviderCapabilityOptionKind) Valid() bool {
 
 // Defines values for AgentProviderCapabilityOptionStatus.
 const (
-	AuthRequired  AgentProviderCapabilityOptionStatus = "authRequired"
-	Available     AgentProviderCapabilityOptionStatus = "available"
-	Disabled      AgentProviderCapabilityOptionStatus = "disabled"
-	SetupRequired AgentProviderCapabilityOptionStatus = "setupRequired"
-	Unsupported   AgentProviderCapabilityOptionStatus = "unsupported"
+	AgentProviderCapabilityOptionStatusAuthRequired  AgentProviderCapabilityOptionStatus = "authRequired"
+	AgentProviderCapabilityOptionStatusAvailable     AgentProviderCapabilityOptionStatus = "available"
+	AgentProviderCapabilityOptionStatusDisabled      AgentProviderCapabilityOptionStatus = "disabled"
+	AgentProviderCapabilityOptionStatusSetupRequired AgentProviderCapabilityOptionStatus = "setupRequired"
+	AgentProviderCapabilityOptionStatusUnsupported   AgentProviderCapabilityOptionStatus = "unsupported"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderCapabilityOptionStatus enum.
 func (e AgentProviderCapabilityOptionStatus) Valid() bool {
 	switch e {
-	case AuthRequired:
+	case AgentProviderCapabilityOptionStatusAuthRequired:
 		return true
-	case Available:
+	case AgentProviderCapabilityOptionStatusAvailable:
 		return true
-	case Disabled:
+	case AgentProviderCapabilityOptionStatusDisabled:
 		return true
-	case SetupRequired:
+	case AgentProviderCapabilityOptionStatusSetupRequired:
 		return true
-	case Unsupported:
+	case AgentProviderCapabilityOptionStatusUnsupported:
 		return true
 	default:
 		return false
@@ -1753,6 +1777,14 @@ func (e ListWorkspaceAgentSessionMessagesParamsOrder) Valid() bool {
 	}
 }
 
+// AccountCreditsSummary defines model for AccountCreditsSummary.
+type AccountCreditsSummary struct {
+	AvailableCredits         *int64  `json:"available_credits"`
+	ExpiringCreditsWithin24h *int64  `json:"expiring_credits_within_24h,omitempty"`
+	NextExpireAt             *string `json:"next_expire_at,omitempty"`
+	RefreshedAt              *string `json:"refreshed_at,omitempty"`
+}
+
 // AccountLoginStartResponse defines model for AccountLoginStartResponse.
 type AccountLoginStartResponse struct {
 	AttemptId string `json:"attempt_id"`
@@ -1771,6 +1803,43 @@ type AccountLoginStatusResponse struct {
 
 // AccountLoginStatusValue defines model for AccountLoginStatusValue.
 type AccountLoginStatusValue string
+
+// AccountMembershipSummary defines model for AccountMembershipSummary.
+type AccountMembershipSummary struct {
+	AccessStatus      *string `json:"access_status,omitempty"`
+	BillingPeriod     *string `json:"billing_period,omitempty"`
+	CancelAtPeriodEnd *bool   `json:"cancel_at_period_end,omitempty"`
+	CurrentPeriodEnd  *string `json:"current_period_end,omitempty"`
+	DisplayName       string  `json:"display_name"`
+	Status            *string `json:"status,omitempty"`
+	TierKey           string  `json:"tier_key"`
+}
+
+// AccountProductSummaryLinks defines model for AccountProductSummaryLinks.
+type AccountProductSummaryLinks struct {
+	PlanUrl     string `json:"plan_url"`
+	SettingsUrl string `json:"settings_url"`
+	UsageUrl    string `json:"usage_url"`
+}
+
+// AccountProductSummaryPartialError defines model for AccountProductSummaryPartialError.
+type AccountProductSummaryPartialError struct {
+	Code    string                                 `json:"code"`
+	Message *string                                `json:"message,omitempty"`
+	Scope   AccountProductSummaryPartialErrorScope `json:"scope"`
+}
+
+// AccountProductSummaryPartialErrorScope defines model for AccountProductSummaryPartialError.Scope.
+type AccountProductSummaryPartialErrorScope string
+
+// AccountProductSummaryResponse defines model for AccountProductSummaryResponse.
+type AccountProductSummaryResponse struct {
+	Credits      *AccountCreditsSummary             `json:"credits"`
+	Links        AccountProductSummaryLinks         `json:"links"`
+	Membership   *AccountMembershipSummary          `json:"membership"`
+	PartialError *AccountProductSummaryPartialError `json:"partial_error,omitempty"`
+	User         *AccountUserInfo                   `json:"user"`
+}
 
 // AccountUserInfo defines model for AccountUserInfo.
 type AccountUserInfo struct {

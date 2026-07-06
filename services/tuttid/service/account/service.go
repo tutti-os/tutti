@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,10 +16,13 @@ import (
 var ErrAttemptNotFound = errors.New("account login attempt not found")
 
 type Service struct {
-	AuthJSONPath   string
-	AccountBaseURL string
-	AppCallbackURL string
-	AuthLoginURL   string
+	AuthJSONPath    string
+	AccountBaseURL  string
+	AppCallbackURL  string
+	AuthLoginURL    string
+	CommerceBaseURL string
+	WebBaseURL      string
+	HTTPClient      *http.Client
 	// OnLoginCompleted runs after the desktop account login bridge has completed
 	// and the account auth.json is available. It must be best-effort: login status
 	// polling should not block on downstream provider credential bootstrap.
@@ -41,11 +45,13 @@ type LoginStart struct {
 
 func NewService(authJSONPath string) *Service {
 	return &Service{
-		AuthJSONPath:   firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
-		AccountBaseURL: os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
-		AppCallbackURL: tuttitypes.DesktopLoginCallbackURL(),
-		AuthLoginURL:   os.Getenv("TUTTI_AUTH_LOGIN_URL"),
-		attempts:       map[string]*authbridge.LoginAttempt{},
+		AuthJSONPath:    firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
+		AccountBaseURL:  os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
+		AppCallbackURL:  tuttitypes.DesktopLoginCallbackURL(),
+		AuthLoginURL:    os.Getenv("TUTTI_AUTH_LOGIN_URL"),
+		CommerceBaseURL: os.Getenv("TUTTI_COMMERCE_BASE_URL"),
+		WebBaseURL:      os.Getenv("TUTTI_WEB_BASE_URL"),
+		attempts:        map[string]*authbridge.LoginAttempt{},
 	}
 }
 
@@ -102,6 +108,10 @@ func (s *Service) GetUserInfo(ctx context.Context) (*authbridge.UserInfo, error)
 	return client.GetUserInfo(ctx)
 }
 
+func (s *Service) GetProductSummary(ctx context.Context) (ProductSummary, error) {
+	return s.productSummary(ctx)
+}
+
 func (s *Service) Logout(ctx context.Context) error {
 	client, err := s.authClient()
 	if err != nil {
@@ -132,6 +142,7 @@ func (s *Service) authClient() (*authbridge.Client, error) {
 		AuthJSONPath:   firstNonEmpty(s.AuthJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
 		AppCallbackURL: firstNonEmpty(s.AppCallbackURL, tuttitypes.DesktopLoginCallbackURL()),
 		AuthLoginURL:   s.AuthLoginURL,
+		HTTPClient:     s.HTTPClient,
 	})
 	if err != nil {
 		return nil, err

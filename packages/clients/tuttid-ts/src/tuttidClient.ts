@@ -28,6 +28,7 @@ import {
   deleteWorkspaceFileEntry,
   getDesktopPreferences,
   getAccountLoginStatus,
+  getAccountProductSummary,
   getAccountUserInfo,
   getHealth,
   getStartupWorkspace,
@@ -145,6 +146,10 @@ export function createTuttidClient(
     async getAccountUserInfo() {
       const response = await getAccountUserInfo({ client });
       return unwrapData(response, "Account user info request failed.").user;
+    },
+    async getAccountProductSummary() {
+      const response = await getAccountProductSummary({ client });
+      return unwrapData(response, "Account product summary request failed.");
     },
     async logoutAccount() {
       const response = await logoutAccount({ client });
