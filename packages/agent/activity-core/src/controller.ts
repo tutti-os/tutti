@@ -127,6 +127,16 @@ export function createAgentActivityController({
         const sessionDataUnchanged =
           areShallowObjectArraysEqual(current.sessions, nextSessions) &&
           areShallowObjectArraysEqual(current.presences, nextPresences);
+        if (!sessionDataUnchanged) {
+          for (const nextSession of nextSessions) {
+            const existing = current.sessions.find(
+              (item) => item.agentSessionId === nextSession.agentSessionId
+            );
+            if (existing) {
+              reportSessionVersionRegression("load", existing, nextSession);
+            }
+          }
+        }
         const source = sessionDataUnchanged
           ? current
           : {
@@ -281,7 +291,9 @@ export function createAgentActivityController({
       if (session.workspaceId && session.workspaceId !== snapshot.workspaceId) {
         return;
       }
-      updateSnapshot((current) => upsertSnapshotSession(current, session));
+      updateSnapshot((current) =>
+        upsertSnapshotSession(current, session, "upsert_session")
+      );
     },
     applyActivityUpdatedEvent(event) {
       const result = applyActivityUpdatedEvent(snapshot, event);
@@ -772,10 +784,23 @@ function applyActivityUpdatedStatePatch(
     snapshot.sessions.find(
       (session) => session.agentSessionId === canonicalPatchSessionId
     ) ?? null;
-  if (
-    !existingSession ||
-    isStaleStatePatch(existingSession, canonicalStatePatch)
-  ) {
+  if (!existingSession) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  if (isStaleStatePatch(existingSession, canonicalStatePatch)) {
+    reportAgentActivityStoreDiagnostic("state_patch_dropped_stale", {
+      agentSessionId: canonicalPatchSessionId,
+      patchKey:
+        canonicalStatePatch.lastEventUnixMs ??
+        canonicalStatePatch.occurredAtUnixMs ??
+        null,
+      sessionKey:
+        existingSession.lastEventUnixMs ??
+        existingSession.updatedAtUnixMs ??
+        null,
+      patchTurnPhase: canonicalStatePatch.turn?.phase ?? null,
+      patchSubmitAvailability: canonicalStatePatch.submitAvailability ?? null
+    });
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   const session = agentActivitySessionFromInlineStatePatch({
@@ -787,7 +812,7 @@ function applyActivityUpdatedStatePatch(
     applied: true,
     messages: [],
     session,
-    snapshot: upsertSnapshotSession(snapshot, session),
+    snapshot: upsertSnapshotSession(snapshot, session, "inline_state_patch"),
     statePatch: canonicalStatePatch
   };
 }
@@ -822,7 +847,9 @@ function applySessionEvent(
 
   if (event.eventType === "session_update") {
     const session = sessionFromEvent(snapshot.workspaceId, event, data);
-    return session ? upsertSnapshotSession(snapshot, session) : snapshot;
+    return session
+      ? upsertSnapshotSession(snapshot, session, "session_update_event")
+      : snapshot;
   }
 
   return snapshot;
@@ -896,9 +923,64 @@ function mergeSnapshotMessages(
   };
 }
 
+// Diagnostic sink (temporary instrumentation): surfaces store anomalies —
+// version regressions on unguarded write paths and stale-patch drops — to the
+// host's logging so field exports show WHICH channel overwrote WHAT.
+type AgentActivityStoreDiagnosticSink = (
+  event: string,
+  details: Record<string, unknown>
+) => void;
+
+let agentActivityStoreDiagnosticSink: AgentActivityStoreDiagnosticSink | null =
+  null;
+
+export function setAgentActivityStoreDiagnosticSink(
+  sink: AgentActivityStoreDiagnosticSink | null
+): void {
+  agentActivityStoreDiagnosticSink = sink;
+}
+
+function reportAgentActivityStoreDiagnostic(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  try {
+    agentActivityStoreDiagnosticSink?.(event, details);
+  } catch {
+    // Diagnostics must never affect the store.
+  }
+}
+
+function sessionVersionKey(session: AgentActivitySession): number | null {
+  return session.lastEventUnixMs ?? session.updatedAtUnixMs ?? null;
+}
+
+function reportSessionVersionRegression(
+  source: string,
+  existing: AgentActivitySession,
+  incoming: AgentActivitySession
+): void {
+  const previousKey = sessionVersionKey(existing);
+  const nextKey = sessionVersionKey(incoming);
+  if (previousKey === null || nextKey === null || nextKey >= previousKey) {
+    return;
+  }
+  reportAgentActivityStoreDiagnostic("session_version_regression", {
+    agentSessionId: incoming.agentSessionId,
+    source,
+    previousKey,
+    nextKey,
+    previousTurnPhase: existing.turnLifecycle?.phase ?? null,
+    nextTurnPhase: incoming.turnLifecycle?.phase ?? null,
+    previousSubmitAvailability: existing.submitAvailability ?? null,
+    nextSubmitAvailability: incoming.submitAvailability ?? null
+  });
+}
+
 function upsertSnapshotSession(
   snapshot: AgentActivitySnapshot,
-  session: AgentActivitySession
+  session: AgentActivitySession,
+  source = "unknown"
 ): AgentActivitySnapshot {
   const index = snapshot.sessions.findIndex(
     (item) => item.agentSessionId === session.agentSessionId
@@ -908,6 +990,10 @@ function upsertSnapshotSession(
       ...snapshot,
       sessions: [...snapshot.sessions, session]
     });
+  }
+  const existingSession = snapshot.sessions[index];
+  if (existingSession) {
+    reportSessionVersionRegression(source, existingSession, session);
   }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;

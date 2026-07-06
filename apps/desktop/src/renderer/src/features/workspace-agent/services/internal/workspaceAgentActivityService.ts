@@ -1,6 +1,7 @@
 import {
   createAgentActivityController,
   normalizeAgentActivityDisplayStatus,
+  setAgentActivityStoreDiagnosticSink,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
   type AgentActivityController,
@@ -791,6 +792,29 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       tuttidClient: this.dependencies.tuttidClient,
       runtimeApi: this.dependencies.runtimeApi,
       agentProviderStatusService: this.dependencies.agentProviderStatusService
+    });
+    // Temporary instrumentation: surface activity-store anomalies (version
+    // regressions on unguarded write paths, stale-patch drops) in the desktop
+    // log so field exports show which channel overwrote what.
+    setAgentActivityStoreDiagnosticSink((event, details) => {
+      const flatDetails: Record<string, string | number | boolean | null> = {};
+      for (const [key, value] of Object.entries(details)) {
+        flatDetails[key] =
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+            ? value
+            : JSON.stringify(value);
+      }
+      void this.dependencies.runtimeApi
+        .logTerminalDiagnostic({
+          details: flatDetails,
+          event: `agent.activity.store.${event}`,
+          level: "warn",
+          workspaceId: normalizedWorkspaceId
+        })
+        .catch(() => {});
     });
     const controller = createAgentActivityController({
       adapter,
