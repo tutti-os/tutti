@@ -2539,6 +2539,49 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	}
 }
 
+func TestClaudeSDKLineReaderExitErrorIncludesCapturedStderrTail(t *testing.T) {
+	// Regression: previously, any sidecar stderr not matching the
+	// auth-refresh-debug marker was silently discarded (logClaudeSDKSidecarDebugStderr),
+	// so if the sidecar crashed with an uncaught exception, its stack trace
+	// never reached the resulting error or the logs — the exit surfaced as a
+	// bare "claude sdk sidecar exited with code N" black box. The reader must
+	// now quote the captured stderr tail, mirroring acpClient.readLoop's
+	// handling of the Codex ACP transport.
+	exitCode := 1
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{
+			{Stderr: []byte("TypeError: something went wrong\n    at main (main.ts:1:1)\n")},
+			{ExitCode: &exitCode},
+		},
+	}
+	reader := &claudeSDKLineReader{conn: conn}
+
+	_, err := reader.next(context.Background())
+	if err == nil {
+		t.Fatal("next() err = nil, want exit error")
+	}
+	if !strings.Contains(err.Error(), "exited with code 1") {
+		t.Fatalf("next() err = %q, want it to mention the exit code", err.Error())
+	}
+	if !strings.Contains(err.Error(), "TypeError: something went wrong") {
+		t.Fatalf("next() err = %q, want it to quote the captured stderr tail", err.Error())
+	}
+}
+
+func TestClaudeSDKLineReaderExitErrorOmitsColonWhenNoStderr(t *testing.T) {
+	exitCode := -1
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{ExitCode: &exitCode}},
+	}
+	reader := &claudeSDKLineReader{conn: conn}
+
+	_, err := reader.next(context.Background())
+	want := "claude sdk sidecar exited with code -1"
+	if err == nil || err.Error() != want {
+		t.Fatalf("next() err = %v, want %q", err, want)
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsToolFailed(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

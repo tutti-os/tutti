@@ -300,8 +300,11 @@ func codexErrorLooksLikeMissingBinary(lower string) bool {
 
 // codexExitCodeFromDetail extracts the numeric process exit code from a
 // "process exited" style detail (e.g. "...exited with code 137...",
-// "exit status 1"). It returns ok=false when no numeric code is present (a bare
-// "process exited"), in which case the caller must not assume anything about it.
+// "exit status 1", "...exited with code -1..." — the negative form Go's
+// os/exec reports for a signal-terminated process, see
+// codexExitLooksInterrupted). It returns ok=false when no numeric code is
+// present (a bare "process exited"), in which case the caller must not assume
+// anything about it.
 func codexExitCodeFromDetail(normalized string) (int, bool) {
 	for _, marker := range []string{"exited with code ", "exit status "} {
 		idx := strings.Index(normalized, marker)
@@ -310,10 +313,14 @@ func codexExitCodeFromDetail(normalized string) (int, bool) {
 		}
 		rest := normalized[idx+len(marker):]
 		end := 0
+		if end < len(rest) && rest[end] == '-' {
+			end++
+		}
+		digitsStart := end
 		for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
 			end++
 		}
-		if end == 0 {
+		if end == digitsStart {
 			continue
 		}
 		if code, err := strconv.Atoi(rest[:end]); err == nil {
@@ -324,17 +331,29 @@ func codexExitCodeFromDetail(normalized string) (int, bool) {
 }
 
 // codexExitLooksInterrupted reports whether a process-exit detail describes a
-// clean shutdown (code 0) or a signal-termination (128+N, signals 1..31) rather
-// than Codex itself erroring out. Such exits mean the app-server was stopped or
-// killed externally, so the session was interrupted — not "Codex failed". When
-// no numeric code is present it returns false (stay with the generic
-// process_exited classification rather than guess).
+// clean shutdown (code 0), a signal-termination (128+N, signals 1..31), or a
+// Go os/exec signal-termination (-1) rather than the provider process itself
+// erroring out. Such exits mean the process was stopped or killed externally,
+// so the session was interrupted — not "request failed". When no numeric code
+// is present it returns false (stay with the generic process_exited
+// classification rather than guess).
+//
+// The -1 case covers the claude-code sidecar's process wrapper
+// (localProcessConnection in process_transport.go), which reports exit codes
+// via Go's exec.ExitError.ExitCode(): per its docs, that returns -1 "if the
+// process ... was terminated by a signal" — a different convention than the
+// 128+N one Node-based app-servers (e.g. codex's) use for the same event. Seen
+// in the field: tuttid's own graceful-shutdown path (CloseAllLiveSessions)
+// calls Close() on a live claude-code session, which sends SIGTERM to the
+// sidecar; the in-flight turn's reader observed the resulting exit and (before
+// this fix) reported it as a hard "Claude Code request failed" instead of a
+// calm, retryable interruption.
 func codexExitLooksInterrupted(normalized string) bool {
 	code, ok := codexExitCodeFromDetail(normalized)
 	if !ok {
 		return false
 	}
-	return code == 0 || (code >= 129 && code <= 159)
+	return code == 0 || code == -1 || (code >= 129 && code <= 159)
 }
 
 // codexErrorLooksLikeNetwork reports whether the detail describes a DNS or

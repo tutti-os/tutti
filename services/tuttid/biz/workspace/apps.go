@@ -112,6 +112,13 @@ type AppPackage struct {
 	CreatedAtUnixMs      int64
 }
 
+type AppPackageFileRecord struct {
+	AppID      string
+	Version    string
+	PackageDir string
+	Source     AppPackageSource
+}
+
 func (p AppPackage) DisplayName() string {
 	if strings.TrimSpace(p.Manifest.Name) != "" {
 		return p.Manifest.Name

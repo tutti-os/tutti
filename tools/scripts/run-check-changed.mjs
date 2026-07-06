@@ -208,16 +208,19 @@ function buildChangedLanes() {
     }
 
     if (hasRelevantCode && packageInfo.scripts.test) {
-      addLane({
-        key: `${packageInfo.name}:test`,
-        label: `${packageInfo.name}:test`,
-        command: buildPackageTestCommand({
-          baseRef,
-          packageFiles,
-          packageInfo,
-          pnpmCommand
-        })
+      const command = buildPackageTestCommand({
+        baseRef,
+        packageFiles,
+        packageInfo,
+        pnpmCommand
       });
+      if (command) {
+        addLane({
+          key: `${packageInfo.name}:test`,
+          label: `${packageInfo.name}:test`,
+          command
+        });
+      }
     }
 
     if (

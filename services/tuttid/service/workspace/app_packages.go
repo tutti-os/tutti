@@ -242,16 +242,19 @@ func (s *AppCenterService) shouldDeleteRemoteBuiltinPackageAfterUninstall(ctx co
 }
 
 func (s *AppCenterService) deleteRemoteBuiltinPackageFilesAndRecord(ctx context.Context, appPackage workspacebiz.AppPackage) error {
-	versions, err := s.Store.ListAppPackageVersions(ctx, appPackage.AppID)
+	records, err := s.Store.ListAppPackageFileRecords(ctx, appPackage.AppID)
 	if err != nil {
 		return err
 	}
-	packageDirs := make(map[string]struct{}, len(versions)+1)
+	packageDirs := make(map[string]struct{}, len(records)+1)
 	if dir := strings.TrimSpace(appPackage.PackageDir); dir != "" {
 		packageDirs[dir] = struct{}{}
 	}
-	for _, versionPackage := range versions {
-		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" {
+	for _, record := range records {
+		if record.Source == workspacebiz.AppPackageSourceLocalDev {
+			continue
+		}
+		if dir := strings.TrimSpace(record.PackageDir); dir != "" {
 			packageDirs[dir] = struct{}{}
 		}
 	}

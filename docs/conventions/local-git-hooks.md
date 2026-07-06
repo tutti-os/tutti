@@ -104,6 +104,11 @@ Failure output prints an 80-line tail by default. Use
 `pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more
 useful; full logs remain in `.tmp/check-runs`.
 
+When the changed set includes deleted package test files, `check:changed` should
+not pass those missing paths to Vitest as explicit targets. Deleting source files
+should still keep the surrounding package validation active so typecheck can
+catch broken imports.
+
 ## UI Boundary Enforcement
 
 The shared UI boundary is enforced in two modes:

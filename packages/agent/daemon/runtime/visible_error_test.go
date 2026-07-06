@@ -104,6 +104,28 @@ func TestVisibleFailureCodeClassifiesSignalKillAsInterrupted(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeClassifiesGoSignalExitAsInterrupted(t *testing.T) {
+	// Regression: the claude-code sidecar's process wrapper
+	// (localProcessConnection in process_transport.go) reports a
+	// signal-terminated exit via Go's exec.ExitError.ExitCode(), which
+	// returns -1 — not the 128+N convention codex's own app-server uses for
+	// the same event. Seen in the field: tuttid's graceful-shutdown path
+	// (CloseAllLiveSessions) sends SIGTERM to a live claude-code sidecar
+	// mid-turn, and the resulting "exited with code -1" must read as a calm,
+	// retryable interruption rather than "Claude Code request failed".
+	for _, detail := range []string{
+		"claude sdk sidecar exited with code -1",
+		"claude sdk sidecar exited with code -1: ",
+	} {
+		if got := visibleFailureCode(detail); got != "session_interrupted" {
+			t.Fatalf("visibleFailureCode(%q) = %q, want session_interrupted", detail, got)
+		}
+	}
+	if !visibleFailureRetryable("session_interrupted", "claude sdk sidecar exited with code -1") {
+		t.Fatal("session_interrupted should be retryable")
+	}
+}
+
 func TestVisibleFailureCodeClassifiesUsageLimitAsQuota(t *testing.T) {
 	// The most common real codex failure in the field is the ChatGPT usage cap,
 	// delivered as plain text (no structured codexErrorInfo). It must read as a

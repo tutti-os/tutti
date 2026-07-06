@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
 const GO_MODULE_ROOTS = [
@@ -119,11 +120,14 @@ export function buildGoTestLane({
 
 export function buildPackageTestCommand({
   baseRef,
+  fileExists = existsSync,
   packageFiles,
   packageInfo,
   pnpmCommand
 }) {
-  const changedTests = packageFiles.filter(isTestFile);
+  const changedTests = packageFiles.filter(
+    (file) => isTestFile(file) && fileExists(file)
+  );
   const changedSource = packageFiles.filter(
     (file) => isLintableCodeFile(file) && !isTestFile(file)
   );
@@ -176,6 +180,10 @@ export function buildPackageTestCommand({
     }
 
     return [pnpmCommand, "--filter", packageInfo.name, "test"];
+  }
+
+  if (packageFiles.some(isTestFile)) {
+    return null;
   }
 
   return [pnpmCommand, "--filter", packageInfo.name, "test"];

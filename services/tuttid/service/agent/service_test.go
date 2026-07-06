@@ -702,6 +702,168 @@ func TestExternalSessionProjectPathUsesGitRoot(t *testing.T) {
 	}
 }
 
+// writeExternalImportGitWorktreeFixture creates a fake main git checkout and
+// a linked worktree of it, matching the on-disk layout `git worktree add`
+// produces (a `.git` *file* at the worktree root pointing at
+// "<main>/.git/worktrees/<name>", whose own `commondir` file points back at
+// the shared/main .git directory), so tests can exercise worktree-to-main
+// resolution without shelling out to a real git binary.
+func writeExternalImportGitWorktreeFixture(t *testing.T, root string, name string) (mainRoot string, worktreeRoot string) {
+	t.Helper()
+	mainRoot = filepath.Join(root, "main-checkout")
+	worktreeRoot = filepath.Join(root, "worktrees", name)
+	worktreeMetaDir := filepath.Join(mainRoot, ".git", "worktrees", name)
+	if err := os.MkdirAll(filepath.Join(mainRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create main .git dir error = %v", err)
+	}
+	if err := os.MkdirAll(worktreeMetaDir, 0o755); err != nil {
+		t.Fatalf("create worktree metadata dir error = %v", err)
+	}
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("create worktree root error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeMetaDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatalf("write commondir error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeMetaDir, "gitdir"), []byte(filepath.Join(worktreeRoot, ".git")+"\n"), 0o644); err != nil {
+		t.Fatalf("write gitdir error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeRoot, ".git"), []byte("gitdir: "+worktreeMetaDir+"\n"), 0o644); err != nil {
+		t.Fatalf("write worktree .git pointer error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(mainRoot); ok {
+		mainRoot = canonical
+	}
+	if canonical, ok := canonicalExistingDir(worktreeRoot); ok {
+		worktreeRoot = canonical
+	}
+	return mainRoot, worktreeRoot
+}
+
+func TestResolveExternalImportWorktreeCwdResolvesToMainCheckout(t *testing.T) {
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+	nested := filepath.Join(worktreeRoot, "apps", "foo")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("create nested worktree dir error = %v", err)
+	}
+
+	resolvedRoot, ok := resolveExternalImportWorktreeCwd(worktreeRoot)
+	if !ok || resolvedRoot != mainRoot {
+		t.Fatalf("resolveExternalImportWorktreeCwd(root) = %q, %v; want main checkout %q", resolvedRoot, ok, mainRoot)
+	}
+
+	resolvedNested, ok := resolveExternalImportWorktreeCwd(nested)
+	wantNested := filepath.Join(mainRoot, "apps", "foo")
+	if !ok || resolvedNested != wantNested {
+		t.Fatalf("resolveExternalImportWorktreeCwd(nested) = %q, %v; want %q", resolvedNested, ok, wantNested)
+	}
+
+	// A normal (non-worktree) checkout must be left unresolved: its `.git`
+	// is a real directory, not a worktree pointer file.
+	normalRoot := filepath.Join(root, "normal-repo")
+	if err := os.MkdirAll(filepath.Join(normalRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create normal repo .git dir error = %v", err)
+	}
+	if _, ok := resolveExternalImportWorktreeCwd(normalRoot); ok {
+		t.Fatalf("resolveExternalImportWorktreeCwd(normalRoot) resolved a normal checkout, want unresolved")
+	}
+}
+
+func TestExternalSessionProjectPathResolvesLinkedWorktreeToMainCheckout(t *testing.T) {
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+
+	got, ok := externalSessionProjectPath(externalImportedSession{
+		Provider: "codex",
+		Cwd:      worktreeRoot,
+	})
+	if !ok || got != mainRoot {
+		t.Fatalf(
+			"externalSessionProjectPath() = %q, %v; want the main checkout root %q, not the ephemeral worktree path %q",
+			got, ok, mainRoot, worktreeRoot,
+		)
+	}
+}
+
+// TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProject
+// reproduces the reported bug: a Codex session that ran inside a per-task
+// worktree of the user's "tsh" project (e.g.
+// ~/.codex/worktrees/8db5/tsh, a linked worktree of ~/Documents/New
+// project/tsh) got imported and stranded in the ungrouped "对话" bucket
+// instead of being grouped under the already-registered "tsh" project,
+// because the worktree checkout's own `.git` file made it look like an
+// independent project root distinct from the main checkout. Once resolved,
+// the imported session's project path — and its persisted cwd, which the
+// GUI uses to group conversations under project folders — must match the
+// main checkout, not the worktree.
+func TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProject(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("create home error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "worktree-session.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "worktree-session", "cwd": worktreeRoot},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "worktree-session-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Send greeting"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	// The user already has "tsh" registered as a project at the main
+	// checkout — the same setup as the report, where the real project
+	// existed and stayed empty ("暂无对话") while the worktree-run session
+	// surfaced in the general conversations list instead.
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: mainRoot}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	if len(result.ProjectPaths) != 1 || result.ProjectPaths[0] != mainRoot {
+		t.Fatalf(
+			"import result ProjectPaths = %#v, want [%q] (the main checkout), not the ephemeral worktree path %q",
+			result.ProjectPaths, mainRoot, worktreeRoot,
+		)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "worktree-session"))
+	if err != nil {
+		t.Fatalf("Get imported worktree session error = %v", err)
+	}
+	if session.Cwd != mainRoot {
+		t.Fatalf(
+			"session.Cwd = %q, want it resolved to the main checkout %q so the GUI groups the conversation under the existing project instead of the ungrouped bucket",
+			session.Cwd, mainRoot,
+		)
+	}
+}
+
 func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

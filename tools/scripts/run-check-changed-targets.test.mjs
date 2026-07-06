@@ -52,6 +52,7 @@ describe("buildPackageTestCommand", () => {
   it("runs only changed test files", () => {
     const command = buildPackageTestCommand({
       baseRef: "origin/main",
+      fileExists: () => true,
       packageFiles: [
         "packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.spec.tsx"
       ],
@@ -76,6 +77,26 @@ describe("buildPackageTestCommand", () => {
       "jsdom",
       "agent-gui/agentGuiNode/AgentComposerSettingsMenus.spec.tsx"
     ]);
+  });
+
+  it("skips package test lanes for deleted test files", () => {
+    const command = buildPackageTestCommand({
+      baseRef: "origin/main",
+      fileExists: () => false,
+      packageFiles: [
+        "packages/ui/system/src/components/style-contracts.test.ts"
+      ],
+      packageInfo: {
+        name: "@tutti-os/ui-system",
+        root: "packages/ui/system",
+        scripts: {
+          test: "vitest run"
+        }
+      },
+      pnpmCommand: "pnpm"
+    });
+
+    assert.equal(command, null);
   });
 
   it("uses vitest --changed for source-only package changes", () => {
@@ -111,6 +132,7 @@ describe("buildPackageTestCommand", () => {
   it("uses the package test script for compound vitest scripts", () => {
     const command = buildPackageTestCommand({
       baseRef: "origin/main",
+      fileExists: () => true,
       packageFiles: [
         "services/tuttid/builtin-apps/tutti-onboarding/src/App.test.jsx"
       ],

@@ -182,6 +182,35 @@ INSERT INTO app_catalog_entries (
 	}
 }
 
+func TestSQLiteStoreListAppPackageFileRecordsAllowsInvalidManifest(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const invalidManifestJSON = `{"schemaVersion":"tutti.app.manifest.v1","appId":"invalid-app","version":"1.0.0","name":"Invalid App","description":"Invalid app","runtime":{"bootstrap":"start.sh","healthcheckPath":"/ready"},"references":{"searchEndpoint":"/references/search"}}`
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO app_packages (
+  app_id, version, package_dir, manifest_json, source, factory_job_id, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
+) VALUES (?, ?, ?, ?, ?, '', '', 1, 1)
+`, "invalid-app", "1.0.0", "/tmp/invalid-app", invalidManifestJSON, string(workspacebiz.AppPackageSourceBuiltin)); err != nil {
+		t.Fatalf("insert invalid app package error = %v", err)
+	}
+
+	if _, err := store.ListAppPackageVersions(ctx, "invalid-app"); err == nil {
+		t.Fatal("ListAppPackageVersions() error = nil, want invalid manifest error")
+	}
+	records, err := store.ListAppPackageFileRecords(ctx, "invalid-app")
+	if err != nil {
+		t.Fatalf("ListAppPackageFileRecords() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records length = %d, want 1: %#v", len(records), records)
+	}
+	if records[0].AppID != "invalid-app" || records[0].Version != "1.0.0" || records[0].PackageDir != "/tmp/invalid-app" || records[0].Source != workspacebiz.AppPackageSourceBuiltin {
+		t.Fatalf("record = %#v", records[0])
+	}
+}
+
 func TestSQLiteStoreListAppPackagesRepairsInvalidActivePackageToValidVersion(t *testing.T) {
 	t.Parallel()
 
