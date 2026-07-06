@@ -166,21 +166,6 @@ func TestAgentActivityUpdatedValidationRejectsSchemaDrift(t *testing.T) {
 				}
 			}`,
 		},
-		{
-			name: "unknown state patch field",
-			payload: `{
-				"workspaceId":"workspace-1",
-				"agentSessionId":"agent-session-1",
-				"eventType":"state_patch",
-				"data":{
-					"workspaceId":"workspace-1",
-					"agentSessionId":"agent-session-1",
-					"eventType":"state_patch",
-					"lastEventUnixMs":1,
-					"unexpected":true
-				}
-			}`,
-		},
 	}
 
 	for _, tt := range tests {
@@ -203,6 +188,36 @@ func TestAgentActivityUpdatedValidationRejectsSchemaDrift(t *testing.T) {
 				t.Fatalf("ValidatePublish() code = %q, want %q", validationErr.Code, ValidationCodeInvalidPayload)
 			}
 		})
+	}
+}
+
+// Data payloads are tolerant readers: unknown fields inside the data object
+// must NOT fail the publish (a producer-side field addition would otherwise
+// drop the whole event and the GUI would silently miss state). The envelope
+// stays strict.
+func TestAgentActivityUpdatedValidationIgnoresUnknownDataFields(t *testing.T) {
+	t.Parallel()
+
+	catalog := DefaultCatalog()
+	payload := `{
+		"workspaceId":"workspace-1",
+		"agentSessionId":"agent-session-1",
+		"eventType":"state_patch",
+		"data":{
+			"workspaceId":"workspace-1",
+			"agentSessionId":"agent-session-1",
+			"eventType":"state_patch",
+			"lastEventUnixMs":1,
+			"unexpected":true,
+			"turn":{"turnId":"turn-1","phase":"settled","unexpectedNested":true}
+		}
+	}`
+	if err := catalog.ValidatePublish(
+		TopicAgentActivityUpdated,
+		DirectionServerToClient,
+		[]byte(payload),
+	); err != nil {
+		t.Fatalf("ValidatePublish() error = %v, want nil", err)
 	}
 }
 

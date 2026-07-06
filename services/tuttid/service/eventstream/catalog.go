@@ -598,10 +598,17 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	if strings.TrimSpace(header.EventType) != eventType {
 		return fmt.Errorf("data.eventType must match eventType")
 	}
+	// Data payloads are decoded tolerantly (unknown fields ignored): the
+	// agent activity data objects evolve additively, and a strict decoder
+	// here turns a producer-side field addition into a dropped event — the
+	// GUI then silently misses state (a dropped settle patch reads as "the
+	// turn never finished"). Producer/schema agreement is pinned by the
+	// payload->ValidatePublish contract tests instead. The envelope and all
+	// other topics stay strict.
 	switch eventType {
 	case "session_update":
 		var data agentActivitySessionUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_update data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
@@ -609,7 +616,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "session_deleted":
 		var data agentActivitySessionDeletedData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_deleted data: %w", err)
 		}
 		if data.DeletedAtUnixMS == nil {
@@ -617,7 +624,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "message_update":
 		var data agentActivityMessageUpdateData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode message_update data: %w", err)
 		}
 		if data.LatestVersion == nil {
@@ -663,7 +670,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "state_patch":
 		var data agentActivityStatePatchData
-		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+		if err := json.Unmarshal(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode state_patch data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {

@@ -8,12 +8,22 @@
   "payloadSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+    "required": [
+      "workspaceId",
+      "agentSessionId",
+      "eventType",
+      "data"
+    ],
     "oneOf": [
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -28,7 +38,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -61,7 +70,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -76,7 +90,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -106,7 +119,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -121,7 +139,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -154,7 +171,6 @@
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "additionalProperties": false,
                   "required": [
                     "agentSessionId",
                     "id",
@@ -231,7 +247,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -246,7 +267,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -313,8 +333,9 @@
               },
               "submitAvailability": {
                 "type": "object",
-                "additionalProperties": false,
-                "required": ["state"],
+                "required": [
+                  "state"
+                ],
                 "properties": {
                   "state": {
                     "type": "string",
@@ -327,8 +348,9 @@
               },
               "turn": {
                 "type": "object",
-                "additionalProperties": false,
-                "required": ["turnId"],
+                "required": [
+                  "turnId"
+                ],
                 "properties": {
                   "turnId": {
                     "type": "string",
@@ -351,8 +373,9 @@
                   },
                   "submitAvailability": {
                     "type": "object",
-                    "additionalProperties": false,
-                    "required": ["state"],
+                    "required": [
+                      "state"
+                    ],
                     "properties": {
                       "state": {
                         "type": "string",
