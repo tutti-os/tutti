@@ -1104,6 +1104,42 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
+  it("hides the Back button for a single-question ask-user prompt", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "request-single",
+          title: "One question",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope should we use?",
+              options: [
+                { label: "Small", description: "Minimal change" },
+                { label: "Large", description: "Broader cleanup" }
+              ],
+              multiSelect: true
+            }
+          ]
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    // Only one question, so there is nowhere to go back to.
+    expect(
+      screen.queryByRole("button", { name: labels.previousQuestion })
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: labels.submitAnswers })
+    ).toBeTruthy();
+  });
+
   it("collects answers for ask-user prompts before submission", () => {
     const onSubmit = vi.fn();
     render(

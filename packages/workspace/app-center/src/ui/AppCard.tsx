@@ -525,7 +525,7 @@ function AppDeveloperSourceRow({
     repository !== null || authors.some((author) => Boolean(author.url));
 
   const content = (
-    <div className="mt-auto min-w-0 pt-3">
+    <div className="min-w-0 pt-3">
       <div className="group/source flex min-h-7 min-w-0 items-center gap-2 border-t border-[color:var(--line-2)] pt-2 text-[12px] leading-4 text-[var(--text-secondary)]">
         <AvatarStack
           authors={authors}
@@ -553,14 +553,14 @@ function AppDeveloperSourceRow({
   );
 
   if (!canOpenPopover) {
-    return content;
+    return <div className="mt-auto min-w-0">{content}</div>;
   }
 
   return (
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
       <PopoverTrigger asChild>
         <button
-          className="block w-full min-w-0 border-0 bg-transparent p-0 text-left"
+          className="mt-auto block w-full min-w-0 border-0 bg-transparent p-0 text-left"
           type="button"
           onClick={(event) => {
             event.stopPropagation();
@@ -576,7 +576,7 @@ function AppDeveloperSourceRow({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-[280px] max-w-[min(280px,calc(100vw-32px))]"
+        className="w-[280px] max-w-[min(280px,calc(100vw-32px))] gap-1 p-1"
         collisionPadding={12}
         side="bottom"
         style={{ zIndex: "var(--z-panel-popover)" }}
@@ -598,7 +598,7 @@ function AppDeveloperSourceRow({
           event.stopPropagation();
         }}
       >
-        <div className="px-2 py-1.5 text-[12px] font-semibold leading-4 text-[var(--text-primary)]">
+        <div className="px-2 py-1 text-[12px] font-semibold leading-4 text-[var(--text-primary)]">
           {copy.t("sources.title")}
         </div>
         <div className="flex flex-col gap-[2px]">
