@@ -118,3 +118,19 @@ test("launchpad item labels use stationary white on content", () => {
     /\.workspace-launchpad-item__label\s*{[^}]*color:\s*var\(--white-stationary\);/s
   );
 });
+
+test("launchpad disabled items signal non-interactivity with not-allowed cursor", () => {
+  // Disabled/greyed-out items previously kept `cursor: default`, which looks
+  // identical to a plain background on hover and reads as "broken" rather
+  // than "intentionally unavailable". Every other disabled control in the
+  // design system (button, input, select, checkbox, ...) uses
+  // `cursor: not-allowed` for this signal; match that convention here.
+  assert.match(
+    css,
+    /\.workspace-launchpad-item--disabled\s*{[^}]*cursor:\s*not-allowed;/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.workspace-launchpad-item--disabled\s*{[^}]*cursor:\s*default;/s
+  );
+});
