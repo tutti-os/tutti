@@ -43,6 +43,69 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### App Factory job keeps loading after AgentGUI Stop
+
+- Symptom:
+  An App Center create-app job stays `generating` after the user stops the
+  linked AgentGUI turn. The AgentGUI transcript looks settled/canceled, but App
+  Center keeps showing the loading spinner.
+- Quick checks:
+  Inspect the App Factory job row and linked agent session. A common shape is
+  `app_factory_jobs.status = generating`,
+  `workspace_agent_sessions.status = active`, `current_phase = idle`, with the
+  latest assistant `tool_call` message `status = failed` and payload/error
+  fields such as `status: canceled`, `reason: interrupted`, or
+  `message: interrupted`.
+- Root cause:
+  AgentGUI sessions are resumable, so stopping one turn does not necessarily
+  make the durable session terminal. App Factory job lifecycle is a separate
+  projection: it must treat explicit canceled session/turn outcomes as job
+  cancellation, but it must not collapse every raw `interrupted` turn into a
+  canceled job because approval rejections and transient turn-level
+  interruptions can use the same vocabulary.
+- Fix:
+  Keep plain active-session `interrupted` turn outcomes non-terminal. Cancel an
+  active App Factory job only when the state carries an explicit canceled
+  outcome, or when accepted message updates contain the runtime's canceled
+  interrupted non-approval tool-call shape.
+- Validation:
+  Add App Factory service tests for plain `interrupted` staying non-terminal,
+  explicit `canceled` outcome canceling the job, canceled interrupted
+  non-approval tool calls canceling the job, and canceled approval updates being
+  ignored.
+- References:
+  [app_factory_agent_state.go](../../services/tuttid/service/workspace/app_factory_agent_state.go)
+  [app_factory_test.go](../../services/tuttid/service/workspace/app_factory_test.go)
+
+### AgentGUI Stop reports no active turn after cancel succeeds
+
+- Symptom:
+  Pressing Stop settles the AgentGUI turn as canceled, but the renderer also
+  logs a `workspace_operation_failed`/502 error whose daemon cause is
+  `agent session has no active turn`.
+- Quick checks:
+  Compare daemon `agent_session.cancel.adapter_failed` with nearby activity
+  state patches. If the same turn reports `turnPhase = settled` and
+  `outcome = canceled` at the same timestamp, the cancel result won the event
+  race while the synchronous cancel RPC still observed a stale controller turn
+  record.
+- Root cause:
+  The runtime controller and provider adapter keep separate active-turn views.
+  During cancel-after-settle races, the controller can still have a turn record
+  while the Codex app-server adapter has already cleared its active turn and
+  returns `ErrSessionNoActiveTurn`.
+- Fix:
+  Treat `ErrSessionNoActiveTurn` from the controller active-turn cancel path as
+  an idempotent settled-turn result: clear the stale controller turn record,
+  reconcile any still-blocked view, and return without surfacing a 502.
+- Validation:
+  Add controller coverage where `controller.turns` still has a record, the
+  stored session is already settled/canceled, and the adapter returns
+  `ErrSessionNoActiveTurn`.
+- References:
+  [controller.go](../../packages/agent/daemon/runtime/controller.go)
+  [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:

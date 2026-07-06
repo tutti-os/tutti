@@ -2747,6 +2747,76 @@ func (a *deferredRemoteCancelAdapter) Cancel(context.Context, Session, string) (
 	return nil, nil
 }
 
+type noActiveTurnCancelAdapter struct {
+	cancelCalls atomic.Int32
+}
+
+func (*noActiveTurnCancelAdapter) Provider() string { return ProviderCodex }
+
+func (*noActiveTurnCancelAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	return []activityshared.Event{newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil)}, nil
+}
+
+func (*noActiveTurnCancelAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*noActiveTurnCancelAdapter) Close(context.Context, Session) error { return nil }
+
+func (*noActiveTurnCancelAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *noActiveTurnCancelAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	a.cancelCalls.Add(1)
+	return nil, ErrSessionNoActiveTurn
+}
+
+func TestControllerCancelTreatsNoActiveTurnAfterSettleAsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	adapter := &noActiveTurnCancelAdapter{}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	turnID := "turn-1"
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := controller.beginTurn(started.Session, turnID, cancel); err != nil {
+		t.Fatalf("beginTurn: %v", err)
+	}
+	outcome := string(activityshared.TurnOutcomeInterrupted)
+	settled := started.Session
+	settled.Status = SessionStatusCanceled
+	settled.TurnLifecycle = &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	settled.SubmitAvailability = availableSubmitAvailability()
+	controller.store(settled)
+
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Reason:         "user_interrupt",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !result.Canceled {
+		t.Fatalf("Cancel result = %#v, want idempotent canceled result", result)
+	}
+	if adapter.cancelCalls.Load() != 1 {
+		t.Fatalf("adapter cancel calls = %d, want 1", adapter.cancelCalls.Load())
+	}
+	if _, ok := controller.activeTurn("room-1", started.Session.AgentSessionID); ok {
+		t.Fatal("active turn record survived idempotent no-active-turn cancel")
+	}
+}
+
 func TestControllerExecPublishesTerminalEventAfterPartialEmitError(t *testing.T) {
 	t.Parallel()
 

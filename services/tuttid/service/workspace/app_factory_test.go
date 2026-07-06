@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
@@ -1740,6 +1741,20 @@ func TestFactoryAgentTerminalStatusIgnoresInterruptedTurnOutcomeWhenSessionStays
 	}
 }
 
+func TestFactoryAgentTerminalStatusUsesCanceledTurnOutcomeWhenSessionStaysActive(t *testing.T) {
+	t.Parallel()
+
+	status := factoryAgentTerminalStatus(agentsessionstore.WorkspaceAgentSessionStateUpdate{
+		LifecycleStatus: "active",
+		Turn: &agentsessionstore.WorkspaceAgentTurnStateUpdate{
+			Outcome: "canceled",
+		},
+	})
+	if status != "canceled" {
+		t.Fatalf("status = %q, want canceled", status)
+	}
+}
+
 func TestAppFactoryServiceCompletedAgentSessionRecoversPreValidationFailure(t *testing.T) {
 	t.Parallel()
 
@@ -1980,6 +1995,26 @@ func appFactoryManifestForMetadataTest(appID string, version string, name string
 	return manifest
 }
 
+func waitForAppFactoryJobStatus(t *testing.T, store *appFactoryStoreStub, workspaceID string, jobID string, status workspacebiz.AppFactoryJobStatus) workspacebiz.AppFactoryJob {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	var job workspacebiz.AppFactoryJob
+	for time.Now().Before(deadline) {
+		var err error
+		job, err = store.GetAppFactoryJob(context.Background(), workspaceID, jobID)
+		if err != nil {
+			t.Fatalf("GetAppFactoryJob() error = %v", err)
+		}
+		if job.Status == status {
+			return job
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("status = %q, want %q", job.Status, status)
+	return workspacebiz.AppFactoryJob{}
+}
+
 // systemNoticeMessagePayload reproduces the exact payload shape codex/ACP
 // system notices are persisted with (see acpSystemNoticeEvent in
 // packages/agent/daemon/runtime/acp_update_events.go), e.g. the
@@ -2033,6 +2068,75 @@ func TestFactoryAgentMessageUpdatesContainCompletedAssistantTextIgnoresSystemNot
 	})
 	if !factoryAgentMessageUpdatesContainCompletedAssistantText(updates) {
 		t.Fatal("genuine completed assistant text update was ignored, want treated as completed")
+	}
+}
+
+func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCall(t *testing.T) {
+	t.Parallel()
+
+	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		{
+			Role:   "assistant",
+			Kind:   "tool_call",
+			Status: "failed",
+			Payload: map[string]any{
+				"status": "canceled",
+				"error": map[string]any{
+					"message": "interrupted",
+					"reason":  "interrupted",
+					"status":  "canceled",
+					"text":    "interrupted",
+				},
+			},
+		},
+	}
+	if !factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates) {
+		t.Fatal("canceled interrupted tool call was ignored, want treated as canceled turn evidence")
+	}
+}
+
+func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCallIgnoresApproval(t *testing.T) {
+	t.Parallel()
+
+	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		{
+			Role:   "assistant",
+			Kind:   "tool_call",
+			Status: "failed",
+			Payload: map[string]any{
+				"callType": "approval",
+				"status":   "canceled",
+				"error": map[string]any{
+					"reason": "interrupted",
+					"status": "canceled",
+				},
+			},
+		},
+	}
+	if factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates) {
+		t.Fatal("canceled approval update was treated as canceled turn evidence")
+	}
+}
+
+func TestFactoryAgentMessageUpdatesContainCanceledTurnToolCallRequiresInterruptedReason(t *testing.T) {
+	t.Parallel()
+
+	updates := []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+		{
+			Role:   "assistant",
+			Kind:   "tool_call",
+			Status: "failed",
+			Payload: map[string]any{
+				"status": "canceled",
+				"error": map[string]any{
+					"message": "command canceled by tool",
+					"status":  "canceled",
+				},
+			},
+		},
+	}
+	if factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates) {
+		t.Fatal("ordinary canceled tool call was treated as interrupted turn cancellation")
 	}
 }
 
@@ -2113,6 +2217,48 @@ func TestAppFactoryServiceObserveAgentSessionMessagesIgnoresSystemNoticeForCompl
 	}
 	if len(publisher.published) != 0 {
 		t.Fatalf("published updates = %d, want 0", len(publisher.published))
+	}
+}
+
+func TestAppFactoryServiceObserveAgentSessionMessagesCancelsGeneratingJobOnCanceledInterruptedToolCall(t *testing.T) {
+	ctx := context.Background()
+	store := newAppFactoryStoreStub()
+	if err := store.PutAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AgentSessionID: "session-1",
+		AppID:          "app_1",
+		JobID:          "job-1",
+		Status:         workspacebiz.AppFactoryJobStatusGenerating,
+		WorkspaceID:    "ws-1",
+	}); err != nil {
+		t.Fatalf("PutAppFactoryJob() error = %v", err)
+	}
+	service := AppFactoryService{Store: store}
+
+	service.ObserveAgentSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Updates: []agentsessionstore.WorkspaceAgentSessionMessageUpdate{
+			{
+				MessageID: "tool-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "failed",
+				Payload: map[string]any{
+					"status": "canceled",
+					"error": map[string]any{
+						"message": "interrupted",
+						"reason":  "interrupted",
+						"status":  "canceled",
+						"text":    "interrupted",
+					},
+				},
+			},
+		},
+	}, agentsessionstore.ReportSessionMessagesReply{AcceptedCount: 1})
+
+	job := waitForAppFactoryJobStatus(t, store, "ws-1", "job-1", workspacebiz.AppFactoryJobStatusCanceled)
+	if job.FailureReason != "" {
+		t.Fatalf("failure reason = %q, want empty", job.FailureReason)
 	}
 }
 

@@ -14,7 +14,12 @@ import (
 )
 
 func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input agentsessionstore.ReportSessionMessagesInput, reply agentsessionstore.ReportSessionMessagesReply) {
-	if reply.AcceptedCount <= 0 || !factoryAgentMessageUpdatesContainCompletedAssistantText(input.Updates) {
+	if reply.AcceptedCount <= 0 {
+		return
+	}
+	hasCanceledTurnToolCall := factoryAgentMessageUpdatesContainCanceledTurnToolCall(input.Updates)
+	hasCompletedAssistantText := factoryAgentMessageUpdatesContainCompletedAssistantText(input.Updates)
+	if !hasCanceledTurnToolCall && !hasCompletedAssistantText {
 		return
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
@@ -23,10 +28,19 @@ func (s *AppFactoryService) ObserveAgentSessionMessages(_ context.Context, input
 		return
 	}
 	go func() {
-		if err := s.handleAgentSessionCompletedMessage(context.Background(), workspaceID, agentSessionID); err != nil {
+		status := "completed"
+		var err error
+		if hasCanceledTurnToolCall {
+			status = "canceled"
+			err = s.handleAgentSessionTerminalState(context.Background(), workspaceID, agentSessionID, status, "")
+		} else {
+			err = s.handleAgentSessionCompletedMessage(context.Background(), workspaceID, agentSessionID)
+		}
+		if err != nil {
 			slog.Warn("app factory agent session message handling failed",
 				"workspaceId", workspaceID,
 				"agentSessionId", agentSessionID,
+				"status", status,
 				"error", err,
 			)
 		}
@@ -414,6 +428,8 @@ func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionSta
 	switch strings.ToLower(strings.TrimSpace(state.Turn.Outcome)) {
 	case "completed", "complete", "succeeded", "success":
 		return "completed"
+	case "canceled", "cancelled":
+		return "canceled"
 	case "failed", "failure", "error", "errored":
 		return "failed"
 	default:
@@ -424,6 +440,15 @@ func factoryAgentTerminalStatus(state agentsessionstore.WorkspaceAgentSessionSta
 func factoryAgentMessageUpdatesContainCompletedAssistantText(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
 	for _, update := range updates {
 		if isCompletedAssistantTextMessage(update.Role, update.Kind, update.Status, update.Payload) {
+			return true
+		}
+	}
+	return false
+}
+
+func factoryAgentMessageUpdatesContainCanceledTurnToolCall(updates []agentsessionstore.WorkspaceAgentSessionMessageUpdate) bool {
+	for _, update := range updates {
+		if isCanceledTurnToolCallMessage(update.Kind, update.Status, update.Payload) {
 			return true
 		}
 	}
@@ -457,6 +482,47 @@ func isAppFactorySystemNoticeMessagePayload(payload map[string]any) bool {
 	}
 	kind, _ := payload["kind"].(string)
 	return strings.EqualFold(strings.TrimSpace(kind), "agent_system_notice")
+}
+
+func isCanceledTurnToolCallMessage(kind string, status string, payload map[string]any) bool {
+	if strings.ToLower(strings.TrimSpace(kind)) != "tool_call" ||
+		strings.ToLower(strings.TrimSpace(status)) != "failed" ||
+		strings.EqualFold(strings.TrimSpace(appFactoryPayloadString(payload, "callType")), "approval") {
+		return false
+	}
+	errorPayload, _ := payload["error"].(map[string]any)
+	canceled := appFactoryStatusMeansCanceled(appFactoryPayloadString(payload, "status")) ||
+		appFactoryStatusMeansCanceled(appFactoryPayloadString(errorPayload, "status"))
+	if !canceled {
+		return false
+	}
+	return appFactoryPayloadMeansInterrupted(payload) || appFactoryPayloadMeansInterrupted(errorPayload)
+}
+
+func appFactoryStatusMeansCanceled(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "canceled", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func appFactoryPayloadMeansInterrupted(payload map[string]any) bool {
+	for _, key := range []string{"reason", "message", "text"} {
+		if strings.EqualFold(strings.TrimSpace(appFactoryPayloadString(payload, key)), "interrupted") {
+			return true
+		}
+	}
+	return false
+}
+
+func appFactoryPayloadString(payload map[string]any, key string) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	value, _ := payload[key].(string)
+	return value
 }
 
 func firstNonEmptyString(values ...string) string {
