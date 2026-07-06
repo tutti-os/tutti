@@ -10309,27 +10309,12 @@ export function useAgentGUINodeController({
   const draftSettings = activeConversationId
     ? (sessionSettings ?? defaultConversationDraftSettings)
     : homeComposerSettings;
-  const persistedDraftModel = normalizeOptionalText(draftSettings.model);
-  // "default" is Claude Code's own placeholder for "no explicit model
-  // pinned" (claudeSDKModelConfigOption); an unset value normalizes to
-  // null for every provider. Only in those "nothing meaningful persisted
-  // yet" cases do we prefer the live app-server-reported current model
-  // (kept fresh across an in-flight settings-refresh race, see the "keep
-  // Claude model selection stable" fix). Once a session has a real,
-  // concrete persisted model — e.g. one carried over from an imported
-  // conversation (2U74Ri) — that value must win outright: it is the
-  // authoritative source of what will actually run on the next turn, and
-  // a live config option can legitimately lag or reflect a different
-  // session's default while this one hasn't resumed yet.
-  const usesPlaceholderDraftModel =
-    persistedDraftModel === null || persistedDraftModel === "default";
   const liveConfigModel =
-    activeConversationId !== null && usesPlaceholderDraftModel
+    activeConversationId !== null
       ? configOptionCurrentValue(activeSessionRuntimeContext, ["model"])
       : null;
-  const draftModel = usesPlaceholderDraftModel
-    ? (liveConfigModel ?? persistedDraftModel)
-    : persistedDraftModel;
+  const draftModel =
+    liveConfigModel ?? normalizeOptionalText(draftSettings.model);
   const draftReasoningEffort = normalizeOptionalText(
     draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
