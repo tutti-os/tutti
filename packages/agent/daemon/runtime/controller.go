@@ -1002,7 +1002,12 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		previousStatus := session.Status
 		session = applySessionEvents(session, events)
 		session = applyTurnLifecycleFromEvents(session, events)
-		session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
+		terminal := turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID)
+		if terminal {
+			session = reconcileFinishedTurnStatus(session)
+		} else {
+			session = c.preserveActiveTurnStatus(session, turnID, previousStatus)
+		}
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
@@ -1015,7 +1020,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
+		if terminal {
 			finish(session)
 		}
 	}

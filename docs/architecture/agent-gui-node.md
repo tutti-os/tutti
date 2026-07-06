@@ -1025,6 +1025,10 @@ turn's active-turn submit block unless another tracked foreground turn is still
 active. Do not preserve an untracked synthetic/live lifecycle over the finishing
 turn: that leaves `submitAvailability.blocked(active_turn)` without real work
 and makes the composer stay loading after the provider has completed.
+Async runtime adapters, including Claude Code SDK, must publish terminal turn
+events only after reconciling the session back to an idle/ready state. A later
+in-memory `finishTurn` cleanup is not enough because AgentGUI follows the
+published activity state patch.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

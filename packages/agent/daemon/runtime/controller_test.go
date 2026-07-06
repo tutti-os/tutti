@@ -2861,7 +2861,8 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	t.Parallel()
 
 	adapter := newAsyncExecTestAdapter()
-	controller := NewController([]Adapter{adapter}, nil)
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
 		AgentSessionID: "agent-session-1",
@@ -2871,11 +2872,12 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("run"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	select {
@@ -2901,6 +2903,34 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	}
 	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "settled" {
 		t.Fatalf("turn lifecycle = %#v, want settled", session.TurnLifecycle)
+	}
+	var terminalPatch *agentsessionstore.WorkspaceAgentStatePatch
+	waitForCondition(t, func() bool {
+		for _, report := range reportInputs(reporter.snapshot()) {
+			for index := range report.StatePatches {
+				patch := &report.StatePatches[index]
+				if patch.Turn != nil && patch.Turn.TurnID == execResult.TurnID && patch.Turn.CompletedAtUnixMS > 0 {
+					patchCopy := *patch
+					terminalPatch = &patchCopy
+					return true
+				}
+			}
+		}
+		return false
+	})
+	if terminalPatch == nil {
+		t.Fatalf("reports = %#v, missing async terminal turn patch", reportInputs(reporter.snapshot()))
+	}
+	if terminalPatch.CurrentPhase != string(activityshared.TurnPhaseIdle) {
+		t.Fatalf("async terminal patch current phase = %q, want idle", terminalPatch.CurrentPhase)
+	}
+	if terminalPatch.TurnLifecycle == nil ||
+		terminalPatch.TurnLifecycle.ActiveTurnID != nil ||
+		terminalPatch.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("async terminal lifecycle = %#v, want settled with nil active turn", terminalPatch.TurnLifecycle)
+	}
+	if terminalPatch.SubmitAvailability == nil || terminalPatch.SubmitAvailability.State != "available" {
+		t.Fatalf("async terminal submit availability = %#v, want available", terminalPatch.SubmitAvailability)
 	}
 }
 
