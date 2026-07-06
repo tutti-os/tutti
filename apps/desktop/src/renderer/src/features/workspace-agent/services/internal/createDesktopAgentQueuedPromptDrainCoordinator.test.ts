@@ -123,7 +123,12 @@ test("keeps the queue while the turn lifecycle still holds a live turn", async (
   assert.equal(queue.prompts.length, 1);
 });
 
-test("keeps the queue when a settled session is blocked for a non-turn reason", async () => {
+test("drains a settled session whose stale wire block has no backing evidence", async () => {
+  // With a lifecycle present the derived availability is authoritative: a
+  // wire blocked(background_agent) with no live background agents in the
+  // record's runtimeContext is stale, exactly like a stale active_turn
+  // block. Real background agents keep the queue via the derivation (see
+  // the live-background-agents test below).
   const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
   const { runtime, sendCalls } = activityRuntimeFake(
     activitySession({
@@ -145,12 +150,7 @@ test("keeps the queue when a settled session is blocked for a non-turn reason", 
   await waitForDrainTick();
   dispose();
 
-  assert.equal(sendCalls.length, 0);
-  const queue = agentQueuedPromptRuntime.getSessionSnapshot({
-    workspaceId: WORKSPACE_ID,
-    agentSessionId: AGENT_SESSION_ID
-  });
-  assert.equal(queue.prompts.length, 1);
+  assert.equal(sendCalls.length, 1);
 });
 
 test("drains once the session reports an available submit state", async () => {
@@ -176,4 +176,87 @@ test("drains once the session reports an available submit state", async () => {
   dispose();
 
   assert.equal(sendCalls.length, 1);
+});
+
+test("keeps the queue while background agents are live on a settled session", async () => {
+  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
+  const { runtime, sendCalls } = activityRuntimeFake(
+    activitySession({
+      turnLifecycle: {
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed"
+      },
+      // Even an (incorrectly) available wire value must not release the
+      // queue while background agents are live: the lifecycle-derived
+      // availability wins.
+      submitAvailability: { state: "available" },
+      runtimeContext: {
+        backgroundAgents: { count: 1, items: [{ id: "agent-1" }] }
+      }
+    })
+  );
+  enqueuePrompt(agentQueuedPromptRuntime);
+
+  const dispose = createDesktopAgentQueuedPromptDrainCoordinator({
+    agentActivityRuntime: runtime,
+    agentQueuedPromptRuntime,
+    workspaceId: WORKSPACE_ID
+  });
+  await waitForDrainTick();
+  dispose();
+
+  assert.equal(sendCalls.length, 0);
+});
+
+test("drains once background agents are terminal even with a stale blocked wire value", async () => {
+  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
+  const { runtime, sendCalls } = activityRuntimeFake(
+    activitySession({
+      turnLifecycle: {
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed"
+      },
+      submitAvailability: { state: "blocked", reason: "background_agent" },
+      runtimeContext: {
+        backgroundAgents: {
+          count: 0,
+          items: [{ id: "agent-1", status: "completed" }]
+        }
+      }
+    })
+  );
+  enqueuePrompt(agentQueuedPromptRuntime);
+
+  const dispose = createDesktopAgentQueuedPromptDrainCoordinator({
+    agentActivityRuntime: runtime,
+    agentQueuedPromptRuntime,
+    workspaceId: WORKSPACE_ID
+  });
+  await waitForDrainTick();
+  dispose();
+
+  assert.equal(sendCalls.length, 1);
+});
+
+test("keeps the queue for lifecycle-less records with busy status tokens", async () => {
+  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
+  const { runtime, sendCalls } = activityRuntimeFake(
+    activitySession({
+      status: "working",
+      submitAvailability: { state: "blocked", reason: "active_turn" }
+    })
+  );
+  enqueuePrompt(agentQueuedPromptRuntime);
+
+  const dispose = createDesktopAgentQueuedPromptDrainCoordinator({
+    agentActivityRuntime: runtime,
+    agentQueuedPromptRuntime,
+    workspaceId: WORKSPACE_ID
+  });
+  await waitForDrainTick();
+  dispose();
+
+  assert.equal(sendCalls.length, 0);
 });

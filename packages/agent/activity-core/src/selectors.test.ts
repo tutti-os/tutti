@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  deriveSubmitAvailability,
   isLiveTurnLifecyclePhase,
   LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
   resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
-  selectSessionDisplayStatuses
+  selectSessionDisplayStatuses,
+  type DerivedSubmitAvailability,
+  type DeriveSubmitAvailabilityInput
 } from "./selectors.ts";
 import type {
   AgentActivityMessage,
@@ -628,5 +631,102 @@ test("a present turn lifecycle resolves the display status entirely", () => {
       turnLifecyclePhase: "streaming"
     }),
     "working"
+  );
+});
+
+// PARITY TABLE: mirrored in Go at
+// packages/agent/daemon/runtime/submit_availability_parity_test.go — keep the
+// two tables identical (the Go side owns the derivation semantics).
+const deriveSubmitAvailabilityParityCases: Array<{
+  name: string;
+  input: DeriveSubmitAvailabilityInput;
+  expected: DerivedSubmitAvailability | null;
+}> = [
+  {
+    name: "no lifecycle -> null (caller falls back to status tokens)",
+    input: { turnLifecycle: null, runtimeContext: null },
+    expected: null
+  },
+  {
+    name: "running turn -> blocked/active_turn",
+    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "running" } },
+    expected: { state: "blocked", reason: "active_turn" }
+  },
+  {
+    name: "submitted turn -> blocked/active_turn",
+    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" } },
+    expected: { state: "blocked", reason: "active_turn" }
+  },
+  {
+    name: "waiting_approval -> blocked/waiting",
+    input: {
+      turnLifecycle: { activeTurnId: "turn-1", phase: "waiting_approval" }
+    },
+    expected: { state: "blocked", reason: "waiting" }
+  },
+  {
+    name: "legacy awaiting_approval -> blocked/waiting",
+    input: {
+      turnLifecycle: { activeTurnId: "turn-1", phase: "awaiting_approval" }
+    },
+    expected: { state: "blocked", reason: "waiting" }
+  },
+  {
+    name: "settled -> available",
+    input: { turnLifecycle: { activeTurnId: null, phase: "settled" } },
+    expected: { state: "available" }
+  },
+  {
+    name: "settled with live background agents (count) -> blocked/background_agent",
+    input: {
+      turnLifecycle: { activeTurnId: null, phase: "settled" },
+      runtimeContext: { backgroundAgents: { count: 1, items: [] } }
+    },
+    expected: { state: "blocked", reason: "background_agent" }
+  },
+  {
+    name: "settled with a running background item (no status) -> blocked/background_agent",
+    input: {
+      turnLifecycle: { activeTurnId: null, phase: "settled" },
+      runtimeContext: {
+        backgroundAgents: { count: 0, items: [{ id: "agent-1" }] }
+      }
+    },
+    expected: { state: "blocked", reason: "background_agent" }
+  },
+  {
+    name: "settled with only terminal background items -> available",
+    input: {
+      turnLifecycle: { activeTurnId: null, phase: "settled" },
+      runtimeContext: {
+        backgroundAgents: {
+          count: 0,
+          items: [
+            { status: "completed" },
+            { status: "failed" },
+            { status: "stopped" }
+          ]
+        }
+      }
+    },
+    expected: { state: "available" }
+  }
+];
+
+for (const parityCase of deriveSubmitAvailabilityParityCases) {
+  test(`deriveSubmitAvailability parity: ${parityCase.name}`, () => {
+    assert.deepEqual(
+      deriveSubmitAvailability(parityCase.input),
+      parityCase.expected
+    );
+  });
+}
+
+test("deriveSubmitAvailability treats an activeTurnId without a phase as a live turn (defensive vs Go)", () => {
+  assert.deepEqual(
+    deriveSubmitAvailability({
+      turnLifecycle: { activeTurnId: "turn-1", phase: null }
+    }),
+    { state: "blocked", reason: "active_turn" }
   );
 });

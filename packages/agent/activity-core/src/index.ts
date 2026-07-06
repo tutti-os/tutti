@@ -26,9 +26,14 @@ export {
   type LoadAllAgentSessionMessagesResult
 } from "./pagination.ts";
 export {
+  deriveSubmitAvailability,
   isLiveTurnLifecyclePhase,
+  isWaitingTurnLifecyclePhase,
   LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
+  runtimeContextHasLiveBackgroundAgents,
+  type DerivedSubmitAvailability,
+  type DeriveSubmitAvailabilityInput,
   resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems,
