@@ -237,6 +237,10 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
  </picture>
 </a>
 
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=tutti-os/tutti)](https://github.com/tutti-os/tutti/graphs/contributors)
+
 ## Getting Started
 
 ### Download

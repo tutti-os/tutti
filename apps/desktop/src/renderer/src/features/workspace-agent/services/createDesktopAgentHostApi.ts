@@ -19,17 +19,10 @@ import {
   unavailableHostMethod
 } from "./internal/desktopAgentHostProjection.ts";
 import {
-  createDesktopAgentHostAgentSessionsApi,
-  type AgentSessionEventListener
-} from "./internal/createDesktopAgentHostAgentSessionsApi.ts";
-import { createDesktopAgentHostWorkspaceAgentsApi } from "./internal/createDesktopAgentHostWorkspaceAgentsApi.ts";
-import { desktopAgentHostWorkspaceState } from "./internal/desktopAgentHostWorkspaceState.ts";
-import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
 } from "../../workspace-user-project/index.ts";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project";
-import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
 interface CreateDesktopAgentHostApiInput {
@@ -40,8 +33,6 @@ interface CreateDesktopAgentHostApiInput {
     "homeDirectory" | "os" | "resolveDroppedEntries"
   >;
   runtimeApi: DesktopRuntimeApi;
-  reporterNow?: () => number;
-  reporterService?: Pick<IReporterService, "trackEvents">;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
@@ -60,24 +51,12 @@ export function createDesktopAgentHostApi({
   hostFilesApi,
   tuttidClient,
   platformApi,
-  reporterNow,
-  reporterService,
   runtimeApi,
   workspaceAgentActivityService,
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentHostApiInput): AgentHostInputApi {
-  const sessionEventListeners = new Set<AgentSessionEventListener>();
-  const workspaceState = desktopAgentHostWorkspaceState(workspaceId);
-
-  const emitAgentSessionEvent = (event: unknown): void => {
-    for (const listener of sessionEventListeners) {
-      listener(event);
-    }
-  };
-
   const agentActivityService = workspaceAgentActivityService;
-  agentActivityService.onSessionEvent(workspaceId, emitAgentSessionEvent);
   const userProjectService =
     workspaceUserProjectService ??
     new DesktopWorkspaceUserProjectService({
@@ -86,21 +65,6 @@ export function createDesktopAgentHostApi({
       platformApi,
       workspaceId
     });
-  const agentSessions = createDesktopAgentHostAgentSessionsApi({
-    agentActivityService,
-    reporterNow,
-    reporterService,
-    runtimeApi,
-    sessionEventListeners,
-    workspaceUserProjectService: userProjectService,
-    workspaceId,
-    workspaceState
-  });
-  const workspaceAgents = createDesktopAgentHostWorkspaceAgentsApi({
-    agentActivityService,
-    workspaceId,
-    workspaceState
-  });
   const api = {
     meta: {
       allowWhatsNewInTests: false,
@@ -199,7 +163,6 @@ export function createDesktopAgentHostApi({
           await userProjectService.registerProjectPath(payload.path)
         )
     },
-    agentSessions,
     // The desktop host forwards daemon business events the Agent GUI event bus
     // understands. Today that is the model-catalog invalidation broadcast; the
     // GUI reacts by force-reloading composer options and session state.
@@ -216,7 +179,6 @@ export function createDesktopAgentHostApi({
       readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
       writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState
     },
-    workspaceAgents,
     runtime: {
       getBaseUrl: async () => (await runtimeApi.getBackendConfig()).baseUrl
     },

@@ -14,7 +14,7 @@ type WorkspaceSettingsActionButtonProps = Omit<
   label: string;
   progress?: number | null;
   progressAriaLabel?: string;
-  variant?: "secondary" | "destructive";
+  variant?: "default" | "secondary" | "destructive";
 };
 
 export const WorkspaceSettingsActionButton = forwardRef<

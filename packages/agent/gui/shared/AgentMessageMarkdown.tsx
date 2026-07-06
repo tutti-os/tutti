@@ -14,9 +14,11 @@ import {
   useContext,
   memo,
   useMemo,
+  useRef,
   useState
 } from "react";
-import { useTranslation } from "../i18n/index";
+import { Check, Copy } from "lucide-react";
+import { translate, useTranslation } from "../i18n/index";
 import { ZoomableImage } from "../app/renderer/components/ZoomableImage";
 import { cn } from "../app/renderer/lib/utils";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
@@ -274,7 +276,8 @@ export function AgentMessageMarkdown({
       ),
       ul: MarkdownUnorderedList,
       ol: MarkdownOrderedList,
-      li: MarkdownListItem
+      li: MarkdownListItem,
+      pre: MarkdownPre
     }),
     [
       effectiveAgentTargets,
@@ -1923,4 +1926,50 @@ function textFromReactNode(node: ReactNode): string {
     return node.map(textFromReactNode).join("");
   }
   return "";
+}
+
+function MarkdownPre({
+  children,
+  ...props
+}: MarkdownDomProps<"pre">): JSX.Element {
+  "use memo";
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCopy = useCallback(() => {
+    const text = preRef.current?.textContent?.trim();
+    if (!text) {
+      return;
+    }
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current);
+      }
+      copyResetRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  }, []);
+
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        data-testid="markdown-code-copy"
+        className="absolute right-1.5 top-1.5 z-10 inline-flex size-5 items-center justify-center rounded-[4px] text-[var(--text-tertiary)] opacity-0 transition-opacity hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)] group-hover:opacity-100"
+        aria-label={translate("agentHost.agentGui.copyCode")}
+        title={translate("agentHost.agentGui.copyCode")}
+        onClick={handleCopy}
+      >
+        {copied ? (
+          <Check size={13} strokeWidth={2} aria-hidden="true" />
+        ) : (
+          <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        )}
+      </button>
+      <pre {...props} ref={preRef}>
+        {children}
+      </pre>
+    </div>
+  );
 }

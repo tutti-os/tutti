@@ -928,15 +928,17 @@ function FullAskUserPromptSurface({
           }}
         />
         <div className={styles.interactivePromptActions}>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={isSubmitting || index === 0}
-            onClick={() => setIndex((current) => Math.max(current - 1, 0))}
-          >
-            {labels.previousQuestion}
-          </Button>
+          {prompt.questions.length > 1 ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isSubmitting || index === 0}
+              onClick={() => setIndex((current) => Math.max(current - 1, 0))}
+            >
+              {labels.previousQuestion}
+            </Button>
+          ) : null}
           {isLast ? (
             <Button
               type="button"

@@ -28,8 +28,12 @@ export function AgentMcpToolContent({
         <ToolSection title={translate("agentHost.agentTool.details.mcp")}>
           <ToolMarkdownBlock
             content={[
-              payload.server ? `Server: ${payload.server}` : null,
-              payload.tool ? `Tool: ${payload.tool}` : null
+              payload.server
+                ? `${translate("agentHost.agentTool.details.mcpServer")}: ${payload.server}`
+                : null,
+              payload.tool
+                ? `${translate("agentHost.agentTool.details.mcpTool")}: ${payload.tool}`
+                : null
             ]
               .filter((value): value is string => Boolean(value))
               .join("\n\n")}

@@ -84,6 +84,26 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByRole("list")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
+  it("renders a copy button on fenced code blocks", () => {
+    render(<AgentMessageMarkdown content={"```ts\nconst x = 42;\n```"} />);
+
+    expect(screen.getByTestId("markdown-code-copy")).toBeInTheDocument();
+  });
+
+  it("copies code block content to clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <AgentMessageMarkdown content={"```ts\nconst greeting = 'hello';\n```"} />
+    );
+
+    screen.getByTestId("markdown-code-copy").click();
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("const greeting = 'hello';");
+    });
+  });
+
   it("renders GFM tables as table elements", () => {
     render(
       <AgentMessageMarkdown
