@@ -75,6 +75,18 @@ type claudeSDKAdapterSession struct {
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.
 	goalArmTurnID string
+	// subagentToolParents maps a streamed tool_use id to its
+	// parentToolUseId. Lane ownership resolves through this chain to the
+	// top-level delegate (Task/Agent) call, so a sub-agent spawning its own
+	// sub-agent still attributes all activity to the root lane (ADR 0007).
+	// The registry lives for the session so follow-up messages to a running
+	// sub-agent keep landing in the original lane. Only touched from the
+	// sidecar event goroutine.
+	subagentToolParents map[string]string
+	// subagentLaneNames remembers the lane name last emitted per root
+	// delegate call so repeated tool/lifecycle updates do not re-emit
+	// identical subAgentName markers.
+	subagentLaneNames map[string]string
 }
 
 type claudeSDKBackgroundAgent struct {
@@ -652,6 +664,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		events := []activityshared.Event{newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		})}
+		events = append(events, adapterSession.claudeSDKSubagentInterruptEvents(session, turnID)...)
 		events = append(events, a.goalEventsOnTurnSettled(adapterSession, session, turnID, false)...)
 		return events, true, nil
 	case "turn_failed":
@@ -659,6 +672,7 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			"adapter": claudeSDKSidecarAdapterName,
 			"error":   payloadString(event.Payload, "error"),
 		})}
+		events = append(events, adapterSession.claudeSDKSubagentInterruptEvents(session, turnID)...)
 		events = append(events, a.goalEventsOnTurnSettled(adapterSession, session, turnID, false)...)
 		return events, true, nil
 	default:
@@ -1025,12 +1039,170 @@ func (s *claudeSDKAdapterSession) claudeSDKToolEvents(session Session, turnID st
 		return []activityshared.Event{claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)}
 	}
 	effectiveTurnID := s.backgroundAgentTurnID(payload, turnID)
+	callID := firstNonEmptyString(payloadString(payload, "toolCallId"), payloadString(payload, "callId"), payloadString(payload, "id"))
+	parentToolUseID := strings.TrimSpace(payloadString(payloadMap(payload, "metadata"), "parentToolUseId"))
+	if parentToolUseID == callID {
+		// The sidecar's delegated-task parent updates echo the Task call's
+		// own id as parentToolUseId; the call is the lane owner, not a child.
+		parentToolUseID = ""
+	}
+	if callID != "" && parentToolUseID != "" {
+		if s.subagentToolParents == nil {
+			s.subagentToolParents = make(map[string]string)
+		}
+		s.subagentToolParents[callID] = parentToolUseID
+	}
 	var events []activityshared.Event
 	if strings.TrimSpace(effectiveTurnID) != "" {
-		events = append(events, claudeSDKToolActivityEvent(session, effectiveTurnID, payload, eventType, status))
+		toolEvent := claudeSDKToolActivityEvent(session, effectiveTurnID, payload, eventType, status)
+		if parentToolUseID != "" {
+			root := s.subagentRootToolID(parentToolUseID)
+			toolEvent.OwnerThreadID = claudeSDKSubagentLaneID(root)
+			toolEvent.OwnerCallID = root
+		}
+		events = append(events, toolEvent)
+		if parentToolUseID == "" {
+			events = append(events, s.claudeSDKSubagentSpawnMarkerEvents(session, effectiveTurnID, payload, callID, eventType, sidecarType)...)
+		}
 	}
 	backgroundEvents := s.updateClaudeSDKBackgroundAgentFromTool(session, turnID, payload, eventType, sidecarType)
 	return append(events, backgroundEvents...)
+}
+
+// claudeSDKSubagentLaneID names the synthetic owner thread for one delegated
+// agent. Claude Code has no provider child-thread ids; the root delegate call
+// id is the lane identity, prefixed so it can never collide with a real
+// provider thread id.
+func claudeSDKSubagentLaneID(rootCallID string) string {
+	return "claude-subagent:" + strings.TrimSpace(rootCallID)
+}
+
+// subagentRootToolID walks the parentToolUseId chain up to the top-level
+// delegate call. Nested delegations (a sub-agent's own Task calls) flatten
+// into the root lane because the GUI attaches lanes only to main-transcript
+// cards.
+func (s *claudeSDKAdapterSession) subagentRootToolID(toolID string) string {
+	toolID = strings.TrimSpace(toolID)
+	for depth := 0; depth < 32; depth++ {
+		parent := strings.TrimSpace(s.subagentToolParents[toolID])
+		if parent == "" || parent == toolID {
+			return toolID
+		}
+		toolID = parent
+	}
+	return toolID
+}
+
+func claudeSDKDelegateToolName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "task", "subagent", "delegatetask", "delegateagent", "agent":
+		return true
+	default:
+		return false
+	}
+}
+
+// claudeSDKSubagentSpawnMarkerEvents derives sub-agent lane markers from the
+// root delegate (Task/Agent) call's own tool events, mirroring the codex
+// collab lane contract: hidden ownerThreadId rows carrying subAgentName and
+// subAgentLifecycleStatus that the GUI settles lane identity/status from.
+func (s *claudeSDKAdapterSession) claudeSDKSubagentSpawnMarkerEvents(session Session, turnID string, payload map[string]any, callID string, eventType string, sidecarType string) []activityshared.Event {
+	if callID == "" {
+		return nil
+	}
+	metadata := payloadMap(payload, "metadata")
+	name := firstNonEmptyString(payloadString(payload, "toolName"), payloadString(payload, "name"))
+	if !claudeSDKDelegateToolName(name) && metadata["subagentAsync"] != true && payloadString(payload, "callType") != "subagent" {
+		return nil
+	}
+	var events []activityshared.Event
+	input := payloadMap(payload, "input")
+	if label := firstNonEmptyString(payloadString(input, "description"), payloadString(payload, "description"), payloadString(input, "subagent_type")); label != "" {
+		if event, ok := s.claudeSDKSubagentNameMarker(session, callID, turnID, label); ok {
+			events = append(events, event)
+		}
+	}
+	status := claudeSDKNormalizeTaskStatus(firstNonEmptyString(payloadString(metadata, "subagentStatus"), payloadString(metadata, "taskStatus")))
+	switch {
+	case claudeSDKBackgroundAgentStatusIsTerminal(status):
+		detail := ""
+		if status != string(activityshared.ActivityStatusCompleted) {
+			detail = claudeSDKToolFailureDetail(payload)
+		}
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, callID, turnID, status, detail))
+	case status == "" && eventType == EventCallCompleted:
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, callID, turnID, string(activityshared.ActivityStatusCompleted), ""))
+	case status == "" && eventType == EventCallFailed:
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, callID, turnID, string(activityshared.ActivityStatusFailed), claudeSDKToolFailureDetail(payload)))
+	case sidecarType == "tool_started":
+		// The lane exists from the moment the delegate call starts; the GUI
+		// renders it as a running sub-agent card, matching codex spawn cards.
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, callID, turnID, "started", ""))
+	}
+	return events
+}
+
+func (s *claudeSDKAdapterSession) claudeSDKSubagentNameMarker(session Session, rootCallID string, turnID string, label string) (activityshared.Event, bool) {
+	if s.subagentLaneNames == nil {
+		s.subagentLaneNames = make(map[string]string)
+	}
+	if s.subagentLaneNames[rootCallID] == label {
+		return activityshared.Event{}, false
+	}
+	s.subagentLaneNames[rootCallID] = label
+	return claudeSDKSubAgentNameEvent(session, rootCallID, turnID, label), true
+}
+
+func claudeSDKToolFailureDetail(payload map[string]any) string {
+	errorPayload := payloadMap(payload, "error")
+	return firstNonEmptyString(
+		payloadString(errorPayload, "message"),
+		payloadString(errorPayload, "text"),
+		payloadString(errorPayload, "error"),
+		payloadString(payloadMap(payload, "output"), "text"),
+	)
+}
+
+func claudeSDKSubAgentNameEvent(session Session, rootCallID string, turnID string, name string) activityshared.Event {
+	messageID := "claude-subagent-name:" + rootCallID
+	event := newTurnActivityEventWithID(session, messageID, EventMessage, strings.TrimSpace(turnID), "completed", RoleAssistant, "", map[string]any{
+		"messageId":    messageID,
+		"contentMode":  messageContentModeSnapshot,
+		"messageKind":  "subAgentName",
+		"subAgentName": name,
+	})
+	event.OwnerThreadID = claudeSDKSubagentLaneID(rootCallID)
+	event.OwnerCallID = rootCallID
+	return event
+}
+
+func claudeSDKSubAgentLifecycleEvent(session Session, rootCallID string, turnID string, status string, detail string) activityshared.Event {
+	messageID := "claude-subagent-lifecycle:" + rootCallID
+	payload := map[string]any{
+		"messageId":               messageID,
+		"contentMode":             messageContentModeSnapshot,
+		"streamState":             status,
+		"messageKind":             "subAgentLifecycle",
+		"subAgentLifecycleStatus": status,
+	}
+	if detail != "" {
+		payload["detail"] = detail
+	}
+	event := newTurnActivityEventWithID(session, messageID, EventMessage, strings.TrimSpace(turnID), status, RoleAssistant, "", payload)
+	event.OwnerThreadID = claudeSDKSubagentLaneID(rootCallID)
+	event.OwnerCallID = rootCallID
+	return event
+}
+
+func claudeSDKSubAgentProgressEvent(session Session, rootCallID string, turnID string, summary string) activityshared.Event {
+	messageID := "claude-subagent-progress:" + rootCallID
+	event := newTurnActivityEventWithID(session, messageID, EventMessage, strings.TrimSpace(turnID), messageStreamStateStreaming, RoleAssistant, summary, map[string]any{
+		"messageId":   messageID,
+		"contentMode": messageContentModeSnapshot,
+	})
+	event.OwnerThreadID = claudeSDKSubagentLaneID(rootCallID)
+	event.OwnerCallID = rootCallID
+	return event
 }
 
 func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, turnID string, sidecarType string, payload map[string]any) []activityshared.Event {
@@ -1052,7 +1224,81 @@ func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, 
 	if !ok {
 		return nil
 	}
-	return claudeSDKBackgroundAgentEvents(session, agent, runtimeContext, sidecarType)
+	events := claudeSDKBackgroundAgentEvents(session, agent, runtimeContext, sidecarType)
+	return append(events, s.claudeSDKSubagentTaskMarkerEvents(session, turnID, sidecarType, payload, agent)...)
+}
+
+// claudeSDKSubagentTaskMarkerEvents projects delegated-task lifecycle events
+// (task_started/task_progress/task_completed) onto the sub-agent lane owned
+// by the launching delegate call. Only depth-1 tasks drive lane lifecycle:
+// a nested task's terminal state must not settle its root lane, though its
+// activity still flattens into that lane via owner-stamped tool rows.
+func (s *claudeSDKAdapterSession) claudeSDKSubagentTaskMarkerEvents(session Session, turnID string, sidecarType string, payload map[string]any, agent claudeSDKBackgroundAgent) []activityshared.Event {
+	root := strings.TrimSpace(firstNonEmptyString(
+		payloadString(payload, "parentToolUseId"),
+		payloadString(payload, "toolCallId"),
+		payloadString(payload, "callId"),
+		agent.ParentToolUseID,
+	))
+	if root == "" || strings.TrimSpace(s.subagentToolParents[root]) != "" {
+		return nil
+	}
+	markerTurnID := firstNonEmptyString(strings.TrimSpace(turnID), agent.TurnID)
+	var events []activityshared.Event
+	if label := firstNonEmptyString(payloadString(payload, "description"), agent.Description); label != "" {
+		if event, ok := s.claudeSDKSubagentNameMarker(session, root, markerTurnID, label); ok {
+			events = append(events, event)
+		}
+	}
+	status := claudeSDKTaskStatus(sidecarType, payloadString(payload, "status"))
+	switch {
+	case claudeSDKBackgroundAgentStatusIsTerminal(status):
+		detail := ""
+		if status != string(activityshared.ActivityStatusCompleted) {
+			detail = firstNonEmptyString(payloadString(payload, "summary"), payloadString(payload, "error"))
+		}
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, root, markerTurnID, status, detail))
+	case sidecarType == "task_started":
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, root, markerTurnID, "started", ""))
+	case sidecarType == "task_progress":
+		if summary := payloadString(payload, "summary"); summary != "" {
+			events = append(events, claudeSDKSubAgentProgressEvent(session, root, markerTurnID, summary))
+		}
+	}
+	return events
+}
+
+// claudeSDKSubagentInterruptEvents settles lanes that were still running when
+// their launching turn was canceled or failed: without a terminal marker the
+// lane card would keep ticking as "running" forever. A sub-agent that in fact
+// survives the interrupt self-heals — its later task events update the same
+// lifecycle marker row.
+func (s *claudeSDKAdapterSession) claudeSDKSubagentInterruptEvents(session Session, turnID string) []activityshared.Event {
+	if s == nil || len(s.backgroundAgents) == 0 {
+		return nil
+	}
+	turnID = strings.TrimSpace(turnID)
+	keys := make([]string, 0, len(s.backgroundAgents))
+	for key := range s.backgroundAgents {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var events []activityshared.Event
+	for _, key := range keys {
+		agent := s.backgroundAgents[key]
+		root := strings.TrimSpace(agent.ParentToolUseID)
+		if root == "" || claudeSDKBackgroundAgentStatusIsTerminal(agent.Status) {
+			continue
+		}
+		if strings.TrimSpace(s.subagentToolParents[root]) != "" {
+			continue
+		}
+		if turnID != "" && strings.TrimSpace(agent.TurnID) != "" && agent.TurnID != turnID {
+			continue
+		}
+		events = append(events, claudeSDKSubAgentLifecycleEvent(session, root, turnID, "stopped", ""))
+	}
+	return events
 }
 
 func (s *claudeSDKAdapterSession) updateClaudeSDKBackgroundAgentFromTool(session Session, turnID string, payload map[string]any, eventType string, sidecarType string) []activityshared.Event {

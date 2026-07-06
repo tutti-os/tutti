@@ -747,6 +747,97 @@ describe("subAgentTimelinePartition", () => {
     });
   });
 
+  describe("claude code delegate lanes", () => {
+    // The Claude adapter stamps child rows with the synthetic lane thread
+    // "claude-subagent:<root call id>" and ownerCallId = the Task call's
+    // tool_use id, so Claude delegations ride the same lane pipeline as
+    // codex collab spawns.
+    const claudeTaskCard = (status: string, occurredAtUnixMs: number) =>
+      timelineItem({
+        id: 10,
+        eventId: "claude-sdk:tool:toolu-task",
+        itemType: "call.started",
+        callType: "subagent",
+        callId: "toolu-task",
+        name: "Task",
+        status,
+        payload: {
+          callId: "toolu-task",
+          name: "Task",
+          toolName: "Task",
+          status,
+          input: {
+            description: "Map render paths",
+            prompt: "Find all render call sites in the GUI",
+            subagent_type: "Explore"
+          }
+        },
+        occurredAtUnixMs,
+        createdAtUnixMs: occurredAtUnixMs
+      });
+
+    it("attaches a claude child lane to its Task card by ownerCallId", () => {
+      const partition = partitionSubAgentTimelineItems([
+        claudeTaskCard("running", 100),
+        timelineItem({
+          id: 11,
+          eventId: "claude-subagent-name:toolu-task",
+          itemType: "message.assistant",
+          role: "assistant",
+          payload: {
+            ownerThreadId: "claude-subagent:toolu-task",
+            ownerCallId: "toolu-task",
+            messageKind: "subAgentName",
+            subAgentName: "Map render paths"
+          },
+          occurredAtUnixMs: 120
+        }),
+        childCallItem({
+          id: 12,
+          eventId: "child-read-1",
+          ownerThreadId: "claude-subagent:toolu-task",
+          ownerCallId: "toolu-task",
+          name: "Read file",
+          occurredAtUnixMs: 150
+        })
+      ]);
+
+      const lane = buildSubAgentLanesByCallId(partition).get("toolu-task")?.[0];
+
+      expect(lane).toEqual(
+        expect.objectContaining({
+          ownerThreadId: "claude-subagent:toolu-task",
+          status: "running",
+          name: "Map render paths",
+          // Claude Task input has no `task`; the lane task strip falls back
+          // to the delegate prompt.
+          task: "Find all render call sites in the GUI",
+          latestActivity: "Read file",
+          latestActivityKind: "tool"
+        })
+      );
+    });
+
+    it("settles a claude lane from the lifecycle marker", () => {
+      const partition = partitionSubAgentTimelineItems([
+        claudeTaskCard("running", 100),
+        childLifecycleItem({
+          id: 11,
+          eventId: "claude-subagent-lifecycle:toolu-task",
+          ownerThreadId: "claude-subagent:toolu-task",
+          ownerCallId: "toolu-task",
+          status: "completed",
+          occurredAtUnixMs: 300
+        })
+      ]);
+
+      const lane = buildSubAgentLanesByCallId(partition).get("toolu-task")?.[0];
+
+      expect(lane?.status).toBe("completed");
+      expect(lane?.terminalAtUnixMs).toBe(300);
+    });
+  });
+
   describe("attachSubAgentLanesToConversationVM", () => {
     it("returns the conversation untouched when there are no lanes", () => {
       const conversation = { rows: [] } as unknown as AgentConversationVM;
