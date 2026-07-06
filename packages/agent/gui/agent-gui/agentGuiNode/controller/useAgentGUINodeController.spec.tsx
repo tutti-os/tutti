@@ -3334,6 +3334,183 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("keeps an explicit open-session request even when the session is outside the loaded rail", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [workspaceAgentSession("recent-session")]
+      })),
+      listSessionTimeline: vi.fn(
+        async ({ agentSessionId }: { agentSessionId: string }) => ({
+          timelineItems:
+            agentSessionId === "old-session"
+              ? [
+                  timelineMessage({
+                    agentSessionId,
+                    id: 1,
+                    eventId: "old-session-message",
+                    role: "user",
+                    content: "open old session"
+                  })
+                ]
+              : []
+        })
+      ),
+      getState: vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId)
+      ),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      userProjects: {
+        list: vi.fn(async () => ({
+          projects: [
+            {
+              id: "workspace-project",
+              label: "Workspace",
+              path: "/workspace"
+            }
+          ]
+        })),
+        subscribe: vi.fn(() => vi.fn())
+      }
+    });
+
+    const { result, rerender } = renderHook(
+      (props) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          ...props
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("recent-session"),
+          onDataChange: vi.fn(),
+          openSessionRequest: null as {
+            agentSessionId: string;
+            sequence: number;
+          } | null
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "recent-session"
+      );
+    });
+
+    rerender({
+      data: agentGuiData("recent-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "old-session",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("old-session");
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(result.current.viewModel.activeConversationId).toBe("old-session");
+    expect(result.current.viewModel.activeConversation?.id).toBe("old-session");
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.filter(
+          (conversation) => conversation.id === "old-session"
+        )
+      ).toHaveLength(1);
+    });
+    expect(
+      result.current.viewModel.conversations.find(
+        (conversation) => conversation.id === "old-session"
+      )?.project
+    ).toEqual({
+      id: "workspace-project",
+      label: "Workspace",
+      path: "/workspace"
+    });
+
+    rerender({
+      data: agentGuiData("recent-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "old-session",
+        sequence: 1
+      }
+    });
+    expect(
+      result.current.viewModel.conversations.some(
+        (conversation) => conversation.id === "old-session"
+      )
+    ).toBe(true);
+  });
+
+  it("keeps an explicit open-session request when restored state points at another session", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [workspaceAgentSession("gobang-session")]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      getState: vi.fn(async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId)
+      ),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result, rerender } = renderHook(
+      (props) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          ...props
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("gobang-session"),
+          onDataChange: vi.fn(),
+          openSessionRequest: null as {
+            agentSessionId: string;
+            sequence: number;
+          } | null
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "gobang-session"
+      );
+    });
+
+    rerender({
+      data: agentGuiData("gobang-session"),
+      onDataChange: vi.fn(),
+      openSessionRequest: {
+        agentSessionId: "news-session",
+        sequence: 1
+      }
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "news-session"
+      );
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(result.current.viewModel.activeConversationId).toBe("news-session");
+    expect(result.current.viewModel.activeConversation?.id).toBe(
+      "news-session"
+    );
+  });
+
   it("keeps a switched conversation loading while its timeline request is pending", async () => {
     const session2TimelineResolvers: Array<
       (value: { timelineItems: AgentHostWorkspaceAgentTimelineItem[] }) => void

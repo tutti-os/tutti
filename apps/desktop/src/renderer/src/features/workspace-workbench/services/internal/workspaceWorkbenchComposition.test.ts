@@ -134,7 +134,7 @@ test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before 
   );
 });
 
-test("workspace agent GUI session launches target exact session instances", () => {
+test("workspace agent GUI session launches use container instances", () => {
   const descriptor = createWorkspaceAgentGuiLaunchDescriptor({
     dockEntryId: "agent-gui",
     payload: {
@@ -147,7 +147,7 @@ test("workspace agent GUI session launches target exact session instances", () =
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, "session-2");
   assert.equal(descriptor.dockEntryId, "agent-gui");
-  assert.equal(descriptor.instanceId, "agent-gui:codex:session:session-2");
+  assert.match(descriptor.instanceId, /^agent-gui:codex:panel:/);
   assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
     payload: {

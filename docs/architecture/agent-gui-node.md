@@ -201,9 +201,29 @@ the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
 `requestWorkspaceAgentGuiLaunch`, the workspace launch handler calls
 `host.launchNode`, and AgentGUI opens the requested session through an
 `agent-gui:open-session` activation. Normal session launches may reuse an
-already-open node showing that session; the explicit new-window action must pass
-`openInNewWindow` so the descriptor creates a fresh panel-scoped AgentGUI
-instance while still activating the same durable session.
+already-open node only when workbench node state says that node is currently
+showing the requested session. A session-keyed instance id from older snapshots
+is only a legacy window identity hint, not proof of the node's current session.
+If no current-session match exists, the launch should use a provider target or
+panel-scoped AgentGUI container and then activate the durable session. The
+explicit new-window action must pass `openInNewWindow` so the descriptor creates
+a fresh panel-scoped AgentGUI instance while still activating the same durable
+session.
+Opening an existing session is session-authoritative. If the launch payload has
+no `agentTargetId` or provider target id, workbench node state must clear any
+previous target constraint instead of inheriting it from the reused node. When a
+stale target resolves to a different provider than the launched session node,
+desktop activation must drop that target before persisting `lastActiveAgentSessionId`;
+otherwise the node can open the requested session while the conversation rail
+stays scoped to the old provider and cannot select the active row.
+The selected-session state must also honor an explicit open-session request
+even when that session is outside the currently loaded rail page or section.
+Missing from the visible rail is not proof the session is gone. AgentGUI should
+project the requested session metadata into a node-local transient rail row and
+run the normal cwd/user-project grouping so the selected row remains visible in
+the matching project group. This overlay must stay out of canonical pagination
+state and be de-duplicated by conversation id when the real paginated row later
+arrives; session detail/state load owns true not-found handling.
 
 ## Runtime Data Chain
 

@@ -711,6 +711,7 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
       );
       if (
         exactExisting &&
+        !launchResult.preserveExistingNodeFrame &&
         launchResult.framePolicy === "cascade-same-type-centered"
       ) {
         const currentState = this.controller.getSnapshot();

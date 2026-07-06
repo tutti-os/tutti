@@ -98,17 +98,17 @@ describe("agent gui workbench launch contract", () => {
     ).toEqual({ kind: "legacyProvider", provider: "claude-code" });
   });
 
-  it("launches existing sessions into exact session instances", () => {
-    expect(
-      createAgentGuiWorkbenchLaunchDescriptor({
-        dockEntryId: "agent-gui",
-        payload: {
-          agentSessionId: "session-2",
-          provider: "codex"
-        },
-        typeId: "agent-gui"
-      })
-    ).toEqual({
+  it("launches sessions into provider panels until current session state can reuse a node", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
+      dockEntryId: "agent-gui",
+      payload: {
+        agentSessionId: "session-2",
+        provider: "codex"
+      },
+      typeId: "agent-gui"
+    });
+
+    expect(descriptor).toMatchObject({
       activation: {
         payload: {
           agentSessionId: "session-2"
@@ -116,10 +116,29 @@ describe("agent gui workbench launch contract", () => {
         type: "agent-gui:open-session"
       },
       dockEntryId: "agent-gui",
-      instanceId: "agent-gui:codex:session:session-2",
       openInNewWindow: false,
       provider: "codex",
       reuseDockEntryNode: false,
+      reuseExistingSessionNode: true,
+      targetAgentSessionId: "session-2"
+    });
+    expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
+  });
+
+  it("launches sessions with target metadata into target panels", () => {
+    expect(
+      createAgentGuiWorkbenchLaunchDescriptor({
+        dockEntryId: "agent-gui",
+        payload: {
+          agentSessionId: "session-2",
+          agentTargetId: "local:codex",
+          provider: "codex"
+        },
+        typeId: "agent-gui"
+      })
+    ).toMatchObject({
+      instanceId: "agent-gui:codex:target:local%3Acodex",
+      openInNewWindow: false,
       reuseExistingSessionNode: true,
       targetAgentSessionId: "session-2"
     });

@@ -86,6 +86,49 @@ func TestRunExternalAgentRegistryNPMInstallerFallsBackToMirror(t *testing.T) {
 	}
 }
 
+func TestRunExternalAgentRegistryNPMInstallerPurgesDirtyTreeBeforeRetry(t *testing.T) {
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := Service{
+		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
+		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HTTPClient:     agentNPMRegistryProbeHTTPClient(nil),
+	}
+	spec := npmInstallerSpec(t)
+	nodeModules := filepath.Join(spec.RegistryNPM.PrefixDir, "node_modules")
+	staging := filepath.Join(nodeModules, "@anthropic-ai", ".claude-agent-sdk-darwin-arm64-DUAuoDRA")
+
+	var registriesTried []string
+	service.InstallCommand = func(_ context.Context, in InstallCommandInput) (InstallCommandResult, error) {
+		registriesTried = append(registriesTried, registryFromEnv(in.Env))
+		// A leftover staging directory from a prior interrupted attempt makes npm's
+		// rename-to-staging fail with ENOTEMPTY, exactly as seen in the field. The
+		// installer must purge node_modules between attempts so the retry starts clean.
+		if _, err := os.Stat(staging); err == nil {
+			return InstallCommandResult{ExitCode: 190, Stderr: "npm error code ENOTEMPTY"}, nil
+		}
+		// This attempt leaves the tree dirty, then fails like an interrupted install.
+		if err := os.MkdirAll(staging, 0o755); err != nil {
+			t.Fatalf("seed dirty staging dir: %v", err)
+		}
+		if len(registriesTried) == 1 {
+			return InstallCommandResult{ExitCode: 190, Stderr: "npm error code ENOTEMPTY"}, nil
+		}
+		return InstallCommandResult{ExitCode: 0}, nil
+	}
+
+	result, err := service.runExternalAgentRegistryNPMInstaller(context.Background(), "claude-code", spec)
+	if err != nil {
+		t.Fatalf("runExternalAgentRegistryNPMInstaller() error = %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("install exit code = %d (stderr=%q), want a clean retry to succeed after purge", result.ExitCode, result.Stderr)
+	}
+	want := []string{"https://registry.npmjs.org", "https://registry.npmmirror.com"}
+	if !slices.Equal(registriesTried, want) {
+		t.Fatalf("registries tried = %#v, want official then mirror after purge %#v", registriesTried, want)
+	}
+}
+
 func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *testing.T) {
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	service := Service{

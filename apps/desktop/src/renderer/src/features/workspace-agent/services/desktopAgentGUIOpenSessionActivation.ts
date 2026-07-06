@@ -28,6 +28,10 @@ export interface ConsumeDesktopAgentGUIOpenSessionActivationInput {
   ): void;
   onStateChange(this: void, state: DesktopAgentGUIWorkbenchState): void;
   provider: DesktopAgentGUIProvider;
+  resolveAgentTargetProvider?(
+    this: void,
+    agentTargetId: string | null
+  ): DesktopAgentGUIProvider | null;
   workspaceId: string;
   updateNodeState(
     this: void,
@@ -46,6 +50,7 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
   onOpenSessionRequest,
   onStateChange,
   provider,
+  resolveAgentTargetProvider,
   workspaceId,
   updateNodeState
 }: ConsumeDesktopAgentGUIOpenSessionActivationInput): boolean {
@@ -67,9 +72,24 @@ export function consumeDesktopAgentGUIOpenSessionActivation({
       onActivationError?.({ agentSessionId: request.agentSessionId, error });
     });
   updateNodeState((current) => {
+    const currentAgentTargetId =
+      current.agentTargetId?.trim() || current.providerTargetId?.trim() || null;
+    const currentAgentTargetProvider = currentAgentTargetId
+      ? (resolveAgentTargetProvider?.(currentAgentTargetId) ?? null)
+      : null;
+    const shouldClearAgentTarget =
+      currentAgentTargetProvider !== null &&
+      currentAgentTargetProvider !== provider;
     const next = normalizeDesktopAgentGUINodeState(
       {
         ...current,
+        ...(shouldClearAgentTarget
+          ? {
+              agentTargetId: null,
+              providerTargetId: null,
+              providerTargetRef: null
+            }
+          : {}),
         lastActiveAgentSessionId: request.agentSessionId,
         provider
       },

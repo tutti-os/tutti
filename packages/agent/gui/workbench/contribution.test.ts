@@ -19,6 +19,7 @@ import {
   agentGuiWorkbenchUnifiedDockEntryId,
   agentGuiWorkbenchTypeId
 } from "./launch.ts";
+import type { AgentGuiWorkbenchState } from "./types.ts";
 
 function readDockEntryIconSrc(icon: unknown): string | undefined {
   if (!isValidElement(icon)) {
@@ -273,8 +274,72 @@ describe("agent GUI workbench contribution copy", () => {
         type: "agent-gui:open-session"
       },
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
-      instanceId: "agent-gui:claude-code:session:session-claude-1",
       title: "Agent"
+    });
+    expect(launchResult?.instanceId).toContain("agent-gui:claude-code:panel:");
+  });
+
+  it("clears stale target state when opening a session without a target payload", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      reason: "host" as const,
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    };
+
+    const seededLaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-codex-1",
+        agentTargetId: "local:claude-code",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: seededLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:claude-code",
+      lastActiveAgentSessionId: "session-codex-1"
+    });
+
+    const relaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-codex-1",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(relaunch?.instanceId).toBe(seededLaunch?.instanceId);
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: relaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toEqual({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-codex-1"
     });
   });
 
@@ -743,9 +808,7 @@ describe("agent GUI workbench contribution copy", () => {
       }
     });
 
-    expect(existingLaunch?.instanceId).toBe(
-      "agent-gui:codex:session:session-1"
-    );
+    expect(existingLaunch?.instanceId).toContain("agent-gui:codex:panel:");
     expect(newWindowLaunch?.instanceId).toContain("agent-gui:codex:panel:");
     expect(newWindowLaunch?.instanceId).not.toBe(existingLaunch?.instanceId);
     expect(existingLaunch?.cascadeOffset).toBeUndefined();
@@ -758,6 +821,103 @@ describe("agent GUI workbench contribution copy", () => {
       },
       type: "agent-gui:open-session"
     });
+  });
+
+  it("preserves the frame of an already-open session window when re-launched (e.g. from a completion notification)", async () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      reason: "host" as const,
+      surfaceSize: {
+        height: 900,
+        width: 1440
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    };
+    const payload = {
+      agentSessionId: "session-1",
+      provider: "codex"
+    };
+
+    const firstLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+    const relaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload
+    });
+
+    expect(firstLaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(relaunch?.instanceId).toBe(firstLaunch?.instanceId);
+    expect(firstLaunch?.preserveExistingNodeFrame).not.toBe(true);
+    expect(relaunch?.preserveExistingNodeFrame).toBe(true);
+  });
+
+  it("does not treat a drifted session-keyed window as the requested session", async () => {
+    let rememberState: ((state: AgentGuiWorkbenchState) => void) | null = null;
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: (_context, helpers) => {
+        rememberState = helpers.onStateChange;
+        return null;
+      },
+      workspaceId: "workspace-1"
+    });
+
+    contribution.nodes?.[0]?.renderBody?.({
+      activation: null,
+      externalNodeState: null,
+      externalWorkspaceState: null,
+      instanceId: "agent-gui:codex:session:session-1",
+      instanceKey: null,
+      node: {
+        data: {
+          runtimeNodeState: null
+        },
+        displayMode: "floating",
+        frame: { height: 560, width: 1040, x: 0, y: 0 },
+        id: "legacy-session-node",
+        title: "Agent"
+      }
+    } as Parameters<
+      NonNullable<(typeof contribution.nodes)[number]["renderBody"]>
+    >[0]);
+    expect(rememberState).not.toBeNull();
+    (rememberState as unknown as (state: AgentGuiWorkbenchState) => void)({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-2"
+    });
+
+    const relaunch = await contribution.onLaunchRequest?.({
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: {
+        agentSessionId: "session-1",
+        provider: "codex"
+      },
+      reason: "host",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(relaunch?.instanceId).not.toBe("agent-gui:codex:session:session-1");
+    expect(relaunch?.instanceId).toContain("agent-gui:codex:panel:");
+    expect(relaunch?.preserveExistingNodeFrame).not.toBe(true);
   });
 
   it("keeps compact new-window session launches on the cascade policy", async () => {

@@ -625,6 +625,13 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		if err == nil && result.ExitCode == 0 {
 			return result, nil
 		}
+		// A failed or interrupted attempt can leave node_modules half-written —
+		// notably a `.<pkg>-<hash>` staging directory that makes npm's
+		// rename-to-staging fail with ENOTEMPTY on every later attempt (observed in
+		// the field: official times out, then both mirrors fail ENOTEMPTY against
+		// the dirty tree). Purge the install tree so the next attempt — here, or the
+		// next install action — starts clean, the canonical ENOTEMPTY recovery.
+		purgeNPMInstallTree(npmSpec.PrefixDir)
 		if i < len(registries)-1 {
 			slog.Warn(
 				"agent adapter npm install failed on registry, trying next",
@@ -635,6 +642,27 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 		}
 	}
 	return result, err
+}
+
+// purgeNPMInstallTree removes the npm install tree under prefixDir so a retry
+// starts from a clean slate. npm installs into <prefixDir>/node_modules; an
+// interrupted install can leave dotted `.<pkg>-<hash>` staging directories there
+// that make a subsequent `npm install` fail with ENOTEMPTY when it tries to
+// rename a new download over the leftover. Best-effort: a removal failure is
+// logged and the next attempt is still allowed to run.
+func purgeNPMInstallTree(prefixDir string) {
+	prefixDir = strings.TrimSpace(prefixDir)
+	if prefixDir == "" {
+		return
+	}
+	nodeModules := filepath.Join(prefixDir, "node_modules")
+	if err := os.RemoveAll(nodeModules); err != nil {
+		slog.Warn(
+			"agent adapter npm install tree purge failed",
+			"path", nodeModules,
+			"error", err,
+		)
+	}
 }
 
 func (s Service) selectInstallDir() (string, error) {

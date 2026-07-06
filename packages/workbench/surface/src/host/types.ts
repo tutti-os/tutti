@@ -158,6 +158,7 @@ export interface WorkbenchHostLaunchResult {
   instanceId: string;
   instanceKey?: string | null;
   launchSource?: string | null;
+  preserveExistingNodeFrame?: boolean;
   reuseDockEntryNode?: boolean;
   sizeConstraints?: WorkbenchNodeSizeConstraints | null;
   title?: string;

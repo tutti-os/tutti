@@ -396,6 +396,8 @@ export function createAgentGuiWorkbenchContribution(
         launchPayload,
         provider
       );
+      const launchAgentTargetId =
+        providerTarget.agentTargetId ?? providerTarget.providerTargetId;
       if (targetAgentSessionId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
@@ -408,12 +410,7 @@ export function createAgentGuiWorkbenchContribution(
             ...(targetAgentSessionId
               ? { lastActiveAgentSessionId: targetAgentSessionId }
               : {}),
-            ...(providerTarget.agentTargetId
-              ? { agentTargetId: providerTarget.agentTargetId }
-              : {}),
-            ...(providerTarget.providerTargetId
-              ? { agentTargetId: providerTarget.providerTargetId }
-              : {})
+            agentTargetId: launchAgentTargetId ?? null
           },
           typeId: agentGuiWorkbenchTypeId
         });
@@ -457,6 +454,9 @@ export function createAgentGuiWorkbenchContribution(
             ? "absolute"
             : "cascade-same-type-centered",
         instanceId,
+        // Reusing the window already showing this specific conversation
+        // should focus it instead of resetting size or position.
+        preserveExistingNodeFrame: existingInstanceId !== null,
         reuseDockEntryNode,
         title,
         typeId: agentGuiWorkbenchTypeId
