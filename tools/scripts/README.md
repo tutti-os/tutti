@@ -55,13 +55,4 @@ Current examples include:
   }
   ```
 
-- `migrate-local-state-layout.mjs` for manually migrating pre-release
-  `~/.tutti-dev` and `~/.tutti` local state from workspace-scoped filesystem
-  paths to the current workspaceId-free layout. It defaults to dry-run mode;
-  run `pnpm migrate:local-state -- --apply` from a source checkout, or share the
-  standalone script and run `node migrate-local-state-layout.mjs --apply` after
-  quitting Tutti Desktop and `tuttid`. Applying database updates requires the
-  `sqlite3` command on `PATH`; use `--skip-db` only when handling `tuttid.db`
-  separately.
-
 Core product behavior should graduate into Go services or first-class tools rather than remain in shell scripts indefinitely.
