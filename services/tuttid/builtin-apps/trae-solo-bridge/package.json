@@ -1,0 +1,11 @@
+{
+  "name": "@tutti-os/builtin-trae-solo-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "package:builtin": "node scripts/package-builtin.mjs",
+    "package:builtin:check": "node scripts/package-builtin.mjs --check",
+    "test": "node --test scripts/package-builtin.test.mjs"
+  }
+}

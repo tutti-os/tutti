@@ -513,6 +513,7 @@ test("workspace root declares package workspaces for electron-builder fallback d
     "apps/*",
     "packages/*/*",
     "services/tuttid/builtin-apps/tutti-onboarding",
+    "services/tuttid/builtin-apps/trae-solo-bridge",
     "tools/fixtures/*"
   ]);
 });

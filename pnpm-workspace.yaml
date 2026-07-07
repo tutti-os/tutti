@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*/*"
   - "services/tuttid/builtin-apps/tutti-onboarding"
+  - "services/tuttid/builtin-apps/trae-solo-bridge"
   - "tools/fixtures/*"
 onlyBuiltDependencies:
   - electron

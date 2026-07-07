@@ -6,6 +6,7 @@
     "apps/*",
     "packages/*/*",
     "services/tuttid/builtin-apps/tutti-onboarding",
+    "services/tuttid/builtin-apps/trae-solo-bridge",
     "tools/fixtures/*"
   ],
   "engines": {
@@ -48,7 +49,7 @@
     "preview:desktop": "pnpm --filter @tutti-os/desktop preview",
     "push:checked": "node ./tools/scripts/push-checked.mjs",
     "generate:api": "node ./tools/scripts/generate-openapi.mjs",
-    "generate:builtin-apps": "pnpm --filter @tutti-os/builtin-tutti-onboarding package:builtin",
+    "generate:builtin-apps": "pnpm --filter @tutti-os/builtin-tutti-onboarding package:builtin && pnpm --filter @tutti-os/builtin-trae-solo-bridge package:builtin",
     "generate:defaults": "node ./tools/scripts/generate-defaults.mjs",
     "generate:event-protocol": "node ./tools/scripts/generate-event-protocol.mjs",
     "install:golangci-lint": "node ./tools/scripts/setup-dev.mjs --install=golangci-lint",

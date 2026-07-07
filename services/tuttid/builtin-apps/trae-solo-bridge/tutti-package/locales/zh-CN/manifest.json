@@ -1,0 +1,5 @@
+{
+  "name": "Trae Solo 桥接器",
+  "description": "把工作区 Prompt 发送到 Trae Solo 的 Work、Code 或 Design 新会话。",
+  "tags": ["Trae", "Solo", "Agent", "桥接"]
+}

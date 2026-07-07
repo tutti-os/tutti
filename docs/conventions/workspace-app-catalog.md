@@ -105,6 +105,8 @@ not download or unzip the app package just to render localized catalog cards.
 
 Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
 
+Built-in app packages that are committed under `services/tuttid/builtin-apps` must also be registered in `embeddedCatalog()` with an `embedded-archive` distribution that points at the generated zip under `services/tuttid/builtin-apps/generated/<appId>/<appId>-<version>.zip`. The root `generate:builtin-apps` script should generate every embedded archive so daemon tests and builds do not depend on a stale local package.
+
 ## Release Flow
 
 External app repositories should call `.github/workflows/publish-tutti-app-release.yml` from this repository. The reusable workflow:

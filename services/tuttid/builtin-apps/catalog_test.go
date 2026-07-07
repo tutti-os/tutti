@@ -323,14 +323,7 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 	}
 	assertCatalogManifestMatchesSource(t, app.Manifest, sourceManifest)
 
-	archiveData, err := files.ReadFile(app.Distribution.EmbeddedArtifactPath)
-	if err != nil {
-		t.Fatalf("read embedded archive %q: %v", app.Distribution.EmbeddedArtifactPath, err)
-	}
-	archive, err := zip.NewReader(bytes.NewReader(archiveData), int64(len(archiveData)))
-	if err != nil {
-		t.Fatalf("open embedded archive: %v", err)
-	}
+	archive := readEmbeddedArchiveForTest(t, app)
 	requireZipEntryForTest(t, archive, "tutti.app.json")
 	requireZipEntryForTest(t, archive, "tutti.cli.json")
 	requireZipEntryForTest(t, archive, "tutti-guide.md")
@@ -338,6 +331,41 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 	requireZipEntryForTest(t, archive, "dist/index.html")
 	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")
 	requireZipEntryForTest(t, archive, "bin/darwin-amd64/tutti-onboarding-server")
+
+	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
+	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)
+	if err != nil {
+		t.Fatalf("parse archive manifest: %v", err)
+	}
+	assertCatalogManifestMatchesSource(t, app.Manifest, archiveManifest)
+}
+
+func TestEmbeddedTraeSoloBridgeArchiveMatchesCatalog(t *testing.T) {
+	app := findCatalogAppForTest(embeddedCatalog(), "trae-solo-bridge")
+	if app == nil {
+		t.Fatal("embedded catalog missing trae-solo-bridge")
+	}
+	if app.Distribution.Kind != DistributionEmbeddedArchive {
+		t.Fatalf("trae bridge distribution kind = %q, want embedded-archive", app.Distribution.Kind)
+	}
+
+	manifestData, err := os.ReadFile(filepath.Join("trae-solo-bridge", "tutti-package", "tutti.app.json"))
+	if err != nil {
+		t.Fatalf("read source manifest: %v", err)
+	}
+	sourceManifest, _, err := workspacebiz.ParseAppManifestJSON(manifestData)
+	if err != nil {
+		t.Fatalf("parse source manifest: %v", err)
+	}
+	assertCatalogManifestMatchesSource(t, app.Manifest, sourceManifest)
+
+	archive := readEmbeddedArchiveForTest(t, app)
+	requireZipEntryForTest(t, archive, "tutti.app.json")
+	requireZipEntryForTest(t, archive, "AGENTS.md")
+	requireZipEntryForTest(t, archive, "bootstrap.sh")
+	requireZipEntryForTest(t, archive, "server.js")
+	requireZipEntryForTest(t, archive, "devtools_send.js")
+	requireZipEntryForTest(t, archive, "icon.svg")
 
 	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
 	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)
@@ -528,6 +556,19 @@ func assertCatalogManifestMatchesSource(t *testing.T, catalog workspacebiz.AppMa
 	if !reflect.DeepEqual(catalog.Tags, source.Tags) {
 		t.Fatalf("tags = %#v, want %#v", catalog.Tags, source.Tags)
 	}
+}
+
+func readEmbeddedArchiveForTest(t *testing.T, app *App) *zip.Reader {
+	t.Helper()
+	archiveData, err := files.ReadFile(app.Distribution.EmbeddedArtifactPath)
+	if err != nil {
+		t.Fatalf("read embedded archive %q: %v", app.Distribution.EmbeddedArtifactPath, err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(archiveData), int64(len(archiveData)))
+	if err != nil {
+		t.Fatalf("open embedded archive: %v", err)
+	}
+	return archive
 }
 
 func requireZipEntryForTest(t *testing.T, archive *zip.Reader, name string) {

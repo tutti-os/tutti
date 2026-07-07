@@ -113,7 +113,14 @@ function buildChangedLanes() {
     addLane({
       key: "lint:changed",
       label: "lint:changed",
-      command: [pnpmCommand, "exec", "oxlint", "--deny-warnings", ...lintFiles]
+      command: [
+        pnpmCommand,
+        "exec",
+        "oxlint",
+        "--deny-warnings",
+        "--no-error-on-unmatched-pattern",
+        ...lintFiles
+      ]
     });
   }
 

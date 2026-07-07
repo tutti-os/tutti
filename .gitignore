@@ -46,6 +46,8 @@ apps/desktop/build/browser-mcp/
 apps/desktop/build/claude-sdk-sidecar/
 apps/cli/build/
 services/tuttid/builtin-apps/tutti-onboarding/build/
+services/tuttid/builtin-apps/trae-solo-bridge/build/
+!services/tuttid/builtin-apps/generated/trae-solo-bridge/trae-solo-bridge-0.1.0.zip
 
 /tuttid
 /tuttid.exe

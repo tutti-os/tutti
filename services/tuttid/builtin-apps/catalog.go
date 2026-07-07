@@ -141,6 +141,8 @@ func RemoteCatalogEnvOverrideActive() bool {
 func embeddedCatalog() []App {
 	minWidth := 520
 	minHeight := 640
+	traeMinWidth := 820
+	traeMinHeight := 620
 	return []App{
 		{
 			Manifest: workspacebiz.AppManifest{
@@ -193,6 +195,54 @@ func embeddedCatalog() []App {
 			Distribution: Distribution{
 				Kind:                 DistributionEmbeddedArchive,
 				EmbeddedArtifactPath: "generated/tutti-onboarding/tutti-onboarding-0.1.0.zip",
+			},
+		},
+		{
+			Manifest: workspacebiz.AppManifest{
+				SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+				AppID:         "trae-solo-bridge",
+				Version:       "0.1.0",
+				Name:          "Trae Solo Bridge",
+				Description:   "Send workspace prompts to Trae Solo Work, Code, or Design sessions through a local bridge.",
+				Icon: workspacebiz.AppManifestIcon{
+					Type: "asset",
+					Src:  "icon.svg",
+				},
+				Runtime: workspacebiz.AppManifestRuntime{
+					Bootstrap:       "bootstrap.sh",
+					HealthcheckPath: "/healthz",
+					Profile:         "node-static",
+				},
+				Window: &workspacebiz.AppManifestWindow{
+					MinimizeBehavior: "keep-mounted",
+					MinWidth:         &traeMinWidth,
+					MinHeight:        &traeMinHeight,
+				},
+				LocalizationInfo: &workspacebiz.AppManifestLocalizationInfo{
+					DefaultLocale: "en",
+					AdditionalLocales: []workspacebiz.AppManifestLocalizationFile{
+						{
+							Locale: "zh-CN",
+							File:   "locales/zh-CN/manifest.json",
+						},
+					},
+				},
+				Author: &workspacebiz.AppManifestAuthor{
+					Name: "Tutti",
+				},
+				Tags: []string{"trae", "solo", "agent", "bridge"},
+			},
+			Localizations: []workspacebiz.AppManifestLocalization{
+				{
+					Locale:      "zh-CN",
+					Name:        "Trae Solo 桥接器",
+					Description: "把工作区 Prompt 发送到 Trae Solo 的 Work、Code 或 Design 新会话。",
+					Tags:        []string{"Trae", "Solo", "Agent", "桥接"},
+				},
+			},
+			Distribution: Distribution{
+				Kind:                 DistributionEmbeddedArchive,
+				EmbeddedArtifactPath: "generated/trae-solo-bridge/trae-solo-bridge-0.1.0.zip",
 			},
 		},
 	}

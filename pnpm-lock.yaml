@@ -1035,6 +1035,8 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  services/tuttid/builtin-apps/trae-solo-bridge: {}
+
   services/tuttid/builtin-apps/tutti-onboarding:
     dependencies:
       "@fontsource-variable/lexend":

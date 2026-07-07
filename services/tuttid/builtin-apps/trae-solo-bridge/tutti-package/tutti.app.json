@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "tutti.app.manifest.v1",
+  "appId": "trae-solo-bridge",
+  "version": "0.1.0",
+  "name": "Trae Solo Bridge",
+  "description": "Send workspace prompts to Trae Solo Work, Code, or Design sessions through a local bridge.",
+  "icon": {
+    "type": "asset",
+    "src": "icon.svg"
+  },
+  "runtime": {
+    "bootstrap": "bootstrap.sh",
+    "healthcheckPath": "/healthz",
+    "profile": "node-static"
+  },
+  "window": {
+    "minimizeBehavior": "keep-mounted",
+    "minWidth": 820,
+    "minHeight": 620
+  },
+  "tags": ["trae", "solo", "agent", "bridge"],
+  "author": {
+    "name": "Tutti"
+  },
+  "localizationInfo": {
+    "defaultLocale": "en",
+    "additionalLocales": [
+      {
+        "locale": "zh-CN",
+        "file": "locales/zh-CN/manifest.json"
+      }
+    ]
+  }
+}
