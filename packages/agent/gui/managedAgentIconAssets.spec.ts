@@ -10,8 +10,10 @@ import {
   manageAgentCodexUrl,
   manageAgentGeminiUrl,
   manageAgentHermesUrl,
+  manageAgentOpenCodeUrl,
   manageAgentTuttiUrl,
   manageAgentOpenclawUrl,
+  opencodeRoundedUrl,
   tuttiDocRoundedUrl,
   openclawRoundedUrl
 } from "./managedAgentIconAssets.ts";
@@ -48,6 +50,7 @@ describe("managed agent icon assets", () => {
     expect(manageAgentHermesUrl).toBe(hermesRoundedUrl);
     expect(manageAgentTuttiUrl).toBe(tuttiDocRoundedUrl);
     expect(manageAgentOpenclawUrl).toBe(openclawRoundedUrl);
+    expect(manageAgentOpenCodeUrl).toBe(opencodeRoundedUrl);
 
     expect(agentGuiDockIconUrls["claude-code"]).toBe(claudeRoundedUrl);
     expect(agentGuiDockIconUrls.codex).toBe(codexRoundedUrl);
@@ -55,6 +58,7 @@ describe("managed agent icon assets", () => {
     expect(agentGuiDockIconUrls.hermes).toBe(hermesRoundedUrl);
     expect(agentGuiDockIconUrls.nexight).toBe(tuttiDocRoundedUrl);
     expect(agentGuiDockIconUrls.openclaw).toBe(openclawRoundedUrl);
+    expect(agentGuiDockIconUrls.opencode).toBe(opencodeRoundedUrl);
   });
 
   it("uses Cursor colorful artwork for rail and shared rounded avatars", () => {

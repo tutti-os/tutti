@@ -21,6 +21,7 @@ export const preferencesDesktopPreferencesSchema = {
     "sleepPreventionMode",
     "showAppDeveloperSources",
     "enableCursorAgent",
+    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -173,6 +174,24 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             }
           }
+        },
+        opencode: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
         }
       }
     },
@@ -223,6 +242,9 @@ export const preferencesDesktopPreferencesSchema = {
           type: "boolean"
         },
         openclaw: {
+          type: "boolean"
+        },
+        opencode: {
           type: "boolean"
         }
       }
@@ -278,6 +300,9 @@ export const preferencesDesktopPreferencesSchema = {
       type: "boolean"
     },
     enableCursorAgent: {
+      type: "boolean"
+    },
+    enableOpenCodeAgent: {
       type: "boolean"
     },
     themeSource: {
@@ -1119,6 +1144,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "sleepPreventionMode",
         "showAppDeveloperSources",
         "enableCursorAgent",
+        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1271,6 +1297,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            opencode: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1321,6 +1365,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "boolean"
             },
             openclaw: {
+              type: "boolean"
+            },
+            opencode: {
               type: "boolean"
             }
           }
@@ -1376,6 +1423,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           type: "boolean"
         },
         enableCursorAgent: {
+          type: "boolean"
+        },
+        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1458,6 +1508,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "sleepPreventionMode",
         "showAppDeveloperSources",
         "enableCursorAgent",
+        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1610,6 +1661,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            opencode: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1660,6 +1729,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "boolean"
             },
             openclaw: {
+              type: "boolean"
+            },
+            opencode: {
               type: "boolean"
             }
           }
@@ -1715,6 +1787,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           type: "boolean"
         },
         enableCursorAgent: {
+          type: "boolean"
+        },
+        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {

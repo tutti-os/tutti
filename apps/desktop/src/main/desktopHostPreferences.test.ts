@@ -33,6 +33,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -73,6 +74,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "dark",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -117,6 +119,7 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -164,6 +167,7 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -210,6 +214,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -262,6 +267,7 @@ test("createDesktopHostPreferencesState keeps initialized stable update channel"
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "stable",
             updatePolicy: "prompt"
@@ -311,6 +317,7 @@ test("createDesktopHostPreferencesState migrates the old rc default update chann
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -373,6 +380,7 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -429,6 +437,7 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "dark",
             updateChannel: "rc",
             updatePolicy: "prompt"
@@ -471,6 +480,7 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
             sleepPreventionMode: "never",
             showAppDeveloperSources: false,
             enableCursorAgent: false,
+            enableOpenCodeAgent: false,
             themeSource: "system",
             updateChannel: "stable",
             updatePolicy: "prompt"

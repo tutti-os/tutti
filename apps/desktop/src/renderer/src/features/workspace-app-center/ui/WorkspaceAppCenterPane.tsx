@@ -172,14 +172,16 @@ export function WorkspaceAppCenterPane({
       resolveAppCenterReadyAgentProviderOptions(
         agentProviderSnapshot.statuses,
         agentsSnapshot.agentTargets,
-        desktopPreferencesState.enableCursorAgent
-          ? undefined
-          : new Set(["cursor"])
+        createHiddenFactoryProviderSet({
+          enableCursorAgent: desktopPreferencesState.enableCursorAgent,
+          enableOpenCodeAgent: desktopPreferencesState.enableOpenCodeAgent
+        })
       ),
     [
       agentProviderSnapshot.statuses,
       agentsSnapshot.agentTargets,
-      desktopPreferencesState.enableCursorAgent
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
     ]
   );
   const defaultFactoryAgentTargetId = useMemo(
@@ -578,6 +580,7 @@ function resolveAppCenterReadyAgentProviderOptions(
       (target) =>
         target.enabled === true &&
         readyProviders.has(target.provider) &&
+        hiddenProviders?.has(target.provider) !== true &&
         !isWorkspaceAgentGuiComingSoonProvider(target.provider)
     )
     .map((target) => ({
@@ -586,6 +589,17 @@ function resolveAppCenterReadyAgentProviderOptions(
       label: target.name || resolveWorkspaceAgentGuiLabel(target.provider),
       provider: target.provider
     }));
+}
+
+function createHiddenFactoryProviderSet(input: {
+  enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
+}): ReadonlySet<string> | undefined {
+  const hidden = [
+    ...(input.enableCursorAgent ? [] : ["cursor"]),
+    ...(input.enableOpenCodeAgent ? [] : ["opencode"])
+  ];
+  return hidden.length > 0 ? new Set(hidden) : undefined;
 }
 
 function toWorkspaceAppRecord(

@@ -74,6 +74,7 @@ export type AgentGUIProvider = Extract<
   | "gemini"
   | "hermes"
   | "openclaw"
+  | "opencode"
 >;
 
 export interface AgentGUIProviderTargetRef {
@@ -229,6 +230,7 @@ export interface RoomIssueNodeData {
     | "nexight"
     | "gemini"
     | "openclaw"
+    | "opencode"
     | "hermes";
   taskEditing: boolean;
   issueEditing: boolean;

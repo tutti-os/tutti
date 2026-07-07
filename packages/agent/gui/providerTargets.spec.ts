@@ -27,6 +27,7 @@ describe("agent gui provider targets", () => {
       "local:claude-code",
       "local:cursor",
       "local:tutti-agent",
+      "local:opencode",
       "local:hermes",
       "local:openclaw"
     ]);
@@ -243,6 +244,7 @@ describe("agent gui provider targets", () => {
       { disabled: false, provider: "claude-code" },
       { disabled: false, provider: "cursor" },
       { disabled: false, provider: "tutti-agent" },
+      { disabled: false, provider: "opencode" },
       { disabled: true, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);

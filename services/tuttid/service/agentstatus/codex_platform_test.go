@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,21 +29,30 @@ func TestCodexNpmPlatformDir(t *testing.T) {
 	}
 }
 
-func TestCodexPlatformBinaryPath(t *testing.T) {
+func TestCodexPlatformBinaryCandidatePaths(t *testing.T) {
 	pkg := "/home/u/.npm/lib/node_modules/@openai/codex"
-	got, ok := codexPlatformBinaryPath(pkg, "darwin", "arm64")
+	got := codexPlatformBinaryCandidatePaths(pkg, "darwin", "arm64")
 	want := filepath.Join(pkg, "node_modules", "@openai", "codex-darwin-arm64", "vendor", "aarch64-apple-darwin", "bin", "codex")
-	if !ok || got != want {
-		t.Fatalf("codexPlatformBinaryPath darwin/arm64 = (%q,%v), want (%q,true)", got, ok, want)
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("codexPlatformBinaryCandidatePaths darwin/arm64 = %#v, want [%q]", got, want)
 	}
-	winGot, ok := codexPlatformBinaryPath(pkg, "windows", "amd64")
+	winGot := codexPlatformBinaryCandidatePaths(pkg, "windows", "amd64")
 	winWant := filepath.Join(pkg, "node_modules", "@openai", "codex-win32-x64", "vendor", "x86_64-pc-windows-msvc", "bin", "codex.exe")
-	if !ok || winGot != winWant {
-		t.Fatalf("codexPlatformBinaryPath windows = (%q,%v), want (%q,true)", winGot, ok, winWant)
+	if len(winGot) != 1 || winGot[0] != winWant {
+		t.Fatalf("codexPlatformBinaryCandidatePaths windows = %#v, want [%q]", winGot, winWant)
 	}
-	if _, ok := codexPlatformBinaryPath(pkg, "plan9", "mips"); ok {
-		t.Fatalf("codexPlatformBinaryPath unsupported platform should be ok=false")
+	if got := codexPlatformBinaryCandidatePaths(pkg, "plan9", "mips"); len(got) != 0 {
+		t.Fatalf("codexPlatformBinaryCandidatePaths unsupported platform = %#v, want empty", got)
 	}
+}
+
+func requireTestCodexPlatformBinaryPath(t *testing.T, pkgDir string) string {
+	t.Helper()
+	paths := codexPlatformBinaryCandidatePaths(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if len(paths) == 0 {
+		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	return paths[0]
 }
 
 func TestServiceCodexPlatformBinaryComplete(t *testing.T) {

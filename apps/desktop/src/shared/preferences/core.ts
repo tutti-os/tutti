@@ -60,6 +60,8 @@ export const defaultDesktopShowAppDeveloperSources = false;
 
 export const defaultDesktopEnableCursorAgent = false;
 
+export const defaultDesktopEnableOpenCodeAgent = false;
+
 export const desktopAgentConversationDetailModes = [
   "coding",
   "general"
@@ -169,7 +171,8 @@ export const desktopAgentProviders = [
   "nexight",
   "gemini",
   "hermes",
-  "openclaw"
+  "openclaw",
+  "opencode"
 ] as const;
 
 export type DesktopAgentProvider = (typeof desktopAgentProviders)[number];

@@ -49,6 +49,7 @@ test("desktop host preferences follows authoritative preference events", async (
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -89,6 +90,7 @@ test("desktop host preferences follows authoritative preference events", async (
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"

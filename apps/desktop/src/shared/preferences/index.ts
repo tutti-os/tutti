@@ -7,6 +7,7 @@ export {
   defaultDesktopDockPlacement,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopEnableCursorAgent,
+  defaultDesktopEnableOpenCodeAgent,
   defaultDesktopMinimizeAnimation,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,

@@ -739,7 +739,9 @@ func reasoningEffortOptions(provider string, selected string) []map[string]strin
 }
 
 func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex || provider == agentprovider.ClaudeCode {
+	if provider == agentprovider.Codex ||
+		provider == agentprovider.ClaudeCode ||
+		provider == agentprovider.OpenCode {
 		return []string{"low", "medium", "high", "xhigh"}
 	}
 	return []string{"minimal", "low", "medium", "high", "xhigh"}
@@ -751,7 +753,11 @@ func normalizeReasoningEffortForProvider(provider string, value string) string {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.ClaudeCode) && normalized == "minimal" {
+	if (provider == agentprovider.Codex || provider == agentprovider.ClaudeCode) &&
+		(normalized == "minimal" || normalized == "none") {
+		return "high"
+	}
+	if provider == agentprovider.OpenCode && (normalized == "minimal" || normalized == "none") {
 		return "high"
 	}
 	return normalized

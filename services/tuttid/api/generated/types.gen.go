@@ -420,6 +420,7 @@ const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
 	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
+	AgentTargetProviderOpencode   AgentTargetProvider = "opencode"
 	AgentTargetProviderTuttiAgent AgentTargetProvider = "tutti-agent"
 )
 
@@ -431,6 +432,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderCodex:
 		return true
 	case AgentTargetProviderCursor:
+		return true
+	case AgentTargetProviderOpencode:
 		return true
 	case AgentTargetProviderTuttiAgent:
 		return true
@@ -1135,6 +1138,7 @@ const (
 	Hermes     WorkspaceAgentProvider = "hermes"
 	Nexight    WorkspaceAgentProvider = "nexight"
 	Openclaw   WorkspaceAgentProvider = "openclaw"
+	Opencode   WorkspaceAgentProvider = "opencode"
 	TuttiAgent WorkspaceAgentProvider = "tutti-agent"
 )
 
@@ -1154,6 +1158,8 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case Nexight:
 		return true
 	case Openclaw:
+		return true
+	case Opencode:
 		return true
 	case TuttiAgent:
 		return true
@@ -2653,6 +2659,7 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
+	Opencode   *DesktopAgentComposerDefaults `json:"opencode,omitempty"`
 	TuttiAgent *DesktopAgentComposerDefaults `json:"tutti-agent,omitempty"`
 }
 
@@ -2671,6 +2678,7 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
+	Opencode   *bool `json:"opencode,omitempty"`
 	TuttiAgent *bool `json:"tutti-agent,omitempty"`
 }
 
@@ -2714,6 +2722,7 @@ type DesktopPreferences struct {
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
+	EnableOpenCodeAgent                         bool                                               `json:"enableOpenCodeAgent"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`

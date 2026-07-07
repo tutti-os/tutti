@@ -22,6 +22,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
 		EnableCursorAgent:                           value.EnableCursorAgent,
+		EnableOpenCodeAgent:                         value.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
@@ -55,6 +56,7 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 		Gemini:     optionalBoolPointerFromMap(value, "gemini"),
 		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
 		Openclaw:   optionalBoolPointerFromMap(value, "openclaw"),
+		Opencode:   optionalBoolPointerFromMap(value, "opencode"),
 	}
 }
 
@@ -82,6 +84,7 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 		Gemini:     generatedAgentComposerDefaultsPointer(value["gemini"]),
 		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
 		Openclaw:   generatedAgentComposerDefaultsPointer(value["openclaw"]),
+		Opencode:   generatedAgentComposerDefaultsPointer(value["opencode"]),
 	}
 }
 

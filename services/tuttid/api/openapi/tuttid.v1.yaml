@@ -4321,6 +4321,7 @@ components:
         - sleepPreventionMode
         - showAppDeveloperSources
         - enableCursorAgent
+        - enableOpenCodeAgent
         - themeSource
         - updateChannel
         - updatePolicy
@@ -4346,6 +4347,8 @@ components:
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
         enableCursorAgent:
+          type: boolean
+        enableOpenCodeAgent:
           type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
@@ -4428,6 +4431,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        opencode:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentComposerDefaultsByAgentTarget:
       type: object
       additionalProperties:
@@ -4451,6 +4456,8 @@ components:
         hermes:
           type: boolean
         openclaw:
+          type: boolean
+        opencode:
           type: boolean
     DesktopFileDefaultOpener:
       type: string
@@ -4495,6 +4502,7 @@ components:
         - claude-code
         - tutti-agent
         - cursor
+        - opencode
     AgentTargetSource:
       type: string
       enum:
@@ -5777,6 +5785,7 @@ components:
         - gemini
         - hermes
         - openclaw
+        - opencode
     WorkspaceAgentSessionStatus:
       type: string
       enum:

@@ -253,6 +253,9 @@ function createPreferencesKey(
     preferences.sleepPreventionMode,
     preferences.showAppDeveloperSources ? "app-sources:on" : "app-sources:off",
     preferences.enableCursorAgent ? "cursor-agent:on" : "cursor-agent:off",
+    preferences.enableOpenCodeAgent
+      ? "opencode-agent:on"
+      : "opencode-agent:off",
     preferences.themeSource,
     preferences.updateChannel,
     preferences.updatePolicy,
@@ -305,6 +308,8 @@ function preferencesEqual(
     (left.showAppDeveloperSources ?? false) ===
       (right.showAppDeveloperSources ?? false) &&
     (left.enableCursorAgent ?? false) === (right.enableCursorAgent ?? false) &&
+    (left.enableOpenCodeAgent ?? false) ===
+      (right.enableOpenCodeAgent ?? false) &&
     left.themeSource === right.themeSource &&
     left.updateChannel === right.updateChannel &&
     left.updatePolicy === right.updatePolicy &&

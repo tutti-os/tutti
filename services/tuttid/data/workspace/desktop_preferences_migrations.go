@@ -182,6 +182,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	return nil
 }
 
+func (s *SQLiteStore) applyDesktopPreferencesEnableOpenCodeAgentV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesEnableOpenCodeAgentV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasEnableOpenCodeAgent, err := s.hasColumn(ctx, "desktop_preferences", "enable_opencode_agent")
+	if err != nil {
+		return err
+	}
+	if !hasEnableOpenCodeAgent {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN enable_opencode_agent INTEGER NOT NULL DEFAULT 0;`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop enable opencode agent: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesEnableOpenCodeAgentV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop enable opencode agent migration: %w", err)
+	}
+
+	return nil
+}
+
 func (s *SQLiteStore) applyDesktopPreferencesFileDefaultOpenersV1(ctx context.Context) error {
 	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesFileDefaultOpenersV1)
 	if err != nil {

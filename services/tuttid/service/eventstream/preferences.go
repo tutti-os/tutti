@@ -42,6 +42,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			DockIconStyle:               preferences.DockIconStyle,
 			DockPlacement:               preferences.DockPlacement,
 			EnableCursorAgent:           preferences.EnableCursorAgent,
+			EnableOpenCodeAgent:         preferences.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -87,6 +88,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
 			EnableCursorAgent:                           decoded.EnableCursorAgent,
+			EnableOpenCodeAgent:                         decoded.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			Locale:                                      decoded.Locale,
 			MinimizeAnimation:                           decoded.MinimizeAnimation,
@@ -116,6 +118,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DockIconStyle                               string
 	DockPlacement                               string
 	EnableCursorAgent                           bool
+	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	MinimizeAnimation                           string
@@ -158,6 +161,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		DockIconStyle:               decoded.Preferences.DockIconStyle,
 		DockPlacement:               decoded.Preferences.DockPlacement,
 		EnableCursorAgent:           decoded.Preferences.EnableCursorAgent,
+		EnableOpenCodeAgent:         decoded.Preferences.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

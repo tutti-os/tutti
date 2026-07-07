@@ -15,7 +15,8 @@ const PROVIDER_LABELS: Partial<Record<WorkspaceAgentProvider, string>> = {
   gemini: "Gemini",
   nexight: "Nexight",
   hermes: "Hermes",
-  openclaw: "OpenClaw"
+  openclaw: "OpenClaw",
+  opencode: "OpenCode"
 };
 
 export function resolveProviderLabel(provider: WorkspaceAgentProvider): string {

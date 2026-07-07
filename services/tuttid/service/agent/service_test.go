@@ -2647,6 +2647,62 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{
+				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true},
+				{ID: "openai/gpt-5.3-codex", DisplayName: "GPT-5.3 Codex"},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "opencode",
+		Settings: ComposerSettings{
+			ReasoningEffort: "none",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("effectiveSettings.model = %q, want openai/gpt-5.3-codex-spark", options.EffectiveSettings.Model)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "high" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) < 2 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("model option = %#v", configOptions[0])
+	}
+	if configOptions[1]["id"] != "effort" || configOptions[1]["currentValue"] != "high" {
+		t.Fatalf("reasoning option = %#v", configOptions[1])
+	}
+	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if !ok {
+		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+	}
+	for _, option := range reasoningOptions {
+		if option["value"] == "none" || option["value"] == "minimal" {
+			t.Fatalf("reasoning options = %#v, want only opencode-supported efforts", reasoningOptions)
+		}
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
+		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	if len(runtime.sessions) != 0 {
+		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
 func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)

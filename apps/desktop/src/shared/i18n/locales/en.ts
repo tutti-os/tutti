@@ -755,6 +755,12 @@ export const en = {
         enableCursorAgentLabel: "Enable Cursor agent",
         enableCursorAgentSaveFailed:
           "We couldn't update the Cursor agent setting right now.",
+        enableOpenCodeAgentDescription:
+          "Show the OpenCode agent across the app. Off by default while OpenCode support is in preview.",
+        // i18n-check-ignore: Provider brand name.
+        enableOpenCodeAgentLabel: "Enable OpenCode agent",
+        enableOpenCodeAgentSaveFailed:
+          "We couldn't update the OpenCode agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
@@ -892,6 +898,8 @@ export const en = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
+        manageProviderOpenCode: "OpenCode",
+        manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "Sign-in required",
         manageStatusAvailable: "Available to connect",

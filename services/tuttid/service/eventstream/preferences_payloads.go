@@ -13,6 +13,7 @@ type desktopPreferencesMutationPayload struct {
 		DockIconStyle                               string                                                    `json:"dockIconStyle"`
 		DockPlacement                               string                                                    `json:"dockPlacement"`
 		EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
+		EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		Locale                                      string                                                    `json:"locale"`
 		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
@@ -42,6 +43,7 @@ type desktopPreferencesSettingsPayload struct {
 	DockIconStyle                               string                                                    `json:"dockIconStyle"`
 	DockPlacement                               string                                                    `json:"dockPlacement"`
 	EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
+	EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      string                                                    `json:"locale"`
 	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`

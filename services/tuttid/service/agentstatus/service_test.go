@@ -196,6 +196,29 @@ func TestParseCursorAuthStatusOutput(t *testing.T) {
 	}
 }
 
+func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
+	for _, tt := range []struct {
+		output string
+		status AuthStatus
+		ok     bool
+	}{
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
+		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
+		{output: "No providers are authenticated", status: AuthRequired, ok: true},
+		{output: "", ok: false},
+		{output: "unexpected opencode error", ok: false},
+	} {
+		auth, ok := parseOpenCodeAuthStatusOutput([]byte(tt.output))
+		if ok != tt.ok {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
+		}
+		if ok && auth.Status != tt.status {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
+		}
+	}
+}
+
 func TestResolveProviderCommandSwapsInstalledCursorBinary(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		if name == "agent" {
@@ -455,10 +478,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	if err := os.Symlink(codexPath, visiblePath); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
@@ -504,10 +524,7 @@ func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -589,10 +606,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 
 	service := probeTestService(home)
 	service.Environ = func() []string {
@@ -606,7 +620,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	// must install at the npm global prefix that owns it — not duplicate the
 	// package in ~/.local. Derive the expected prefix the same way production does
 	// (via EvalSymlinks, so it matches on macOS where /var -> /private/var).
-	wantPrefix, wantPrefixOK := codexRepairInstallPrefix(filepath.Join(binDir, "codex"))
+	wantPrefix, wantPrefixOK := managedNPMRepairInstallPrefix(filepath.Join(binDir, "codex"), "@openai/codex")
 	if !wantPrefixOK {
 		t.Fatalf("expected repair prefix to be derivable for %s", filepath.Join(binDir, "codex"))
 	}
@@ -660,10 +674,7 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
@@ -1437,7 +1448,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
 		// Platform support was already checked on the test goroutine below, so ok
 		// is true here.
-		platformPath, _ := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+		platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 		writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 		if err := os.Symlink(codexPath, filepath.Join(binDir, "codex-test")); err != nil {
 			t.Errorf("symlink codex: %v", err)
@@ -1445,9 +1456,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		}
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
-	if _, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH); !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	_ = requireTestCodexPlatformBinaryPath(t, pkgDir)
 	go func() {
 		result, err := service.RunAction(context.Background(), RunActionInput{
 			Provider: "codex",

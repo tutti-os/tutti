@@ -331,6 +331,7 @@ export type DesktopPreferences = {
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
   enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -373,6 +374,7 @@ export type DesktopAgentComposerDefaultsByProvider = {
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
+  opencode?: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentComposerDefaultsByAgentTarget = {
@@ -388,6 +390,7 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   gemini?: boolean;
   hermes?: boolean;
   openclaw?: boolean;
+  opencode?: boolean;
 };
 
 export type DesktopFileDefaultOpener =
@@ -415,7 +418,8 @@ export type AgentTargetProvider =
   | "codex"
   | "claude-code"
   | "tutti-agent"
-  | "cursor";
+  | "cursor"
+  | "opencode";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -918,7 +922,8 @@ export type WorkspaceAgentProvider =
   | "nexight"
   | "gemini"
   | "hermes"
-  | "openclaw";
+  | "openclaw"
+  | "opencode";
 
 export type WorkspaceAgentSessionStatus =
   | "created"

@@ -45,8 +45,8 @@ func TestCodexNPMPrefixFromPackageDir(t *testing.T) {
 		"/node_modules/@openai/codex":          "",
 	}
 	for in, want := range cases {
-		if got := codexNPMPrefixFromPackageDir(in); got != want {
-			t.Errorf("codexNPMPrefixFromPackageDir(%q) = %q, want %q", in, got, want)
+		if got := npmGlobalPrefixFromPackageDir(in); got != want {
+			t.Errorf("npmGlobalPrefixFromPackageDir(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -80,7 +80,7 @@ func TestRunCodexCLILatestInstallerRepairsInPlace(t *testing.T) {
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
 
 	existingCLIPath := filepath.Join(binDir, "codex")
-	wantPrefix, wantPrefixOK := codexRepairInstallPrefix(existingCLIPath)
+	wantPrefix, wantPrefixOK := managedNPMRepairInstallPrefix(existingCLIPath, "@openai/codex")
 	if !wantPrefixOK {
 		t.Fatalf("expected repair prefix to be derivable for %s", existingCLIPath)
 	}
@@ -122,7 +122,7 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 	service.Environ = func() []string { return []string{"PATH=" + binDir} }
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
 
-	if _, ok := codexRepairInstallPrefix(standalone); ok {
+	if _, ok := managedNPMRepairInstallPrefix(standalone, "@openai/codex"); ok {
 		t.Fatalf("standalone codex should not yield a repair prefix")
 	}
 

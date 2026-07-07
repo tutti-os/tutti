@@ -95,12 +95,16 @@ export function WorkspaceLaunchpadOverlay({
     if (!desktopPreferencesState.enableCursorAgent) {
       hidden.push("cursor");
     }
+    if (!desktopPreferencesState.enableOpenCodeAgent) {
+      hidden.push("opencode");
+    }
     if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
       hidden.push("tutti-agent");
     }
     return new Set<WorkspaceAgentProvider>(hidden);
   }, [
     desktopPreferencesState.enableCursorAgent,
+    desktopPreferencesState.enableOpenCodeAgent,
     workspaceSettingsState.tuttiAgentSwitchEnabled
   ]);
   const wasOpenRef = useRef(false);

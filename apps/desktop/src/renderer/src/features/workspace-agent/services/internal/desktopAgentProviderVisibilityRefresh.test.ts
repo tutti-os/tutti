@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { desktopManagedAgentProviders } from "./desktopManagedAgentProviders.ts";
 import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./desktopAgentProviderVisibilityRefresh.ts";
 
 test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed providers on focus", () => {
@@ -54,17 +55,7 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
     listener();
   }
 
-  assert.deepEqual(refreshCalls, [
-    [
-      "claude-code",
-      "codex",
-      "cursor",
-      "tutti-agent",
-      "gemini",
-      "hermes",
-      "openclaw"
-    ]
-  ]);
+  assert.deepEqual(refreshCalls, [[...desktopManagedAgentProviders]]);
 });
 
 test("bindDesktopManagedAgentProviderVisibilityRefresh skips hidden documents", () => {

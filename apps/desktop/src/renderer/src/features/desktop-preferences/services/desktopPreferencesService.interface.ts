@@ -51,6 +51,7 @@ export interface IDesktopPreferencesService {
   ): Promise<DesktopSleepPreventionMode>;
   setShowAppDeveloperSources(show: boolean): Promise<boolean>;
   setEnableCursorAgent(enable: boolean): Promise<boolean>;
+  setEnableOpenCodeAgent(enable: boolean): Promise<boolean>;
   setThemeSource(source: DesktopThemeSource): Promise<DesktopThemeState>;
   setUpdateChannel(
     channel: DesktopUpdateChannel

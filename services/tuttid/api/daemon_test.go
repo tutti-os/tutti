@@ -1841,8 +1841,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 4 {
-		t.Fatalf("targets len = %d, want 4", len(response.Targets))
+	if len(response.Targets) != 5 {
+		t.Fatalf("targets len = %d, want 5", len(response.Targets))
 	}
 	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex ||
 		response.Targets[0].Provider != tuttigenerated.AgentTargetProviderCodex ||
@@ -1867,6 +1867,12 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		response.Targets[3].LaunchRef.Type != tuttigenerated.LocalCli ||
 		response.Targets[3].LaunchRef.Provider != tuttigenerated.AgentTargetProviderCursor {
 		t.Fatalf("fourth target = %#v, want local cursor", response.Targets[3])
+	}
+	if response.Targets[4].Id != agenttargetbiz.IDLocalOpenCode ||
+		response.Targets[4].Provider != tuttigenerated.AgentTargetProviderOpencode ||
+		response.Targets[4].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[4].LaunchRef.Provider != tuttigenerated.AgentTargetProviderOpencode {
+		t.Fatalf("fifth target = %#v, want local opencode", response.Targets[4])
 	}
 }
 

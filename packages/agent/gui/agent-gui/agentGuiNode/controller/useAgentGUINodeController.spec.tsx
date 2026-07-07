@@ -11853,7 +11853,18 @@ describe("useAgentGUINodeController", () => {
 
   it("shows a warning tip when an active session settings update requires a new session", async () => {
     const updateSettings = vi.fn(async () => {
-      throw createAppError("agent.settings_require_new_session");
+      throw Object.assign(
+        new Error(
+          "agent session settings update requires a new session to preserve context"
+        ),
+        {
+          code: "invalid_request",
+          name: "TuttidProtocolError",
+          reason: "agent.settings_require_new_session",
+          retryable: false,
+          statusCode: 400
+        }
+      );
     });
     const onShowMessage = vi.fn();
     installAgentHostApi({
@@ -11928,7 +11939,7 @@ describe("useAgentGUINodeController", () => {
         "warning"
       );
     });
-    expect(result.current.viewModel.detailError).toBe(
+    expect(result.current.viewModel.detailError).not.toBe(
       "This model can only be used in a new session to preserve context."
     );
     expect(

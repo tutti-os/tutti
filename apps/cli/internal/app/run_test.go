@@ -13,10 +13,15 @@ import (
 	"github.com/tutti-os/tutti/apps/cli/internal/daemon"
 )
 
+func runDefaultProgram(t *testing.T, args []string, stdout *bytes.Buffer, stderr *bytes.Buffer) int {
+	t.Helper()
+	return RunWithProgram(t.Context(), "tutti", args, stdout, stderr)
+}
+
 func TestRunHelpUsesDefaultCommandName(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Usage: tutti [--json] <command>") {
@@ -135,7 +140,7 @@ func TestRunHelpIncludesIntegrationCapabilitiesInsideAppRuntime(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"--help"}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{"--help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 	if !sawCapabilitiesRequest {
@@ -168,7 +173,7 @@ func TestRunHelpDoesNotIncludeIntegrationCapabilitiesWithoutAppCLIContract(t *te
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"--help"}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{"--help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 }
@@ -190,7 +195,7 @@ func TestRunStatusJSON(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"status", "--json"}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{"status", "--json"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 
@@ -216,7 +221,7 @@ func TestRunStatusAuthFailure(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"status"}, &stdout, &stderr); code != 1 {
+	if code := runDefaultProgram(t, []string{"status"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "daemon authentication failed") {
@@ -242,7 +247,7 @@ func TestRunDynamicCommandRendersTable(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"issue", "list", "--status", "open"}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{"issue", "list", "--status", "open"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "ISS-1") || !strings.Contains(stdout.String(), "Fix startup") {
@@ -268,7 +273,7 @@ func TestRunDynamicCommandRendersJSONRows(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"--json", "issue", "list"}, &stdout, &stderr); code != 0 {
+	if code := runDefaultProgram(t, []string{"--json", "issue", "list"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"id": "ISS-1"`) {
@@ -298,7 +303,7 @@ func TestRunDynamicCommandMatchesMultiSegmentPath(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"--json", "issue", "task", "run", "complete", "--issue-id", "ISS-1", "--task-id=TASK-1", "--run-id", "RUN-1", "--status", "completed"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"--json", "issue", "task", "run", "complete", "--issue-id", "ISS-1", "--task-id=TASK-1", "--run-id", "RUN-1", "--status", "completed"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -333,7 +338,7 @@ func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"app", "open", "--app-id", "docs", "--route", "/files", "--param", "path=/tmp/a", "--param", "mode=preview"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"app", "open", "--app-id", "docs", "--route", "/files", "--param", "path=/tmp/a", "--param", "mode=preview"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -366,7 +371,7 @@ func TestRunDynamicAgentSendAggregatesRepeatedImageFlags(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "--prompt", "look", "--image", "/tmp/a.png", "--image", "/tmp/b.jpg"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"agent", "send", "SESSION-1", "--prompt", "look", "--image", "/tmp/a.png", "--image", "/tmp/b.jpg"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -402,7 +407,7 @@ func TestRunDynamicAgentSendSplitsPositionalPromptBeforeImageFlags(t *testing.T)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "look", "here", "--image", "/tmp/a.png"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"agent", "send", "SESSION-1", "look", "here", "--image", "/tmp/a.png"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -438,7 +443,7 @@ func TestRunDynamicAgentSendSplitsPositionalPromptBeforeGuidanceFlag(t *testing.
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "guide", "current", "turn", "--guidance"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"agent", "send", "SESSION-1", "guide", "current", "turn", "--guidance"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -470,7 +475,7 @@ func TestRunDynamicAgentSendKeepsFlagLikeTokensInPositionalPrompt(t *testing.T) 
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"agent", "send", "SESSION-1", "please", "run", "--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"agent", "send", "SESSION-1", "please", "run", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -500,7 +505,7 @@ func TestRunDynamicCommandHelpRendersInputSchema(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"issue", "task", "create", "--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"issue", "task", "create", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -555,7 +560,7 @@ func TestRunDynamicScopeHelpListsCommandsAndDocumentation(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"automation", "--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"automation", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -607,7 +612,7 @@ func TestRunDynamicScopeHelpShowsRequiredFlagsForBuiltinCommands(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"issue", "--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"issue", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -652,7 +657,7 @@ func TestRunDynamicCommandGroupWithoutSubcommandShowsPrefixHelp(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"issue", "topic"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"issue", "topic"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -693,7 +698,7 @@ func TestRunDynamicScopeHelpLimitsGroupedCommandPreview(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"issue", "--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"issue", "--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -731,7 +736,7 @@ func TestRunRootHelpListsDynamicCommandScopes(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"--help"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"--help"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -767,7 +772,7 @@ func TestRunDynamicCommandPrefersLongestMatchingPath(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(t.Context(), []string{"agent", "session", "messages", "--session-id", "SESSION-1", "--json"}, &stdout, &stderr)
+	code := runDefaultProgram(t, []string{"agent", "session", "messages", "--session-id", "SESSION-1", "--json"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
 	}
@@ -791,7 +796,7 @@ func TestRunDynamicCommandRejectsUnexpectedPositionalArgument(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run(t.Context(), []string{"issue", "get", "ISS-1"}, &stdout, &stderr); code != 2 {
+	if code := runDefaultProgram(t, []string{"issue", "get", "ISS-1"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr.String(), `unexpected argument "ISS-1"`) {

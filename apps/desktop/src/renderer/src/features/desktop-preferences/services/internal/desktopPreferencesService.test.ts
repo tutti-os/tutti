@@ -41,6 +41,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
           enableCursorAgent: false,
+          enableOpenCodeAgent: false,
           themeSource: "dark",
           updateChannel: "stable",
           updatePolicy: "prompt"
@@ -107,6 +108,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -182,6 +184,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -208,6 +211,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -289,6 +293,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -323,6 +328,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -421,6 +427,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
       sleepPreventionMode: "whileAgentRunning",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -446,6 +453,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
     sleepPreventionMode: "whileAgentRunning",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -494,6 +502,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "auto"
@@ -519,6 +528,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "auto"
@@ -660,6 +670,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -685,6 +696,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -736,6 +748,7 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt",
@@ -826,6 +839,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -851,6 +865,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -921,6 +936,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -946,6 +962,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -1033,6 +1050,7 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -1118,6 +1136,7 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -1231,6 +1250,7 @@ function createDesktopPreferencesClient(
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"

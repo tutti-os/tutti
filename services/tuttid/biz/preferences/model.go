@@ -25,6 +25,7 @@ const (
 	DefaultDesktopSleepPreventionMode         = "never"
 	DefaultDesktopShowAppDeveloperSources     = false
 	DefaultDesktopEnableCursorAgent           = false
+	DefaultDesktopEnableOpenCodeAgent         = false
 	DefaultDesktopThemeSource                 = "dark"
 	DefaultDesktopUpdateChannel               = "rc"
 	DefaultDesktopUpdatePolicy                = "prompt"
@@ -44,6 +45,7 @@ type DesktopPreferences struct {
 	DockIconStyle                               string
 	DockPlacement                               string
 	EnableCursorAgent                           bool
+	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
 	Locale                                      string
@@ -91,6 +93,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
 		EnableCursorAgent:                           DefaultDesktopEnableCursorAgent,
+		EnableOpenCodeAgent:                         DefaultDesktopEnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
 			"html":  "appBrowser",

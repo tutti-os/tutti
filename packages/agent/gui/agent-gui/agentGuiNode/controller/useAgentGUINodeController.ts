@@ -1191,8 +1191,28 @@ function limitDiagnosticText(value: string): string {
 function getAgentGUIErrorCode(error: unknown): AppErrorCode | null {
   return (
     getAppErrorCode(error) ??
+    inferAgentGUIErrorCodeFromReason(getAgentGUIErrorReason(error)) ??
     inferAgentGUIErrorCodeFromMessage(getAgentGUIRawErrorMessage(error))
   );
+}
+
+function getAgentGUIErrorReason(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : null;
+}
+
+function inferAgentGUIErrorCodeFromReason(
+  reason: string | null
+): AppErrorCode | null {
+  switch (reason) {
+    case AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR:
+      return AGENT_SETTINGS_REQUIRE_NEW_SESSION_ERROR as AppErrorCode;
+    default:
+      return null;
+  }
 }
 
 function inferAgentGUIErrorCodeFromMessage(
@@ -9233,10 +9253,12 @@ export function useAgentGUINodeController({
             force: true
           });
           const message = getAgentGUIErrorMessage(error);
-          if (
-            isSettingsRequireNewSessionErrorCode(getAgentGUIErrorCode(error))
-          ) {
+          const requiresNewSession = isSettingsRequireNewSessionErrorCode(
+            getAgentGUIErrorCode(error)
+          );
+          if (requiresNewSession) {
             onShowMessageRef.current?.(message, "warning");
+            return;
           }
           if (isCurrentConversation(agentSessionId)) {
             reportAgentGUIRuntimeError({

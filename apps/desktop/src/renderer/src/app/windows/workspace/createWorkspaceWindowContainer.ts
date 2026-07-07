@@ -114,11 +114,14 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     tuttidEventStreamClient
   );
-  // Cursor is feature-gated behind the Developer-panel "Enable Cursor agent"
+  // Preview agents are feature-gated behind Developer-panel preferences
   // preference: gated providers render as coming-soon placeholders in the
   // AgentGUI rail (like hermes) and stay hidden from dock/mention/manage.
   const isAgentProviderGated = (provider: string): boolean =>
-    provider === "cursor" && !desktopPreferencesService.store.enableCursorAgent;
+    (provider === "cursor" &&
+      !desktopPreferencesService.store.enableCursorAgent) ||
+    (provider === "opencode" &&
+      !desktopPreferencesService.store.enableOpenCodeAgent);
   const subscribeAgentProviderVisibility = (
     listener: () => void
   ): (() => void) => subscribe(desktopPreferencesService.store, listener);

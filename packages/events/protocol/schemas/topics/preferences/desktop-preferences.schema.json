@@ -19,6 +19,7 @@
     "sleepPreventionMode",
     "showAppDeveloperSources",
     "enableCursorAgent",
+    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -35,7 +36,8 @@
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
         "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
-        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
+        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" },
+        "opencode": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
     "agentComposerDefaultsByAgentTarget": {
@@ -53,7 +55,8 @@
         "nexight": { "type": "boolean" },
         "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
-        "openclaw": { "type": "boolean" }
+        "openclaw": { "type": "boolean" },
+        "opencode": { "type": "boolean" }
       }
     },
     "agentConversationDetailMode": {
@@ -107,6 +110,9 @@
       "type": "boolean"
     },
     "enableCursorAgent": {
+      "type": "boolean"
+    },
+    "enableOpenCodeAgent": {
       "type": "boolean"
     },
     "themeSource": {

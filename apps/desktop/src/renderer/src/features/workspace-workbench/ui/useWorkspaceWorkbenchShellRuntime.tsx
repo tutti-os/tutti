@@ -152,8 +152,16 @@ export function useWorkspaceWorkbenchShellRuntime({
     });
   }, [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]);
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
-    () => (desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
-    [desktopPreferencesState.enableCursorAgent]
+    () => [
+      ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
+      ...(desktopPreferencesState.enableOpenCodeAgent
+        ? []
+        : ["opencode" as const])
+    ],
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
   );
   const defaultAgentTargetId = useMemo(
     () =>

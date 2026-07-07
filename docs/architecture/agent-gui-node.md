@@ -1325,6 +1325,9 @@ may select their empty composer state, but launch/send controls stay disabled
 until their real `/agents` targets are supported. The historical `nexight`
 "Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
 the first-party `tutti-agent` provider path for Tutti Agent entry points.
+OpenCode is not a future placeholder: it is a real local provider target backed
+by `local:opencode`, but desktop hides it behind the `enableOpenCodeAgent`
+developer preference until the preview is enabled.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId` for supported
@@ -1548,6 +1551,14 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
+Active-session settings are first-class session state, not composer defaults.
+The controller should submit the runtime settings patch and let the provider
+adapter decide whether the change can be applied live or requires a new
+session. Provider capability differences belong in the daemon runtime adapter:
+for example, OpenCode model and reasoning-effort changes are live ACP
+`session/set_config_option` updates, while spawn-time-only provider settings may
+return the `agent.settings_require_new_session` reason. The UI should surface
+that reason as guidance, not as an unhandled runtime error.
 
 ### Mention Or File Reference
 

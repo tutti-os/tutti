@@ -4,6 +4,7 @@ import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core
 
 function optionsFixture(input: {
   model: boolean;
+  reasoning: boolean;
   permission: boolean;
   capabilities?: string[];
 }): AgentActivityComposerOptions {
@@ -13,7 +14,7 @@ function optionsFixture(input: {
     reasoningEfforts: [],
     speeds: [],
     modelConfigurable: input.model,
-    reasoningConfigurable: input.model,
+    reasoningConfigurable: input.reasoning,
     permissionConfig: {
       configurable: input.permission,
       defaultValue: null,
@@ -34,10 +35,16 @@ describe("composerSettingsSupportFromOptions", () => {
   // per provider are pinned by Go's TestComposerConfigConfigurableTruthTable.
   const providerFlags: Record<
     string,
-    { model: boolean; permission: boolean; capabilities: string[] }
+    {
+      model: boolean;
+      reasoning: boolean;
+      permission: boolean;
+      capabilities: string[];
+    }
   > = {
     "claude-code": {
       model: true,
+      reasoning: true,
       permission: true,
       capabilities: [
         "imageInput",
@@ -51,6 +58,7 @@ describe("composerSettingsSupportFromOptions", () => {
     },
     codex: {
       model: true,
+      reasoning: true,
       permission: true,
       capabilities: [
         "imageInput",
@@ -62,10 +70,36 @@ describe("composerSettingsSupportFromOptions", () => {
         "interrupt"
       ]
     },
-    gemini: { model: true, permission: false, capabilities: ["interrupt"] },
-    hermes: { model: false, permission: false, capabilities: ["interrupt"] },
-    nexight: { model: false, permission: true, capabilities: ["interrupt"] },
-    openclaw: { model: false, permission: false, capabilities: [] }
+    gemini: {
+      model: true,
+      reasoning: true,
+      permission: false,
+      capabilities: ["interrupt"]
+    },
+    opencode: {
+      model: true,
+      reasoning: false,
+      permission: false,
+      capabilities: ["interrupt"]
+    },
+    hermes: {
+      model: false,
+      reasoning: false,
+      permission: false,
+      capabilities: ["interrupt"]
+    },
+    nexight: {
+      model: false,
+      reasoning: false,
+      permission: true,
+      capabilities: ["interrupt"]
+    },
+    openclaw: {
+      model: false,
+      reasoning: false,
+      permission: false,
+      capabilities: []
+    }
   };
   const legacyTable: Record<
     string,
@@ -74,6 +108,7 @@ describe("composerSettingsSupportFromOptions", () => {
     "claude-code": { model: true, reasoning: true, permission: true },
     codex: { model: true, reasoning: true, permission: true },
     gemini: { model: true, reasoning: true, permission: false },
+    opencode: { model: true, reasoning: false, permission: false },
     hermes: { model: false, reasoning: false, permission: false },
     nexight: { model: false, reasoning: false, permission: true },
     openclaw: { model: false, reasoning: false, permission: false }
@@ -108,7 +143,12 @@ describe("composerSettingsSupportFromOptions", () => {
 
   it("prefers session runtime capabilities for plan", () => {
     const support = composerSettingsSupportFromOptions(
-      optionsFixture({ model: true, permission: true, capabilities: [] }),
+      optionsFixture({
+        model: true,
+        reasoning: true,
+        permission: true,
+        capabilities: []
+      }),
       { capabilities: ["planMode"] }
     );
     expect(support.plan).toBe(true);
