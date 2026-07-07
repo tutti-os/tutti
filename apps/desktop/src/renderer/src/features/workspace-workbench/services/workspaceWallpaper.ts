@@ -15,7 +15,7 @@ export type WorkspaceWallpaperId =
 
 export const customWorkspaceWallpaperId: WorkspaceWallpaperId = "custom";
 export const defaultWorkspaceWallpaperId: WorkspaceWallpaperId = "tutti";
-export const customWorkspaceWallpaperTitleKey: DesktopI18nKey =
+const customWorkspaceWallpaperTitleKey: DesktopI18nKey =
   "workspace.wallpaper.options.custom";
 
 export type WorkspaceWallpaperAppearance = "light" | "dark";
@@ -31,10 +31,10 @@ export type WorkspaceWallpaperDisplayMode =
   | (typeof workspaceWallpaperDisplayModes)[number]
   | "fill";
 
-export const defaultWorkspaceWallpaperDisplayMode: WorkspaceWallpaperDisplayMode =
+const defaultWorkspaceWallpaperDisplayMode: WorkspaceWallpaperDisplayMode =
   "original";
 
-export function isWorkspaceWallpaperDisplayMode(
+function isWorkspaceWallpaperDisplayMode(
   value: string
 ): value is WorkspaceWallpaperDisplayMode {
   return (
@@ -169,9 +169,7 @@ export const workspaceWallpaperOptions: WorkspaceWallpaperOption[] = [
   }
 ];
 
-export function isWorkspaceWallpaperId(
-  value: string
-): value is WorkspaceWallpaperId {
+function isWorkspaceWallpaperId(value: string): value is WorkspaceWallpaperId {
   return (
     value === customWorkspaceWallpaperId ||
     workspaceWallpaperOptions.some((option) => option.id === value)
@@ -206,7 +204,7 @@ export function getWorkspaceWallpaperOption(
   return resolveWorkspaceWallpaperOption(fallback, appearance);
 }
 
-export function resolveWorkspaceWallpaperOption(
+function resolveWorkspaceWallpaperOption(
   option: WorkspaceWallpaperOption,
   appearance: WorkspaceWallpaperAppearance
 ): WorkspaceWallpaperOption {
