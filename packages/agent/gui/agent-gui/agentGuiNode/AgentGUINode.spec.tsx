@@ -1778,7 +1778,7 @@ describe("AgentGUINode", () => {
     expect(getComposerEditor()).toBeTruthy();
   });
 
-  it("shows OpenClaw gateway startup and disables new sessions while starting", () => {
+  it("hides OpenClaw gateway startup while disabling new sessions until ready", () => {
     mockViewModel = createViewModel({
       data: {
         provider: "openclaw",
@@ -1791,8 +1791,8 @@ describe("AgentGUINode", () => {
     renderAgentGUINode({ workbenchWindowZIndex: 41 });
 
     expect(
-      screen.getByText("agentHost.agentGui.openclawGatewayStarting")
-    ).toBeTruthy();
+      screen.queryByText("agentHost.agentGui.openclawGatewayStarting")
+    ).toBeNull();
     const newConversationButton = getChromeNewConversationButton();
     fireEvent.click(newConversationButton);
 
@@ -2005,11 +2005,14 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
+    const emptyHeading = screen.getByRole("heading", {
+      name: "What can help you with?"
+    });
     expect(
-      screen.getByRole("heading", {
-        name: "What can Claude Code help you with?"
+      within(emptyHeading).getByRole("combobox", {
+        name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toBeTruthy();
+    ).toHaveTextContent("Claude Code");
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );

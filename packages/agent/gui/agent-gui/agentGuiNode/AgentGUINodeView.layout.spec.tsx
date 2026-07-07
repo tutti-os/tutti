@@ -1917,6 +1917,35 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
+
+  it("disables the toolbar new conversation action for unavailable provider targets", () => {
+    const actions = createActions();
+    const unavailableTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: unavailableTarget,
+        providerTargets: [unavailableTarget]
+      }
+    });
+
+    const newConversationButton = container.querySelector<HTMLButtonElement>(
+      ".agent-gui-node__new-conversation-icon-button"
+    );
+    if (!newConversationButton) {
+      throw new Error("Expected toolbar new conversation button to render.");
+    }
+
+    expect(newConversationButton).toBeDisabled();
+    fireEvent.click(newConversationButton);
+
+    expect(actions.createConversation).not.toHaveBeenCalled();
+  });
+
   it("defers rendering conversation items for collapsed project sections", () => {
     renderAgentGUINodeView({
       viewModel: {

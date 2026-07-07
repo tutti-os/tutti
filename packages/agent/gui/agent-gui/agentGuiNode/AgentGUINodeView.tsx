@@ -1293,7 +1293,9 @@ export function AgentGUINodeView({
   const isOpenclawGatewayBlocking =
     openclawGateway !== null && openclawGateway.status !== "ready";
   const createConversationDisabled =
-    viewModel.isCreatingConversation || isOpenclawGatewayBlocking;
+    viewModel.isCreatingConversation ||
+    viewModel.selectedProviderTarget.disabled === true ||
+    isOpenclawGatewayBlocking;
   const createConversationAction = useStableEventCallback(
     actions.createConversation
   );
@@ -6326,17 +6328,7 @@ const AgentGUIConversationRailPane = memo(
             <span>{labels.newConversation}</span>
           </Button>
         </div>
-        {openclawGateway?.status === "starting" ? (
-          <div className={styles.gatewayStatus} data-state="starting">
-            <StatusDot
-              tone="blue"
-              pulse
-              size="sm"
-              ariaLabel={labels.openclawGatewayStarting}
-            />
-            <span>{labels.openclawGatewayStarting}</span>
-          </div>
-        ) : openclawGateway?.status === "failed" ? (
+        {openclawGateway?.status === "failed" ? (
           <div className={styles.gatewayStatus} data-state="failed">
             <span>{openclawGateway.error || labels.openclawGatewayFailed}</span>
             <button

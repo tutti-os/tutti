@@ -196,7 +196,10 @@ or target-scoped defaults may still provide the next settings.
 Host feature switches that disable a provider for new conversations should keep
 the provider target present with `disabled: true` when another surface still
 needs to show the provider in a disabled state. Filter the target out only for
-surfaces that should completely hide it.
+surfaces that should completely hide it. All empty-home new-conversation
+affordances, including rail toolbar and section actions, must read the selected
+provider target's disabled state so coming-soon targets remain inspectable but
+cannot start sessions.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
