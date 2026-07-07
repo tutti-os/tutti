@@ -60,19 +60,6 @@ export function useOptionalAgentHostApi(): AgentHostRuntimeApi | null {
   return useContext(AgentActivityHostContext) ?? getTestAgentHostApi();
 }
 
-export function getAgentHostApi(): AgentHostRuntimeApi {
-  const agentHostApi =
-    getExplicitWindowTestAgentHostApi() ??
-    currentAgentHostApi ??
-    getTestAgentHostApi();
-  if (!agentHostApi) {
-    throw new Error(
-      "AgentActivityHostProvider is missing an agentHostApi instance."
-    );
-  }
-  return agentHostApi;
-}
-
 export function getOptionalAgentHostApi(): AgentHostRuntimeApi | null {
   return (
     getExplicitWindowTestAgentHostApi() ??
