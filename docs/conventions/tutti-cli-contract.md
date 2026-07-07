@@ -161,6 +161,10 @@ targets (`local:codex` and `local:claude-code`). Generic provider-shaped launch
 commands such as `agent start --provider ...` must not create a provider-only
 session when no agent target is available; return a CLI invalid-input error that
 points callers to the provider launcher commands or a target-first launch path.
+`--show` on provider launchers requests AgentGUI activation only; it must not
+change the created session's visibility. User-started sessions should stay on
+the normal visible default; only an explicit `--hidden` launcher input should
+create a hidden session.
 
 ## Naming Rules
 

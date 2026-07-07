@@ -26,6 +26,7 @@ type startInput struct {
 	Provider        string   `cli:"provider" validate:"required"`
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
+	Hidden          bool     `cli:"hidden"`
 	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
@@ -34,12 +35,12 @@ type startInput struct {
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
 	Title           string   `cli:"title"`
-	Visible         bool     `cli:"visible"`
 }
 
 type providerStartInput struct {
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
+	Hidden          bool     `cli:"hidden"`
 	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
@@ -48,7 +49,6 @@ type providerStartInput struct {
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
 	Title           string   `cli:"title"`
-	Visible         bool     `cli:"visible"`
 }
 
 type sessionIDInput struct {
@@ -82,6 +82,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 			return p.runStart(ctx, invoke, input.Provider, "", startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
+				Hidden:          input.Hidden,
 				Images:          input.Images,
 				Model:           input.Model,
 				PermissionMode:  input.PermissionMode,
@@ -90,7 +91,6 @@ func (p Provider) newStartCommand() cliservice.Command {
 				Show:            input.Show,
 				Speed:           input.Speed,
 				Title:           input.Title,
-				Visible:         input.Visible,
 			})
 		},
 	})
@@ -133,6 +133,7 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 type startFields struct {
 	Cwd             string
 	DisplayPrompt   string
+	Hidden          bool
 	Images          []string
 	Model           string
 	PermissionMode  string
@@ -141,7 +142,6 @@ type startFields struct {
 	Show            bool
 	Speed           string
 	Title           string
-	Visible         bool
 }
 
 func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, agentTargetID string, input startFields) (any, error) {
@@ -152,7 +152,6 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if agentTargetID == "" {
 		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...` or `tutti claude start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
 	}
-	visible := input.Visible || input.Show
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
 		return nil, err
@@ -185,7 +184,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		ReasoningEffort:        optionalStringPointer(reasoningEffort),
 		Speed:                  optionalStringPointer(input.Speed),
 		Title:                  optionalStringPointer(input.Title),
-		Visible:                boolPointer(visible),
+		Visible:                hiddenVisibleOverride(input.Hidden),
 		ConversationDetailMode: defaults.ConversationDetailMode,
 	})
 	if err != nil {
@@ -199,6 +198,14 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		launchRequested = true
 	}
 	return sessionActionResult{Session: session, LaunchRequested: launchRequested}, nil
+}
+
+func hiddenVisibleOverride(hidden bool) *bool {
+	if !hidden {
+		return nil
+	}
+	visible := false
+	return &visible
 }
 
 func (p Provider) resolveStartCwd(

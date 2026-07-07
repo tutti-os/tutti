@@ -941,7 +941,7 @@ func TestSkillBundleSkillsValuePreservesMaterializedPathWhenPresent(t *testing.T
 	}
 }
 
-func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
+func TestStartCommandLeavesVisibilityUnsetAndShowPublishesLaunch(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	publisher := &fakeAgentGUILaunchPublisher{}
 	provider := NewProviderWithLaunchPublisher(
@@ -957,10 +957,10 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 			Source: "cli",
 		},
 	}); err != nil {
-		t.Fatalf("Handler headless: %v", err)
+		t.Fatalf("Handler default visibility: %v", err)
 	}
-	if sessions.createInput.Visible == nil || *sessions.createInput.Visible {
-		t.Fatalf("Visible = %#v, want false", sessions.createInput.Visible)
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
 	}
 	if len(publisher.requests) != 0 {
 		t.Fatalf("launch requests = %#v, want none", publisher.requests)
@@ -974,11 +974,65 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Handler show: %v", err)
 	}
-	if sessions.createInput.Visible == nil || !*sessions.createInput.Visible {
-		t.Fatalf("Visible = %#v, want true", sessions.createInput.Visible)
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
 	}
 	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-NEW" || publisher.requests[0].Source != "cli" {
 		t.Fatalf("launch requests = %#v", publisher.requests)
+	}
+}
+
+func TestStartCommandShowDoesNotHideSession(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	publisher := &fakeAgentGUILaunchPublisher{}
+	provider := NewProviderWithLaunchPublisher(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		publisher,
+	)
+	command := newTestCodexStartCommand(provider)
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"model":  "gpt-5",
+			"prompt": "do work",
+			"show":   "true",
+		},
+		Context: cliservice.InvokeContext{
+			Source: "cli",
+		},
+	}); err != nil {
+		t.Fatalf("Handler show: %v", err)
+	}
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
+	}
+	if len(publisher.requests) != 1 || publisher.requests[0].Reason != "start_show" {
+		t.Fatalf("launch requests = %#v", publisher.requests)
+	}
+}
+
+func TestStartCommandHiddenCreatesHiddenSession(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestCodexStartCommand(newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	))
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"model":  "gpt-5",
+			"prompt": "do work",
+			"hidden": "true",
+		},
+		Context: cliservice.InvokeContext{
+			Source: "cli",
+		},
+	}); err != nil {
+		t.Fatalf("Handler hidden: %v", err)
+	}
+	if sessions.createInput.Visible == nil || *sessions.createInput.Visible {
+		t.Fatalf("Visible = %#v, want false", sessions.createInput.Visible)
 	}
 }
 
