@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	appclicore "github.com/tutti-os/tutti/packages/appcli/core"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
@@ -310,7 +311,7 @@ func TestRegistryInvokeRejectsUndeclaredOutput(t *testing.T) {
 }
 
 func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
-	err := ValidateManifest(Manifest{
+	err := appclicore.ValidateManifest(Manifest{
 		SchemaVersion: ManifestSchemaVersion,
 		Scope:         "automation",
 		Commands: []ManifestCommand{{
