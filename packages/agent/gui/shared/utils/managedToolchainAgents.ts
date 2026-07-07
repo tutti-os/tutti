@@ -127,12 +127,6 @@ function hasHostConfig(
   return Boolean(item?.hostConfigDetected);
 }
 
-export function getAgentHostManagedToolchainAgentActionAgentId(
-  agent: AgentHostManagedToolchainAgent
-): string {
-  return agent.actionAgentId ?? agent.id;
-}
-
 export function findAgentHostManagedAgentsStateItemIndex(
   agent: AgentHostManagedToolchainAgent,
   managedAgentsState: AgentHostManagedAgentsState | null
@@ -151,19 +145,6 @@ export function findAgentHostManagedAgentsStateItemIndex(
   });
 }
 
-export function resolveAgentHostManagedAgentsStateItem(
-  agent: AgentHostManagedToolchainAgent,
-  managedAgentsState: AgentHostManagedAgentsState | null
-): AgentHostManagedAgentsStateItem | undefined {
-  const stateItemIndex = findAgentHostManagedAgentsStateItemIndex(
-    agent,
-    managedAgentsState
-  );
-  return stateItemIndex >= 0
-    ? managedAgentsState?.items[stateItemIndex]
-    : undefined;
-}
-
 /** Managed toolchain agent action used by runtime/home projections. */
 export function resolveAgentHostManagedToolchainAgentAction(
   agent: AgentHostManagedToolchainAgent,
@@ -180,41 +161,6 @@ export function resolveAgentHostManagedToolchainAgentAction(
     pendingStateItem,
     managedAgentsState
   );
-}
-
-/** 与 Manage Agents 中标记为 Installed 的行数一致（最多为托管 agents 种类数）。 */
-export function countAgentHostInstalledManagedAgents(
-  managedAgentsState: AgentHostManagedAgentsState | null
-): number {
-  let installed = 0;
-  for (const agent of AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS) {
-    if (
-      resolveAgentHostManagedToolchainAgentAction(agent, managedAgentsState) ===
-      "installed"
-    ) {
-      installed++;
-    }
-  }
-  return installed;
-}
-
-/** Host-side config was synced into the VM for this managed agent (see managedAgentsState.configSyncedAgentIds). */
-export function isAgentHostManagedAgentHostConfigSynced(
-  agent: AgentHostManagedToolchainAgent,
-  managedAgentsState: AgentHostManagedAgentsState | null
-): boolean {
-  const ids = managedAgentsState?.configSyncedAgentIds;
-  if (!ids?.length) {
-    return false;
-  }
-  const synced = new Set(ids.map(normalizeKey));
-  const actionId = normalizeKey(
-    getAgentHostManagedToolchainAgentActionAgentId(agent)
-  );
-  if (synced.has(actionId)) {
-    return true;
-  }
-  return agent.agentIds.some((id) => synced.has(normalizeKey(id)));
 }
 
 export function resolveAgentHostManagedToolchainAction(
@@ -249,17 +195,6 @@ export function resolveAgentHostManagedToolchainAction(
   return "install";
 }
 
-export function getAgentHostManagedToolchainAgentById(
-  id: string
-): AgentHostManagedToolchainAgent | null {
-  const normalized = normalizeKey(id);
-  return (
-    AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS.find(
-      (agent) => normalizeKey(agent.id) === normalized
-    ) ?? null
-  );
-}
-
 export function getAgentHostManagedToolchainAgentByName(
   name: string
 ): AgentHostManagedToolchainAgent | null {
@@ -278,11 +213,5 @@ export function getAgentHostManagedToolchainAgentByName(
         ...(agent.aliases ?? [])
       ].some((candidate) => normalizeKey(candidate) === normalized)
     ) ?? null
-  );
-}
-
-export function listAgentHostGameManagedToolchainAgents(): readonly AgentHostManagedToolchainAgent[] {
-  return AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS.filter(
-    (agent) => !!agent.helperProvider
   );
 }
