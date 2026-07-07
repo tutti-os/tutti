@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useSyncExternalStore,
   type JSX,
   type PropsWithChildren
@@ -31,6 +32,7 @@ import type {
   AgentHostAgentSessionState
 } from "./shared/contracts/dto";
 import type { AgentGUIProviderTargetRef } from "./types";
+import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "./shared/workspaceAgentActivityTypes";
 
 export interface AgentActivityRuntimeListSessionMessagesInput {
   afterVersion?: number;
@@ -264,6 +266,15 @@ export interface AgentActivityRuntimePromptAsset {
 }
 
 export interface AgentActivityRuntime {
+  /**
+   * Stable identity of this runtime instance (e.g. a local origin vs a
+   * shared/room origin). When present, the conversation-list and session-view
+   * stores key their query state, runtime resolution, and subscriptions by this
+   * value, so multiple runtimes can coexist for the same workspace without
+   * fighting over a single module-global slot. Absent => legacy single-runtime
+   * behaviour resolved via the module-global.
+   */
+  origin?: string;
   promptContentUploadSupport?: {
     file?: boolean;
     image?: boolean;
@@ -372,6 +383,22 @@ const AgentActivityRuntimeContext = createContext<AgentActivityRuntime | null>(
 
 let currentAgentActivityRuntime: AgentActivityRuntime | null = null;
 
+// Registry of runtimes indexed by their stable `origin`. Non-React module
+// singletons (the conversation-list and session-view stores) resolve the
+// correct runtime for a query's origin from here instead of reading the
+// last-mounted module-global — the single slot two runtimes used to fight over.
+const runtimesByOrigin = new Map<string, AgentActivityRuntime>();
+
+// A runtime without an explicit origin is the default (local) runtime. It
+// registers under this canonical origin — the same value the conversation-list
+// query and session-view refs fall back to — so the local window resolves to it
+// by origin instead of depending on the last-mounted module-global. A shared/
+// room runtime opts in by setting a distinct `origin`; no host wiring needed for
+// the local case.
+function normalizeRuntimeOrigin(origin: string | null | undefined): string {
+  return origin?.trim() || WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
+}
+
 export interface AgentActivityRuntimeProviderProps extends PropsWithChildren {
   runtime?: AgentActivityRuntime | null;
 }
@@ -381,6 +408,24 @@ export function AgentActivityRuntimeProvider({
   runtime
 }: AgentActivityRuntimeProviderProps): JSX.Element {
   currentAgentActivityRuntime = runtime ?? null;
+  const origin = normalizeRuntimeOrigin(runtime?.origin);
+  // Register during render to close the gap before the effect runs (parity with
+  // the module-global write above); the effect owns cleanup on unmount.
+  if (origin && runtime) {
+    runtimesByOrigin.set(origin, runtime);
+  }
+  useEffect(() => {
+    if (!origin || !runtime) {
+      return;
+    }
+    runtimesByOrigin.set(origin, runtime);
+    return () => {
+      // Only clear if a newer provider hasn't already re-registered this origin.
+      if (runtimesByOrigin.get(origin) === runtime) {
+        runtimesByOrigin.delete(origin);
+      }
+    };
+  }, [origin, runtime]);
   return (
     <AgentActivityRuntimeContext.Provider value={runtime ?? null}>
       {children}
@@ -438,9 +483,33 @@ export function getOptionalAgentActivityRuntime(): AgentActivityRuntime | null {
   );
 }
 
+/**
+ * Resolve the runtime for a given origin. When the origin is registered (two
+ * runtimes coexisting for one workspace), returns that exact instance.
+ *
+ * Only the default (local) origin falls back to legacy single-runtime
+ * resolution. An explicit non-default origin that is not registered returns null
+ * rather than cross-routing to a different runtime via the module-global slot —
+ * e.g. a shared query must never silently load from the local runtime.
+ */
+export function getAgentActivityRuntimeByOrigin(
+  origin: string | null | undefined
+): AgentActivityRuntime | null {
+  const normalizedOrigin = normalizeRuntimeOrigin(origin);
+  const runtime = runtimesByOrigin.get(normalizedOrigin);
+  if (runtime) {
+    return runtime;
+  }
+  if (normalizedOrigin === WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN) {
+    return getOptionalAgentActivityRuntime();
+  }
+  return null;
+}
+
 export function resetAgentActivityRuntimeForTests(): void {
   if (process.env.NODE_ENV === "test") {
     currentAgentActivityRuntime = null;
+    runtimesByOrigin.clear();
   }
 }
 

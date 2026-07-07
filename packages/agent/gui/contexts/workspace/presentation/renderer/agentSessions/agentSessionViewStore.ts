@@ -7,22 +7,26 @@ import type {
 } from "../../../../../shared/contracts/dto";
 import {
   isWorkspaceAgentActivityOptimisticMessage,
+  WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN,
   type WorkspaceAgentActivityMessage
 } from "../../../../../shared/workspaceAgentActivityTypes";
 import { mergeWorkspaceAgentMessages } from "../../../../../host/workspaceAgentSessionMessages";
-import { getOptionalAgentActivityRuntime } from "../../../../../agentActivityRuntime";
+import { getAgentActivityRuntimeByOrigin } from "../../../../../agentActivityRuntime";
 
 const STREAM_LINGER_MS = 15000;
 
 export interface AgentSessionViewRef {
   workspaceId: string | null | undefined;
   agentSessionId: string | null | undefined;
+  /** Runtime identity (local vs shared). Absent => default runtime origin. */
+  origin?: string | null;
 }
 
 export interface AgentSessionView extends Required<
   Pick<AgentSessionViewRef, "workspaceId" | "agentSessionId">
 > {
   sessionKey: string;
+  origin: string;
   overlayMessages: WorkspaceAgentActivityMessage[];
   detailMessages: WorkspaceAgentActivityMessage[];
   controlCommands: AgentHostAgentSessionCommand[];
@@ -41,6 +45,8 @@ export interface AgentSessionView extends Required<
 export interface AgentSessionOverlayMessageHydrationEntry extends Required<
   Pick<AgentSessionViewRef, "workspaceId" | "agentSessionId">
 > {
+  /** Runtime identity; absent => default runtime origin. */
+  origin?: string | null;
   overlayMessages: readonly WorkspaceAgentActivityMessage[];
 }
 
@@ -61,17 +67,20 @@ interface NormalizedAgentSessionViewRef {
   sessionKey: string;
   workspaceId: string;
   agentSessionId: string;
+  origin: string;
 }
 
 interface AgentSessionActivityStreamPayload {
   workspaceId: string | null | undefined;
   agentSessionId: string;
+  origin?: string | null;
 }
 
 type NormalizedAgentSessionActivityStreamPayload = Required<
   Pick<AgentHostSubscribeAgentSessionEventsInput, "agentSessionId">
 > & {
   workspaceId: string;
+  origin: string;
 };
 
 interface AgentSessionActivityStreamEntry {
@@ -103,7 +112,10 @@ const activityStreamEntries = new Map<
   string,
   AgentSessionActivityStreamEntry
 >();
-const runtimeSessionEventUnsubscribeByWorkspaceId = new Map<
+// Keyed by `${workspaceId}::${origin}` so local/shared runtimes each get their
+// own session-event subscription instead of the first one winning a
+// workspace-only slot.
+const runtimeSessionEventUnsubscribeBySubscriptionKey = new Map<
   string,
   () => void
 >();
@@ -179,7 +191,10 @@ export function watchAgentSession(
     watcherCount: current.watcherCount + 1,
     error: null
   }));
-  ensureWorkspaceSessionEventListener(normalizedPayload.workspaceId);
+  ensureWorkspaceSessionEventListener(
+    normalizedPayload.workspaceId,
+    normalizedPayload.origin
+  );
   ensureActivityStreamUpstream(entry);
   return () => {
     const currentEntry = activityStreamEntries.get(key);
@@ -498,10 +513,10 @@ export function deleteAgentSessionView(ref: AgentSessionViewRef): void {
 }
 
 export function resetAgentSessionViewStoreForTests(): void {
-  for (const unsubscribe of runtimeSessionEventUnsubscribeByWorkspaceId.values()) {
+  for (const unsubscribe of runtimeSessionEventUnsubscribeBySubscriptionKey.values()) {
     unsubscribe();
   }
-  runtimeSessionEventUnsubscribeByWorkspaceId.clear();
+  runtimeSessionEventUnsubscribeBySubscriptionKey.clear();
   for (const entry of activityStreamEntries.values()) {
     clearPendingMessageBatch(entry);
     clearEntryLingerTimer(entry);
@@ -558,15 +573,20 @@ function emitAgentSessionViewStoreChange(): void {
   }
 }
 
-function ensureWorkspaceSessionEventListener(workspaceId: string): void {
+function ensureWorkspaceSessionEventListener(
+  workspaceId: string,
+  origin: string
+): void {
   const normalizedWorkspaceId = workspaceId.trim();
-  if (!normalizedWorkspaceId) {
+  const normalizedOrigin = origin.trim();
+  if (!normalizedWorkspaceId || !normalizedOrigin) {
     return;
   }
-  if (runtimeSessionEventUnsubscribeByWorkspaceId.has(normalizedWorkspaceId)) {
+  const subscriptionKey = `${normalizedWorkspaceId}::${normalizedOrigin}`;
+  if (runtimeSessionEventUnsubscribeBySubscriptionKey.has(subscriptionKey)) {
     return;
   }
-  const runtime = getOptionalAgentActivityRuntime();
+  const runtime = getAgentActivityRuntimeByOrigin(normalizedOrigin);
   if (!runtime) {
     return;
   }
@@ -576,7 +596,7 @@ function ensureWorkspaceSessionEventListener(workspaceId: string): void {
       if (!isAgentSessionActivityStreamEvent(event)) {
         return;
       }
-      const entries = findEntriesForEvent(event);
+      const entries = findEntriesForEvent(event, normalizedOrigin);
       if (entries.length === 0) {
         return;
       }
@@ -585,8 +605,8 @@ function ensureWorkspaceSessionEventListener(workspaceId: string): void {
       }
     }
   );
-  runtimeSessionEventUnsubscribeByWorkspaceId.set(
-    normalizedWorkspaceId,
+  runtimeSessionEventUnsubscribeBySubscriptionKey.set(
+    subscriptionKey,
     unsubscribe
   );
 }
@@ -597,7 +617,7 @@ function ensureActivityStreamUpstream(
   if (entry.releaseRuntimeEvents || entry.retainPromise) {
     return;
   }
-  const runtime = getOptionalAgentActivityRuntime();
+  const runtime = getAgentActivityRuntimeByOrigin(entry.payload.origin);
   if (runtime) {
     try {
       const ensureSessionSynchronized =
@@ -767,6 +787,10 @@ function upsertCoalescedMessageUpdate(
   events.push(event);
 }
 
+function normalizeRuntimeOrigin(origin: string | null | undefined): string {
+  return origin?.trim() || WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
+}
+
 function normalizeSubscribePayload(
   payload: AgentSessionActivityStreamPayload
 ): NormalizedAgentSessionActivityStreamPayload | null {
@@ -777,7 +801,8 @@ function normalizeSubscribePayload(
   }
   return {
     workspaceId,
-    agentSessionId
+    agentSessionId,
+    origin: normalizeRuntimeOrigin(payload.origin)
   };
 }
 
@@ -789,21 +814,27 @@ function normalizeAgentSessionViewRef(
   if (!workspaceId || !agentSessionId) {
     return null;
   }
+  const origin = normalizeRuntimeOrigin(ref.origin);
   return {
     workspaceId,
     agentSessionId,
-    sessionKey: activityStreamKey({ workspaceId, agentSessionId })
+    origin,
+    sessionKey: activityStreamKey({ workspaceId, agentSessionId, origin })
   };
 }
 
 function activityStreamKey(
-  payload: Pick<NormalizedAgentSessionViewRef, "workspaceId" | "agentSessionId">
+  payload: Pick<
+    NormalizedAgentSessionViewRef,
+    "workspaceId" | "agentSessionId" | "origin"
+  >
 ): string {
-  return `${payload.workspaceId}:${payload.agentSessionId}`;
+  return `${payload.origin}::${payload.workspaceId}::${payload.agentSessionId}`;
 }
 
 function findEntriesForEvent(
-  event: AgentHostAgentActivityStreamEvent
+  event: AgentHostAgentActivityStreamEvent,
+  origin: string
 ): AgentSessionActivityStreamEntry[] {
   const agentSessionId = event.data.agentSessionId?.trim();
   if (!agentSessionId) {
@@ -814,13 +845,22 @@ function findEntriesForEvent(
       ? event.data.workspaceId.trim()
       : null;
   if (eventWorkspaceId) {
+    // Events are delivered by a per-origin runtime subscription, so scope the
+    // lookup to that origin — never let one runtime's event drive the other's
+    // session view even if the agentSessionId happens to match.
     const exactEntry = activityStreamEntries.get(
-      `${eventWorkspaceId}:${agentSessionId}`
+      activityStreamKey({
+        workspaceId: eventWorkspaceId,
+        agentSessionId,
+        origin
+      })
     );
     return exactEntry ? [exactEntry] : [];
   }
   return [...activityStreamEntries.values()].filter(
-    (entry) => entry.payload.agentSessionId === agentSessionId
+    (entry) =>
+      entry.payload.agentSessionId === agentSessionId &&
+      entry.payload.origin === origin
   );
 }
 
@@ -891,7 +931,7 @@ function reportMessageBatchDiagnostics(
   if (batch.incomingCount <= 1 && batch.events.length <= 1) {
     return;
   }
-  const runtime = getOptionalAgentActivityRuntime();
+  const runtime = getAgentActivityRuntimeByOrigin(entry.payload.origin);
   try {
     void runtime?.reportDiagnostic?.({
       details: {
@@ -933,6 +973,7 @@ function createEmptySessionView(
 ): AgentSessionView {
   return {
     sessionKey: ref.sessionKey,
+    origin: ref.origin,
     workspaceId: ref.workspaceId,
     agentSessionId: ref.agentSessionId,
     overlayMessages: [],

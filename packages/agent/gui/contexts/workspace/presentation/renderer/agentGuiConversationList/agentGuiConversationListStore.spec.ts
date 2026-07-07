@@ -366,6 +366,26 @@ describe("agentGuiConversationListStore", () => {
     expect(legacyCodexKey).not.toBe(legacyClaudeKey);
   });
 
+  it("splits query keys by sessionOrigin so local and shared runtimes stay isolated", () => {
+    const localQuery: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const sharedQuery: AgentGUIConversationListQuery = {
+      ...localQuery,
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_SHARED"
+    };
+
+    const localKey = createAgentGUIConversationListQueryKey(localQuery);
+    const sharedKey = createAgentGUIConversationListQueryKey(sharedQuery);
+
+    expect(localKey).not.toBeNull();
+    expect(sharedKey).not.toBeNull();
+    expect(localKey).not.toBe(sharedKey);
+  });
+
   it("projects explicit conversation filters from the current runtime snapshot without reloading sessions", async () => {
     const allQuery: AgentGUIConversationListQuery = {
       workspaceId: "workspace-1",

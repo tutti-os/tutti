@@ -16,6 +16,7 @@ export function useAgentSessionView(ref: AgentSessionViewRef) {
 export function useWatchAgentSession(input: {
   workspaceId: string;
   agentSessionId: string | null | undefined;
+  origin?: string;
   enabled?: boolean;
   onEvents?: (events: readonly AgentHostAgentActivityStreamEvent[]) => void;
   onSubscribe?: () => void;
@@ -40,7 +41,7 @@ export function useWatchAgentSession(input: {
     }
     onSubscribeRef.current?.();
     const unsubscribe = watchAgentSession(
-      { workspaceId, agentSessionId },
+      { workspaceId, agentSessionId, origin: input.origin },
       {
         ...(hasBatchEventListener
           ? {
@@ -61,6 +62,7 @@ export function useWatchAgentSession(input: {
     hasBatchEventListener,
     input.agentSessionId,
     input.enabled,
+    input.origin,
     input.workspaceId
   ]);
 }
@@ -68,6 +70,7 @@ export function useWatchAgentSession(input: {
 export function useWatchAgentSessions(input: {
   workspaceId: string;
   agentSessionIds: readonly string[];
+  origin?: string;
   enabled?: boolean;
   onEvents?: (events: readonly AgentHostAgentActivityStreamEvent[]) => void;
 }) {
@@ -94,7 +97,7 @@ export function useWatchAgentSessions(input: {
     }
     const unsubscribes = uniqueAgentSessionIds.map((agentSessionId) =>
       watchAgentSession(
-        { workspaceId, agentSessionId },
+        { workspaceId, agentSessionId, origin: input.origin },
         {
           ...(hasBatchEventListener
             ? {
@@ -117,6 +120,7 @@ export function useWatchAgentSessions(input: {
     agentSessionIdsKey,
     hasBatchEventListener,
     input.enabled,
+    input.origin,
     input.workspaceId
   ]);
 }
