@@ -420,7 +420,6 @@ export function createAgentGuiWorkbenchContribution(
         dockEntryId,
         instanceId: descriptorInstanceId,
         openInNewWindow,
-        provider,
         reuseDockEntryNode,
         reuseExistingSessionNode,
         targetAgentSessionId
