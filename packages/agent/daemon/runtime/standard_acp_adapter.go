@@ -1,5 +1,4 @@
 //revive:disable:file-length-limit
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentruntime
 
 import (
@@ -2803,13 +2802,6 @@ func (a *standardACPAdapter) applyACPUpdate(agentSessionID string, raw json.RawM
 	return applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
 }
 
-func standardProviderSessionID(session *standardACPSession) string {
-	if session == nil {
-		return ""
-	}
-	return session.providerSessionID
-}
-
 func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {
 	if a == nil || pending == nil {
 		return
@@ -3338,15 +3330,6 @@ func standardACPClaudeMetaString(value map[string]any, key string) string {
 	meta := payloadMap(value, "_meta")
 	claudeCode := payloadMap(meta, "claudeCode")
 	return strings.TrimSpace(asString(claudeCode[key]))
-}
-
-func isTerminalACPToolStatus(status string) bool {
-	switch normalizedCallStatus(status) {
-	case messageStreamStateCompleted, messageStreamStateFailed:
-		return true
-	default:
-		return false
-	}
 }
 
 func shouldIgnoreStandardACPTitle(config standardACPConfig, currentTitle string, title string) bool {
