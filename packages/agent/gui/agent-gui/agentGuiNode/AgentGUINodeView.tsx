@@ -1538,9 +1538,12 @@ export function AgentGUINodeView({
       : railConfigProvider;
   const effectiveRailSlashStatusLimits =
     railSlashStatusLimits ?? slashStatusLimits;
-  const shouldShowProviderRailConfigMenu =
-    viewModel.conversationFilter.kind !== "all" &&
+  const shouldShowProviderRailConfigButton =
+    viewModel.conversationFilter.kind === "all" ||
     viewModel.selectedProviderTarget?.disabled !== true;
+  const shouldShowProviderRailConfigMenu =
+    shouldShowProviderRailConfigButton &&
+    viewModel.conversationFilter.kind !== "all";
   const enabledProviderTargets = viewModel.providerTargets.filter(
     (target) =>
       target.disabled !== true &&
@@ -1698,26 +1701,43 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
-            {shouldShowProviderRailConfigMenu ? (
+            {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
                 data-testid="agent-gui-config-footer"
               >
-                <AgentGUIConfigMenu
-                  labels={labels}
-                  previewMode={previewMode}
-                  slashStatusLimits={effectiveRailSlashStatusLimits}
-                  slashStatusLimitsLoading={slashStatusLimitsLoading}
-                  slashStatusUsageCapturedAtUnixMs={
-                    slashStatusUsageCapturedAtUnixMs
-                  }
-                  slashStatusUsageDidFail={slashStatusUsageDidFail}
-                  slashStatusUsageAttempted={slashStatusUsageAttempted}
-                  onAgentConfigMenuOpen={onAgentConfigMenuOpen}
-                  onAgentUsageRefresh={onAgentUsageRefresh}
-                  onOpenAgentEnvSetup={openAgentEnvSetup}
-                  onOpenAgentSettings={openAgentSettings}
-                />
+                {shouldShowProviderRailConfigMenu ? (
+                  <AgentGUIConfigMenu
+                    labels={labels}
+                    previewMode={previewMode}
+                    slashStatusLimits={effectiveRailSlashStatusLimits}
+                    slashStatusLimitsLoading={slashStatusLimitsLoading}
+                    slashStatusUsageCapturedAtUnixMs={
+                      slashStatusUsageCapturedAtUnixMs
+                    }
+                    slashStatusUsageDidFail={slashStatusUsageDidFail}
+                    slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                    onAgentUsageRefresh={onAgentUsageRefresh}
+                    onOpenAgentEnvSetup={openAgentEnvSetup}
+                    onOpenAgentSettings={openAgentSettings}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={labels.agentSettingsMenu}
+                    className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
+                    title={labels.agentSettingsMenu}
+                    disabled={previewMode}
+                    onClick={openAgentSettings}
+                  >
+                    <SettingsLinedIcon
+                      aria-hidden="true"
+                      width={18}
+                      height={18}
+                    />
+                  </button>
+                )}
               </div>
             ) : null}
             {renderSidebarFooter ? (
@@ -1992,6 +2012,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const pendingPrependScrollAnchorRef = useRef<{
     conversationId: string;
     scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+  // Remembers, per conversation, the last scroll position the user left off at
+  // so switching back to a conversation the user had manually scrolled away
+  // from restores that position instead of snapping to the bottom.
+  const timelineScrollPositionsRef = useRef<
+    Map<string, { scrollTop: number; atBottom: boolean }>
+  >(new Map());
+  // Deferred restore target used when a conversation is switched to while its
+  // content is still loading (skeleton) and scrollHeight is not yet final.
+  const pendingRestoreScrollRef = useRef<{
+    conversationId: string;
     scrollTop: number;
   } | null>(null);
   const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
@@ -2913,16 +2945,58 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submittedPromptScrollConversationRef.current === activeConversationId;
     let nextScrollTop = timeline.scrollTop;
 
+    const savedScrollPosition = shouldScrollSubmittedPromptToBottom
+      ? undefined
+      : timelineScrollPositionsRef.current.get(activeConversationId);
+
     if (
       !anchor ||
       anchor.conversationId !== activeConversationId ||
       shouldScrollSubmittedPromptToBottom
     ) {
-      setTimelineScrollTopInstantly(timeline, maxScrollTop);
-      nextScrollTop = maxScrollTop;
+      if (
+        savedScrollPosition &&
+        !savedScrollPosition.atBottom &&
+        !showTimelineSkeleton
+      ) {
+        // Returning to a conversation the user had manually scrolled away
+        // from: restore that position instead of snapping to the bottom.
+        nextScrollTop = Math.min(maxScrollTop, savedScrollPosition.scrollTop);
+        timeline.scrollTop = nextScrollTop;
+        pendingRestoreScrollRef.current = null;
+      } else if (savedScrollPosition && !savedScrollPosition.atBottom) {
+        // Content isn't rendered yet (skeleton) so scrollHeight is not final:
+        // defer the restore until the real messages have laid out.
+        pendingRestoreScrollRef.current = {
+          conversationId: activeConversationId,
+          scrollTop: savedScrollPosition.scrollTop
+        };
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+      } else {
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+        pendingRestoreScrollRef.current = null;
+      }
       submittedPromptScrollConversationRef.current = null;
       if (shouldScrollSubmittedPromptToBottom) {
         pendingPrependScrollAnchorRef.current = null;
+      }
+    } else if (
+      pendingRestoreScrollRef.current?.conversationId === activeConversationId
+    ) {
+      if (showTimelineSkeleton) {
+        // Still loading: keep pinned to the bottom until content is ready so
+        // the deferred restore can target the final scrollHeight.
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+      } else {
+        nextScrollTop = Math.min(
+          maxScrollTop,
+          pendingRestoreScrollRef.current.scrollTop
+        );
+        timeline.scrollTop = nextScrollTop;
+        pendingRestoreScrollRef.current = null;
       }
     } else if (prependAnchor?.conversationId === activeConversationId) {
       const nextScrollHeight = timeline.scrollHeight;
@@ -3090,13 +3164,24 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         scrollTop,
         clientHeight: timeline.clientHeight
       };
+      const atBottom =
+        timeline.scrollHeight - scrollTop - timeline.clientHeight <=
+        AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
       setIsTimelineScrolledToTop(
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
-      setIsTimelineScrolledToBottom(
-        timeline.scrollHeight - scrollTop - timeline.clientHeight <=
-          AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
-      );
+      setIsTimelineScrolledToBottom(atBottom);
+      // Remember where the user left off so returning to this conversation can
+      // restore the position. Skip while a deferred restore is pending so the
+      // synchronous jump-to-bottom (during skeleton) doesn't clobber it.
+      if (
+        pendingRestoreScrollRef.current?.conversationId !== activeConversationId
+      ) {
+        timelineScrollPositionsRef.current.set(activeConversationId, {
+          scrollTop,
+          atBottom
+        });
+      }
       if (
         viewModel.hasOlderMessages &&
         !viewModel.isLoadingOlderMessages &&

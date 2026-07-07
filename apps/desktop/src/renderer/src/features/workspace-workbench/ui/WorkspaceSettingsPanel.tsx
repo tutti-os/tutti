@@ -225,7 +225,7 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="relative z-[1] grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,640px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
