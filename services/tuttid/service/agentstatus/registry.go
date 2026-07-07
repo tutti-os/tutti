@@ -173,6 +173,57 @@ func DefaultRegistry() Registry {
 			},
 			LoginArgs: []string{"login"},
 		},
+		agentprovider.Antigravity: {
+			Provider:           agentprovider.Antigravity,
+			BinaryNames:        []string{"agy"},
+			AdapterBinaryNames: []string{"agy-acp"},
+			AdapterCommand:     []string{"agy-acp"},
+			// agy login is an interactive TUI (`agy`, no subcommand); there is
+			// no non-interactive auth-status command, so rely on the marker.
+			AuthMarkerPaths: []string{"~/.gemini/antigravity-cli/jetski_state.pbtxt"},
+			Install: InstallerSpec{
+				Kind:           InstallerKindOfficialScript,
+				DisplayCommand: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+				ScriptURL:      "https://antigravity.google/cli/install.sh",
+				ScriptShell:    "bash",
+			},
+			AdapterInstall: InstallerSpec{
+				Kind:           InstallerKindGitHubReleaseBinary,
+				DisplayCommand: "download agy-acp from tutti-os/antigravity-acp@v1.0.0-tutti.1",
+				ReleaseBinary: &ReleaseBinaryInstallerSpec{
+					BinaryName: "agy-acp",
+					Version:    "v1.0.0-tutti.1",
+					// InstallDir left empty → installer default location.
+					Assets: map[string]ReleaseBinaryAsset{
+						"darwin-arm64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-darwin-arm64",
+							SHA256: "7936bd5fd662e6514755a8e8b19aba88b2f01b94d082d93bbc238cb4bdc9c2e8",
+						},
+						"darwin-amd64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-darwin-x64",
+							SHA256: "4265454974b67142061539270fb6401229034098590762b2b0c30be68ff5ebdc",
+						},
+						"linux-arm64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-linux-arm64",
+							SHA256: "7eec158411e1939c6ad6298b52ee2691425b666a448ee12c07ccf59b55067652",
+						},
+						"linux-amd64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-linux-x64",
+							SHA256: "ed900c0ebb72ff505ec5c64296b534472927140514aacad607af645320e6a3d1",
+						},
+						"windows-arm64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-windows-arm64.exe",
+							SHA256: "c55280bb358e4b9ea18091e955341ffc43057ef2babfdba7ebe1c31b9bb2f6d1",
+						},
+						"windows-amd64": {
+							URL:    "https://github.com/tutti-os/antigravity-acp/releases/download/v1.0.0-tutti.1/agy-acp-windows-x64.exe",
+							SHA256: "f58efda098e9df50a15a9efe3c965f954e0f508838e0665ba9471ee29efe3503",
+						},
+					},
+				},
+			},
+			LoginArgs: nil,
+		},
 	}
 	providers := agentprovider.All()
 	specs := make([]ProviderSpec, 0, len(providers))
