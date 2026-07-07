@@ -730,8 +730,14 @@ func TestAppCenterServiceInitializesBuiltinPackagesWhenRemoteCatalogFails(t *tes
 	}
 	if packages, err := store.ListAppPackages(context.Background()); err != nil {
 		t.Fatalf("ListAppPackages() error = %v", err)
-	} else if len(packages) != 1 || packages[0].AppID != "tutti-onboarding" {
-		t.Fatalf("ListAppPackages() = %#v, want embedded onboarding package", packages)
+	} else {
+		packageIDs := make(map[string]bool, len(packages))
+		for _, pkg := range packages {
+			packageIDs[pkg.AppID] = true
+		}
+		if !packageIDs["tutti-onboarding"] || !packageIDs["trae-solo-bridge"] {
+			t.Fatalf("ListAppPackages() = %#v, want embedded builtin packages", packages)
+		}
 	}
 	state := service.CatalogLoadState()
 	if state.Status != workspacebiz.AppCatalogLoadStatusLoading && state.Status != workspacebiz.AppCatalogLoadStatusFailed {
