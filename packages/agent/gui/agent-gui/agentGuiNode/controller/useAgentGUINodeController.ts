@@ -3706,6 +3706,10 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
+  // Stable identity of the injected runtime; drives the conversation-list query
+  // key and every session-view ref so local/shared runtimes stay isolated.
+  const agentActivityRuntimeOrigin =
+    agentActivityRuntime.origin?.trim() || AGENT_GUI_RUNTIME_SESSION_ORIGIN;
   const agentQueuedPromptRuntime = useAgentQueuedPromptRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
@@ -3914,9 +3918,18 @@ export function useAgentGUINodeController({
         workspaceId,
         userId,
         provider: data.provider,
-        sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
+        // Identity derives from the injected runtime so local/shared runtimes
+        // for the same workspace produce distinct query keys. Legacy runtimes
+        // without an origin fall back to the default origin (no key change).
+        sessionOrigin: agentActivityRuntimeOrigin
       };
-    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
+    }, [
+      agentActivityRuntimeOrigin,
+      currentUserId,
+      data.provider,
+      conversationFilter,
+      workspaceId
+    ]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -4064,9 +4077,10 @@ export function useAgentGUINodeController({
   const sessionViewRef = useCallback(
     (agentSessionId: string | null | undefined) => ({
       workspaceId,
-      agentSessionId
+      agentSessionId,
+      origin: agentActivityRuntimeOrigin
     }),
-    [workspaceId]
+    [agentActivityRuntimeOrigin, workspaceId]
   );
   const activeSessionView = useAgentSessionView(
     sessionViewRef(activeConversationId)
@@ -7180,6 +7194,7 @@ export function useAgentGUINodeController({
   useWatchAgentSession({
     workspaceId,
     agentSessionId: activeConversationId,
+    origin: agentActivityRuntimeOrigin,
     enabled: !previewMode && activeConversationId !== null,
     onSubscribe: () => {
       if (!activeConversationId) {
@@ -7222,6 +7237,7 @@ export function useAgentGUINodeController({
   useWatchAgentSessions({
     workspaceId,
     agentSessionIds: backgroundWatchedConversationIds,
+    origin: agentActivityRuntimeOrigin,
     enabled: backgroundWatchedConversationIds.length > 0,
     onEvents: (events) => {
       handleBackgroundActivityStreamEvents(events);
