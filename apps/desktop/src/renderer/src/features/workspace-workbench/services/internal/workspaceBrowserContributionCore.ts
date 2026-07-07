@@ -7,43 +7,10 @@ import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
 
 const browserNodeSearchBaseUrl = "https://www.google.com/search";
 
-export interface WorkspaceBrowserNavigationAnalyticsParams {
-  isLocalhost: boolean;
-  urlDomain: string;
-}
-
 export function resolveWorkspaceBrowserSearchUrl(query: string): string {
   const searchUrl = new URL(browserNodeSearchBaseUrl);
   searchUrl.searchParams.set("q", query);
   return searchUrl.toString();
-}
-
-export function resolveWorkspaceBrowserNavigationAnalyticsParams(
-  url: string
-): WorkspaceBrowserNavigationAnalyticsParams | null {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.trim().toLowerCase();
-    if (!hostname) {
-      return null;
-    }
-    return {
-      isLocalhost: isWorkspaceBrowserLocalhost(hostname),
-      urlDomain: hostname
-    };
-  } catch {
-    return null;
-  }
-}
-
-function isWorkspaceBrowserLocalhost(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname.startsWith("127.") ||
-    hostname === "::1" ||
-    hostname === "[::1]"
-  );
 }
 
 export interface WorkspaceBrowserNodeExternalState {

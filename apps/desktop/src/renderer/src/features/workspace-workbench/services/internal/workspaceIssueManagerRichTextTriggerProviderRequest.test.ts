@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  createWorkspaceIssueManagerRichTextTriggerProviderRequest,
-  createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity
-} from "./workspaceIssueManagerRichTextTriggerProviderRequest.ts";
+import { createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity } from "./workspaceIssueManagerRichTextTriggerProviderRequest.ts";
 
 test("workspace issue manager rich text at provider request enables agent and app mentions", () => {
   assert.deepEqual(
-    createWorkspaceIssueManagerRichTextTriggerProviderRequest({
-      currentUserId: "user-1",
+    createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity({
+      currentUser: () => ({
+        userId: "user-1"
+      }),
       surface: "issue",
       workspaceId: "workspace-1"
     }),

@@ -3,7 +3,6 @@ import test from "node:test";
 import type { BrowserNodeRuntimeState } from "@tutti-os/browser-node";
 import {
   createWorkspaceBrowserNodeExternalStateSource,
-  resolveWorkspaceBrowserNavigationAnalyticsParams,
   resolveWorkspaceBrowserSearchUrl
 } from "./workspaceBrowserContributionCore.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
@@ -12,29 +11,6 @@ test("resolveWorkspaceBrowserSearchUrl encodes search queries", () => {
   assert.equal(
     resolveWorkspaceBrowserSearchUrl("tutti browser contribution"),
     "https://www.google.com/search?q=tutti+browser+contribution"
-  );
-});
-
-test("resolveWorkspaceBrowserNavigationAnalyticsParams keeps only navigation host metadata", () => {
-  assert.deepEqual(
-    resolveWorkspaceBrowserNavigationAnalyticsParams(
-      "https://github.com/tutti-os/tutti?token=secret#readme"
-    ),
-    {
-      isLocalhost: false,
-      urlDomain: "github.com"
-    }
-  );
-  assert.deepEqual(
-    resolveWorkspaceBrowserNavigationAnalyticsParams("http://127.0.0.1:5173/"),
-    {
-      isLocalhost: true,
-      urlDomain: "127.0.0.1"
-    }
-  );
-  assert.equal(
-    resolveWorkspaceBrowserNavigationAnalyticsParams("about:blank"),
-    null
   );
 });
 

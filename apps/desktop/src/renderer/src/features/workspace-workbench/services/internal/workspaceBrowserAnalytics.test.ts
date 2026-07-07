@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserNodeEvent } from "@tutti-os/browser-node";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
-import {
-  createWorkspaceBrowserAnalyticsApi,
-  createWorkspaceBrowserAnalyticsTracker
-} from "./workspaceBrowserAnalytics.ts";
+import { createWorkspaceBrowserAnalyticsTracker } from "./workspaceBrowserAnalytics.ts";
 
 test("workspace browser analytics reports open and close without navigation events", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
@@ -237,45 +234,6 @@ test("workspace browser analytics reports open and close from runtime events whe
   ]);
 });
 
-test("workspace browser analytics api observes each raw event once across subscribers", () => {
-  const observedEvents: BrowserNodeEvent[] = [];
-  const listenerEvents: BrowserNodeEvent[] = [];
-  const rawListeners: Array<(event: BrowserNodeEvent) => void> = [];
-  let rawSubscriptionCount = 0;
-  const api = createWorkspaceBrowserAnalyticsApi({
-    browserApi: {
-      ...createBrowserApiStub(),
-      onEvent(listener) {
-        rawSubscriptionCount += 1;
-        rawListeners.push(listener);
-        return () => {
-          rawListeners.length = 0;
-        };
-      }
-    },
-    tracker: {
-      observeEvent(event) {
-        observedEvents.push(event);
-      }
-    }
-  });
-  const firstDispose = api.onEvent((event) => listenerEvents.push(event));
-  const secondDispose = api.onEvent((event) => listenerEvents.push(event));
-  const event = createBrowserStateEvent({ url: "https://example.com/" });
-  assert.ok(rawListeners[0]);
-
-  rawListeners[0](event);
-
-  assert.equal(rawSubscriptionCount, 1);
-  assert.deepEqual(listenerEvents, [event, event]);
-  assert.deepEqual(observedEvents, [event]);
-
-  firstDispose();
-  assert.equal(rawListeners.length, 1);
-  secondDispose();
-  assert.equal(rawListeners.length, 0);
-});
-
 function createBrowserStateEvent(
   overrides: Partial<Extract<BrowserNodeEvent, { type: "state" }>>
 ): Extract<BrowserNodeEvent, { type: "state" }> {
@@ -305,22 +263,5 @@ function createReporterService(calls: ReporterEventInput[][] = []) {
     async trackEvents(events: ReporterEventInput[]) {
       calls.push(events);
     }
-  };
-}
-
-function createBrowserApiStub() {
-  return {
-    activate: async () => undefined,
-    capturePreview: async () => null,
-    close: async () => undefined,
-    goBack: async () => undefined,
-    goForward: async () => undefined,
-    navigate: async () => undefined,
-    onEvent: () => () => undefined,
-    openExternal: async () => undefined,
-    prepareSession: async () => undefined,
-    registerGuest: async () => undefined,
-    reload: async () => undefined,
-    unregisterGuest: async () => undefined
   };
 }

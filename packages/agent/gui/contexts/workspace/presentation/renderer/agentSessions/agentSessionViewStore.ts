@@ -108,14 +108,6 @@ const runtimeSessionEventUnsubscribeByWorkspaceId = new Map<
   () => void
 >();
 
-export function useAgentSessionViewStoreSnapshot(): AgentSessionViewStoreSnapshot {
-  return useSyncExternalStore(
-    subscribeAgentSessionViewStore,
-    getAgentSessionViewStoreSnapshot,
-    getAgentSessionViewStoreSnapshot
-  );
-}
-
 export function getAgentSessionViewStoreSnapshot(): AgentSessionViewStoreSnapshot {
   return snapshot;
 }
@@ -405,20 +397,6 @@ export function hydrateAgentSessionViewOverlayMessages(
   }
 }
 
-export function setAgentSessionViewControlCommands(
-  ref: AgentSessionViewRef,
-  commands: readonly AgentHostAgentSessionCommand[]
-): void {
-  const normalized = normalizeAgentSessionViewRef(ref);
-  if (!normalized) {
-    return;
-  }
-  updateAgentSessionView(normalized, (current) => ({
-    ...current,
-    controlCommands: [...commands]
-  }));
-}
-
 export function setAgentSessionViewControlState(
   ref: AgentSessionViewRef,
   controlState: AgentHostAgentSessionState | null
@@ -517,23 +495,6 @@ export function deleteAgentSessionView(ref: AgentSessionViewRef): void {
     sessionViewsBySessionKey: nextSessionViewsBySessionKey
   };
   emitAgentSessionViewStoreChange();
-}
-
-export function getAgentSessionActivityStreamStateForTests(): Array<{
-  key: string;
-  listenerCount: number;
-  hasUpstreamSubscription: boolean;
-  isLingering: boolean;
-  leaseId: string | null;
-}> {
-  return [...activityStreamEntries.values()].map((entry) => ({
-    key: entry.key,
-    listenerCount: entry.batchListeners.size,
-    hasUpstreamSubscription:
-      entry.releaseRuntimeEvents !== null || entry.retainPromise !== null,
-    isLingering: entry.lingerTimer !== null,
-    leaseId: null
-  }));
 }
 
 export function resetAgentSessionViewStoreForTests(): void {

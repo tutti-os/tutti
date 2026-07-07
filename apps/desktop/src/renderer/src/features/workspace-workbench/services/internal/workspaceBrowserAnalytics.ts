@@ -1,5 +1,4 @@
 import type { BrowserNodeEvent } from "@tutti-os/browser-node";
-import type { DesktopBrowserApi } from "@preload/types";
 import { BrowserClosedReporter } from "../../../analytics/reporters/browser-closed/browserClosedReporter.ts";
 import { BrowserOpenedReporter } from "../../../analytics/reporters/browser-opened/browserOpenedReporter.ts";
 import {
@@ -153,41 +152,4 @@ function resolveBrowserOpenedSource(
     default:
       return "restore";
   }
-}
-
-export function createWorkspaceBrowserAnalyticsApi(input: {
-  browserApi: DesktopBrowserApi;
-  tracker: Pick<WorkspaceBrowserAnalyticsTracker, "observeEvent">;
-}): DesktopBrowserApi {
-  const listeners = new Set<(event: BrowserNodeEvent) => void>();
-  let disconnect: (() => void) | null = null;
-
-  const ensureConnected = () => {
-    if (disconnect) {
-      return;
-    }
-
-    disconnect = input.browserApi.onEvent((event) => {
-      for (const listener of listeners) {
-        listener(event);
-      }
-      input.tracker.observeEvent(event);
-    });
-  };
-
-  return {
-    ...input.browserApi,
-    onEvent(listener) {
-      listeners.add(listener);
-      ensureConnected();
-      return () => {
-        listeners.delete(listener);
-        if (listeners.size > 0) {
-          return;
-        }
-        disconnect?.();
-        disconnect = null;
-      };
-    }
-  };
 }

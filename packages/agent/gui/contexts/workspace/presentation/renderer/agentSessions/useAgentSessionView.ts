@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { AgentHostAgentActivityStreamEvent } from "../../../../../shared/contracts/dto";
 import {
-  createAgentSessionViewKey,
   getAgentSessionView,
   watchAgentSession,
   type AgentSessionViewRef,
@@ -120,16 +119,4 @@ export function useWatchAgentSessions(input: {
     input.enabled,
     input.workspaceId
   ]);
-}
-
-export function useAgentSessionViewSnapshot(ref: AgentSessionViewRef) {
-  const sessionView = useStoreAgentSessionView(ref);
-  return useMemo(
-    () => ({
-      sessionView,
-      hasSessionView:
-        Boolean(createAgentSessionViewKey(ref)) && Boolean(sessionView)
-    }),
-    [ref, sessionView]
-  );
 }
