@@ -43,10 +43,7 @@ import type {
   AgentGuiWorkbenchState
 } from "./types.ts";
 import { normalizeAgentGUIProviderTargets } from "../providerTargets.ts";
-import type {
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetRef
-} from "../types.ts";
+import type { AgentGUIProviderTarget } from "../types.ts";
 
 export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   height: 560,
@@ -441,8 +438,7 @@ export function createAgentGuiWorkbenchContribution(
       const instanceId = existingInstanceId ?? descriptorInstanceId;
       const title = copy.nodeTitle;
       const providerTarget = providerTargetLaunchPayloadFromRequest(
-        launchPayload,
-        provider
+        launchPayload
       );
       const launchAgentTargetId =
         providerTarget.agentTargetId ?? providerTarget.providerTargetId;
@@ -464,8 +460,7 @@ export function createAgentGuiWorkbenchContribution(
         });
       } else if (
         providerTarget.agentTargetId ||
-        providerTarget.providerTargetId ||
-        providerTarget.providerTargetRef
+        providerTarget.providerTargetId
       ) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
@@ -590,15 +585,13 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
   provider: AgentGuiWorkbenchProvider;
   agentTargetId?: string;
   providerTargetId?: string;
-  providerTargetRef?: AgentGUIProviderTargetRef;
 } {
   const target = resolveUnifiedAgentGuiDockTarget(input);
   if (target) {
     return {
       provider: target.provider,
       ...(target.agentTargetId ? { agentTargetId: target.agentTargetId } : {}),
-      providerTargetId: target.targetId,
-      providerTargetRef: target.ref
+      ...(target.agentTargetId ? {} : { providerTargetId: target.targetId })
     };
   }
   return {
@@ -952,25 +945,20 @@ function isAgentGuiProviderAvailable(
 }
 
 function providerTargetLaunchPayloadFromRequest(
-  payload: unknown,
-  expectedProvider: AgentGuiWorkbenchProvider
+  payload: unknown
 ): {
   agentTargetId: string | null;
   providerTargetId: string | null;
-  providerTargetRef: AgentGUIProviderTargetRef | null;
 } {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {
       agentTargetId: null,
-      providerTargetId: null,
-      providerTargetRef: null
+      providerTargetId: null
     };
   }
   const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
   const providerTargetId = (payload as { providerTargetId?: unknown })
     .providerTargetId;
-  const providerTargetRef = (payload as { providerTargetRef?: unknown })
-    .providerTargetRef;
   return {
     agentTargetId:
       typeof agentTargetId === "string" && agentTargetId.trim()
@@ -979,20 +967,6 @@ function providerTargetLaunchPayloadFromRequest(
     providerTargetId:
       typeof providerTargetId === "string" && providerTargetId.trim()
         ? providerTargetId.trim()
-        : null,
-    providerTargetRef:
-      providerTargetRef &&
-      typeof providerTargetRef === "object" &&
-      !Array.isArray(providerTargetRef) &&
-      (providerTargetRef as { provider?: unknown }).provider ===
-        expectedProvider &&
-      typeof (providerTargetRef as { kind?: unknown }).kind === "string" &&
-      (providerTargetRef as { kind: string }).kind.trim()
-        ? {
-            ...(providerTargetRef as AgentGUIProviderTargetRef),
-            kind: (providerTargetRef as { kind: string }).kind.trim(),
-            provider: expectedProvider
-          }
         : null
   };
 }

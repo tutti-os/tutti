@@ -10,7 +10,10 @@ import {
   type ReactNode
 } from "react";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
-import { createLocalAgentGUIProviderTarget } from "../providerTargets.ts";
+import {
+  createLocalAgentGUIProviderTarget,
+  createSharedAgentGUIProviderTarget
+} from "../providerTargets.ts";
 import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   agentGuiWorkbenchDefaultCopy,
@@ -94,9 +97,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(entries[0]?.label).toBe("Agent");
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "local:claude-code",
-      provider: "claude-code",
-      providerTargetId: "local:claude-code",
-      providerTargetRef: claudeTarget.ref
+      provider: "claude-code"
     });
   });
 
@@ -154,9 +155,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "daemon-claude",
-      provider: "claude-code",
-      providerTargetId: "daemon-claude",
-      providerTargetRef: enabledClaudeTarget.ref
+      provider: "claude-code"
     });
   });
 
@@ -178,9 +177,28 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(entries[0]?.launchPayload).toEqual({
       agentTargetId: "daemon-codex",
-      provider: "codex",
-      providerTargetId: "daemon-codex",
-      providerTargetRef: daemonCodexTarget.ref
+      provider: "codex"
+    });
+  });
+
+  it("keeps a legacy provider target id only when no agent target id exists", () => {
+    const sharedTarget = createSharedAgentGUIProviderTarget({
+      label: "Shared Claude",
+      provider: "claude-code",
+      sharedAgentId: "shared-claude"
+    });
+    const entries = buildAgentGuiDockEntries({
+      defaultProvider: "claude-code",
+      label: "Agent",
+      providerAvailability: {
+        "claude-code": true
+      },
+      targets: [sharedTarget]
+    });
+
+    expect(entries[0]?.launchPayload).toEqual({
+      provider: "claude-code",
+      providerTargetId: "shared-agent:shared-claude"
     });
   });
 
