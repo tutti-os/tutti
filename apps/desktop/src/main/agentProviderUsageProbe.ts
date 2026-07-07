@@ -122,17 +122,78 @@ function normalizeProbeProviders(providers: readonly string[] | undefined) {
   return Array.from(new Set(normalized));
 }
 
+// Coalesce rapid repeat usage probes so window mounts, menu opens, hover
+// tooltips and manual refresh clicks don't each hit the vendor account API.
+const USAGE_PROBE_CACHE_TTL_MS = 10_000;
+// After a rate-limit (HTTP 429) response, stop calling the endpoint for this
+// long so it can recover instead of being hammered by continued retries.
+const USAGE_PROBE_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+interface UsageProbeCacheEntry {
+  result: AgentProbeProvider;
+  fetchedAtMs: number;
+  /** Do not re-fetch before this time (set after a 429). 0 when not cooling. */
+  retryNotBeforeMs: number;
+}
+
+const usageProbeCacheByProvider = new Map<string, UsageProbeCacheEntry>();
+
+/** Test hook: clears the per-provider usage probe cache between cases. */
+export function resetUsageProbeCacheForTesting(): void {
+  usageProbeCacheByProvider.clear();
+}
+
+function isRateLimitedProbeResult(result: AgentProbeProvider): boolean {
+  const message = (result.lastError?.message ?? "").toLowerCase();
+  return message.includes("rate limit") || message.includes("429");
+}
+
 async function probeDesktopAgentProvider(
   provider: string,
   input: AgentProviderProbeListInput,
   capturedAtUnixMs: number
 ): Promise<AgentProbeProvider> {
+  // Availability-only probes are cheap, differently shaped, and not what
+  // rate-limits the account API — never cache them.
+  if (!input.includeUsage) {
+    return resolveDesktopAgentProbe(provider, input, capturedAtUnixMs);
+  }
+
+  const cached = usageProbeCacheByProvider.get(provider);
+  if (cached) {
+    const freshEnough =
+      capturedAtUnixMs - cached.fetchedAtMs < USAGE_PROBE_CACHE_TTL_MS;
+    const coolingDown = capturedAtUnixMs < cached.retryNotBeforeMs;
+    if (freshEnough || coolingDown) {
+      // Reuse the previous probe rather than re-hitting an endpoint that itself
+      // rate-limits. This is what stops a storm of "Claude OAuth usage API is
+      // rate limited" (429) failures when the limits popover is opened/refreshed
+      // repeatedly, and the 429 cooldown gives the endpoint time to recover.
+      if (coolingDown && !freshEnough) {
+        getDesktopLogger().debug("agent usage probe held during 429 cooldown", {
+          event: "agent.usage_probe.cooldown",
+          provider,
+          workspaceId: input.workspaceId,
+          retryInMs: cached.retryNotBeforeMs - capturedAtUnixMs
+        });
+      }
+      return cached.result;
+    }
+  }
+
   const result = await resolveDesktopAgentProbe(
     provider,
     input,
     capturedAtUnixMs
   );
   logDesktopAgentUsageProbeOutcome(provider, input, result);
+  usageProbeCacheByProvider.set(provider, {
+    result,
+    fetchedAtMs: capturedAtUnixMs,
+    retryNotBeforeMs: isRateLimitedProbeResult(result)
+      ? capturedAtUnixMs + USAGE_PROBE_RATE_LIMIT_COOLDOWN_MS
+      : 0
+  });
   return result;
 }
 
