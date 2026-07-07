@@ -202,8 +202,8 @@ func embeddedCatalog() []App {
 				SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
 				AppID:         "trae-solo-bridge",
 				Version:       "0.1.0",
-				Name:          "Trae Solo Bridge",
-				Description:   "Send workspace prompts to Trae Solo Work, Code, or Design sessions through a local bridge.",
+				Name:          "Agent Bridge",
+				Description:   "Send workspace prompts to Trae Solo or Codex AtoA sessions through a local bridge.",
 				Icon: workspacebiz.AppManifestIcon{
 					Type: "asset",
 					Src:  "icon.svg",
@@ -230,7 +230,7 @@ func embeddedCatalog() []App {
 				Author: &workspacebiz.AppManifestAuthor{
 					Name: "Tutti",
 				},
-				Tags: []string{"trae", "solo", "agent", "bridge"},
+				Tags: []string{"trae", "solo", "codex", "atoa", "agent", "bridge"},
 			},
 			Localizations: []workspacebiz.AppManifestLocalization{
 				{

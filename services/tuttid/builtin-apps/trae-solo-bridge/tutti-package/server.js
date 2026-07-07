@@ -22,7 +22,10 @@ const DEFAULT_TRAE_SOLO_APP = "TRAE SOLO CN";
 const DEFAULT_TRAE_SOLO_BUNDLE_ID = "cn.trae.solo.app";
 const DEFAULT_TRAE_SOLO_CLI =
   "/Applications/TRAE SOLO CN.app/Contents/Resources/app/bin/trae-solo-cn";
+const DEFAULT_CODEX_CLI =
+  process.env.CODEX_CLI || "/Users/dadong/.local/bin/codex";
 const VALID_SOLO_MODES = new Set(["work", "code", "design"]);
+const VALID_CODEX_MODES = new Set(["atoa"]);
 const VALID_SESSION_MODES = new Set(["new", "current", "workspace", "reuse"]);
 const SESSION_LABELS = {
   new: "新开会话",
@@ -34,6 +37,9 @@ const MODE_LABELS = {
   work: "PPT / Work",
   code: "编程 / Code",
   design: "前端设计 / Design"
+};
+const CODEX_MODE_LABELS = {
+  atoa: "AtoA / Agent-to-Agent"
 };
 
 function loadRuns() {
@@ -85,6 +91,72 @@ function resultPaths(projectPath, id) {
 function makePrompt(projectPath, id, prompt, mode, sessionMode) {
   const rp = resultPaths(projectPath, id);
   return `你现在在 TRAE SOLO CN 独立 App 的 ${mode} 模式（${MODE_LABELS[mode]}）里接到一个 Tutti Workspace App 转交任务。\n\n项目目录：${projectPath}\n任务ID：${id}\n模式：${mode}\n会话：${SESSION_LABELS[sessionMode] || sessionMode}\n\n请完成下面任务，并把结果写入：\n${rp.md}\n\n如果有结构化状态，也可以写入：\n${rp.json}\n\n硬性要求：\n1. 先阅读项目必要文件，不要只凭猜测。\n2. 如果执行了命令，把关键命令和结果写进结果文件。\n3. 如果任务无法完成，写清楚卡点。\n4. 完成后结果文件第一行写：TRAE_SOLO_RESULT ${id}\n5. 不要写到其他目录；只使用上面的项目目录和结果路径。\n\n用户任务：\n${prompt}\n`;
+}
+function makeCodexPrompt(projectPath, id, prompt, mode) {
+  const rp = resultPaths(projectPath, id);
+  return `你现在是 Codex CLI，通过 Tutti Workspace App 的 Codex ${mode} 模式（${CODEX_MODE_LABELS[mode]}）接到任务。\n\n项目目录：${projectPath}\n任务ID：${id}\n模式：${mode}\n\nAtoA 协作要求：\n1. 把自己当成被 Moe/Tutti 面板调度的下游 coding agent，先阅读项目必要文件，不要只凭猜测。\n2. 可以在项目目录内修改文件、运行必要检查；不要越权写入无关目录。\n3. 如果遇到需要人工授权的外部副作用，停止并在最终结果里说明。\n4. 最终回复必须包含：已做改动、验证命令和结果、未完成卡点。\n5. 结果会由 Codex CLI 写入：${rp.md}\n6. 最终结果第一行写：CODEX_RESULT ${id}\n\n用户任务：\n${prompt}\n`;
+}
+function resolveCodexCli(cliPath) {
+  const explicit = cliPath || DEFAULT_CODEX_CLI;
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  try {
+    return execFileSync("/bin/sh", ["-lc", "command -v codex"], {
+      timeout: 5000,
+      encoding: "utf8"
+    }).trim();
+  } catch {
+    return explicit;
+  }
+}
+async function launchViaCodex(
+  projectPath,
+  transferPrompt,
+  mode,
+  cliPath,
+  id,
+  rp
+) {
+  const cli = resolveCodexCli(cliPath);
+  if (!cli || !fs.existsSync(cli))
+    return {
+      ok: false,
+      cli,
+      mode,
+      step: "find-codex",
+      error: `Codex CLI not found: ${cli}`
+    };
+  const logPath = path.join(LOG_DIR, `codex-${id}.log`);
+  const args = [
+    "--cd",
+    projectPath,
+    "--sandbox",
+    "workspace-write",
+    "--ask-for-approval",
+    "never",
+    "exec",
+    "--output-last-message",
+    rp.md,
+    transferPrompt
+  ];
+  const out = fs.openSync(logPath, "a");
+  const child = spawn(cli, args, {
+    cwd: projectPath,
+    env: process.env,
+    detached: true,
+    stdio: ["ignore", out, out]
+  });
+  child.unref();
+  return {
+    ok: true,
+    cli,
+    args,
+    mode,
+    step: "codex-exec",
+    transport: "codex-cli",
+    pid: child.pid,
+    logPath,
+    note: "Codex 以 AtoA 模式在后台执行；结果写入项目内结果文件，日志写入 app log 目录。"
+  };
 }
 function copyToClipboard(text) {
   return new Promise((resolve, reject) => {
@@ -752,9 +824,14 @@ async function handleApi(req, res, url) {
     const body = JSON.parse((await readBody(req)) || "{}");
     const projectPath = path.resolve(String(body.projectPath || ""));
     const prompt = String(body.prompt || "");
+    const agent = String(body.agent || "trae").toLowerCase();
     const appName = body.appName ? String(body.appName) : undefined;
     const cliPath = body.cliPath ? String(body.cliPath) : undefined;
+    const codexCliPath = body.codexCliPath
+      ? String(body.codexCliPath)
+      : undefined;
     const mode = String(body.mode || "code").toLowerCase();
+    const codexMode = String(body.codexMode || "atoa").toLowerCase();
     const transfer = String(body.transfer || "cli").toLowerCase();
     const sessionMode = String(body.sessionMode || "new").toLowerCase();
     const requestedSessionId = body.sessionId ? String(body.sessionId) : "";
@@ -769,12 +846,22 @@ async function handleApi(req, res, url) {
       });
     if (!prompt.trim())
       return send(res, 400, { ok: false, error: "prompt is required" });
-    if (!VALID_SOLO_MODES.has(mode))
+    if (!["trae", "codex"].includes(agent))
+      return send(res, 400, {
+        ok: false,
+        error: "agent must be trae or codex"
+      });
+    if (agent === "codex" && !VALID_CODEX_MODES.has(codexMode))
+      return send(res, 400, {
+        ok: false,
+        error: "codexMode must be one of: atoa"
+      });
+    if (agent === "trae" && !VALID_SOLO_MODES.has(mode))
       return send(res, 400, {
         ok: false,
         error: "mode must be one of: work, code, design"
       });
-    if (!VALID_SESSION_MODES.has(sessionMode))
+    if (agent === "trae" && !VALID_SESSION_MODES.has(sessionMode))
       return send(res, 400, {
         ok: false,
         error: "sessionMode must be one of: new, current, workspace, reuse"
@@ -782,6 +869,44 @@ async function handleApi(req, res, url) {
     const id = runId();
     const rp = resultPaths(projectPath, id);
     fs.mkdirSync(rp.dir, { recursive: true });
+    if (agent === "codex") {
+      const transferPrompt = makeCodexPrompt(
+        projectPath,
+        id,
+        prompt,
+        codexMode
+      );
+      const launched = await launchViaCodex(
+        projectPath,
+        transferPrompt,
+        codexMode,
+        codexCliPath,
+        id,
+        rp
+      );
+      const warning = launched.ok
+        ? "Codex 已在后台启动；请用“检查结果”查看输出文件，或看日志路径确认进度。"
+        : "Codex 启动失败，请检查 CLI 路径和登录状态。";
+      const run = {
+        id,
+        agent,
+        mode: codexMode,
+        modeLabel: CODEX_MODE_LABELS[codexMode],
+        projectPath,
+        cliPath: launched.cli || codexCliPath || DEFAULT_CODEX_CLI,
+        prompt,
+        resultMarkdown: rp.md,
+        resultJson: rp.json,
+        createdAt: new Date().toISOString(),
+        launched,
+        cliAccepted: launched.ok,
+        warning
+      };
+      const runs = loadRuns();
+      runs.unshift(run);
+      saveRuns(runs.slice(0, 100));
+      return send(res, 200, { ok: launched.ok, run, warning });
+    }
     const sessionCatalog = listTraeSessions();
     const targetSession = requestedSessionId
       ? sessionCatalog.sessions.find((s) => s.id === requestedSessionId)
@@ -881,13 +1006,14 @@ async function handleApi(req, res, url) {
   }
   send(res, 404, { ok: false, error: "not found" });
 }
-const html = `<!doctype html><meta charset="utf-8"><title>Trae Solo Bridge</title><style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}main{max-width:960px;margin:32px auto;padding:0 20px}.card{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin:16px 0}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;box-sizing:border-box;background:#020617;color:#e2e8f0;border:1px solid #475569;border-radius:10px;padding:10px;margin:6px 0 12px}textarea{min-height:140px}button{background:#38bdf8;border:0;color:#082f49;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}pre{white-space:pre-wrap;background:#020617;padding:12px;border-radius:10px;overflow:auto}</style><main><h1>Trae Solo Bridge</h1><p class="muted">打通 TRAE SOLO CN 独立 App：传项目 → 新建/复用会话 → 传 prompt → 切 Solo 模式 work/code/design → 通过项目内结果文件拿结果。不改 Tutti 核心。</p><div class="card"><label>项目目录</label><input id="project" placeholder="/Users/dadong/path/to/project"><label>Solo 模式</label><select id="mode"><option value="work">work：PPT / Work</option><option value="code" selected>code：编程 / Code</option><option value="design">design：前端设计 / Design</option></select><label>会话</label><select id="sessionSelect"><option value="new:" selected>默认：新开会话</option></select><p class="muted" id="sessionHint">不选择真实会话时，默认新开会话。点击刷新会识别当前 Trae Solo 客户端会话/工作区。</p><p><button type="button" onclick="loadSessions()">刷新真实会话</button></p><label>传递方式</label><select id="transfer"><option value="cli" selected>CLI：打开项目并直接提交 prompt</option><option value="clipboard">剪贴板：只打开 App，手动粘贴</option></select><label>Trae Solo CLI 路径，可空</label><input id="cli" placeholder="/Applications/TRAE SOLO CN.app/Contents/Resources/app/bin/trae-solo-cn"><label>Prompt</label><textarea id="prompt" placeholder="让 Trae Solo 做什么；Bridge 会自动追加结果文件路径和任务ID"></textarea><p><button onclick="launch()">提交给 Trae Solo</button></p><div id="launchOut" class="muted"></div></div><div class="card"><h2>运行记录</h2><button onclick="loadRuns()">刷新</button><div id="runs"></div></div></main><script>
-async function launch(){ const out=document.getElementById('launchOut'); const projectEl=document.getElementById('project'); const modeEl=document.getElementById('mode'); const sessionEl=document.getElementById('sessionSelect'); const transferEl=document.getElementById('transfer'); const cliEl=document.getElementById('cli'); const promptEl=document.getElementById('prompt'); out.textContent='处理中...'; const r=await fetch('/api/launch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectPath:projectEl.value,prompt:promptEl.value,mode:modeEl.value,sessionMode:(sessionEl.value.split(':')[0]||'new'),sessionId:sessionEl.value.split(':').slice(1).join(':')||undefined,transfer:transferEl.value,cliPath:cliEl.value||undefined})}); const j=await r.json(); out.innerHTML=j.ok?'<span class="ok">CLI 已接受/剪贴板已备份，但不代表客户端一定已显示。模式：'+j.run.mode+'，会话：'+(j.run.targetSession?.label||j.run.sessionLabel||j.run.sessionMode)+'，任务ID：'+j.run.id+'</span><p class="muted">'+(j.warning||j.run.warning||'请以客户端消息或结果文件为准。')+'</p><pre>'+JSON.stringify(j.run,null,2)+'</pre>':'<span class="err">提交失败：'+(j.error||j.run?.launched?.error||'unknown')+'</span><pre>'+JSON.stringify(j,null,2)+'</pre>'; loadRuns(); }
-async function loadRuns(){ const j=await (await fetch('/api/runs')).json(); runs.innerHTML=j.runs.map(r=>'<div class="card"><b>'+r.id+'</b> <span class="muted">'+(r.mode||'')+' / '+(r.sessionLabel||r.sessionMode||'')+'</span><br><span class="muted">'+r.projectPath+'</span><br><button data-run-id="'+r.id+'" onclick="result(this.dataset.runId)">检查结果</button><pre id="res-'+r.id+'"></pre></div>').join('')||'<p class="muted">暂无</p>'; }
+const html = `<!doctype html><meta charset="utf-8"><title>Agent Bridge</title><style>
+body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}main{max-width:960px;margin:32px auto;padding:0 20px}.card{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin:16px 0}input,textarea,button,select{font:inherit}input,textarea,select{width:100%;box-sizing:border-box;background:#020617;color:#e2e8f0;border:1px solid #475569;border-radius:10px;padding:10px;margin:6px 0 12px}textarea{min-height:140px}button{background:#38bdf8;border:0;color:#082f49;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}.muted{color:#94a3b8}.ok{color:#86efac}.err{color:#fca5a5}pre{white-space:pre-wrap;background:#020617;padding:12px;border-radius:10px;overflow:auto}.hidden{display:none}</style><main><h1>Agent Bridge</h1><p class="muted">同一个面板调度 TRAE SOLO CN 或 Codex。Trae 支持 work/code/design；Codex 支持 atoa（Agent-to-Agent）模式，后台执行并把结果写回项目目录。</p><div class="card"><label>项目目录</label><input id="project" placeholder="/Users/dadong/path/to/project"><label>Agent</label><select id="agent" onchange="agentChanged()"><option value="trae" selected>Trae Solo</option><option value="codex">Codex</option></select><div id="traeFields"><label>Solo 模式</label><select id="mode"><option value="work">work：PPT / Work</option><option value="code" selected>code：编程 / Code</option><option value="design">design：前端设计 / Design</option></select><label>会话</label><select id="sessionSelect"><option value="new:" selected>默认：新开会话</option></select><p class="muted" id="sessionHint">不选择真实会话时，默认新开会话。点击刷新会识别当前 Trae Solo 客户端会话/工作区。</p><p><button type="button" onclick="loadSessions()">刷新真实会话</button></p><label>传递方式</label><select id="transfer"><option value="cli" selected>CLI：打开项目并直接提交 prompt</option><option value="clipboard">剪贴板：只打开 App，手动粘贴</option></select><label>Trae Solo CLI 路径，可空</label><input id="cli" placeholder="/Applications/TRAE SOLO CN.app/Contents/Resources/app/bin/trae-solo-cn"></div><div id="codexFields" class="hidden"><label>Codex 模式</label><select id="codexMode"><option value="atoa" selected>atoa：Agent-to-Agent 协作</option></select><label>Codex CLI 路径，可空</label><input id="codexCli" placeholder="/Users/dadong/.local/bin/codex"><p class="muted">atoa 会用 <code>codex --cd 项目目录 --sandbox workspace-write --ask-for-approval never exec</code> 后台执行，输出写入项目内结果文件。</p></div><label>Prompt</label><textarea id="prompt" placeholder="让 Agent 做什么；Bridge 会自动追加结果文件路径和任务ID"></textarea><p><button onclick="launch()">提交任务</button></p><div id="launchOut" class="muted"></div></div><div class="card"><h2>运行记录</h2><div id="runs"></div></div></main><script>
+function agentChanged(){ const a=agent.value; traeFields.classList.toggle('hidden',a!=='trae'); codexFields.classList.toggle('hidden',a!=='codex'); }
+async function launch(){ const out=document.getElementById('launchOut'); const sessionEl=document.getElementById('sessionSelect'); out.textContent='处理中...'; const body={agent:agent.value,projectPath:project.value,prompt:prompt.value,mode:mode.value,codexMode:codexMode.value,sessionMode:(sessionEl.value.split(':')[0]||'new'),sessionId:sessionEl.value.split(':').slice(1).join(':')||undefined,transfer:transfer.value,cliPath:cli.value||undefined,codexCliPath:codexCli.value||undefined}; const r=await fetch('/api/launch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); const j=await r.json(); out.innerHTML=j.ok?'<span class="ok">已接受。Agent：'+(j.run.agent||'trae')+'，模式：'+j.run.mode+'，任务ID：'+j.run.id+'</span><p class="muted">'+(j.warning||j.run.warning||'请以客户端消息或结果文件为准。')+'</p><pre>'+JSON.stringify(j.run,null,2)+'</pre>':'<span class="err">提交失败：'+(j.error||j.run?.launched?.error||'unknown')+'</span><pre>'+JSON.stringify(j,null,2)+'</pre>'; loadRuns(); }
+async function loadRuns(){ const j=await (await fetch('/api/runs')).json(); runs.innerHTML=j.runs.map(r=>'<div class="card"><b>'+r.id+'</b> <span class="muted">'+(r.agent||'trae')+' / '+(r.mode||'')+' / '+(r.sessionLabel||r.sessionMode||'')+'</span><br><span class="muted">'+r.projectPath+'</span><br><button data-run-id="'+r.id+'" onclick="result(this.dataset.runId)">检查结果</button><pre id="res-'+r.id+'"></pre></div>').join('')||'<p class="muted">暂无</p>'; }
 async function result(id){ const j=await (await fetch('/api/result/'+id)).json(); document.getElementById('res-'+id).textContent=JSON.stringify(j,null,2); }
 async function loadSessions(){ const j=await (await fetch('/api/sessions')).json(); const keep=sessionSelect.value; const esc=s=>String(s||'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c])); const val=s=>String(s||'').replace(/\"/g,'&quot;'); const groups={current:[],work:[],code:[],design:[],unknown:[],workspace:[]}; for(const s of (j.sessions||[])){ const submitMode=(s.kind==='current-chat'||s.kind==='chat')?'current':(s.kind==='current'?'current':'workspace'); const option='<option value="'+val(submitMode+':'+s.id)+'">'+esc(s.label)+(s.projectPath?' — '+esc(s.projectPath):'')+'</option>'; if(s.kind==='current-chat'||s.kind==='current') groups.current.push(option); else if(s.kind==='workspace') groups.workspace.push(option); else if(groups[s.mode]) groups[s.mode].push(option); else groups.unknown.push(option); } const opts=['<option value="new:">默认：新开会话</option>']; const addGroup=(label,arr)=>{ if(arr.length) opts.push('<optgroup label="'+esc(label)+'">'+arr.join('')+'</optgroup>'); }; addGroup('当前客户端',groups.current); addGroup('Work 会话',groups.work); addGroup('Code 会话',groups.code); addGroup('Design 会话',groups.design); addGroup('未知模式会话',groups.unknown); addGroup('工作区',groups.workspace); sessionSelect.innerHTML=opts.join(''); if([...sessionSelect.options].some(o=>o.value===keep)) sessionSelect.value=keep; sessionHint.textContent=(j.sessions&&j.sessions.length)?('已按 Work / Code / Design 分组识别 '+j.sessions.length+' 个真实会话/窗口/工作区。'):'暂未识别到真实会话；不选则默认新开。'; }
-loadSessions(); loadRuns();
+agentChanged(); loadSessions(); loadRuns();
 </script>`;
 const server = http.createServer(async (req, res) => {
   try {

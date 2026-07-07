@@ -2,8 +2,8 @@
   "schemaVersion": "tutti.app.manifest.v1",
   "appId": "trae-solo-bridge",
   "version": "0.1.0",
-  "name": "Trae Solo Bridge",
-  "description": "Send workspace prompts to Trae Solo Work, Code, or Design sessions through a local bridge.",
+  "name": "Agent Bridge",
+  "description": "Send workspace prompts to Trae Solo or Codex AtoA sessions through a local bridge.",
   "icon": {
     "type": "asset",
     "src": "icon.svg"
@@ -18,7 +18,7 @@
     "minWidth": 820,
     "minHeight": 620
   },
-  "tags": ["trae", "solo", "agent", "bridge"],
+  "tags": ["trae", "solo", "codex", "atoa", "agent", "bridge"],
   "author": {
     "name": "Tutti"
   },
