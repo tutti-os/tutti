@@ -20,6 +20,7 @@ import (
 
 const (
 	claudeCodeRuntimeEnv           = "TUTTI_CLAUDE_CODE_RUNTIME"
+	claudeCodeCommandEnv           = "TUTTI_CLAUDE_CODE_COMMAND"
 	claudeCodeRuntimeACP           = "acp"
 	claudeCodeRuntimeSDK           = "sdk"
 	claudeSDKSidecarCommandEnv     = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
@@ -36,8 +37,9 @@ const (
 )
 
 type ClaudeCodeSDKAdapter struct {
-	transport ProcessTransport
-	preparer  ProviderLaunchPreparer
+	transport       ProcessTransport
+	commandResolver ProviderCommandResolver
+	preparer        ProviderLaunchPreparer
 
 	mu          sync.Mutex
 	sessions    map[string]*claudeSDKAdapterSession
@@ -131,9 +133,17 @@ type claudeSDKLineReader struct {
 }
 
 func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
+	return NewClaudeCodeSDKAdapterWithCommandResolver(transport, nil)
+}
+
+func NewClaudeCodeSDKAdapterWithCommandResolver(
+	transport ProcessTransport,
+	commandResolver ProviderCommandResolver,
+) *ClaudeCodeSDKAdapter {
 	return &ClaudeCodeSDKAdapter{
-		transport: transport,
-		sessions:  make(map[string]*claudeSDKAdapterSession),
+		transport:       transport,
+		commandResolver: commandResolver,
+		sessions:        make(map[string]*claudeSDKAdapterSession),
 	}
 }
 
@@ -155,7 +165,19 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	restore := strings.TrimSpace(session.ProviderSessionID) != ""
 	providerSessionID := firstNonEmpty(strings.TrimSpace(session.ProviderSessionID), newID())
 	session.ProviderSessionID = providerSessionID
-	claudeMeta, err := buildClaudeCodeSessionMeta(session)
+	command := claudeSDKSidecarCommand(session.Env)
+	env := claudeSDKSidecarEnv(session)
+	if a.commandResolver != nil {
+		resolved, err := a.commandResolver(ctx, ProviderClaudeCode)
+		if err != nil {
+			return nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		env = append(env, resolved.Env...)
+	}
+	claudeMeta, err := buildClaudeCodeSessionMeta(sessionWithEnv(session, env))
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +186,8 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            session.CWD,
-		Command:        claudeSDKSidecarCommand(session.Env),
-		Env:            claudeSDKSidecarEnv(session),
+		Command:        command,
+		Env:            env,
 		DirectStart:    true,
 	})
 	if err != nil {
@@ -235,6 +257,11 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 			return nil, errors.New(payloadString(event.Payload, "error"))
 		}
 	}
+}
+
+func sessionWithEnv(session Session, env []string) Session {
+	session.Env = append([]string(nil), env...)
+	return session
 }
 
 func (a *ClaudeCodeSDKAdapter) Resume(ctx context.Context, session Session) error {
@@ -364,50 +391,6 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		return events, ctx.Err()
 	}
-}
-
-func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
-	ctx context.Context,
-	session Session,
-	content []PromptContentBlock,
-	displayPrompt string,
-	turnID string,
-	emit EventSink,
-	_ CommandSnapshotSink,
-) ([]activityshared.Event, error) {
-	adapterSession := a.getSession(session.AgentSessionID)
-	if adapterSession == nil {
-		return nil, ErrSessionDisconnected
-	}
-	session.ProviderSessionID = adapterSession.providerSessionID
-	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
-			"adapter":  claudeSDKSidecarAdapterName,
-			"guidance": true,
-			"steered":  true,
-		}))),
-	}
-	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
-		return events, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
-	defer cancel()
-	if err := a.roundTripClaudeSDK(ctx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
-		ID:   newID(),
-		Type: "guide",
-		Payload: map[string]any{
-			"agentSessionId": session.AgentSessionID,
-			"prompt":         promptTextForClaudeSDK(content, visibleText),
-			"content":        promptContentForClaudeSDK(content, visibleText),
-		},
-	}); err != nil {
-		return events, err
-	}
-	if emit != nil {
-		emit(events)
-	}
-	return events, nil
 }
 
 func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, turnID string) ([]activityshared.Event, error) {
@@ -2123,7 +2106,7 @@ func logClaudeSDKSidecarDebugStderr(content []byte) {
 		if payloadJSON == "" {
 			payloadJSON = "{}"
 		}
-		slog.Debug(claudeSDKAuthRefreshLogPrefix,
+		slog.Warn(claudeSDKAuthRefreshLogPrefix,
 			"event", "agent_session.claude_sdk.auth_refresh_debug",
 			"payload_json", payloadJSON,
 		)

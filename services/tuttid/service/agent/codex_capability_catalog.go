@@ -70,10 +70,7 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	processCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	command := strings.TrimSpace(l.Command)
-	if command == "" {
-		command = "codex"
-	}
+	command, args := codexAppServerCommandAndArgs(l.Command, l.Args)
 	resolver := runtimecmd.Resolver{
 		Environ:          l.Environ,
 		HomeDir:          l.HomeDir,
@@ -82,10 +79,6 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	}
 	processEnv := resolver.Env(nil)
 	command = resolver.Resolve(command, processEnv)
-	args := append([]string{}, l.Args...)
-	if len(args) == 0 {
-		args = []string{"app-server"}
-	}
 	cmd := exec.CommandContext(processCtx, command, args...)
 	cmd.Env = processEnv
 	cmd.WaitDelay = codexAppServerShutdownWaitDelay

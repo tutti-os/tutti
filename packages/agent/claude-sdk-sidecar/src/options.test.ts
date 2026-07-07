@@ -20,7 +20,9 @@ test("sidecarClaudeOptionsFromPayload maps Claude provider meta into query optio
       model: "MiniMax-M2.7",
       verbose: null
     },
-    tools: { type: "preset", preset: "claude_code" }
+    tools: { type: "preset", preset: "claude_code" },
+    pathToClaudeCodeExecutable:
+      "/custom/claude-compatible/bin/claude-compatible"
   });
   const overrides = claudeQueryOptionOverrides(options);
 
@@ -47,6 +49,10 @@ test("sidecarClaudeOptionsFromPayload maps Claude provider meta into query optio
     model: "MiniMax-M2.7",
     verbose: null
   });
+  assert.equal(
+    overrides.pathToClaudeCodeExecutable,
+    "/custom/claude-compatible/bin/claude-compatible"
+  );
 });
 
 test("sidecarClaudeOptionsFromPayload defaults to Claude Code tool preset", () => {
@@ -66,4 +72,5 @@ test("sidecarClaudeOptionsFromPayload defaults to Claude Code tool preset", () =
   assert.equal(overrides.disallowedTools, undefined);
   assert.equal(overrides.plugins, undefined);
   assert.equal(overrides.extraArgs, undefined);
+  assert.equal(overrides.pathToClaudeCodeExecutable, undefined);
 });

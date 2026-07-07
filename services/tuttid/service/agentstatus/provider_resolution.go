@@ -22,9 +22,11 @@ const ReasonClaudeSDKSidecarUnavailable = "claude_sdk_sidecar_unavailable"
 const claudeCodeRuntimeEnv = "TUTTI_CLAUDE_CODE_RUNTIME"
 const claudeCodeRuntimeACP = "acp"
 const claudeCodeRuntimeSDK = "sdk"
+const claudeCodeCommandEnv = "TUTTI_CLAUDE_CODE_COMMAND"
 const claudeSDKSidecarCommandEnv = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
 const claudeSDKSidecarEntryPathEnv = "TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH"
 const claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
+const codexCommandEnv = "TUTTI_CODEX_COMMAND"
 
 type ProviderCommandResolution struct {
 	Command []string
@@ -89,6 +91,7 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 }
 
 func (s Service) resolveClaudeCodeRuntimeSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	spec = resolveClaudeCodeCommandOverride(spec)
 	if claudeCodeAgentStatusRuntime() == claudeCodeRuntimeACP {
 		return claudeCodeACPProviderSpec(spec)
 	}
@@ -104,6 +107,9 @@ func claudeCodeAgentStatusRuntime() string {
 }
 
 func claudeCodeACPProviderSpec(spec ProviderSpec) ProviderSpec {
+	if len(claudeCodeCommandOverride()) > 0 {
+		return spec
+	}
 	spec.ExternalRegistryID = firstNonBlank(spec.ExternalRegistryID, "claude-acp")
 	if spec.AdapterInstall.Kind == "" {
 		spec.AdapterInstall.Kind = InstallerKindExternalAgentRegistryNPM
@@ -119,6 +125,7 @@ func claudeCodeACPProviderSpec(spec ProviderSpec) ProviderSpec {
 }
 
 func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+	commandOverride := claudeCodeCommandOverride()
 	spec.ExternalRegistryID = ""
 	spec.AdapterPackage = AdapterPackageRequirement{}
 	spec.AdapterInstall = InstallerSpec{}
@@ -128,6 +135,9 @@ func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec Prov
 		spec.AdapterCommand = strings.Fields(command)
 		if len(spec.AdapterCommand) > 0 {
 			spec.AdapterBinaryNames = []string{spec.AdapterCommand[0]}
+		}
+		if len(commandOverride) > 0 {
+			spec.AdapterEnv = append(spec.AdapterEnv, claudeCodeCommandEnv+"="+strings.Join(commandOverride, " "))
 		}
 		return spec
 	}
@@ -150,6 +160,26 @@ func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec Prov
 	}
 	spec.AdapterCommand = []string{nodeCommand, claudeSDKSidecarDefaultNodeArg, entry}
 	spec.AdapterBinaryNames = []string{nodeBinary}
+	if len(commandOverride) > 0 {
+		spec.AdapterEnv = append(spec.AdapterEnv, claudeCodeCommandEnv+"="+strings.Join(commandOverride, " "))
+	}
+	return spec
+}
+
+func claudeCodeCommandOverride() []string {
+	return strings.Fields(strings.TrimSpace(os.Getenv(claudeCodeCommandEnv)))
+}
+
+func resolveClaudeCodeCommandOverride(spec ProviderSpec) ProviderSpec {
+	command := claudeCodeCommandOverride()
+	if len(command) == 0 {
+		return spec
+	}
+	spec.BinaryNames = []string{command[0]}
+	spec.AdapterBinaryNames = []string{command[0]}
+	if claudeCodeAgentStatusRuntime() == claudeCodeRuntimeACP {
+		spec.AdapterCommand = command
+	}
 	return spec
 }
 
@@ -202,6 +232,7 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	if spec.Provider != agentprovider.Codex {
 		return spec
 	}
+	spec = resolveCodexCommandOverride(spec)
 	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {
 		if requireManagedRuntime {
@@ -210,6 +241,22 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 		return spec
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
+	return spec
+}
+
+func resolveCodexCommandOverride(spec ProviderSpec) ProviderSpec {
+	command := strings.Fields(strings.TrimSpace(os.Getenv(codexCommandEnv)))
+	if len(command) == 0 {
+		return spec
+	}
+	if len(command) == 1 {
+		command = append(command, "app-server")
+	}
+	spec.AdapterCommand = command
+	spec.BinaryNames = []string{command[0]}
+	spec.AdapterBinaryNames = []string{command[0]}
+	spec.AuthStatusCommand = []string{"login", "status"}
+	spec.LoginArgs = []string{"login"}
 	return spec
 }
 

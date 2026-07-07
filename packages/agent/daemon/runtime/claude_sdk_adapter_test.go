@@ -1351,6 +1351,49 @@ func TestClaudeCodeSDKAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(
 	}
 }
 
+func TestClaudeCodeSDKAdapterUsesProviderCommandResolver(t *testing.T) {
+	conn := &scriptedClaudeSDKConnection{
+		frames: []ProcessFrame{{
+			Stdout: []byte(`{"type":"session_started","payload":{"providerSessionId":"provider-session-1"}}` + "\n"),
+		}},
+	}
+	transport := &recordingClaudeSDKTransport{conn: conn}
+	adapter := NewClaudeCodeSDKAdapterWithCommandResolver(
+		transport,
+		func(_ context.Context, provider string) (ProviderCommand, error) {
+			if provider != ProviderClaudeCode {
+				t.Fatalf("provider = %q, want %q", provider, ProviderClaudeCode)
+			}
+			return ProviderCommand{
+				Command: []string{"custom-node", "sidecar.ts"},
+				Env: []string{
+					claudeCodeCommandEnv + "=/custom/claude-compatible/bin/claude-compatible",
+					"CLAUDE_TEST_ENV=1",
+				},
+			}, nil
+		},
+	)
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "provider-session-1"
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !slices.Equal(transport.spec.Command, []string{"custom-node", "sidecar.ts"}) {
+		t.Fatalf("Command = %#v, want resolved sidecar command", transport.spec.Command)
+	}
+	if !containsString(transport.spec.Env, "CLAUDE_TEST_ENV=1") {
+		t.Fatalf("Env = %#v, want resolver env", transport.spec.Env)
+	}
+	sent := conn.sentRequests()
+	if len(sent) != 1 {
+		t.Fatalf("sent requests = %#v, want start", sent)
+	}
+	if got := payloadString(sent[0].Payload, "pathToClaudeCodeExecutable"); got != "/custom/claude-compatible/bin/claude-compatible" {
+		t.Fatalf("pathToClaudeCodeExecutable = %q, want custom Claude command", got)
+	}
+}
+
 func TestClaudeSDKSidecarCommandUsesVendoredEntryWithManagedNodeEnv(t *testing.T) {
 	t.Setenv(claudeSDKSidecarCommandEnv, "")
 	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
@@ -1748,55 +1791,6 @@ func TestClaudeCodeSDKAdapterApplySessionSettingsSpeedSendsSidecarAndUpdatesRunt
 	state := adapter.SessionState(session)
 	if state.RuntimeContext["speed"] != "fast" || !hasClaudeSDKSpeedConfigOptions(state.RuntimeContext, "fast") {
 		t.Fatalf("runtimeContext = %#v, want fast speed after live apply", state.RuntimeContext)
-	}
-}
-
-func TestClaudeCodeSDKAdapterGuideActiveTurnSendsSidecarGuide(t *testing.T) {
-	adapter := NewClaudeCodeSDKAdapter(nil)
-	session := standardTestSession(ProviderClaudeCode)
-	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
-	adapterSession := &claudeSDKAdapterSession{
-		conn:             conn,
-		reader:           &claudeSDKLineReader{conn: conn},
-		pendingRequests:  make(map[string]*pendingACPRequest),
-		pendingResponses: make(map[string]chan claudeSDKSidecarEvent),
-		liveState:        newClaudeSDKLiveState(),
-	}
-	adapter.storeSession(session.AgentSessionID, adapterSession)
-
-	type guidanceResult struct {
-		events []activityshared.Event
-		err    error
-	}
-	results := make(chan guidanceResult, 1)
-	go func() {
-		events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
-		results <- guidanceResult{events: events, err: err}
-	}()
-
-	request := waitForClaudeSDKSentRequest(t, conn, "guide")
-	if _, ok := request.Payload["turnId"]; ok || request.Payload["prompt"] != "guide current turn" {
-		t.Fatalf("guide payload = %#v", request.Payload)
-	}
-	conn.pushEvent(claudeSDKSidecarEvent{ID: request.ID, Type: "ok"})
-
-	var events []activityshared.Event
-	select {
-	case result := <-results:
-		if result.err != nil {
-			t.Fatalf("GuideActiveTurn: %v", result.err)
-		}
-		events = result.events
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for GuideActiveTurn")
-	}
-	messages := eventsOfType(events, activityshared.EventMessageAppended)
-	if len(messages) != 1 {
-		t.Fatalf("guidance events = %#v, want one message", events)
-	}
-	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
-		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
 	}
 }
 

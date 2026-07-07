@@ -30,3 +30,10 @@ func TestParseCLIVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCodexCLIVersionPrefersWrappedOpenAICodexVersion(t *testing.T) {
+	output := "@vendor/codex-compatible 0.0.14\n  commit: 9055c14d4b0\n  built:  2026-07-02 11:00:00\n@openai/codex 0.142.5\n"
+	if got := parseCodexCLIVersion(output); got != "0.142.5" {
+		t.Fatalf("parseCodexCLIVersion() = %q, want 0.142.5", got)
+	}
+}

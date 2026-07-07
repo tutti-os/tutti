@@ -9,6 +9,7 @@ import (
 )
 
 func TestCodexCLIModelListerReadsModelListFromAppServer(t *testing.T) {
+	t.Setenv(codexCommandEnv, "")
 	scriptPath := filepath.Join(t.TempDir(), "codex")
 	script := `#!/bin/sh
 while IFS= read -r line; do
@@ -44,7 +45,38 @@ done
 	}
 }
 
+func TestCodexCLIModelListerUsesCodexCommandOverride(t *testing.T) {
+	scriptPath := filepath.Join(t.TempDir(), "codex")
+	script := `#!/bin/sh
+if [ "$1" != "app-server" ]; then
+  echo "unexpected args: $*" >&2
+  exit 2
+fi
+while IFS= read -r line; do
+  case "$line" in
+    *model/list*)
+      echo '{"id":"2","result":{"data":[{"id":"gpt-5-override","displayName":"GPT-5 Override"}]}}'
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake codex script: %v", err)
+	}
+	t.Setenv(codexCommandEnv, scriptPath)
+
+	result, err := (CodexCLIModelLister{Timeout: 15 * time.Second}).ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 1 || result.Models[0].ID != "gpt-5-override" {
+		t.Fatalf("models = %#v, want override command result", result.Models)
+	}
+}
+
 func TestCodexCLIModelListerResolvesCodexFromKnownUserBin(t *testing.T) {
+	t.Setenv(codexCommandEnv, "")
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {

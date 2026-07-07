@@ -13,6 +13,7 @@ export type SidecarClaudeOptions = {
   plugins: SdkPluginConfig[];
   extraArgs: Record<string, string | null>;
   tools: ClaudeToolsOption;
+  pathToClaudeCodeExecutable: string;
 };
 
 export function sidecarClaudeOptionsFromPayload(
@@ -28,7 +29,8 @@ export function sidecarClaudeOptionsFromPayload(
     tools: toolsValue(payload.tools) ?? {
       type: "preset",
       preset: "claude_code"
-    }
+    },
+    pathToClaudeCodeExecutable: stringValue(payload.pathToClaudeCodeExecutable)
   };
 }
 
@@ -43,6 +45,7 @@ export function claudeQueryOptionOverrides(
   | "disallowedTools"
   | "plugins"
   | "extraArgs"
+  | "pathToClaudeCodeExecutable"
 > {
   return {
     systemPrompt: {
@@ -65,6 +68,9 @@ export function claudeQueryOptionOverrides(
     ...(options.plugins.length > 0 ? { plugins: options.plugins } : {}),
     ...(Object.keys(options.extraArgs).length > 0
       ? { extraArgs: options.extraArgs }
+      : {}),
+    ...(options.pathToClaudeCodeExecutable
+      ? { pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable }
       : {})
   };
 }

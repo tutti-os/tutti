@@ -121,32 +121,6 @@ func TestDefaultRegistryUsesCodexCLILatestInstaller(t *testing.T) {
 	}
 }
 
-func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
-	specs, err := DefaultRegistry().Select([]string{"tutti-agent"})
-	if err != nil {
-		t.Fatalf("Select() error = %v", err)
-	}
-	if len(specs) != 1 {
-		t.Fatalf("len(specs) = %d, want 1", len(specs))
-	}
-	install := specs[0].Install
-	if install.Kind != InstallerKindManagedNPMPackage {
-		t.Fatalf("Install.Kind = %q, want %q", install.Kind, InstallerKindManagedNPMPackage)
-	}
-	if install.ManagedNPM == nil {
-		t.Fatalf("Install.ManagedNPM = nil, want managed npm installer spec")
-	}
-	if install.ManagedNPM.PackageName != "@tutti-os/tutti-agent" {
-		t.Fatalf("PackageName = %q, want @tutti-os/tutti-agent", install.ManagedNPM.PackageName)
-	}
-	if install.ManagedNPM.BinaryName != "tutti-agent" {
-		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
-	}
-	if !install.ManagedNPM.IncludeOptional {
-		t.Fatalf("IncludeOptional = false, want true")
-	}
-}
-
 func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 	specs, err := DefaultRegistry().Select([]string{"cursor"})
 	if err != nil {
@@ -224,6 +198,174 @@ func TestResolveProviderCommandKeepsCursorDefaultWhenBinaryMissing(t *testing.T)
 	}
 	if !reflect.DeepEqual(resolved.Command, []string{"cursor-agent", "acp"}) {
 		t.Fatalf("Command = %#v, want default cursor-agent command", resolved.Command)
+	}
+}
+
+func TestResolveProviderCommandUsesCodexCommandOverride(t *testing.T) {
+	t.Setenv(codexCommandEnv, "/custom/codex-compatible/bin/codex-compatible")
+	service := testService(func(name string) (string, error) {
+		if name == "/custom/codex-compatible/bin/codex-compatible" {
+			return name, nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+
+	resolved, err := service.ResolveProviderCommand(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	want := []string{"/custom/codex-compatible/bin/codex-compatible", "app-server"}
+	if !reflect.DeepEqual(resolved.Command, want) {
+		t.Fatalf("Command = %#v, want %#v", resolved.Command, want)
+	}
+}
+
+func TestCodexCommandOverrideUsesDefaultLoginFlow(t *testing.T) {
+	t.Setenv(codexCommandEnv, "/custom/codex-compatible/bin/codex-compatible")
+	service := testService(func(name string) (string, error) {
+		if name == "/custom/codex-compatible/bin/codex-compatible" {
+			return name, nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+	service.RunAuthStatusCommand = func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+		if !reflect.DeepEqual(spec.AuthStatusCommand, []string{"login", "status"}) {
+			t.Fatalf("AuthStatusCommand = %#v, want custom Codex command default login status", spec.AuthStatusCommand)
+		}
+		if binaryPath != "/custom/codex-compatible/bin/codex-compatible" {
+			t.Fatalf("binaryPath = %q, want override binary", binaryPath)
+		}
+		return AuthInfo{Status: AuthRequired}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	action := firstAction(t, status.Actions)
+	if action.ID != ActionLogin {
+		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
+	}
+	if action.Command == nil || action.Command.Input != "/custom/codex-compatible/bin/codex-compatible login\n" {
+		t.Fatalf("login command = %#v, want custom Codex command default login", action.Command)
+	}
+}
+
+func TestServiceListTreatsEmptyCodexOverrideAuthStatusSuccessAsAuthenticated(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	commandPath := filepath.Join(binDir, "codex-compatible")
+	writeExecutable(t, commandPath, `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '@vendor/codex-compatible 0.0.14\n  commit: test\n@openai/codex `+MinSupportedCodexVersion+`\n'
+  exit 0
+fi
+if [ "$1" = "login" ] && [ "$2" = "status" ]; then
+  exit 0
+fi
+if [ "$1" = "app-server" ]; then
+  sleep 5
+  exit 0
+fi
+exit 1
+`)
+	t.Setenv(codexCommandEnv, commandPath)
+	service := testService(func(name string) (string, error) {
+		if name == commandPath {
+			return commandPath, nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != MinSupportedCodexVersion {
+		t.Fatalf("CLI.Version = %q, want %q", status.CLI.Version, MinSupportedCodexVersion)
+	}
+	if status.Auth.Status != AuthAuthenticated {
+		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
+	}
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityReady, status)
+	}
+}
+
+func TestResolveProviderCommandUsesClaudeCodeCommandOverride(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+	t.Setenv(claudeCodeCommandEnv, "/custom/claude-compatible/bin/claude-compatible")
+	home := t.TempDir()
+	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
+	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
+		t.Fatalf("mkdir sidecar entry dir: %v", err)
+	}
+	if err := os.WriteFile(entry, []byte("export {};"), 0o644); err != nil {
+		t.Fatalf("write sidecar entry: %v", err)
+	}
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := probeTestService(home)
+	service.FileExists = fileExistsForTest
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", claudeSDKSidecarEntryPathEnv + "=" + entry}
+	}
+	service.LookPath = func(name string) (string, error) {
+		if name == "/custom/claude-compatible/bin/claude-compatible" {
+			return name, nil
+		}
+		return "", errors.New("not found")
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	resolved, err := service.ResolveProviderCommand(context.Background(), "claude-code")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Equal(resolved.Command, []string{managedNode, claudeSDKSidecarDefaultNodeArg, entry}) {
+		t.Fatalf("Command = %#v, want SDK sidecar command", resolved.Command)
+	}
+	if !slices.Contains(resolved.Env, claudeCodeCommandEnv+"=/custom/claude-compatible/bin/claude-compatible") {
+		t.Fatalf("Env = %#v, want Claude command override", resolved.Env)
+	}
+}
+
+func TestClaudeCodeCommandOverrideUsesCustomLoginFlow(t *testing.T) {
+	t.Setenv(claudeCodeRuntimeEnv, "")
+	t.Setenv(claudeCodeCommandEnv, "/custom/claude-compatible/bin/claude-compatible")
+	t.Setenv(claudeSDKSidecarCommandEnv, "node sidecar.js")
+	service := testService(func(name string) (string, error) {
+		if name == "/custom/claude-compatible/bin/claude-compatible" || name == "node" {
+			return name, nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+	service.RunAuthStatusCommand = func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+		if !reflect.DeepEqual(spec.AuthStatusCommand, []string{"auth", "status"}) {
+			t.Fatalf("AuthStatusCommand = %#v, want Claude auth status", spec.AuthStatusCommand)
+		}
+		if binaryPath != "/custom/claude-compatible/bin/claude-compatible" {
+			t.Fatalf("binaryPath = %q, want override binary", binaryPath)
+		}
+		return AuthInfo{Status: AuthRequired}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	action := firstAction(t, status.Actions)
+	if action.ID != ActionLogin {
+		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
+	}
+	if action.Command == nil || action.Command.Input != "/custom/claude-compatible/bin/claude-compatible auth login\n" {
+		t.Fatalf("login command = %#v, want custom Claude login", action.Command)
 	}
 }
 

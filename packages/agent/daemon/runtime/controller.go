@@ -153,8 +153,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-		NewCodexAppServerAdapterWithHostMetadata(transport, host),
-		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
+		newCodexAppServerAdapterWithHostMetadataAndResolver(transport, host, options.ProviderCommandResolver),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
 		NewGeminiAdapterWithHostMetadata(transport, host),
@@ -171,7 +170,7 @@ func newDefaultClaudeCodeAdapter(
 	commandResolver ProviderCommandResolver,
 ) Adapter {
 	if claudeCodeSDKRuntimeEnabled() {
-		return NewClaudeCodeSDKAdapter(transport)
+		return NewClaudeCodeSDKAdapterWithCommandResolver(transport, commandResolver)
 	}
 	return newClaudeCodeAdapterWithHostMetadata(transport, host, commandResolver)
 }
@@ -431,7 +430,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return "default"
-	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
+	case ProviderCodex, ProviderNexight:
 		return "auto"
 	case ProviderCursor:
 		return "agent"
@@ -469,7 +468,7 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return isClaudeCodePermissionModeID(mode)
-	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
+	case ProviderCodex, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
 			return true
@@ -621,9 +620,6 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 			return ExecResult{}, err
 		}
 	}
-	if input.Guidance {
-		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
-	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
@@ -663,56 +659,6 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		TurnLifecycle:      *session.TurnLifecycle,
 		SubmitAvailability: *session.SubmitAvailability,
 	}, nil
-}
-
-func (c *Controller) guideActiveTurn(
-	ctx context.Context,
-	session Session,
-	adapter Adapter,
-	content []PromptContentBlock,
-	displayPrompt string,
-	metadata map[string]any,
-) (ExecResult, error) {
-	guidanceAdapter, ok := adapter.(ActiveTurnGuidanceAdapter)
-	if !ok {
-		return ExecResult{}, ErrActiveTurnGuidanceUnsupported
-	}
-	if !c.HasActiveTurn(session.RoomID, session.AgentSessionID) {
-		return ExecResult{}, ErrSessionNoActiveTurn
-	}
-	turnID := newID()
-	runCtx := ctx
-	if len(metadata) > 0 {
-		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
-	}
-	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, nil, nil)
-	if err != nil {
-		logAgentSubmitTrace("runtime.exec.guidance_failed", session, turnID, metadata, map[string]any{
-			"error": err.Error(),
-		})
-		return ExecResult{}, err
-	}
-	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
-	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
-		"activity_event_count": len(events),
-	})
-	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
-		session = refreshed
-	}
-	result := ExecResult{
-		AgentSessionID: session.AgentSessionID,
-		Status:         ExecStatusStarted,
-		TurnID:         turnID,
-		Accepted:       true,
-		SessionStatus:  session.Status,
-	}
-	if session.TurnLifecycle != nil {
-		result.TurnLifecycle = *session.TurnLifecycle
-	}
-	if session.SubmitAvailability != nil {
-		result.SubmitAvailability = *session.SubmitAvailability
-	}
-	return result, nil
 }
 
 type GoalControlInput struct {
@@ -2196,19 +2142,10 @@ func reconcileFinishedTurnStatus(session Session) Session {
 		session.SubmitAvailability = blockedSubmitAvailability("background_agent")
 		return session
 	}
-	if sessionStatusShouldReconcileToReady(session.Status) {
+	if session.Status == SessionStatusWorking {
 		session.Status = SessionStatusReady
 	}
 	return session
-}
-
-func sessionStatusShouldReconcileToReady(status string) bool {
-	switch strings.TrimSpace(strings.ToLower(status)) {
-	case "", "created", "submitted", "running", "streaming", SessionStatusWorking:
-		return true
-	default:
-		return false
-	}
 }
 
 func turnEventsAreTerminal(events []activityshared.Event) bool {

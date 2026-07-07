@@ -22,8 +22,6 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
 | `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
 | `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
-| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.        |
-| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`.  |
 
 ## Workspace App Catalog
 
@@ -50,15 +48,6 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_ACCESS_TOKEN`       | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Supplies the desktop-issued bearer token required by tuttid. |
 | `TUTTID_ADDR`               | [Desktop Transport](../architecture/desktop-transport.md)                                                  | Overrides the TCP listener or client address.                |
 | `TUTTID_LISTENER_INFO_PATH` | [Desktop Transport](../architecture/desktop-transport.md), [Local State Storage](./local-state-storage.md) | Overrides the daemon listener-info file path.                |
-
-## Account Remote Services
-
-| Variable                  | Owner document                                                                 | Purpose                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `TUTTI_ACCOUNT_BASE_URL`  | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the daemon account auth/user-info API base URL.                                         |
-| `TUTTI_AUTH_LOGIN_URL`    | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the desktop account login URL used by the auth bridge.                                  |
-| `TUTTI_COMMERCE_BASE_URL` | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
-| `TUTTI_WEB_BASE_URL`      | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
 
 ## Analytics
 
@@ -91,19 +80,31 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Agent Runtime Diagnostics
 
-| Variable                               | Owner document                                  | Purpose                                                                                          |
-| -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md) | Overrides the migrated agent context config path for tests and diagnostics.                      |
-| `TUTTI_AGENT_CWD`                      | This document                                   | Mirrors the prepared agent runtime working directory for diagnostics.                            |
-| `TUTTI_AGENT_SESSION_ID`               | This document                                   | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
-| `TUTTI_AGENT_ROUTING`                  | This document                                   | Marks provider subprocesses launched through the migrated agent routing path.                    |
-| `TUTTI_ACP_TOOL_DEBUG`                 | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
-| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                   | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
-| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                   | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
-| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                   | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
-| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                   | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
-| `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
-| `TUTTI_WORKSPACE_ID`                   | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
+| Variable                               | Owner document                                  | Purpose                                                                                                               |
+| -------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md) | Overrides the migrated agent context config path for tests and diagnostics.                                           |
+| `TUTTI_AGENT_CWD`                      | This document                                   | Mirrors the prepared agent runtime working directory for diagnostics.                                                 |
+| `TUTTI_AGENT_SESSION_ID`               | This document                                   | Identifies the caller agent session for CLI invoke context and agent runtime logs.                                    |
+| `TUTTI_AGENT_ROUTING`                  | This document                                   | Marks provider subprocesses launched through the migrated agent routing path.                                         |
+| `TUTTI_ACP_TOOL_DEBUG`                 | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                                                     |
+| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                   | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter.                      |
+| `TUTTI_CLAUDE_CODE_COMMAND`            | This document                                   | Overrides the Claude Code CLI binary used by provider availability, login actions, and SDK-backed sessions.           |
+| `TUTTI_CODEX_COMMAND`                  | This document                                   | Overrides the command used by tuttid to launch the Codex app-server; a single binary path gets `app-server` appended. |
+| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                   | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.                                   |
+| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                   | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.                           |
+| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                   | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.                          |
+| `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                                        |
+| `TUTTI_WORKSPACE_ID`                   | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided.                               |
+
+Codex provider availability and session launch honor `TUTTI_CODEX_COMMAND`.
+Set it to a binary path such as `/path/to/codex-compatible` to launch that binary with the
+`app-server` subcommand, or include the full command when extra fixed arguments
+are required.
+
+Claude Code CLI discovery and SDK-backed session execution honor
+`TUTTI_CLAUDE_CODE_COMMAND`. Set it to a binary path such as `/path/to/claude-compatible`
+when availability, login commands, and the Claude SDK query should use that
+Claude-compatible executable instead of the default `claude` binary.
 
 Claude Code provider availability follows `TUTTI_CLAUDE_CODE_RUNTIME`: the
 default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry

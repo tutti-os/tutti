@@ -56,6 +56,9 @@ func buildClaudeCodeSessionMeta(session Session) (claudeCodeSessionMeta, error) 
 			"preset": "claude_code",
 		},
 	}
+	if command := claudeCodeCommandFromEnv(session.Env); command != "" {
+		meta.options["pathToClaudeCodeExecutable"] = command
+	}
 	extraArgs := map[string]string{}
 	if pluginDir != "" {
 		extraArgs["plugin-dir"] = pluginDir
@@ -103,7 +106,7 @@ func (m claudeCodeSessionMeta) sdkPayload() map[string]any {
 	if strings.TrimSpace(m.systemPromptAppend) != "" {
 		payload["systemPromptAppend"] = m.systemPromptAppend
 	}
-	for _, key := range []string{"planModeInstructions", "allowedTools", "disallowedTools", "plugins", "extraArgs", "tools"} {
+	for _, key := range []string{"planModeInstructions", "allowedTools", "disallowedTools", "plugins", "extraArgs", "tools", "pathToClaudeCodeExecutable"} {
 		if value, ok := m.options[key]; ok {
 			payload[key] = value
 		}
@@ -117,4 +120,12 @@ func claudeProviderMetaLogPhase(err error) string {
 		return ""
 	}
 	return metaErr.phase
+}
+
+func claudeCodeCommandFromEnv(env []string) string {
+	fields := strings.Fields(strings.TrimSpace(sessionEnvValue(env, claudeCodeCommandEnv)))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 )
 
 const (
+	codexCommandEnv                 = "TUTTI_CODEX_COMMAND"
 	codexAppServerModelListTimeout  = 8 * time.Second
 	codexAppServerShutdownWaitDelay = 100 * time.Millisecond
 	codexModelListMaxLineBytes      = 16 * 1024 * 1024
@@ -26,13 +28,32 @@ const (
 type CodexCLIModelLister struct {
 	Command          string
 	Args             []string
-	ClientName       string
 	Timeout          time.Duration
 	Environ          func() []string
-	PrepareEnv       func([]string) ([]string, error)
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
+}
+
+func codexAppServerCommandAndArgs(command string, args []string) (string, []string) {
+	command = strings.TrimSpace(command)
+	resultArgs := append([]string{}, args...)
+	if command == "" {
+		fields := strings.Fields(strings.TrimSpace(os.Getenv(codexCommandEnv)))
+		if len(fields) > 0 {
+			command = fields[0]
+			if len(resultArgs) == 0 {
+				resultArgs = append(resultArgs, fields[1:]...)
+			}
+		}
+	}
+	if command == "" {
+		command = "codex"
+	}
+	if len(resultArgs) == 0 {
+		resultArgs = []string{"app-server"}
+	}
+	return command, resultArgs
 }
 
 type truncatingBuffer struct {
@@ -65,10 +86,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	processCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	command := strings.TrimSpace(l.Command)
-	if command == "" {
-		command = "codex"
-	}
+	command, args := codexAppServerCommandAndArgs(l.Command, l.Args)
 	resolver := runtimecmd.Resolver{
 		Environ:          l.Environ,
 		HomeDir:          l.HomeDir,
@@ -76,18 +94,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 		LookPath:         l.LookPath,
 	}
 	env := resolver.Env(nil)
-	if l.PrepareEnv != nil {
-		var err error
-		env, err = l.PrepareEnv(env)
-		if err != nil {
-			return AgentModelListResult{}, err
-		}
-	}
 	command = resolver.Resolve(command, env)
-	args := append([]string{}, l.Args...)
-	if len(args) == 0 {
-		args = []string{"app-server"}
-	}
 	cmd := exec.CommandContext(processCtx, command, args...)
 	cmd.Env = env
 	cmd.WaitDelay = codexAppServerShutdownWaitDelay
@@ -122,7 +129,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 		stderrWG.Wait()
 	}()
 
-	if err := writeCodexModelListRequests(stdin, l.clientName()); err != nil {
+	if err := writeCodexModelListRequests(stdin); err != nil {
 		return AgentModelListResult{}, err
 	}
 	models, err := readCodexModelListResponse(stdout)
@@ -138,21 +145,14 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	return AgentModelListResult{}, err
 }
 
-func (l CodexCLIModelLister) clientName() string {
-	if name := strings.TrimSpace(l.ClientName); name != "" {
-		return name
-	}
-	return "tuttid"
-}
-
-func writeCodexModelListRequests(stdin io.Writer, clientName string) error {
+func writeCodexModelListRequests(stdin io.Writer) error {
 	encoder := json.NewEncoder(stdin)
 	if err := encoder.Encode(map[string]any{
 		"id":     "1",
 		"method": "initialize",
 		"params": map[string]any{
 			"clientInfo": map[string]string{
-				"name":    clientName,
+				"name":    "tuttid",
 				"version": "0.1.0",
 			},
 		},
