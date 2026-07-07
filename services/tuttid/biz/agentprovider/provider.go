@@ -3,13 +3,14 @@ package agentprovider
 import "strings"
 
 const (
-	ClaudeCode = "claude-code"
-	Codex      = "codex"
-	Cursor     = "cursor"
-	Gemini     = "gemini"
-	Hermes     = "hermes"
-	Nexight    = "nexight"
-	OpenClaw   = "openclaw"
+	ClaudeCode  = "claude-code"
+	Codex       = "codex"
+	Cursor      = "cursor"
+	Gemini      = "gemini"
+	Hermes      = "hermes"
+	Nexight     = "nexight"
+	OpenClaw    = "openclaw"
+	Antigravity = "antigravity"
 )
 
 var allProviders = []string{
@@ -20,6 +21,7 @@ var allProviders = []string{
 	Gemini,
 	Hermes,
 	OpenClaw,
+	Antigravity,
 }
 
 func All() []string {
@@ -42,6 +44,8 @@ func Normalize(provider string) string {
 		return Nexight
 	case "open-claw", OpenClaw:
 		return OpenClaw
+	case "antigravity-cli", "agy", Antigravity:
+		return Antigravity
 	default:
 		return ""
 	}
