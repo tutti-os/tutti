@@ -478,7 +478,7 @@ type StreamInput struct {
 type WaitInput struct {
 	WorkspaceID    string
 	AgentSessionID string
-	AfterVersion   uint64
+	AfterVersion   *uint64
 	MessageLimit   int
 	Timeout        time.Duration
 }

@@ -29,7 +29,7 @@ type sessionSummaryInput struct {
 
 type waitInput struct {
 	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to wait on."`
-	AfterVersion int64  `cli:"after-version" validate:"min=0" description:"Only include messages newer than this version. Defaults to the current latest version when wait starts."`
+	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Only include messages newer than this version. Defaults to the current latest version when wait starts."`
 	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent agent execution messages to return."`
 	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
 }
@@ -47,8 +47,9 @@ type sessionSummaryResult struct {
 }
 
 type waitCommandResult struct {
-	Messages []agentservice.SessionMessage
-	Result   agentservice.WaitResult
+	ImageLocalPath imageLocalPathResolver
+	Messages       []agentservice.SessionMessage
+	Result         agentservice.WaitResult
 }
 
 type turnResourcesResult struct {
@@ -191,10 +192,15 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 	if input.TimeoutMS == 0 {
 		timeout = 5 * time.Minute
 	}
+	var afterVersion *uint64
+	if input.AfterVersion != nil {
+		value := uint64(*input.AfterVersion)
+		afterVersion = &value
+	}
 	result, err := p.sessions.Wait(ctx, agentservice.WaitInput{
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
-		AfterVersion:   uint64(input.AfterVersion),
+		AfterVersion:   afterVersion,
 		MessageLimit:   input.Limit,
 		Timeout:        timeout,
 	})
@@ -202,8 +208,9 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	return waitCommandResult{
-		Messages: result.Messages,
-		Result:   result,
+		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
+		Messages:       result.Messages,
+		Result:         result,
 	}, nil
 }
 
@@ -264,7 +271,7 @@ func waitJSONValue(result any) map[string]any {
 	return map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
 		"session":        sessionSummaryValue(waited.Result.Session),
-		"messages":       messageCompactValues(waited.Messages, nil),
+		"messages":       messageCompactValues(waited.Messages, waited.ImageLocalPath),
 		"latestVersion":  waited.Result.LatestVersion,
 		"hasMore":        waited.Result.HasMore,
 		"timedOut":       waited.Result.TimedOut,

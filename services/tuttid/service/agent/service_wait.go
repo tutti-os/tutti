@@ -28,8 +28,10 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 		timeout = 5 * time.Minute
 	}
 
-	effectiveAfter := input.AfterVersion
-	if effectiveAfter == 0 {
+	var effectiveAfter uint64
+	if input.AfterVersion != nil {
+		effectiveAfter = *input.AfterVersion
+	} else {
 		latestVersion, err := s.latestSessionVersion(ctx, workspaceID, agentSessionID)
 		if err != nil {
 			return WaitResult{}, err
@@ -42,7 +44,7 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 		return WaitResult{}, err
 	}
 	initialStop, initialStopped := waitStopStateForSession(initialSession)
-	if input.AfterVersion == 0 && initialStopped {
+	if input.AfterVersion == nil && initialStopped {
 		return s.waitResult(ctx, workspaceID, agentSessionID, initialSession, WaitReason(initialStop.Reason), false, effectiveAfter, messageLimit)
 	}
 
@@ -96,9 +98,23 @@ func (s *Service) Wait(ctx context.Context, input WaitInput) (WaitResult, error)
 				if err != nil {
 					return WaitResult{}, err
 				}
-				reason, stopped := waitReasonForSession(session)
-				if stopped {
-					return s.waitResult(ctx, workspaceID, agentSessionID, session, reason, false, effectiveAfter, messageLimit)
+				currentSession, done, nextProgressed, err := s.evaluateWaitSession(
+					waitCtx,
+					workspaceID,
+					agentSessionID,
+					session,
+					effectiveAfter,
+					initialStop,
+					initialStopped,
+					progressedPastStaleStop,
+				)
+				if err != nil {
+					return WaitResult{}, err
+				}
+				progressedPastStaleStop = nextProgressed
+				if done {
+					reason, _ := waitReasonForSession(currentSession)
+					return s.waitResult(waitCtx, workspaceID, agentSessionID, currentSession, reason, false, effectiveAfter, messageLimit)
 				}
 				return s.waitResult(ctx, workspaceID, agentSessionID, session, WaitReasonTimeout, true, effectiveAfter, messageLimit)
 			}
@@ -221,7 +237,11 @@ func (s *Service) recentAgentExecutionMessages(
 			latestVersion = page.LatestVersion
 		}
 		for _, message := range page.Messages {
-			if message.Version <= afterVersion || strings.TrimSpace(message.Role) == "user" {
+			if message.Version <= afterVersion {
+				reverseSessionMessages(collected)
+				return cloneSessionMessages(collected), latestVersion, false, nil
+			}
+			if strings.TrimSpace(message.Role) == "user" {
 				continue
 			}
 			collected = append(collected, message)

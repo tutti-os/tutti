@@ -345,6 +345,10 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 	if f.waitResult.Session.ID != "" || f.waitResult.Reason != "" {
 		return f.waitResult, nil
 	}
+	effectiveAfter := uint64(0)
+	if input.AfterVersion != nil {
+		effectiveAfter = *input.AfterVersion
+	}
 	return agentservice.WaitResult{
 		Session: agentservice.Session{
 			ID:       input.AgentSessionID,
@@ -363,7 +367,7 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 		}},
 		LatestVersion:  6,
 		Reason:         agentservice.WaitReasonWaitingInput,
-		EffectiveAfter: input.AfterVersion,
+		EffectiveAfter: effectiveAfter,
 	}, nil
 }
 
@@ -425,6 +429,13 @@ func equalStrings(left []string, right []string) bool {
 		}
 	}
 	return true
+}
+
+func waitAfterVersionValue(value *uint64) (uint64, bool) {
+	if value == nil {
+		return 0, false
+	}
+	return *value, true
 }
 
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
@@ -690,9 +701,11 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
 	if sessions.waitInput.WorkspaceID != "workspace-1" ||
 		sessions.waitInput.AgentSessionID != "SESSION-1" ||
-		sessions.waitInput.AfterVersion != 7 ||
+		!ok ||
+		waitAfterVersion != 7 ||
 		sessions.waitInput.MessageLimit != 5 ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
 		t.Fatalf("wait input = %#v", sessions.waitInput)
@@ -722,6 +735,76 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 	}
 }
 
+func TestWaitCommandPreservesExplicitZeroAfterVersion(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "0"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
+	if !ok || waitAfterVersion != 0 {
+		t.Fatalf("wait after version = %#v, want explicit zero", sessions.waitInput.AfterVersion)
+	}
+}
+
+func TestWaitCommandIncludesImageCompactMetadata(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		localPaths: map[string]string{"attachment-1": "/tmp/agent/attachments/SESSION-1/attachment-1.png"},
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{
+				ID:       "SESSION-1",
+				Provider: "codex",
+				Status:   "waiting",
+				Visible:  true,
+			},
+			Messages: []agentservice.SessionMessage{{
+				AgentSessionID: "SESSION-1",
+				MessageID:      "message-1",
+				Role:           "user",
+				Kind:           "text",
+				Status:         "completed",
+				Payload: map[string]any{
+					"content": []any{
+						map[string]any{"type": "text", "text": "look"},
+						map[string]any{
+							"type":         "image",
+							"attachmentId": "attachment-1",
+							"mimeType":     "image/png",
+							"name":         "shot.png",
+						},
+					},
+				},
+				Version: 8,
+			}},
+			LatestVersion:  8,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
+		},
+	}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	messages := output.Value["messages"].([]any)
+	images := messages[0].(map[string]any)["images"].([]any)
+	image := images[0].(map[string]any)
+	if image["attachmentId"] != "attachment-1" ||
+		image["mimeType"] != "image/png" ||
+		image["name"] != "shot.png" ||
+		image["localPath"] != "/tmp/agent/attachments/SESSION-1/attachment-1.png" {
+		t.Fatalf("image = %#v", image)
+	}
+}
+
 func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
@@ -731,6 +814,9 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 		OutputMode: cliservice.OutputModeJSON,
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.waitInput.AfterVersion != nil {
+		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
 	}
 	if sessions.waitInput.Timeout != 5*time.Minute {
 		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)
