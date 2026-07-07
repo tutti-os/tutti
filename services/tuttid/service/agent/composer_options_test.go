@@ -117,6 +117,26 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	}
 }
 
+func TestAntigravityComposerProfile(t *testing.T) {
+	t.Parallel()
+	if !composerProfileKnown("antigravity") {
+		t.Fatal("composerProfileKnown(antigravity) = false, want true")
+	}
+	profile := composerProfileFor("antigravity")
+	if !slices.Equal(profile.Capabilities, []string{"interrupt"}) {
+		t.Fatalf("antigravity capabilities = %v, want [interrupt]", profile.Capabilities)
+	}
+	// "agy" is a Normalize alias for antigravity; the profile lookup must
+	// resolve through it too.
+	aliased := composerProfileFor("agy")
+	if !slices.Equal(aliased.Capabilities, []string{"interrupt"}) {
+		t.Fatalf("agy capabilities = %v, want [interrupt]", aliased.Capabilities)
+	}
+	if len(profile.PermissionModes) != 0 {
+		t.Fatalf("antigravity permission modes = %v, want none", profile.PermissionModes)
+	}
+}
+
 func TestComposerPermissionConfigForCursor(t *testing.T) {
 	t.Parallel()
 	config := composerPermissionConfig("cursor", "", "en")

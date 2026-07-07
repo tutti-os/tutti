@@ -139,6 +139,9 @@ var composerProfiles = map[string]composerProfile{
 	agentprovider.OpenClaw: {
 		Capabilities: []string{"interrupt"},
 	},
+	agentprovider.Antigravity: {
+		Capabilities: []string{"interrupt"},
+	},
 }
 
 // composerProfileFor resolves the provider's composer profile. Unknown
