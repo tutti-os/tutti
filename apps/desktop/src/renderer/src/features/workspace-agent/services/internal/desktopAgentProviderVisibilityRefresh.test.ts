@@ -62,7 +62,8 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
       "nexight",
       "gemini",
       "hermes",
-      "openclaw"
+      "openclaw",
+      "antigravity"
     ]
   ]);
 });
