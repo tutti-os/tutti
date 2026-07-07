@@ -5,13 +5,14 @@ import "strings"
 type Provider string
 
 const (
-	ProviderCodex      Provider = "codex"
-	ProviderCursor     Provider = "cursor"
-	ProviderNexight    Provider = "nexight"
-	ProviderClaudeCode Provider = "claude-code"
-	ProviderGemini     Provider = "gemini"
-	ProviderOpenClaw   Provider = "openclaw"
-	ProviderHermes     Provider = "hermes"
+	ProviderCodex       Provider = "codex"
+	ProviderCursor      Provider = "cursor"
+	ProviderNexight     Provider = "nexight"
+	ProviderClaudeCode  Provider = "claude-code"
+	ProviderGemini      Provider = "gemini"
+	ProviderOpenClaw    Provider = "openclaw"
+	ProviderHermes      Provider = "hermes"
+	ProviderAntigravity Provider = "antigravity"
 )
 
 type EventType string
@@ -168,6 +169,8 @@ func NormalizeProvider(value string) (Provider, bool) {
 		return ProviderOpenClaw, true
 	case string(ProviderHermes), "hermes-agent", "hermes_agent":
 		return ProviderHermes, true
+	case string(ProviderAntigravity), "antigravity-cli", "agy":
+		return ProviderAntigravity, true
 	default:
 		return "", false
 	}

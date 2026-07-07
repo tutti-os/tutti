@@ -54,6 +54,26 @@ func TestNormalizeProviderHermes(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderAntigravity(t *testing.T) {
+	tests := map[string]Provider{
+		"antigravity":     ProviderAntigravity,
+		"antigravity-cli": ProviderAntigravity,
+		"agy":             ProviderAntigravity,
+		"AGY":             ProviderAntigravity,
+		"  Antigravity  ": ProviderAntigravity,
+	}
+	for input, want := range tests {
+		got, ok := NormalizeProvider(input)
+		if !ok || got != want {
+			t.Fatalf("NormalizeProvider(%q) = %q, %v; want %q, true", input, got, ok, want)
+		}
+	}
+
+	if provider, ok := NormalizeProvider("nope"); ok {
+		t.Fatalf("NormalizeProvider(nope) = %q, true; want unsupported", provider)
+	}
+}
+
 func TestEventBuildersTrimRawSessionAndStampMilliseconds(t *testing.T) {
 	t.Parallel()
 
