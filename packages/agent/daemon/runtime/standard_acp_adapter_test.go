@@ -58,6 +58,39 @@ func TestGeminiAdapterStartCreatesStandardACPSession(t *testing.T) {
 	}
 }
 
+func TestAntigravityAdapterStartCreatesStandardACPSession(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Antigravity CLI", "antigravity-session-1")
+	adapter := NewAntigravityAdapter(transport)
+	session := standardTestSession(ProviderAntigravity)
+
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	spec := transport.specs[0]
+	// commandResolver resolves agy-acp via runtimecmd; in the test env agy-acp
+	// is not installed, so it falls back to the bare config command "agy-acp".
+	if got := strings.Join(spec.Command, " "); got != "agy-acp" {
+		t.Fatalf("command = %q, want %q", got, "agy-acp")
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionStarted {
+		t.Fatalf("events = %#v, want session.started", events)
+	}
+	if events[0].ProviderSessionID != "antigravity-session-1" {
+		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
+	}
+	// antigravity never sends session/set_mode (permissionModeID always ""),
+	// because agy-acp exposes modes via configOptions, not set_mode.
+	if got := transport.conn.lastModeID(); got != "" {
+		t.Fatalf("mode id = %q, want empty (antigravity never sends set_mode)", got)
+	}
+}
+
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
 
