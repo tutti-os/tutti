@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentActivityAdapter } from "./adapter.ts";
-import { createAgentActivityController } from "./controller.ts";
+import {
+  createAgentActivityController,
+  setAgentActivityStoreDiagnosticSink
+} from "./controller.ts";
 import type {
   AgentActivityComposerOptions,
   AgentActivityMessage,
@@ -110,6 +113,53 @@ test("controller snapshot reference is stable until data changes", async () => {
   assert.equal(controller.getSnapshot(), loadedSnapshot);
 
   unsubscribe();
+});
+
+test("controller rejects stale session upserts after newer activity state", () => {
+  const diagnostics: Array<{
+    details: Record<string, unknown>;
+    event: string;
+  }> = [];
+  setAgentActivityStoreDiagnosticSink((event, details) => {
+    diagnostics.push({ event, details });
+  });
+  try {
+    const controller = createAgentActivityController({
+      adapter: fakeAdapter(),
+      workspaceId: "workspace-1"
+    });
+    controller.upsertSession(
+      createSession({
+        status: "completed",
+        updatedAtUnixMs: 2000,
+        turnLifecycle: {
+          activeTurnId: null,
+          phase: "settled",
+          outcome: "completed"
+        },
+        submitAvailability: { state: "available" }
+      })
+    );
+    controller.upsertSession(
+      createSession({
+        status: "working",
+        updatedAtUnixMs: 1000,
+        turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      })
+    );
+
+    const session = controller.getSnapshot().sessions[0];
+    assert.equal(session?.status, "completed");
+    assert.equal(session?.turnLifecycle?.phase, "settled");
+    assert.equal(session?.submitAvailability?.state, "available");
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0]?.event, "session_version_regression");
+    assert.equal(diagnostics[0]?.details.previousKey, 2000);
+    assert.equal(diagnostics[0]?.details.nextKey, 1000);
+  } finally {
+    setAgentActivityStoreDiagnosticSink(null);
+  }
 });
 
 test("controller can list session messages without caching them", async () => {

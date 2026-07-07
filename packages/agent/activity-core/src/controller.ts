@@ -128,28 +128,36 @@ export function createAgentActivityController({
         const sessionDataUnchanged =
           areShallowObjectArraysEqual(current.sessions, nextSessions) &&
           areShallowObjectArraysEqual(current.presences, nextPresences);
+        let reconciledSessions = nextSessions;
         if (!sessionDataUnchanged) {
-          for (const nextSession of nextSessions) {
+          reconciledSessions = nextSessions.map((nextSession) => {
             const existing = current.sessions.find(
               (item) => item.agentSessionId === nextSession.agentSessionId
             );
-            if (existing) {
-              reportSessionVersionRegression("load", existing, nextSession);
+            if (
+              existing &&
+              isSessionVersionRegression("load", existing, nextSession)
+            ) {
+              return existing;
             }
-          }
+            return nextSession;
+          });
         }
-        const source = sessionDataUnchanged
+        const reconciledDataUnchanged =
+          areShallowObjectArraysEqual(current.sessions, reconciledSessions) &&
+          areShallowObjectArraysEqual(current.presences, nextPresences);
+        const source = reconciledDataUnchanged
           ? current
           : {
               ...current,
               presences: nextPresences,
-              sessions: nextSessions
+              sessions: reconciledSessions
             };
         const canonical = canonicalizeSnapshotMessageBuckets(source);
         if (canonical !== source) {
           return canonical;
         }
-        return sessionDataUnchanged ? current : source;
+        return reconciledDataUnchanged ? current : source;
       });
       if (autoRetainSessionEvents) {
         reconcileAutoRetainedSessionStreams(nextSnapshot.sessions, signal);
@@ -998,15 +1006,15 @@ function sessionVersionKey(session: AgentActivitySession): number | null {
   return session.lastEventUnixMs ?? session.updatedAtUnixMs ?? null;
 }
 
-function reportSessionVersionRegression(
+function isSessionVersionRegression(
   source: string,
   existing: AgentActivitySession,
   incoming: AgentActivitySession
-): void {
+): boolean {
   const previousKey = sessionVersionKey(existing);
   const nextKey = sessionVersionKey(incoming);
   if (previousKey === null || nextKey === null || nextKey >= previousKey) {
-    return;
+    return false;
   }
   reportAgentActivityStoreDiagnostic("session_version_regression", {
     agentSessionId: incoming.agentSessionId,
@@ -1019,6 +1027,7 @@ function reportSessionVersionRegression(
     previousSubmitAvailability: existing.submitAvailability ?? null,
     nextSubmitAvailability: incoming.submitAvailability ?? null
   });
+  return true;
 }
 
 function upsertSnapshotSession(
@@ -1036,8 +1045,11 @@ function upsertSnapshotSession(
     });
   }
   const existingSession = snapshot.sessions[index];
-  if (existingSession) {
-    reportSessionVersionRegression(source, existingSession, session);
+  if (
+    existingSession &&
+    isSessionVersionRegression(source, existingSession, session)
+  ) {
+    return snapshot;
   }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;

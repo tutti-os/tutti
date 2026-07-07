@@ -68,13 +68,11 @@ func (s *Service) listFilteredSortedSessions(ctx context.Context, workspaceID st
 	}
 	sessions := s.controller().Sessions(workspaceID)
 	for _, session := range sessions {
-		service := serviceSession(
-			session,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		)
+		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
+		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
 			if persisted, ok := s.SessionReader.GetSession(workspaceID, session.ID); ok {
-				service = mergePersistedSessionState(service, persisted)
+				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
 		sessionByID[strings.TrimSpace(session.ID)] = service

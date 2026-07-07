@@ -418,13 +418,11 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				}
 			}
 		}
-		service := serviceSession(
-			session,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		)
+		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
+		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
 			if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
-				service = mergePersistedSessionState(service, persisted)
+				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
 		return service, nil
