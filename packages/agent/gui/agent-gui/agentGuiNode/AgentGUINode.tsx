@@ -22,6 +22,7 @@ import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
   NodeFrame,
@@ -47,6 +48,7 @@ import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
   type AgentGUISidebarFooterContext,
+  type AgentGUIProviderRailEmptyRenderer,
   type AgentMentionReferenceTargetResolver,
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
@@ -192,6 +194,14 @@ export interface AgentGUINodeProps {
   onAgentProviderLogin?: (provider: AgentProvider) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /**
+   * Controls how the provider rail composes its list. "catalog" (default) adds
+   * the static local catalog + placeholders + coming-soon; "exact" renders only
+   * the provided targets and shows `renderProviderRailEmpty` when empty.
+   */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   renderSidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
@@ -573,6 +583,8 @@ function areAgentGUINodePropsEqual(
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
+    previous.providerRailMode === next.providerRailMode &&
+    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
     previous.comingSoonProviders === next.comingSoonProviders &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
@@ -631,6 +643,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   onAgentProviderLogin,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailMode = "catalog",
+  renderProviderRailEmpty,
   renderSidebarFooter,
   comingSoonProviders,
   providerReadinessGates = null,
@@ -805,6 +819,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     prefillPromptRequest,
     providerTargets,
     providerTargetsLoading,
+    providerRailMode,
     comingSoonProviders,
     providerReadinessGates,
     defaultProviderTargetId,
@@ -1682,6 +1697,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           <AgentGUINodeView
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
+            renderProviderRailEmpty={renderProviderRailEmpty}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}

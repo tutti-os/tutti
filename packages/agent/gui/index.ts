@@ -27,6 +27,7 @@ export {
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderReadinessGateStatus,
@@ -45,6 +46,7 @@ export {
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type {
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUISidebarFooterContext,
   AgentGUISidebarFooterRenderer
 } from "./agent-gui/agentGuiNode/AgentGUINodeView";

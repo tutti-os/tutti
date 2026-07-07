@@ -55,6 +55,7 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../../types";
@@ -3642,6 +3643,12 @@ interface UseAgentGUINodeControllerInput {
   data: AgentGUINodeData;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /**
+   * Controls how the provider rail composes its list. Defaults to "catalog"
+   * (static local catalog + placeholders + coming-soon). Use "exact" to render
+   * only the provided targets with no static injection or fallback.
+   */
+  providerRailMode?: AgentGUIProviderRailMode;
   /** Providers gated by the host (feature-gated) — rendered as coming-soon placeholders. */
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
@@ -3686,6 +3693,7 @@ export function useAgentGUINodeController({
   data,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailMode = "catalog",
   comingSoonProviders,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
@@ -3707,24 +3715,31 @@ export function useAgentGUINodeController({
         : emptyComingSoonProviders,
     [comingSoonProviders]
   );
-  const normalizedExplicitProviderTargets = useMemo(
-    () =>
-      applyComingSoonProviderTargets(
-        normalizeAgentGUIProviderTargets(providerTargets, {
-          includeDisabledPlaceholders: true,
-          useStaticCatalog: false
-        }),
-        normalizedComingSoonProviders
-      ),
-    [normalizedComingSoonProviders, providerTargets]
-  );
+  const isExactProviderRailMode = providerRailMode === "exact";
+  const normalizedExplicitProviderTargets = useMemo(() => {
+    // Exact mode: render precisely the provided targets — no disabled
+    // placeholders (nexight/hermes/openclaw) and no coming-soon markers.
+    const normalized = normalizeAgentGUIProviderTargets(providerTargets, {
+      includeDisabledPlaceholders: !isExactProviderRailMode,
+      useStaticCatalog: false
+    });
+    return isExactProviderRailMode
+      ? normalized
+      : applyComingSoonProviderTargets(
+          normalized,
+          normalizedComingSoonProviders
+        );
+  }, [isExactProviderRailMode, normalizedComingSoonProviders, providerTargets]);
   const normalizedProviderTargets = useMemo(() => {
     if (providerTargetsLoading) {
       return [];
     }
+    // Exact mode never falls back to the static local catalog — an empty list
+    // stays empty so the host can render its own empty state.
     if (
-      providerTargets === undefined ||
-      normalizedExplicitProviderTargets.length === 0
+      !isExactProviderRailMode &&
+      (providerTargets === undefined ||
+        normalizedExplicitProviderTargets.length === 0)
     ) {
       return applyComingSoonProviderTargets(
         normalizeAgentGUIProviderTargets(null, {
@@ -3735,12 +3750,14 @@ export function useAgentGUINodeController({
     }
     return normalizedExplicitProviderTargets;
   }, [
+    isExactProviderRailMode,
     normalizedExplicitProviderTargets,
     normalizedComingSoonProviders,
     providerTargets,
     providerTargetsLoading
   ]);
   const shouldUseStaticProviderTargets =
+    !isExactProviderRailMode &&
     !providerTargetsLoading &&
     (providerTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
@@ -11604,6 +11621,7 @@ export function useAgentGUINodeController({
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
+        providerRailMode,
         comingSoonProviders: normalizedComingSoonProviders,
         conversationFilter,
         conversations: visibleConversations,
@@ -11680,6 +11698,7 @@ export function useAgentGUINodeController({
       effectiveSelectedProviderTarget,
       normalizedComingSoonProviders,
       normalizedProviderTargets,
+      providerRailMode,
       providerReadinessGate,
       providerTargetsLoading,
       detailError,

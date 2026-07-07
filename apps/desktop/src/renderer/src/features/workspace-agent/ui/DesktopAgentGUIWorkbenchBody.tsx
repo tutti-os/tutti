@@ -15,6 +15,8 @@ import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderTarget,
   AgentGUIProps,
@@ -108,6 +110,10 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   previewMode?: boolean;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultProviderTargetId?: string | null;
   contextMentionProviders: NonNullable<
@@ -187,6 +193,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailMode === next.providerRailMode &&
+    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
     previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
@@ -250,6 +258,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   previewMode = false,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailMode = "catalog",
+  renderProviderRailEmpty,
   comingSoonAgentProviders,
   defaultProviderTargetId = null,
   contextMentionProviders,
@@ -1114,6 +1124,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}
+        providerRailMode={providerRailMode}
+        renderProviderRailEmpty={renderProviderRailEmpty}
         comingSoonProviders={comingSoonAgentProviders}
         providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}

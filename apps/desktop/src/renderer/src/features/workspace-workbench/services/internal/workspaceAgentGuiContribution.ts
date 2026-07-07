@@ -1,6 +1,8 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderTarget
 } from "@tutti-os/agent-gui";
 import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
@@ -72,6 +74,10 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -154,6 +160,8 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      providerRailMode: input.providerRailMode,
+      renderProviderRailEmpty: input.renderProviderRailEmpty,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:

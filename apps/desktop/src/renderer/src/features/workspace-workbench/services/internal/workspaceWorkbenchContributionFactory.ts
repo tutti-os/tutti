@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailMode,
+  AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderTarget
 } from "@tutti-os/agent-gui";
 import type {
@@ -65,6 +67,10 @@ export interface DesktopWorkbenchContributionContext {
   ) => void;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
+  providerRailMode?: AgentGUIProviderRailMode;
+  /** Host-owned empty state for the provider rail in "exact" mode. */
+  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;

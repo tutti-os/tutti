@@ -21,6 +21,8 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
         providerTargets: context.providerTargets,
         providerTargetsLoading: context.providerTargetsLoading,
+        providerRailMode: context.providerRailMode,
+        renderProviderRailEmpty: context.renderProviderRailEmpty,
         comingSoonAgentProviders: context.comingSoonAgentProviders,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,

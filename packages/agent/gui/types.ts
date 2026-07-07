@@ -94,6 +94,20 @@ export interface AgentGUIProviderTarget {
   unavailableReason?: string;
 }
 
+/**
+ * How the provider rail composes the target list.
+ * - "catalog" (default): host-provided targets are augmented with the static
+ *   local provider catalog, disabled placeholders (nexight/hermes/openclaw),
+ *   and coming-soon markers. When no targets are provided, the full local
+ *   catalog is shown.
+ * - "exact": the rail renders exactly the provided targets — no static catalog
+ *   fallback, no disabled placeholders, no coming-soon injection. When the list
+ *   is empty (and not loading) the host-provided empty renderer is shown. Use
+ *   this when the list is fully orchestrated externally (e.g. shared agents,
+ *   custom /agents).
+ */
+export type AgentGUIProviderRailMode = "catalog" | "exact";
+
 export type AgentGUIProviderReadinessGateStatus =
   | "checking"
   | "coming_soon"

@@ -2882,6 +2882,77 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerTargets.length).toBeGreaterThan(1);
   });
 
+  it("renders exactly the provided targets in exact rail mode (no placeholders or catalog padding)", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex"
+          },
+          {
+            targetId: "shared-agent:bob-claude",
+            provider: "claude-code",
+            ref: {
+              kind: "shared-agent",
+              provider: "claude-code",
+              sharedAgentId: "bob-claude"
+            },
+            label: "Bob's Claude"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.providerRailMode).toBe("exact");
+    expect(
+      result.current.viewModel.providerTargets.map((target) => target.targetId)
+    ).toEqual(["shared-agent:alice-codex", "shared-agent:bob-claude"]);
+  });
+
+  it("keeps the provider rail empty in exact mode when no targets are provided", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        providerRailMode: "exact",
+        providerTargets: [],
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.providerRailMode).toBe("exact");
+    expect(result.current.viewModel.providerTargets).toEqual([]);
+  });
+
   it("sends fallback local agent target ids without provider target refs when provider targets are omitted", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
