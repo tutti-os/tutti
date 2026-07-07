@@ -146,6 +146,11 @@ export interface AgentGUIComposerSettingsVM {
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
   projectLocked?: boolean;
+  // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
+  // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the
+  // local "working directory missing" existence check is skipped. Project
+  // selection/listing stays available. Absent/false => local (legacy behaviour).
+  projectPathIsRemote?: boolean;
   // Collapse the model list to the latest version per model family (providers
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.

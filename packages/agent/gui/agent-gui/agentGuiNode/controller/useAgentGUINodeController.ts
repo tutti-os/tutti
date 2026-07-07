@@ -2835,6 +2835,7 @@ function areComposerSettingsVMsEqual(
     (left.selectedProjectPath ?? null) ===
       (right.selectedProjectPath ?? null) &&
     Boolean(left.projectLocked) === Boolean(right.projectLocked) &&
+    Boolean(left.projectPathIsRemote) === Boolean(right.projectPathIsRemote) &&
     Boolean(left.modelListCollapsedToLatest) ===
       Boolean(right.modelListCollapsedToLatest) &&
     areComposerSettingOptionListsEqual(
@@ -11283,6 +11284,9 @@ export function useAgentGUINodeController({
           ? (activeConversation?.cwd ?? null)
           : selectedProjectPath,
       projectLocked: activeConversationId !== null,
+      // Remote runtimes (shared/cloud sandbox) run their cwd off the local
+      // filesystem, so the local existence check is skipped downstream.
+      projectPathIsRemote: agentActivityRuntime.projectPathIsRemote,
       // Cursor's live list spans many vendors with several versions each;
       // collapse it to the latest release per model family.
       modelListCollapsedToLatest: composerTargetData.provider === "cursor",
@@ -11315,6 +11319,7 @@ export function useAgentGUINodeController({
     activeSessionReasoningSelection,
     activeSessionSpeedSelection,
     activeSessionRuntimeContext,
+    agentActivityRuntime.projectPathIsRemote,
     composerTargetData.provider,
     draftSettings.permissionModeId,
     draftSettings.planMode,

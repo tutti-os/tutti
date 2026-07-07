@@ -3048,6 +3048,53 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("skips the missing directory check for remote-cwd runtimes", async () => {
+    mockProjectMissingState.current = true;
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("hi")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          projectLocked: true,
+          selectedProjectPath: "/sandbox/shared",
+          projectPathIsRemote: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    // Even with the probe reporting "missing", a remote-cwd runtime never
+    // mounts it, so no danger notice and the input stays usable.
+    expect(screen.queryByTestId("agent-gui-missing-project-notice")).toBeNull();
+    expect(screen.getByPlaceholderText("placeholder")).not.toBeDisabled();
+    fireEvent.submit(container.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the project row visible in the hero composer", () => {
     const { container } = render(
       <AgentComposer

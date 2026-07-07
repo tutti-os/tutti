@@ -2762,7 +2762,10 @@ export function AgentComposer({
   const showProjectMissingProbe =
     !showProjectRow &&
     Boolean(composerSettings.projectLocked) &&
-    selectedProjectPath !== "";
+    selectedProjectPath !== "" &&
+    // Remote runtimes (shared/cloud sandbox) run their cwd off the local
+    // filesystem, so the local existence check would always false-positive.
+    !composerSettings.projectPathIsRemote;
   const activePromptTipId = activePromptTip?.id ?? null;
   const activePromptTipText = activePromptTip
     ? `${labels.promptTipsPrefix}${activePromptTip.label} · ${activePromptTip.prompt}`

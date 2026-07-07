@@ -275,6 +275,14 @@ export interface AgentActivityRuntime {
    * behaviour resolved via the module-global.
    */
   origin?: string;
+  /**
+   * The session cwd is not resolvable on the local filesystem (e.g. a
+   * shared/cloud sandbox not mounted locally), so AgentGUI must not run its
+   * local stat-based "working directory missing" existence check — it would
+   * always false-positive. Absent/false (default) => local, legacy behaviour.
+   * Only that one guard is gated; project selection/listing is unaffected.
+   */
+  projectPathIsRemote?: boolean;
   promptContentUploadSupport?: {
     file?: boolean;
     image?: boolean;
