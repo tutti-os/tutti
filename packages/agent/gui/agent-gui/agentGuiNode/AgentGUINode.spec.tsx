@@ -1056,6 +1056,47 @@ describe("AgentGUINode", () => {
     );
   });
 
+  it("does not show the unavailable limits placeholder while usage is still loading", async () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: true,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-refresh")
+      ).toHaveAttribute("data-state", "loading");
+    });
+    expect(
+      screen.queryByTestId("agent-gui-config-usage-unavailable")
+    ).toBeNull();
+  });
+
   it("requests a fresh agent probe when the title info entry opens", () => {
     const onAgentProbeRefreshRequest = vi.fn();
 

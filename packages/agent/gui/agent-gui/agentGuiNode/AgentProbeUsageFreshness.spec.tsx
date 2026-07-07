@@ -85,4 +85,16 @@ describe("AgentProbeUsageFreshness", () => {
     fireEvent.click(getByTestId("freshness"));
     expect(onRefresh).not.toHaveBeenCalled();
   });
+
+  it("plays a one-shot reassurance spin on click even when the refresh is a no-op", () => {
+    // The refresh can be served from the main-process cache and never flip
+    // isLoading, so a click must still visibly move the icon.
+    const { getByTestId } = renderControl();
+    const icon = () => getByTestId("freshness").querySelector("svg");
+    expect(icon()?.getAttribute("class") ?? "").not.toContain("animate-");
+    fireEvent.click(getByTestId("freshness"));
+    expect(icon()?.getAttribute("class") ?? "").toContain(
+      "motion-safe:animate-[spin_0.6s_linear]"
+    );
+  });
 });

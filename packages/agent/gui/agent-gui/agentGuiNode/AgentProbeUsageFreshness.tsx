@@ -62,8 +62,18 @@ export function AgentProbeUsageFreshness({
   testId?: string;
 }): React.JSX.Element {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Bumped on every click. A refresh can be a no-op (served from the
+  // main-process throttle cache within its TTL) and never flip `isLoading`, so
+  // the click would otherwise produce no motion at all. Replaying a one-shot
+  // spin keyed on this nonce gives a reassuring acknowledgement regardless.
+  const [clickSpinNonce, setClickSpinNonce] = useState(0);
   const showRelativeTime =
     !isLoading && !didFail && typeof capturedAtUnixMs === "number";
+
+  const handleClick = (): void => {
+    setClickSpinNonce((nonce) => nonce + 1);
+    onRefresh();
+  };
 
   useEffect(() => {
     if (!showRelativeTime) {
@@ -91,18 +101,28 @@ export function AgentProbeUsageFreshness({
       type="button"
       data-testid={testId}
       data-state={isLoading ? "loading" : didFail ? "failed" : "idle"}
-      className={`nodrag inline-flex shrink-0 items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 [-webkit-app-region:no-drag] ${stateClassName}`}
-      onClick={onRefresh}
+      className={`nodrag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors hover:bg-[var(--transparency-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 disabled:hover:bg-transparent [-webkit-app-region:no-drag] ${stateClassName}`}
+      onClick={handleClick}
       disabled={isLoading || disabled}
       aria-label={labels.refreshAria}
       aria-busy={isLoading}
       title={labels.refreshAria}
     >
       <RefreshCw
+        // Remount on each click (and when loading toggles) so the CSS animation
+        // restarts: a continuous spin while a fetch is in flight, otherwise a
+        // single reassuring turn per click.
+        key={isLoading ? "loading" : `spin-${clickSpinNonce}`}
         size={12}
         strokeWidth={2}
         aria-hidden="true"
-        className={isLoading ? "animate-spin" : undefined}
+        className={
+          isLoading
+            ? "animate-spin"
+            : clickSpinNonce > 0
+              ? "motion-safe:animate-[spin_0.6s_linear]"
+              : undefined
+        }
       />
       {text ? <span className="whitespace-nowrap">{text}</span> : null}
     </button>
