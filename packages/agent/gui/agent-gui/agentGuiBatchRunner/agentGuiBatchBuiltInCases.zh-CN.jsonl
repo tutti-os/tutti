@@ -1,4 +1,0 @@
-{"id":"quick-greeting","title":"简单问候","prompt":"请用一句话向我问好。"}
-{"id":"project-overview","title":"读取项目概况","prompt":"请简要阅读当前项目并概括它的主要用途，不要修改文件。"}
-{"id":"list-key-files","title":"列出关键文件","prompt":"请列出当前工作区中你认为最关键的 5 个文件或目录，并说明原因，不要修改文件。"}
-{"id":"plan-mode-smoke","title":"计划模式测试","prompt":"请基于当前项目提出一个最小变更计划，不要执行修改。","settings":{"planMode":true}}

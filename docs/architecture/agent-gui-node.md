@@ -98,7 +98,7 @@ There are also real architectural debts:
   migrated path name. Treat its stores as package-owned AgentGUI UI stores, not
   desktop renderer ownership.
 - `packages/agent/gui/agent-gui/**` still contains more than AgentGuiNode
-  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`, batch runner). Treat
+  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`). Treat
   that folder as the legacy workspace-node area. Do not infer that all code
   inside it belongs to the conversation node.
 - Some Host API compatibility types still exist for tests, projection, and old

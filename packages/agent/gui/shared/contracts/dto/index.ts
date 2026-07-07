@@ -1,5 +1,4 @@
 export * from "./agent";
-export * from "./agentGuiBatch";
 export * from "./agentSession";
 export * from "./agentProbe";
 export * from "./clipboard";

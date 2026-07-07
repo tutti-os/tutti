@@ -7,9 +7,7 @@
 //      or the useProjectedAgentConversation hook), then
 //   3. feeding it to <AgentConversationFlow />.
 //
-// This is the same rendering path the AgentGUI node uses; see
-// buildAgentGuiBatchSessionDetail for a worked example of building the detail
-// view model from timeline items + a synthesized session/activity summary.
+// This is the same rendering path the AgentGUI node uses.
 
 export { AgentConversationFlow } from "../shared/agentConversation/components/AgentConversationFlow";
 export { AgentTranscriptView } from "../shared/agentConversation/components/AgentTranscriptView";

@@ -14,10 +14,7 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
-import {
-  pathFromFileReadPayload,
-  unavailableHostMethod
-} from "./internal/desktopAgentHostProjection.ts";
+import { pathFromFileReadPayload } from "./internal/desktopAgentHostProjection.ts";
 import {
   DesktopWorkspaceUserProjectService,
   type IWorkspaceUserProjectService
@@ -111,9 +108,6 @@ export function createDesktopAgentHostApi({
     },
     account: {
       batchGetUserInfo: () => Promise.resolve({ users: [] })
-    },
-    agentGuiBatch: {
-      exportRun: unavailableHostMethod("agentGuiBatch.exportRun")
     },
     workspaceAgentProbes: {
       list: (payload: AgentProviderProbeListInput) =>

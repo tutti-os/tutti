@@ -1,4 +1,0 @@
-{"id":"quick-greeting","title":"Quick greeting","prompt":"Greet me in one sentence."}
-{"id":"project-overview","title":"Read project overview","prompt":"Briefly read the current project and summarize its main purpose. Do not modify files."}
-{"id":"list-key-files","title":"List key files","prompt":"List the 5 files or directories you consider most important in the current workspace, and explain why. Do not modify files."}
-{"id":"plan-mode-smoke","title":"Plan mode smoke test","prompt":"Based on the current project, propose a minimal change plan. Do not make changes.","settings":{"planMode":true}}
