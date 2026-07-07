@@ -1,4 +1,4 @@
-import { BrowserWindow, app, ipcMain, session, shell } from "electron";
+import { BrowserWindow, app, session, shell } from "electron";
 import {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach
@@ -18,8 +18,7 @@ import {
 } from "../../shared/contracts/windowIntent";
 import {
   desktopIpcChannels,
-  type DesktopHostWindowCloseRequestPayload,
-  type DesktopHostWindowCloseRequestResolutionPayload
+  type DesktopHostWindowCloseRequestPayload
 } from "../../shared/contracts/ipc";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
@@ -38,8 +37,6 @@ export interface CreateWorkspaceWindowOptions {
 }
 
 const workspaceWindows = new Set<BrowserWindow>();
-const workspaceWindowQuitCloseTimeoutMs = 5_000;
-let workspaceWindowQuitCloseRequestSequence = 0;
 const workspaceWindowHeaderHeightPx = 52;
 const workspaceWindowMacTrafficLightInsetPx = 16;
 const workspaceWindowMacTrafficLightSizePx = 12;
@@ -247,80 +244,6 @@ export function requestWorkspaceWindowCloseFromCommandShortcut(
   sendWorkspaceWindowCloseRequest(workspaceWindow, { reason: "window-close" });
 }
 
-export async function requestWorkspaceWindowsClose(
-  payload: DesktopHostWindowCloseRequestPayload
-): Promise<"approved" | "blocked"> {
-  const results = await Promise.all(
-    Array.from(workspaceWindows).map((workspaceWindow) =>
-      requestWorkspaceWindowClose(workspaceWindow, payload)
-    )
-  );
-  return results.every((result) => result === "approved")
-    ? "approved"
-    : "blocked";
-}
-
-function requestWorkspaceWindowClose(
-  workspaceWindow: BrowserWindow,
-  payload: DesktopHostWindowCloseRequestPayload
-): Promise<"approved" | "blocked"> {
-  if (
-    workspaceWindow.isDestroyed() ||
-    workspaceWindow.webContents.isDestroyed()
-  ) {
-    return Promise.resolve("approved");
-  }
-
-  return new Promise((resolve) => {
-    let settled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    const requestId = createWorkspaceWindowQuitCloseRequestId();
-    const finish = (outcome: "approved" | "blocked") => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      ipcMain.removeListener(
-        desktopIpcChannels.host.window.closeRequestResolved,
-        handleResolution
-      );
-      resolve(outcome);
-    };
-    const handleResolution = (
-      event: Electron.IpcMainEvent,
-      resolution?: DesktopHostWindowCloseRequestResolutionPayload
-    ) => {
-      if (
-        event.sender !== workspaceWindow.webContents ||
-        resolution?.requestId !== requestId
-      ) {
-        return;
-      }
-
-      finish(resolution.outcome === "approved" ? "approved" : "blocked");
-    };
-
-    workspaceWindow.once("closed", () => finish("approved"));
-    ipcMain.on(
-      desktopIpcChannels.host.window.closeRequestResolved,
-      handleResolution
-    );
-    timeout = setTimeout(() => {
-      if (payload.reason !== "quit" && !workspaceWindow.isDestroyed()) {
-        workspaceWindow.destroy();
-      }
-      finish(payload.reason === "quit" ? "blocked" : "approved");
-    }, workspaceWindowQuitCloseTimeoutMs);
-    sendWorkspaceWindowCloseRequest(workspaceWindow, {
-      ...payload,
-      requestId
-    });
-  });
-}
-
 function sendWorkspaceWindowCloseRequest(
   workspaceWindow: BrowserWindow,
   payload: DesktopHostWindowCloseRequestPayload
@@ -336,11 +259,6 @@ function sendWorkspaceWindowCloseRequest(
     desktopIpcChannels.host.window.closeRequest,
     payload
   );
-}
-
-function createWorkspaceWindowQuitCloseRequestId(): string {
-  workspaceWindowQuitCloseRequestSequence += 1;
-  return `workspace-window-close-${workspaceWindowQuitCloseRequestSequence}`;
 }
 
 function isWorkspaceAppSessionPartition(

@@ -120,7 +120,11 @@ func TestProviderAuthWatcherIgnoresNonAuthClaudeStateChurn(t *testing.T) {
 	statePath := filepath.Join(dir, ".claude.json")
 	writeState := func(content string) {
 		t.Helper()
-		if err := os.WriteFile(statePath, []byte(content), 0o600); err != nil {
+		tempPath := filepath.Join(dir, ".claude.json.next")
+		if err := os.WriteFile(tempPath, []byte(content), 0o600); err != nil {
+			t.Fatalf("write staged claude state file: %v", err)
+		}
+		if err := os.Rename(tempPath, statePath); err != nil {
 			t.Fatalf("write claude state file: %v", err)
 		}
 	}

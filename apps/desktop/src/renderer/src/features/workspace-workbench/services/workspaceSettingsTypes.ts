@@ -90,14 +90,6 @@ export interface WorkspaceSettingsDeveloperLogsMutableState {
   logs: DesktopDeveloperLogsState | null;
 }
 
-export interface WorkspaceSettingsDeveloperLogsState {
-  readonly clearing: boolean;
-  readonly clearingConversationHistory: boolean;
-  readonly exporting: boolean;
-  readonly loading: boolean;
-  readonly logs: DesktopDeveloperLogsState | null;
-}
-
 export interface WorkspaceSettingsDeveloperLogsSnapshotState {
   readonly clearing: boolean;
   readonly clearingConversationHistory: boolean;

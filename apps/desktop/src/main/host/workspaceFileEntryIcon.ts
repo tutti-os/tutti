@@ -231,13 +231,6 @@ export function isApplicationBundleName(name: string): boolean {
   return name.trim().toLowerCase().endsWith(".app");
 }
 
-export function isMacOSApplicationBundle(
-  entry: Pick<WorkspaceFileEntryIconInput, "kind" | "name">,
-  platform: NodeJS.Platform = process.platform
-): boolean {
-  return platform === "darwin" && isApplicationBundleEntry(entry);
-}
-
 function dataUrlToPngBytes(dataUrl: string | null): Buffer | null {
   if (!dataUrl) {
     return null;

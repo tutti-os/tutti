@@ -5,8 +5,6 @@ import {
   type DesktopThemeState
 } from "../../../shared/theme/index.ts";
 
-const themeListeners = new Set<(theme: DesktopThemeState) => void>();
-
 function readInitialThemeAppearance(): DesktopThemeAppearance {
   return resolveWindowThemeAppearance();
 }
@@ -72,18 +70,6 @@ function setActiveTheme(theme: DesktopThemeState): void {
 
   activeTheme = theme;
   syncDocumentTheme(theme);
-  themeListeners.forEach((listener) => {
-    listener(theme);
-  });
-}
-
-export function subscribeTheme(
-  listener: (theme: DesktopThemeState) => void
-): () => void {
-  themeListeners.add(listener);
-  return () => {
-    themeListeners.delete(listener);
-  };
 }
 
 export function getActiveTheme(): DesktopThemeState {

@@ -137,10 +137,6 @@ export function createRenderStormTracker(
   };
 }
 
-export const reactRootErrorLogger = createReactRootErrorLogger();
-
-export const renderStormTracker = createRenderStormTracker();
-
 export function installBrowserCrashLogging(
   options: BrowserCrashLoggerOptions = {}
 ): () => void {
@@ -203,24 +199,6 @@ export function installBrowserCrashLogging(
       handleUnhandledRejection
     );
   };
-}
-
-export function recordReactRenderCommit(
-  id: string,
-  phase: "mount" | "nested-update" | "update",
-  actualDuration: number,
-  baseDuration: number,
-  startTime: number,
-  commitTime: number
-): void {
-  renderStormTracker.record({
-    actualDuration,
-    baseDuration,
-    commitTime,
-    id,
-    phase,
-    startTime
-  });
 }
 
 function formatErrorSummary(error: unknown): string {
