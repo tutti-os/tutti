@@ -117,7 +117,14 @@ export function getAgentHostApiByOrigin(
   if (hostApi) {
     return hostApi;
   }
-  return getOptionalAgentHostApi();
+  // Only the default (local) origin falls back to the legacy single-host slot.
+  // An explicit non-default origin that is not registered returns null so its
+  // persistence never lands in a different host's store (e.g. shared read-state
+  // must not be written to the local backend).
+  if (normalizedOrigin === WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN) {
+    return getOptionalAgentHostApi();
+  }
+  return null;
 }
 
 export function resetAgentHostApiForTests(): void {

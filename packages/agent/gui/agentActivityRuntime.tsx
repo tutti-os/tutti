@@ -485,21 +485,25 @@ export function getOptionalAgentActivityRuntime(): AgentActivityRuntime | null {
 
 /**
  * Resolve the runtime for a given origin. When the origin is registered (two
- * runtimes coexisting for one workspace), returns that exact instance; otherwise
- * falls back to legacy single-runtime resolution so callers without a registered
- * origin keep working unchanged.
+ * runtimes coexisting for one workspace), returns that exact instance.
+ *
+ * Only the default (local) origin falls back to legacy single-runtime
+ * resolution. An explicit non-default origin that is not registered returns null
+ * rather than cross-routing to a different runtime via the module-global slot —
+ * e.g. a shared query must never silently load from the local runtime.
  */
 export function getAgentActivityRuntimeByOrigin(
   origin: string | null | undefined
 ): AgentActivityRuntime | null {
   const normalizedOrigin = normalizeRuntimeOrigin(origin);
-  if (normalizedOrigin) {
-    const runtime = runtimesByOrigin.get(normalizedOrigin);
-    if (runtime) {
-      return runtime;
-    }
+  const runtime = runtimesByOrigin.get(normalizedOrigin);
+  if (runtime) {
+    return runtime;
   }
-  return getOptionalAgentActivityRuntime();
+  if (normalizedOrigin === WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN) {
+    return getOptionalAgentActivityRuntime();
+  }
+  return null;
 }
 
 export function resetAgentActivityRuntimeForTests(): void {

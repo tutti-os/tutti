@@ -1,7 +1,7 @@
 import { mergeAgentActivityMessages } from "@tutti-os/agent-activity-core";
 import {
-  getAgentActivityRuntime,
-  getAgentActivityRuntimeByOrigin
+  getAgentActivityRuntimeByOrigin,
+  type AgentActivityRuntime
 } from "../../../../../agentActivityRuntime";
 import {
   getAgentHostApiByOrigin,
@@ -1220,9 +1220,7 @@ async function loadWorkspaceAgentSnapshotForConversations(input: {
   userId: string;
   workspaceId: string;
 }): Promise<WorkspaceAgentActivitySnapshot> {
-  const runtime =
-    getAgentActivityRuntimeByOrigin(input.sessionOrigin) ??
-    getAgentActivityRuntime();
+  const runtime = resolveRuntimeForOrigin(input.sessionOrigin);
   const snapshot = await runtime.load(input.workspaceId);
   return workspaceAgentSnapshotForConversations(snapshot);
 }
@@ -1231,11 +1229,22 @@ function getWorkspaceAgentSnapshotForConversations(input: {
   sessionOrigin: string;
   workspaceId: string;
 }): WorkspaceAgentActivitySnapshot {
-  const runtime =
-    getAgentActivityRuntimeByOrigin(input.sessionOrigin) ??
-    getAgentActivityRuntime();
+  const runtime = resolveRuntimeForOrigin(input.sessionOrigin);
   const snapshot = runtime.getSnapshot(input.workspaceId);
   return workspaceAgentSnapshotForConversations(snapshot);
+}
+
+// Resolve strictly by origin. A missing runtime for an explicit origin throws
+// (the caller runs inside refreshAgentGUIConversationListQuery's try/catch and
+// surfaces an error state) rather than cross-routing to another runtime's data.
+function resolveRuntimeForOrigin(sessionOrigin: string): AgentActivityRuntime {
+  const runtime = getAgentActivityRuntimeByOrigin(sessionOrigin);
+  if (!runtime) {
+    throw new Error(
+      `No agent activity runtime registered for origin "${sessionOrigin}".`
+    );
+  }
+  return runtime;
 }
 
 function shouldUseCurrentWorkspaceAgentSnapshotForRefresh(

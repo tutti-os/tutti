@@ -52,4 +52,16 @@ describe("getAgentHostApiByOrigin", () => {
       cloudPersistence
     );
   });
+
+  it("returns null for an unregistered explicit origin instead of cross-routing", () => {
+    render(
+      <AgentActivityHostProvider
+        agentActivityRuntime={createRuntime("origin-local")}
+        agentHostApi={createHostApi({ tag: "local" })}
+      />
+    );
+
+    // Shared read-state must not be written to the local host's persistence.
+    expect(getAgentHostApiByOrigin("origin-shared")).toBeNull();
+  });
 });

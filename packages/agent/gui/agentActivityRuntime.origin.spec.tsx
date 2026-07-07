@@ -49,13 +49,19 @@ describe("getAgentActivityRuntimeByOrigin", () => {
     ).toBe(localRuntime);
   });
 
+  it("returns null for an unregistered explicit origin instead of cross-routing", () => {
+    const localRuntime = createRuntime("origin-local");
+
+    render(<AgentActivityRuntimeProvider runtime={localRuntime} />);
+
+    // A shared query must not silently resolve to the local runtime.
+    expect(getAgentActivityRuntimeByOrigin("origin-shared")).toBeNull();
+  });
+
   it("removes an origin from the registry after its provider unmounts", () => {
     const sharedRuntime = createRuntime("origin-shared");
     const localRuntime = createRuntime("origin-local");
 
-    // Render shared first, local last, so the module-global fallback settles on
-    // localRuntime — letting us prove origin-shared is gone from the registry by
-    // observing it fall back rather than resolve to sharedRuntime.
     const view = render(
       <>
         <AgentActivityRuntimeProvider runtime={sharedRuntime} />
@@ -68,7 +74,9 @@ describe("getAgentActivityRuntimeByOrigin", () => {
 
     view.rerender(<AgentActivityRuntimeProvider runtime={localRuntime} />);
 
-    expect(getAgentActivityRuntimeByOrigin("origin-shared")).toBe(localRuntime);
+    // origin-shared is gone from the registry; an unregistered explicit origin
+    // resolves to null rather than cross-routing to the still-mounted local one.
+    expect(getAgentActivityRuntimeByOrigin("origin-shared")).toBeNull();
     expect(getAgentActivityRuntimeByOrigin("origin-local")).toBe(localRuntime);
   });
 });

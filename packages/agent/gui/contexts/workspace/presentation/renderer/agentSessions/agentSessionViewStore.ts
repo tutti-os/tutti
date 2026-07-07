@@ -45,6 +45,8 @@ export interface AgentSessionView extends Required<
 export interface AgentSessionOverlayMessageHydrationEntry extends Required<
   Pick<AgentSessionViewRef, "workspaceId" | "agentSessionId">
 > {
+  /** Runtime identity; absent => default runtime origin. */
+  origin?: string | null;
   overlayMessages: readonly WorkspaceAgentActivityMessage[];
 }
 
