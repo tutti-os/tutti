@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { RichTextTriggerQueryMatch } from "@tutti-os/ui-rich-text/types";
-import {
-  serializeWorkspaceAppExternalAtInsert,
-  serializeWorkspaceAppExternalAtMatch,
-  toExternalAtProviderId
-} from "./workspaceAppExternalAtSerialization.ts";
+import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
 
 type TestMentionInsert = Extract<
   RichTextTriggerQueryMatch["insertResult"],
@@ -20,15 +16,43 @@ function mentionInsert(mention: Record<string, unknown>): TestMentionInsert {
 }
 
 test("accepts external at provider ids", () => {
-  assert.equal(toExternalAtProviderId("file"), "file");
-  assert.equal(toExternalAtProviderId("workspace-issue"), "workspace-issue");
-  assert.equal(toExternalAtProviderId("agent-target"), "agent-target");
-  assert.equal(toExternalAtProviderId("unsupported"), null);
+  assert.equal(
+    serializeWorkspaceAppExternalAtMatch(
+      createMatch({
+        providerId: "file"
+      })
+    )?.providerId,
+    "file"
+  );
+  assert.equal(
+    serializeWorkspaceAppExternalAtMatch(
+      createMatch({
+        providerId: "workspace-issue"
+      })
+    )?.providerId,
+    "workspace-issue"
+  );
+  assert.equal(
+    serializeWorkspaceAppExternalAtMatch(
+      createMatch({
+        providerId: "agent-target"
+      })
+    )?.providerId,
+    "agent-target"
+  );
+  assert.equal(
+    serializeWorkspaceAppExternalAtMatch(
+      createMatch({
+        providerId: "unsupported"
+      })
+    ),
+    null
+  );
 });
 
 test("serializes mention insert results", () => {
   assert.deepEqual(
-    serializeWorkspaceAppExternalAtInsert(
+    serializeInsert(
       mentionInsert({
         entityId: "issue-1",
         label: "Fix bug",
@@ -62,7 +86,7 @@ test("serializes mention insert results", () => {
 
 test("serializes mention icon presentation as external thumbnail metadata", () => {
   assert.deepEqual(
-    serializeWorkspaceAppExternalAtInsert(
+    serializeInsert(
       mentionInsert({
         entityId: "agent-codex",
         label: "Codex",
@@ -97,7 +121,7 @@ test("serializes mention icon presentation as external thumbnail metadata", () =
 
 test("does not pass legacy mention metadata through to external apps", () => {
   assert.deepEqual(
-    serializeWorkspaceAppExternalAtInsert(
+    serializeInsert(
       mentionInsert({
         entityId: "issue-1",
         href: "mention://workspace-issue?issueId=issue-1",
@@ -120,7 +144,7 @@ test("does not pass legacy mention metadata through to external apps", () => {
 
 test("serializes markdown link and text insert results", () => {
   assert.deepEqual(
-    serializeWorkspaceAppExternalAtInsert({
+    serializeInsert({
       kind: "markdown-link",
       href: "README.md",
       label: "README.md"
@@ -132,7 +156,7 @@ test("serializes markdown link and text insert results", () => {
     }
   );
   assert.deepEqual(
-    serializeWorkspaceAppExternalAtInsert({
+    serializeInsert({
       kind: "text",
       text: "plain text"
     }),
@@ -213,3 +237,31 @@ test("serializes mention item id from insert identity for external restore", () 
     }
   });
 });
+
+function createMatch(
+  input: Partial<RichTextTriggerQueryMatch> = {}
+): RichTextTriggerQueryMatch {
+  return {
+    iconUrl: "tutti://workspace-apps/automation/icon.png",
+    insertResult: {
+      kind: "text",
+      text: "plain text"
+    },
+    item: {},
+    key: "item-key",
+    label: "Label",
+    providerId: "file",
+    trigger: "@",
+    ...input
+  };
+}
+
+function serializeInsert(
+  insertResult: RichTextTriggerQueryMatch["insertResult"]
+) {
+  return serializeWorkspaceAppExternalAtMatch(
+    createMatch({
+      insertResult
+    })
+  )?.insert;
+}

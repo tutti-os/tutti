@@ -4,10 +4,7 @@ import {
   workspaceAppCenterDockOrder,
   workspaceAppDockOrderStart
 } from "./workspaceAppCenterDockOrdering.ts";
-import {
-  projectWorkspaceAppCenterDockApps,
-  projectWorkspaceAppCenterDockState
-} from "./workspaceAppCenterDockProjection.ts";
+import { projectWorkspaceAppCenterDockApps } from "./workspaceAppCenterDockProjection.ts";
 import { workspaceAppCenterFrame } from "./workspaceAppCenterFrame.ts";
 
 test("workspace app center dock order stays before task and app entries", () => {
@@ -24,82 +21,167 @@ test("workspace app center opens at the shared dialog-sized frame", () => {
   });
 });
 
-test("projectWorkspaceAppCenterDockState maps runtime status to dock state", () => {
+test("projectWorkspaceAppCenterDockApps maps runtime status to dock state", () => {
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("running", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "running"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "running"
+      }),
       launchEnabled: true,
       state: { kind: "enabled" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("installed_pending_restart", null),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: null,
+      runtimeStatus: "installed_pending_restart"
+    }),
     {
+      app: createApp({
+        launchUrl: null,
+        runtimeStatus: "installed_pending_restart"
+      }),
       clickBehavior: "launch",
       launchEnabled: true,
       state: { kind: "enabled" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("starting", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "starting"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "starting"
+      }),
       launchEnabled: false,
       state: { kind: "loading" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("preparing", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "preparing"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "preparing"
+      }),
       launchEnabled: false,
       state: { kind: "loading" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("installing", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "installing"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "installing"
+      }),
       launchEnabled: false,
       state: { kind: "loading" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("failed", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "failed"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "failed"
+      }),
       launchEnabled: false,
       state: { kind: "unavailable" }
     }
   );
-  assert.deepEqual(projectWorkspaceAppCenterDockState("failed", null), {
-    launchEnabled: false,
-    state: { kind: "unavailable" }
-  });
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("unavailable", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: null,
+      runtimeStatus: "failed"
+    }),
     {
+      app: createApp({
+        launchUrl: null,
+        runtimeStatus: "failed"
+      }),
       launchEnabled: false,
       state: { kind: "unavailable" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("idle", "https://app.local"),
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "unavailable"
+    }),
     {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "unavailable"
+      }),
+      launchEnabled: false,
+      state: { kind: "unavailable" }
+    }
+  );
+  assert.deepEqual(
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: "https://app.local",
+      runtimeStatus: "idle"
+    }),
+    {
+      app: createApp({
+        launchUrl: "https://app.local",
+        runtimeStatus: "idle"
+      }),
       launchEnabled: true,
       state: { kind: "enabled" }
     }
   );
   assert.deepEqual(
-    projectWorkspaceAppCenterDockState("idle", "https://app.local", false),
+    projectSingleWorkspaceAppCenterDockApp({
+      installed: false,
+      launchUrl: "https://app.local",
+      runtimeStatus: "idle"
+    }),
     {
+      app: createApp({
+        installed: false,
+        launchUrl: "https://app.local",
+        runtimeStatus: "idle"
+      }),
       launchEnabled: false,
       state: { kind: "disabled" }
     }
   );
-  assert.deepEqual(projectWorkspaceAppCenterDockState("running", null), {
-    launchEnabled: false,
-    state: {
-      kind: "disabled",
-      reason: "missing-url"
+  assert.deepEqual(
+    projectSingleWorkspaceAppCenterDockApp({
+      launchUrl: null,
+      runtimeStatus: "running"
+    }),
+    {
+      app: createApp({
+        launchUrl: null,
+        runtimeStatus: "running"
+      }),
+      launchEnabled: false,
+      state: {
+        kind: "disabled",
+        reason: "missing-url"
+      }
     }
-  });
+  );
 });
 
 test("projectWorkspaceAppCenterDockApps includes only enabled apps", () => {
@@ -155,3 +237,51 @@ test("projectWorkspaceAppCenterDockApps includes only enabled apps", () => {
   assert.equal(projections[1]?.launchEnabled, false);
   assert.deepEqual(projections[1]?.state, { kind: "disabled" });
 });
+
+function projectSingleWorkspaceAppCenterDockApp(
+  input: Partial<ReturnType<typeof createApp>>
+) {
+  return projectWorkspaceAppCenterDockApps([createApp(input)])[0] ?? null;
+}
+
+function createApp(
+  input: Partial<{
+    appId: string;
+    createdAtUnixMs: number;
+    enabled: boolean;
+    exportable: boolean;
+    installed: boolean;
+    launchUrl: string | null;
+    minimizeBehavior: "keep-mounted";
+    name: string;
+    references: { listSupported: boolean };
+    runtimeStatus:
+      | "idle"
+      | "installing"
+      | "installed_pending_restart"
+      | "running"
+      | "preparing"
+      | "starting"
+      | "stopping"
+      | "failed"
+      | "unavailable";
+    source: "builtin";
+    stateRevision: number;
+  }> = {}
+) {
+  return {
+    appId: "notes",
+    createdAtUnixMs: 1,
+    enabled: true,
+    exportable: false,
+    installed: true,
+    launchUrl: "https://app.local",
+    minimizeBehavior: "keep-mounted" as const,
+    name: "Notes",
+    references: { listSupported: false },
+    runtimeStatus: "idle" as const,
+    source: "builtin" as const,
+    stateRevision: 1,
+    ...input
+  };
+}

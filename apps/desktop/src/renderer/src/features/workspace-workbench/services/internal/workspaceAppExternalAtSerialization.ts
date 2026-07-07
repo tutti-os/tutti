@@ -2,7 +2,6 @@ import { isTuttiExternalAtProviderId } from "@tutti-os/workspace-external-core/c
 import type {
   TuttiExternalAtInsertResult,
   TuttiExternalAtMentionPresentation,
-  TuttiExternalAtProviderId,
   TuttiExternalAtQueryResult
 } from "@tutti-os/workspace-external-core/contracts";
 import type {
@@ -13,32 +12,56 @@ import type {
 export function serializeWorkspaceAppExternalAtMatch(
   match: RichTextTriggerQueryMatch
 ): TuttiExternalAtQueryResult | null {
-  const providerId = toExternalAtProviderId(match.providerId);
-  if (!providerId) {
+  if (!isTuttiExternalAtProviderId(match.providerId)) {
     return null;
   }
-  const insert = serializeWorkspaceAppExternalAtInsert(match.insertResult);
+  const insert = (() => {
+    switch (match.insertResult.kind) {
+      case "mention": {
+        const mention = match.insertResult.mention;
+        return {
+          kind: "mention" as const,
+          mention: {
+            entityId: mention.entityId,
+            label: mention.label,
+            ...(mention.scope ? { scope: { ...mention.scope } } : {}),
+            ...(mention.presentation
+              ? {
+                  presentation: serializeWorkspaceAppExternalAtPresentation(
+                    mention.presentation
+                  )
+                }
+              : {})
+          }
+        };
+      }
+      case "markdown-link":
+        return {
+          kind: "markdown-link" as const,
+          label: match.insertResult.label,
+          href: match.insertResult.href
+        };
+      case "text":
+        return {
+          kind: "text" as const,
+          text: match.insertResult.text
+        };
+      default:
+        return null;
+    }
+  })();
   if (!insert) {
     return null;
   }
   const itemId = resolveWorkspaceAppExternalAtItemId(match, insert);
   return {
-    providerId,
+    providerId: match.providerId,
     itemId,
     label: match.label,
     ...(match.subtitle ? { subtitle: match.subtitle } : {}),
     ...(match.iconUrl ? { thumbnailUrl: match.iconUrl } : {}),
     insert
   };
-}
-
-export function toExternalAtProviderId(
-  providerId: string
-): TuttiExternalAtProviderId | null {
-  if (isTuttiExternalAtProviderId(providerId)) {
-    return providerId;
-  }
-  return null;
 }
 
 function resolveWorkspaceAppExternalAtItemId(
@@ -49,44 +72,6 @@ function resolveWorkspaceAppExternalAtItemId(
     return insert.mention.entityId;
   }
   return match.key;
-}
-
-export function serializeWorkspaceAppExternalAtInsert(
-  insert: RichTextTriggerInsertResult
-): TuttiExternalAtInsertResult | null {
-  switch (insert.kind) {
-    case "mention": {
-      const mention = insert.mention;
-      return {
-        kind: "mention",
-        mention: {
-          entityId: mention.entityId,
-          label: mention.label,
-          ...(mention.scope ? { scope: { ...mention.scope } } : {}),
-          ...(mention.presentation
-            ? {
-                presentation: serializeWorkspaceAppExternalAtPresentation(
-                  mention.presentation
-                )
-              }
-            : {})
-        }
-      };
-    }
-    case "markdown-link":
-      return {
-        kind: "markdown-link",
-        label: insert.label,
-        href: insert.href
-      };
-    case "text":
-      return {
-        kind: "text",
-        text: insert.text
-      };
-    default:
-      return null;
-  }
 }
 
 function serializeWorkspaceAppExternalAtPresentation(
