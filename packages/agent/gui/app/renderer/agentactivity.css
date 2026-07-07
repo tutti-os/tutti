@@ -606,7 +606,7 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-titlebar-main {
   display: flex;
   flex: 1 1 auto;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
 }
