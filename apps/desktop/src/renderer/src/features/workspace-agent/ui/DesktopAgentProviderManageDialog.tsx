@@ -58,6 +58,8 @@ const emptyAgentProviderStatusSnapshot: AgentProviderStatusSnapshot = {
 const providerLabelKeys = {
   "claude-code":
     "workspace.workbenchDesktop.agentProviders.manageProviderClaudeCode",
+  antigravity:
+    "workspace.workbenchDesktop.agentProviders.manageProviderAntigravity",
   codex: "workspace.workbenchDesktop.agentProviders.manageProviderCodex",
   cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",

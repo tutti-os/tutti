@@ -78,6 +78,7 @@ export function resolveWorkspaceDockIconSet(_input: {
 }): WorkspaceDockIconSet {
   const agents: Record<AgentGuiWorkbenchProvider, string> = {
     "claude-code": defaultClaudeCodeIconUrl,
+    antigravity: defaultOpenclawIconUrl,
     codex: defaultCodexIconUrl,
     cursor: defaultCursorIconUrl,
     gemini: defaultGeminiIconUrl,

@@ -93,6 +93,7 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     manageColumnConnection: "agentProviders.manageColumnConnection",
     manageConfigDetected: "agentProviders.manageConfigDetected",
     manageConfigMissing: "agentProviders.manageConfigMissing",
+    manageProviderAntigravity: "agentProviders.manageProviderAntigravity",
     manageProviderClaudeCode: "agentProviders.manageProviderClaudeCode",
     manageProviderCodex: "agentProviders.manageProviderCodex",
     manageProviderCursor: "agentProviders.manageProviderCursor",

@@ -869,6 +869,8 @@ export const en = {
         manageColumnConnection: "Connection status",
         manageConfigDetected: "Local configuration detected",
         manageConfigMissing: "No local configuration detected",
+        manageProviderAntigravity:
+          "Antigravity CLI (agy), driven through the third-party antigravity-acp bridge. This uses your personal Antigravity account via a non-Google tool, which Google's terms may prohibit — use at your own risk.",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",

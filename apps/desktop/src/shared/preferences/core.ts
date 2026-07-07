@@ -168,7 +168,8 @@ export const desktopAgentProviders = [
   "nexight",
   "gemini",
   "hermes",
-  "openclaw"
+  "openclaw",
+  "antigravity"
 ] as const;
 
 export type DesktopAgentProvider = (typeof desktopAgentProviders)[number];

@@ -827,6 +827,8 @@ export const zhCN = {
         manageColumnConnection: "连接状态",
         manageConfigDetected: "检测到本机配置",
         manageConfigMissing: "未检测到本机配置",
+        manageProviderAntigravity:
+          "Antigravity CLI（agy），透過第三方 antigravity-acp 橋接驅動。這會經由非 Google 工具使用你的個人 Antigravity 帳號，可能違反 Google 條款——請自行評估風險。",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
         manageProviderCursor: "Cursor",
