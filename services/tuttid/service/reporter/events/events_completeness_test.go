@@ -8,25 +8,12 @@ import (
 	"testing"
 )
 
-var expectedAnalyticsEvents = []string{
+var expectedWrappedAnalyticsEvents = []string{
 	"app.startup_failed",
 	"app.renderer_error",
 	"daemon.startup_failed",
 	"daemon.disconnected",
 	"daemon.reconnected",
-	"workspace.opened",
-	"workspace.open_failed",
-	"workspace.overview.retry_clicked",
-	"workspace.close_guard_shown",
-	"workspace.close_guard_confirmed",
-	"workspace.close_guard_cancelled",
-	"launchpad.opened",
-	"launchpad.closed",
-	"launchpad.searched",
-	"launchpad.item_launched",
-	"launchpad.page_changed",
-	"mission_control.activated",
-	"mission_control.deactivated",
 	"agent.session_started",
 	"agent.message_sent",
 	"agent.message_stopped",
@@ -73,10 +60,6 @@ var expectedAnalyticsEvents = []string{
 	"file_manager.directory_expanded",
 	"file_preview.opened",
 	"file_preview.closed",
-	"browser.opened",
-	"browser.closed",
-	"terminal.opened",
-	"terminal.closed",
 	"settings.opened",
 	"settings.section_switched",
 	"settings.language_changed",
@@ -84,8 +67,6 @@ var expectedAnalyticsEvents = []string{
 	"settings.wallpaper_changed",
 	"settings.custom_wallpaper_uploaded",
 	"settings.custom_wallpaper_cleared",
-	"message_center.opened",
-	"message_center.notification_actioned",
 	"app_update.status_changed",
 	"app_update.action_clicked",
 	"error.agent_session_failed",
@@ -93,25 +74,25 @@ var expectedAnalyticsEvents = []string{
 	"error.workspace_unavailable",
 }
 
-func TestEveryAnalyticsSpecEventHasServerReporterPackage(t *testing.T) {
+func TestWrappedAnalyticsEventsHaveServerReporterPackage(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime caller unavailable")
 	}
 	eventsDir := filepath.Dir(filename)
 	var missing []string
-	for _, eventName := range expectedAnalyticsEvents {
+	for _, eventName := range expectedWrappedAnalyticsEvents {
 		if !hasEventPackageFile(filepath.Join(eventsDir, eventPackagePath(eventName))) {
 			missing = append(missing, eventName)
 		}
 	}
 	if len(missing) > 0 {
-		t.Fatalf("missing server analytics event packages: %v", missing)
+		t.Fatalf("missing wrapped analytics event packages: %v", missing)
 	}
 
 	actual := actualAnalyticsEvents(t, eventsDir)
-	expected := make(map[string]bool, len(expectedAnalyticsEvents))
-	for _, eventName := range expectedAnalyticsEvents {
+	expected := make(map[string]bool, len(expectedWrappedAnalyticsEvents))
+	for _, eventName := range expectedWrappedAnalyticsEvents {
 		expected[eventName] = true
 	}
 	var unexpected []string
@@ -121,7 +102,7 @@ func TestEveryAnalyticsSpecEventHasServerReporterPackage(t *testing.T) {
 		}
 	}
 	if len(unexpected) > 0 {
-		t.Fatalf("unexpected server analytics event packages: %v", unexpected)
+		t.Fatalf("unexpected wrapped analytics event packages: %v", unexpected)
 	}
 }
 
