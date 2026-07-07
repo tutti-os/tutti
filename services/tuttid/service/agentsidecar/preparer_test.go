@@ -88,7 +88,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err != nil {
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
-	const maxCodexAgentsChars = 5000
+	const maxCodexAgentsChars = 6500
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}

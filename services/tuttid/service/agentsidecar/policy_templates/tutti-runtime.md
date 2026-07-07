@@ -16,7 +16,7 @@ This directory is being used by a Tutti AgentGUI session.
 | `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                   |
 | `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
 | `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
-| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`                   |
+| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`                              |
 | `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-cli`     | use `agent`/`codex`/`claude` from intent; not launch-only                                  |
 
 ### Rules
@@ -49,7 +49,7 @@ This directory is being used by a Tutti AgentGUI session.
 - Use `{{CLI_COMMAND}} codex start --prompt <task> --show --json` or `{{CLI_COMMAND}} claude start --prompt <task> --show --json`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` with the returned `waitAfterVersion`.
-- `agent wait` returns only recent execution messages; use `agent session-summary` for full context. Ask for task prompt, not model.
+- `agent wait` returns only recent execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for task prompt, not model.
 
 ### Image Context
 
