@@ -78,7 +78,7 @@ export async function main() {
   writeFileSync(latestSummaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
   const failures = results.filter((result) => result.exitCode !== 0);
-  printSummary(results, failures, durationMs);
+  printSummary(results, failures, durationMs, runDirectory);
 
   if (failures.length > 0) {
     process.exitCode = 1;
@@ -264,7 +264,7 @@ function readFailedLanes() {
     }));
 }
 
-async function runLanes(inputLanes, runDirectory) {
+export async function runLanes(inputLanes, runDirectory) {
   const results = [];
   let nextIndex = 0;
   const workerCount = Math.max(1, Math.min(maxParallel, inputLanes.length));
@@ -272,8 +272,9 @@ async function runLanes(inputLanes, runDirectory) {
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
       while (nextIndex < inputLanes.length) {
-        const lane = inputLanes[nextIndex++];
-        results.push(await runLane(lane, runDirectory));
+        const laneIndex = nextIndex++;
+        const lane = inputLanes[laneIndex];
+        results.push(await runLane(lane, laneIndex, runDirectory));
       }
     })
   );
@@ -281,8 +282,7 @@ async function runLanes(inputLanes, runDirectory) {
   return results.sort((left, right) => left.index - right.index);
 }
 
-function runLane(lane, runDirectory) {
-  const index = lanes.indexOf(lane);
+function runLane(lane, index, runDirectory) {
   const logPath = join(runDirectory, `${sanitizeFileName(lane.key)}.log`);
   const logStream = createWriteStream(logPath, { flags: "w" });
   const startedAt = Date.now();
@@ -343,7 +343,7 @@ function printPlan(inputLanes) {
   }
 }
 
-function printSummary(results, failures, durationMs) {
+export function printSummary(results, failures, durationMs, runDirectory) {
   if (failures.length === 0) {
     console.log(
       `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}`
