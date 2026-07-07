@@ -18,7 +18,8 @@ export type AgentHostManagedToolchainAgent = {
     | "gemini"
     | "openclaw"
     | "nexight"
-    | "hermes";
+    | "hermes"
+    | "antigravity";
   aliases?: string[];
 };
 
@@ -97,6 +98,16 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
       runtimeManaged: true,
       helperProvider: "gemini",
       aliases: ["gemini cli"]
+    },
+    {
+      id: "antigravity",
+      // i18n-check-ignore: Provider brand name.
+      label: "Antigravity",
+      toolIds: ["antigravity-cli"],
+      agentIds: ["antigravity"],
+      runtimeManaged: true,
+      helperProvider: "antigravity",
+      aliases: ["antigravity", "antigravity cli", "agy"]
     }
   ] as const;
 

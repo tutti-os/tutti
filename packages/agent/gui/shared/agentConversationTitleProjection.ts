@@ -44,6 +44,10 @@ export function normalizeAgentGUIProviderIdentity(
     case "cursor-agent":
     case "cursor agent":
       return "cursor";
+    case "antigravity":
+    case "antigravity-cli":
+    case "agy":
+      return "antigravity";
     case "nexight":
     case "tutti":
       return "nexight";
