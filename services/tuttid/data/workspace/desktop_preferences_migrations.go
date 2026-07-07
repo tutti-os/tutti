@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   show_app_developer_sources INTEGER NOT NULL DEFAULT 0,
   workbench_window_snapping_enabled INTEGER NOT NULL DEFAULT 0,
   workbench_window_snapping_shortcut_preset TEXT NOT NULL DEFAULT 'commandArrows',
+  feature_flags_json TEXT,
+  workbench_shortcuts_json TEXT,
   updated_at_unix_ms INTEGER NOT NULL
 );
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
@@ -113,6 +115,48 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesAgentConversationDetailModeV1, now)
 	if err != nil {
 		return fmt.Errorf("record desktop agent conversation detail mode migration: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesFeatureFlagsV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesFeatureFlagsV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"feature_flags_json", "TEXT"},
+		{"workbench_shortcuts_json", "TEXT"},
+	}
+	for _, column := range columns {
+		hasColumn, err := s.hasColumn(ctx, "desktop_preferences", column.name)
+		if err != nil {
+			return err
+		}
+		if hasColumn {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+ALTER TABLE desktop_preferences
+  ADD COLUMN %s %s;`, column.name, column.definition)); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop feature flags preferences %s: %w", column.name, err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesFeatureFlagsV1, now)
+	if err != nil {
+		return fmt.Errorf("record desktop feature flags preferences migration: %w", err)
 	}
 
 	return nil

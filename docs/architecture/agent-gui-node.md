@@ -652,7 +652,9 @@ conversation detail just to show "connecting conversation". After activation
 succeeds, the controller attaches the conversation and records the optimistic
 user message before loading runtime projection. For Claude Code,
 `desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
-session before calling `sendWorkspaceAgentSessionInput`.
+session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
+options must opt out of that promotion path because the hidden draft has already
+created and prepared its runtime.
 
 ### Sending To An Existing Conversation
 
@@ -1049,6 +1051,11 @@ User-visible rules:
 - User composer defaults are owned by desktop preferences. AgentGUI may request
   a defaults write only from the home/new composer path, through an explicit host
   callback.
+- Lab-mode AgentGUI affordances are desktop-preference driven through generic
+  feature flags. AgentGUI must not receive experiment-specific props or create
+  git worktrees itself; new experiments should add a desktop feature-flag
+  catalog entry and keep any product-specific behavior in the owning desktop or
+  daemon layer.
 - Target-backed home/new composer defaults and draft settings must be keyed by
   `agentTargetId` first. Provider-keyed defaults are legacy fallback only, so two
   targets under the same provider cannot share model, permission, reasoning,

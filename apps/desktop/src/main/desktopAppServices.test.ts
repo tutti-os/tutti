@@ -11,6 +11,7 @@ import type { DesktopDaemonRuntime } from "./desktopDaemonRuntime";
 import type { DesktopHostServices } from "./desktopHostServices";
 import type { DesktopLogger } from "./logging";
 import type { AppUpdateService } from "./update/appUpdateService";
+import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
 
 function createLogger(events: string[]): DesktopLogger {
   return {
@@ -70,6 +71,9 @@ function createHostServices(): DesktopHostServices {
       getDefaultAgentProvider() {
         return "codex";
       },
+      getFeatureFlags() {
+        return {};
+      },
       getBrowserUseConnectionMode() {
         return "isolated";
       },
@@ -99,6 +103,9 @@ function createHostServices(): DesktopHostServices {
       },
       getUpdatePolicy() {
         return "prompt";
+      },
+      getWorkbenchShortcuts() {
+        return defaultDesktopWorkbenchShortcuts;
       },
       getWorkbenchWindowSnapping() {
         return {

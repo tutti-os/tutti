@@ -10,7 +10,8 @@ export type WorkspaceSettingsSectionID =
   | "appearance"
   | "apps"
   | "developer"
-  | "general";
+  | "general"
+  | "lab";
 
 export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"

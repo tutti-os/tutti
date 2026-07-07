@@ -9,11 +9,13 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
+  DesktopWorkbenchShortcuts,
   DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
@@ -26,6 +28,7 @@ export interface DesktopPreferencesStoreState {
   changingDockIconStyle: DesktopDockIconStyle | null;
   changingDockPlacement: DesktopDockPlacement | null;
   changingLocale: DesktopLocale | null;
+  changingFeatureFlags: DesktopFeatureFlags | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   changingShowAppDeveloperSources: boolean | null;
@@ -44,6 +47,7 @@ export interface DesktopPreferencesStoreState {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -54,6 +58,7 @@ export interface DesktopPreferencesStoreState {
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
   workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }
 
@@ -65,6 +70,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingDockIconStyle: DesktopDockIconStyle | null;
   readonly changingDockPlacement: DesktopDockPlacement | null;
   readonly changingLocale: DesktopLocale | null;
+  readonly changingFeatureFlags: DesktopFeatureFlags | null;
   readonly changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   readonly changingSleepPreventionMode: DesktopSleepPreventionMode | null;
   readonly changingShowAppDeveloperSources: boolean | null;
@@ -83,6 +89,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly defaultAgentProvider: DesktopDefaultAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
   readonly dockPlacement: DesktopDockPlacement;
+  readonly featureFlags: DesktopFeatureFlags;
   readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;
   readonly minimizeAnimation: DesktopMinimizeAnimation;
@@ -93,5 +100,6 @@ export interface DesktopPreferencesReadableStoreState {
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updatePolicy: DesktopUpdatePolicy;
+  readonly workbenchShortcuts: DesktopWorkbenchShortcuts;
   readonly workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }

@@ -128,6 +128,11 @@ export interface PreferencesDesktopPreferencesV1 {
     string,
     "appBrowser" | "defaultBrowser" | "fileViewer" | "system"
   >;
+  featureFlags: Record<string, boolean>;
+  workbenchShortcuts: {
+    newAgentConversation: string | null;
+    newSameTypeWindow: string | null;
+  };
   locale: "en" | "zh-CN";
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";

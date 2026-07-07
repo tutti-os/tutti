@@ -618,7 +618,8 @@ export const zhCN = {
         appearance: "外观",
         agent: "Agent",
         developer: "开发者",
-        general: "通用"
+        general: "通用",
+        lab: "实验室"
       },
       about: {
         appName: "Tutti",
@@ -742,6 +743,8 @@ export const zhCN = {
         fileDefaultOpenersDescription:
           "按文件后缀选择工作区文件激活时优先使用的打开方式。",
         fileDefaultOpenersLabel: "默认文件打开方式",
+        labVisibilityDescription: "在独立设置页中显示实验性控制项。",
+        labVisibilityLabel: "显示实验室页",
         logMissing: "暂无文件",
         logOpenFailed: "暂时无法打开这个日志路径。",
         logsCleared: "已清理 {{count}} 个日志文件（{{size}}）。",
@@ -774,6 +777,15 @@ export const zhCN = {
         visibilityDescription:
           "在设置中隐藏此面板。在「关于」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"
+      },
+      lab: {
+        clearShortcutLabel: "清除 {{label}}",
+        newAgentConversationShortcutLabel: "新建 Agent 对话",
+        newSameTypeWindowShortcutLabel: "新建同类型窗口",
+        preferencesSaveFailed: "暂时无法更新实验室设置。",
+        shortcutUnbound: "未绑定",
+        workbenchShortcutsDescription: "启用可配置的工作台快捷键操作。",
+        workbenchShortcutsLabel: "工作台快捷键"
       },
       title: "设置",
       trigger: "设置"

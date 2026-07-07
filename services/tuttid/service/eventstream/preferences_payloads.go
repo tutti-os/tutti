@@ -15,6 +15,8 @@ type desktopPreferencesMutationPayload struct {
 		EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
 		EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
+		FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
+		WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
 		Locale                                      string                                                    `json:"locale"`
 		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
@@ -45,6 +47,8 @@ type desktopPreferencesSettingsPayload struct {
 	EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
 	EnableOpenCodeAgent                         bool                                                      `json:"enableOpenCodeAgent"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
+	FeatureFlags                                map[string]bool                                           `json:"featureFlags"`
+	WorkbenchShortcuts                          desktopWorkbenchShortcutsPayload                          `json:"workbenchShortcuts"`
 	Locale                                      string                                                    `json:"locale"`
 	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
 	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
@@ -58,6 +62,11 @@ type desktopPreferencesSettingsPayload struct {
 type desktopWorkbenchWindowSnappingPayload struct {
 	Enabled        bool   `json:"enabled"`
 	ShortcutPreset string `json:"shortcutPreset"`
+}
+
+type desktopWorkbenchShortcutsPayload struct {
+	NewAgentConversation *string `json:"newAgentConversation"`
+	NewSameTypeWindow    *string `json:"newSameTypeWindow"`
 }
 
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload

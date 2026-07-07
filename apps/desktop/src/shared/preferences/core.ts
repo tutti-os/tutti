@@ -62,6 +62,20 @@ export const defaultDesktopEnableCursorAgent = false;
 
 export const defaultDesktopEnableOpenCodeAgent = false;
 
+export type DesktopFeatureFlags = Record<string, boolean>;
+
+export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
+
+export interface DesktopWorkbenchShortcuts {
+  newAgentConversation: string | null;
+  newSameTypeWindow: string | null;
+}
+
+export const defaultDesktopWorkbenchShortcuts: DesktopWorkbenchShortcuts = {
+  newAgentConversation: null,
+  newSameTypeWindow: null
+};
+
 export const desktopAgentConversationDetailModes = [
   "coding",
   "general"
@@ -347,6 +361,122 @@ export function desktopWorkbenchWindowSnappingEqual(
     normalizedLeft.enabled === normalizedRight.enabled &&
     normalizedLeft.shortcutPreset === normalizedRight.shortcutPreset
   );
+}
+
+export function normalizeDesktopShortcutBinding(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized && normalized.length <= 80 ? normalized : null;
+}
+
+export function normalizeDesktopFeatureFlags(
+  value: unknown
+): DesktopFeatureFlags {
+  if (!isRecord(value)) {
+    return { ...defaultDesktopFeatureFlags };
+  }
+  const result: DesktopFeatureFlags = {};
+  for (const [key, flag] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey || normalizedKey.length > 128) {
+      continue;
+    }
+    result[normalizedKey] = Boolean(flag);
+  }
+  return result;
+}
+
+export function desktopFeatureFlagsEqual(
+  left: DesktopFeatureFlags | null | undefined,
+  right: DesktopFeatureFlags | null | undefined
+): boolean {
+  const normalizedLeft = normalizeDesktopFeatureFlags(left);
+  const normalizedRight = normalizeDesktopFeatureFlags(right);
+  const leftKeys = Object.keys(normalizedLeft);
+  const rightKeys = Object.keys(normalizedRight);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => normalizedLeft[key] === normalizedRight[key]);
+}
+
+export function normalizeDesktopWorkbenchShortcuts(
+  value: unknown
+): DesktopWorkbenchShortcuts {
+  if (!isRecord(value)) {
+    return { ...defaultDesktopWorkbenchShortcuts };
+  }
+  return {
+    newAgentConversation: normalizeDesktopShortcutBinding(
+      value.newAgentConversation
+    ),
+    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow)
+  };
+}
+
+export function desktopWorkbenchShortcutsEqual(
+  left: DesktopWorkbenchShortcuts | null | undefined,
+  right: DesktopWorkbenchShortcuts | null | undefined
+): boolean {
+  const normalizedLeft = normalizeDesktopWorkbenchShortcuts(left);
+  const normalizedRight = normalizeDesktopWorkbenchShortcuts(right);
+  return (
+    normalizedLeft.newAgentConversation ===
+      normalizedRight.newAgentConversation &&
+    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow
+  );
+}
+
+export function normalizeDesktopShortcutKey(key: string): string | null {
+  if (
+    !key ||
+    key === "Meta" ||
+    key === "Control" ||
+    key === "Alt" ||
+    key === "Shift"
+  ) {
+    return null;
+  }
+  if (key === " ") {
+    return "Space";
+  }
+  if (key.length === 1) {
+    return key.toUpperCase();
+  }
+  return key;
+}
+
+export function formatDesktopShortcutBinding(input: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): string | null {
+  const key = normalizeDesktopShortcutKey(input.key);
+  if (!key) {
+    return null;
+  }
+  const modifiers: string[] = [];
+  if (input.metaKey) {
+    modifiers.push("Meta");
+  }
+  if (input.ctrlKey) {
+    modifiers.push("Ctrl");
+  }
+  if (input.altKey) {
+    modifiers.push("Alt");
+  }
+  if (input.shiftKey) {
+    modifiers.push("Shift");
+  }
+  if (modifiers.length === 0 && !/^F\d{1,2}$/u.test(key)) {
+    return null;
+  }
+  const binding = [...modifiers, key].join("+");
+  return normalizeDesktopShortcutBinding(binding);
 }
 
 export function normalizeDesktopFileExtension(value: unknown): string | null {

@@ -649,7 +649,8 @@ export const en = {
         appearance: "Appearance",
         agent: "Agent",
         developer: "Developer",
-        general: "General"
+        general: "General",
+        lab: "Lab"
       },
       about: {
         appName: "Tutti",
@@ -779,6 +780,9 @@ export const en = {
         fileDefaultOpenersDescription:
           "Choose what opens first when a workspace file is activated by extension.",
         fileDefaultOpenersLabel: "Default file openers",
+        labVisibilityDescription:
+          "Shows experimental controls in a separate Settings tab.",
+        labVisibilityLabel: "Show Lab tab",
         logMissing: "No file yet",
         logOpenFailed: "We couldn't open that log path right now.",
         logsCleared: "Cleared {{count}} log files ({{size}}).",
@@ -813,6 +817,16 @@ export const en = {
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"
+      },
+      lab: {
+        clearShortcutLabel: "Clear {{label}}",
+        newAgentConversationShortcutLabel: "New Agent conversation",
+        newSameTypeWindowShortcutLabel: "New same-type window",
+        preferencesSaveFailed: "We couldn't update Lab preferences.",
+        shortcutUnbound: "Unbound",
+        workbenchShortcutsDescription:
+          "Enables configurable workbench shortcut actions.",
+        workbenchShortcutsLabel: "Workbench shortcuts"
       },
       title: "Settings",
       trigger: "Settings"

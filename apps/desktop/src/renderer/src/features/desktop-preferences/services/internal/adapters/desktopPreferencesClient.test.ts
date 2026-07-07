@@ -6,6 +6,7 @@ import type {
   TuttidClient,
   PutDesktopPreferencesRequest
 } from "@tutti-os/client-tuttid-ts";
+import { defaultDesktopWorkbenchShortcuts } from "../../../../../../../shared/preferences/index.ts";
 import { createDesktopPreferencesClient } from "./desktopPreferencesClient.ts";
 
 test("desktop preferences client resolves writes from the authoritative event", async () => {
@@ -249,6 +250,7 @@ function createPreferences(
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    featureFlags: {},
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "zh-CN",
     minimizeAnimation: "scale",
@@ -259,6 +261,7 @@ function createPreferences(
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt",
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     ...overrides
   };
 }

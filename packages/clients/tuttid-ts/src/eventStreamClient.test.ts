@@ -3,6 +3,12 @@ import test from "node:test";
 import { businessEventCatalogRevision } from "@tutti-os/event-protocol";
 import { createTuttidEventStreamClient } from "./eventStreamClient.ts";
 
+const defaultFeatureFlags = {};
+const defaultWorkbenchShortcuts = {
+  newAgentConversation: null,
+  newSameTypeWindow: null
+};
+
 test("tuttid event stream client dispatches typed topic events", async () => {
   const sockets: FakeEventStreamSocket[] = [];
   const events: unknown[] = [];
@@ -56,6 +62,8 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -89,6 +97,8 @@ test("tuttid event stream client dispatches typed topic events", async () => {
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -173,6 +183,8 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -206,6 +218,8 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -240,6 +254,8 @@ test("tuttid event stream client sends and filters scoped subscriptions", async 
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -328,6 +344,8 @@ test("tuttid event stream client can opt out of a default scope", async () => {
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -387,6 +405,8 @@ test("tuttid event stream client publishes typed intents after connect", async (
         agentConversationDetailMode: "coding",
         appCatalogChannel: "production",
         defaultAgentProvider: "codex",
+        featureFlags: defaultFeatureFlags,
+        workbenchShortcuts: defaultWorkbenchShortcuts,
         dockPlacement: "bottom",
         dockIconStyle: "flat",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -416,6 +436,8 @@ test("tuttid event stream client publishes typed intents after connect", async (
           agentConversationDetailMode: "coding",
           appCatalogChannel: "production",
           defaultAgentProvider: "codex",
+          featureFlags: defaultFeatureFlags,
+          workbenchShortcuts: defaultWorkbenchShortcuts,
           dockPlacement: "bottom",
           dockIconStyle: "flat",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -493,6 +515,8 @@ test("tuttid event stream client fails handshake on unexpected pre-ready frames"
             agentConversationDetailMode: "coding",
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
+            featureFlags: defaultFeatureFlags,
+            workbenchShortcuts: defaultWorkbenchShortcuts,
             dockPlacement: "bottom",
             dockIconStyle: "flat",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -671,6 +695,8 @@ test("tuttid event stream client tears down a failed handshake before retrying",
         agentConversationDetailMode: "coding",
         appCatalogChannel: "production",
         defaultAgentProvider: "codex",
+        featureFlags: defaultFeatureFlags,
+        workbenchShortcuts: defaultWorkbenchShortcuts,
         dockPlacement: "bottom",
         dockIconStyle: "flat",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },

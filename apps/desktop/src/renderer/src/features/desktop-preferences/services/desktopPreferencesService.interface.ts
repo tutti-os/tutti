@@ -9,11 +9,13 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
+  DesktopWorkbenchShortcuts,
   DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
@@ -39,6 +41,7 @@ export interface IDesktopPreferencesService {
     placement: DesktopDockPlacement
   ): Promise<DesktopDockPlacement>;
   setDockIconStyle(style: DesktopDockIconStyle): Promise<DesktopDockIconStyle>;
+  setFeatureFlags(flags: DesktopFeatureFlags): Promise<DesktopFeatureFlags>;
   setFileDefaultOpenersByExtension(
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ): Promise<DesktopFileDefaultOpenersByExtension>;
@@ -57,6 +60,9 @@ export interface IDesktopPreferencesService {
     channel: DesktopUpdateChannel
   ): Promise<DesktopUpdateChannel>;
   setUpdatePolicy(policy: DesktopUpdatePolicy): Promise<DesktopUpdatePolicy>;
+  setWorkbenchShortcuts(
+    shortcuts: DesktopWorkbenchShortcuts
+  ): Promise<DesktopWorkbenchShortcuts>;
   setWorkbenchWindowSnapping(
     value: DesktopWorkbenchWindowSnapping
   ): Promise<DesktopWorkbenchWindowSnapping>;

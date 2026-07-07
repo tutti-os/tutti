@@ -20,6 +20,7 @@ import {
   defaultDesktopAgentProvider,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopMinimizeAnimation,
   defaultDesktopEnableCursorAgent,
@@ -28,8 +29,13 @@ import {
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
+  defaultDesktopWorkbenchShortcuts,
+  desktopFeatureFlagsEqual,
   desktopFileDefaultOpenersByExtensionEqual,
+  desktopWorkbenchShortcutsEqual,
   isDesktopMinimizeAnimation,
+  normalizeDesktopFeatureFlags,
+  normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping,
   desktopWorkbenchWindowSnappingEqual,
   type DesktopDefaultAgentProvider,
@@ -38,11 +44,13 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
+  type DesktopWorkbenchShortcuts,
   type DesktopWorkbenchWindowSnapping
 } from "../shared/preferences/index.ts";
 import {
@@ -65,6 +73,7 @@ export interface DesktopHostPreferencesState {
   getDefaultAgentProvider(): DesktopDefaultAgentProvider;
   getDockIconStyle(): DesktopDockIconStyle;
   getDockPlacement(): DesktopDockPlacement;
+  getFeatureFlags(): DesktopFeatureFlags;
   getFileDefaultOpenersByExtension(): DesktopFileDefaultOpenersByExtension;
   getLocale(): DesktopLocale;
   getMinimizeAnimation(): DesktopMinimizeAnimation;
@@ -72,6 +81,7 @@ export interface DesktopHostPreferencesState {
   getThemeSource(): DesktopThemeSource;
   getUpdateChannel(): DesktopUpdateChannel;
   getUpdatePolicy(): DesktopUpdatePolicy;
+  getWorkbenchShortcuts(): DesktopWorkbenchShortcuts;
   getWorkbenchWindowSnapping(): DesktopWorkbenchWindowSnapping;
   subscribe(listener: () => void): () => void;
   sync(input: {
@@ -83,6 +93,7 @@ export interface DesktopHostPreferencesState {
     defaultAgentProvider?: DesktopDefaultAgentProvider;
     dockIconStyle?: DesktopDockIconStyle;
     dockPlacement?: DesktopDockPlacement;
+    featureFlags?: DesktopFeatureFlags;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale?: DesktopLocale;
     minimizeAnimation?: DesktopMinimizeAnimation;
@@ -90,6 +101,7 @@ export interface DesktopHostPreferencesState {
     themeSource?: DesktopThemeSource;
     updateChannel?: DesktopUpdateChannel;
     updatePolicy?: DesktopUpdatePolicy;
+    workbenchShortcuts?: DesktopWorkbenchShortcuts;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void;
 }
@@ -132,6 +144,9 @@ export async function createDesktopHostPreferencesState(
   );
   let dockIconStyle = initialPreferences.dockIconStyle;
   let dockPlacement = initialPreferences.dockPlacement;
+  let featureFlags = normalizeDesktopFeatureFlags(
+    initialPreferences.featureFlags
+  );
   let fileDefaultOpenersByExtension =
     initialPreferences.fileDefaultOpenersByExtension ??
     defaultDesktopFileDefaultOpenersByExtension;
@@ -145,6 +160,9 @@ export async function createDesktopHostPreferencesState(
   let themeSource = initialPreferences.themeSource;
   let updateChannel = initialPreferences.updateChannel;
   let updatePolicy = initialPreferences.updatePolicy;
+  let workbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
+    initialPreferences.workbenchShortcuts
+  );
   let workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
     initialPreferences.workbenchWindowSnapping
   );
@@ -175,6 +193,9 @@ export async function createDesktopHostPreferencesState(
     getDockPlacement() {
       return dockPlacement;
     },
+    getFeatureFlags() {
+      return featureFlags;
+    },
     getFileDefaultOpenersByExtension() {
       return fileDefaultOpenersByExtension;
     },
@@ -196,6 +217,9 @@ export async function createDesktopHostPreferencesState(
     getUpdatePolicy() {
       return updatePolicy;
     },
+    getWorkbenchShortcuts() {
+      return workbenchShortcuts;
+    },
     getWorkbenchWindowSnapping() {
       return workbenchWindowSnapping;
     },
@@ -216,6 +240,7 @@ export async function createDesktopHostPreferencesState(
       const previousDefaultAgentProvider = defaultAgentProvider;
       const previousDockIconStyle = dockIconStyle;
       const previousDockPlacement = dockPlacement;
+      const previousFeatureFlags = featureFlags;
       const previousFileDefaultOpenersByExtension =
         fileDefaultOpenersByExtension;
       const previousLocale = locale;
@@ -224,6 +249,7 @@ export async function createDesktopHostPreferencesState(
       const previousThemeSource = themeSource;
       const previousUpdateChannel = updateChannel;
       const previousUpdatePolicy = updatePolicy;
+      const previousWorkbenchShortcuts = workbenchShortcuts;
       const previousWorkbenchWindowSnapping = workbenchWindowSnapping;
       if (input.agentComposerDefaultsByProvider) {
         const nextAgentComposerDefaultsByProvider =
@@ -290,6 +316,14 @@ export async function createDesktopHostPreferencesState(
           fileDefaultOpenersByExtension = nextFileDefaultOpenersByExtension;
         }
       }
+      if (input.featureFlags) {
+        const nextFeatureFlags = normalizeDesktopFeatureFlags(
+          input.featureFlags
+        );
+        if (!desktopFeatureFlagsEqual(featureFlags, nextFeatureFlags)) {
+          featureFlags = nextFeatureFlags;
+        }
+      }
       if (input.locale) {
         locale = input.locale;
       }
@@ -307,6 +341,19 @@ export async function createDesktopHostPreferencesState(
       }
       if (input.updatePolicy) {
         updatePolicy = input.updatePolicy;
+      }
+      if (input.workbenchShortcuts) {
+        const nextWorkbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
+          input.workbenchShortcuts
+        );
+        if (
+          !desktopWorkbenchShortcutsEqual(
+            workbenchShortcuts,
+            nextWorkbenchShortcuts
+          )
+        ) {
+          workbenchShortcuts = nextWorkbenchShortcuts;
+        }
       }
       if (input.workbenchWindowSnapping) {
         const nextWorkbenchWindowSnapping =
@@ -333,6 +380,7 @@ export async function createDesktopHostPreferencesState(
         defaultAgentProvider !== previousDefaultAgentProvider ||
         dockIconStyle !== previousDockIconStyle ||
         dockPlacement !== previousDockPlacement ||
+        !desktopFeatureFlagsEqual(featureFlags, previousFeatureFlags) ||
         fileDefaultOpenersByExtension !==
           previousFileDefaultOpenersByExtension ||
         locale !== previousLocale ||
@@ -341,6 +389,10 @@ export async function createDesktopHostPreferencesState(
         themeSource !== previousThemeSource ||
         updateChannel !== previousUpdateChannel ||
         updatePolicy !== previousUpdatePolicy ||
+        !desktopWorkbenchShortcutsEqual(
+          workbenchShortcuts,
+          previousWorkbenchShortcuts
+        ) ||
         !desktopWorkbenchWindowSnappingEqual(
           workbenchWindowSnapping,
           previousWorkbenchWindowSnapping
@@ -391,6 +443,7 @@ async function resolveInitialDesktopPreferences(
           defaultAgentProvider: defaultDesktopAgentProvider,
           dockIconStyle: defaultDesktopDockIconStyle,
           dockPlacement: defaultDesktopDockPlacement,
+          featureFlags: defaultDesktopFeatureFlags,
           fileDefaultOpenersByExtension:
             defaultDesktopFileDefaultOpenersByExtension,
           locale: options.fallbackLocale,
@@ -401,7 +454,8 @@ async function resolveInitialDesktopPreferences(
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
           themeSource: defaultDesktopThemeSource,
           updateChannel: defaultUpdateChannel,
-          updatePolicy: defaultDesktopUpdatePolicy
+          updatePolicy: defaultDesktopUpdatePolicy,
+          workbenchShortcuts: defaultDesktopWorkbenchShortcuts
         }
       })
     ).preferences;
@@ -419,6 +473,7 @@ async function resolveInitialDesktopPreferences(
       defaultAgentProvider: defaultDesktopAgentProvider,
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement: defaultDesktopDockPlacement,
+      featureFlags: defaultDesktopFeatureFlags,
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
       locale: options.fallbackLocale,
@@ -429,7 +484,8 @@ async function resolveInitialDesktopPreferences(
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       themeSource: defaultDesktopThemeSource,
       updateChannel: defaultUpdateChannel,
-      updatePolicy: defaultDesktopUpdatePolicy
+      updatePolicy: defaultDesktopUpdatePolicy,
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts
     };
   }
 }
@@ -451,6 +507,12 @@ async function migrateInitializedDesktopPreferences(
   // The dual-dock (legacySplit) layout has been removed; stored preferences
   // are pinned to the unified layout.
   const normalizedAgentDockLayout = "unified" as const;
+  const normalizedFeatureFlags = normalizeDesktopFeatureFlags(
+    preferences.featureFlags
+  );
+  const normalizedWorkbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
+    preferences.workbenchShortcuts
+  );
   if (preferences.updateChannel !== "rc" || defaultUpdateChannel !== "stable") {
     if (
       preferences.minimizeAnimation === normalizedMinimizeAnimation &&
@@ -458,13 +520,19 @@ async function migrateInitializedDesktopPreferences(
         normalizedAgentConversationDetailMode &&
       preferences.agentDockLayout === normalizedAgentDockLayout
     ) {
-      return preferences;
+      return {
+        ...preferences,
+        featureFlags: normalizedFeatureFlags,
+        workbenchShortcuts: normalizedWorkbenchShortcuts
+      };
     }
     return {
       ...preferences,
       agentConversationDetailMode: normalizedAgentConversationDetailMode,
       agentDockLayout: normalizedAgentDockLayout,
-      minimizeAnimation: normalizedMinimizeAnimation
+      featureFlags: normalizedFeatureFlags,
+      minimizeAnimation: normalizedMinimizeAnimation,
+      workbenchShortcuts: normalizedWorkbenchShortcuts
     };
   }
 
@@ -476,13 +544,19 @@ async function migrateInitializedDesktopPreferences(
         normalizedAgentConversationDetailMode &&
       preferences.agentDockLayout === normalizedAgentDockLayout
     ) {
-      return preferences;
+      return {
+        ...preferences,
+        featureFlags: normalizedFeatureFlags,
+        workbenchShortcuts: normalizedWorkbenchShortcuts
+      };
     }
     return {
       ...preferences,
       agentConversationDetailMode: normalizedAgentConversationDetailMode,
       agentDockLayout: normalizedAgentDockLayout,
-      minimizeAnimation: normalizedMinimizeAnimation
+      featureFlags: normalizedFeatureFlags,
+      minimizeAnimation: normalizedMinimizeAnimation,
+      workbenchShortcuts: normalizedWorkbenchShortcuts
     };
   }
 
@@ -492,8 +566,10 @@ async function migrateInitializedDesktopPreferences(
         ...preferences,
         agentConversationDetailMode: normalizedAgentConversationDetailMode,
         agentDockLayout: normalizedAgentDockLayout,
+        featureFlags: normalizedFeatureFlags,
         minimizeAnimation: normalizedMinimizeAnimation,
-        updateChannel: defaultUpdateChannel
+        updateChannel: defaultUpdateChannel,
+        workbenchShortcuts: normalizedWorkbenchShortcuts
       }
     });
     await writeMigrationMarker(markerPath);
@@ -506,7 +582,9 @@ async function migrateInitializedDesktopPreferences(
       ...preferences,
       agentConversationDetailMode: normalizedAgentConversationDetailMode,
       agentDockLayout: normalizedAgentDockLayout,
-      minimizeAnimation: normalizedMinimizeAnimation
+      featureFlags: normalizedFeatureFlags,
+      minimizeAnimation: normalizedMinimizeAnimation,
+      workbenchShortcuts: normalizedWorkbenchShortcuts
     };
   }
 }

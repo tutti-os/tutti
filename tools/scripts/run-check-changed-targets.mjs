@@ -146,7 +146,7 @@ export function buildPackageTestCommand({
   if (changedTests.length > 0) {
     if (vitestInvocation) {
       return [
-        pnpmCommand,
+        ...pnpmCommandPrefix(pnpmCommand),
         "--filter",
         packageInfo.name,
         "exec",
@@ -159,11 +159,16 @@ export function buildPackageTestCommand({
     }
 
     if (isVitestScript(testScript)) {
-      return [pnpmCommand, "--filter", packageInfo.name, "test"];
+      return [
+        ...pnpmCommandPrefix(pnpmCommand),
+        "--filter",
+        packageInfo.name,
+        "test"
+      ];
     }
 
     return [
-      pnpmCommand,
+      ...pnpmCommandPrefix(pnpmCommand),
       "--filter",
       packageInfo.name,
       "test",
@@ -177,7 +182,7 @@ export function buildPackageTestCommand({
   if (changedSource.length > 0) {
     if (vitestInvocation) {
       return [
-        pnpmCommand,
+        ...pnpmCommandPrefix(pnpmCommand),
         "--filter",
         packageInfo.name,
         "exec",
@@ -188,14 +193,28 @@ export function buildPackageTestCommand({
       ];
     }
 
-    return [pnpmCommand, "--filter", packageInfo.name, "test"];
+    return [
+      ...pnpmCommandPrefix(pnpmCommand),
+      "--filter",
+      packageInfo.name,
+      "test"
+    ];
   }
 
   if (packageFiles.some(isTestFile)) {
     return null;
   }
 
-  return [pnpmCommand, "--filter", packageInfo.name, "test"];
+  return [
+    ...pnpmCommandPrefix(pnpmCommand),
+    "--filter",
+    packageInfo.name,
+    "test"
+  ];
+}
+
+function pnpmCommandPrefix(pnpmCommand) {
+  return Array.isArray(pnpmCommand) ? pnpmCommand : [pnpmCommand];
 }
 
 function isVitestScript(testScript) {

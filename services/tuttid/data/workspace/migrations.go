@@ -36,6 +36,7 @@ const schemaMigrationDesktopPreferencesShowAppDeveloperSourcesV1 = "desktop_pref
 const schemaMigrationDesktopPreferencesAgentConversationDetailModeV1 = "desktop_preferences_agent_conversation_detail_mode_v1"
 const schemaMigrationDesktopPreferencesEnableCursorAgentV1 = "desktop_preferences_enable_cursor_agent_v1"
 const schemaMigrationDesktopPreferencesEnableOpenCodeAgentV1 = "desktop_preferences_enable_opencode_agent_v1"
+const schemaMigrationDesktopPreferencesFeatureFlagsV1 = "desktop_preferences_feature_flags_v1"
 const schemaMigrationUserProjectsV1 = "user_projects_v1"
 const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
@@ -160,6 +161,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyDesktopPreferencesEnableOpenCodeAgentV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyDesktopPreferencesFeatureFlagsV1(ctx); err != nil {
 		return err
 	}
 

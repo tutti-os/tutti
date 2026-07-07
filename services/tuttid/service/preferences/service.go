@@ -36,6 +36,8 @@ type PutInput struct {
 	EnableCursorAgent                           bool
 	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
+	FeatureFlags                                map[string]bool
+	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
@@ -98,6 +100,8 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		EnableOpenCodeAgent:                         input.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
+		FeatureFlags:                                preferencesbiz.NormalizeDesktopFeatureFlags(input.FeatureFlags),
+		WorkbenchShortcuts:                          preferencesbiz.NormalizeDesktopWorkbenchShortcuts(input.WorkbenchShortcuts),
 		Locale:                                      strings.TrimSpace(input.Locale),
 		MinimizeAnimation:                           normalizeMinimizeAnimation(input.MinimizeAnimation),
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),

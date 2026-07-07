@@ -4,6 +4,7 @@ import type {
   DesktopPreferencesStateResponse,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
+import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
 import type { DesktopThemeSource } from "../shared/theme";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences";
 import type { DesktopLogger } from "./logging";
@@ -40,7 +41,8 @@ test("desktop host preferences follows authoritative preference events", async (
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -81,7 +83,8 @@ test("desktop host preferences follows authoritative preference events", async (
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -121,6 +124,8 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     "production";
   let defaultAgentProvider: DesktopPreferencesStateResponse["preferences"]["defaultAgentProvider"] =
     "codex";
+  let featureFlags: DesktopPreferencesStateResponse["preferences"]["featureFlags"] =
+    {};
   let browserUseConnectionMode: NonNullable<
     DesktopPreferencesStateResponse["preferences"]["browserUseConnectionMode"]
   > = "isolated";
@@ -138,6 +143,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     "stable";
   let updatePolicy: DesktopPreferencesStateResponse["preferences"]["updatePolicy"] =
     "prompt";
+  let workbenchShortcuts: NonNullable<
+    DesktopPreferencesStateResponse["preferences"]["workbenchShortcuts"]
+  > = defaultDesktopWorkbenchShortcuts;
   let workbenchWindowSnapping: NonNullable<
     DesktopPreferencesStateResponse["preferences"]["workbenchWindowSnapping"]
   > = {
@@ -167,6 +175,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     getDefaultAgentProvider() {
       return defaultAgentProvider;
     },
+    getFeatureFlags() {
+      return featureFlags;
+    },
     getBrowserUseConnectionMode() {
       return browserUseConnectionMode;
     },
@@ -190,6 +201,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getUpdatePolicy() {
       return updatePolicy;
+    },
+    getWorkbenchShortcuts() {
+      return workbenchShortcuts;
     },
     getWorkbenchWindowSnapping() {
       return workbenchWindowSnapping;
@@ -217,6 +231,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       if (input.defaultAgentProvider) {
         defaultAgentProvider = input.defaultAgentProvider;
       }
+      if (input.featureFlags) {
+        featureFlags = input.featureFlags;
+      }
       if (input.browserUseConnectionMode) {
         browserUseConnectionMode = input.browserUseConnectionMode;
       }
@@ -237,6 +254,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.updatePolicy) {
         updatePolicy = input.updatePolicy;
+      }
+      if (input.workbenchShortcuts) {
+        workbenchShortcuts = input.workbenchShortcuts;
       }
       if (input.workbenchWindowSnapping) {
         workbenchWindowSnapping = input.workbenchWindowSnapping;

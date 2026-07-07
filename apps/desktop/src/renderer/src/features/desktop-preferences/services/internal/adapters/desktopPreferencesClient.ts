@@ -6,8 +6,12 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import {
   defaultDesktopMinimizeAnimation,
+  desktopFeatureFlagsEqual,
+  desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual,
   normalizeDesktopAgentConversationDetailMode,
+  normalizeDesktopFeatureFlags,
+  normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping
 } from "../../../../../../../shared/preferences/index.ts";
 
@@ -249,6 +253,8 @@ function createPreferencesKey(
     stableFileDefaultOpenersByExtensionKey(
       preferences.fileDefaultOpenersByExtension
     ),
+    stableDesktopFeatureFlagsKey(preferences.featureFlags),
+    stableDesktopWorkbenchShortcutsKey(preferences.workbenchShortcuts),
     preferences.locale,
     preferences.sleepPreventionMode,
     preferences.showAppDeveloperSources ? "app-sources:on" : "app-sources:off",
@@ -303,6 +309,11 @@ function preferencesEqual(
       stableFileDefaultOpenersByExtensionKey(
         right.fileDefaultOpenersByExtension
       ) &&
+    desktopFeatureFlagsEqual(left.featureFlags, right.featureFlags) &&
+    desktopWorkbenchShortcutsEqual(
+      left.workbenchShortcuts,
+      right.workbenchShortcuts
+    ) &&
     left.locale === right.locale &&
     left.sleepPreventionMode === right.sleepPreventionMode &&
     (left.showAppDeveloperSources ?? false) ===
@@ -405,6 +416,19 @@ function stableFileDefaultOpenersByExtensionKey(value: unknown): string {
     }
   }
   return JSON.stringify(output);
+}
+
+function stableDesktopFeatureFlagsKey(value: unknown): string {
+  const normalized = normalizeDesktopFeatureFlags(value);
+  const output: Record<string, boolean> = {};
+  for (const key of Object.keys(normalized).sort()) {
+    output[key] = normalized[key]!;
+  }
+  return JSON.stringify(output);
+}
+
+function stableDesktopWorkbenchShortcutsKey(value: unknown): string {
+  return JSON.stringify(normalizeDesktopWorkbenchShortcuts(value));
 }
 
 function normalizeOptionalText(value: unknown): string | null {

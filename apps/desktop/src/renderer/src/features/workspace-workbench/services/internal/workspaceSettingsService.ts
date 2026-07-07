@@ -11,14 +11,20 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFeatureFlags,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
+  DesktopWorkbenchShortcuts,
   DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import {
+  defaultDesktopFeatureFlags,
   defaultDesktopMinimizeAnimation,
+  defaultDesktopWorkbenchShortcuts,
+  desktopFeatureFlagsEqual,
+  desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
@@ -227,7 +233,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 
     this.store.developerPanelVisible = visible;
     writeDeveloperPanelVisible(visible);
-    if (!visible && this.store.activeSection === "developer") {
+    if (
+      !visible &&
+      (this.store.activeSection === "developer" ||
+        this.store.activeSection === "lab")
+    ) {
       this.store.activeSection = "general";
     }
   }
@@ -413,6 +423,55 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.appearance.workbenchWindowSnappingSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void> {
+    if (
+      desktopFeatureFlagsEqual(
+        this.desktopPreferences.store.featureFlags,
+        flags
+      ) ||
+      (this.desktopPreferences.store.changingFeatureFlags !== null &&
+        desktopFeatureFlagsEqual(
+          this.desktopPreferences.store.changingFeatureFlags,
+          flags
+        ))
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setFeatureFlags(flags);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.lab.preferencesSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeWorkbenchShortcuts(
+    shortcuts: DesktopWorkbenchShortcuts
+  ): Promise<void> {
+    if (
+      desktopWorkbenchShortcutsEqual(
+        this.desktopPreferences.store.workbenchShortcuts,
+        shortcuts
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setWorkbenchShortcuts(shortcuts);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.lab.preferencesSaveFailed"
         )
       });
     }
@@ -1199,6 +1258,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingDefaultAgentProvider: null,
   changingDockIconStyle: null,
   changingDockPlacement: null,
+  changingFeatureFlags: null,
   changingLocale: null,
   changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
@@ -1212,6 +1272,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
+  featureFlags: defaultDesktopFeatureFlags,
   fileDefaultOpenersByExtension: {},
   locale: "en",
   minimizeAnimation: defaultDesktopMinimizeAnimation,
@@ -1222,6 +1283,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
   updatePolicy: "prompt",
+  workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
   workbenchWindowSnapping: {
     enabled: false,
     shortcutPreset: "commandArrows"
@@ -1255,8 +1317,14 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   setLocale(locale) {
     return Promise.resolve(locale);
   },
+  setFeatureFlags(flags) {
+    return Promise.resolve(flags);
+  },
   setMinimizeAnimation(animation) {
     return Promise.resolve(animation);
+  },
+  setWorkbenchShortcuts(shortcuts) {
+    return Promise.resolve(shortcuts);
   },
   setWorkbenchWindowSnapping(value) {
     return Promise.resolve(value);

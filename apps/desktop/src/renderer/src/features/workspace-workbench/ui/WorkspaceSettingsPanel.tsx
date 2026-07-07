@@ -85,19 +85,27 @@ import {
   desktopSleepPreventionModes,
   desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
+  formatDesktopShortcutBinding,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
   type DesktopAgentConversationDetailMode,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
+  type DesktopFeatureFlags,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
+  type DesktopWorkbenchShortcuts,
   type DesktopWorkbenchWindowSnapping,
   type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
+import {
+  isFeatureEnabled,
+  LAB_ENABLED_FLAG,
+  LAB_WORKBENCH_SHORTCUTS_FLAG
+} from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 import {
   desktopThemeSources,
@@ -189,12 +197,24 @@ export function WorkspaceSettingsPanel({
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
   const versionTapCountRef = useRef(0);
+  const pendingFeatureFlags =
+    desktopPreferencesState.changingFeatureFlags ??
+    desktopPreferencesState.featureFlags;
+  const labSectionVisible =
+    settingsState.developerPanelVisible &&
+    isFeatureEnabled(pendingFeatureFlags, LAB_ENABLED_FLAG);
 
   useEffect(() => {
     if (settingsState.open) {
       settingsService.syncWorkspace({ id: workspace.id });
     }
   }, [settingsService, settingsState.open, workspace.id]);
+
+  useEffect(() => {
+    if (!labSectionVisible && settingsState.activeSection === "lab") {
+      settingsService.selectSection("general");
+    }
+  }, [labSectionVisible, settingsService, settingsState.activeSection]);
 
   const handleVersionTap = () => {
     if (settingsState.developerPanelVisible) {
@@ -289,6 +309,14 @@ export function WorkspaceSettingsPanel({
                   {
                     id: "developer" as const,
                     label: t("workspace.settings.nav.developer")
+                  }
+                ]
+              : []),
+            ...(labSectionVisible
+              ? [
+                  {
+                    id: "lab" as const,
+                    label: t("workspace.settings.nav.lab")
                   }
                 ]
               : [])
@@ -445,6 +473,20 @@ export function WorkspaceSettingsPanel({
                   );
                 }}
               />
+            ) : settingsState.activeSection === "lab" ? (
+              <WorkspaceLabSettingsSection
+                changingFeatureFlags={
+                  desktopPreferencesState.changingFeatureFlags
+                }
+                featureFlags={desktopPreferencesState.featureFlags}
+                workbenchShortcuts={desktopPreferencesState.workbenchShortcuts}
+                onFeatureFlagsChange={(flags) => {
+                  void settingsService.changeFeatureFlags(flags);
+                }}
+                onWorkbenchShortcutsChange={(shortcuts) => {
+                  void settingsService.changeWorkbenchShortcuts(shortcuts);
+                }}
+              />
             ) : settingsState.activeSection === "account" ? (
               <WorkspaceAccountSettingsSection />
             ) : settingsState.activeSection === "about" ? (
@@ -474,6 +516,10 @@ export function WorkspaceSettingsPanel({
                 enableOpenCodeAgent={
                   desktopPreferencesState.enableOpenCodeAgent
                 }
+                labEnabled={isFeatureEnabled(
+                  pendingFeatureFlags,
+                  LAB_ENABLED_FLAG
+                )}
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
@@ -501,6 +547,12 @@ export function WorkspaceSettingsPanel({
                 }}
                 onDeveloperPanelVisibleChange={(visible) => {
                   settingsService.setDeveloperPanelVisible(visible);
+                }}
+                onLabEnabledChange={(enabled) => {
+                  void settingsService.changeFeatureFlags({
+                    ...desktopPreferencesState.featureFlags,
+                    [LAB_ENABLED_FLAG]: enabled
+                  });
                 }}
                 onTuttiAgentSwitchEnabledChange={(enabled) => {
                   settingsService.setTuttiAgentSwitchEnabled(enabled);
@@ -1522,6 +1574,159 @@ function ManagedModelProviderFields({
   );
 }
 
+function WorkspaceLabSettingsSection({
+  changingFeatureFlags,
+  featureFlags,
+  onFeatureFlagsChange,
+  onWorkbenchShortcutsChange,
+  workbenchShortcuts
+}: {
+  changingFeatureFlags: DesktopFeatureFlags | null;
+  featureFlags: DesktopFeatureFlags;
+  onFeatureFlagsChange: (flags: DesktopFeatureFlags) => void;
+  onWorkbenchShortcutsChange: (shortcuts: DesktopWorkbenchShortcuts) => void;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
+}) {
+  const { t } = useTranslation();
+  const pendingFeatureFlags = changingFeatureFlags ?? featureFlags;
+  const isUpdatingFlags = changingFeatureFlags !== null;
+  const workbenchShortcutsEnabled = isFeatureEnabled(
+    pendingFeatureFlags,
+    LAB_WORKBENCH_SHORTCUTS_FLAG
+  );
+  const updateFeatureFlag = useCallback(
+    (key: string, enabled: boolean) => {
+      onFeatureFlagsChange({
+        ...featureFlags,
+        [key]: enabled
+      });
+    },
+    [featureFlags, onFeatureFlagsChange]
+  );
+  const shortcutsDisabled = isUpdatingFlags || !workbenchShortcutsEnabled;
+
+  return (
+    <SettingsRows>
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.lab.workbenchShortcutsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.lab.workbenchShortcutsDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.lab.workbenchShortcutsLabel")}
+          checked={workbenchShortcutsEnabled}
+          disabled={isUpdatingFlags}
+          onCheckedChange={(enabled) => {
+            updateFeatureFlag(LAB_WORKBENCH_SHORTCUTS_FLAG, enabled);
+          }}
+        />
+      </div>
+
+      <WorkspaceLabShortcutRow
+        disabled={shortcutsDisabled}
+        label={t("workspace.settings.lab.newAgentConversationShortcutLabel")}
+        value={workbenchShortcuts.newAgentConversation}
+        onChange={(binding) => {
+          onWorkbenchShortcutsChange({
+            ...workbenchShortcuts,
+            newAgentConversation: binding
+          });
+        }}
+      />
+
+      <WorkspaceLabShortcutRow
+        disabled={shortcutsDisabled}
+        label={t("workspace.settings.lab.newSameTypeWindowShortcutLabel")}
+        value={workbenchShortcuts.newSameTypeWindow}
+        onChange={(binding) => {
+          onWorkbenchShortcutsChange({
+            ...workbenchShortcuts,
+            newSameTypeWindow: binding
+          });
+        }}
+      />
+    </SettingsRows>
+  );
+}
+
+function WorkspaceLabShortcutRow({
+  disabled,
+  label,
+  value,
+  onChange
+}: {
+  disabled: boolean;
+  label: string;
+  value: string | null;
+  onChange: (binding: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const clearLabel = t("workspace.settings.lab.clearShortcutLabel", { label });
+  return (
+    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {label}
+        </strong>
+      </div>
+      <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
+        <Input
+          aria-label={label}
+          className={cn(
+            workspaceSettingsInputClass,
+            "font-mono text-[12px]",
+            disabled && "opacity-70"
+          )}
+          disabled={disabled}
+          placeholder={t("workspace.settings.lab.shortcutUnbound")}
+          readOnly
+          value={value ?? ""}
+          onKeyDown={(event) => {
+            if (disabled) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            if (
+              event.key === "Backspace" ||
+              event.key === "Delete" ||
+              event.key === "Escape"
+            ) {
+              onChange(null);
+              return;
+            }
+            const binding = formatDesktopShortcutBinding({
+              altKey: event.altKey,
+              ctrlKey: event.ctrlKey,
+              key: event.key,
+              metaKey: event.metaKey,
+              shiftKey: event.shiftKey
+            });
+            if (binding) {
+              onChange(binding);
+            }
+          }}
+        />
+        <Button
+          aria-label={clearLabel}
+          disabled={disabled || value === null}
+          size="icon-sm"
+          title={clearLabel}
+          type="button"
+          variant="ghost"
+          onClick={() => onChange(null)}
+        >
+          <DeleteIcon className="size-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceDeveloperSettingsSection({
   analyticsDebugAvailable,
   analyticsDebugEnabled,
@@ -1533,6 +1738,7 @@ function WorkspaceDeveloperSettingsSection({
   enableCursorAgent,
   enableOpenCodeAgent,
   fileDefaultOpenersByExtension,
+  labEnabled,
   showAppDeveloperSources,
   tuttiAgentSwitchEnabled,
   updateChannel,
@@ -1545,6 +1751,7 @@ function WorkspaceDeveloperSettingsSection({
   onEnableOpenCodeAgentChange,
   onExportLogs,
   onFileDefaultOpenersChange,
+  onLabEnabledChange,
   onShowAppDeveloperSourcesChange,
   onTuttiAgentSwitchEnabledChange,
   onUpdateChannelChange
@@ -1559,6 +1766,7 @@ function WorkspaceDeveloperSettingsSection({
   enableCursorAgent: boolean;
   enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
+  labEnabled: boolean;
   showAppDeveloperSources: boolean;
   tuttiAgentSwitchEnabled: boolean;
   updateChannel: DesktopUpdateChannel;
@@ -1573,6 +1781,7 @@ function WorkspaceDeveloperSettingsSection({
   onFileDefaultOpenersChange: (
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
+  onLabEnabledChange: (enabled: boolean) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
   onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
   onUpdateChannelChange: (channel: DesktopUpdateChannel) => void;
@@ -1605,6 +1814,22 @@ function WorkspaceDeveloperSettingsSection({
           aria-label={t("workspace.settings.developer.visibilityLabel")}
           checked={developerPanelVisible}
           onCheckedChange={onDeveloperPanelVisibleChange}
+        />
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.labVisibilityLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.labVisibilityDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.developer.labVisibilityLabel")}
+          checked={labEnabled}
+          onCheckedChange={onLabEnabledChange}
         />
       </div>
 

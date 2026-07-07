@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { PutDesktopPreferencesRequest } from "@tutti-os/client-tuttid-ts";
+import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts";
 import { createDesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
 
@@ -24,7 +25,8 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -60,7 +62,8 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: {
@@ -110,7 +113,8 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -158,7 +162,8 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -205,7 +210,8 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -258,7 +264,8 @@ test("createDesktopHostPreferencesState keeps initialized stable update channel"
             agentDockLayout: "legacySplit",
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -308,7 +315,8 @@ test("createDesktopHostPreferencesState migrates the old rc default update chann
             agentDockLayout: "legacySplit",
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -371,7 +379,8 @@ test("createDesktopHostPreferencesState preserves initialized rc channel on rc p
             agentDockLayout: "legacySplit",
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -428,7 +437,8 @@ test("createDesktopHostPreferencesState preserves rc after the stable default mi
             agentDockLayout: "legacySplit",
             appCatalogChannel: "production",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -471,7 +481,8 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-
+            featureFlags: {},
+            workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "default",
             dockPlacement: "bottom",
             fileDefaultOpenersByExtension: { html: "defaultBrowser" },

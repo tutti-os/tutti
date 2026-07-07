@@ -18,7 +18,8 @@ import {
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
-const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmCommand = resolvePnpmCommand();
+const pnpmShellCommand = formatCommand(pnpmCommand);
 const maxParallel = Number.parseInt(readOption("--max-parallel") ?? "4", 10);
 const tailLines = readPositiveIntegerOption("--tail-lines", 80);
 const dryRun = process.argv.includes("--dry-run");
@@ -113,7 +114,13 @@ function buildChangedLanes() {
     addLane({
       key: "lint:changed",
       label: "lint:changed",
-      command: [pnpmCommand, "exec", "oxlint", "--deny-warnings", ...lintFiles]
+      command: [
+        ...pnpmCommand,
+        "exec",
+        "oxlint",
+        "--deny-warnings",
+        ...lintFiles
+      ]
     });
   }
 
@@ -121,7 +128,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:electron",
       label: "boundary:electron",
-      command: [pnpmCommand, "run", "check:electron-runtime-boundaries"]
+      command: [...pnpmCommand, "run", "check:electron-runtime-boundaries"]
     });
   }
 
@@ -129,7 +136,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:ui",
       label: "boundary:ui",
-      command: [pnpmCommand, "run", "check:ui-boundaries"]
+      command: [...pnpmCommand, "run", "check:ui-boundaries"]
     });
   }
 
@@ -141,7 +148,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:renderer",
       label: "boundary:renderer",
-      command: [pnpmCommand, "run", "check:renderer-boundaries"]
+      command: [...pnpmCommand, "run", "check:renderer-boundaries"]
     });
   }
 
@@ -163,7 +170,7 @@ function buildChangedLanes() {
         buildGoTestLane({
           forceBuiltinGenerate,
           moduleRoot,
-          pnpmCommand,
+          pnpmCommand: pnpmShellCommand,
           shellQuote,
           targets
         })
@@ -174,7 +181,7 @@ function buildChangedLanes() {
       addLane({
         key: "build:go",
         label: "build:go",
-        command: [pnpmCommand, "run", "build:go"]
+        command: [...pnpmCommand, "run", "build:go"]
       });
     }
   }
@@ -234,7 +241,7 @@ function buildChangedLanes() {
       addLane({
         key: `${packageInfo.name}:build`,
         label: `${packageInfo.name}:build`,
-        command: [pnpmCommand, "--filter", packageInfo.name, "build"]
+        command: [...pnpmCommand, "--filter", packageInfo.name, "build"]
       });
     }
   }
@@ -243,7 +250,7 @@ function buildChangedLanes() {
     addLane({
       key: "test:tools",
       label: "test:tools",
-      command: [pnpmCommand, "run", "test:tools"]
+      command: [...pnpmCommand, "run", "test:tools"]
     });
   }
 
@@ -429,6 +436,25 @@ function resolveDefaultBaseRef() {
     }
   }
   return "HEAD";
+}
+
+function resolvePnpmCommand() {
+  const fallback = [process.platform === "win32" ? "pnpm.cmd" : "pnpm"];
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(join(workspaceRoot, "package.json"), "utf8")
+    );
+    const match = /^pnpm@(.+)$/u.exec(String(packageJson.packageManager ?? ""));
+    if (!match) {
+      return fallback;
+    }
+    return [
+      process.platform === "win32" ? "corepack.cmd" : "corepack",
+      `pnpm@${match[1]}`
+    ];
+  } catch {
+    return fallback;
+  }
 }
 
 function readOption(name) {

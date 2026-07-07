@@ -10,6 +10,10 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		Enabled:        value.WindowSnappingEnabled,
 		ShortcutPreset: tuttigenerated.DesktopWorkbenchWindowSnappingShortcutPreset(value.WindowSnappingShortcutPreset),
 	}
+	workbenchShortcuts := tuttigenerated.DesktopWorkbenchShortcuts{
+		NewAgentConversation: optionalStringPointer(value.WorkbenchShortcuts.NewAgentConversation),
+		NewSameTypeWindow:    optionalStringPointer(value.WorkbenchShortcuts.NewSameTypeWindow),
+	}
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
 		AgentComposerDefaultsByAgentTarget:          generatedAgentComposerDefaultsByAgentTarget(value.AgentComposerDefaultsByAgentTarget),
@@ -24,6 +28,8 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		EnableCursorAgent:                           value.EnableCursorAgent,
 		EnableOpenCodeAgent:                         value.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
+		FeatureFlags:                                tuttigenerated.DesktopFeatureFlags(value.FeatureFlags),
+		WorkbenchShortcuts:                          workbenchShortcuts,
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
 		SleepPreventionMode:                         tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),

@@ -215,6 +215,8 @@ export interface WorkspaceReferencePickResult {
   mentionItems: readonly AgentContextMentionItem[];
 }
 
+export interface AgentComposerSubmitOptions {}
+
 export interface AgentComposerProps {
   workspaceId: string;
   workspacePath?: string | null;
@@ -454,7 +456,8 @@ export interface AgentComposerProps {
   ) => void;
   onSubmit: (
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions
   ) => void;
   onSubmitGuidance?: (
     content: AgentPromptContentBlock[],

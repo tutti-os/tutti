@@ -16,6 +16,8 @@ export const preferencesDesktopPreferencesSchema = {
     "dockIconStyle",
     "dockPlacement",
     "fileDefaultOpenersByExtension",
+    "featureFlags",
+    "workbenchShortcuts",
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
@@ -282,6 +284,28 @@ export const preferencesDesktopPreferencesSchema = {
       additionalProperties: {
         type: "string",
         enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+      }
+    },
+    featureFlags: {
+      type: "object",
+      additionalProperties: {
+        type: "boolean"
+      },
+      maxProperties: 64
+    },
+    workbenchShortcuts: {
+      type: "object",
+      additionalProperties: false,
+      required: ["newAgentConversation", "newSameTypeWindow"],
+      properties: {
+        newAgentConversation: {
+          type: ["string", "null"],
+          maxLength: 80
+        },
+        newSameTypeWindow: {
+          type: ["string", "null"],
+          maxLength: 80
+        }
       }
     },
     locale: {
@@ -1139,6 +1163,8 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "dockIconStyle",
         "dockPlacement",
         "fileDefaultOpenersByExtension",
+        "featureFlags",
+        "workbenchShortcuts",
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
@@ -1405,6 +1431,28 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           additionalProperties: {
             type: "string",
             enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+          }
+        },
+        featureFlags: {
+          type: "object",
+          additionalProperties: {
+            type: "boolean"
+          },
+          maxProperties: 64
+        },
+        workbenchShortcuts: {
+          type: "object",
+          additionalProperties: false,
+          required: ["newAgentConversation", "newSameTypeWindow"],
+          properties: {
+            newAgentConversation: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            }
           }
         },
         locale: {
@@ -1503,6 +1551,8 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "dockIconStyle",
         "dockPlacement",
         "fileDefaultOpenersByExtension",
+        "featureFlags",
+        "workbenchShortcuts",
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
@@ -1769,6 +1819,28 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           additionalProperties: {
             type: "string",
             enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+          }
+        },
+        featureFlags: {
+          type: "object",
+          additionalProperties: {
+            type: "boolean"
+          },
+          maxProperties: 64
+        },
+        workbenchShortcuts: {
+          type: "object",
+          additionalProperties: false,
+          required: ["newAgentConversation", "newSameTypeWindow"],
+          properties: {
+            newAgentConversation: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            }
           }
         },
         locale: {

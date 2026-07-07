@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -19,7 +20,7 @@ func (s *SQLiteStore) GetDesktopPreferences(ctx context.Context) (preferencesbiz
 	}
 
 	row := s.db.QueryRowContext(ctx, `
-SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, enable_cursor_agent, enable_opencode_agent, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset
+SELECT default_agent_provider, agent_conversation_detail_mode, agent_dock_layout, dock_icon_style, dock_placement, locale, theme_source, sleep_prevention_mode, update_channel, update_policy, agent_composer_defaults_by_provider_json, agent_composer_defaults_by_agent_target_json, agent_gui_conversation_rail_collapsed_by_provider_json, browser_use_connection_mode, file_default_openers_by_extension_json, app_catalog_channel, minimize_animation, show_app_developer_sources, enable_cursor_agent, enable_opencode_agent, workbench_window_snapping_enabled, workbench_window_snapping_shortcut_preset, feature_flags_json, workbench_shortcuts_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID)
@@ -38,6 +39,8 @@ WHERE id = ?
 	var enableOpenCodeAgent bool
 	var windowSnappingEnabled bool
 	var windowSnappingShortcutPreset string
+	var featureFlagsJSON sql.NullString
+	var workbenchShortcutsJSON sql.NullString
 	var themeSource string
 	var sleepPreventionMode string
 	var updateChannel string
@@ -46,7 +49,7 @@ WHERE id = ?
 	var agentComposerDefaultsByAgentTargetJSON string
 	var agentGUIConversationRailCollapsedJSON string
 	var fileDefaultOpenersJSON string
-	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &enableCursorAgent, &enableOpenCodeAgent, &windowSnappingEnabled, &windowSnappingShortcutPreset); err != nil {
+	if err := row.Scan(&defaultAgentProvider, &agentConversationDetailMode, &agentDockLayout, &dockIconStyle, &dockPlacement, &locale, &themeSource, &sleepPreventionMode, &updateChannel, &updatePolicy, &agentComposerDefaultsJSON, &agentComposerDefaultsByAgentTargetJSON, &agentGUIConversationRailCollapsedJSON, &browserUseConnectionMode, &fileDefaultOpenersJSON, &appCatalogChannel, &minimizeAnimation, &showAppDeveloperSources, &enableCursorAgent, &enableOpenCodeAgent, &windowSnappingEnabled, &windowSnappingShortcutPreset, &featureFlagsJSON, &workbenchShortcutsJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return preferencesbiz.DefaultDesktopPreferences(), nil
 		}
@@ -68,6 +71,11 @@ WHERE id = ?
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences file default openers: %w", err)
 	}
+	featureFlags, err := decodeFeatureFlags(featureFlagsJSON.String)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("decode desktop preferences feature flags: %w", err)
+	}
+	workbenchShortcuts := decodeWorkbenchShortcuts(workbenchShortcutsJSON.String)
 
 	return preferencesbiz.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             agentComposerDefaults,
@@ -82,6 +90,7 @@ WHERE id = ?
 		DockPlacement:                               dockPlacement,
 		EnableCursorAgent:                           enableCursorAgent,
 		EnableOpenCodeAgent:                         enableOpenCodeAgent,
+		FeatureFlags:                                featureFlags,
 		FileDefaultOpenersByExtension:               fileDefaultOpeners,
 		Initialized:                                 true,
 		Locale:                                      locale,
@@ -93,6 +102,7 @@ WHERE id = ?
 		UpdatePolicy:                                updatePolicy,
 		WindowSnappingEnabled:                       windowSnappingEnabled,
 		WindowSnappingShortcutPreset:                windowSnappingShortcutPreset,
+		WorkbenchShortcuts:                          workbenchShortcuts,
 	}, nil
 }
 
@@ -117,6 +127,14 @@ func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences pre
 	fileDefaultOpenersJSON, err := encodeFileDefaultOpenersByExtension(preferences.FileDefaultOpenersByExtension)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences file default openers: %w", err)
+	}
+	featureFlagsJSON, err := encodeFeatureFlags(preferences.FeatureFlags)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences feature flags: %w", err)
+	}
+	workbenchShortcutsJSON, err := encodeWorkbenchShortcuts(preferences.WorkbenchShortcuts)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences workbench shortcuts: %w", err)
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO desktop_preferences (
@@ -143,9 +161,11 @@ INSERT INTO desktop_preferences (
   enable_opencode_agent,
   workbench_window_snapping_enabled,
   workbench_window_snapping_shortcut_preset,
+  feature_flags_json,
+  workbench_shortcuts_json,
   updated_at_unix_ms
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   default_agent_provider = excluded.default_agent_provider,
   agent_conversation_detail_mode = excluded.agent_conversation_detail_mode,
@@ -169,8 +189,10 @@ ON CONFLICT(id) DO UPDATE SET
   enable_opencode_agent = excluded.enable_opencode_agent,
   workbench_window_snapping_enabled = excluded.workbench_window_snapping_enabled,
   workbench_window_snapping_shortcut_preset = excluded.workbench_window_snapping_shortcut_preset,
+  feature_flags_json = excluded.feature_flags_json,
+  workbench_shortcuts_json = excluded.workbench_shortcuts_json,
   updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.EnableCursorAgent, preferences.EnableOpenCodeAgent, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, now)
+`, desktopPreferencesRowID, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.EnableCursorAgent, preferences.EnableOpenCodeAgent, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
 	}
@@ -188,6 +210,7 @@ ON CONFLICT(id) DO UPDATE SET
 		DockPlacement:                               preferences.DockPlacement,
 		EnableCursorAgent:                           preferences.EnableCursorAgent,
 		EnableOpenCodeAgent:                         preferences.EnableOpenCodeAgent,
+		FeatureFlags:                                preferencesbiz.NormalizeDesktopFeatureFlags(preferences.FeatureFlags),
 		FileDefaultOpenersByExtension:               preferences.FileDefaultOpenersByExtension,
 		Initialized:                                 true,
 		Locale:                                      preferences.Locale,
@@ -199,6 +222,7 @@ ON CONFLICT(id) DO UPDATE SET
 		UpdatePolicy:                                preferences.UpdatePolicy,
 		WindowSnappingEnabled:                       preferences.WindowSnappingEnabled,
 		WindowSnappingShortcutPreset:                preferences.WindowSnappingShortcutPreset,
+		WorkbenchShortcuts:                          preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferences.WorkbenchShortcuts),
 	}, nil
 }
 
@@ -271,6 +295,66 @@ func encodeAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Agent
 		value = map[string]preferencesbiz.AgentComposerDefaults{}
 	}
 	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeFeatureFlags(raw string) (map[string]bool, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]bool{}, nil
+	}
+	var decoded map[string]bool
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return map[string]bool{}, nil // tolerate corrupt JSON
+	}
+	return preferencesbiz.NormalizeDesktopFeatureFlags(decoded), nil
+}
+
+func encodeFeatureFlags(value map[string]bool) (string, error) {
+	data, err := json.Marshal(preferencesbiz.NormalizeDesktopFeatureFlags(value))
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcuts {
+	if strings.TrimSpace(raw) == "" {
+		return preferencesbiz.DesktopWorkbenchShortcuts{}
+	}
+	var decoded struct {
+		NewAgentConversation *string `json:"newAgentConversation"`
+		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return preferencesbiz.DesktopWorkbenchShortcuts{}
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	return preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferencesbiz.DesktopWorkbenchShortcuts{
+		NewAgentConversation: deref(decoded.NewAgentConversation),
+		NewSameTypeWindow:    deref(decoded.NewSameTypeWindow),
+	})
+}
+
+func encodeWorkbenchShortcuts(value preferencesbiz.DesktopWorkbenchShortcuts) (string, error) {
+	n := preferencesbiz.NormalizeDesktopWorkbenchShortcuts(value)
+	ptr := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
+	}
+	data, err := json.Marshal(struct {
+		NewAgentConversation *string `json:"newAgentConversation"`
+		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow)})
 	if err != nil {
 		return "", err
 	}

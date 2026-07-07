@@ -333,6 +333,8 @@ export type DesktopPreferences = {
   enableCursorAgent: boolean;
   enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
+  featureFlags: DesktopFeatureFlags;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
@@ -341,6 +343,21 @@ export type DesktopPreferences = {
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
   workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
+};
+
+export type DesktopFeatureFlags = {
+  [key: string]: boolean;
+};
+
+export type DesktopWorkbenchShortcuts = {
+  /**
+   * Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
+   */
+  newAgentConversation: string | null;
+  /**
+   * Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
+   */
+  newSameTypeWindow: string | null;
 };
 
 export type DesktopWorkbenchWindowSnapping = {

@@ -46,6 +46,7 @@ type DesktopPreferences struct {
 	DockPlacement                               string
 	EnableCursorAgent                           bool
 	EnableOpenCodeAgent                         bool
+	FeatureFlags                                map[string]bool
 	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
 	Locale                                      string
@@ -57,6 +58,7 @@ type DesktopPreferences struct {
 	UpdatePolicy                                string
 	WindowSnappingEnabled                       bool
 	WindowSnappingShortcutPreset                string
+	WorkbenchShortcuts                          DesktopWorkbenchShortcuts
 }
 
 type AgentComposerDefaults struct {
@@ -80,6 +82,11 @@ func LocalAgentTargetIDForProvider(provider string) string {
 	return "local:" + normalized
 }
 
+type DesktopWorkbenchShortcuts struct {
+	NewAgentConversation string
+	NewSameTypeWindow    string
+}
+
 func DefaultDesktopPreferences() DesktopPreferences {
 	return DesktopPreferences{
 		AgentComposerDefaultsByProvider:             map[string]AgentComposerDefaults{},
@@ -94,6 +101,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DockPlacement:                               DefaultDesktopDockPlacement,
 		EnableCursorAgent:                           DefaultDesktopEnableCursorAgent,
 		EnableOpenCodeAgent:                         DefaultDesktopEnableOpenCodeAgent,
+		FeatureFlags:                                map[string]bool{},
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
 			"html":  "appBrowser",
@@ -110,6 +118,7 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		UpdatePolicy:                 DefaultDesktopUpdatePolicy,
 		WindowSnappingEnabled:        DefaultDesktopWindowSnappingEnabled,
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
+		WorkbenchShortcuts:           DesktopWorkbenchShortcuts{},
 	}
 }
 
@@ -279,5 +288,32 @@ func IsDesktopUpdatePolicy(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func NormalizeDesktopShortcutBinding(value string) string {
+	normalized := strings.TrimSpace(value)
+	if len(normalized) > 80 {
+		return ""
+	}
+	return normalized
+}
+
+func NormalizeDesktopFeatureFlags(value map[string]bool) map[string]bool {
+	result := make(map[string]bool, len(value))
+	for key, enabled := range value {
+		trimmed := strings.TrimSpace(key)
+		if trimmed == "" || len(trimmed) > 128 {
+			continue
+		}
+		result[trimmed] = enabled
+	}
+	return result
+}
+
+func NormalizeDesktopWorkbenchShortcuts(value DesktopWorkbenchShortcuts) DesktopWorkbenchShortcuts {
+	return DesktopWorkbenchShortcuts{
+		NewAgentConversation: NormalizeDesktopShortcutBinding(value.NewAgentConversation),
+		NewSameTypeWindow:    NormalizeDesktopShortcutBinding(value.NewSameTypeWindow),
 	}
 }

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:f193ffe19de9594c"
+	BusinessEventCatalogRevision = "sha256:e36ea08ddf0695d3"
 )
 
 type Topic string
@@ -141,16 +141,21 @@ type PreferencesDesktopPreferences struct {
 	DockIconStyle                 string            `json:"dockIconStyle"`
 	DockPlacement                 string            `json:"dockPlacement"`
 	FileDefaultOpenersByExtension map[string]string `json:"fileDefaultOpenersByExtension"`
-	Locale                        string            `json:"locale"`
-	MinimizeAnimation             string            `json:"minimizeAnimation"`
-	SleepPreventionMode           string            `json:"sleepPreventionMode"`
-	ShowAppDeveloperSources       bool              `json:"showAppDeveloperSources"`
-	EnableCursorAgent             bool              `json:"enableCursorAgent"`
-	EnableOpenCodeAgent           bool              `json:"enableOpenCodeAgent"`
-	ThemeSource                   string            `json:"themeSource"`
-	UpdateChannel                 string            `json:"updateChannel"`
-	UpdatePolicy                  string            `json:"updatePolicy"`
-	WorkbenchWindowSnapping       *struct {
+	FeatureFlags                  map[string]bool   `json:"featureFlags"`
+	WorkbenchShortcuts            struct {
+		NewAgentConversation *string `json:"newAgentConversation"`
+		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	} `json:"workbenchShortcuts"`
+	Locale                  string `json:"locale"`
+	MinimizeAnimation       string `json:"minimizeAnimation"`
+	SleepPreventionMode     string `json:"sleepPreventionMode"`
+	ShowAppDeveloperSources bool   `json:"showAppDeveloperSources"`
+	EnableCursorAgent       bool   `json:"enableCursorAgent"`
+	EnableOpenCodeAgent     bool   `json:"enableOpenCodeAgent"`
+	ThemeSource             string `json:"themeSource"`
+	UpdateChannel           string `json:"updateChannel"`
+	UpdatePolicy            string `json:"updatePolicy"`
+	WorkbenchWindowSnapping *struct {
 		Enabled        bool   `json:"enabled"`
 		ShortcutPreset string `json:"shortcutPreset"`
 	} `json:"workbenchWindowSnapping,omitempty"`

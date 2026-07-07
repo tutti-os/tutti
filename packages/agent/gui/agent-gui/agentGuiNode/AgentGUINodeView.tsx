@@ -662,7 +662,8 @@ interface AgentGUINodeViewProps {
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (
       content: AgentPromptContentBlock[],
-      displayPrompt?: string
+      displayPrompt?: string,
+      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
     ) => void;
     goalControl: (
       action: AgentActivityGoalControlAction,
@@ -2859,6 +2860,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.activeConversationId,
       viewModel.availableCommands,
       viewModel.availableSkills,
+      viewModel.activeConversationId,
       viewModel.compactSupported,
       viewModel.composerSettings,
       viewModel.currentUserId,

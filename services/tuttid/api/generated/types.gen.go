@@ -2697,6 +2697,9 @@ type DesktopDockIconStyle string
 // DesktopDockPlacement defines model for DesktopDockPlacement.
 type DesktopDockPlacement string
 
+// DesktopFeatureFlags defines model for DesktopFeatureFlags.
+type DesktopFeatureFlags map[string]bool
+
 // DesktopFileDefaultOpener defines model for DesktopFileDefaultOpener.
 type DesktopFileDefaultOpener string
 
@@ -2723,6 +2726,7 @@ type DesktopPreferences struct {
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
 	EnableOpenCodeAgent                         bool                                               `json:"enableOpenCodeAgent"`
+	FeatureFlags                                DesktopFeatureFlags                                `json:"featureFlags"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`
@@ -2731,6 +2735,7 @@ type DesktopPreferences struct {
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
 	UpdatePolicy                                DesktopUpdatePolicy                                `json:"updatePolicy"`
+	WorkbenchShortcuts                          DesktopWorkbenchShortcuts                          `json:"workbenchShortcuts"`
 	WorkbenchWindowSnapping                     *DesktopWorkbenchWindowSnapping                    `json:"workbenchWindowSnapping,omitempty"`
 }
 
@@ -2751,6 +2756,15 @@ type DesktopUpdateChannel string
 
 // DesktopUpdatePolicy defines model for DesktopUpdatePolicy.
 type DesktopUpdatePolicy string
+
+// DesktopWorkbenchShortcuts defines model for DesktopWorkbenchShortcuts.
+type DesktopWorkbenchShortcuts struct {
+	// NewAgentConversation Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
+	NewAgentConversation *string `json:"newAgentConversation"`
+
+	// NewSameTypeWindow Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
+	NewSameTypeWindow *string `json:"newSameTypeWindow"`
+}
 
 // DesktopWorkbenchWindowSnapping defines model for DesktopWorkbenchWindowSnapping.
 type DesktopWorkbenchWindowSnapping struct {
