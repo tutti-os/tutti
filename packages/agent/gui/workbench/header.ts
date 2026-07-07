@@ -1,5 +1,6 @@
 import {
   createElement,
+  useState,
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode
@@ -47,6 +48,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   isConversationRailCollapsed: boolean;
   conversationRailWidthPx?: number | null;
   conversationIconUrl?: string | null;
+  conversationIconFallbackUrl?: string | null;
   providerRailWidthPx?: number | null;
   conversationTitle?: string | null;
   nodeId: string;
@@ -68,6 +70,7 @@ export function AgentGuiWorkbenchHeader({
   isConversationRailCollapsed,
   conversationRailWidthPx,
   conversationIconUrl,
+  conversationIconFallbackUrl,
   providerRailWidthPx,
   conversationTitle,
   nodeId,
@@ -86,6 +89,7 @@ export function AgentGuiWorkbenchHeader({
     ? ""
     : conversationTitle?.trim() || "";
   const sessionIconUrl = conversationIconUrl?.trim() || "";
+  const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";
   const safeDisplayMode = displayMode ?? "floating";
   const safeWindowActions = windowActions ?? {
     close: () => undefined,
@@ -119,6 +123,9 @@ export function AgentGuiWorkbenchHeader({
       className: cn("agent-gui-workbench-header", className),
       "data-agent-gui-workbench-header": "true",
       "data-agent-gui-workbench-header-collapsed": isConversationRailCollapsed
+        ? "true"
+        : "false",
+      "data-agent-gui-workbench-header-has-session": sessionTitle
         ? "true"
         : "false",
       style: headerStyle
@@ -223,15 +230,11 @@ export function AgentGuiWorkbenchHeader({
             {
               className: "agent-gui-workbench-header__session-title"
             },
-            sessionIconUrl
-              ? createElement("img", {
-                  alt: "",
-                  className: "agent-gui-workbench-header__session-icon",
-                  "data-testid": "agent-gui-window-session-icon",
-                  draggable: false,
-                  src: sessionIconUrl
-                })
-              : null,
+            createSessionHeaderIconSlot({
+              fallbackSrc: sessionIconFallbackUrl,
+              src: sessionIconUrl,
+              testId: "agent-gui-window-session-icon"
+            }),
             createElement(
               "span",
               {
@@ -249,15 +252,11 @@ export function AgentGuiWorkbenchHeader({
             className: "agent-gui-workbench-header__detail-title",
             "data-testid": "agent-gui-window-detail-title"
           },
-          sessionIconUrl
-            ? createElement("img", {
-                alt: "",
-                className: "agent-gui-workbench-header__session-icon",
-                "data-testid": "agent-gui-window-detail-title-icon",
-                draggable: false,
-                src: sessionIconUrl
-              })
-            : null,
+          createSessionHeaderIconSlot({
+            fallbackSrc: sessionIconFallbackUrl,
+            src: sessionIconUrl,
+            testId: "agent-gui-window-detail-title-icon"
+          }),
           createElement(
             "span",
             {
@@ -268,6 +267,73 @@ export function AgentGuiWorkbenchHeader({
         )
       : null
   );
+}
+
+function createSessionHeaderIconSlot({
+  src,
+  fallbackSrc,
+  testId
+}: {
+  src: string;
+  fallbackSrc: string;
+  testId: string;
+}): ReactNode {
+  // While the session's provider is still resolving (e.g. a freshly created
+  // session) there is no icon URL yet. Render a neutral skeleton block rather
+  // than flashing a wrong/default provider icon; it is replaced once the real
+  // icon arrives.
+  if (!src) {
+    return createElement("span", {
+      "aria-hidden": "true",
+      className:
+        "agent-gui-workbench-header__session-icon agent-gui-workbench-header__session-icon--pending",
+      "data-testid": `${testId}-pending`
+    });
+  }
+  return createElement(SessionHeaderIcon, {
+    key: `${src}::${fallbackSrc}`,
+    fallbackSrc,
+    src,
+    testId
+  });
+}
+
+function SessionHeaderIcon({
+  src,
+  fallbackSrc,
+  testId
+}: {
+  src: string;
+  fallbackSrc?: string;
+  testId: string;
+}): ReactNode {
+  const [useFallback, setUseFallback] = useState(false);
+  const [hidden, setHidden] = useState(false);
+
+  const hasFallback = Boolean(fallbackSrc) && fallbackSrc !== src;
+  const effectiveSrc = useFallback && fallbackSrc ? fallbackSrc : src;
+
+  if (hidden) {
+    return null;
+  }
+
+  return createElement("img", {
+    alt: "",
+    className: "agent-gui-workbench-header__session-icon",
+    "data-testid": testId,
+    draggable: false,
+    src: effectiveSrc,
+    onError: () => {
+      // On load failure, fall back to the bundled provider icon once; if that
+      // also fails (or there is none), hide the img so the browser's broken
+      // image glyph never shows.
+      if (!useFallback && hasFallback) {
+        setUseFallback(true);
+      } else {
+        setHidden(true);
+      }
+    }
+  });
 }
 
 function createTrafficLightButton(input: {

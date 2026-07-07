@@ -243,13 +243,54 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
     [accountMenuState]
   );
 
+  if (!accountMenuState.user) {
+    return (
+      <div className="relative flex min-w-0 items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={labels.signIn}
+          onClick={accountMenuState.onLogin}
+          className="rounded-[4px] px-2.5 text-[12px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
+          data-account-signin-trigger="true"
+        >
+          {labels.signIn}
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative flex min-w-0 items-center">
+    <div className="relative flex min-w-0 items-center gap-1.5">
       {accountMenuState.registrationCreditsToast ? (
         <WorkspaceAccountRewardToast
           labels={labels}
           toast={accountMenuState.registrationCreditsToast}
         />
+      ) : null}
+      {accountMenuState.user ? (
+        <span
+          aria-hidden="true"
+          className="h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--workbench-chrome-foreground)_24%,transparent)]"
+        />
+      ) : null}
+      {accountMenuState.user ? (
+        <button
+          type="button"
+          aria-label={`${labels.creditsBalance}: ${creditsLabel}`}
+          title={labels.creditsBalance}
+          onClick={() => openExternal(accountMenuState.links.usageUrl)}
+          className="flex h-7 cursor-pointer items-center gap-1 rounded-full border-none bg-transparent px-1 text-[12px] font-semibold text-[var(--workbench-chrome-foreground)] opacity-90 transition-opacity hover:bg-transparent hover:opacity-100 [-webkit-app-region:no-drag]"
+          data-account-credits-chip="true"
+        >
+          <CreditsIcon aria-hidden="true" className="shrink-0" size={14} />
+          <span className="tabular-nums leading-none">{creditsLabel}</span>
+        </button>
       ) : null}
       <Popover onOpenChange={accountMenuState.onOpenChange}>
         <PopoverTrigger asChild>
@@ -457,7 +498,7 @@ function resolveMembershipIconSource(
   if (normalized.includes("pro")) {
     return PLAN_ICON_SOURCES.pro;
   }
-  if (normalized.includes("lite")) {
+  if (normalized.includes("lite") || normalized.includes("basic")) {
     return PLAN_ICON_SOURCES.lite;
   }
   return PLAN_ICON_SOURCES.free;

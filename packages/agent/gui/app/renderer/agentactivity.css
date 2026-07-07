@@ -4419,7 +4419,7 @@ aside.workspace-agents-status-panel
   user-select: none;
 }
 
-.agent-gui-workbench-header::after {
+.agent-gui-workbench-header[data-agent-gui-workbench-header-has-session="true"]::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -4603,6 +4603,21 @@ aside.workspace-agents-status-panel
   height: 20px;
   flex: 0 0 auto;
   border-radius: 5px;
+}
+
+.agent-gui-workbench-header__session-icon--pending {
+  background: var(--transparency-block);
+  animation: agent-gui-workbench-header-icon-pending 1.2s ease-in-out infinite;
+}
+
+@keyframes agent-gui-workbench-header-icon-pending {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .agent-gui-workbench-header__detail-title {
@@ -8595,7 +8610,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__provider-rail-tile:not([data-selected="true"])
   .agent-gui-node__provider-rail-avatar {
-  opacity: 0.5;
+  opacity: 0.38;
 }
 
 .agent-gui-node__provider-rail-tile:hover:not(:disabled)
@@ -8611,7 +8626,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__provider-rail-tile[data-selected="true"]
   .agent-gui-node__provider-rail-avatar {
   border-color: var(--brand-primary, var(--tutti-purple));
-  background: transparent;
+  background: color-mix(in srgb, var(--background-fronted) 80%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, white 45%, transparent);
   color: var(--brand-primary, var(--tutti-purple));
 }
 
@@ -8836,7 +8852,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-provider-gate {
   max-width: 520px;
-  gap: 14px;
+  gap: 8px;
 }
 
 .agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect {

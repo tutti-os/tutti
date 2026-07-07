@@ -27,6 +27,7 @@ import {
 } from "./launch.ts";
 import {
   agentGuiWorkbenchProviderFromInstanceId,
+  agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState
@@ -261,13 +262,23 @@ export function createAgentGuiWorkbenchContribution(
             input.resolveDockPopupTitle?.(workbenchState) ??
             workbenchState.lastActiveConversationTitle ??
             null;
+          // Resolve the icon from a *known* provider only. During a freshly
+          // created session the provider is not encoded yet; falling back to
+          // `provider` (which defaults to "codex") would flash the wrong icon,
+          // so we leave the URL empty and let the header render a neutral
+          // placeholder until the real provider resolves.
+          const iconProvider =
+            providerFromActivation(activation) ??
+            agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
+          const conversationIconFallbackUrl = iconProvider
+            ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
+              resolveAgentGuiWorkbenchProviderIconUrl({
+                dockIconUrls: input.dockIconUrls,
+                provider: iconProvider
+              }))
+            : null;
           const conversationIconUrl =
-            conversationIdentity?.iconUrl ??
-            resolveAgentGuiSessionProviderIconUrl(provider) ??
-            resolveAgentGuiWorkbenchProviderIconUrl({
-              dockIconUrls: input.dockIconUrls,
-              provider
-            });
+            conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
@@ -308,6 +319,7 @@ export function createAgentGuiWorkbenchContribution(
           return createElement(AgentGuiWorkbenchHeader, {
             copy,
             conversationIconUrl,
+            conversationIconFallbackUrl,
             conversationTitle,
             conversationRailWidthPx,
             displayMode,

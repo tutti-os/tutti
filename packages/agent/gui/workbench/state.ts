@@ -191,6 +191,25 @@ export function agentGuiWorkbenchProviderFromInstanceId(
   return normalizeAgentGuiWorkbenchProvider(provider);
 }
 
+/**
+ * Like {@link agentGuiWorkbenchProviderFromInstanceId} but returns `null`
+ * instead of defaulting to `"codex"` when the provider cannot be determined
+ * yet (e.g. a freshly created session whose instanceId does not encode a
+ * provider). Callers that render a provider icon use this so they can show a
+ * neutral placeholder during that transient window instead of flashing the
+ * wrong provider's icon.
+ */
+export function agentGuiWorkbenchProviderFromInstanceIdOrNull(
+  instanceId: string | null | undefined
+): AgentGuiWorkbenchProvider | null {
+  const normalized = instanceId?.trim();
+  if (!normalized || normalized === "agent-gui") {
+    return null;
+  }
+  const [, provider] = normalized.split(":", 3);
+  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+}
+
 export function createAgentGuiWorkbenchNodeStateSource(input: {
   typeId?: string;
   workspaceId: string;

@@ -1489,14 +1489,14 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
-  it("draws a subtle divider below the workbench detail titlebar", () => {
+  it("draws a subtle divider below the workbench detail titlebar only for an active session", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
       /--agent-gui-workbench-header-divider:\s*color-mix\(\s*in srgb,\s*var\(--text-primary\)\s+4%,\s*transparent\s*\);/s
     );
     expect(css).toMatch(
-      /\.agent-gui-workbench-header::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-has-session="true"\]::after\s*{[^}]*left:\s*var\(--agent-gui-workbench-header-rail-width\);[^}]*height:\s*1px;[^}]*background:\s*var\(--agent-gui-workbench-header-divider\);/s
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s

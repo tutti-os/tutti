@@ -341,29 +341,43 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
   const session = snapshot.sessions.find(
     (item) => item.agentSessionId === agentSessionId
   );
-  const provider = isAgentGuiWorkbenchProvider(session?.provider)
+  // Prefer the target the workbench state already committed to when the session
+  // was created. The activity snapshot lags a few frames behind session
+  // creation, so relying on it alone briefly reports an unknown provider and
+  // flashes the wrong (codex) icon; the committed agentTargetId is correct
+  // immediately.
+  const agentTargetId = session?.agentTargetId ?? state?.agentTargetId ?? null;
+  const providerTarget = agentTargetId
+    ? (input.providerTargets?.find(
+        (target) => target.agentTargetId === agentTargetId
+      ) ?? null)
+    : null;
+  const resolvedProvider = isAgentGuiWorkbenchProvider(session?.provider)
     ? session.provider
-    : "codex";
+    : isAgentGuiWorkbenchProvider(providerTarget?.provider)
+      ? providerTarget.provider
+      : null;
   const title =
     resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId,
       fallbackTitle: state?.lastActiveConversationTitle ?? null,
-      provider,
+      provider: resolvedProvider ?? "codex",
       snapshot
     }).title ??
     state?.lastActiveConversationTitle ??
     null;
-  const targetIconUrl = session?.agentTargetId
-    ? input.providerTargets?.find(
-        (target) => target.agentTargetId === session.agentTargetId
-      )?.iconUrl
-    : null;
+  // Never fall back to a concrete provider's icon (e.g. codex) while the real
+  // provider is still unknown — leave iconUrl null so the header renders a
+  // neutral placeholder until the provider resolves.
+  const iconUrl =
+    providerTarget?.iconUrl ??
+    (resolvedProvider
+      ? (resolveAgentGuiSessionProviderIconUrl(resolvedProvider) ??
+        input.dockIconUrls?.[resolvedProvider] ??
+        null)
+      : null);
   return {
-    iconUrl:
-      targetIconUrl ??
-      resolveAgentGuiSessionProviderIconUrl(provider) ??
-      input.dockIconUrls?.[provider] ??
-      null,
+    iconUrl,
     title
   };
 }

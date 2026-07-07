@@ -150,7 +150,7 @@ export const en = {
       title: "Tutti Agent",
       member: "Manage subscription",
       creditsBalance: "Credits",
-      accountCenter: "Account center",
+      accountCenter: "Account settings",
       free: "Free",
       signIn: "Sign in",
       signOut: "Sign out",

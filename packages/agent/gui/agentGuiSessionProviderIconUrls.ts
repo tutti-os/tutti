@@ -2,7 +2,12 @@ import claudeCodeFlatFilledIconUrl from "./app/renderer/assets/icons/agents/clau
 import codexFlatFilledIconUrl from "./app/renderer/assets/icons/agents/codex-flat-filled.svg";
 import cursorFlatFilledIconUrl from "./app/renderer/assets/icons/agents/cursor-flat-filled.svg";
 import tuttiFlatFilledIconUrl from "./app/renderer/assets/icons/agents/tutti-flat-filled.svg";
-import { cursorColorfulUrl } from "./managedAgentIconAssets";
+import {
+  claudeRoundedUrl,
+  codexRoundedUrl,
+  cursorColorfulUrl,
+  manageAgentTuttiUrl
+} from "./managedAgentIconAssets";
 import { normalizeManagedAgentProvider } from "./shared/managedAgentProviders";
 
 export {
@@ -22,11 +27,13 @@ export function resolveAgentGuiSessionProviderIconUrl(
 ): string | null {
   switch (normalizeManagedAgentProvider(provider)) {
     case "claude-code":
-      return claudeCodeFlatFilledIconUrl;
+      return claudeRoundedUrl;
     case "codex":
-      return codexFlatFilledIconUrl;
+      return codexRoundedUrl;
     case "cursor":
       return cursorColorfulUrl;
+    case "tutti":
+      return manageAgentTuttiUrl;
     default:
       return null;
   }
