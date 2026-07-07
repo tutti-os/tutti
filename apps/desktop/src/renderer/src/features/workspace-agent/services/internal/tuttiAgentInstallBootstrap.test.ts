@@ -137,6 +137,7 @@ function createService(
       statuses: [status]
     }),
     getStatus: () => status,
+    hydrate: () => {},
     isActionPending: () => false,
     refresh: async () => {
       hooks.refresh?.();

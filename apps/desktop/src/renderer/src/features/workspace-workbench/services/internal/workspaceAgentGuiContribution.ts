@@ -234,7 +234,14 @@ export function createWorkspaceAgentGuiContribution(input: {
       }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
-    onOpenDetachedWindow: (request) =>
+    onOpenDetachedWindow: (request) => {
+      // Hand off whatever this window already has cached right now — do not
+      // block the click on a full provider probe (it can take seconds and
+      // makes opening the window feel unresponsive). The detached window
+      // hydrates from this snapshot instantly, then keeps checking any
+      // providers it's still missing in the background (see
+      // StandaloneAgentWindow's own ensureAll effect); hydrate only ever
+      // merges in new data, so a partial hand-off here is safe.
       input.hostWindowApi.openAgentWindow({
         agentSessionId: request.agentSessionId,
         agentTargetId: request.agentTargetId,
@@ -242,7 +249,8 @@ export function createWorkspaceAgentGuiContribution(input: {
         providerTargets: request.providerTargets,
         provider: request.provider,
         workspaceId: request.workspaceId
-      }),
+      });
+    },
     renderPreview: (context, helpers) =>
       createElement(
         DesktopAgentGUIWorkbenchDockPreviewFrame,

@@ -158,6 +158,16 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     );
   }
 
+  hydrate(snapshot: AgentProviderStatusSnapshot): void {
+    // Only seed from a bootstrap snapshot before this instance has ever
+    // captured its own data — otherwise a stale hand-off (or one that raced
+    // with a real response) could regress already-loaded local state.
+    if (this.snapshot.capturedAt) {
+      return;
+    }
+    this.setSnapshot(snapshot);
+  }
+
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean {
     return this.snapshot.pendingActions.some(
       (action) => action.provider === provider && action.actionId === actionId

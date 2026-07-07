@@ -163,10 +163,11 @@ resolve an `AgentGUIProviderTarget`, return the node to the home composer when
 switching targets, and preserve the real provider identity used by runtime
 create/send commands. Once a session is active, the composer provider select is
 display-only and must not switch the running session. The conversation rail
-target grid is a list filter first: clicking Codex or Claude Code while a
-session is active may scope the visible rail list, but must not unactivate the
-session or rewrite the session-owned composer target. Only empty-home rail
-target clicks may also sync the home composer launch target.
+target grid is a navigation surface: clicking Codex or Claude Code scopes the
+visible rail list and reopens the first already-loaded conversation matching
+that target. Only when no matching conversation is available should the target
+click enter that target's empty home composer. Empty-home rail target clicks may
+also sync the home composer launch target.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single

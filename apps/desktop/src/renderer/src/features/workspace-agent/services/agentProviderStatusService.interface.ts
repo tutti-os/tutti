@@ -46,6 +46,14 @@ export interface IAgentProviderStatusService {
   getSnapshot(): AgentProviderStatusSnapshot;
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean;
   getStatus(provider: WorkspaceAgentProvider): AgentProviderStatus | null;
+  /**
+   * Seeds the snapshot from another window's already-captured status (e.g. a
+   * detached agent window bootstrapping from the main window's snapshot at
+   * open time) so this instance never has to redo a from-scratch check for
+   * providers that are already known. No-ops once this instance has captured
+   * its own snapshot, so it can never regress fresher local data.
+   */
+  hydrate(snapshot: AgentProviderStatusSnapshot): void;
   ensureLoaded(input?: {
     providers?: WorkspaceAgentProvider[];
     /**

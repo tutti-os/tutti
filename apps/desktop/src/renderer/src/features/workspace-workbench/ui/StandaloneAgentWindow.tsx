@@ -37,6 +37,7 @@ import {
   createDesktopAgentGUIWorkbenchHostInput,
   DesktopAgentGUIWorkbenchBody,
   desktopAgentGUIOpenSessionActivationType,
+  ensureAllDesktopManagedAgentProviderStatuses,
   IAgentsService,
   normalizeDesktopAgentGUIProvider,
   type DesktopAgentGUIProvider,
@@ -119,6 +120,22 @@ export function StandaloneAgentWindow({
     () => readProviderStatusBootstrapSnapshot(params),
     [params]
   );
+  // Seed the live service from the opening window's snapshot synchronously,
+  // during the first render, before any child effect gets a chance to kick
+  // off its own fresh status request. Without this, `agentProviderStatusService`
+  // starts as a brand-new instance with no data (it's a separate process from
+  // the window that opened us), and as soon as its own request returns even a
+  // partial result, the bootstrap snapshot gets abandoned mid-render — which
+  // is what caused providers that were already known-ready to flash back to
+  // "checking"/"unavailable". `hydrate` is a no-op once real data has landed,
+  // so this can never regress fresher local state.
+  const hasHydratedProviderStatusRef = useRef(false);
+  if (!hasHydratedProviderStatusRef.current) {
+    hasHydratedProviderStatusRef.current = true;
+    if (providerStatusBootstrapSnapshot) {
+      agentProviderStatusService.hydrate(providerStatusBootstrapSnapshot);
+    }
+  }
   const [frame, setFrame] = useState(() => readWindowFrameRect());
   const [providerTargets, setProviderTargets] = useState<
     Awaited<ReturnType<typeof agentsService.load>>["providerTargets"] | null
@@ -273,6 +290,17 @@ export function StandaloneAgentWindow({
       disposed = true;
     };
   }, [agentsService]);
+  useEffect(() => {
+    // The main workspace window loads every managed provider's status via its
+    // dock rail (which subscribes on mount and probes all providers). This
+    // standalone window has no dock, so nothing else ever asks for the full
+    // set — without this, only the single provider the window was launched
+    // for gets checked, and every other provider (e.g. switching the "全部"
+    // filter to one that was never probed) stays stuck on "checking".
+    void ensureAllDesktopManagedAgentProviderStatuses(
+      agentProviderStatusService
+    );
+  }, [agentProviderStatusService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
       setNodeState((current) => ({
@@ -386,6 +414,9 @@ export function StandaloneAgentWindow({
           dockPreviewCache={dockPreviewCache}
           onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
           onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
+            // Hand off whatever is cached right now — see the matching note
+            // in workspaceAgentGuiContribution.ts's onOpenDetachedWindow for
+            // why we don't block this click on a full provider probe.
             void hostWindowApi.openAgentWindow({
               agentSessionId,
               providerStatusSnapshot: agentProviderStatusService.getSnapshot(),

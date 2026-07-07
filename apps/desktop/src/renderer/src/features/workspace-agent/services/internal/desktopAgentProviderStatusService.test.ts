@@ -1127,6 +1127,123 @@ test("ensureLoaded reuses loaded provider statuses and only loads missing provid
   assert.deepEqual(statusCalls, [["codex"], ["claude-code"]]);
 });
 
+test("hydrate seeds the snapshot for an instance that has not captured its own data yet", () => {
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({ snapshots: [] }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  assert.equal(service.getSnapshot().capturedAt, null);
+
+  service.hydrate({
+    capturedAt: "2026-07-08T00:00:00.000Z",
+    defaultProvider: "codex",
+    error: null,
+    isLoading: false,
+    pendingActions: [],
+    statuses: [
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "cursor"
+      })
+    ]
+  });
+
+  assert.equal(service.getStatus("cursor")?.availability.status, "ready");
+});
+
+test("hydrate never regresses a snapshot this instance already captured itself", async () => {
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "not_installed",
+            provider: "cursor"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh(["cursor"]);
+  assert.equal(
+    service.getStatus("cursor")?.availability.status,
+    "not_installed"
+  );
+
+  service.hydrate({
+    capturedAt: "2026-07-08T00:00:00.000Z",
+    defaultProvider: "cursor",
+    error: null,
+    isLoading: false,
+    pendingActions: [],
+    statuses: [
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "cursor"
+      })
+    ]
+  });
+
+  assert.equal(
+    service.getStatus("cursor")?.availability.status,
+    "not_installed"
+  );
+});
+
+test("a later provider-scoped response merges into a hydrated snapshot instead of dropping it", async () => {
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            provider: "codex"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  // Simulate a detached window bootstrapping from the opening window's
+  // already-complete snapshot (e.g. Cursor was already confirmed ready there).
+  service.hydrate({
+    capturedAt: "2026-07-08T00:00:00.000Z",
+    defaultProvider: "cursor",
+    error: null,
+    isLoading: false,
+    pendingActions: [],
+    statuses: [
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "cursor"
+      })
+    ]
+  });
+
+  // A live, provider-scoped refresh for a *different* provider (e.g. this
+  // window's own background check for "codex") must not wipe out Cursor's
+  // already-known-good status.
+  await service.refresh(["codex"]);
+
+  assert.equal(service.getStatus("cursor")?.availability.status, "ready");
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+});
+
 test("ensureLoaded waits for unrelated in-flight loads before loading missing providers", async () => {
   const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();

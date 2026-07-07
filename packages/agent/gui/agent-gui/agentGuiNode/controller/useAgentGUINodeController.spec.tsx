@@ -387,7 +387,7 @@ describe("useAgentGUINodeController", () => {
     expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
-  it("selects a rail target by updating the filter and empty composer provider", async () => {
+  it("selects a rail target by reopening the latest matching conversation", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -458,27 +458,209 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.data.provider).toBe("claude-code");
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "claude-code"
-    );
-    expect(result.current.viewModel.data.agentTargetId).toBe(
-      "local:claude-code"
-    );
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.id).toBe(
+        "claude-session"
+      );
+    });
+    expect(result.current.viewModel.data.provider).toBe("codex");
+    expect(result.current.viewModel.data.agentTargetId).toBe("local:codex");
     const currentData = agentGuiData(null, "codex", {
       agentTargetId: "local:codex",
       composerOverrides: { model: "gpt-5" }
     });
-    const nextData = onDataChange.mock.calls
-      .map(([updater]) => updater(currentData))
-      .find((candidate) => candidate.provider === "claude-code");
+    const nextData = onDataChange.mock.calls.reduce(
+      (current, [updater]) => updater(current),
+      currentData
+    );
     expect(nextData).toMatchObject({
       provider: "claude-code",
       agentTargetId: "local:claude-code",
-      composerOverrides: null
+      composerOverrides: null,
+      lastActiveAgentSessionId: "claude-session"
     });
-    expect(nextData?.providerTargetId ?? null).toBeNull();
-    expect(nextData?.providerTargetRef ?? null).toBeNull();
+  });
+
+  it("keeps a fresh empty composer when reselecting the already-active rail target", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.map((item) => item.id)
+      ).toEqual(["codex-session"]);
+    });
+
+    // Switching into Codex from All reopens its latest conversation.
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.id).toBe(
+        "codex-session"
+      );
+    });
+
+    // Starting a fresh conversation under the same, still-selected target
+    // clears the active conversation but keeps the scoped filter.
+    act(() => {
+      result.current.actions.selectHomeComposerAgentTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(
+        draftContent("draft in progress")
+      );
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("draft in progress");
+
+    // Re-clicking the same, already-selected Codex tile must not discard
+    // the fresh composer by jumping back into the old conversation.
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "codex",
+        providerTargetId: "local:codex"
+      });
+    });
+
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.draftPrompt).toBe("draft in progress");
+  });
+
+  it("selects an empty composer when a rail target has no matching conversation", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("codex-session", {
+            agentTargetId: "local:codex",
+            provider: "codex",
+            title: "Codex session",
+            updatedAtUnixMs: 3
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex", {
+      agentTargetId: "local:codex",
+      composerOverrides: { model: "gpt-5" }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: initialData,
+        providerTargets: [
+          {
+            targetId: "local:codex",
+            agentTargetId: "local:codex",
+            provider: "codex",
+            ref: { kind: "local-provider", provider: "codex" },
+            label: "Codex"
+          },
+          {
+            targetId: "local:claude-code",
+            agentTargetId: "local:claude-code",
+            provider: "claude-code",
+            ref: { kind: "local-provider", provider: "claude-code" },
+            label: "Claude Code"
+          }
+        ],
+        onDataChange
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversations.map((item) => item.id)
+      ).toEqual(["codex-session"]);
+    });
+    onDataChange.mockClear();
+
+    act(() => {
+      result.current.actions.selectConversationFilterTarget({
+        provider: "claude-code",
+        providerTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "agentTarget",
+        agentTargetId: "local:claude-code"
+      });
+    });
+    expect(result.current.viewModel.activeConversation).toBeNull();
+    expect(result.current.viewModel.data.provider).toBe("claude-code");
+    expect(result.current.viewModel.data.agentTargetId).toBe(
+      "local:claude-code"
+    );
+    const nextData = onDataChange.mock.calls.reduce(
+      (current, [updater]) => updater(current),
+      initialData
+    );
+    expect(nextData).toMatchObject({
+      provider: "claude-code",
+      agentTargetId: "local:claude-code",
+      composerOverrides: null,
+      lastActiveAgentSessionId: null
+    });
   });
 
   it("resets the empty composer provider when switching the rail filter back to All", async () => {
@@ -592,7 +774,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.providerReadinessGate).toBeNull();
   });
 
-  it("opens the selected target home composer when the active conversation is outside the new rail filter", async () => {
+  it("opens the matching rail target conversation when the active conversation is outside the new rail filter", async () => {
     const unactivate = vi.fn();
     installAgentHostApi({
       list: vi.fn(async () => ({
@@ -670,10 +852,12 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBeNull();
+      expect(result.current.viewModel.activeConversationId).toBe(
+        "claude-session"
+      );
     });
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "claude-code"
+      "codex"
     );
     await waitFor(() => {
       expect(unactivate).toHaveBeenCalledWith({
@@ -688,7 +872,7 @@ describe("useAgentGUINodeController", () => {
     expect(appliedData).toMatchObject({
       provider: "claude-code",
       agentTargetId: "local:claude-code",
-      lastActiveAgentSessionId: null
+      lastActiveAgentSessionId: "claude-session"
     });
   });
 

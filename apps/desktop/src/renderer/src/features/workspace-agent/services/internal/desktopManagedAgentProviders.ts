@@ -69,7 +69,7 @@ async function ensureFirstReadyDesktopManagedAgentProviderStatus(
   return ensureAllDesktopManagedAgentProviderStatuses(service);
 }
 
-function ensureAllDesktopManagedAgentProviderStatuses(
+export function ensureAllDesktopManagedAgentProviderStatuses(
   service: IAgentProviderStatusService
 ): Promise<AgentProviderStatusListResponse | null> {
   return service.ensureLoaded({

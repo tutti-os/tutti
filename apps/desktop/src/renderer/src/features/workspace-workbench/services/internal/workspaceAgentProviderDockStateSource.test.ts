@@ -618,6 +618,7 @@ function createAgentProviderStatusService(input: {
     }),
     getStatus: (provider) =>
       statuses.find((status) => status.provider === provider) ?? null,
+    hydrate: () => {},
     isActionPending: () => false,
     ensureLoaded: input.onEnsureLoaded ?? (async () => null),
     refresh: async () => {},

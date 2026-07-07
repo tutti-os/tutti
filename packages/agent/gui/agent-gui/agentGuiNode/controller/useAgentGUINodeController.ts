@@ -11664,6 +11664,12 @@ export function useAgentGUINodeController({
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
+      const previousFilter = conversationFilterRef.current;
+      const isSameFilterTarget =
+        nextFilter.kind === "agentTarget"
+          ? previousFilter.kind === "agentTarget" &&
+            previousFilter.agentTargetId === nextFilter.agentTargetId
+          : previousFilter.kind === "all";
       setConversationFilter(nextFilter);
       const activeId = activeConversationIdRef.current;
       if (activeId) {
@@ -11674,10 +11680,29 @@ export function useAgentGUINodeController({
         );
         if (
           activeSummary &&
-          !matchesAgentGUIConversationSummaryFilter(activeSummary, nextFilter)
+          matchesAgentGUIConversationSummaryFilter(activeSummary, nextFilter)
         ) {
-          selectHomeComposerAgentTarget(input);
+          return;
         }
+      } else if (isSameFilterTarget) {
+        // Re-selecting the already-active target from its empty composer is
+        // not a switch — reopening the last conversation here would discard
+        // an in-progress draft the user just started.
+        selectHomeComposerAgentTarget(input);
+        return;
+      }
+      const recentConversation = agentTargetId
+        ? mergeVisibleConversations(
+            conversationsRef.current,
+            transientConversationRef.current
+          ).find((conversation) =>
+            matchesAgentGUIConversationSummaryFilter(conversation, nextFilter)
+          )
+        : null;
+      if (recentConversation) {
+        selectConversation(recentConversation.id, {
+          reloadConversations: false
+        });
         return;
       }
       selectHomeComposerAgentTarget(input);
@@ -11686,6 +11711,7 @@ export function useAgentGUINodeController({
       agentActivityRuntime,
       defaultProviderTargetId,
       normalizedProviderTargets,
+      selectConversation,
       selectHomeComposerAgentTarget,
       shouldUseStaticProviderTargets,
       workspaceId
