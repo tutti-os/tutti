@@ -384,6 +384,8 @@ func commandRank(id string) int {
 		return 100
 	case "agent-context.agent.sessions":
 		return 110
+	case "agent-context.agent.wait":
+		return 115
 	case "agent-context.agent.session-summary":
 		return 120
 	case "agent-context.agent.turn-resources":
@@ -413,6 +415,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id <agent-target-id> --json` - Execution mode only; the CLI binds the current AgentGUI session from runtime context. Do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
+		fmt.Sprintf("- Wait for the next agent stop point with recent execution messages only: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent session-summary` when you need the full compact session context.", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
 		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),

@@ -14,9 +14,11 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev agent wait --session-id <session-id> --json",
 		"When image context may be useful",
 		"turn-resources",
 		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
+		"full compact context helper",
 		"discover candidate turn ids",
 		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
 		"Images remain grouped under their source message",
@@ -82,7 +84,9 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev agent wait",
 		"tutti-dev agent session-summary",
+		"returns only recent execution messages",
 		"tutti-dev agent turn-resources",
 		"`mention://agent-target/<targetId>?workspaceId=...`",
 		"not launch-only",

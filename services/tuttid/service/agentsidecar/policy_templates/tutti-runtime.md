@@ -11,13 +11,13 @@ This directory is being used by a Tutti AgentGUI session.
 
 ### Routes
 
-| URI | Skill | Fallback CLI Command |
-| --- | --- | --- |
-| `mention://workspace-issue/<issueId>?workspaceId=...` | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json` |
-| `mention://workspace-app/<appId>?workspaceId=...` | `$workspace-app` | match `App id: <appId>` in command guide |
-| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference` | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
-| `mention://agent-session/<sessionId>?workspaceId=...` | `$tutti-cli` | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` |
-| `mention://agent-target/<targetId>?workspaceId=...` | `$tutti-cli` | use `agent`/`codex`/`claude` from intent; not launch-only |
+| URI                                                             | Skill            | Fallback CLI Command                                                                       |
+| --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`                                   |
+| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                   |
+| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json` |
+| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`                   |
+| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-cli`     | use `agent`/`codex`/`claude` from intent; not launch-only                                  |
 
 ### Rules
 
@@ -52,6 +52,9 @@ This directory is being used by a Tutti AgentGUI session.
 ### Start
 
 - Use `{{CLI_COMMAND}} codex start --prompt <task> --show --json` or `{{CLI_COMMAND}} claude start --prompt <task> --show --json`.
+- After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
+- After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` with the returned `waitAfterVersion`.
+- `agent wait` returns only recent execution messages; use `agent session-summary` for full compact context.
 - Ask for task prompt, not model.
 
 ### Image Context

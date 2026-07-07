@@ -183,7 +183,7 @@ func commandGuideScopeSummaries(guide string, cliName string) []commandScopeSumm
 func commandScopeDescription(scope string, info *commandScopeInfo) string {
 	switch strings.TrimSpace(scope) {
 	case "agent":
-		return "agent sessions, summaries, turn resources, active peers."
+		return "agent sessions, waits, summaries, turn resources, active peers."
 	case "app":
 		return "open/show installed app windows only when explicitly requested."
 	case "browser":

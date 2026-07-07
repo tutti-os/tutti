@@ -44,6 +44,7 @@ type fakeAgentSessions struct {
 	sessionID       string
 	cancelCallCount int
 	limit           int
+	waitInput       agentservice.WaitInput
 	turnID          string
 	afterVersion    uint64
 	beforeVersion   uint64
@@ -62,6 +63,7 @@ type fakeAgentSessions struct {
 	availability    []agentservice.ProviderAvailability
 	availabilityErr error
 	availabilityIn  []agentservice.ProviderAvailabilityInput
+	waitResult      agentservice.WaitResult
 }
 
 func newTestCodexStartCommand(provider Provider) cliservice.Command {
@@ -329,6 +331,35 @@ func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, ses
 	f.sendInput = input
 	return agentservice.SendInputResult{
 		Session: agentservice.Session{ID: sessionID, Provider: "codex", Status: "working", Visible: true},
+	}, nil
+}
+
+func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput) (agentservice.WaitResult, error) {
+	f.workspaceID = input.WorkspaceID
+	f.sessionID = input.AgentSessionID
+	f.waitInput = input
+	if f.waitResult.Session.ID != "" || f.waitResult.Reason != "" {
+		return f.waitResult, nil
+	}
+	return agentservice.WaitResult{
+		Session: agentservice.Session{
+			ID:       input.AgentSessionID,
+			Provider: "codex",
+			Status:   "waiting",
+			Visible:  true,
+		},
+		Messages: []agentservice.SessionMessage{{
+			AgentSessionID: input.AgentSessionID,
+			MessageID:      "message-2",
+			Role:           "assistant",
+			Kind:           "text",
+			Status:         "completed",
+			Payload:        map[string]any{"content": "Recent output"},
+			Version:        6,
+		}},
+		LatestVersion:  6,
+		Reason:         agentservice.WaitReasonWaitingInput,
+		EffectiveAfter: input.AfterVersion,
 	}, nil
 }
 
@@ -606,6 +637,99 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	})
 	if !errors.Is(err, cliservice.ErrInvalidInput) {
 		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{
+				ID:       "SESSION-1",
+				Provider: "codex",
+				Status:   "waiting",
+				Visible:  true,
+				TurnLifecycle: &agentservice.TurnLifecycle{
+					Phase: "waiting_input",
+				},
+			},
+			Messages: []agentservice.SessionMessage{
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "assistant-1",
+					Role:           "assistant",
+					Kind:           "text",
+					Status:         "completed",
+					Payload:        map[string]any{"content": "First reply"},
+					Version:        8,
+				},
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "tool-1",
+					Role:           "tool",
+					Kind:           "call",
+					Status:         "completed",
+					Payload:        map[string]any{"name": "Read files", "status": "completed"},
+					Version:        9,
+				},
+			},
+			LatestVersion:  9,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
+		},
+	}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "limit": "5", "timeout-ms": "2500"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.waitInput.WorkspaceID != "workspace-1" ||
+		sessions.waitInput.AgentSessionID != "SESSION-1" ||
+		sessions.waitInput.AfterVersion != 7 ||
+		sessions.waitInput.MessageLimit != 5 ||
+		sessions.waitInput.Timeout != 2500*time.Millisecond {
+		t.Fatalf("wait input = %#v", sessions.waitInput)
+	}
+	if output.Value["agentSessionId"] != "SESSION-1" ||
+		output.Value["reason"] != "waiting_input" ||
+		output.Value["timedOut"] != false ||
+		output.Value["latestVersion"] != uint64(9) ||
+		output.Value["effectiveAfter"] != uint64(7) {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	session := output.Value["session"].(map[string]any)
+	if _, ok := session["settings"]; ok {
+		t.Fatalf("wait session should stay compact: %#v", session)
+	}
+	messages := output.Value["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	first := messages[0].(map[string]any)
+	if first["messageId"] != "assistant-1" || first["text"] != "First reply" {
+		t.Fatalf("first message = %#v", first)
+	}
+	second := messages[1].(map[string]any)
+	if second["messageId"] != "tool-1" || second["text"] != "call: Read files" {
+		t.Fatalf("second message = %#v", second)
+	}
+}
+
+func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.waitInput.Timeout != 5*time.Minute {
+		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)
 	}
 }
 
@@ -1537,6 +1661,31 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	decoded, err := base64.StdEncoding.DecodeString(content[1].Data)
 	if err != nil || string(decoded) != "webp-bytes" {
 		t.Fatalf("image block data decoded = %q err=%v", string(decoded), err)
+	}
+}
+
+func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newSendCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"prompt":     "continue",
+			"session-id": "SESSION-1",
+		},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.limit != 1 || sessions.order != agentactivitybiz.MessageOrderDesc {
+		t.Fatalf("list messages input = limit %d order %q", sessions.limit, sessions.order)
+	}
+	if output.Value["waitAfterVersion"] != uint64(2) {
+		t.Fatalf("output = %#v", output.Value)
 	}
 }
 

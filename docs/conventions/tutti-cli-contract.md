@@ -146,6 +146,19 @@ mentions. When a compact message contains image prompt content, include an
 omitted from this compact shape; expose only fields useful for agent context
 recovery.
 
+`agent wait --json` is the blocking progress helper for launched or continued
+agent sessions. It should wait for the next meaningful stop point such as turn
+completion, failure, cancellation, waiting for approval, waiting for user
+input, or timeout. Its JSON result should stay narrow: compact session status,
+wait reason, latest version, timeout flag, and only the most recent agent
+execution messages from the wait window. It must not return a full transcript;
+callers that need broader context should follow with `agent session-summary`.
+When a caller continues an existing session with `agent send`, the send action
+should return a `waitAfterVersion` cursor, and the next wait call should pass
+that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
+blocks for the new stop point instead of immediately replaying the previous
+session stop state.
+
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
 the message query layer, and returns resource-bearing user messages with images

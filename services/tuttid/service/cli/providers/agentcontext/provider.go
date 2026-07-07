@@ -31,6 +31,7 @@ type AgentSessions interface {
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
 	LocalAttachmentPath(context.Context, string, string, string, string) (string, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
+	Wait(context.Context, agentservice.WaitInput) (agentservice.WaitResult, error)
 }
 
 type AgentGUILaunchPublisher interface {
@@ -105,6 +106,7 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSendCommand(),
 		p.newCancelCommand(),
 		p.newSessionsCommand([]string{"agent", "sessions"}, appID+".agent.sessions"),
+		p.newWaitCommand(),
 		p.newSessionSummaryCommand(),
 		p.newTurnResourcesCommand(),
 		p.newActivePeersCommand(),
