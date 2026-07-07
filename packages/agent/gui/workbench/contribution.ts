@@ -415,6 +415,13 @@ export function createAgentGuiWorkbenchContribution(
       const launchPayload = resolveAgentGuiWorkbenchLaunchPayload(request, {
         resolveDockLaunchPayload: input.resolveDockLaunchPayload
       });
+      const descriptorPayload = withResolvedProviderInLaunchPayload(
+        launchPayload,
+        {
+          targets: input.providerTargets,
+          providerTargetsLoading: input.providerTargetsLoading
+        }
+      );
       const {
         activation,
         dockEntryId,
@@ -425,7 +432,7 @@ export function createAgentGuiWorkbenchContribution(
         targetAgentSessionId
       } = createAgentGuiWorkbenchLaunchDescriptor({
         ...request,
-        payload: launchPayload
+        payload: descriptorPayload
       });
       // Locate an already-open node currently showing this session (its launch
       // instanceId may differ from the session-keyed one, e.g. a conversation
@@ -544,7 +551,10 @@ export function buildAgentGuiDockEntries(
 ): WorkbenchHostDockEntry[] {
   const sectionId = input.sectionId ?? "agents";
   const launchPayload = resolveAgentGuiUnifiedDockLaunchPayload(input);
-  const provider = launchPayload.provider;
+  const provider =
+    explicitProviderFromLaunchPayload(launchPayload) ??
+    resolveWorkbenchLaunchProviderFromTargetPayload(launchPayload, input) ??
+    resolveUnifiedAgentGuiDockProvider(input);
   const unifiedTileIconUrls = resolveAgentGuiUnifiedDockTileIconUrls(
     input.dockIconUrls
   );
@@ -581,14 +591,13 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
     | "targets"
   >
 ): {
-  provider: AgentGuiWorkbenchProvider;
   agentTargetId?: string;
   providerTargetId?: string;
+  provider?: AgentGuiWorkbenchProvider;
 } {
   const target = resolveUnifiedAgentGuiDockTarget(input);
   if (target) {
     return {
-      provider: target.provider,
       ...(target.agentTargetId ? { agentTargetId: target.agentTargetId } : {}),
       ...(target.agentTargetId ? {} : { providerTargetId: target.targetId })
     };
@@ -968,6 +977,63 @@ function providerTargetLaunchPayloadFromRequest(
         ? providerTargetId.trim()
         : null
   };
+}
+
+function explicitProviderFromLaunchPayload(
+  payload: unknown
+): AgentGuiWorkbenchProvider | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const provider = (payload as { provider?: unknown }).provider;
+  return isAgentGuiWorkbenchProvider(provider) ? provider : null;
+}
+
+function resolveWorkbenchLaunchProviderFromTargetPayload(
+  payload: unknown,
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    "providerTargetsLoading" | "targets"
+  >
+): AgentGuiWorkbenchProvider | null {
+  const providerTarget = providerTargetLaunchPayloadFromRequest(payload);
+  const targetId =
+    providerTarget.agentTargetId ?? providerTarget.providerTargetId ?? null;
+  if (!targetId) {
+    return null;
+  }
+  const targets = normalizeAgentGUIProviderTargets(input.targets, {
+    useStaticCatalog:
+      input.providerTargetsLoading !== true && input.targets == null
+  });
+  const target =
+    targets.find((item) => item.agentTargetId === targetId) ??
+    targets.find((item) => item.targetId === targetId) ??
+    null;
+  return target && isAgentGuiWorkbenchProvider(target.provider)
+    ? target.provider
+    : null;
+}
+
+function withResolvedProviderInLaunchPayload(
+  payload: unknown,
+  input: Pick<
+    BuildAgentGuiDockEntriesInput,
+    "providerTargetsLoading" | "targets"
+  >
+): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  if (explicitProviderFromLaunchPayload(payload)) {
+    return payload;
+  }
+  const typedPayload = payload as Record<string, unknown>;
+  const provider = resolveWorkbenchLaunchProviderFromTargetPayload(
+    payload,
+    input
+  );
+  return provider ? { ...typedPayload, provider } : payload;
 }
 
 function createAgentGuiWorkbenchPreviewContent(input: {

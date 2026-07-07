@@ -96,8 +96,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(entries[0]?.id).toBe(agentGuiWorkbenchUnifiedDockEntryId());
     expect(entries[0]?.label).toBe("Agent");
     expect(entries[0]?.launchPayload).toEqual({
-      agentTargetId: "local:claude-code",
-      provider: "claude-code"
+      agentTargetId: "local:claude-code"
     });
   });
 
@@ -122,8 +121,8 @@ describe("agent GUI workbench contribution copy", () => {
     expect(readDockEntryIconImageSrcs(entries[0]?.icon)).toEqual([
       "app://icons/agent-unified.png"
     ]);
-    expect(entries[0]?.launchPayload).toMatchObject({
-      provider: "codex"
+    expect(entries[0]?.launchPayload).toEqual({
+      agentTargetId: "local:codex"
     });
   });
 
@@ -154,8 +153,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries[0]?.launchPayload).toEqual({
-      agentTargetId: "daemon-claude",
-      provider: "claude-code"
+      agentTargetId: "daemon-claude"
     });
   });
 
@@ -176,8 +174,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries[0]?.launchPayload).toEqual({
-      agentTargetId: "daemon-codex",
-      provider: "codex"
+      agentTargetId: "daemon-codex"
     });
   });
 
@@ -197,7 +194,6 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries[0]?.launchPayload).toEqual({
-      provider: "claude-code",
       providerTargetId: "shared-agent:shared-claude"
     });
   });
@@ -356,16 +352,14 @@ describe("agent GUI workbench contribution copy", () => {
       renderBody: () => null,
       resolveDockLaunchPayload: () => ({
         agentTargetId: claudeTarget.agentTargetId,
-        provider: "claude-code",
-        providerTargetId: claudeTarget.targetId,
-        providerTargetRef: claudeTarget.ref
+        providerTargetId: claudeTarget.targetId
       }),
       workspaceId: "workspace-1"
     });
     const [dockEntry] = contribution.dockEntries ?? [];
 
-    expect(dockEntry?.launchPayload).toMatchObject({
-      provider: "codex"
+    expect(dockEntry?.launchPayload).toEqual({
+      agentTargetId: "local:codex"
     });
 
     const launchResult = contribution.onLaunchRequest?.({
