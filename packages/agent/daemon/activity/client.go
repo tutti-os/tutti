@@ -1,5 +1,4 @@
 //revive:disable:file-length-limit
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentsessionstore
 
 import (
@@ -621,21 +620,6 @@ func sanitizeStatePatchesForUpstream(patches []WorkspaceAgentStatePatch) []Works
 			out[i].Entities[j].Output = sanitizeToolPayloadMap(entity.Output)
 			out[i].Entities[j].Error = sanitizeToolPayloadMap(entity.Error)
 		}
-	}
-	return out
-}
-
-func sanitizeMessageUpdatesForUpstream(updates []WorkspaceAgentMessageUpdate) []WorkspaceAgentMessageUpdate {
-	if len(updates) == 0 {
-		return updates
-	}
-	out := make([]WorkspaceAgentMessageUpdate, len(updates))
-	for i, update := range updates {
-		out[i] = update
-		if len(update.Payload) == 0 {
-			continue
-		}
-		out[i].Payload = sanitizeToolPayloadMap(clonePayloadMap(update.Payload))
 	}
 	return out
 }
