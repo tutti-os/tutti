@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -62,28 +61,4 @@ func RequiredStringInput(input map[string]any, key string) (string, error) {
 		return "", MissingRequiredInputError(key)
 	}
 	return value, nil
-}
-
-func IntInput(input map[string]any, key string) (int, bool, error) {
-	raw, ok, err := StringInput(input, key)
-	if err != nil || !ok || raw == "" {
-		return 0, ok, err
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, true, InvalidInputKeyError(key)
-	}
-	return value, true, nil
-}
-
-func Int64Input(input map[string]any, key string) (int64, bool, error) {
-	raw, ok, err := StringInput(input, key)
-	if err != nil || !ok || raw == "" {
-		return 0, ok, err
-	}
-	value, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, true, InvalidInputKeyError(key)
-	}
-	return value, true, nil
 }

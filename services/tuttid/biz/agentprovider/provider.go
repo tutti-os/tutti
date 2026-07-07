@@ -58,12 +58,3 @@ func Normalize(provider string) string {
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
 }
-
-func SupportsComposerSettings(provider string) bool {
-	switch Normalize(provider) {
-	case ClaudeCode, Codex, Gemini, TuttiAgent:
-		return true
-	default:
-		return false
-	}
-}

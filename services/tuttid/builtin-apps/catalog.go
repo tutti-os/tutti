@@ -113,14 +113,6 @@ func SnapshotForRemoteURL(catalogURL string) (CatalogSnapshot, error) {
 	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL), false)
 }
 
-func RefreshRemoteCatalog() (CatalogSnapshot, error) {
-	return snapshot(true)
-}
-
-func RefreshRemoteCatalogForRemoteURL(catalogURL string) (CatalogSnapshot, error) {
-	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL), true)
-}
-
 func RefreshRemoteCatalogAndWait(ctx context.Context) (CatalogSnapshot, error) {
 	return snapshotAndWait(ctx)
 }

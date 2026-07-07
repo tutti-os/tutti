@@ -25,13 +25,3 @@ func TestStringInputReportsInvalidKeyType(t *testing.T) {
 		t.Fatalf("err = %q", err.Error())
 	}
 }
-
-func TestIntInputReportsInvalidKey(t *testing.T) {
-	_, _, err := IntInput(map[string]any{"limit": "nope"}, "limit")
-	if !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("err = %v, want ErrInvalidInput", err)
-	}
-	if !strings.Contains(err.Error(), `invalid input "limit"`) {
-		t.Fatalf("err = %q", err.Error())
-	}
-}

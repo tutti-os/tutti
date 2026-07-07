@@ -167,9 +167,9 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := RefreshRemoteCatalog()
+	snapshot, err := snapshot(true)
 	if err != nil {
-		t.Fatalf("RefreshRemoteCatalog() error = %v", err)
+		t.Fatalf("snapshot(true) error = %v", err)
 	}
 	if snapshot.RemoteCatalog.Status != RemoteCatalogLoadStatusLoading {
 		t.Fatalf("remote catalog status = %q, want loading", snapshot.RemoteCatalog.Status)
