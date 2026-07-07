@@ -1012,6 +1012,7 @@ describe("AgentGUINode", () => {
     const onAgentProbeRefreshRequest = vi.fn();
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
@@ -1059,6 +1060,7 @@ describe("AgentGUINode", () => {
   it("does not show the unavailable limits placeholder while usage is still loading", async () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     mockViewModel = createViewModel({
+      conversationScope: "multi-provider",
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""

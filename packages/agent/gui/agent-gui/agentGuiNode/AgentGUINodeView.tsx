@@ -4502,7 +4502,6 @@ const AgentGUIConversationRailPane = memo(
     slashStatusUsageAttempted,
     onAgentConfigMenuOpen,
     onAgentUsageRefresh,
-    selectedProviderTarget,
     providerTargets,
     providerTargetsLoading,
     conversationScope,
