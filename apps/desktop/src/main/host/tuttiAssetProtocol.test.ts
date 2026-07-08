@@ -225,7 +225,7 @@ test("tutti asset protocol resolves packaged folder default asset", () => {
 test("tutti asset protocol rejects unknown asset routes", () => {
   assert.equal(
     resolveTuttiAssetProtocolFilePath(
-      "tutti-asset://agent/gemini.png",
+      "tutti-asset://agent/unknown.png",
       "/tmp/missing"
     ),
     null

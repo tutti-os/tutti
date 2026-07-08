@@ -43,6 +43,20 @@ func opencodeACPModeID(mode string) string {
 	}
 }
 
+func opencodeACPCommands() []AgentSessionCommand {
+	return []AgentSessionCommand{
+		{
+			Name:        "compact",
+			Description: "Compact the conversation context",
+		},
+		{
+			Name:        "review",
+			Description: "Review code changes",
+			InputHint:   "instructions (optional)",
+		},
+	}
+}
+
 func opencodeACPEnv(session Session, host HostMetadata) []string {
 	env := standardACPEnv(session, host)
 	if configContent := opencodeConfigContent(session); configContent != "" {
@@ -53,12 +67,18 @@ func opencodeACPEnv(session Session, host HostMetadata) []string {
 
 func opencodeConfigContent(session Session) string {
 	model := strings.TrimSpace(session.SettingsValue().Model)
-	if model == "" {
-		return ""
+	config := map[string]any{
+		"command": map[string]any{
+			"review": map[string]any{
+				"template":    "Review the requested code scope. Interpret empty arguments or `uncommitted` as uncommitted changes; `base:<branch>` as comparing current work with that branch; `commit:<sha>` as reviewing that commit; and `custom:<text>` as custom review instructions. Focus on correctness bugs, behavioral regressions, missing tests, and security risks.\n\nArguments: $ARGUMENTS",
+				"description": "Review code changes",
+			},
+		},
 	}
-	data, err := json.Marshal(map[string]string{
-		"model": model,
-	})
+	if model != "" {
+		config["model"] = model
+	}
+	data, err := json.Marshal(config)
 	if err != nil {
 		return ""
 	}

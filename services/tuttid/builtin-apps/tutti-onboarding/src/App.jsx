@@ -9,8 +9,7 @@ const agentTabs = [
   { label: "Claude Code", image: "/assets/bind-claude.webp", altKey: "t_s1a" },
   { label: "Codex", image: "/assets/bind-codex.webp", altKey: "t_s1b" },
   { label: "Hermes Agent", soon: true },
-  { label: "OpenClaw", soon: true },
-  { label: "Gemini", soon: true }
+  { label: "OpenClaw", soon: true }
 ];
 
 const atTabs = [

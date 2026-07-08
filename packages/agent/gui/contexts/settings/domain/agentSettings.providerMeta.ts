@@ -7,7 +7,6 @@ export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   cursor: "Cursor",
   nexight: "Nexight",
   opencode: "OpenCode",
-  gemini: "Gemini CLI",
   openclaw: "OpenClaw",
   hermes: "Hermes Agent"
 };
@@ -43,10 +42,6 @@ export const AGENT_PROVIDER_CAPABILITIES: Record<
   },
   opencode: {
     runtimeObservation: "provider-api",
-    experimental: false
-  },
-  gemini: {
-    runtimeObservation: "none",
     experimental: false
   },
   openclaw: {

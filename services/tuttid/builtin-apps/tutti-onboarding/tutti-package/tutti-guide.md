@@ -22,10 +22,10 @@
 
 - 一键连接你本地的 Agent，复用你已有的订阅，零额外费用。
 - **当前支持：** Claude Code、Codex。
-- **即将支持：** OpenClaw、Gemini、Hermes（Kimi）。
+- **即将支持：** OpenClaw、Hermes。
 - 无需终端，上手简单，不同 Agent 间交互体验一致。
 
-> 当用户问"支持哪些 Agent"时：回答当前支持 Claude Code 和 Codex，OpenClaw、Gemini、Hermes 正在开发接入中。
+> 当用户问"支持哪些 Agent"时：回答当前支持 Claude Code 和 Codex，OpenClaw、Hermes 正在开发接入中。
 
 > 当用户问"需要额外付费吗"时：回答 Tutti 复用你已有的 Agent 订阅，不需要额外付费。可使用的应用能力取决于你已有的 Agent / 模型订阅。
 
@@ -151,7 +151,7 @@ A: Tutti 本地版是开源免费的。它复用你已有的 Agent 订阅（如 
 A: 不需要。Tutti 是全 GUI 界面，无需终端命令行，打开就能用。
 
 **Q: 支持哪些 Agent？**
-A: 当前支持 Claude Code 和 Codex。OpenClaw、Gemini、Hermes 正在开发接入中。
+A: 当前支持 Claude Code 和 Codex。OpenClaw、Hermes 正在开发接入中。
 
 **Q: 应用需要单独付费吗？**
 A: 不需要。所有内置应用复用你已有的 Agent 订阅。可使用的应用能力取决于你的 Agent / 模型订阅所支持的能力。

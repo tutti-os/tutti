@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -729,7 +730,41 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	}); err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
-	return s.Get(ctx, workspaceID, agentSessionID)
+	if err := s.persistUpdatedRuntimeSettings(ctx, workspaceID, agentSessionID); err != nil {
+		return Session{}, err
+	}
+	session, err := s.Get(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	return session, nil
+}
+
+func (s *Service) persistUpdatedRuntimeSettings(ctx context.Context, workspaceID string, agentSessionID string) error {
+	reporter, ok := s.SessionReader.(SessionStateReporter)
+	if !ok {
+		return nil
+	}
+	session, ok := s.controller().Session(workspaceID, agentSessionID)
+	if !ok || session.Settings == nil {
+		return nil
+	}
+	_, err := reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    strings.TrimSpace(workspaceID),
+		AgentSessionID: strings.TrimSpace(agentSessionID),
+		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
+			Provider:          strings.TrimSpace(session.Provider),
+			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+			Model:             strings.TrimSpace(session.Settings.Model),
+			Settings:          composerSettingsToStatePayload(*session.Settings),
+			CWD:               strings.TrimSpace(session.Cwd),
+			Title:             strings.TrimSpace(session.Title),
+			OccurredAtUnixMS:  time.Now().UnixMilli(),
+		},
+	})
+	return err
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {

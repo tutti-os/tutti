@@ -230,6 +230,25 @@ func (s *Store) applyWorkspaceAgentActivityV7(ctx context.Context) error {
 	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV7)
 }
 
+func (s *Store) applyWorkspaceAgentActivityV8(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV8)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	if _, err := s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_sessions_pinned_page
+  ON workspace_agent_sessions(workspace_id, deleted_at_unix_ms, pinned_at_unix_ms DESC, agent_session_id ASC);
+`); err != nil {
+		return fmt.Errorf("migrate workspace agent activity to v8 pinned pagination index: %w", err)
+	}
+
+	return s.recordMigration(ctx, schemaMigrationWorkspaceAgentActivityV8)
+}
+
 func (s *Store) backfillSystemAgentTargetIDs(ctx context.Context) error {
 	providers := make([]string, 0, len(s.opts.TargetIDBackfillByProvider))
 	for provider := range s.opts.TargetIDBackfillByProvider {

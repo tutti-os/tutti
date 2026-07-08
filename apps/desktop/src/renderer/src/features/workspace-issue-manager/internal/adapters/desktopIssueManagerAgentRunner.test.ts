@@ -28,6 +28,7 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
   assert.equal(capturedLaunch?.agentTargetId, "local:codex");
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.equal(capturedLaunch?.provider, "codex");
   assert.equal(capturedLaunch?.userProjectPath, undefined);
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
@@ -118,6 +119,7 @@ test("desktop issue-manager agent runner passes selected execution directory to 
   const prompt = capturedLaunch?.draftPrompt ?? "";
 
   assert.equal(capturedCreate, undefined);
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.equal(capturedLaunch?.userProjectPath, "/Users/example/project/tutti");
   assert.doesNotMatch(prompt, /\/Users\/example\/project\/tutti/);
   assert.match(prompt, /mention:\/\/workspace-issue/);
@@ -162,15 +164,16 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
       tasks: []
     },
     executionDirectory: "/Users/example/project/tutti",
-    agentTargetId: "remote:gemini",
-    provider: "gemini",
+    agentTargetId: "remote:openclaw",
+    provider: "openclaw",
     workspaceId: "workspace-1"
   });
 
   assert.deepEqual(result, { status: "opened" });
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
-  assert.equal(capturedLaunch?.agentTargetId, "remote:gemini");
+  assert.equal(capturedLaunch?.agentTargetId, "remote:openclaw");
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.match(
     capturedLaunch?.draftPrompt ?? "",
     /Break this task reference down into executable tasks/
@@ -179,7 +182,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
     capturedLaunch?.draftPrompt ?? "",
     /mention:\/\/workspace-issue\/issue-1\?workspaceId=workspace-1&topicId=topic-1&mode=breakdown/
   );
-  assert.equal(capturedLaunch?.provider, "gemini");
+  assert.equal(capturedLaunch?.provider, "openclaw");
   assert.equal(capturedLaunch?.userProjectPath, "/Users/example/project/tutti");
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
   assert.doesNotMatch(capturedLaunch?.draftPrompt ?? "", /引用资料数：1/);
@@ -211,8 +214,8 @@ test("desktop issue-manager agent breakdown launcher sends localized prompt", as
       },
       tasks: []
     },
-    agentTargetId: "remote:gemini",
-    provider: "gemini",
+    agentTargetId: "remote:openclaw",
+    provider: "openclaw",
     workspaceId: "workspace-1"
   });
 

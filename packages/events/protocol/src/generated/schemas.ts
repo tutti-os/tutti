@@ -123,24 +123,6 @@ export const preferencesDesktopPreferencesSchema = {
             }
           }
         },
-        gemini: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            model: {
-              type: "string"
-            },
-            permissionModeId: {
-              type: "string"
-            },
-            reasoningEffort: {
-              type: "string"
-            },
-            speed: {
-              type: "string"
-            }
-          }
-        },
         hermes: {
           type: "object",
           additionalProperties: false,
@@ -235,9 +217,6 @@ export const preferencesDesktopPreferencesSchema = {
           type: "boolean"
         },
         nexight: {
-          type: "boolean"
-        },
-        gemini: {
           type: "boolean"
         },
         hermes: {
@@ -1270,24 +1249,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 }
               }
             },
-            gemini: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
             hermes: {
               type: "object",
               additionalProperties: false,
@@ -1382,9 +1343,6 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "boolean"
             },
             nexight: {
-              type: "boolean"
-            },
-            gemini: {
               type: "boolean"
             },
             hermes: {
@@ -1658,24 +1616,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 }
               }
             },
-            gemini: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                model: {
-                  type: "string"
-                },
-                permissionModeId: {
-                  type: "string"
-                },
-                reasoningEffort: {
-                  type: "string"
-                },
-                speed: {
-                  type: "string"
-                }
-              }
-            },
             hermes: {
               type: "object",
               additionalProperties: false,
@@ -1770,9 +1710,6 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "boolean"
             },
             nexight: {
-              type: "boolean"
-            },
-            gemini: {
               type: "boolean"
             },
             hermes: {

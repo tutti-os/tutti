@@ -71,7 +71,7 @@ describe("resolvePermissionModeControlsDisabled", () => {
   it("leaves ACP-backed providers enabled once no turn is in flight", () => {
     expect(
       resolvePermissionModeControlsDisabled({
-        provider: "gemini",
+        provider: "openclaw",
         isSendingTurn: false,
         isSubmittingPrompt: false,
         showStopButton: false

@@ -86,18 +86,19 @@ func (a *CodexAppServerAdapter) failActiveTurnFromAppServerError(agentSessionID 
 }
 
 // settleActiveTurn owns the shared settle sequence — lock, session lookup,
-// provider-turn-id match (empty ids are wildcards), phase transition,
-// activeTurnID clear, non-blocking terminal send — so the completion and
-// failure paths cannot diverge on the guards. terminalFor runs under the
-// adapter lock with the matched active turn.
+// provider-turn-id match, phase transition, activeTurnID clear, non-blocking
+// terminal send — so the completion and failure paths cannot diverge on the
+// guards. terminalFor runs under the adapter lock with the matched active turn.
 //
-// A mismatched provider turn id settles anyway when the recorded id was
-// never confirmed by turn/started: a turn/start issued while another turn is
-// already running responds with a stub id that codex never starts — the
-// input is steered into the running turn, so that turn's same-thread
-// terminal is this turn's terminal (live-verified against codex 0.142.5,
+// A mismatched non-empty provider turn id settles anyway when the recorded id
+// was never confirmed by turn/started: a turn/start issued while another turn
+// is already running responds with a stub id that codex never starts — the
+// input is steered into the running turn, so that turn's same-thread terminal
+// is this turn's terminal (live-verified against codex 0.142.5,
 // TestLiveProtocolTurnStartDuringActiveTurn). Requiring an exact match there
-// wedged awaitTurnCompletion forever.
+// wedged awaitTurnCompletion forever. Goal-adopted turns are the only active
+// turns allowed to settle from an empty terminal id because their ownership was
+// established by the preceding turn/started notification.
 func (a *CodexAppServerAdapter) settleActiveTurn(
 	agentSessionID string,
 	providerTurnID string,
@@ -118,8 +119,9 @@ func (a *CodexAppServerAdapter) settleActiveTurn(
 			expected := strings.TrimSpace(appSession.activeTurnID)
 			actual := strings.TrimSpace(providerTurnID)
 			switch {
-			case expected == "" || actual == "" || expected == actual:
-			case !appSession.activeTurnStartConfirmed:
+			case expected == "" || actual == expected:
+			case actual == "" && activeTurn.kind == codexAppServerTurnKindGoalAdopted:
+			case actual != "" && !appSession.activeTurnStartConfirmed:
 				steerAdoptedTurnID = expected
 			default:
 				droppedTurnID = expected

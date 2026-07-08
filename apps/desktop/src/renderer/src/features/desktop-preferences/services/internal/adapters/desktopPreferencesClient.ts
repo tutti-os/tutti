@@ -337,7 +337,6 @@ const desktopAgentProviderKeys = [
   "tutti-agent",
   "cursor",
   "nexight",
-  "gemini",
   "hermes",
   "openclaw"
 ] as const;

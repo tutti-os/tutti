@@ -243,10 +243,6 @@ export type WorkbenchHostDockPopupPreviewProvider = (
 ) => WorkbenchDockPreviewContent | null;
 
 export interface WorkbenchHostDockPopupItemDescriptor {
-  /**
-   * @deprecated Use preview with kind: "image".
-   */
-  previewImageUrl?: string | null;
   preview?: WorkbenchDockPreviewContent | null;
   revision?: string | null;
   subtitle?: string | null;

@@ -422,7 +422,7 @@ test("agent provider dock state source puts OpenClaw last when setup is required
   );
 
   assert.equal(claudeState?.order, 100);
-  assert.equal(openClawState?.order, 207);
+  assert.equal(openClawState?.order, 206);
   assert.equal(openClawState?.visibility, "never");
   assert.ok((openClawState?.order ?? 0) > (claudeState?.order ?? 0));
 });
@@ -446,11 +446,11 @@ test("agent provider dock state source keeps ready OpenClaw with installed provi
     workspaceAgentGuiDockEntryId("openclaw")
   );
 
-  assert.equal(openClawState?.order, 7);
+  assert.equal(openClawState?.order, 6);
   assert.equal(openClawState?.visibility, "always");
 });
 
-test("agent provider dock state source hides Hermes and Gemini from dock", () => {
+test("agent provider dock state source hides Hermes and OpenCode from dock", () => {
   const service = createAgentProviderStatusService({
     statuses: [
       createStatus({
@@ -461,7 +461,7 @@ test("agent provider dock state source hides Hermes and Gemini from dock", () =>
       createStatus({
         actions: [],
         availability: "ready",
-        provider: "gemini"
+        provider: "opencode"
       })
     ]
   });
@@ -473,12 +473,12 @@ test("agent provider dock state source hides Hermes and Gemini from dock", () =>
   const hermesState = source.getEntryState(
     workspaceAgentGuiDockEntryId("hermes")
   );
-  const geminiState = source.getEntryState(
-    workspaceAgentGuiDockEntryId("gemini")
+  const openCodeState = source.getEntryState(
+    workspaceAgentGuiDockEntryId("opencode")
   );
 
   assert.equal(hermesState?.visibility, "never");
-  assert.equal(geminiState?.visibility, "never");
+  assert.equal(openCodeState?.visibility, "never");
 });
 
 test("agent provider dock state source hides Tutti Agent disabled targets", () => {

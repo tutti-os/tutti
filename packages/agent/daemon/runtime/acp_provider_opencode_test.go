@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -27,24 +28,39 @@ func TestOpenCodeAdapterUsesOfficialACPCommand(t *testing.T) {
 	}
 }
 
-func TestOpenCodeACPEnvInjectsModelConfigContent(t *testing.T) {
+func TestOpenCodeACPEnvInjectsConfigContent(t *testing.T) {
 	t.Parallel()
 
 	session := standardTestSession(ProviderOpenCode)
 	session.Settings = &SessionSettings{Model: "anthropic/claude-sonnet-4-5"}
 
 	env := opencodeACPEnv(session, LegacyHostMetadata())
-	found := false
+	var configContent string
 	for _, item := range env {
 		if strings.HasPrefix(item, "OPENCODE_CONFIG_CONTENT=") {
-			found = true
-			if item != `OPENCODE_CONFIG_CONTENT={"model":"anthropic/claude-sonnet-4-5"}` {
-				t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", item)
-			}
+			configContent = strings.TrimPrefix(item, "OPENCODE_CONFIG_CONTENT=")
 		}
 	}
-	if !found {
+	if configContent == "" {
 		t.Fatalf("env = %#v, want OPENCODE_CONFIG_CONTENT", env)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(configContent), &config); err != nil {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT invalid JSON: %v", err)
+	}
+	if got, _ := config["model"].(string); got != "anthropic/claude-sonnet-4-5" {
+		t.Fatalf("model = %q, want anthropic/claude-sonnet-4-5", got)
+	}
+	commands, _ := config["command"].(map[string]any)
+	review, _ := commands["review"].(map[string]any)
+	if review == nil {
+		t.Fatalf("command config = %#v, want review command", config["command"])
+	}
+	if got, _ := review["description"].(string); got != "Review code changes" {
+		t.Fatalf("review description = %q, want Review code changes", got)
+	}
+	if template, _ := review["template"].(string); !strings.Contains(template, "$ARGUMENTS") {
+		t.Fatalf("review template = %q, want argument placeholder", template)
 	}
 }
 

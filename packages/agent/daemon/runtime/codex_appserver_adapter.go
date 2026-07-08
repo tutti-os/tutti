@@ -2132,10 +2132,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 					terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)))
 					emitTerminal(terminalEvents)
 				}
+				a.scheduleGoalContinuationNudge(session)
 				return true, nil
 			}
 			normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
 			emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
+			a.scheduleGoalContinuationNudge(session)
 			return true, nil
 		}
 		terminalEvents := []activityshared.Event{}

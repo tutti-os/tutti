@@ -211,14 +211,14 @@ func TestCursorAdapterAutoContinueExhaustedMarksTurnFailed(t *testing.T) {
 func TestStandardACPAdapterWithoutOptInDoesNotAutoContinue(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
 	transport.conn.retriableErrorPrompts = 1
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-1"
+	session.ProviderSessionID = "hermes-session-1"
 
 	events, err := adapter.Exec(context.Background(), session, textPrompt("build the report"), "", "turn-1", nil, nil)
 	if err != nil {

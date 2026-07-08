@@ -5885,20 +5885,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   justify-content: flex-end;
   min-width: 28px;
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-meta[data-kind="loading"],
 .agent-gui-node__conversation-meta[data-kind="waiting"],
-.agent-gui-node__conversation-meta[data-kind="failed"] {
+.agent-gui-node__conversation-meta[data-kind="failed"],
+.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
   width: 28px;
   min-width: 28px;
-  justify-content: center;
-}
-
-.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
-  width: 10px;
-  min-width: 10px;
   justify-content: center;
 }
 
@@ -5922,7 +5916,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-delete-button,
@@ -5943,6 +5936,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-actions,
 .agent-gui-node__conversation-actions:focus-within {
   opacity: 1;
+  /* Only in the visible state: fading in on hover stays smooth while
+     leaving the row swaps back to the meta icon instantly, with no
+     lingering cross-fade overlapping the two. */
+  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-item[data-pinned="true"]

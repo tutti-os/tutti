@@ -144,13 +144,7 @@ export interface WorkspaceShellRuntimePanelSnapshot {
 export interface WorkspaceDesktopPendingIssueAgentHandoff {
   requestId: string;
   workspaceId: string;
-  provider:
-    | "codex"
-    | "claude-code"
-    | "nexight"
-    | "gemini"
-    | "openclaw"
-    | "hermes";
+  provider: "codex" | "claude-code" | "nexight" | "openclaw" | "hermes";
   taskId: string;
   issueId: string;
   taskTitle: string;

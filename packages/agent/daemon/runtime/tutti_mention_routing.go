@@ -7,6 +7,8 @@ import (
 
 const tuttiMentionRoutingReminder = "<system-reminder>mention:// links are Tutti internal references; use the exact visible tutti-cli skill first to route them.</system-reminder>"
 
+const tuttiAgentMentionRoutingReminder = "<system-reminder>mention:// links are Tutti internal references; use the exact visible matching skill first — agent mentions: read and follow the tutti-handoff skill before acting.</system-reminder>"
+
 var markdownMentionURIRegex = regexp.MustCompile(`\[(?:\\.|[^\]\\\r\n])*\]\((mention://[A-Za-z0-9][A-Za-z0-9._~-]*(?:[/?#][^\s)]*)?)\)`)
 
 func tuttiMentionRoutingSkills(visibleText string) (bool, []string) {
@@ -34,9 +36,9 @@ func skillForMentionURI(uri string) string {
 	case strings.HasPrefix(uri, "mention://workspace-reference/"):
 		return "reference"
 	case strings.HasPrefix(uri, "mention://agent-session/"):
-		return "tutti-cli"
+		return "tutti-handoff"
 	case strings.HasPrefix(uri, "mention://agent-target/"):
-		return "tutti-cli"
+		return "tutti-handoff"
 	default:
 		return ""
 	}
@@ -59,7 +61,9 @@ func extractMentionURIs(text string) []string {
 }
 
 func isInternalMentionRoutingTitle(title string) bool {
-	return strings.HasPrefix(strings.TrimSpace(title), tuttiMentionRoutingReminder)
+	trimmed := strings.TrimSpace(title)
+	return strings.HasPrefix(trimmed, tuttiMentionRoutingReminder) ||
+		strings.HasPrefix(trimmed, tuttiAgentMentionRoutingReminder)
 }
 
 func appendTuttiMentionRoutingPrompt(content []map[string]any, skills []string) []map[string]any {
@@ -91,10 +95,18 @@ func appendTuttiMentionRoutingContent(content []PromptContentBlock, skills []str
 }
 
 func tuttiMentionRoutingPrompt(skills []string) string {
+	hasSkill := false
 	for _, skill := range skills {
-		if strings.TrimSpace(skill) != "" {
-			return tuttiMentionRoutingReminder
+		if strings.TrimSpace(skill) == "" {
+			continue
 		}
+		hasSkill = true
+		if skill == "tutti-handoff" {
+			return tuttiAgentMentionRoutingReminder
+		}
+	}
+	if hasSkill {
+		return tuttiMentionRoutingReminder
 	}
 	return ""
 }

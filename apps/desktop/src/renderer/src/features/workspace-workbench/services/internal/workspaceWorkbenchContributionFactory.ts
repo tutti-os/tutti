@@ -33,7 +33,10 @@ import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-ap
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IReporterService } from "@renderer/features/analytics";
-import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
+import type {
+  DesktopLocale,
+  WorkspaceWorkbenchDesktopI18nRuntime
+} from "@shared/i18n";
 import type {
   WorkspaceWorkbenchBodyRendererContext,
   WorkspaceWorkbenchCapabilitySettingsTarget
@@ -42,6 +45,7 @@ import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
 
 export interface DesktopWorkbenchContributionContext {
   appI18n: I18nRuntime<string>;
+  appLocale: DesktopLocale;
   appCenterService: IWorkspaceAppCenterService;
   browserApi?: DesktopBrowserApi;
   browserService: WorkspaceBrowserService;

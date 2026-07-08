@@ -27,13 +27,10 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	}
 	// Browser use is delivered as a default MCP server to every provider, so it
 	// is advertised by default alongside the per-provider capabilities.
-	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "gemini", "openclaw"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
 		if got := composerProviderCapabilities(provider); !slices.Contains(got, "browserUse") {
 			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
 		}
-	}
-	if got := composerProviderCapabilities("gemini"); !slices.Contains(got, "interrupt") {
-		t.Fatalf("gemini defaults = %v, missing interrupt", got)
 	}
 	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
@@ -56,7 +53,7 @@ func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
 	t.Setenv("TUTTI_COMPUTER_USE", "")
 	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
 
-	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "gemini", "openclaw"} {
+	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
 		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
 			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
 		}
@@ -112,7 +109,7 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	if !cursor.PlanMode {
 		t.Fatal("cursor planMode clamped, want preserved")
 	}
-	for _, provider := range []string{"gemini", "hermes", "nexight", "openclaw"} {
+	for _, provider := range []string{"hermes", "nexight", "openclaw"} {
 		got := normalizeComposerSettingsForProvider(provider, ComposerSettings{PlanMode: true})
 		if got.PlanMode {
 			t.Fatalf("%s planMode = true, want clamped to false", provider)
@@ -191,7 +188,6 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		{"codex", true, true, true},
 		{"tutti-agent", true, true, true},
 		{"cursor", true, false, true},
-		{"gemini", true, true, false},
 		{"hermes", false, false, false},
 		{"nexight", false, false, true},
 		{"openclaw", false, false, false},

@@ -3,6 +3,8 @@ import test from "node:test";
 import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
 import {
   createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
@@ -44,7 +46,7 @@ test("workspace agent GUI identifiers keep codex as the legacy default entry", (
     "agent-gui:claude-code"
   );
   assert.equal(workspaceAgentGuiInstanceId("codex"), "agent-gui:codex");
-  assert.equal(workspaceAgentGuiInstanceId("gemini"), "agent-gui:gemini");
+  assert.equal(workspaceAgentGuiInstanceId("hermes"), "agent-gui:hermes");
   assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), "codex");
   assert.equal(
     workspaceAgentGuiProviderFromIdentifier("agent-gui:codex:panel:1"),
@@ -70,9 +72,9 @@ test("workspace agent GUI creates multi-open panel instance ids", () => {
   assert.equal(
     createWorkspaceAgentGuiInstanceId({
       agentSessionId: "session:1",
-      provider: "gemini"
+      provider: "hermes"
     }),
-    "agent-gui:gemini:session:session%3A1"
+    "agent-gui:hermes:session:session%3A1"
   );
 });
 
@@ -168,6 +170,32 @@ test("workspace agent GUI draft launches prefill prompts without binding session
     },
     type: "agent-gui:prefill-prompt"
   });
+});
+
+test("workspace agent GUI unified launch requests keep All-launched nodes on the unified dock entry", () => {
+  const sessionRequest = createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+    agentSessionId: "session-2",
+    provider: "claude-code"
+  });
+  const draftRequest = createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+    draftPrompt: "Review this issue",
+    provider: "codex"
+  });
+
+  assert.equal(sessionRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(draftRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(draftRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).provider,
+    "claude-code"
+  );
 });
 
 test("toWorkspaceFilesActivation accepts reveal-file payloads and rejects others", () => {

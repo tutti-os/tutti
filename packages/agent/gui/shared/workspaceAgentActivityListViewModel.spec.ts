@@ -1144,7 +1144,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           id: 2,
           workspaceId: "ws-1",
           userId: "user-b",
-          provider: "gemini",
+          provider: "openclaw",
           status: "working"
         }
       ],
@@ -1153,7 +1153,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           id: 20,
           agentSessionId: "session-20",
           presenceId: 2,
-          provider: "gemini",
+          provider: "openclaw",
           providerSessionId: "provider-20",
           cwd: "/repo",
           status: "working",
@@ -1407,7 +1407,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           id: 20,
           agentSessionId: "session-20",
           presenceId: 0,
-          provider: "gemini",
+          provider: "openclaw",
           providerSessionId: "provider-20",
           cwd: "/repo",
           status: "completed",
@@ -2231,7 +2231,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           callItem({
             id: 1,
             agentSessionId: "session-30",
-            eventId: "gemini:tool-call-1",
+            eventId: "openclaw:tool-call-1",
             name: "agent.responding",
             content: "正在分析 activity stream",
             status: "running"

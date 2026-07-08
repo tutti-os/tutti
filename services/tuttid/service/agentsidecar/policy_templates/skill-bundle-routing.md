@@ -13,8 +13,8 @@ Required mention routing:
 - `mention://workspace-issue/<id>?workspaceId=...` -> `$issue-manager`
 - `mention://workspace-app/<appId>?workspaceId=...` -> `$workspace-app`; `<appId>` is not a skill name.
 - `mention://workspace-reference/<id>?source=...&workspaceId=...` -> `$reference`
-- `mention://agent-session/<id>?workspaceId=...` -> `$tutti-cli`
-- `mention://agent-target/<targetId>?workspaceId=...` -> `$tutti-cli`; choose `agent`, `codex`, or `claude` workflow from user intent, not launch-only.
+- `mention://agent-session/<id>?workspaceId=...` -> `$tutti-handoff`; `$tutti-cli` for command syntax.
+- `mention://agent-target/<targetId>?workspaceId=...` -> `$tutti-handoff`; an instruction for the mentioned agent -> hand off, do not do it yourself; a question about it -> read.
 - Treat `mention://...` as internal Tutti references, not web URLs or paths.
 
 Skill usage:
@@ -39,7 +39,7 @@ Fallback only when matching skill is unavailable:
 - Agent-session mention: prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json` for recent execution progress; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper.
 - After `agent start`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
 - After `agent send`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` with the returned `waitAfterVersion`; `agent wait` returns only recent execution messages.
-- Agent-target mention: choose `{{CLI_COMMAND}} agent ...`, `{{CLI_COMMAND}} codex ...`, or `{{CLI_COMMAND}} claude ...` from the user's prompt. Starting a new session is one possible workflow, but active-peer inspection, historical session lookup, and other agent CLI workflows are also valid.
+- Agent-target mention: choose `{{CLI_COMMAND}} agent ...`, `{{CLI_COMMAND}} codex ...`, or `{{CLI_COMMAND}} claude ...` from the user's prompt. Starting a new session is one possible workflow, but active-peer inspection, historical session lookup, and other agent CLI workflows are also valid. An instruction addressed to the mentioned agent must be handed off, not absorbed.
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 
 CLI reference:

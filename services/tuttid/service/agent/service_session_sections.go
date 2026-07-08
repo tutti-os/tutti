@@ -29,6 +29,10 @@ func (s *Service) ListSessionSections(
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
+	pinned, err := s.sessionPinnedPage(ctx, workspaceID, "", input.LimitPerSection, agentTargetID)
+	if err != nil {
+		return SessionSectionsPage{}, err
+	}
 	sections := make([]SessionSection, 0, len(projects)+1)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
@@ -45,6 +49,7 @@ func (s *Service) ListSessionSections(
 	sections = append(sections, conversations)
 	return SessionSectionsPage{
 		WorkspaceID: workspaceID,
+		Pinned:      pinned,
 		Sections:    sections,
 	}, nil
 }
@@ -74,6 +79,24 @@ func (s *Service) ListSessionSectionPage(
 		}
 	}
 	return SessionSection{}, ErrInvalidArgument
+}
+
+func (s *Service) ListPinnedSessionPage(
+	ctx context.Context,
+	workspaceID string,
+	input ListPinnedSessionPageInput,
+) (SessionPage, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" || input.Limit <= 0 {
+		return SessionPage{}, ErrInvalidArgument
+	}
+	return s.sessionPinnedPage(
+		ctx,
+		workspaceID,
+		input.Cursor,
+		input.Limit,
+		strings.TrimSpace(input.AgentTargetID),
+	)
 }
 
 func (s *Service) currentUserProjects(ctx context.Context) ([]userprojectbiz.Project, error) {
@@ -134,6 +157,43 @@ func (s *Service) sessionSectionPage(
 		Sessions:    s.sessionsFromActivity(page.Sessions),
 		HasMore:     page.HasMore,
 		NextCursor:  page.NextCursor,
+	}, nil
+}
+
+func (s *Service) sessionPinnedPage(
+	ctx context.Context,
+	workspaceID string,
+	cursor string,
+	limit int,
+	agentTargetID string,
+) (SessionPage, error) {
+	reader, ok := s.SessionReader.(SessionSectionReader)
+	if !ok {
+		return SessionPage{}, fmt.Errorf("%w: session section reader is unavailable", ErrInvalidArgument)
+	}
+	parsedCursor := sessionPageCursor{}
+	if strings.TrimSpace(cursor) != "" {
+		var err error
+		parsedCursor, err = parseSessionListCursor(cursor)
+		if err != nil {
+			return SessionPage{}, err
+		}
+	}
+	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:       workspaceID,
+		SectionKey:        agentactivitybiz.PinnedSessionPageKey,
+		AgentTargetID:     strings.TrimSpace(agentTargetID),
+		CursorUpdatedAtMS: parsedCursor.UpdatedAtUnixMS,
+		CursorSessionID:   parsedCursor.ID,
+		Limit:             limit,
+	})
+	if !ok {
+		return SessionPage{}, ErrInvalidArgument
+	}
+	return SessionPage{
+		Sessions:   s.sessionsFromActivity(page.Sessions),
+		HasMore:    page.HasMore,
+		NextCursor: page.NextCursor,
 	}, nil
 }
 

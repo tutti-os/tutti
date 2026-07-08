@@ -1,7 +1,6 @@
 import {
   codexRoundedUrl,
   cursorRoundedUrl,
-  geminiRoundedUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentTuttiUrl,
@@ -16,7 +15,6 @@ export const agentGuiDockIconUrls = {
   "claude-code": manageAgentClaudeCodeUrl,
   codex: codexRoundedUrl,
   cursor: cursorRoundedUrl,
-  gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   nexight: manageAgentTuttiUrl,
   openclaw: openclawRoundedUrl,

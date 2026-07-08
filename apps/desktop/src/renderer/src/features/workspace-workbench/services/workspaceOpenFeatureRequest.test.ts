@@ -19,9 +19,9 @@ test("workspace agent chat uses the requested provider before the workspace defa
 test("workspace agent chat falls back to the workspace default provider", () => {
   assert.equal(
     resolveWorkspaceAgentChatProvider({
-      defaultProvider: "gemini"
+      defaultProvider: "hermes"
     }),
-    "gemini"
+    "hermes"
   );
 });
 

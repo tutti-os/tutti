@@ -183,7 +183,6 @@ export const desktopAgentProviders = [
   "tutti-agent",
   "cursor",
   "nexight",
-  "gemini",
   "hermes",
   "openclaw",
   "opencode"

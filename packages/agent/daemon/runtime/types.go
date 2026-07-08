@@ -11,7 +11,6 @@ const (
 	ProviderTuttiAgent = "tutti-agent"
 	ProviderCursor     = "cursor"
 	ProviderNexight    = "nexight"
-	ProviderGemini     = "gemini"
 	ProviderHermes     = "hermes"
 	ProviderOpenClaw   = "openclaw"
 	ProviderOpenCode   = "opencode"

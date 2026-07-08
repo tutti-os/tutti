@@ -119,7 +119,7 @@ test("projects missing provider as checking while loading", () => {
     projectDesktopAgentProviderManageRow({
       isLoading: true,
       pendingActions: [],
-      provider: "gemini",
+      provider: "hermes",
       status: null
     }),
     {
@@ -127,7 +127,7 @@ test("projects missing provider as checking while loading", () => {
       configDetected: false,
       pending: false,
       primaryActionId: null,
-      provider: "gemini",
+      provider: "hermes",
       status: "checking"
     }
   );

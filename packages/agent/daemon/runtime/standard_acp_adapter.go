@@ -259,7 +259,35 @@ func seedStandardACPInitialCommands(state *acpLiveState, provider string) {
 	if strings.TrimSpace(provider) == ProviderClaudeCode {
 		state.availableCommands = claudeCodeACPCommands()
 		state.commandsKnown = true
+		return
 	}
+	if strings.TrimSpace(provider) == ProviderOpenCode {
+		state.availableCommands = opencodeACPCommands()
+		state.commandsKnown = true
+	}
+}
+
+func standardACPAdapterOwnedCommands(provider string) []AgentSessionCommand {
+	switch strings.TrimSpace(provider) {
+	case ProviderOpenCode:
+		return opencodeACPCommands()
+	default:
+		return nil
+	}
+}
+
+func mergeStandardACPAdapterOwnedCommands(
+	commands []AgentSessionCommand,
+	provider string,
+) []AgentSessionCommand {
+	ownedCommands := standardACPAdapterOwnedCommands(provider)
+	if len(ownedCommands) == 0 {
+		return commands
+	}
+	merged := make([]AgentSessionCommand, 0, len(commands)+len(ownedCommands))
+	merged = append(merged, commands...)
+	merged = append(merged, ownedCommands...)
+	return dedupeAgentSessionCommands(merged)
 }
 
 func (a *standardACPAdapter) Provider() string {
@@ -820,6 +848,9 @@ func (a *standardACPAdapter) Exec(
 	if event, ok := a.mirrorClaudeGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}
+	if event, ok := a.standardACPCompactStartedEvent(session, turnID, visibleText, normalizer); ok {
+		startEvents = append(startEvents, event)
+	}
 	emitEvents(startEvents)
 	slog.Info("agent session ACP exec started",
 		"event", "agent_session.acp.exec.start",
@@ -1032,6 +1063,25 @@ func (a *standardACPAdapter) mirrorClaudeGoalSlashPrompt(session Session, prompt
 	}
 	a.mu.Unlock()
 	return acpGoalUpdatedEvent(session, updateType)
+}
+
+func (a *standardACPAdapter) standardACPCompactStartedEvent(
+	session Session,
+	turnID string,
+	prompt string,
+	normalizer *acpTurnNormalizer,
+) (activityshared.Event, bool) {
+	if a == nil || a.config.provider != ProviderOpenCode || normalizer == nil {
+		return activityshared.Event{}, false
+	}
+	command, args := splitSlashCommand(prompt)
+	if command != "/compact" || args != "" {
+		return activityshared.Event{}, false
+	}
+	messageID := "compaction:" + strings.TrimSpace(turnID)
+	normalizer.SuppressAssistantOutput()
+	normalizer.TrackCompactionNotice(messageID, false)
+	return appServerCompactionNoticeEvent(session, turnID, messageID, false), true
 }
 
 func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
@@ -2865,7 +2915,16 @@ func (a *standardACPAdapter) applyACPUpdate(agentSessionID string, raw json.RawM
 	if session == nil {
 		return nil
 	}
-	return applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
+	snapshot := applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
+	if snapshot == nil {
+		return nil
+	}
+	session.availableCommands = mergeStandardACPAdapterOwnedCommands(
+		session.availableCommands,
+		a.config.provider,
+	)
+	mergedSnapshot, _ := commandSnapshotFromACPLiveState(agentSessionID, session.acpLiveState)
+	return &mergedSnapshot
 }
 
 func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {
@@ -3173,27 +3232,63 @@ func standardACPToolCallEventWithID(session Session, eventID string, turnID stri
 	}
 	if strings.TrimSpace(session.Provider) != ProviderClaudeCode {
 		name := firstNonEmpty(asString(update["title"]), asString(update["name"]), callID, "tool")
+		kind := asString(update["kind"])
 		status := acpResolvedToolCallStatus(update, "in_progress")
 		sanitizedUpdate := acpSanitizeImagePayloadMap(update)
+		rawInput := acpToolCallRawInput(update)
+		rawOutput := acpToolCallRawOutput(update)
+		locations := clonePayloadValue(update["locations"])
+		content := acpSanitizeImagePayload(update["content"])
+		toolName := acpToolName(callID, name, kind, rawInput)
+		displayName := firstNonEmpty(toolName, name)
 		payload := map[string]any{
 			"callId":   callID,
-			"callType": firstNonEmpty(asString(update["kind"]), asString(update["callType"]), "tool"),
-			"name":     name,
+			"callType": firstNonEmpty(kind, asString(update["callType"]), "tool"),
+			"name":     displayName,
 			"status":   status,
 		}
+		if toolName != "" {
+			payload["toolName"] = toolName
+		}
+		if kind != "" {
+			payload["kind"] = kind
+			payload["acp"] = map[string]any{
+				"sessionUpdate": asString(update["sessionUpdate"]),
+				"kind":          kind,
+			}
+		} else if sessionUpdate := asString(update["sessionUpdate"]); sessionUpdate != "" {
+			payload["acp"] = map[string]any{
+				"sessionUpdate": sessionUpdate,
+			}
+		}
+		if locations != nil {
+			payload["locations"] = locations
+		}
+		if content != nil {
+			payload["content"] = content
+		}
+		inputBody := acpNormalizeToolInput(rawInput, kind, locations)
+		outputBody := acpNormalizeToolOutput(rawOutput, content)
 		switch status {
 		case messageStreamStateCompleted:
-			payload["output"] = sanitizedUpdate
-			return newTurnActivityEventWithID(session, eventID, EventCallCompleted, turnID, status, "", name, payload), true
+			if len(inputBody) > 0 {
+				payload["input"] = inputBody
+			}
+			payload["output"] = mergeACPStandardRawToolBody(outputBody, sanitizedUpdate)
+			fileChanges := fileChangesFromACPToolPayload(payload)
+			if fileChanges != nil {
+				payload["fileChanges"] = fileChanges
+			}
+			return newTurnActivityEventWithID(session, eventID, EventCallCompleted, turnID, status, "", displayName, payload), true
 		case messageStreamStateFailed:
-			payload["error"] = sanitizedUpdate
-			return newTurnActivityEventWithID(session, eventID, EventCallFailed, turnID, status, "", name, payload), true
+			payload["error"] = mergeACPStandardRawToolBody(outputBody, sanitizedUpdate)
+			return newTurnActivityEventWithID(session, eventID, EventCallFailed, turnID, status, "", displayName, payload), true
 		default:
-			payload["input"] = sanitizedUpdate
+			payload["input"] = mergeACPStandardRawToolBody(inputBody, sanitizedUpdate)
 			if updateType == "tool_call_update" {
 				payload["status"] = messageStreamStateStreaming
 			}
-			return newTurnActivityEventWithID(session, eventID, EventCallStarted, turnID, messageStreamStateStreaming, "", name, payload), true
+			return newTurnActivityEventWithID(session, eventID, EventCallStarted, turnID, messageStreamStateStreaming, "", displayName, payload), true
 		}
 	}
 

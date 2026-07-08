@@ -27,7 +27,7 @@ export function permissionModeSelectionPatch(
  * daemon re-derives approvalPolicy/sandboxPolicy fresh from the session's
  * permissionModeId on every `turn/start` regardless of when the user picked
  * it, so leaving the control open mid-turn only lets the user queue their
- * choice sooner. Other ACP-backed providers (Nexight/Gemini/Hermes/OpenClaw)
+ * choice sooner. Other ACP-backed providers (Nexight/Hermes/OpenClaw)
  * apply the change via a JSON-RPC call over the same connection a turn
  * streams on, which hasn't been verified safe to interleave mid-turn, so they
  * keep the broader turn-in-flight gate that blocks all composer settings

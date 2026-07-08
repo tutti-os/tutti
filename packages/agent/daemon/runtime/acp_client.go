@@ -605,7 +605,6 @@ func benignACPStdoutLine(line []byte) bool {
 		"codex ",
 		"codex-",
 		"claude ",
-		"gemini ",
 	}
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(lower, prefix) {

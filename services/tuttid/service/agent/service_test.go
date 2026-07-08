@@ -1704,7 +1704,7 @@ func TestServiceCreateClampsPlanModeForProvidersWithoutCapability(t *testing.T) 
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
-		Provider:       "gemini",
+		Provider:       "hermes",
 	})
 	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "agent target id is required") {
 		t.Fatalf("Create error = %v, want missing agent target ErrInvalidArgument", err)
@@ -3461,6 +3461,58 @@ func TestServiceUpdateSettingsNormalizesClaudeMinimalReasoningEffort(t *testing.
 	}
 }
 
+func TestServiceUpdateSettingsPersistsRuntimeComposerSettings(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		Provider:        "opencode",
+		WorkspaceID:     "ws-1",
+		Status:          "working",
+		UpdatedAtUnixMS: 1000,
+		Settings:        &ComposerSettings{PlanMode: true},
+	}
+	persisted := &fakeSessionStateReporter{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "opencode",
+				Settings:        ComposerSettings{PlanMode: true},
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 2000,
+				UpdatedAtUnixMS: 2000,
+			},
+		},
+	}
+	service := NewService(runtime)
+	service.SessionReader = persisted
+	planMode := false
+
+	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		PlanMode: &planMode,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.PlanMode {
+		t.Fatalf("returned settings = %#v, want persisted planMode false", session.Settings)
+	}
+	stored, ok := persisted.GetSession("ws-1", "session-1")
+	if !ok {
+		t.Fatal("persisted session missing after settings update")
+	}
+	if stored.Settings.PlanMode {
+		t.Fatalf("persisted settings = %#v, want planMode false", stored.Settings)
+	}
+	if len(persisted.reports) != 1 {
+		t.Fatalf("reports = %#v, want one persisted settings report", persisted.reports)
+	}
+	if persisted.reports[0].State.Settings["planMode"] != false {
+		t.Fatalf("reported settings = %#v, want planMode false", persisted.reports[0].State.Settings)
+	}
+}
+
 func TestServiceMapsRuntimeSessionLastError(t *testing.T) {
 	now := time.Now().UnixMilli()
 	session := serviceSession(RuntimeSession{
@@ -4304,6 +4356,20 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 					UpdatedAtUnixMS: 4000,
 				}},
 			},
+			agentactivitybiz.PinnedSessionPageKey: {
+				SectionKey: agentactivitybiz.PinnedSessionPageKey,
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "pinned-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Status:          "completed",
+					PinnedAtUnixMS:  6000,
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 3000,
+				}},
+				HasMore:    true,
+				NextCursor: "6000|pinned-session",
+			},
 		},
 	}
 	service := NewService(newFakeRuntime())
@@ -4323,6 +4389,12 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	}
 	if len(page.Sections) != 2 {
 		t.Fatalf("sections = %d, want 2", len(page.Sections))
+	}
+	if got, want := sessionIDs(page.Pinned.Sessions), []string{"pinned-session"}; !slices.Equal(got, want) {
+		t.Fatalf("pinned sessions = %#v, want %#v", got, want)
+	}
+	if !page.Pinned.HasMore || page.Pinned.NextCursor != "6000|pinned-session" {
+		t.Fatalf("pinned page state = hasMore %v cursor %q", page.Pinned.HasMore, page.Pinned.NextCursor)
 	}
 	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
 		t.Fatalf("project section = %#v", page.Sections[0])
@@ -4367,6 +4439,31 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 	if reader.lastInput.SectionKey != "project:/workspace/project" ||
 		reader.lastInput.CursorUpdatedAtMS != 4000 ||
 		reader.lastInput.CursorSessionID != "middle" ||
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func TestServiceListPinnedSessionPageForwardsStableCursor(t *testing.T) {
+	reader := &fakeSectionReader{}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	page, err := service.ListPinnedSessionPage(context.Background(), "ws-1", ListPinnedSessionPageInput{
+		Cursor:        "6000|pinned-session",
+		Limit:         2,
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListPinnedSessionPage returned error: %v", err)
+	}
+	if page.HasMore {
+		t.Fatalf("page = %#v, want empty page without hasMore", page)
+	}
+	if reader.lastInput.SectionKey != agentactivitybiz.PinnedSessionPageKey ||
+		reader.lastInput.CursorUpdatedAtMS != 6000 ||
+		reader.lastInput.CursorSessionID != "pinned-session" ||
 		reader.lastInput.Limit != 2 ||
 		reader.lastInput.AgentTargetID != "claude-target" {
 		t.Fatalf("reader input = %#v", reader.lastInput)
@@ -5995,6 +6092,53 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
 	}
 	return target, nil
+}
+
+type fakeSessionStateReporter struct {
+	reports  []agentsessionstore.ReportSessionStateInput
+	sessions map[string]PersistedSession
+}
+
+func (f *fakeSessionStateReporter) GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool) {
+	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	return session, ok
+}
+
+func (f *fakeSessionStateReporter) ListSessions(workspaceID string) ([]PersistedSession, bool) {
+	result := make([]PersistedSession, 0)
+	for _, session := range f.sessions {
+		if session.WorkspaceID == workspaceID {
+			result = append(result, session)
+		}
+	}
+	return result, len(result) > 0
+}
+
+func (f *fakeSessionStateReporter) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
+	f.reports = append(f.reports, input)
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		session = PersistedSession{
+			ID:          input.AgentSessionID,
+			WorkspaceID: input.WorkspaceID,
+		}
+	}
+	if len(input.State.Settings) > 0 {
+		session.Settings = composerSettingsFromPayload(input.State.Settings)
+	}
+	if strings.TrimSpace(input.State.Provider) != "" {
+		session.Provider = strings.TrimSpace(input.State.Provider)
+	}
+	if strings.TrimSpace(input.State.ProviderSessionID) != "" {
+		session.ProviderSessionID = strings.TrimSpace(input.State.ProviderSessionID)
+	}
+	if input.State.OccurredAtUnixMS > 0 {
+		session.LastEventUnixMS = input.State.OccurredAtUnixMS
+		session.UpdatedAtUnixMS = input.State.OccurredAtUnixMS
+	}
+	f.sessions[key] = session
+	return agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true}, nil
 }
 
 type activityProjectionRepoStub struct {

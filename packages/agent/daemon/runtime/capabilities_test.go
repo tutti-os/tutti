@@ -48,6 +48,15 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 			t.Fatalf("opencode capabilities = %v, missing %q", opencode, want)
 		}
 	}
+	if containsString(opencode, CapabilityCompact) || containsString(opencode, "review") {
+		t.Fatalf("opencode capabilities = %v, must not advertise command capabilities without provider commands", opencode)
+	}
+	opencodeWithReview := standardACPCapabilities(ProviderOpenCode, false, acpLiveStateSnapshot{
+		availableCommands: []AgentSessionCommand{{Name: "compact"}, {Name: "review"}},
+	})
+	if !containsString(opencodeWithReview, CapabilityCompact) || !containsString(opencodeWithReview, "review") {
+		t.Fatalf("opencode capabilities = %v, want compact+review from provider commands", opencodeWithReview)
+	}
 
 	cursor := standardACPCapabilities(ProviderCursor, true, acpLiveStateSnapshot{})
 	if !containsString(cursor, CapabilityImageInput) || !containsString(cursor, CapabilityInterrupt) {
@@ -62,18 +71,18 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 
 	// 其他 ACP provider：保守派生——interrupt 恆有；imageInput 跟隨 promptImage；
 	// compact 僅在 availableCommands 出現 compact 時亮起；無 skills/planMode。
-	gemini := standardACPCapabilities(ProviderGemini, false, acpLiveStateSnapshot{})
-	if containsString(gemini, CapabilityImageInput) ||
-		containsString(gemini, CapabilityCompact) ||
-		containsString(gemini, CapabilitySkills) ||
-		containsString(gemini, CapabilityPlanMode) {
-		t.Fatalf("gemini capabilities too permissive: %v", gemini)
+	hermes := standardACPCapabilities(ProviderHermes, false, acpLiveStateSnapshot{})
+	if containsString(hermes, CapabilityImageInput) ||
+		containsString(hermes, CapabilityCompact) ||
+		containsString(hermes, CapabilitySkills) ||
+		containsString(hermes, CapabilityPlanMode) {
+		t.Fatalf("hermes capabilities too permissive: %v", hermes)
 	}
-	if !containsString(gemini, CapabilityInterrupt) {
-		t.Fatalf("gemini capabilities missing interrupt: %v", gemini)
+	if !containsString(hermes, CapabilityInterrupt) {
+		t.Fatalf("hermes capabilities missing interrupt: %v", hermes)
 	}
 
-	withCompact := standardACPCapabilities(ProviderGemini, true, acpLiveStateSnapshot{
+	withCompact := standardACPCapabilities(ProviderHermes, true, acpLiveStateSnapshot{
 		availableCommands: []AgentSessionCommand{{Name: "compact"}},
 	})
 	if !containsString(withCompact, CapabilityCompact) || !containsString(withCompact, CapabilityImageInput) {

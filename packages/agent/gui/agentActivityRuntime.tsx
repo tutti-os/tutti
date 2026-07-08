@@ -83,6 +83,14 @@ export interface AgentActivityRuntimeListSessionSectionPageInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeListPinnedSessionsPageInput {
+  agentTargetId?: string | null;
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeUserProject {
   createdAtUnixMs: number;
   id: string;
@@ -102,7 +110,14 @@ export interface AgentActivityRuntimeSessionSection {
   nextCursor?: string;
 }
 
+export interface AgentActivityRuntimeSessionPage {
+  sessions: AgentActivitySession[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
 export interface AgentActivityRuntimeSessionSectionsResult {
+  pinned?: AgentActivityRuntimeSessionPage;
   sections: AgentActivityRuntimeSessionSection[];
   workspaceId: string;
 }
@@ -336,6 +351,9 @@ export interface AgentActivityRuntime {
   listSessionSectionPage?(
     input: AgentActivityRuntimeListSessionSectionPageInput
   ): Promise<AgentActivityRuntimeSessionSection>;
+  listPinnedSessionsPage?(
+    input: AgentActivityRuntimeListPinnedSessionsPageInput
+  ): Promise<AgentActivityRuntimeSessionPage>;
   load(
     workspaceId: string,
     signal?: AbortSignal

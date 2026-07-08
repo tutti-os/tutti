@@ -50,9 +50,11 @@ type sessionLifecycleLock struct {
 }
 
 type activeTurn struct {
-	turnID          string
-	cancel          context.CancelFunc
-	renewedAtUnixMS int64
+	turnID                string
+	cancel                context.CancelFunc
+	renewedAtUnixMS       int64
+	openCallIDs           map[string]struct{}
+	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {
@@ -158,7 +160,6 @@ func NewDefaultControllerWithOptions(
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
-		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
 		NewOpenCodeAdapterWithHostMetadata(transport, host),
@@ -455,7 +456,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 		return "auto"
 	case ProviderCursor:
 		return "agent"
-	case ProviderGemini, ProviderHermes:
+	case ProviderHermes:
 		return "yolo"
 	default:
 		return ""
@@ -496,7 +497,7 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		}
 	case ProviderCursor:
 		return cursorACPModeID(mode) != ""
-	case ProviderGemini, ProviderHermes:
+	case ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
 	case ProviderOpenCode, ProviderOpenClaw:
 		return strings.TrimSpace(mode) == ""
@@ -1249,6 +1250,10 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		events = c.asyncTurnEventsReadyForFold(session, turnID, events)
+		if len(events) == 0 {
+			return
+		}
 		session = c.foldTurnSessionEvents(session, events, turnID)
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
@@ -1263,7 +1268,9 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
+		if turnHasTerminalEvent(events, turnID) ||
+			turnLifecycleSnapshotSettledTurn(events, turnID) ||
+			turnSteeredIntoActiveTurn(events, turnID) {
 			finish(session)
 		}
 	}
@@ -1285,6 +1292,91 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	}
 }
 
+func (c *Controller) asyncTurnEventsReadyForFold(session Session, turnID string, events []activityshared.Event) []activityshared.Event {
+	turnID = strings.TrimSpace(turnID)
+	if c == nil || turnID == "" || len(events) == 0 {
+		return events
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok || strings.TrimSpace(turn.turnID) != turnID {
+		return events
+	}
+	if turn.openCallIDs == nil {
+		turn.openCallIDs = make(map[string]struct{})
+	}
+	for _, event := range events {
+		trackAsyncTurnCallEvent(turn.openCallIDs, event, turnID)
+	}
+	var ready []activityshared.Event
+	var terminal []activityshared.Event
+	for _, event := range events {
+		if asyncEventCompletesTurnSuccessfully(event, turnID) {
+			terminal = append(terminal, event)
+			continue
+		}
+		ready = append(ready, event)
+	}
+	if len(terminal) > 0 && len(turn.openCallIDs) > 0 {
+		turn.pendingTerminalEvents = append(turn.pendingTerminalEvents, terminal...)
+	} else {
+		ready = events
+	}
+	if len(turn.openCallIDs) == 0 && len(turn.pendingTerminalEvents) > 0 {
+		ready = append(ready, turn.pendingTerminalEvents...)
+		turn.pendingTerminalEvents = nil
+	}
+	c.turns[key] = turn
+	return ready
+}
+
+func trackAsyncTurnCallEvent(openCallIDs map[string]struct{}, event activityshared.Event, turnID string) {
+	if len(openCallIDs) == 0 && event.Type != activityshared.EventCallStarted {
+		return
+	}
+	if strings.TrimSpace(event.Payload.TurnID) != turnID {
+		return
+	}
+	callID := asyncTurnCallTrackingID(event)
+	if callID == "" {
+		return
+	}
+	switch event.Type {
+	case activityshared.EventCallStarted:
+		openCallIDs[callID] = struct{}{}
+	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
+		delete(openCallIDs, callID)
+	}
+}
+
+func asyncTurnCallTrackingID(event activityshared.Event) string {
+	if callID := strings.TrimSpace(event.Payload.CallID); callID != "" {
+		return callID
+	}
+	return strings.TrimSpace(event.EventID)
+}
+
+func asyncEventCompletesTurnSuccessfully(event activityshared.Event, turnID string) bool {
+	if strings.TrimSpace(event.Payload.TurnID) == turnID {
+		if event.Type == activityshared.EventTurnCompleted {
+			outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+			return outcome == "" || outcome == string(activityshared.TurnOutcomeCompleted)
+		}
+	}
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+	if !ok || strings.TrimSpace(snapshot.Phase) != string(activityshared.TurnPhaseSettled) {
+		return false
+	}
+	outcome := strings.TrimSpace(snapshot.Outcome)
+	if outcome != "" && outcome != string(activityshared.TurnOutcomeCompleted) {
+		return false
+	}
+	return strings.TrimSpace(event.Payload.TurnID) == turnID ||
+		strings.TrimSpace(snapshot.ActiveTurnID) == turnID
+}
+
 func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
 	turnID = strings.TrimSpace(turnID)
 	for _, event := range events {
@@ -1298,6 +1390,24 @@ func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
 			if string(event.Type) == EventTurnCanceled {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func turnLifecycleSnapshotSettledTurn(events []activityshared.Event, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	for _, event := range events {
+		snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+		if !ok || strings.TrimSpace(snapshot.Phase) != string(activityshared.TurnPhaseSettled) {
+			continue
+		}
+		if strings.TrimSpace(event.Payload.TurnID) == turnID ||
+			strings.TrimSpace(snapshot.ActiveTurnID) == turnID {
+			return true
 		}
 	}
 	return false

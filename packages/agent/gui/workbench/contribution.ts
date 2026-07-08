@@ -483,6 +483,7 @@ export function createAgentGuiWorkbenchContribution(
           instanceId,
           state: {
             ...normalizeAgentGuiWorkbenchState(previousState),
+            lastActiveAgentSessionId: null,
             ...(providerTarget.agentTargetId
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),
@@ -677,13 +678,19 @@ function createAgentGuiWorkbenchDockEntry(input: {
     label: input.label,
     launchBehavior: "enabled",
     launchPayload: input.launchPayload ?? { provider: input.provider },
-    matchNode: (node) =>
-      node.data.typeId === agentGuiWorkbenchTypeId &&
-      (input.aggregateProviders
-        ? input.aggregateProviders.includes(
-            resolveAgentGuiWorkbenchProviderFromNode(node)
-          )
-        : resolveAgentGuiWorkbenchProviderFromNode(node) === input.provider),
+    matchNode: (node) => {
+      if (node.data.typeId !== agentGuiWorkbenchTypeId) {
+        return false;
+      }
+      const provider =
+        resolveAgentGuiWorkbenchProviderFromNodeIdentityOrNull(node);
+      if (!provider) {
+        return false;
+      }
+      return input.aggregateProviders
+        ? input.aggregateProviders.includes(provider)
+        : provider === input.provider;
+    },
     order: input.order,
     providePopupItemPreview: (item) =>
       input.renderPreview
@@ -774,16 +781,14 @@ function createAgentGuiWorkbenchUnifiedDockIcon(input: {
   );
 }
 
-function resolveAgentGuiWorkbenchProviderFromNode(
+function resolveAgentGuiWorkbenchProviderFromNodeIdentityOrNull(
   node: Parameters<NonNullable<WorkbenchHostDockEntry["matchNode"]>>[0]
-): AgentGuiWorkbenchProvider {
+): AgentGuiWorkbenchProvider | null {
   return (
     agentGuiWorkbenchProviderFromIdentifier(node.data.instanceId) ??
     agentGuiWorkbenchProviderFromIdentifier(node.data.dockEntryId) ??
     providerFromState(node.data.snapshotNodeState) ??
-    providerFromState(node.data.runtimeNodeState) ??
-    agentGuiWorkbenchProviderFromIdentifier(node.data.typeId) ??
-    "codex"
+    providerFromState(node.data.runtimeNodeState)
   );
 }
 

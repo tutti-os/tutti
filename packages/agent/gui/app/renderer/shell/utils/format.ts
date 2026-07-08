@@ -144,15 +144,13 @@ export function toAgentNodeTitle(
         ? "nexight"
         : provider === "opencode"
           ? "opencode"
-          : provider === "gemini"
-            ? "gemini"
-            : provider === "openclaw"
-              ? "openclaw"
-              : provider === "hermes"
-                ? "hermes"
-                : provider === "cursor"
-                  ? "cursor"
-                  : "codex";
+          : provider === "openclaw"
+            ? "openclaw"
+            : provider === "hermes"
+              ? "hermes"
+              : provider === "cursor"
+                ? "cursor"
+                : "codex";
   return `${providerTitle} · ${model ?? translate("common.defaultModel")}`;
 }
 

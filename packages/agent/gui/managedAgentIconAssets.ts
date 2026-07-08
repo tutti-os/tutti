@@ -2,7 +2,6 @@ import claudeRoundedAssetUrl from "./app/renderer/assets/icons/agents/claude-rou
 import codexRoundedAssetUrl from "./app/renderer/assets/icons/agents/codex-rounded.png";
 import cursorColorfulAssetUrl from "./app/renderer/assets/icons/agents/cursor-colorful.png";
 import cursorRoundedAssetUrl from "./app/renderer/assets/icons/agents/cursor-rounded.png";
-import geminiRoundedAssetUrl from "./app/renderer/assets/icons/agents/gemini-rounded.png";
 import hermesRoundedAssetUrl from "./app/renderer/assets/icons/agents/hermes-rounded.png";
 import agentColorfulAssetUrl from "./app/renderer/assets/icons/agents/agent-colorful.png";
 import manageAgentTuttiAssetUrl from "./app/renderer/assets/icons/agents/manage-agent-tutti.png";
@@ -17,7 +16,6 @@ import providerRailTuttiAssetUrl from "./app/renderer/assets/icons/agents/provid
 export const manageAgentClaudeCodeUrl = claudeRoundedAssetUrl;
 export const manageAgentCodexUrl = codexRoundedAssetUrl;
 export const manageAgentCursorUrl = cursorRoundedAssetUrl;
-export const manageAgentGeminiUrl = geminiRoundedAssetUrl;
 export const manageAgentHermesUrl = hermesRoundedAssetUrl;
 export const manageAgentTuttiUrl = manageAgentTuttiAssetUrl;
 export const manageAgentTuttiAgentUrl = manageAgentTuttiAssetUrl;
@@ -28,7 +26,6 @@ export const claudeRoundedUrl = claudeRoundedAssetUrl;
 export const codexRoundedUrl = codexRoundedAssetUrl;
 export const cursorColorfulUrl = cursorColorfulAssetUrl;
 export const cursorRoundedUrl = cursorRoundedAssetUrl;
-export const geminiRoundedUrl = geminiRoundedAssetUrl;
 export const hermesRoundedUrl = hermesRoundedAssetUrl;
 export const tuttiDocRoundedUrl = manageAgentTuttiAssetUrl;
 export const tuttiAgentRoundedUrl = manageAgentTuttiAssetUrl;

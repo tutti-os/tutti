@@ -6940,6 +6940,65 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("queues a follow-up prompt while the first conversation is still being created", async () => {
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        return new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep creation pending so the optimistic session is not durable yet.
+        });
+      }
+      return Promise.resolve({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      });
+    });
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("first prompt"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "new" })
+      );
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("second prompt"));
+      result.current.actions.submitPrompt(promptBlocks("second prompt"));
+    });
+
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["second prompt"]
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("restores the original home draft when first conversation activation fails after pending", async () => {
     let rejectActivation: ((error: unknown) => void) | undefined;
     const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
@@ -13558,7 +13617,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     await Promise.all(
-      (["codex", "claude-code", "gemini"] as const).map(async (provider) => {
+      (["codex", "claude-code", "hermes"] as const).map(async (provider) => {
         const { result, unmount } = renderHook(() =>
           useAgentGUINodeController({
             workspaceId: "room-1",
@@ -14158,7 +14217,7 @@ describe("useAgentGUINodeController", () => {
       emitDesktopEvent?.({
         scope: "global",
         type: "agent-model-catalog-invalidated",
-        providers: ["gemini"],
+        providers: ["hermes"],
         occurredAtUnixMs: 1
       });
       emitDesktopEvent?.({
@@ -14345,7 +14404,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        data: agentGuiData(null, "gemini", {
+        data: agentGuiData(null, "opencode", {
           composerOverrides: { model: "default" }
         }),
         onDataChange: vi.fn()
@@ -14371,7 +14430,7 @@ describe("useAgentGUINodeController", () => {
   it.each([
     ["claude-code", true],
     ["codex", false],
-    ["gemini", false]
+    ["hermes", false]
   ] as const)(
     "shows composer model and reasoning controls for %s",
     async (provider, expectedPlanSupport) => {
@@ -14427,7 +14486,7 @@ describe("useAgentGUINodeController", () => {
   it.each([
     ["claude-code", true],
     ["codex", true],
-    ["gemini", false]
+    ["hermes", false]
   ] as const)(
     "sets composer permission mode support for %s",
     async (provider, expectedPermissionSupport) => {
@@ -14500,7 +14559,7 @@ describe("useAgentGUINodeController", () => {
 
   it.each([
     ["claude-code", true, true],
-    ["gemini", false, false],
+    ["hermes", false, false],
     ["codex", null, true]
   ] as const)(
     "uses backend prompt image capability for %s",
@@ -17428,6 +17487,206 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
   });
 
+  it("keeps composer busy from runtime lifecycle when session state is stale settled", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({
+        timelineItems: [
+          {
+            ...timelineMessage({
+              agentSessionId: "session-1",
+              id: 1,
+              eventId: "assistant-1",
+              role: "assistant",
+              content: "Still working",
+              turnId: "turn-1",
+              occurredAtUnixMs: 20
+            }),
+            itemType: "message.assistant",
+            status: "completed"
+          }
+        ]
+      })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          status: "ready",
+          turnLifecycle: {
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "completed"
+          },
+          submitAvailability: { state: "available" }
+        })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(activityListener).toBeDefined();
+    });
+
+    act(() => {
+      activityListener?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+          occurredAtUnixMs: 20
+        } as AgentHostWorkspaceAgentStatePatch & {
+          turnLifecycle: { activeTurnId: string; phase: string };
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeLiveState).toBe("active");
+    });
+    expect(result.current.viewModel.canSubmit).toBe(false);
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversation?.rows.some(
+          (row) => row.kind === "processing"
+        )
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("queue while running"));
+    });
+
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["queue while running"]
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("keeps composer busy from timeline working status when lifecycle is stale settled", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "ready",
+          turnPhase: "settled"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          status: "ready",
+          turnLifecycle: {
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "completed"
+          },
+          submitAvailability: { state: "available" }
+        })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(activityListener).toBeDefined();
+    });
+
+    act(() => {
+      activityListener?.({
+        eventType: "message_update",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          messageId: "call-1",
+          seq: 2,
+          turnId: "turn-1",
+          role: "assistant",
+          kind: "tool_call",
+          status: "working",
+          callId: "call-1",
+          payload: { status: "working", toolName: "shell" },
+          occurredAtUnixMs: 21
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.status).toBe(
+        "working"
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canSubmit).toBe(false);
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("queue from timeline"));
+    });
+
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["queue from timeline"]
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("clears the goal with a visible /goal clear prompt that bypasses the queue", async () => {
     const exec = vi.fn(async () => ({
       agentSessionId: "session-1",
@@ -17488,6 +17747,35 @@ describe("useAgentGUINodeController", () => {
       });
     });
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
+  it("keeps the empty queued prompts reference stable across active session rerenders", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { rerender, result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.queuedPrompts).toHaveLength(0);
+    const firstQueuedPrompts = result.current.viewModel.queuedPrompts;
+
+    rerender();
+
+    expect(result.current.viewModel.queuedPrompts).toBe(firstQueuedPrompts);
   });
 
   it("queues image prompts locally while busy without draining from the controller", async () => {
@@ -19291,17 +19579,24 @@ function installAgentActivityRuntimeForHostMocks({
         typeof result?.sessionStatus === "string"
           ? result.sessionStatus
           : "working";
-      const session = upsertRuntimeSession(setSnapshot, input.workspaceId, {
-        agentSessionId: input.agentSessionId,
-        status
-      });
       const turnId =
         typeof result?.turnId === "string" ? result.turnId : "turn-1";
+      const turnLifecycle = { activeTurnId: turnId, phase: "submitted" };
+      const submitAvailability = {
+        state: "blocked",
+        reason: "active_turn"
+      };
+      const session = upsertRuntimeSession(setSnapshot, input.workspaceId, {
+        agentSessionId: input.agentSessionId,
+        status,
+        turnLifecycle,
+        submitAvailability
+      });
       return {
         session,
         turnId,
-        turnLifecycle: { activeTurnId: turnId, phase: "submitted" },
-        submitAvailability: { state: "blocked", reason: "active_turn" }
+        turnLifecycle,
+        submitAvailability
       };
     },
     async setSessionPinned(input) {
@@ -19943,6 +20238,14 @@ function upsertRuntimeSession(
         (existing as { sessionOrigin?: string } | undefined)?.sessionOrigin ??
         AGENT_GUI_RUNTIME_SESSION_ORIGIN,
       currentPhase: input.currentPhase ?? existing?.currentPhase ?? null,
+      turnLifecycle:
+        input.turnLifecycle !== undefined
+          ? input.turnLifecycle
+          : (existing?.turnLifecycle ?? null),
+      submitAvailability:
+        input.submitAvailability !== undefined
+          ? input.submitAvailability
+          : (existing?.submitAvailability ?? null),
       pinnedAtUnixMs:
         input.pinnedAtUnixMs !== undefined
           ? input.pinnedAtUnixMs
@@ -19997,6 +20300,54 @@ function applyRuntimeStreamEvent({
     if (!agentSessionId) {
       return;
     }
+    const turn = recordValue(data.turn) ?? {};
+    const turnLifecycleSource = recordValue(data.turnLifecycle) ?? turn;
+    const turnPhase = normalizeConfigOptionValue(turnLifecycleSource.phase);
+    const currentPhase = normalizeConfigOptionValue(data.currentPhase);
+    const clearsTurnLifecycle = !turnPhase && currentPhase === "idle";
+    const turnId = normalizeConfigOptionValue(turnLifecycleSource.turnId);
+    const hasActiveTurnId = Object.prototype.hasOwnProperty.call(
+      turnLifecycleSource,
+      "activeTurnId"
+    );
+    const activeTurnId = hasActiveTurnId
+      ? normalizeConfigOptionValue(turnLifecycleSource.activeTurnId)
+      : turnPhase === "settled" || turnPhase === "idle"
+        ? null
+        : turnId;
+    const completedCommandSource = recordValue(
+      turnLifecycleSource.completedCommand
+    );
+    const completedCommandKind = normalizeConfigOptionValue(
+      completedCommandSource?.kind
+    );
+    const completedCommandStatus = normalizeConfigOptionValue(
+      completedCommandSource?.status
+    );
+    const completedCommand =
+      completedCommandKind && completedCommandStatus
+        ? { kind: completedCommandKind, status: completedCommandStatus }
+        : null;
+    const turnLifecycle = turnPhase
+      ? {
+          activeTurnId,
+          phase: turnPhase,
+          settling:
+            typeof turnLifecycleSource.settling === "boolean"
+              ? turnLifecycleSource.settling
+              : undefined,
+          outcome: normalizeConfigOptionValue(turnLifecycleSource.outcome),
+          completedCommand
+        }
+      : clearsTurnLifecycle
+        ? null
+        : undefined;
+    const submitAvailabilitySource =
+      recordValue(data.submitAvailability) ??
+      recordValue(turnLifecycleSource.submitAvailability);
+    const submitAvailabilityState = normalizeConfigOptionValue(
+      submitAvailabilitySource?.state
+    );
     upsertRuntimeSession(setSnapshot, workspaceId, {
       agentSessionId,
       provider: normalizeConfigOptionValue(data.provider) ?? undefined,
@@ -20008,7 +20359,18 @@ function applyRuntimeStreamEvent({
         lifecycleStatus: normalizeConfigOptionValue(data.lifecycleStatus),
         currentPhase: normalizeConfigOptionValue(data.currentPhase)
       }),
-      currentPhase: normalizeConfigOptionValue(data.currentPhase) ?? undefined,
+      currentPhase: currentPhase ?? undefined,
+      turnLifecycle,
+      submitAvailability: submitAvailabilityState
+        ? {
+            state: submitAvailabilityState,
+            reason:
+              normalizeConfigOptionValue(submitAvailabilitySource?.reason) ??
+              undefined
+          }
+        : clearsTurnLifecycle
+          ? { state: "available" }
+          : undefined,
       updatedAtUnixMs:
         typeof data.occurredAtUnixMs === "number"
           ? data.occurredAtUnixMs

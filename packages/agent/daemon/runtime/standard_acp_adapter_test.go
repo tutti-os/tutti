@@ -19,69 +19,30 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func TestGeminiAdapterStartCreatesStandardACPSession(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "full-access"
-
-	events, err := adapter.Start(context.Background(), session)
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if len(transport.specs) != 1 {
-		t.Fatalf("process starts = %d, want 1", len(transport.specs))
-	}
-	spec := transport.specs[0]
-	if got := strings.Join(spec.Command, " "); got != "gemini --acp" {
-		t.Fatalf("command = %q, want %q", got, "gemini --acp")
-	}
-	if !containsString(spec.Env, codexAgentRoutingEnv) || !containsString(spec.Env, codexRoutingPreload) {
-		t.Fatalf("env = %#v, want standard ACP routing env with preload", spec.Env)
-	}
-	if len(events) != 1 || events[0].Type != activityshared.EventSessionStarted {
-		t.Fatalf("events = %#v, want session.started", events)
-	}
-	if events[0].ProviderSessionID != "gemini-session-1" {
-		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-	if _, has := transport.conn.lastNewSessionParams["_meta"]; has {
-		t.Fatalf("Gemini session/new must not send OpenClaw-only _meta.sessionKey")
-	}
-	if got := transport.conn.authenticatedMethodID(); got != "gemini-api-key" {
-		t.Fatalf("authenticated method id = %q, want gemini-api-key", got)
-	}
-}
-
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
 	cleanupCalls := 0
 	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
-		if input.Provider != ProviderGemini {
-			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderGemini)
+		if input.Provider != ProviderHermes {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderHermes)
 		}
 		if input.DirectStart {
-			t.Fatal("DirectStart = true, want false for Gemini")
+			t.Fatal("DirectStart = true, want false for Hermes")
 		}
 		return ProviderLaunchPrepareResult{
-			Command: []string{"prepared-gemini", "--acp"},
+			Command: []string{"prepared-hermes", "acp"},
 			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
-			CWD:     "/prepared/gemini",
+			CWD:     "/prepared/hermes",
 			Cleanup: func(context.Context) error {
 				cleanupCalls++
 				return nil
 			},
 		}, nil
 	})
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	session.Env = []string{"SESSION_ENV=1"}
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -97,10 +58,10 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 		t.Fatalf("transport starts = %d, want 1", len(specs))
 	}
 	spec := specs[0]
-	if !reflect.DeepEqual(spec.Command, []string{"prepared-gemini", "--acp"}) {
+	if !reflect.DeepEqual(spec.Command, []string{"prepared-hermes", "acp"}) {
 		t.Fatalf("Command = %#v", spec.Command)
 	}
-	if spec.CWD != "/prepared/gemini" {
+	if spec.CWD != "/prepared/hermes" {
 		t.Fatalf("CWD = %q", spec.CWD)
 	}
 	if !reflect.DeepEqual(spec.Env[len(spec.Env)-2:], []string{"SESSION_ENV=1", "HOOK_ENV=1"}) {
@@ -119,11 +80,11 @@ func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) 
 	t.Parallel()
 
 	transport := &multiProcStandardACPTransport{
-		agentTitle: "Gemini CLI",
-		sessionID:  "gemini-session-1",
+		agentTitle: "Hermes Agent",
+		sessionID:  "hermes-session-1",
 	}
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -186,46 +147,14 @@ func TestClaudeCodeAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	}
 }
 
-func TestGeminiAdapterStartCoercesReadOnlyModeToYolo(t *testing.T) {
+func TestHermesAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-plan")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "read-only"
-
-	if _, err := adapter.Start(context.Background(), session); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-}
-
-func TestGeminiAdapterStartCoercesAutoModeToYolo(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-auto")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "auto"
-
-	if _, err := adapter.Start(context.Background(), session); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-}
-
-func TestGeminiAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	session.Settings = &SessionSettings{
-		Model:           "gemini-2.5-pro",
+		Model:           "hermes-pro",
 		ReasoningEffort: "high",
 	}
 
@@ -240,8 +169,8 @@ func TestGeminiAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	if got, _ := calls[0]["configId"].(string); got != "model" {
 		t.Fatalf("first config id = %q, want model", got)
 	}
-	if got, _ := calls[0]["value"].(string); got != "gemini-2.5-pro" {
-		t.Fatalf("first config value = %q, want gemini-2.5-pro", got)
+	if got, _ := calls[0]["value"].(string); got != "hermes-pro" {
+		t.Fatalf("first config value = %q, want hermes-pro", got)
 	}
 	if got, _ := calls[1]["configId"].(string); got != "effort" {
 		t.Fatalf("second config id = %q, want effort", got)
@@ -819,12 +748,12 @@ func TestStandardACPProvidersResumeClassifyMissingProviderSession(t *testing.T) 
 		session  func() Session
 	}{
 		{
-			name:     "gemini",
-			provider: ProviderGemini,
-			build:    NewGeminiAdapter,
+			name:     "hermes",
+			provider: ProviderHermes,
+			build:    NewHermesAdapter,
 			session: func() Session {
-				session := standardTestSession(ProviderGemini)
-				session.ProviderSessionID = "persisted-gemini-session-id"
+				session := standardTestSession(ProviderHermes)
+				session.ProviderSessionID = "persisted-hermes-session-id"
 				return session
 			},
 		},
@@ -1160,13 +1089,13 @@ func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T)
 func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-1"
+	session.ProviderSessionID = "hermes-session-1"
 
 	content := []PromptContentBlock{{
 		Type:     "image",
@@ -1376,7 +1305,7 @@ func TestClaudeCodeStandardACPUpdatePreservesAskUserQuestionToolEvents(t *testin
 func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	completed, ok := standardACPToolCallEventWithID(session, "event-complete-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_completed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred complete) returned !ok")
@@ -1393,7 +1322,7 @@ func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T
 func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	failed, ok := standardACPToolCallEventWithID(session, "event-failed-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_failed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred failed) returned !ok")
@@ -1548,7 +1477,7 @@ func TestClaudeCodeStandardACPImageGenerationInfersCompletedStatusFromContent(t 
 func TestStandardACPNonClaudeToolCallSanitizesImageBytes(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	completed, ok := standardACPToolCallEventWithID(session, "event-image-standard", "turn-1", "tool_call_update", map[string]any{
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "image-tool-1",
@@ -1579,6 +1508,388 @@ func TestStandardACPNonClaudeToolCallSanitizesImageBytes(t *testing.T) {
 	}
 	if got := content[0]["uri"]; got != "/workspace/output/generated.png" {
 		t.Fatalf("completed output uri = %#v, want generated image path", got)
+	}
+}
+
+func TestStandardACPOpenCodeEditToolCarriesFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	completed, ok := standardACPToolCallEventWithID(session, "event-opencode-edit", "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-edit-1",
+		"title":         "edit_file",
+		"kind":          "edit",
+		"status":        "completed",
+		"content": []any{
+			map[string]any{
+				"type":    "diff",
+				"path":    "/workspace/src/app.ts",
+				"oldText": "const ready = false\n",
+				"newText": "const ready = true\n",
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("standardACPToolCallEventWithID(opencode edit) returned !ok")
+	}
+	if completed.Type != activityshared.EventCallCompleted {
+		t.Fatalf("completed event type = %s, want call.completed", completed.Type)
+	}
+	if got := completed.Payload.Metadata["toolName"]; got != "Edit" {
+		t.Fatalf("metadata toolName = %#v, want Edit", completed.Payload.Metadata)
+	}
+	if got := completed.Payload.Output["filePath"]; got != "/workspace/src/app.ts" {
+		t.Fatalf("output filePath = %#v, want path from diff content", completed.Payload.Output)
+	}
+	fileChanges := payloadMap(completed.Payload.Metadata, "fileChanges")
+	files := payloadArray(fileChanges["files"])
+	if len(files) != 1 {
+		t.Fatalf("fileChanges = %#v, want one file", fileChanges)
+	}
+	if files[0]["path"] != "/workspace/src/app.ts" ||
+		files[0]["oldString"] != "const ready = false\n" ||
+		files[0]["newString"] != "const ready = true\n" ||
+		files[0]["change"] != "modified" {
+		t.Fatalf("fileChanges files = %#v, want modified edit diff", files)
+	}
+}
+
+func TestStandardACPOpenCodeWriteToolReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-write-1",
+		"title":         "write_file",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"file_path": "/workspace/notes/today.md",
+			"content":   "# Today\n",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode write) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 1 ||
+				files[0]["path"] != "/workspace/notes/today.md" ||
+				files[0]["newString"] != "# Today\n" ||
+				files[0]["change"] != "added" {
+				t.Fatalf("turn fileChanges = %#v, want added write file", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+
+	report := reportActivityInput(session, events)
+	var messageWithFileChanges *agentsessionstore.WorkspaceAgentMessageUpdate
+	for index := range report.MessageUpdates {
+		update := &report.MessageUpdates[index]
+		if update.Kind == "tool_call" && update.Status == "completed" {
+			fileChanges := payloadMap(update.Payload, "fileChanges")
+			if len(payloadArray(fileChanges["files"])) > 0 {
+				messageWithFileChanges = update
+				break
+			}
+		}
+	}
+	if messageWithFileChanges == nil {
+		t.Fatalf("message updates = %#v, want completed tool_call fileChanges", report.MessageUpdates)
+	}
+	if got := messageWithFileChanges.Payload["toolName"]; got != "Write" && got != "Edit" {
+		t.Fatalf("message update toolName = %#v, want write/edit", got)
+	}
+	var patchWithFileChanges *agentsessionstore.WorkspaceAgentStatePatch
+	for index := range report.StatePatches {
+		patch := &report.StatePatches[index]
+		if patch.Turn != nil && len(patch.Turn.FileChanges) > 0 {
+			patchWithFileChanges = patch
+			break
+		}
+	}
+	if patchWithFileChanges == nil {
+		t.Fatalf("state patches = %#v, want turn fileChanges", report.StatePatches)
+	}
+	files := payloadArray(patchWithFileChanges.Turn.FileChanges["files"])
+	if len(files) != 1 || files[0]["path"] != "/workspace/notes/today.md" {
+		t.Fatalf("state patch fileChanges = %#v, want opencode write path", patchWithFileChanges.Turn.FileChanges)
+	}
+}
+
+func TestStandardACPOpenCodeApplyPatchReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	patchText := `*** Begin Patch
+*** Add File: package.json
++{
++  "scripts": {
++    "dev": "vite"
++  }
++}
+*** Add File: src/App.jsx
++export default function App() {
++  return <main>Ready</main>
++}
+*** End Patch`
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-patch-1",
+		"title":         "apply_patch",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"patchText": patchText,
+		},
+		"rawOutput": "Success. Updated the following files:\nA /workspace/package.json\nA /workspace/src/App.jsx",
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode apply_patch) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["newString"]), `"dev": "vite"`) ||
+				files[1]["path"] != "src/App.jsx" ||
+				!strings.Contains(asString(files[1]["newString"]), "return <main>Ready</main>") {
+				t.Fatalf("call fileChanges = %#v, want added files from patchText", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "package.json" || files[1]["path"] != "src/App.jsx" {
+				t.Fatalf("turn fileChanges = %#v, want patchText files", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+
+	report := reportActivityInput(session, events)
+	var messageWithFileChanges *agentsessionstore.WorkspaceAgentMessageUpdate
+	for index := range report.MessageUpdates {
+		update := &report.MessageUpdates[index]
+		if update.Kind == "tool_call" && update.Status == "completed" {
+			fileChanges := payloadMap(update.Payload, "fileChanges")
+			if len(payloadArray(fileChanges["files"])) > 0 {
+				messageWithFileChanges = update
+				break
+			}
+		}
+	}
+	if messageWithFileChanges == nil {
+		t.Fatalf("message updates = %#v, want completed tool_call fileChanges", report.MessageUpdates)
+	}
+	if got := messageWithFileChanges.Payload["toolName"]; got != "Edit" {
+		t.Fatalf("message update toolName = %#v, want Edit", got)
+	}
+	var patchWithFileChanges *agentsessionstore.WorkspaceAgentStatePatch
+	for index := range report.StatePatches {
+		patch := &report.StatePatches[index]
+		if patch.Turn != nil && len(patch.Turn.FileChanges) > 0 {
+			patchWithFileChanges = patch
+			break
+		}
+	}
+	if patchWithFileChanges == nil {
+		t.Fatalf("state patches = %#v, want turn fileChanges", report.StatePatches)
+	}
+	files := payloadArray(patchWithFileChanges.Turn.FileChanges["files"])
+	if len(files) != 2 || files[0]["path"] != "package.json" || files[1]["path"] != "src/App.jsx" {
+		t.Fatalf("state patch fileChanges = %#v, want apply_patch files", patchWithFileChanges.Turn.FileChanges)
+	}
+}
+
+func TestStandardACPOpenCodeCompletedEditMetadataFilesReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-patch-2",
+		"title":         "Success. Updated the following files:\nA Users/vector/Documents/tutti/session-1/package.json\nA Users/vector/Documents/tutti/session-1/src/App.jsx",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"patchText": "*** Begin Patch\n*** Add File: package.json\n+{}\n*** End Patch",
+		},
+		"rawOutput": map[string]any{
+			"metadata": map[string]any{
+				"files": []any{
+					map[string]any{
+						"filePath":     "/Users/vector/Documents/tutti/session-1/package.json",
+						"relativePath": "Users/vector/Documents/tutti/session-1/package.json",
+						"type":         "add",
+						"patch":        "Index: /Users/vector/Documents/tutti/session-1/package.json\n@@ -0,0 +1 @@\n+{}",
+					},
+					map[string]any{
+						"filePath":     "/Users/vector/Documents/tutti/session-1/src/App.jsx",
+						"relativePath": "Users/vector/Documents/tutti/session-1/src/App.jsx",
+						"type":         "add",
+						"patch":        "Index: /Users/vector/Documents/tutti/session-1/src/App.jsx\n@@ -0,0 +1 @@\n+export default function App() {}",
+					},
+				},
+			},
+			"output": "Success. Updated the following files:\nA Users/vector/Documents/tutti/session-1/package.json\nA Users/vector/Documents/tutti/session-1/src/App.jsx",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode completed edit metadata files) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "/Users/vector/Documents/tutti/session-1/package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["unifiedDiff"]), "@@ -0,0 +1 @@") ||
+				files[1]["path"] != "/Users/vector/Documents/tutti/session-1/src/App.jsx" {
+				t.Fatalf("call fileChanges = %#v, want metadata files diffs", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "/Users/vector/Documents/tutti/session-1/package.json" {
+				t.Fatalf("turn fileChanges = %#v, want metadata files diffs", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+}
+
+func TestStandardACPOpenCodeCompletedEditMergesStartedPatchInput(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	patchText := `*** Begin Patch
+*** Add File: package.json
++{"scripts":{"dev":"vite"}}
+*** Add File: src/App.jsx
++export default function App() {
++  return <main>Ready</main>
++}
+*** End Patch`
+	startedEvents, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "call-real-opencode",
+		"title":         "apply_patch",
+		"kind":          "edit",
+		"status":        "in_progress",
+		"rawInput": map[string]any{
+			"kind":      "edit",
+			"patchText": patchText,
+			"title":     "apply_patch",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode started apply_patch) returned !ok")
+	}
+	if len(startedEvents) == 0 {
+		t.Fatal("started events empty")
+	}
+
+	completedEvents, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "call-real-opencode",
+		"title":         "Success. Updated the following files: A /workspace/package.json A /workspace/src/App.jsx",
+		"status":        "completed",
+		"rawOutput": map[string]any{
+			"files": []any{
+				map[string]any{
+					"filePath": "/workspace/package.json",
+					"type":     "add",
+					"patch":    "Index: /workspace/package.json\n@@ -0,0 +1 @@\n+{\"scripts\":{\"dev\":\"vite\"}}",
+				},
+				map[string]any{
+					"filePath": "/workspace/src/App.jsx",
+					"type":     "add",
+					"patch":    "Index: /workspace/src/App.jsx\n@@ -0,0 +1,3 @@\n+export default function App() {\n+  return <main>Ready</main>\n+}",
+				},
+			},
+			"output": "Success. Updated the following files: A /workspace/package.json A /workspace/src/App.jsx",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode completed apply_patch) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range completedEvents {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			if got := event.Payload.Name; got != "Edit" {
+				t.Fatalf("payload name = %#v, want Edit", got)
+			}
+			input := payloadMap(event.Payload.Metadata, "input")
+			if strings.TrimSpace(asString(input["patchText"])) == "" {
+				t.Fatalf("completed input = %#v, want started patchText merged", input)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "/workspace/package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["unifiedDiff"]), "@@ -0,0 +1 @@") ||
+				files[1]["path"] != "/workspace/src/App.jsx" {
+				t.Fatalf("call fileChanges = %#v, want output.files diffs", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "/workspace/package.json" {
+				t.Fatalf("turn fileChanges = %#v, want output.files diffs", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", completedEvents)
 	}
 }
 
@@ -1665,14 +1976,14 @@ func TestClaudeCodeStandardACPToolCallEventPreservesParentToolUseID(t *testing.T
 func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-interactive-1")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-interactive-1")
 	transport.conn.promptKind = "ask-user"
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-interactive-1"
+	session.ProviderSessionID = "hermes-session-interactive-1"
 
 	execDone := make(chan error, 1)
 	go func() {
@@ -1729,14 +2040,14 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-plan-1")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-plan-1")
 	transport.conn.promptKind = "exit-plan"
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-plan-1"
+	session.ProviderSessionID = "hermes-session-plan-1"
 
 	execDone := make(chan error, 1)
 	go func() {
@@ -1784,9 +2095,9 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 		config   standardACPConfig
 	}{
 		{
-			name:     "gemini",
-			provider: ProviderGemini,
-			config:   standardACPConfig{provider: ProviderGemini},
+			name:     "hermes default config",
+			provider: ProviderHermes,
+			config:   standardACPConfig{provider: ProviderHermes},
 		},
 		{
 			name:     "hermes",
@@ -1854,14 +2165,14 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-segment-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-segment-1"
 	normalizer := newACPTurnNormalizer()
 
 	var events []activityshared.Event
 	events = append(events, normalizer.AppendThinkingChunk(session, "turn-1", "Thinking before tool. ")...)
 	events = append(events, normalizer.AppendAssistantChunk(session, "turn-1", "Before tool. ")...)
-	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "tool_call",
 			"toolCallId": "tool-segment-1",
@@ -1977,9 +2288,9 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "session_info_update",
 			"title": "`+tuttiMentionRoutingReminder+`"
@@ -2063,10 +2374,10 @@ func TestClaudeCodeStandardACPUpdateMarksSyntheticInterruptChunkAsInterrupted(t 
 func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2291,10 +2602,10 @@ func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2949,7 +3260,7 @@ func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptForMarkdownMention
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[len(texts)-1])
 	}
 	userContent := firstUserMessageContent(t, events)
@@ -3010,7 +3321,7 @@ func TestClaudeCodeAdapterExecRoutesAgentTargetMention(t *testing.T) {
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want agent target routing", texts[len(texts)-1])
 	}
 }
@@ -3068,9 +3379,9 @@ func TestClaudeCodeAdapterExecDoesNotRouteBareMentionURI(t *testing.T) {
 func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-mention-routing")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-mention-routing")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	session.PermissionModeID = "full-access"
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -3088,7 +3399,7 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }
@@ -4319,13 +4630,13 @@ func TestClaudeCodeAdapterSessionStateIncludesLiveConfigUpdates(t *testing.T) {
 	}
 }
 
-func TestGeminiAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testing.T) {
+func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-commands")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-commands")
 	transport.conn.commandUpdateOnNewSession = true
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -4337,6 +4648,148 @@ func TestGeminiAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 		snapshot.Commands[0].Description != "Search the web" ||
 		snapshot.Commands[0].InputHint != "query" {
 		t.Fatalf("command snapshot = %#v ok=%v, want command update preserved from session/new", snapshot, ok)
+	}
+}
+
+func TestOpenCodeAdapterStartExposesReviewCommandBaseline(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-review")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want OpenCode review baseline")
+	}
+	names := agentSessionCommandNames(snapshot.Commands)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(names, want) {
+			t.Fatalf("commands = %#v, want %q", names, want)
+		}
+	}
+
+	state := adapter.SessionState(session)
+	commands, _ := state.RuntimeContext["commands"].([]string)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(commands, want) {
+			t.Fatalf("runtime context commands = %#v, want %q", commands, want)
+		}
+	}
+	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+	for _, want := range []string{CapabilityCompact, "review"} {
+		if !containsString(capabilities, want) {
+			t.Fatalf("runtime context capabilities = %#v, want %q", capabilities, want)
+		}
+	}
+}
+
+func TestOpenCodeCommandUpdatePreservesAdapterOwnedCompactCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-commands")
+	adapter := NewOpenCodeAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	session := standardTestSession(ProviderOpenCode)
+
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:           session.RoomID,
+		AgentSessionID:   session.AgentSessionID,
+		Provider:         session.Provider,
+		CWD:              session.CWD,
+		PermissionModeID: session.PermissionModeID,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	stream, unsubscribe, ok := controller.Subscribe(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe ok=false, want live session stream")
+	}
+	defer unsubscribe()
+
+	transport.conn.sendAvailableCommandEntries([]map[string]any{{
+		"name":        "review",
+		"description": "Review from OpenCode",
+	}})
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-stream:
+			if event.EventType != StreamEventAvailableCommands {
+				continue
+			}
+			snapshot, ok := event.Data.(AgentSessionCommandSnapshot)
+			if !ok {
+				t.Fatalf("event data = %#v, want AgentSessionCommandSnapshot", event.Data)
+			}
+			names := agentSessionCommandNames(snapshot.Commands)
+			for _, want := range []string{"compact", "review"} {
+				if !containsString(names, want) {
+					t.Fatalf("commands = %#v, want %q", names, want)
+				}
+			}
+
+			state := adapter.SessionState(started.Session)
+			capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+			if !containsString(capabilities, CapabilityCompact) || !containsString(capabilities, "review") {
+				t.Fatalf("capabilities = %#v, want compact+review", capabilities)
+			}
+			return
+		case <-deadline:
+			t.Fatal("OpenCode available_commands_update was not published")
+		}
+	}
+}
+
+func TestOpenCodeSlashCompactEmitsCompactionNotice(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-compact")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-compact"
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "/compact",
+	}}, "", "turn-opencode-compact", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var progressCount, completedCount int
+	var progressMessageID, completedMessageID string
+	for _, event := range events {
+		if event.Payload.Content == "Inspecting files." {
+			t.Fatalf("compact assistant summary leaked into transcript: %#v", events)
+		}
+		switch event.Payload.Content {
+		case "Compacting context.":
+			progressCount++
+			progressMessageID = asString(event.Payload.Metadata["messageId"])
+		case "Context compacted.":
+			completedCount++
+			completedMessageID = asString(event.Payload.Metadata["messageId"])
+		}
+	}
+	if progressCount != 1 {
+		t.Fatalf("progress banners = %d, want exactly 1; events = %#v", progressCount, events)
+	}
+	if completedCount != 1 {
+		t.Fatalf("completed banners = %d, want exactly 1; events = %#v", completedCount, events)
+	}
+	if progressMessageID == "" || progressMessageID != completedMessageID {
+		t.Fatalf("messageId mismatch: progress %q, completed %q", progressMessageID, completedMessageID)
 	}
 }
 
@@ -4575,47 +5028,14 @@ func TestStandardACPAdapterResumePreservesCommandsAdvertisedDuringLoadSession(t 
 	}
 }
 
-func TestSelectGeminiACPAuthMethodPrefersAPIKey(t *testing.T) {
-	t.Parallel()
-
-	raw, err := json.Marshal(map[string]any{
-		"authMethods": []map[string]any{
-			{"id": "gemini-api-key"},
-			{"id": "oauth-personal"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if got := selectGeminiACPAuthMethod(raw); got != "gemini-api-key" {
-		t.Fatalf("method id = %q, want gemini-api-key", got)
-	}
-}
-
-func TestSelectGeminiACPAuthMethodFallsBackToAPIKey(t *testing.T) {
-	t.Parallel()
-
-	raw, err := json.Marshal(map[string]any{
-		"authMethods": []map[string]any{
-			{"id": "gemini-api-key"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if got := selectGeminiACPAuthMethod(raw); got != "gemini-api-key" {
-		t.Fatalf("method id = %q, want gemini-api-key", got)
-	}
-}
-
 func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionExits = true
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -4625,7 +5045,7 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	}
 
 	params := transport.conn.closeSessionParams()
-	if got := asString(params["sessionId"]); got != "gemini-session-close" {
+	if got := asString(params["sessionId"]); got != "hermes-session-close" {
 		t.Fatalf("session/close sessionId = %q, want provider session id", got)
 	}
 	if !transport.conn.closed() {
@@ -4636,11 +5056,11 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close-failure")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close-failure")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionError = &acpError{Code: -32601, Message: "session close unavailable"}
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -4649,7 +5069,7 @@ func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testin
 		t.Fatalf("Close: %v", err)
 	}
 
-	if got := asString(transport.conn.closeSessionParams()["sessionId"]); got != "gemini-session-close-failure" {
+	if got := asString(transport.conn.closeSessionParams()["sessionId"]); got != "hermes-session-close-failure" {
 		t.Fatalf("session/close sessionId = %q, want provider session id", got)
 	}
 	if !transport.conn.closed() {
@@ -4798,13 +5218,6 @@ func (c *standardACPConnection) Send(data []byte) error {
 				},
 			}
 			sessionCapabilities := map[string]any{}
-			if strings.EqualFold(c.agentTitle, "Gemini CLI") {
-				result["authMethods"] = []map[string]any{
-					{"id": "oauth-personal", "name": "Login with Google"},
-					{"id": "gemini-api-key", "name": "Gemini API Key"},
-				}
-				sessionCapabilities["load"] = true
-			}
 			if strings.EqualFold(c.agentTitle, "Claude Agent") {
 				sessionCapabilities["resume"] = true
 			}
@@ -5173,22 +5586,28 @@ func (c *standardACPConnection) sendJSON(value any) {
 }
 
 func (c *standardACPConnection) sendAvailableCommandsUpdate() {
+	c.sendAvailableCommandEntries([]map[string]any{{
+		"name":        "web",
+		"description": "Search the web",
+		"input": map[string]any{
+			"hint": "query",
+		},
+	}})
+}
+
+func (c *standardACPConnection) sendAvailableCommandEntries(commands []map[string]any) {
+	values := make([]any, 0, len(commands))
+	for _, command := range commands {
+		values = append(values, command)
+	}
 	c.sendJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  acpMethodUpdate,
 		"params": map[string]any{
 			"sessionId": c.sessionID,
 			"update": map[string]any{
-				"sessionUpdate": "available_commands_update",
-				"availableCommands": []any{
-					map[string]any{
-						"name":        "web",
-						"description": "Search the web",
-						"input": map[string]any{
-							"hint": "query",
-						},
-					},
-				},
+				"sessionUpdate":     "available_commands_update",
+				"availableCommands": values,
 			},
 		},
 	})
@@ -5227,7 +5646,7 @@ func (c *standardACPConnection) defaultConfigOptions() []map[string]any {
 		return out
 	}
 	title := strings.TrimSpace(c.agentTitle)
-	if strings.EqualFold(title, "Claude Agent") || strings.EqualFold(title, "Gemini CLI") {
+	if strings.EqualFold(title, "Claude Agent") || strings.EqualFold(title, "Hermes Agent") {
 		return []map[string]any{
 			{"id": "model"},
 			{"id": "effort"},

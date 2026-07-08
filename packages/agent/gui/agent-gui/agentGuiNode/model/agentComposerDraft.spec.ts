@@ -459,4 +459,33 @@ describe("agentComposerDraft", () => {
 
     expect(appendQueuedPromptsToComposerDraft(draft, [])).toBe(draft);
   });
+
+  it("restores pasted large texts from stranded queued prompts", () => {
+    const restored = appendQueuedPromptsToComposerDraft(
+      { prompt: "first message", images: [] },
+      [
+        {
+          id: "q1",
+          content: [
+            {
+              type: "file",
+              kind: "pasted-text",
+              path: "/tmp/notes.txt",
+              name: "notes",
+              sizeBytes: 4096
+            }
+          ]
+        }
+      ]
+    );
+
+    expect(restored.largeTexts).toEqual([
+      expect.objectContaining({
+        name: "notes",
+        path: "/tmp/notes.txt",
+        sizeBytes: 4096,
+        text: ""
+      })
+    ]);
+  });
 });

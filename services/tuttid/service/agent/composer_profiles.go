@@ -126,16 +126,6 @@ var composerProfiles = map[string]composerProfile{
 			{ID: "full-access", Semantic: PermissionModeSemanticFullAccess},
 		},
 	},
-	agentprovider.Gemini: {
-		ModelSelection:          true,
-		UsesModelCatalog:        true,
-		ReasoningEffort:         true,
-		Capabilities:            []string{"interrupt"},
-		DefaultPermissionModeID: "yolo",
-		PermissionModes: []PermissionModeOption{
-			{ID: "yolo", Semantic: PermissionModeSemanticUnconfigurable},
-		},
-	},
 	agentprovider.Hermes: {
 		Capabilities:            []string{"interrupt"},
 		DefaultPermissionModeID: "yolo",

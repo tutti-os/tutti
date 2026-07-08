@@ -27,20 +27,20 @@ describe("agent gui workbench state", () => {
           "target-a": { model: "target-model" }
         },
         composerOverridesByProvider: {
-          gemini: { permissionModeId: "read-only" },
+          hermes: { permissionModeId: "read-only" },
           unsupported: { model: "ignored" }
         } as never,
         lastActiveAgentSessionId: "session-1",
-        provider: "gemini"
+        provider: "hermes"
       })
     ).toEqual({
-      ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
+      ...createDefaultAgentGuiWorkbenchNodeState("hermes"),
       composerOverrides: { model: "gpt-5" },
       composerOverridesByAgentTargetId: {
         "target-a": { model: "target-model" }
       },
       composerOverridesByProvider: {
-        gemini: { permissionModeId: "read-only" }
+        hermes: { permissionModeId: "read-only" }
       },
       lastActiveAgentSessionId: "session-1"
     });
@@ -49,13 +49,13 @@ describe("agent gui workbench state", () => {
   it("projects only persisted workbench state", () => {
     expect(
       projectAgentGuiWorkbenchState({
-        ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
+        ...createDefaultAgentGuiWorkbenchNodeState("hermes"),
         composerOverrides: { permissionModeId: "read-only" },
         composerOverridesByAgentTargetId: {
           "target-a": { model: "target-model" }
         },
         composerOverridesByProvider: {
-          gemini: { model: "gemini-2.5-pro" }
+          hermes: { model: "hermes-2.5-pro" }
         },
         conversationCount: 3,
         conversationRailCollapsed: true,
@@ -66,7 +66,7 @@ describe("agent gui workbench state", () => {
         providerTargetId: "legacy-target",
         providerTargetRef: {
           kind: "shared-agent",
-          provider: "gemini",
+          provider: "hermes",
           sharedAgentId: "agent-1"
         }
       })
@@ -141,7 +141,7 @@ describe("agent gui workbench state", () => {
         }),
         normalizeAgentGuiWorkbenchState({
           lastActiveAgentSessionId: "session-1",
-          provider: "gemini"
+          provider: "hermes"
         })
       )
     ).toBe(true);
@@ -165,8 +165,8 @@ describe("agent gui workbench state", () => {
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:claude-code")
     ).toBe("claude-code");
     expect(
-      agentGuiWorkbenchProviderFromInstanceId("agent-gui:gemini:panel:abc")
-    ).toBe("gemini");
+      agentGuiWorkbenchProviderFromInstanceId("agent-gui:hermes:panel:abc")
+    ).toBe("hermes");
     expect(
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:unsupported")
     ).toBe("codex");
@@ -197,9 +197,9 @@ describe("agent gui workbench state", () => {
       }) ?? (() => undefined);
 
     source.writeNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       state: {
-        agentTargetId: "daemon-gemini",
+        agentTargetId: "daemon-hermes",
         conversationRailCollapsed: true,
         conversationRailWidthPx: 360,
         lastActiveAgentSessionId: "session-1"
@@ -210,23 +210,23 @@ describe("agent gui workbench state", () => {
     expect(notified).toBe(1);
     expect(
       source.externalStateSource.getNodeState({
-        instanceId: "agent-gui:gemini",
+        instanceId: "agent-gui:hermes",
         nodeId: "node-1",
         typeId: "agent-gui",
         workspaceId: "workspace-1"
       })
     ).toEqual({
-      agentTargetId: "daemon-gemini",
+      agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
     });
 
     source.writeNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       nodeId: "node-1",
       state: {
-        agentTargetId: "daemon-gemini-2",
+        agentTargetId: "daemon-hermes-2",
         conversationRailCollapsed: false,
         conversationRailWidthPx: 420,
         lastActiveAgentSessionId: "session-2"
@@ -238,31 +238,31 @@ describe("agent gui workbench state", () => {
     expect(notified).toBe(2);
     expect(
       source.externalStateSource.getNodeState({
-        instanceId: "agent-gui:gemini",
+        instanceId: "agent-gui:hermes",
         nodeId: "node-1",
         typeId: "agent-gui",
         workspaceId: "workspace-1"
       })
     ).toEqual({
-      agentTargetId: "daemon-gemini-2",
+      agentTargetId: "daemon-hermes-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
       lastActiveAgentSessionId: "session-2"
     });
     expect(
       source.externalStateSource.getSnapshotNodeState?.({
-        instanceId: "agent-gui:gemini",
+        instanceId: "agent-gui:hermes",
         nodeId: "node-1",
         typeId: "agent-gui",
         workspaceId: "workspace-1"
       })
     ).toMatchObject({
-      agentTargetId: "daemon-gemini-2",
+      agentTargetId: "daemon-hermes-2",
       lastActiveAgentSessionId: "session-2"
     });
     expect(
       source.readNodeState({
-        instanceId: "agent-gui:gemini",
+        instanceId: "agent-gui:hermes",
         typeId: "agent-gui"
       })
     ).toBeNull();

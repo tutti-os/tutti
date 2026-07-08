@@ -90,7 +90,7 @@ export interface ComposerModelMenuModel {
   };
   model: ComposerMenuSection & {
     /**
-     * Vendor-grouped view of `options` (Claude / GPT / Gemini / ...); empty
+     * Vendor-grouped view of `options` (Claude / GPT / ...); empty
      * when the provider does not collapse its model list, in which case the
      * menu renders the flat `options`.
      */

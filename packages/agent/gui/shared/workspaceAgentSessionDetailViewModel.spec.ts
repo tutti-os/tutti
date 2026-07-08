@@ -1606,8 +1606,12 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
 
   it("renders non-Codex tool activities through the shared tool call disclosure model", () => {
     const view = buildWorkspaceAgentSessionDetailViewModel({
-      activity: { ...activity, agentProvider: "gemini", agentName: "Gemini" },
-      session: { ...session, provider: "gemini" },
+      activity: {
+        ...activity,
+        agentProvider: "openclaw",
+        agentName: "OpenClaw"
+      },
+      session: { ...session, provider: "openclaw" },
       timelineItems: [
         item({
           id: 70,
@@ -1623,7 +1627,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
             activityKey: "tool.run_shell_command",
             metadata: {
               activityKind: "run_command",
-              callID: "gemini-call-1",
+              callID: "openclaw-call-1",
               input: { command: "rg TODO" }
             }
           }
@@ -1637,7 +1641,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
             activityKey: "tool.run_shell_command",
             metadata: {
               activityKind: "run_command",
-              callID: "gemini-call-1",
+              callID: "openclaw-call-1",
               input: { command: "rg TODO" },
               output: { output: "src/App.tsx:12:TODO" }
             }
@@ -1655,7 +1659,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
         hasFailedToolCall: false,
         toolCalls: [
           expect.objectContaining({
-            id: "call:gemini-call-1",
+            id: "call:openclaw-call-1",
             name: "执行命令",
             toolName: "Bash",
             callType: null,

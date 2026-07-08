@@ -34,14 +34,14 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
   const workbenchState = normalizeDesktopAgentGUIWorkbenchState({
     composerOverrides: { permissionModeId: "full-access" },
     conversationRailCollapsed: true,
-    agentTargetId: "daemon-gemini",
+    agentTargetId: "daemon-hermes",
     lastActiveAgentSessionId: "session-1",
     lastActiveConversationTitle: "A title",
-    provider: "gemini"
+    provider: "hermes"
   });
 
   assert.deepEqual(workbenchState, {
-    agentTargetId: "daemon-gemini",
+    agentTargetId: "daemon-hermes",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
     lastActiveAgentSessionId: "session-1",
@@ -52,17 +52,17 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
 test("desktop agent gui workbench projection preserves rail state and permission defaults", () => {
   assert.deepEqual(
     projectDesktopAgentGUIWorkbenchState({
-      ...createDefaultDesktopAgentGUINodeState("gemini"),
+      ...createDefaultDesktopAgentGUINodeState("hermes"),
       composerOverrides: { permissionModeId: "read-only" },
       conversationCount: 3,
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
-      agentTargetId: "daemon-gemini",
+      agentTargetId: "daemon-hermes",
       lastActiveAgentSessionId: "session-1",
       lastActiveConversationTitle: "A title"
     }),
     {
-      agentTargetId: "daemon-gemini",
+      agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1",
@@ -81,7 +81,7 @@ test("desktop agent gui workbench state equality includes rail state", () => {
       }),
       normalizeDesktopAgentGUIWorkbenchState({
         lastActiveAgentSessionId: "session-1",
-        provider: "gemini"
+        provider: "hermes"
       })
     ),
     true
@@ -123,8 +123,8 @@ test("desktop agent gui workbench state ignores composer overrides by provider",
         permissionModeId: "auto",
         reasoningEffort: "high"
       },
-      gemini: {
-        model: "gemini-pro",
+      hermes: {
+        model: "hermes-pro",
         permissionModeId: "full-access",
         reasoningEffort: "medium"
       },
@@ -236,10 +236,10 @@ test("desktop agent gui node state normalizes partial runtime data", () => {
     normalizeDesktopAgentGUINodeState({
       composerOverrides: { model: "gpt-5" },
       lastActiveAgentSessionId: "session-1",
-      provider: "gemini"
+      provider: "hermes"
     }),
     {
-      ...createDefaultDesktopAgentGUINodeState("gemini"),
+      ...createDefaultDesktopAgentGUINodeState("hermes"),
       composerOverrides: { model: "gpt-5" },
       lastActiveAgentSessionId: "session-1"
     }
@@ -253,10 +253,10 @@ test("desktop agent gui node state ignores removed legacy composer defaults", ()
       defaultPlanMode: true,
       defaultReasoningEffort: "high",
       lastActiveAgentSessionId: "session-1",
-      provider: "gemini"
+      provider: "hermes"
     } as unknown as Partial<DesktopAgentGUINodeState>),
     {
-      ...createDefaultDesktopAgentGUINodeState("gemini"),
+      ...createDefaultDesktopAgentGUINodeState("hermes"),
       lastActiveAgentSessionId: "session-1"
     }
   );
@@ -269,8 +269,8 @@ test("desktop agent gui provider derives from workbench instance id", () => {
     "claude-code"
   );
   assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:gemini:panel:abc"),
-    "gemini"
+    desktopAgentGUIProviderFromInstanceId("agent-gui:hermes:panel:abc"),
+    "hermes"
   );
   assert.equal(
     desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
@@ -290,9 +290,9 @@ test("desktop agent gui node state source consumes instance launch state after n
   t.after(unsubscribe);
 
   source.writeNodeState({
-    instanceId: "agent-gui:gemini",
+    instanceId: "agent-gui:hermes",
     state: {
-      agentTargetId: "daemon-gemini",
+      agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
@@ -303,13 +303,13 @@ test("desktop agent gui node state source consumes instance launch state after n
   assert.equal(notified, 1);
   assert.deepEqual(
     source.externalStateSource.getNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       nodeId: "node-1",
       typeId: "agent-gui",
       workspaceId: "workspace-1"
     }),
     {
-      agentTargetId: "daemon-gemini",
+      agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
       lastActiveAgentSessionId: "session-1"
@@ -317,10 +317,10 @@ test("desktop agent gui node state source consumes instance launch state after n
   );
 
   source.writeNodeState({
-    instanceId: "agent-gui:gemini",
+    instanceId: "agent-gui:hermes",
     nodeId: "node-1",
     state: {
-      agentTargetId: "daemon-gemini-2",
+      agentTargetId: "daemon-hermes-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
       lastActiveAgentSessionId: "session-2"
@@ -331,13 +331,13 @@ test("desktop agent gui node state source consumes instance launch state after n
   assert.equal(notified, 2);
   assert.deepEqual(
     source.externalStateSource.getNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       nodeId: "node-1",
       typeId: "agent-gui",
       workspaceId: "workspace-1"
     }),
     {
-      agentTargetId: "daemon-gemini-2",
+      agentTargetId: "daemon-hermes-2",
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,
       lastActiveAgentSessionId: "session-2"
@@ -345,14 +345,14 @@ test("desktop agent gui node state source consumes instance launch state after n
   );
   assert.equal(
     source.readNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       typeId: "agent-gui"
     }),
     null
   );
   assert.equal(
     source.externalStateSource.getNodeState({
-      instanceId: "agent-gui:gemini",
+      instanceId: "agent-gui:hermes",
       nodeId: "node-1",
       typeId: "issue-manager",
       workspaceId: "workspace-1"

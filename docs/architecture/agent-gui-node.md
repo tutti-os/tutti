@@ -148,6 +148,17 @@ Workspace Launchpad is a broad launcher surface, not a mirror of the dock
 entry list; it should show one generic Agent tile that resolves to the default
 or first ready provider instead of duplicating provider-specific Agent dock
 entries.
+Agent launches from Launchpad/All must still use the unified Agent dock entry
+identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
+same Dock icon as direct Dock launches.
+Empty launches from the unified Agent dock entry should set dock-entry reuse so
+the second dock click restores/focuses the existing AgentGUI node; draft
+prefill launches and explicit session launches keep their narrower reuse rules
+so generated drafts and session navigation do not overwrite an unrelated
+window.
+The Dock popup's New window card is a distinct launch source and must bypass
+dock-entry reuse for AgentGUI, otherwise it collapses into the normal
+restore/focus behavior instead of opening a fresh Agent window.
 Unified dock and launchpad chrome should keep the generic Agent title and
 generic Agent artwork instead of provider-branded entries. Agent window headers
 show the generic Agent title while the conversation rail is expanded. When the
@@ -180,6 +191,11 @@ a Codex panel before the draft prefill effect runs. The prefilled handoff panel
 must also scope the conversation rail to the selected target instead of opening
 on `All`; the target-specific rail selection is part of the handoff activation
 state, not a later user filter choice.
+External draft-prefill launchers that start separate work, such as Issue
+Manager task execution and task breakdown, must request a new AgentGUI window
+and must not reuse an existing dock-entry node. Reusing the dock entry can focus
+or restore the previous active conversation before the new draft composer is
+visible.
 The handoff menu is a launch surface, so its options must come from the
 host-provided, enabled provider targets. It must not use the provider rail's
 static catalog fallback or coming-soon placeholders, which are display chrome
@@ -204,7 +220,12 @@ needs to show the provider in a disabled state. Filter the target out only for
 surfaces that should completely hide it. All empty-home new-conversation
 affordances, including rail toolbar and section actions, must read the selected
 provider target's disabled state so coming-soon targets remain inspectable but
-cannot start sessions.
+cannot start sessions. Hosts that need product-specific temporarily-unavailable
+presentation for the selected disabled target may use AgentGUI's
+`renderProviderUnavailableState`. Hosts that need product-specific presentation
+for host-projected readiness gates such as coming-soon, install, login,
+checking, or unavailable should use `renderProviderReadinessGateState` instead
+of covering the built-in pane outside AgentGUI.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -386,6 +407,13 @@ hunks, convert them into file-level `changes[].diff` payloads, and only use
 input-derived file metadata for optimistic display before the tool response
 arrives.
 
+Provider adapters that receive successful write/edit/apply_patch tool calls
+without a native turn-level diff event must still normalize the executed tool
+output into `fileChanges.files` and emit a `turn.updated` patch carrying those
+`fileChanges`. The AgentGUI turn summary reads the turn state as the shared
+source for the response-tail changed-file list; tool-only payloads are not a
+substitute for that state.
+
 Approval tool calls may wrap the pending Edit/Write input so the transcript can
 preview what the user approved. Treat that nested input as preview-only data:
 Approval rows must not contribute edit diff counts, changed-file summaries, or
@@ -556,6 +584,12 @@ rather than cwd grouping, root filters, excluded project paths, or local
 Show more heuristics. Removing a project removes that rail section from the
 section list; re-adding the same path reveals historical sessions with the same
 section key.
+Pinned conversations are returned beside those sections as a separate pinned
+page on the `listSessionSections` bootstrap response. AgentGUI may render that
+page as a local `pinned` group, but pinned is not a daemon section kind and
+must continue to be derived from session `pinnedAtUnixMs`. Pinned Show more
+uses the dedicated pinned page runtime method instead of the section page
+endpoint, because pinned has no daemon `sectionKey`.
 When the provider rail is scoped to a specific agent target, AgentGUI must pass
 that `agentTargetId` to both section endpoints. The daemon applies that filter
 before `LIMIT` and `hasMore` calculation; frontend filtering after an unscoped
@@ -656,12 +690,14 @@ composer submit with no activeConversationId
   -> projection + UI refresh
 ```
 
-For normal first-message creation, the UI stays on the home composer while
-activation is pending. The home composer uses its existing busy/send-button
-state; it does not show a separate "creating session" text and it does not enter
-conversation detail just to show "connecting conversation". After activation
-succeeds, the controller attaches the conversation and records the optimistic
-user message before loading runtime projection. For Claude Code,
+For normal first-message creation, the controller creates an optimistic
+conversation id and enters that conversation surface immediately while
+activation is pending. The optimistic session is not durable yet, so any
+ordinary follow-up submit targeting `startingConversationIdRef.current` must
+enter the local queued-prompt runtime instead of calling `sendInput` directly.
+After activation succeeds, the controller attaches the durable conversation and
+reconciles the optimistic user message before loading runtime projection. For
+Claude Code,
 `desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
 session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
 options must opt out of that promotion path because the hidden draft has already
@@ -703,6 +739,15 @@ dispatch to provider-specific active-turn guidance without opening a normal next
 turn. Codex app-server maps this to `turn/steer`; Claude SDK maps it through the
 sidecar live prompt queue. `Shift+Enter` remains the multiline composer shortcut
 and must not submit either a normal prompt or guidance.
+Active composer state must prefer a live `AgentActivityRuntime` turn lifecycle
+over the selected session view/control state. `getState` and legacy state patch
+paths can temporarily report a settled or available control state while the
+runtime snapshot still has `turnLifecycle.activeTurnId` with a live phase. In
+that split state, AgentGuiNode must keep the transcript/loading projection busy,
+set normal `canSubmit` false, and let ordinary composer sends enter the local
+queue. Only explicit guidance actions bypass that queue and steer the active
+turn. Legacy `idle` turn patches clear `activeTurnId`; they must not leave a
+stale active-turn block behind.
 
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is
@@ -1200,6 +1245,14 @@ Preview-mode AgentGUI surfaces are read-only for this runtime: they may render a
 existing queue if injected into the same context, but they must not enqueue,
 claim, drain, promote, edit, or delete queued prompts.
 
+Queued prompt previews must treat prompt image blocks as the same send contract
+used by the composer and runtime: an image may be inline `data` or a staged
+`path`. Do not cast queued images to data-only blocks or build thumbnail URLs
+from `image.data` without checking it. Path-backed queued prompt thumbnails
+should use the activity runtime prompt-asset reader when workspace/session
+context is available, and otherwise avoid rendering a broken image while
+keeping the queued content unchanged for sending.
+
 ### Approval And Ask-User Prompts
 
 ```text
@@ -1438,6 +1491,14 @@ the first-party `tutti-agent` provider path for Tutti Agent entry points.
 OpenCode is not a future placeholder: it is a real local provider target backed
 by `local:opencode`, but desktop hides it behind the `enableOpenCodeAgent`
 developer preference until the preview is enabled.
+Provider slash commands must come from the runtime command snapshot or an
+explicit adapter-owned command seed. Do not add AgentGUI-only slash-command
+fallbacks to make providers look aligned. For OpenCode, `/compact` and
+`/review` are adapter-owned: the runtime seeds the command snapshot, and
+`/review` also injects an OpenCode `command.review` config entry. AgentGUI may
+surface these as OpenCode fallbacks. OpenCode may reuse the shared review
+picker, but picker selections must still submit provider-native `/review ...`
+text and must not call Codex's structured `review/start` protocol.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId` for supported
@@ -1774,6 +1835,26 @@ Validation:
 pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx
 pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts
 ```
+
+### Mixed AgentGUI Language Or Date Labels
+
+Quick checks:
+
+- Check whether the surface is wrapped in `AgentGuiI18nProvider` through
+  `AgentGUI`, `WorkspaceAgentMessageCenterPanel`, or a host-owned card wrapper.
+- If a desktop surface passes a host `i18n` runtime into
+  `AgentGuiI18nProvider`, pass the matching `locale` too. `t()` reads the
+  runtime, while formatting helpers such as `formatAgentMessageTimestamp` read
+  the AgentGUI locale bridge through `getActiveUiLanguage()`.
+- Inspect workbench contribution plumbing when a card is rendered outside the
+  main AgentGUI tree; `DesktopWorkbenchContributionContext` should carry both
+  `appI18n` and `appLocale`.
+
+Likely fix area:
+
+- desktop contribution context / shell runtime locale propagation
+- host-owned message center card wrappers
+- direct `AgentGuiI18nProvider` call sites
 
 ### Approval Or Question Remains After Answering
 

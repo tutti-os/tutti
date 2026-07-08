@@ -169,8 +169,7 @@ can select it and begin with minimal waiting.
 ### Scope
 
 Only `tutti-agent` should use proactive install. Do not auto-install external
-or third-party providers such as Claude Code, Cursor, Gemini, Hermes, or
-OpenClaw.
+or third-party providers such as Claude Code, Cursor, Hermes, or OpenClaw.
 
 The flow should be best-effort and non-modal:
 

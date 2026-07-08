@@ -45,6 +45,12 @@ export interface ComposerSessionOccupancy {
    * turn so it cannot race the daemon's single-active-turn slot.
    */
   submitBlocked: boolean;
+  /**
+   * The conversation list projects the session as running/queued/waiting.
+   * Wire-derived; complements {@link displayStatusBusy} when the two channels
+   * disagree during optimistic create or resume transitions.
+   */
+  conversationStatusBusy: boolean;
 }
 
 /**
@@ -57,7 +63,8 @@ export function sessionIsOccupied(
   return (
     occupancy.displayStatusBusy ||
     occupancy.hasPendingSubmittedTurn ||
-    occupancy.submitBlocked
+    occupancy.submitBlocked ||
+    occupancy.conversationStatusBusy
   );
 }
 
@@ -173,6 +180,10 @@ export interface HoldPromptInLocalQueueInput {
    * wait in the queue for the drain coordinator.
    */
   sessionCreatePending: boolean;
+  /** See {@link ComposerSessionOccupancy.submitBlocked}. */
+  submitBlocked: boolean;
+  /** See {@link ComposerSessionOccupancy.conversationStatusBusy}. */
+  conversationStatusBusy: boolean;
 }
 
 export function shouldHoldPromptInLocalQueue(
@@ -183,7 +194,9 @@ export function shouldHoldPromptInLocalQueue(
     input.hasPendingSubmittedTurn ||
     input.pendingInteractive ||
     input.displayStatusBusy ||
-    input.sessionCreatePending
+    input.sessionCreatePending ||
+    input.submitBlocked ||
+    input.conversationStatusBusy
   );
 }
 

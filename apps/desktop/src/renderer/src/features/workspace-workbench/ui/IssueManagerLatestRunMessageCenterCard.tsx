@@ -17,6 +17,7 @@ import {
 } from "@tutti-os/agent-gui/agent-message-center";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { DesktopLocale } from "@shared/i18n";
 import type { IssueManagerLatestRunStatusRenderInput } from "@tutti-os/workspace-issue-manager/ui";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 
@@ -27,6 +28,7 @@ export function renderIssueManagerLatestRunMessageCenterCard(
   input: IssueManagerLatestRunStatusRenderInput,
   dependencies: {
     i18n: I18nRuntime<string>;
+    locale: DesktopLocale;
     onLinkAction?: WorkspaceAgentMessageCenterCardProps["onLinkAction"];
     workspaceAgentActivityService: IWorkspaceAgentActivityService;
     workspaceId: string;
@@ -40,6 +42,7 @@ export function renderIssueManagerLatestRunMessageCenterCard(
     <IssueManagerLatestRunMessageCenterCard
       input={input}
       i18n={dependencies.i18n}
+      locale={dependencies.locale}
       onLinkAction={dependencies.onLinkAction}
       workspaceAgentActivityService={dependencies.workspaceAgentActivityService}
       workspaceId={dependencies.workspaceId}
@@ -50,12 +53,14 @@ export function renderIssueManagerLatestRunMessageCenterCard(
 function IssueManagerLatestRunMessageCenterCard({
   input,
   i18n,
+  locale,
   onLinkAction,
   workspaceAgentActivityService,
   workspaceId
 }: {
   input: IssueManagerLatestRunStatusRenderInput;
   i18n: I18nRuntime<string>;
+  locale: DesktopLocale;
   onLinkAction?: WorkspaceAgentMessageCenterCardProps["onLinkAction"];
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceId: string;
@@ -227,7 +232,7 @@ function IssueManagerLatestRunMessageCenterCard({
   );
 
   return (
-    <AgentGuiI18nProvider runtime={i18n}>
+    <AgentGuiI18nProvider runtime={i18n} locale={locale}>
       <WorkspaceAgentMessageCenterCard
         isSubmitting={
           item.pendingPrompt

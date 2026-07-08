@@ -15,7 +15,6 @@ export const desktopManagedAgentProviders = [
   "cursor",
   "tutti-agent",
   "opencode",
-  "gemini",
   "hermes",
   "openclaw"
 ] as const satisfies readonly WorkspaceAgentProvider[];
@@ -26,7 +25,6 @@ const desktopManagedAgentStartupProviderPriority = [
   "cursor",
   "tutti-agent",
   "opencode",
-  "gemini",
   "hermes",
   "openclaw"
 ] as const satisfies readonly WorkspaceAgentProvider[];

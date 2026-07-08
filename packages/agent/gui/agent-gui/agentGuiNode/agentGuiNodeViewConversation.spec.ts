@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIConversationSummary } from "./model/agentGuiConversationModel";
 import {
   ConversationMeta,
+  filterConversationSectionsBySearchMatches,
   groupConversations
 } from "./agentGuiNodeViewConversation";
 
@@ -125,6 +126,35 @@ describe("groupConversations", () => {
     expect(groups.map((group) => group.id)).toEqual(["conversations"]);
     expect(groups[0]?.items).toEqual([]);
     expect(groups[0]?.label).toBe("Chats");
+  });
+
+  it("removes empty rail sections after applying search matches", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const matching = conversation("hello-friend", nowMs, {
+      project: project("/workspace/app", "App")
+    });
+    const unrelated = conversation("other-chat", nowMs - 1_000, {
+      project: project("/workspace/other", "Other")
+    });
+    const sections = groupConversations(
+      [matching, unrelated],
+      labels,
+      [
+        project("/workspace/app", "App"),
+        project("/workspace/empty", "Empty"),
+        project("/workspace/other", "Other")
+      ],
+      { includeEmptyConversations: true }
+    );
+
+    const filtered = filterConversationSectionsBySearchMatches(sections, [
+      matching
+    ]);
+
+    expect(filtered.map((section) => section.id)).toEqual([
+      "project:/workspace/app"
+    ]);
+    expect(filtered[0]?.items.map((item) => item.id)).toEqual(["hello-friend"]);
   });
 });
 

@@ -113,8 +113,8 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentStatusService: stubAgentStatusService{
 			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
-				if len(input.Providers) != 1 || input.Providers[0] != "gemini" {
-					t.Fatalf("providers = %#v, want [gemini]", input.Providers)
+				if len(input.Providers) != 1 || input.Providers[0] != "hermes" {
+					t.Fatalf("providers = %#v, want [hermes]", input.Providers)
 				}
 				checkedAt := capturedAt
 				return agentstatusservice.Snapshot{
@@ -135,14 +135,14 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 						CLI: agentstatusservice.CLIStatus{
 							Installed: false,
 						},
-						Provider: "gemini",
+						Provider: "hermes",
 					}},
 				}, nil
 			},
 		},
 	}))
 
-	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=gemini", nil)
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/agent-providers/status?providers=hermes", nil)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
@@ -153,8 +153,8 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 		t.Fatalf("providers length = %d, want 1", len(response.Providers))
 	}
 	status := response.Providers[0]
-	if status.Provider != tuttigenerated.Gemini {
-		t.Fatalf("provider = %q, want gemini", status.Provider)
+	if status.Provider != tuttigenerated.Hermes {
+		t.Fatalf("provider = %q, want hermes", status.Provider)
 	}
 	if status.Availability.Status != tuttigenerated.AgentProviderAvailabilityStatusUnsupported {
 		t.Fatalf("availability = %q, want unsupported", status.Availability.Status)

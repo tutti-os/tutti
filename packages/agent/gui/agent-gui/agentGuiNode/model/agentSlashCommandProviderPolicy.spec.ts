@@ -7,7 +7,7 @@ import {
 } from "./agentSlashCommandProviderPolicy";
 
 describe("agentSlashCommandProviderPolicy", () => {
-  const reviewPickerProviders = ["codex", "claude-code"] as const;
+  const reviewPickerProviders = ["codex", "claude-code", "opencode"] as const;
 
   it("adds browser-use as a composer capability when browser use is supported", () => {
     const commands = resolveSlashCommandsForProvider({
@@ -129,6 +129,52 @@ describe("agentSlashCommandProviderPolicy", () => {
       "fast",
       "review"
     ]);
+  });
+
+  it("surfaces OpenCode review from the adapter-owned fallback command", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "opencode",
+        commands: []
+      }).map((command) => command.name)
+    ).toEqual(["compact", "goal", "review"]);
+
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "opencode",
+        commands: [{ name: "review", description: "Review changes" }]
+      }).map((command) => command.name)
+    ).toContain("review");
+  });
+
+  it("opens the review picker for OpenCode review while keeping submitted text provider-native", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "opencode",
+      commands: [{ name: "review", description: "Review changes" }]
+    });
+    const review = commands.find((command) => command.name === "review")!;
+
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "opencode",
+        command: review,
+        currentDraft: "/rev"
+      })
+    ).toEqual({ kind: "showReviewPicker" });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "opencode",
+        commands,
+        draft: "/review"
+      })
+    ).toEqual({ kind: "showReviewPicker" });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "opencode",
+        commands,
+        draft: "/review custom:check auth"
+      })
+    ).toBeNull();
   });
 
   it("filters compact when the session has no compactable context", () => {

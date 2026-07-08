@@ -80,15 +80,20 @@ export type WorkspaceAgentActivitySessionSectionResult = Awaited<
   ReturnType<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>
 >;
 
+export type WorkspaceAgentActivityListPinnedSessionsPageInput = Parameters<
+  NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>
+>[0];
+
+export type WorkspaceAgentActivityPinnedSessionsPageResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>>
+>;
+
 export interface WorkspaceAgentActivityEnsureSessionSynchronizedInput {
   afterVersion?: number;
   agentSessionId: string;
   onError?: (error: unknown) => void;
   workspaceId: string;
 }
-
-export type WorkspaceAgentActivityRetainSessionInput =
-  WorkspaceAgentActivityEnsureSessionSynchronizedInput;
 
 export interface WorkspaceAgentActivityAttachment {
   attachmentId: string;
@@ -156,6 +161,9 @@ export interface IWorkspaceAgentActivityService {
   listSessionSectionPage(
     input: WorkspaceAgentActivityListSessionSectionPageInput
   ): Promise<WorkspaceAgentActivitySessionSectionResult>;
+  listPinnedSessionsPage(
+    input: WorkspaceAgentActivityListPinnedSessionsPageInput
+  ): Promise<WorkspaceAgentActivityPinnedSessionsPageResult>;
   scanExternalSessionImports(
     workspaceId: string,
     request?: ExternalAgentImportScanRequest
@@ -189,10 +197,6 @@ export interface IWorkspaceAgentActivityService {
   }): Promise<void>;
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
-  ): () => void;
-  /** @deprecated Use ensureSessionSynchronized. */
-  retainSessionEvents(
-    input: WorkspaceAgentActivityRetainSessionInput
   ): () => void;
   sendInput(
     input: AgentActivitySendInput

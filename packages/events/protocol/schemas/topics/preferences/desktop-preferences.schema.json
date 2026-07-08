@@ -36,7 +36,6 @@
         "tutti-agent": { "$ref": "#/$defs/agentComposerDefaults" },
         "cursor": { "$ref": "#/$defs/agentComposerDefaults" },
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
-        "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
         "openclaw": { "$ref": "#/$defs/agentComposerDefaults" },
         "opencode": { "$ref": "#/$defs/agentComposerDefaults" }
@@ -55,7 +54,6 @@
         "tutti-agent": { "type": "boolean" },
         "cursor": { "type": "boolean" },
         "nexight": { "type": "boolean" },
-        "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
         "openclaw": { "type": "boolean" },
         "opencode": { "type": "boolean" }

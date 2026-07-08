@@ -867,6 +867,7 @@ function createDependenciesStub(): {
       listWorkspaceAgentSessions: fail,
       listWorkspaceAgentSessionSections: fail,
       listWorkspaceAgentSessionSectionPage: fail,
+      listWorkspaceAgentPinnedSessionPage: fail,
       listWorkspaceApps: fail,
       listWorkspaceAppReferences: fail,
       searchWorkspaceAppReferences: fail,

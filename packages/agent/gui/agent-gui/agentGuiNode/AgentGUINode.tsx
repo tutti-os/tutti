@@ -50,6 +50,8 @@ import {
   type AgentGUIViewLabels,
   type AgentGUISidebarFooterContext,
   type AgentGUIProviderRailEmptyRenderer,
+  type AgentGUIProviderReadinessGateStateRenderer,
+  type AgentGUIProviderUnavailableStateRenderer,
   type AgentMentionReferenceTargetResolver,
   type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
@@ -277,6 +279,17 @@ export interface AgentGUINodeProps {
   providerRailMode?: AgentGUIProviderRailMode;
   /** Host-owned empty state for the provider rail in "exact" mode. */
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  /**
+   * Host-owned main-pane state for a selected provider target that is explicitly
+   * disabled. This does not replace install, login, checking, or retry gates.
+   */
+  renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
+  /**
+   * Host-owned main-pane state for provider readiness gates. Use this when a
+   * host has product-specific semantics for coming-soon, unavailable, checking,
+   * install, or login readiness states.
+   */
+  renderProviderReadinessGateState?: AgentGUIProviderReadinessGateStateRenderer;
   renderSidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
@@ -664,6 +677,10 @@ function areAgentGUINodePropsEqual(
     previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
+    previous.renderProviderUnavailableState ===
+      next.renderProviderUnavailableState &&
+    previous.renderProviderReadinessGateState ===
+      next.renderProviderReadinessGateState &&
     previous.comingSoonProviders === next.comingSoonProviders &&
     previous.providerReadinessGates === next.providerReadinessGates &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
@@ -727,6 +744,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   providerRailAllPresentation = null,
   providerRailMode = "catalog",
   renderProviderRailEmpty,
+  renderProviderUnavailableState,
+  renderProviderReadinessGateState,
   renderSidebarFooter,
   comingSoonProviders,
   providerReadinessGates = null,
@@ -1893,6 +1912,8 @@ export const AgentGUINode = memo(function AgentGUINode({
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
             renderProviderRailEmpty={renderProviderRailEmpty}
+            renderProviderUnavailableState={renderProviderUnavailableState}
+            renderProviderReadinessGateState={renderProviderReadinessGateState}
             providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}

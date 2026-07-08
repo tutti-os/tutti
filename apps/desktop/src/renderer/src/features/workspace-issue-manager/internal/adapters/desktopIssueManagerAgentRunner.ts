@@ -34,6 +34,7 @@ export interface DesktopIssueManagerAgentGuiLaunchInput {
   agentSessionId?: string;
   agentTargetId?: string | null;
   draftPrompt?: string;
+  openInNewWindow?: boolean;
   provider: string;
   userProjectPath?: string | null;
   workspaceId: string;
@@ -107,6 +108,7 @@ function openIssueManagerAgentDraft(input: {
       launchAgentGui({
         agentTargetId: input.agentTargetId,
         draftPrompt: input.draftPrompt,
+        openInNewWindow: true,
         provider: input.provider,
         userProjectPath: input.userProjectPath,
         workspaceId: input.workspaceId

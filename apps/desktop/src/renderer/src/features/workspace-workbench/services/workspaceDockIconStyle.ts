@@ -39,10 +39,6 @@ const defaultAgentUnifiedIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/agent-unified.png",
   import.meta.url
 ).href;
-const defaultGeminiIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/gemini.png",
-  import.meta.url
-).href;
 const defaultHermesIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/hermes.png",
   import.meta.url
@@ -84,7 +80,6 @@ export function resolveWorkspaceDockIconSet(_input: {
     "claude-code": defaultClaudeCodeIconUrl,
     codex: defaultCodexIconUrl,
     cursor: defaultCursorIconUrl,
-    gemini: defaultGeminiIconUrl,
     hermes: defaultHermesIconUrl,
     nexight: defaultTuttiIconUrl,
     openclaw: defaultOpenclawIconUrl,
@@ -99,12 +94,7 @@ export function resolveWorkspaceDockIconSet(_input: {
     document: defaultDocumentIconUrl,
     files: defaultFilesIconUrl,
     issue: defaultIssueIconUrl,
-    launchpadTiles: [
-      agents.nexight,
-      agents.hermes,
-      agents.openclaw,
-      agents.gemini
-    ],
+    launchpadTiles: [agents.nexight, agents.hermes, agents.openclaw],
     terminal: defaultTerminalIconUrl
   };
 }

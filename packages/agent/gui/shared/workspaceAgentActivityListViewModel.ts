@@ -423,27 +423,10 @@ export function resolveWorkspaceAgentActivityTitle(
 ): string {
   const sessionTitle = resolveDisplayableWorkspaceAgentSessionTitle(session);
   const userMessageTitle = firstUserMessageText(messages);
-  if (
-    sessionTitle &&
-    !isProviderPlaceholderTitleForSession(sessionTitle, session)
-  ) {
+  if (sessionTitle) {
     return sessionTitle;
   }
   return userMessageTitle || sessionTitle || workspaceAgentUntitledTaskLabel();
-}
-
-function isProviderPlaceholderTitleForSession(
-  title: string,
-  session: WorkspaceAgentActivitySession
-): boolean {
-  const provider = normalizeProvider(session.provider);
-  if (!provider) {
-    return false;
-  }
-  const normalizedTitle = title.trim().toLowerCase();
-  return (
-    workspaceAgentProviderLabel(provider).toLowerCase() === normalizedTitle
-  );
 }
 
 function resolveLatestActivity(

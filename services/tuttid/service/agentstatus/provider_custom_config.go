@@ -93,8 +93,6 @@ func providerCustomConfigEnvVars(provider string) []string {
 			"ANTHROPIC_BASE_URL",
 			"ANTHROPIC_API_BASE_URL",
 		}
-	case agentprovider.Gemini:
-		return []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}
 	case agentprovider.OpenCode:
 		return []string{
 			"OPENCODE_CONFIG",
@@ -116,8 +114,6 @@ func providerCredentialEnvVars(provider string) []string {
 		return []string{"OPENAI_API_KEY"}
 	case agentprovider.ClaudeCode:
 		return []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
-	case agentprovider.Gemini:
-		return []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}
 	default:
 		return nil
 	}

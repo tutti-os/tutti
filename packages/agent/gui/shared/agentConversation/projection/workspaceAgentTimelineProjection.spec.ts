@@ -518,6 +518,39 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
     );
   });
 
+  it("keeps processing when session status is stale ready but turn lifecycle is still running", () => {
+    const completedToolTimelineItems = timelineItems().slice(0, 5);
+    const staleReadySession = {
+      ...session({
+        status: "ready",
+        effectiveStatus: "ready",
+        turnPhase: "idle"
+      }),
+      turnLifecycle: {
+        activeTurnId: "turn-1",
+        phase: "running"
+      }
+    };
+
+    const detail = buildCanonicalWorkspaceAgentDetailView({
+      activity: activity(),
+      session: staleReadySession,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: completedToolTimelineItems
+    });
+    const conversation = projectWorkspaceAgentTimelineToConversationVM({
+      activity: activity(),
+      session: staleReadySession,
+      workspaceRoot: "/workspace/demo",
+      timelineItems: completedToolTimelineItems
+    });
+
+    expect(detail.showProcessingIndicator).toBe(true);
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      true
+    );
+  });
+
   it("does not append processing after a terminal assistant message once the turn lifecycle is settling", () => {
     const settlingReplyTimelineItems: AgentHostWorkspaceAgentTimelineItem[] = [
       timelineItems()[0]!,

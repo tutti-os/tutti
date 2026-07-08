@@ -308,6 +308,42 @@ interface MessageCenterSessionMessageAnalysis {
   pendingPrompt: AgentConversationPromptVM | null;
 }
 
+interface MessageCenterSessionMessageAnalysisCacheEntry {
+  messages: MessageCenterMessageCacheKey[];
+  result: MessageCenterSessionMessageAnalysis;
+}
+
+interface CodexPlanImplementationPromptCacheEntry {
+  messages: MessageCenterMessageCacheKey[];
+  provider: string;
+  result: AgentConversationPromptVM | null;
+  status: WorkspaceAgentActivityStatus;
+}
+
+interface MessageCenterMessageCacheKey {
+  completedAtUnixMs: number | undefined;
+  kind: string;
+  message: AgentActivityMessage;
+  messageId: string;
+  occurredAtUnixMs: number;
+  payload: AgentActivityMessage["payload"];
+  role: string;
+  startedAtUnixMs: number | undefined;
+  status: string | null | undefined;
+  turnId: string;
+  version: number;
+}
+
+const messageAnalysisByMessages = new WeakMap<
+  readonly AgentActivityMessage[],
+  Map<string, MessageCenterSessionMessageAnalysisCacheEntry>
+>();
+
+const codexPlanImplementationPromptByMessages = new WeakMap<
+  readonly AgentActivityMessage[],
+  CodexPlanImplementationPromptCacheEntry
+>();
+
 interface PendingPromptCandidate {
   message: AgentActivityMessage;
   prompt: AgentConversationPromptVM;
@@ -319,6 +355,30 @@ interface TurnOutcomeCandidate {
 }
 
 function analyzeMessageCenterSessionMessages(
+  agentSessionId: string,
+  messages: readonly AgentActivityMessage[]
+): MessageCenterSessionMessageAnalysis {
+  let bySessionId = messageAnalysisByMessages.get(messages);
+  if (!bySessionId) {
+    bySessionId = new Map();
+    messageAnalysisByMessages.set(messages, bySessionId);
+  }
+  const cached = bySessionId.get(agentSessionId);
+  if (cached && isMessageArrayCacheEntryCurrent(cached, messages)) {
+    return cached.result;
+  }
+  const result = analyzeMessageCenterSessionMessagesUncached(
+    agentSessionId,
+    messages
+  );
+  bySessionId.set(agentSessionId, {
+    messages: messageCenterMessageCacheKeys(messages),
+    result
+  });
+  return result;
+}
+
+function analyzeMessageCenterSessionMessagesUncached(
   agentSessionId: string,
   messages: readonly AgentActivityMessage[]
 ): MessageCenterSessionMessageAnalysis {
@@ -575,6 +635,34 @@ function codexPlanImplementationPrompt(
   status: WorkspaceAgentActivityStatus,
   messages: readonly AgentActivityMessage[]
 ): AgentConversationPromptVM | null {
+  const cached = codexPlanImplementationPromptByMessages.get(messages);
+  if (
+    cached &&
+    cached.provider === session.provider &&
+    cached.status === status &&
+    isMessageArrayCacheEntryCurrent(cached, messages)
+  ) {
+    return cached.result;
+  }
+  const result = codexPlanImplementationPromptUncached(
+    session,
+    status,
+    messages
+  );
+  codexPlanImplementationPromptByMessages.set(messages, {
+    messages: messageCenterMessageCacheKeys(messages),
+    provider: session.provider,
+    result,
+    status
+  });
+  return result;
+}
+
+function codexPlanImplementationPromptUncached(
+  session: AgentActivitySession,
+  status: WorkspaceAgentActivityStatus,
+  messages: readonly AgentActivityMessage[]
+): AgentConversationPromptVM | null {
   if (session.provider.trim().toLowerCase() !== "codex") {
     return null;
   }
@@ -599,6 +687,58 @@ function codexPlanImplementationPrompt(
   );
   const title = planMessage ? messageSummary(planMessage) : "";
   return planImplementationPromptFromPlanTurn(planTurnId, title);
+}
+
+function isMessageArrayCacheEntryCurrent(
+  entry: {
+    messages: readonly MessageCenterMessageCacheKey[];
+  },
+  messages: readonly AgentActivityMessage[]
+): boolean {
+  if (entry.messages.length !== messages.length) {
+    return false;
+  }
+  return entry.messages.every((key, index) =>
+    messageCenterMessageCacheKeyMatches(key, messages[index])
+  );
+}
+
+function messageCenterMessageCacheKeys(
+  messages: readonly AgentActivityMessage[]
+): MessageCenterMessageCacheKey[] {
+  return messages.map((message) => ({
+    completedAtUnixMs: message.completedAtUnixMs,
+    kind: message.kind,
+    message,
+    messageId: message.messageId,
+    occurredAtUnixMs: message.occurredAtUnixMs,
+    payload: message.payload,
+    role: message.role,
+    startedAtUnixMs: message.startedAtUnixMs,
+    status: message.status,
+    turnId: message.turnId,
+    version: message.version
+  }));
+}
+
+function messageCenterMessageCacheKeyMatches(
+  key: MessageCenterMessageCacheKey,
+  message: AgentActivityMessage | undefined
+): boolean {
+  return (
+    message !== undefined &&
+    key.message === message &&
+    key.messageId === message.messageId &&
+    key.version === message.version &&
+    key.turnId === message.turnId &&
+    key.role === message.role &&
+    key.kind === message.kind &&
+    key.status === message.status &&
+    key.payload === message.payload &&
+    key.occurredAtUnixMs === message.occurredAtUnixMs &&
+    key.startedAtUnixMs === message.startedAtUnixMs &&
+    key.completedAtUnixMs === message.completedAtUnixMs
+  );
 }
 
 function turnOutcomeFromMessage(

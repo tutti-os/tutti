@@ -156,6 +156,66 @@ description: Internal Tutti CLI.
 	}
 }
 
+func TestDiscoverComposerSkillOptionsOpenCodeUsesNativeAndCompatibleRoots(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	repoDir := filepath.Join(tempDir, "repo")
+	cwd := filepath.Join(repoDir, "apps", "desktop")
+	customConfigDir := filepath.Join(tempDir, "opencode-config")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	writeSkill(t, filepath.Join(repoDir, ".opencode", "skills", "project-open", "SKILL.md"), `---
+description: Project OpenCode skill.
+---
+`)
+	writeSkill(t, filepath.Join(repoDir, ".claude", "skills", "project-claude", "SKILL.md"), `---
+description: Claude-compatible OpenCode skill.
+---
+`)
+	writeSkill(t, filepath.Join(repoDir, ".agents", "skills", "project-agent", "SKILL.md"), `---
+description: Agent-compatible OpenCode skill.
+---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".config", "opencode", "skills", "personal-open", "SKILL.md"), `---
+description: Personal OpenCode skill.
+---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".claude", "skills", "personal-claude", "SKILL.md"), `---
+description: Personal Claude-compatible skill.
+---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".agents", "skills", "personal-agent", "SKILL.md"), `---
+description: Personal agent-compatible skill.
+---
+`)
+	writeSkill(t, filepath.Join(customConfigDir, "opencode", "skills", "custom-config", "SKILL.md"), `---
+description: Custom OpenCode config skill.
+---
+`)
+
+	options := discoverComposerSkillOptions("opencode", cwd, []string{
+		"OPENCODE_CONFIG_DIR=" + customConfigDir,
+	})
+
+	triggers := composerSkillOptionTriggers(options)
+	want := []string{
+		"/project-agent",
+		"/project-claude",
+		"/project-open",
+		"/custom-config",
+		"/personal-agent",
+		"/personal-claude",
+		"/personal-open",
+	}
+	if !equalStringSlices(triggers, want) {
+		t.Fatalf("triggers = %#v, want %#v", triggers, want)
+	}
+	if options[0].SourceKind != "project" || options[3].SourceKind != "personal" {
+		t.Fatalf("source kinds = %#v", options)
+	}
+}
+
 func TestDiscoverComposerSkillOptionsWarnsOnceForUnchangedInvalidSkill(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := filepath.Join(tempDir, "home")

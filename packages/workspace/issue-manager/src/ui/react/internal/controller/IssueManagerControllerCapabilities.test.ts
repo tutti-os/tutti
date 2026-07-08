@@ -162,9 +162,9 @@ test("agent target options trim labels and providers from the host adapter", () 
             provider: " claude-code "
           },
           {
-            agentTargetId: " local:gemini ",
+            agentTargetId: " local:openclaw ",
             label: "   ",
-            provider: " gemini "
+            provider: " openclaw "
           },
           { agentTargetId: "   ", label: "missing target", provider: " codex " }
         ]
@@ -178,9 +178,9 @@ test("agent target options trim labels and providers from the host adapter", () 
         provider: "claude-code"
       },
       {
-        agentTargetId: "local:gemini",
-        label: "gemini",
-        provider: "gemini"
+        agentTargetId: "local:openclaw",
+        label: "openclaw",
+        provider: "openclaw"
       }
     ]
   );

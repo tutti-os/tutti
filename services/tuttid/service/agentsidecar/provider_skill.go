@@ -15,6 +15,7 @@ const workspaceAppSkillName = "workspace-app"
 const referenceSkillName = "reference"
 const browserUseSkillName = "browser-use"
 const computerUseSkillName = "computer-use"
+const tuttiHandoffSkillName = "tutti-handoff"
 const commandGuideReferencePath = "command-guide.md"
 
 //go:embed skill_templates/*.md policy_templates/*.md
@@ -33,6 +34,16 @@ func tuttiCLISkill(input PrepareInput) string {
 			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
 			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
+			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
+		},
+	)
+}
+
+func tuttiHandoffSkill(input PrepareInput) string {
+	return renderProviderSkillTemplate(
+		"skill_templates/tutti-handoff.md",
+		map[string]string{
+			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},
 	)
@@ -109,6 +120,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 				"SKILL.md":                tuttiCLISkill(input),
 				commandGuideReferencePath: commandGuideReference(input),
 			},
+		},
+		{
+			baseName: tuttiHandoffSkillName,
+			files:    map[string]string{"SKILL.md": tuttiHandoffSkill(input)},
 		},
 		{
 			baseName: issueManagerSkillName,
@@ -295,8 +310,6 @@ func allocateSkillName(root string, baseName string) (string, error) {
 
 func providerSkillRoot(cwd string, provider string) string {
 	switch strings.TrimSpace(provider) {
-	case "gemini":
-		return filepath.Join(cwd, ".gemini", "skills")
 	case "openclaw":
 		return filepath.Join(cwd, ".openclaw", "skills")
 	case "nexight":

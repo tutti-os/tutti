@@ -19,7 +19,8 @@ function openGatesInput(
     occupancy: {
       displayStatusBusy: false,
       hasPendingSubmittedTurn: false,
-      submitBlocked: false
+      submitBlocked: false,
+      conversationStatusBusy: false
     },
     pendingInteractive: false,
     isSubmitting: false,
@@ -40,28 +41,40 @@ describe("sessionIsOccupied", () => {
       sessionIsOccupied({
         displayStatusBusy: false,
         hasPendingSubmittedTurn: false,
-        submitBlocked: false
+        submitBlocked: false,
+        conversationStatusBusy: false
       })
     ).toBe(false);
     expect(
       sessionIsOccupied({
         displayStatusBusy: true,
         hasPendingSubmittedTurn: false,
-        submitBlocked: false
+        submitBlocked: false,
+        conversationStatusBusy: false
       })
     ).toBe(true);
     expect(
       sessionIsOccupied({
         displayStatusBusy: false,
         hasPendingSubmittedTurn: true,
-        submitBlocked: false
+        submitBlocked: false,
+        conversationStatusBusy: false
       })
     ).toBe(true);
     expect(
       sessionIsOccupied({
         displayStatusBusy: false,
         hasPendingSubmittedTurn: false,
-        submitBlocked: true
+        submitBlocked: true,
+        conversationStatusBusy: false
+      })
+    ).toBe(true);
+    expect(
+      sessionIsOccupied({
+        displayStatusBusy: false,
+        hasPendingSubmittedTurn: false,
+        submitBlocked: false,
+        conversationStatusBusy: true
       })
     ).toBe(true);
   });
@@ -84,7 +97,8 @@ describe("resolveComposerSubmitPolicy", () => {
         occupancy: {
           displayStatusBusy: false,
           hasPendingSubmittedTurn: false,
-          submitBlocked: true
+          submitBlocked: true,
+          conversationStatusBusy: false
         }
       })
     );
@@ -118,7 +132,8 @@ describe("resolveComposerSubmitPolicy", () => {
         occupancy: {
           displayStatusBusy: true,
           hasPendingSubmittedTurn: false,
-          submitBlocked: false
+          submitBlocked: false,
+          conversationStatusBusy: false
         }
       })
     );
@@ -213,7 +228,9 @@ describe("shouldHoldPromptInLocalQueue", () => {
         hasPendingSubmittedTurn: false,
         pendingInteractive: false,
         displayStatusBusy: false,
-        sessionCreatePending: false
+        sessionCreatePending: false,
+        submitBlocked: false,
+        conversationStatusBusy: false
       })
     ).toBe(false);
   });
@@ -223,7 +240,9 @@ describe("shouldHoldPromptInLocalQueue", () => {
     ["hasPendingSubmittedTurn", { hasPendingSubmittedTurn: true }],
     ["pendingInteractive", { pendingInteractive: true }],
     ["displayStatusBusy", { displayStatusBusy: true }],
-    ["sessionCreatePending", { sessionCreatePending: true }]
+    ["sessionCreatePending", { sessionCreatePending: true }],
+    ["submitBlocked", { submitBlocked: true }],
+    ["conversationStatusBusy", { conversationStatusBusy: true }]
   ])("holds the prompt when %s", (_label, overrides) => {
     expect(
       shouldHoldPromptInLocalQueue({
@@ -232,6 +251,8 @@ describe("shouldHoldPromptInLocalQueue", () => {
         pendingInteractive: false,
         displayStatusBusy: false,
         sessionCreatePending: false,
+        submitBlocked: false,
+        conversationStatusBusy: false,
         ...overrides
       })
     ).toBe(true);

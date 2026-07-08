@@ -35,9 +35,9 @@ describe("agent gui workbench launch contract", () => {
     expect(
       createAgentGuiWorkbenchInstanceId({
         agentSessionId: "session:1",
-        provider: "gemini"
+        provider: "hermes"
       })
-    ).toBe("agent-gui:gemini:session:session%3A1");
+    ).toBe("agent-gui:hermes:session:session%3A1");
   });
 
   it("prefers payload providers before dock identifiers", () => {
@@ -167,6 +167,63 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.dockEntryId).toBe("agent-gui:unified");
     expect(descriptor.instanceId).toContain("agent-gui:claude-code:panel:");
     expect(descriptor.provider).toBe("claude-code");
+    expect(descriptor.reuseDockEntryNode).toBe(true);
+  });
+
+  it("reuses unified aggregate dock nodes for empty launches", () => {
+    expect(
+      createAgentGuiWorkbenchLaunchDescriptor({
+        dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+        payload: {
+          provider: "codex"
+        },
+        typeId: "agent-gui"
+      })
+    ).toMatchObject({
+      dockEntryId: "agent-gui:unified",
+      openInNewWindow: false,
+      provider: "codex",
+      reuseDockEntryNode: true,
+      targetAgentSessionId: null
+    });
+  });
+
+  it("does not reuse dock nodes for empty launches into new windows", () => {
+    expect(
+      createAgentGuiWorkbenchLaunchDescriptor({
+        dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+        payload: {
+          openInNewWindow: true,
+          provider: "codex"
+        },
+        typeId: "agent-gui"
+      })
+    ).toMatchObject({
+      dockEntryId: "agent-gui:unified",
+      openInNewWindow: true,
+      provider: "codex",
+      reuseDockEntryNode: false,
+      targetAgentSessionId: null
+    });
+  });
+
+  it("treats dock popup new-window launches as new windows", () => {
+    expect(
+      createAgentGuiWorkbenchLaunchDescriptor({
+        dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+        launchSource: "dock-popup-new-window",
+        payload: {
+          provider: "codex"
+        },
+        typeId: "agent-gui"
+      })
+    ).toMatchObject({
+      dockEntryId: "agent-gui:unified",
+      openInNewWindow: true,
+      provider: "codex",
+      reuseDockEntryNode: false,
+      targetAgentSessionId: null
+    });
   });
 
   it("creates draft prompt launch requests for provider dock entries", () => {
@@ -238,7 +295,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui",
       openInNewWindow: true,
       provider: "codex",
-      reuseDockEntryNode: true,
+      reuseDockEntryNode: false,
       reuseExistingSessionNode: false,
       targetAgentSessionId: null
     });

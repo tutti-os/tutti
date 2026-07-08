@@ -1765,7 +1765,7 @@ describe("AgentGUINode", () => {
       activeConversationId: "session-1",
       activeConversation: {
         id: "session-1",
-        provider: "gemini",
+        provider: "hermes",
         title: "Session 1",
         status: "ready",
         cwd: "/workspace",
@@ -1783,7 +1783,7 @@ describe("AgentGUINode", () => {
     });
 
     expect(onAgentProbeDemandChange).toHaveBeenCalledWith(
-      "gemini",
+      "hermes",
       "agent-gui:agent-gui-1"
     );
   });
@@ -4360,6 +4360,69 @@ describe("AgentGUINode", () => {
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
+  it("shows OpenCode review from the adapter-owned fallback command", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: []
+    });
+    renderAgentGUINode();
+
+    expect(screen.getByText("review")).toBeTruthy();
+  });
+
+  it("shows OpenCode review when the provider advertises it", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: [{ name: "review", description: "Review changes" }]
+    });
+    renderAgentGUINode();
+
+    expect(screen.getByText("review")).toBeTruthy();
+  });
+
+  it("opens the OpenCode review picker from slash command selection", () => {
+    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      selectedProviderTarget: opencodeTarget,
+      providerTargets: [opencodeTarget],
+      draftPrompt: "/rev",
+      availableCommands: [{ name: "review", description: "Review changes" }]
+    });
+    renderAgentGUINode();
+
+    fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
+
+    expect(screen.getByTestId("agent-gui-review-picker-panel")).toBeTruthy();
+    expect(mockUpdateDraftContent).not.toHaveBeenCalledWith(
+      createDraft("/review ")
+    );
+    expect(mockSubmitPrompt).not.toHaveBeenCalled();
+  });
+
   it("hides compact in an empty conversation", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -4739,6 +4802,42 @@ describe("AgentGUINode", () => {
     expect(
       screen.getByText("agentHost.agentGui.slashPaletteSkillsGroup")
     ).toBeTruthy();
+  });
+
+  it("shows OpenCode skills in the slash palette", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      data: {
+        provider: "opencode",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      },
+      draftPrompt: "/doc",
+      availableCommands: [{ name: "review", description: "Review changes" }],
+      availableSkills: [
+        {
+          name: "docs-update",
+          trigger: "/docs-update",
+          sourceKind: "project",
+          description: "Update documentation"
+        }
+      ]
+    });
+    renderAgentGUINode();
+
+    expect(
+      screen.getByRole("listbox", {
+        name: "agentHost.agentGui.slashCommandPalette"
+      })
+    ).toBeTruthy();
+    expect(screen.getByText("docs-update")).toBeTruthy();
+
+    fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
+
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("/docs-update ")
+    );
+    expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
 
   it("groups slash palette plugin and connector entries into separate sections", () => {
@@ -7463,7 +7562,7 @@ function createManagedAgentsState(
     readyAgentIds: [
       "codex",
       "claude-code",
-      "gemini",
+      "hermes",
       "hermes",
       "openclaw",
       "nexight"
@@ -7541,6 +7640,7 @@ function createViewModel(
     activeLiveState: "active",
     activationError: null,
     openclawGateway: null,
+    activeConversationBusy: false,
     canSubmit: true,
     canQueueWhileBusy: false,
     hasSentUserMessage: false,

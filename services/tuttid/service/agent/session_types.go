@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -139,9 +140,22 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
+type ListPinnedSessionPageInput struct {
+	Cursor        string
+	Limit         int
+	AgentTargetID string
+}
+
 type SessionSectionsPage struct {
 	WorkspaceID string
+	Pinned      SessionPage
 	Sections    []SessionSection
+}
+
+type SessionPage struct {
+	Sessions   []Session
+	HasMore    bool
+	NextCursor string
 }
 
 type SessionSection struct {
@@ -197,6 +211,13 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+}
+
+type SessionStateReporter interface {
+	ReportSessionState(
+		context.Context,
+		agentsessionstore.ReportSessionStateInput,
+	) (agentsessionstore.ReportSessionStateReply, error)
 }
 
 type SessionSectionReader interface {

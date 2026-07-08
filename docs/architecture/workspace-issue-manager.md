@@ -147,7 +147,7 @@ The shared packages own run lifecycle state, not concrete agent startup.
 
 The TypeScript feature receives an `agentRunner` adapter. The Go package stores
 and transitions run records. Hosts decide how to start Codex, Claude Code,
-OpenClaw, Gemini, or any other provider.
+OpenClaw, Hermes, or any other supported provider.
 
 This boundary lets `tutti` and `tsh` share the issue-manager UX while keeping
 their runtime/session integration separate.

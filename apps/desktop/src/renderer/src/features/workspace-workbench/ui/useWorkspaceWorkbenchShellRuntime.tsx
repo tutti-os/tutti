@@ -212,6 +212,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       createWorkspaceWorkbenchShellRuntimeController({
         hostInput: {
           appI18n,
+          appLocale: locale,
           appCenterRevision: appCenterState.revision,
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
@@ -349,6 +350,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   useEffect(() => {
     shellRuntimeController.updateHostInput({
       appI18n,
+      appLocale: locale,
       appCenterRevision: appCenterState.revision,
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
@@ -377,6 +379,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,
     handleCapabilitySettingsRequest,
+    locale,
     shellRuntimeController,
     state.workspace.id,
     workbenchDesktopI18n,

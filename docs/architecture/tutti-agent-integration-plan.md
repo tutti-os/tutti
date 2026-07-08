@@ -52,12 +52,12 @@ AgentGUI 不允许感知 provider wire 协议；provider 事件必须经 `packag
 
 ### 2.2 Provider 家族
 
-| 家族               | Provider                                                | 协议/运行形态                                                                                                                            | 关键约束                                                                                                                                                                 |
-| ------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Codex app-server   | `codex`                                                 | spawn `codex app-server` → JSON-RPC `initialize` / `thread/start` / `turn/start` / 通知 / server request → reducer → activity projection | 非 ACP（codex-over-ACP 已退役，见 `docs/specs/2026-07-01-codex-appserver-refactor-design.md` 决策 D1）。当前实现**硬编码**命令、provider、originator、鉴权文案（见 2.5） |
-| Tutti app-server   | 拟新增 `tutti-agent`                                    | 同上生命周期，但命令 `tutti-agent app-server`、`TUTTI_AGENT_HOME`、initialize 返回 `tuttiAgentHome`、`tutti_llm` 鉴权                    | 共享 app-server 机制，但不得复用 Codex 官方 client identity 与 home/auth 假设                                                                                            |
-| Claude SDK sidecar | `claude-code` 默认路径                                  | Claude sidecar 行协议                                                                                                                    | 非 ACP                                                                                                                                                                   |
-| 标准 ACP           | `gemini`、`hermes`、`openclaw`、legacy provider（部分） | `standardACPAdapter` + 每 provider 一份 `standardACPConfig`                                                                              | 已参数化，是本方案 adapter 参数化的范式参照                                                                                                                              |
+| 家族               | Provider                                      | 协议/运行形态                                                                                                                            | 关键约束                                                                                                                                                                 |
+| ------------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Codex app-server   | `codex`                                       | spawn `codex app-server` → JSON-RPC `initialize` / `thread/start` / `turn/start` / 通知 / server request → reducer → activity projection | 非 ACP（codex-over-ACP 已退役，见 `docs/specs/2026-07-01-codex-appserver-refactor-design.md` 决策 D1）。当前实现**硬编码**命令、provider、originator、鉴权文案（见 2.5） |
+| Tutti app-server   | 拟新增 `tutti-agent`                          | 同上生命周期，但命令 `tutti-agent app-server`、`TUTTI_AGENT_HOME`、initialize 返回 `tuttiAgentHome`、`tutti_llm` 鉴权                    | 共享 app-server 机制，但不得复用 Codex 官方 client identity 与 home/auth 假设                                                                                            |
+| Claude SDK sidecar | `claude-code` 默认路径                        | Claude sidecar 行协议                                                                                                                    | 非 ACP                                                                                                                                                                   |
+| 标准 ACP           | `hermes`、`openclaw`、legacy provider（部分） | `standardACPAdapter` + 每 provider 一份 `standardACPConfig`                                                                              | 已参数化，是本方案 adapter 参数化的范式参照                                                                                                                              |
 
 关键结论：`tutti-agent` 走 Codex-app-server 兼容路径，**不能**接入标准 ACP 适配器，也不能描述为"只换二进制"。
 
@@ -142,16 +142,16 @@ Install:            InstallerKindCodexCLILatest（npm @openai/codex + optional-d
 ### 2.8 模型目录与 composer 选项
 
 - `services/tuttid/service/agent/codex_model_catalog.go`：`CodexCLIModelLister.ListModels` 真实 spawn `codex app-server` → `initialize`（clientInfo `{name:"tuttid", version:"0.1.0"}`）→ `model/list`（limit 200）→ 归一化。
-- `model_catalog.go`：`CachedAgentModelCatalog` 按 provider switch 缓存（codex TTL 30s / error 5s），目前只有 codex/gemini 有 lister。
-- `composer_options.go`：大量 provider switch；composer 设置支持目前直接编码在 provider 分支里（claude-code/codex/gemini）。**注意约 line 662、777 存在裸字符串 `provider == "codex"` 比较**，参数化时需一并梳理。
+- `model_catalog.go`：`CachedAgentModelCatalog` 按 provider switch 缓存（codex TTL 30s / error 5s），目前 codex、tutti-agent、opencode 有 lister。
+- `composer_options.go`：大量 provider switch；composer 设置支持目前直接编码在 provider 分支里（claude-code/codex/tutti-agent/opencode）。**注意约 line 662、777 存在裸字符串 `provider == "codex"` 比较**，参数化时需一并梳理。
 
 ### 2.9 契约与偏好模型
 
 - OpenAPI `services/tuttid/api/openapi/tuttid.v1.yaml`：
-  - `WorkspaceAgentProvider`（约 line 5416）：6 值枚举，被 `DesktopPreferences.defaultAgentProvider`（约 line 4021）直接 `$ref` 复用——**加 provider 会连带让它成为合法默认值**。
+  - `WorkspaceAgentProvider`（约 line 5416）：provider 枚举，被 `DesktopPreferences.defaultAgentProvider`（约 line 4021）直接 `$ref` 复用——**加 provider 会连带让它成为合法默认值**。
   - `AgentTargetProvider`（约 line 4149）：只有 `codex`/`claude-code`。
   - `DesktopAgentComposerDefaultsByProvider` / `DesktopAgentGuiConversationRailCollapsedByProvider`：**逐 provider 显式属性 + `additionalProperties: false`** 的闭合结构，新 provider 必须显式加属性。
-- Event protocol：`packages/events/protocol/schemas/topics/preferences/desktop-preferences.schema.json` 与 OpenAPI 同构（闭合、枚举含 6 provider），生成物在 `src/generated/`。
+- Event protocol：`packages/events/protocol/schemas/topics/preferences/desktop-preferences.schema.json` 与 OpenAPI 同构（闭合、枚举显式列出 provider），生成物在 `src/generated/`。
 - Codegen：`pnpm generate:api` / `check:api-generated`、`pnpm generate:event-protocol` / `check:event-protocol-generated`、`pnpm check:codexproto-generated`；`build:go`/`test:go`/`lint:go` 前置 `generate:builtin-apps`。
 
 ### 2.10 UI 开关现状
@@ -171,7 +171,7 @@ store:  workspaceSettingsStore.ts:32 种子读取
   - `packages/agent/gui/contexts/settings/domain/agentSettings.providers.ts` 的 `AGENT_PROVIDERS` / `AgentProvider`
   - `packages/agent/gui/types.ts:67` 的 `AgentGUIProvider`
   - `packages/agent/gui/workbench/types.ts:3` 的 `AgentGuiWorkbenchProvider`
-- `packages/agent/gui/workbench/providerCatalog.ts`：`agentGuiWorkbenchDefaultDockProviders = ["codex","claude-code"]`、`dockSuppressedProviders = ["hermes","gemini"]`、`comingSoonProviders` 含 legacy provider、brand label Record（带 `// i18n-check-ignore` 注释）。desktop 侧经 `workspaceAgentProviderCatalog.ts` shim 转 re-export。
+- `packages/agent/gui/workbench/providerCatalog.ts`：`agentGuiWorkbenchDefaultDockProviders = ["codex","claude-code","tutti-agent"]`、`dockSuppressedProviders = ["hermes","opencode"]`、`comingSoonProviders` 为空、brand label Record（带 `// i18n-check-ignore` 注释）。desktop 侧经 `workspaceAgentProviderCatalog.ts` shim 转 re-export。
 - `packages/agent/gui/providerTargets.ts`：`localAgentGUIAgentTargetId(provider)` 只认 codex/claude-code。
 - Dock 可见性：`workspaceAgentProviderDockStateSource.ts` 的 `shouldShowAgentProviderInDock(provider, status)` = 非 suppressed 且（defaultDock 或 `status === "ready"`）；`workspaceAgentGuiContribution.ts:243` 的 `resolveDockEntryVisibility`。
 - Launchpad：`WorkspaceLaunchpadOverlay.tsx` 遍历 `workspaceAgentGuiProviders`；旧 legacy "Tutti" 特判已下线，新入口统一使用 `tutti-agent` / "Tutti Agent"。

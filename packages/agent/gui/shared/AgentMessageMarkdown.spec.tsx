@@ -66,6 +66,26 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("AI Canvas");
   });
 
+  it("renders local file mention links whose paths contain spaces", () => {
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "继续 [@user](/Users/Sun/Documents/tutti/emoji 你好/user/) 和 [@auth_api.py](/Users/Sun/Documents/tutti/emoji 你好/auth_api.py)"
+        }
+        inline
+      />
+    );
+
+    const mentions = container.querySelectorAll(
+      '[data-agent-file-mention="true"]'
+    );
+    expect(mentions).toHaveLength(2);
+    expect(mentions[0]).toHaveAttribute("data-agent-mention-kind", "file");
+    expect(mentions[0]).toHaveTextContent("user");
+    expect(mentions[1]).toHaveTextContent("auth_api.py");
+    expect(screen.queryByText(/\]\(\/Users\/Sun\/Documents/)).toBeNull();
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     render(
       <AgentMessageMarkdown

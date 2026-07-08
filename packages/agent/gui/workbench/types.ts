@@ -6,7 +6,6 @@ export type AgentGuiWorkbenchProvider =
   | "tutti-agent"
   | "cursor"
   | "nexight"
-  | "gemini"
   | "hermes"
   | "openclaw"
   | "opencode";

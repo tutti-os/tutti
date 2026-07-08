@@ -276,7 +276,14 @@ export function appendQueuedPromptsToComposerDraft(
     files: [
       ...(draft.files ?? []),
       ...restored.flatMap((item) => item.files ?? [])
-    ]
+    ],
+    ...(() => {
+      const largeTexts = [
+        ...(draft.largeTexts ?? []),
+        ...restored.flatMap((item) => item.largeTexts ?? [])
+      ];
+      return largeTexts.length > 0 ? { largeTexts } : {};
+    })()
   };
 }
 

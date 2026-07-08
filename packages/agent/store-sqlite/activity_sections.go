@@ -26,6 +26,9 @@ func (s *Store) ListSessionSection(
 	if limit > 0 {
 		queryLimit = limit + 1
 	}
+	if sectionKey == PinnedSessionPageKey {
+		return s.listPinnedSessionPage(ctx, input, workspaceID, agentTargetID, limit, queryLimit)
+	}
 	query := `
 SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, runtime_context_json, cwd,
@@ -85,6 +88,78 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	return SessionSectionPage{
 		WorkspaceID: workspaceID,
 		SectionKey:  sectionKey,
+		Sessions:    sessions,
+		HasMore:     hasMore,
+		NextCursor:  nextCursor,
+	}, true, nil
+}
+
+func (s *Store) listPinnedSessionPage(
+	ctx context.Context,
+	input ListSessionSectionInput,
+	workspaceID string,
+	agentTargetID string,
+	limit int,
+	queryLimit int,
+) (SessionSectionPage, bool, error) {
+	query := `
+SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
+       user_id, settings_json, runtime_context_json, cwd,
+       title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
+       started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
+       created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_sessions
+WHERE workspace_id = ?
+  AND pinned_at_unix_ms > 0
+  AND (? = '' OR agent_target_id = ?)
+  AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+  AND (? = '' OR pinned_at_unix_ms < ? OR (pinned_at_unix_ms = ? AND agent_session_id > ?))
+ORDER BY pinned_at_unix_ms DESC, agent_session_id ASC`
+	args := []any{
+		workspaceID,
+		agentTargetID,
+		agentTargetID,
+		strings.TrimSpace(input.CursorSessionID),
+		input.CursorUpdatedAtMS,
+		input.CursorUpdatedAtMS,
+		strings.TrimSpace(input.CursorSessionID),
+	}
+	if queryLimit > 0 {
+		query += "\nLIMIT ?"
+		args = append(args, queryLimit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return SessionSectionPage{}, false, fmt.Errorf("list pinned workspace agent sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]Session, 0)
+	for rows.Next() {
+		session, err := scanAgentSession(rows)
+		if err != nil {
+			return SessionSectionPage{}, false, err
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return SessionSectionPage{}, false, fmt.Errorf("iterate pinned workspace agent sessions: %w", err)
+	}
+
+	hasMore := false
+	if limit > 0 && len(sessions) > limit {
+		hasMore = true
+		sessions = sessions[:limit]
+	}
+	nextCursor := ""
+	if hasMore && len(sessions) > 0 {
+		last := sessions[len(sessions)-1]
+		nextCursor = strconv.FormatInt(last.PinnedAtUnixMS, 10) + "|" + strings.TrimSpace(last.ID)
+	}
+	return SessionSectionPage{
+		WorkspaceID: workspaceID,
+		SectionKey:  PinnedSessionPageKey,
 		Sessions:    sessions,
 		HasMore:     hasMore,
 		NextCursor:  nextCursor,

@@ -568,6 +568,55 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
     ]);
   });
 
+  it("extracts per-file unifiedDiff from file change metadata", () => {
+    const rows = projectAgentTurnSummaryRowForTurn(
+      {
+        id: "turn-file-change-unified-diff",
+        userMessage: null,
+        userMessages: [],
+        agentMessages: [],
+        toolCalls: [
+          {
+            id: "call:edit-unified-diff",
+            name: "Edit file",
+            toolName: "Edit",
+            callType: "tool",
+            status: "Completed",
+            statusKind: "completed",
+            summary: "Edited local files",
+            occurredAtUnixMs: 22,
+            payload: {
+              fileChanges: {
+                files: [
+                  {
+                    path: "src/app.ts",
+                    change: "modified",
+                    unifiedDiff:
+                      "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        toolCallCount: 1,
+        hasFailedToolCall: false,
+        agentItems: []
+      } satisfies WorkspaceAgentSessionDetailTurn,
+      { workspaceRoot: "/workspace" }
+    );
+
+    expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "src/app.ts",
+        changeType: "modified",
+        unifiedDiff: expect.stringContaining(
+          "diff --git a/src/app.ts b/src/app.ts"
+        )
+      })
+    ]);
+  });
+
   it("ignores structured payload strings in file change metadata paths", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       {
@@ -953,8 +1002,8 @@ describe("projectAgentTurnSummaryRows", () => {
         sessionId: "session-1",
         userId: "user-a",
         userName: "Jessica",
-        agentProvider: "gemini",
-        agentName: "Gemini",
+        agentProvider: "openclaw",
+        agentName: "OpenClaw",
         title: "Completed session",
         status: "completed",
         latestActivitySummary: "Completed",
@@ -971,7 +1020,7 @@ describe("projectAgentTurnSummaryRows", () => {
         id: 1,
         agentSessionId: "session-1",
         presenceId: 1,
-        provider: "gemini",
+        provider: "openclaw",
         providerSessionId: "provider-1",
         cwd: "/repo",
         status: "completed",
