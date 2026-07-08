@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { Editor, Range } from "@tiptap/core";
+import { Schema } from "@tiptap/pm/model";
 import {
   attrsToMentionItem,
+  createAgentSessionMarkdownLink,
+  createAgentSessionMentionHref,
+  expandRangeOverMentionPlaceholder,
   formatAgentMentionMarkdown,
   mentionItemToAttrs,
   parseAgentMentionMarkdown,
@@ -11,6 +16,35 @@ import {
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+
+const placeholderSchema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: {
+      group: "block",
+      content: "inline*",
+      toDOM: () => ["p", 0],
+      parseDOM: [{ tag: "p" }]
+    },
+    // Leaf inline node standing in for an already-inserted mention chip.
+    chip: { group: "inline", inline: true, atom: true },
+    text: { group: "inline" }
+  }
+});
+
+/**
+ * Build a fake editor whose paragraph is `text`, then locate the `@` and return
+ * an empty-query suggestion range over it — mirroring what the Suggestion plugin
+ * hands {@link expandRangeOverMentionPlaceholder} when a user types `@`.
+ */
+function editorForPlaceholder(text: string): { editor: Editor; range: Range } {
+  const doc = placeholderSchema.node("doc", null, [
+    placeholderSchema.node("paragraph", null, [placeholderSchema.text(text)])
+  ]);
+  const editor = { state: { doc } } as unknown as Editor;
+  const atPos = text.indexOf("@") + 1; // +1 for the paragraph open token
+  return { editor, range: { from: atPos, to: atPos + 1 } };
+}
 
 describe("parseAgentMentionMarkdown", () => {
   it("accepts plain workspace file markdown links without an @ prefix", () => {
@@ -61,13 +95,14 @@ describe("parseAgentMentionMarkdown", () => {
   it("accepts generic session mention hrefs", () => {
     expect(
       parseAgentMentionMarkdown(
-        "[@Session](mention://agent-session/session-1?workspaceId=workspace-1)"
+        "[@Session](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1)"
       )
     ).toMatchObject({
       item: {
         kind: "session",
         workspaceId: "workspace-1",
         targetId: "session-1",
+        agentTargetId: "local:claude-code",
         name: "Session"
       }
     });
@@ -239,7 +274,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "session",
-        href: "mention://agent-session/session-1?workspaceId=workspace-1",
+        href: "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1",
         workspaceId: "workspace-1",
         targetId: "session-1",
         name: "Session"
@@ -247,7 +282,8 @@ describe("attrsToMentionItem", () => {
     ).toMatchObject({
       kind: "session",
       workspaceId: "workspace-1",
-      targetId: "session-1"
+      targetId: "session-1",
+      agentTargetId: "local:claude-code"
     });
   });
 
@@ -363,6 +399,85 @@ describe("attrsToMentionItem", () => {
   });
 });
 
+describe("agent session mention links", () => {
+  it("builds the stable agent-session mention href", () => {
+    expect(
+      createAgentSessionMentionHref({
+        agentSessionId: "session-1",
+        agentTargetId: "local:claude-code",
+        label: "Session 1",
+        workspaceId: "room-1"
+      })
+    ).toBe(
+      "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1"
+    );
+  });
+
+  it("formats composer session mentions with the mention prefix", () => {
+    expect(
+      createAgentSessionMarkdownLink({
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        label: "Session 1",
+        workspaceId: "room-1",
+        withAtPrefix: true
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Acodex&workspaceId=room-1)"
+    );
+  });
+
+  it("formats copied session links without the mention prefix", () => {
+    expect(
+      createAgentSessionMarkdownLink({
+        agentSessionId: "session-1",
+        label: "Session [draft] \\ one",
+        workspaceId: "room-1",
+        withAtPrefix: false
+      })
+    ).toBe(
+      "[Session \\[draft\\] \\\\ one](mention://agent-session/session-1?workspaceId=room-1)"
+    );
+  });
+
+  it("preserves the agent target when formatting a session mention item", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        kind: "session",
+        href: "mention://agent-session/session-1?workspaceId=room-1",
+        workspaceId: "room-1",
+        targetId: "session-1",
+        agentTargetId: "local:claude-code",
+        name: "Session 1",
+        title: "Session 1",
+        scope: "my_sessions",
+        initiatorName: "Taylor",
+        agentName: "Claude Code"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1)"
+    );
+  });
+
+  it("preserves the agent target from an existing session href", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        kind: "session",
+        href: "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1",
+        workspaceId: "room-1",
+        targetId: "session-1",
+        name: "Session 1",
+        title: "Session 1",
+        scope: "my_sessions",
+        initiatorName: "Taylor",
+        agentName: "Claude Code"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1)"
+    );
+  });
+});
+
 describe("formatAgentMentionMarkdown — agent target", () => {
   it("renders the agent-target mention href without falling back to workspace-app", () => {
     expect(
@@ -430,5 +545,54 @@ describe("formatAgentMentionMarkdown — workspace reference", () => {
       iconUrl: "https://icons/app-1.png",
       fileCount: 5
     });
+  });
+});
+
+describe("expandRangeOverMentionPlaceholder", () => {
+  it("swallows a surrounding `{ … }` mention placeholder plus one trailing space", () => {
+    // "让 { @ } 审查": paragraph offsets 1=让 2=' ' 3={ 4=' ' 5=@ 6=' ' 7=} 8=' ' 9=审 10=查
+    const { editor, range } = editorForPlaceholder("让 { @ } 审查");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual({
+      from: 3,
+      to: 9
+    });
+  });
+
+  it("swallows a placeholder that still carries its seeded label text", () => {
+    // The seeded `@agent` label survives when the user types a fresh `@` inside.
+    const { editor, range } = editorForPlaceholder("让 { @agent } 审查");
+    const expanded = expandRangeOverMentionPlaceholder(editor, range);
+    const doc = editor.state.doc;
+    expect(doc.textBetween(expanded.from, expanded.to)).toBe("{ @agent } ");
+  });
+
+  it("leaves an ordinary `@` mention (no enclosing braces) untouched", () => {
+    const { editor, range } = editorForPlaceholder("ping @");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("does not cross a closing brace when scanning left", () => {
+    const { editor, range } = editorForPlaceholder("a } @ } b");
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("leaves large, user-authored braces intact", () => {
+    const { editor, range } = editorForPlaceholder(
+      '{ "role": "assistant", "mentionedAt": @, "count": 1 }'
+    );
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
+  });
+
+  it("does not swallow a group that already contains a mention chip", () => {
+    const doc = placeholderSchema.node("doc", null, [
+      placeholderSchema.node("paragraph", null, [
+        placeholderSchema.text("{ @ "),
+        placeholderSchema.node("chip"),
+        placeholderSchema.text(" }")
+      ])
+    ]);
+    const editor = { state: { doc } } as unknown as Editor;
+    const range = { from: 3, to: 4 }; // over the `@`
+    expect(expandRangeOverMentionPlaceholder(editor, range)).toEqual(range);
   });
 });

@@ -15,7 +15,6 @@ import {
   type MentionRowStatusTone
 } from "@tutti-os/ui-rich-text/at-panel";
 import { resolveIssueManagerStatusPresentation } from "@tutti-os/workspace-issue-manager/ui";
-import { Spinner } from "@tutti-os/ui-system";
 import { userAvatarPlaceholderUrl } from "../../shared/userAvatarPlaceholder";
 import { translate } from "../../i18n/index";
 import { managedAgentRoundedIconUrl } from "../../shared/managedAgentIcons";
@@ -296,7 +295,6 @@ export function AgentFileMentionPalette({
       }}
       maxHeightPx={maxHeightPx}
       scrollHighlightedIntoViewCentered={shouldCenterHighlightedItem}
-      loadingBanner={<MentionPaletteLoadingBanner label={loadingLabel} />}
       theme={AGENT_MENTION_PALETTE_THEME}
       callbacks={{
         onHighlightChange,
@@ -354,27 +352,6 @@ function decorateMentionGroup(
     sectionClassName: followsMySessions ? "mt-2" : undefined,
     hideTopDivider: suppressChrome
   };
-}
-
-function MentionPaletteLoadingBanner({
-  label
-}: {
-  label: string;
-}): React.JSX.Element {
-  "use memo";
-  return (
-    <div
-      className="flex items-center gap-2 border-b border-[var(--line-1)] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)]"
-      data-testid="agent-mention-loading-banner"
-    >
-      <Spinner
-        size={14}
-        className="text-[var(--text-secondary)]"
-        testId="agent-mention-loading-spinner"
-      />
-      <span>{label}</span>
-    </div>
-  );
 }
 
 function shouldSuppressFileSearchGroupChrome(

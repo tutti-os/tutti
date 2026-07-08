@@ -164,7 +164,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
 
 export interface AgentHostInputApi {
   account?: AgentHostAccountApi;
-  agentGuiBatch?: AgentHostAgentGuiBatchApi;
   agentSessions?: AgentHostAgentSessionsApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
@@ -187,10 +186,6 @@ export type AgentHostAccountApi = AgentHostRecord & {
     input: AgentHostBatchUserInfoInput
   ) => AgentHostAsyncResult<AgentHostBatchUserInfoResult>;
   ensureProfiles?: (input: any) => AgentHostAsyncResult<any>;
-};
-
-export type AgentHostAgentGuiBatchApi = AgentHostRecord & {
-  exportRun: (input: any) => AgentHostAsyncResult<any>;
 };
 
 export type AgentHostWorkspaceAgentProbesApi = AgentHostRecord & {
@@ -334,7 +329,6 @@ export type AgentHostWorkspaceAgentsApi = AgentHostRecord & {
 
 export interface AgentHostRuntimeApi {
   account?: AgentHostAccountApi;
-  agentGuiBatch: AgentHostAgentGuiBatchApi;
   clipboard: AgentHostClipboardApi;
   debug?: AgentHostDebugApi;
   filesystem: AgentHostFilesystemApi;
@@ -353,7 +347,6 @@ export function toAgentHostRuntimeApi(
 ): AgentHostRuntimeApi {
   return {
     account: hostApi.account,
-    agentGuiBatch: hostApi.agentGuiBatch ?? ({} as AgentHostAgentGuiBatchApi),
     clipboard: hostApi.clipboard,
     debug: hostApi.debug,
     filesystem: hostApi.filesystem,

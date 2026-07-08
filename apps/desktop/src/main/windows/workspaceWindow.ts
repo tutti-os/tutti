@@ -1,4 +1,6 @@
-import { BrowserWindow, app, session, shell } from "electron";
+import { BrowserWindow, app, screen, session, shell } from "electron";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
 import {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach
@@ -13,6 +15,7 @@ import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
 import type { DesktopThemeState } from "../../shared/theme/index.ts";
 import {
   applyDesktopWindowIntent,
+  createAgentWindowIntent,
   createWorkspaceWindowIntent,
   encodeDesktopWindowIntent
 } from "../../shared/contracts/windowIntent";
@@ -22,6 +25,7 @@ import {
 } from "../../shared/contracts/ipc";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
+import { resolveCenteredWindowBounds } from "./workspaceWindowBounds.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -32,6 +36,7 @@ export interface CreateWorkspaceWindowOptions {
   preloadPath: string;
   rendererUrl?: string;
   theme: DesktopThemeState;
+  windowKind?: "agent" | "workspace";
   workspaceAppPreloadPath?: string;
   workspaceID: string;
 }
@@ -42,19 +47,43 @@ const workspaceWindowMacTrafficLightInsetPx = 16;
 const workspaceWindowMacTrafficLightSizePx = 12;
 const workspaceWindowMacTrafficLightPositionY =
   (workspaceWindowHeaderHeightPx - workspaceWindowMacTrafficLightSizePx) / 2;
+const agentWindowDefaultWidthPx = 1340;
+const agentWindowDefaultHeightPx = 830;
+const agentWindowMinWidthPx = 760;
+const agentWindowMinHeightPx = 520;
+const agentWindowWorkAreaMarginPx = 48;
 
 export function createWorkspaceWindow(
   options: CreateWorkspaceWindowOptions
 ): BrowserWindow {
   const logger = getDesktopLogger();
+  const windowKind = options.windowKind ?? "workspace";
+  const agentWindowBounds =
+    windowKind === "agent"
+      ? resolveCenteredWindowBounds({
+          defaultHeight: agentWindowDefaultHeightPx,
+          defaultWidth: agentWindowDefaultWidthPx,
+          margin: agentWindowWorkAreaMarginPx,
+          minHeight: agentWindowMinHeightPx,
+          minWidth: agentWindowMinWidthPx,
+          workArea: screen.getPrimaryDisplay().workArea
+        })
+      : null;
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
-    width: 1280,
-    height: 840,
-    minWidth: 960,
-    minHeight: 640,
+    frame: windowKind === "agent" ? false : undefined,
+    width: agentWindowBounds?.width ?? 1280,
+    height: agentWindowBounds?.height ?? 840,
+    minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,
+    minHeight: windowKind === "agent" ? agentWindowMinHeightPx : 640,
+    ...(agentWindowBounds
+      ? {
+          x: agentWindowBounds.x,
+          y: agentWindowBounds.y
+        }
+      : {}),
     show: false,
-    ...(process.platform === "darwin"
+    ...(process.platform === "darwin" && windowKind === "workspace"
       ? {
           titleBarStyle: "hidden" as const,
           trafficLightPosition: {
@@ -198,6 +227,54 @@ export function createWorkspaceWindow(
   }
 
   return workspaceWindow;
+}
+
+export function loadAgentWindowContent(
+  agentWindow: BrowserWindow,
+  options: Pick<
+    CreateWorkspaceWindowOptions,
+    "locale" | "rendererUrl" | "workspaceID"
+  > & {
+    agentSessionID?: string | null;
+    agentTargetID?: string | null;
+    dockPlacement: DesktopDockPlacement;
+    providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
+    providerTargets?: readonly AgentGUIProviderTarget[];
+    provider?: string | null;
+    theme: DesktopThemeState;
+  }
+): void {
+  const windowIntentSearchOptions = {
+    dockPlacement: options.dockPlacement,
+    locale: options.locale,
+    themeAppearance: options.theme.appearance,
+    themeSource: options.theme.source
+  };
+  const intent = createAgentWindowIntent({
+    agentSessionID: options.agentSessionID,
+    agentTargetID: options.agentTargetID,
+    providerStatusSnapshot: options.providerStatusSnapshot,
+    providerTargets: options.providerTargets,
+    provider: options.provider,
+    workspaceID: options.workspaceID
+  });
+  if (options.rendererUrl) {
+    void agentWindow.loadURL(
+      applyDesktopWindowIntent(
+        options.rendererUrl,
+        intent,
+        windowIntentSearchOptions
+      )
+    );
+    return;
+  }
+
+  void agentWindow.loadFile(
+    resolvePackagedWorkspaceRendererIndexPath(app.getAppPath()),
+    {
+      search: encodeDesktopWindowIntent(intent, windowIntentSearchOptions)
+    }
+  );
 }
 
 export function loadWorkspaceWindowContent(

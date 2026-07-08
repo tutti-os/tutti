@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { tuttiAgentAssetUrls } from "../../../../../../shared/tuttiAssetProtocol.ts";
+import {
+  tuttiAgentAssetUrls,
+  tuttiIssueAssetUrls
+} from "../../../../../../shared/tuttiAssetProtocol.ts";
 import { resolveDesktopWorkspaceAppIconEntries } from "./desktopWorkspaceAppIcons.ts";
 
 test("desktop workspace app icon entries use App Center icon fields", () => {
@@ -45,6 +48,11 @@ test("desktop workspace app icon entries use App Center icon fields", () => {
       appId: "agent-tutti-agent",
       iconUrl: tuttiAgentAssetUrls.tuttiAgent,
       workspaceId: "workspace-1"
+    },
+    {
+      appId: "issue-manager",
+      iconUrl: tuttiIssueAssetUrls.default,
+      workspaceId: "workspace-1"
     }
   ]);
 });
@@ -69,6 +77,11 @@ test("desktop workspace app icon entries seed built-in agent app icons", () => {
     {
       appId: "agent-tutti-agent",
       iconUrl: tuttiAgentAssetUrls.tuttiAgent,
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "issue-manager",
+      iconUrl: tuttiIssueAssetUrls.default,
       workspaceId: "workspace-1"
     }
   ]);
@@ -100,6 +113,11 @@ test("desktop workspace app icon entries keep App Center agent icons", () => {
     {
       appId: "agent-tutti-agent",
       iconUrl: tuttiAgentAssetUrls.tuttiAgent,
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "issue-manager",
+      iconUrl: tuttiIssueAssetUrls.default,
       workspaceId: "workspace-1"
     }
   ]);

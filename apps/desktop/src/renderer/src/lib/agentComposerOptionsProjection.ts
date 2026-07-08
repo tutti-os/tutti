@@ -133,10 +133,15 @@ function settingOptionsFromRawOptions(
     seen.add(optionValue);
     const label = firstTextValue(record, keys.labelKeys) ?? optionValue;
     const description = normalizeText(record.description);
+    const supportsImageInput =
+      typeof record.supportsImageInput === "boolean"
+        ? record.supportsImageInput
+        : undefined;
     options.push({
       value: optionValue,
       label,
-      ...(description ? { description } : {})
+      ...(description ? { description } : {}),
+      ...(supportsImageInput !== undefined ? { supportsImageInput } : {})
     });
   }
   return options;

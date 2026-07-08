@@ -1,9 +1,12 @@
 import { mergeAgentActivityMessages } from "@tutti-os/agent-activity-core";
 import {
-  getAgentActivityRuntime,
-  getOptionalAgentActivityRuntime
+  getAgentActivityRuntimeByOrigin,
+  type AgentActivityRuntime
 } from "../../../../../agentActivityRuntime";
-import { getOptionalAgentHostApi } from "../../../../../agentActivityHost";
+import {
+  getAgentHostApiByOrigin,
+  getOptionalAgentHostApi
+} from "../../../../../agentActivityHost";
 import type { AgentGUIProvider } from "../types";
 import { getAgentSessionViewStoreSnapshot } from "../agentSessions/agentSessionViewStore";
 import {
@@ -88,6 +91,7 @@ type ConversationListUpdateReason =
   | "completion-observed"
   | "external-update"
   | "local-created"
+  | "manual-unread"
   | "pin-changed"
   | "submit-pending";
 
@@ -113,7 +117,13 @@ const readStateLoadByQueryKey = new Map<
   string,
   Promise<WorkspaceAgentReadStateSnapshot>
 >();
-const runtimeRefreshUnsubscribeByWorkspaceId = new Map<string, () => void>();
+// Keyed by `${workspaceId}::${sessionOrigin}` so two runtimes (local/shared)
+// serving the same workspace each get their own subscription instead of the
+// first one winning a workspace-only slot.
+const runtimeRefreshUnsubscribeBySubscriptionKey = new Map<
+  string,
+  () => void
+>();
 const activeConversationIdsByQueryKey = new Map<string, Map<string, string>>();
 const updateStormDiagnosticsByQueryKey = new Map<
   string,
@@ -231,7 +241,10 @@ function getOrCreateQueryState(
   if (!normalized) {
     return null;
   }
-  ensureWorkspaceAgentRuntimeRefresh(normalized.workspaceId);
+  ensureWorkspaceAgentRuntimeRefresh(
+    normalized.workspaceId,
+    normalized.sessionOrigin
+  );
   const queryKey = createAgentGUIConversationListQueryKey(normalized)!;
   const existing = snapshot.statesByQueryKey[queryKey];
   if (existing) {
@@ -351,11 +364,26 @@ function normalizeCompletionKey(value: string | null | undefined): string {
   return value?.trim() ?? "";
 }
 
+function fallbackSessionCompletionKey(
+  conversation: Pick<AgentGUIConversationSummary, "id" | "status">
+): string {
+  return conversation.status === "completed" || conversation.status === "ready"
+    ? `session:${conversation.id}:completed`
+    : "";
+}
+
 function isCompletedRead(
   readState: WorkspaceAgentReadStateSnapshot,
   completionKey: string
 ): boolean {
   return readState.completed.readIds.includes(completionKey);
+}
+
+function isCompletedUnread(
+  readState: WorkspaceAgentReadStateSnapshot,
+  completionKey: string
+): boolean {
+  return readState.completed.unreadIds.includes(completionKey);
 }
 
 function updateCompletedReadState(
@@ -385,12 +413,46 @@ function updateCompletedReadState(
   void persistCompletedReadState(queryState, next.completed);
 }
 
+function updateCompletedUnreadState(
+  queryState: AgentGUIConversationListQueryState,
+  completionKey: string
+): void {
+  const normalizedCompletionKey = normalizeCompletionKey(completionKey);
+  if (!normalizedCompletionKey) {
+    return;
+  }
+  const current =
+    readStateByQueryKey.get(queryState.queryKey) ??
+    emptyWorkspaceAgentReadState();
+  const next: WorkspaceAgentReadStateSnapshot = {
+    ...current,
+    completed: {
+      readIds: current.completed.readIds.filter(
+        (id) => id !== normalizedCompletionKey
+      ),
+      unreadIds: current.completed.unreadIds.includes(normalizedCompletionKey)
+        ? current.completed.unreadIds
+        : [...current.completed.unreadIds, normalizedCompletionKey]
+    }
+  };
+  if (
+    next.completed.readIds === current.completed.readIds &&
+    next.completed.unreadIds === current.completed.unreadIds
+  ) {
+    return;
+  }
+  readStateByQueryKey.set(queryState.queryKey, next);
+  void persistCompletedReadState(queryState, next.completed);
+}
+
 async function persistCompletedReadState(
   queryState: AgentGUIConversationListQueryState,
   completed: WorkspaceAgentReadStateBucket
 ): Promise<void> {
   try {
-    await getOptionalAgentHostApi()?.persistence?.writeWorkspaceAgentReadState({
+    await getAgentHostApiByOrigin(
+      queryState.query.sessionOrigin
+    )?.persistence?.writeWorkspaceAgentReadState({
       roomId: queryState.query.workspaceId,
       userId: queryState.query.userId,
       kind: "completed",
@@ -415,13 +477,12 @@ async function loadWorkspaceAgentReadState(
   }
   const promise = (async () => {
     try {
-      const loaded =
-        await getOptionalAgentHostApi()?.persistence?.readWorkspaceAgentReadState(
-          {
-            roomId: queryState.query.workspaceId,
-            userId: queryState.query.userId
-          }
-        );
+      const loaded = await getAgentHostApiByOrigin(
+        queryState.query.sessionOrigin
+      )?.persistence?.readWorkspaceAgentReadState({
+        roomId: queryState.query.workspaceId,
+        userId: queryState.query.userId
+      });
       const normalized = normalizeWorkspaceAgentReadState(loaded);
       const current = readStateByQueryKey.get(queryState.queryKey);
       if (current) {
@@ -990,17 +1051,28 @@ function upsertConversationOverlay(
   );
 }
 
-function workspaceSessionViewDataBySessionId(workspaceId: string): Record<
+function workspaceSessionViewDataBySessionId(
+  workspaceId: string,
+  sessionOrigin: string
+): Record<
   string,
   {
     overlayMessages: WorkspaceAgentActivityMessage[];
   }
 > {
   const allViews = getAgentSessionViewStoreSnapshot().sessionViewsBySessionKey;
-  const prefix = `${workspaceId.trim()}:`;
+  const normalizedWorkspaceId = workspaceId.trim();
+  const normalizedOrigin = sessionOrigin.trim();
   return Object.fromEntries(
     Object.values(allViews)
-      .filter((view) => view.sessionKey.startsWith(prefix))
+      // Scope overlays to this query's runtime: match the view's workspace and
+      // origin by value rather than parsing the sessionKey, so a shared-runtime
+      // view never overlays onto the local list (or vice versa).
+      .filter(
+        (view) =>
+          view.workspaceId === normalizedWorkspaceId &&
+          view.origin === normalizedOrigin
+      )
       .map((view) => [
         view.agentSessionId,
         {
@@ -1169,11 +1241,15 @@ function decorateConversationForRefresh(input: {
     conversation: input.conversation,
     messages: input.mergedMessages
   });
+  const isExplicitUnread = completionKey
+    ? isCompletedUnread(input.readState, completionKey)
+    : false;
   const hasUnreadCompletion = Boolean(
     completionKey &&
     input.conversation.isImported !== true &&
-    !isCompletedRead(input.readState, completionKey) &&
-    !hasActiveConversationOwner(input.queryKey, input.conversation.id)
+    (isExplicitUnread ||
+      (!isCompletedRead(input.readState, completionKey) &&
+        !hasActiveConversationOwner(input.queryKey, input.conversation.id)))
   );
   const nextConversation: AgentGUIConversationSummary = {
     ...input.conversation,
@@ -1196,15 +1272,31 @@ async function loadWorkspaceAgentSnapshotForConversations(input: {
   userId: string;
   workspaceId: string;
 }): Promise<WorkspaceAgentActivitySnapshot> {
-  const snapshot = await getAgentActivityRuntime().load(input.workspaceId);
+  const runtime = resolveRuntimeForOrigin(input.sessionOrigin);
+  const snapshot = await runtime.load(input.workspaceId);
   return workspaceAgentSnapshotForConversations(snapshot);
 }
 
 function getWorkspaceAgentSnapshotForConversations(input: {
+  sessionOrigin: string;
   workspaceId: string;
 }): WorkspaceAgentActivitySnapshot {
-  const snapshot = getAgentActivityRuntime().getSnapshot(input.workspaceId);
+  const runtime = resolveRuntimeForOrigin(input.sessionOrigin);
+  const snapshot = runtime.getSnapshot(input.workspaceId);
   return workspaceAgentSnapshotForConversations(snapshot);
+}
+
+// Resolve strictly by origin. A missing runtime for an explicit origin throws
+// (the caller runs inside refreshAgentGUIConversationListQuery's try/catch and
+// surfaces an error state) rather than cross-routing to another runtime's data.
+function resolveRuntimeForOrigin(sessionOrigin: string): AgentActivityRuntime {
+  const runtime = getAgentActivityRuntimeByOrigin(sessionOrigin);
+  if (!runtime) {
+    throw new Error(
+      `No agent activity runtime registered for origin "${sessionOrigin}".`
+    );
+  }
+  return runtime;
 }
 
 function shouldUseCurrentWorkspaceAgentSnapshotForRefresh(
@@ -1268,7 +1360,8 @@ async function refreshAgentGUIConversationListQuery(
       dirtySessionIds.add(sessionId);
     }
     const sessionViewDataById = workspaceSessionViewDataBySessionId(
-      state.query.workspaceId
+      state.query.workspaceId,
+      state.query.sessionOrigin
     );
     const sessionMessagesByIdForSummaries = mergeSessionMessagesById(
       workspaceAgentSnapshot.sessionMessagesById ?? {},
@@ -1554,30 +1647,35 @@ function scheduleQueryRefresh(
   refreshTimers.set(queryKey, setTimeout(runRefresh, delayMs));
 }
 
-function ensureWorkspaceAgentRuntimeRefresh(workspaceId: string): void {
+function ensureWorkspaceAgentRuntimeRefresh(
+  workspaceId: string,
+  sessionOrigin: string
+): void {
   const normalizedWorkspaceId = workspaceId.trim();
-  if (
-    !normalizedWorkspaceId ||
-    runtimeRefreshUnsubscribeByWorkspaceId.has(normalizedWorkspaceId)
-  ) {
+  const normalizedOrigin = sessionOrigin.trim();
+  if (!normalizedWorkspaceId || !normalizedOrigin) {
     return;
   }
-  const runtime = getOptionalAgentActivityRuntime();
+  const subscriptionKey = `${normalizedWorkspaceId}::${normalizedOrigin}`;
+  if (runtimeRefreshUnsubscribeBySubscriptionKey.has(subscriptionKey)) {
+    return;
+  }
+  const runtime = getAgentActivityRuntimeByOrigin(normalizedOrigin);
   if (!runtime) {
     return;
   }
   const unsubscribe = runtime.subscribe(normalizedWorkspaceId, () => {
     for (const state of Object.values(snapshot.statesByQueryKey)) {
-      if (state.query.workspaceId !== normalizedWorkspaceId) {
+      if (
+        state.query.workspaceId !== normalizedWorkspaceId ||
+        state.query.sessionOrigin !== normalizedOrigin
+      ) {
         continue;
       }
       scheduleQueryRefresh(state.query, "workspace-agent-update");
     }
   });
-  runtimeRefreshUnsubscribeByWorkspaceId.set(
-    normalizedWorkspaceId,
-    unsubscribe
-  );
+  runtimeRefreshUnsubscribeBySubscriptionKey.set(subscriptionKey, unsubscribe);
 }
 
 export function subscribeAgentGUIConversationListStore(
@@ -1733,11 +1831,62 @@ export function setAgentGUIConversationListActiveConversation(input: {
   if (previousConversationId !== conversationId) {
     activeByOwner.set(ownerKey, conversationId);
     activeConversationIdsByQueryKey.set(queryState.queryKey, activeByOwner);
+    clearAgentGUIConversationUnreadCompletion({
+      query: input.query,
+      conversationId
+    });
   }
-  clearAgentGUIConversationUnreadCompletion({
-    query: input.query,
-    conversationId
-  });
+}
+
+export function markAgentGUIConversationUnreadCompletion(input: {
+  conversationId: string;
+  query: AgentGUIConversationListQuery;
+}): void {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return;
+  }
+  const queryState = ensureQueryState(input.query);
+  if (!queryState) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => {
+      let changed = false;
+      const next = current.map((conversation) => {
+        if (conversation.id !== conversationId) {
+          return conversation;
+        }
+        const completionKey =
+          normalizeCompletionKey(conversation.unreadCompletionKey) ||
+          fallbackSessionCompletionKey(conversation);
+        const canShowCompletion =
+          completionKey &&
+          conversation.isImported !== true &&
+          (conversation.status === "completed" ||
+            conversation.status === "ready");
+        if (!canShowCompletion) {
+          return conversation;
+        }
+        updateCompletedUnreadState(queryState, completionKey);
+        if (
+          conversation.hasUnreadCompletion === true &&
+          conversation.unreadCompletionKey === completionKey
+        ) {
+          return conversation;
+        }
+        changed = true;
+        return {
+          ...conversation,
+          hasUnreadCompletion: true,
+          unreadCompletionKey: completionKey
+        };
+      });
+      return changed ? next : current;
+    },
+    "manual-unread"
+  );
 }
 
 export function clearAgentGUIConversationUnreadCompletion(input: {
@@ -2135,10 +2284,10 @@ export function setAgentGUIConversationListConversationsForTests(
 }
 
 export function resetAgentGUIConversationListStoreForTests(): void {
-  for (const unsubscribe of runtimeRefreshUnsubscribeByWorkspaceId.values()) {
+  for (const unsubscribe of runtimeRefreshUnsubscribeBySubscriptionKey.values()) {
     unsubscribe();
   }
-  runtimeRefreshUnsubscribeByWorkspaceId.clear();
+  runtimeRefreshUnsubscribeBySubscriptionKey.clear();
   for (const timer of refreshTimers.values()) {
     clearTimeout(timer);
   }

@@ -102,7 +102,7 @@ function matchesWindowManagementShortcutPreset(
   }
 }
 
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
+export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   const candidate = target as {
     isContentEditable?: boolean;
     tagName?: string;

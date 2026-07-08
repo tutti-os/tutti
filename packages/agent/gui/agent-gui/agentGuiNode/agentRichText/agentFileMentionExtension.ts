@@ -5,6 +5,8 @@ import Suggestion, { exitSuggestion } from "@tiptap/suggestion";
 import { isRichTextTriggerPrefixBoundary } from "@tutti-os/ui-rich-text/editor";
 import {
   createRichTextLinkMarkdown,
+  createRichTextMarkdownLink,
+  createRichTextMentionHref,
   createRichTextMentionMarkdown,
   isRichTextMentionHref,
   parseRichTextMentionHref
@@ -53,6 +55,7 @@ export interface AgentMentionSessionItem {
   href: string;
   workspaceId: string;
   targetId: string;
+  agentTargetId?: string;
   name: string;
   title: string;
   scope: AgentMentionScope;
@@ -189,6 +192,89 @@ export function exitAgentFileMentionSuggestion(editor: Editor): void {
   exitSuggestion(editor.view, agentFileMentionPluginKey);
 }
 
+/** Non-text/leaf nodes surface as this sentinel in {@link expandRangeOverMentionPlaceholder}. */
+const MENTION_PLACEHOLDER_LEAF_SENTINEL = "￼";
+/** Upper bound (in chars) for a `{ … }` group we treat as a mention placeholder. */
+const MENTION_PLACEHOLDER_MAX_LENGTH = 40;
+
+/**
+ * Grow a suggestion range so that inserting a mention replaces a surrounding
+ * `{ … }` placeholder rather than leaving its braces behind. Starter prompts
+ * prefill mention slots as literal placeholders (e.g. `{ @agent }`); when the
+ * user opens the @ palette inside one and picks a target, we want the braces
+ * gone. Returns the original range unchanged when the trigger is not inside a
+ * short, single-line, brace-only group (so ordinary `@` mentions and legitimate
+ * user braces such as inline JSON are never touched).
+ */
+export function expandRangeOverMentionPlaceholder(
+  editor: Editor,
+  range: Range
+): Range {
+  const { doc } = editor.state;
+  const $from = doc.resolve(range.from);
+  const blockStart = $from.start();
+  const blockEnd = $from.end();
+  const blockText = doc.textBetween(
+    blockStart,
+    blockEnd,
+    "\n",
+    MENTION_PLACEHOLDER_LEAF_SENTINEL
+  );
+  const fromOffset = range.from - blockStart;
+  const toOffset = Math.min(range.to, blockEnd) - blockStart;
+
+  // Nearest "{" to the left, staying within a single group (bail on "}").
+  let open = -1;
+  for (let index = fromOffset - 1; index >= 0; index -= 1) {
+    const char = blockText[index];
+    if (char === "}") {
+      return range;
+    }
+    if (char === "{") {
+      open = index;
+      break;
+    }
+  }
+  if (open < 0) {
+    return range;
+  }
+
+  // Nearest "}" to the right, staying within a single group (bail on "{").
+  let close = -1;
+  for (let index = toOffset; index < blockText.length; index += 1) {
+    const char = blockText[index];
+    if (char === "{") {
+      return range;
+    }
+    if (char === "}") {
+      close = index;
+      break;
+    }
+  }
+  if (close < 0) {
+    return range;
+  }
+
+  // Only swallow short, single-line groups without embedded chips — real mention
+  // placeholders are tiny, and this keeps larger user-authored braces intact.
+  const group = blockText.slice(open, close + 1);
+  if (
+    close - open > MENTION_PLACEHOLDER_MAX_LENGTH ||
+    group.includes("\n") ||
+    group.includes(MENTION_PLACEHOLDER_LEAF_SENTINEL)
+  ) {
+    return range;
+  }
+
+  // The inserted mention re-adds its own trailing space; consume one adjacent
+  // whitespace so a mid-sentence placeholder does not leave a double space.
+  let end = close + 1;
+  if (blockText[end] === " " || blockText[end] === "\t") {
+    end += 1;
+  }
+  return { from: blockStart + open, to: blockStart + end };
+}
+
 export function createAgentFileMentionExtension(
   options: AgentFileMentionExtensionOptions = {}
 ): Node {
@@ -213,6 +299,7 @@ export function createAgentFileMentionExtension(
         directoryPath: { default: "" },
         workspaceId: { default: "" },
         targetId: { default: "" },
+        agentTargetId: { default: "" },
         scope: { default: "" },
         title: { default: "" },
         initiatorName: { default: "" },
@@ -430,18 +517,26 @@ export function createAgentFileMentionExtension(
             return isRichTextTriggerPrefixBoundary(previous, "whitespace");
           },
           command: ({ editor, range, props }) => {
+            // Starter prompts seed mention slots as literal `{ … }` placeholders
+            // (e.g. `{ @agent }`). When the palette is triggered inside one, grow
+            // the replaced range over the whole placeholder so inserting a chip
+            // cleanly removes its braces instead of leaving them behind.
+            const insertRange = expandRangeOverMentionPlaceholder(
+              editor,
+              range
+            );
             const prefixCaretAnchor =
-              range.from <= 1 ||
+              insertRange.from <= 1 ||
               editor.state.doc.textBetween(
-                Math.max(1, range.from - 1),
-                range.from,
+                Math.max(1, insertRange.from - 1),
+                insertRange.from,
                 "\n",
                 "\n"
               ) === "\n";
             editor
               .chain()
               .focus()
-              .insertContentAt(range, [
+              .insertContentAt(insertRange, [
                 ...(prefixCaretAnchor
                   ? ([
                       {
@@ -511,6 +606,45 @@ export function formatAgentFileMentionMarkdown(
   });
 }
 
+export function createAgentSessionMentionHref(input: {
+  agentSessionId: string;
+  agentTargetId?: string | null;
+  label: string;
+  workspaceId: string;
+}): string {
+  const label = normalizeAgentSessionMarkdownLabel(input.label);
+  const agentTargetId = input.agentTargetId?.trim() ?? "";
+  return createRichTextMentionHref({
+    providerId: "agent-session",
+    entityId: input.agentSessionId,
+    label,
+    scope: {
+      ...(agentTargetId ? { agentTargetId } : {}),
+      workspaceId: input.workspaceId
+    }
+  });
+}
+
+export function createAgentSessionMarkdownLink(input: {
+  agentSessionId: string;
+  agentTargetId?: string | null;
+  label: string;
+  workspaceId: string;
+  withAtPrefix: boolean;
+}): string {
+  const label = normalizeAgentSessionMarkdownLabel(input.label);
+  const href = createAgentSessionMentionHref({
+    agentSessionId: input.agentSessionId,
+    agentTargetId: input.agentTargetId,
+    label,
+    workspaceId: input.workspaceId
+  });
+  return createRichTextMarkdownLink({
+    href,
+    label: input.withAtPrefix ? `@${label}` : label
+  });
+}
+
 export function formatAgentMentionMarkdown(
   item: AgentContextMentionItem
 ): string {
@@ -539,6 +673,16 @@ export function formatAgentMentionMarkdown(
       }
     });
   }
+  if (item.kind === "session") {
+    return createAgentSessionMarkdownLink({
+      agentSessionId: item.targetId,
+      agentTargetId:
+        item.agentTargetId ?? agentSessionTargetIdFromHref(item.href),
+      label: item.name,
+      workspaceId: item.workspaceId,
+      withAtPrefix: true
+    });
+  }
   if (item.kind === "agent-target") {
     return createRichTextMentionMarkdown({
       providerId: "agent-target",
@@ -549,6 +693,16 @@ export function formatAgentMentionMarkdown(
   }
   const identity = parseRichTextMentionHref(item.href, item.name);
   return identity ? createRichTextMentionMarkdown(identity) : "";
+}
+
+function normalizeAgentSessionMarkdownLabel(value: string): string {
+  return value.trim().replace(/^@+/, "").trim();
+}
+
+function agentSessionTargetIdFromHref(href: string): string | undefined {
+  const mention = parseRichTextMentionHref(href, "");
+  const agentTargetId = mention?.scope?.agentTargetId?.trim() ?? "";
+  return agentTargetId || undefined;
 }
 
 function parseMentionFileCount(value: unknown): number {
@@ -674,6 +828,7 @@ export function parseMentionItemFromHref(input: {
       href,
       workspaceId,
       targetId,
+      agentTargetId: mention.scope?.agentTargetId?.trim() || undefined,
       name,
       title: name,
       scope: "collab_sessions",
@@ -705,7 +860,8 @@ export function parseMentionItemFromHref(input: {
       workspaceId,
       targetId,
       appId: targetId,
-      name
+      name,
+      iconUrl: mention.scope?.icon?.trim() || undefined
     };
   }
   if (resource === "agent-target") {
@@ -798,6 +954,9 @@ export function mentionItemToAttrs(
       href: item.href,
       ...workspaceMentionAttrs(item.workspaceId),
       targetId: item.targetId,
+      ...(item.agentTargetId?.trim()
+        ? { agentTargetId: item.agentTargetId.trim() }
+        : {}),
       scope: item.scope,
       title: item.title,
       initiatorName: item.initiatorName,
@@ -905,6 +1064,10 @@ export function attrsToMentionItem(
       href,
       workspaceId,
       targetId,
+      agentTargetId:
+        typeof attrs.agentTargetId === "string" && attrs.agentTargetId.trim()
+          ? attrs.agentTargetId.trim()
+          : agentSessionTargetIdFromHref(href),
       name,
       title:
         typeof attrs.title === "string" && attrs.title.trim()

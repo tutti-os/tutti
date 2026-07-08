@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -26,6 +27,13 @@ type sessionSummaryInput struct {
 	Order         string `cli:"order" description:"Message order: asc or desc."`
 }
 
+type waitInput struct {
+	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to wait on."`
+	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Only include messages newer than this version. Defaults to the current latest version when wait starts."`
+	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent agent execution messages to return."`
+	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
+}
+
 type turnResourcesInput struct {
 	SessionID string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
 	TurnID    string `cli:"turn-id" validate:"required" description:"Turn id whose resources should be returned."`
@@ -36,6 +44,12 @@ type sessionSummaryResult struct {
 	ImageLocalPath imageLocalPathResolver
 	Page           agentservice.SessionMessagesPage
 	Session        agentservice.Session
+}
+
+type waitCommandResult struct {
+	ImageLocalPath imageLocalPathResolver
+	Messages       []agentservice.SessionMessage
+	Result         agentservice.WaitResult
 }
 
 type turnResourcesResult struct {
@@ -102,6 +116,26 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 	})
 }
 
+func (p Provider) newWaitCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[waitInput]{
+		ID:          appID + ".agent.wait",
+		Path:        []string{"agent", "wait"},
+		Summary:     "Wait for an agent session stop point",
+		Description: "Block until the session reaches a stop point, then return only recent agent execution messages. Use `agent session-summary` for full context recovery.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[waitInput](),
+		Output: framework.OutputSpec{
+			DefaultMode: cliservice.OutputModeJSON,
+			DefaultView: framework.ViewSummary,
+			JSON:        true,
+			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: waitJSONValue},
+		},
+		Run: p.runWait,
+	})
+}
+
 func (p Provider) newTurnResourcesCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[turnResourcesInput]{
 		ID:          appID + ".agent.turn-resources",
@@ -147,6 +181,36 @@ func (p Provider) runSessionSummary(ctx context.Context, invoke framework.Invoke
 		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
 		Page:           page,
 		Session:        session,
+	}, nil
+}
+
+func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, input waitInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	timeout := time.Duration(input.TimeoutMS) * time.Millisecond
+	if input.TimeoutMS == 0 {
+		timeout = 5 * time.Minute
+	}
+	var afterVersion *uint64
+	if input.AfterVersion != nil {
+		value := uint64(*input.AfterVersion)
+		afterVersion = &value
+	}
+	result, err := p.sessions.Wait(ctx, agentservice.WaitInput{
+		WorkspaceID:    invoke.WorkspaceID,
+		AgentSessionID: input.SessionID,
+		AfterVersion:   afterVersion,
+		MessageLimit:   input.Limit,
+		Timeout:        timeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return waitCommandResult{
+		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
+		Messages:       result.Messages,
+		Result:         result,
 	}, nil
 }
 
@@ -199,6 +263,20 @@ func turnResourcesJSONValue(result any) map[string]any {
 		"messages":       turnResourceMessageValues(resources.Page.Messages, resources.ImageLocalPath),
 		"latestVersion":  resources.Page.LatestVersion,
 		"hasMore":        resources.Page.HasMore,
+	}
+}
+
+func waitJSONValue(result any) map[string]any {
+	waited := result.(waitCommandResult)
+	return map[string]any{
+		"agentSessionId": waited.Result.Session.ID,
+		"session":        sessionSummaryValue(waited.Result.Session),
+		"messages":       messageCompactValues(waited.Messages, waited.ImageLocalPath),
+		"latestVersion":  waited.Result.LatestVersion,
+		"hasMore":        waited.Result.HasMore,
+		"timedOut":       waited.Result.TimedOut,
+		"reason":         string(waited.Result.Reason),
+		"effectiveAfter": waited.Result.EffectiveAfter,
 	}
 }
 

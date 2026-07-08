@@ -410,7 +410,7 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	return events, nil
 }
 
-func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, turnID string) ([]activityshared.Event, error) {
+func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
 		return nil, nil
@@ -422,12 +422,26 @@ func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, turnID
 			"agentSessionId": session.AgentSessionID,
 		},
 	})
-	events := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, turnID, errPermissionRequestCanceled)
-	// Only synthesize a terminal transition for a turn that is still live; a
-	// cancel racing the turn's own settle otherwise emits a second,
-	// contradicting terminal event (the stuck-view class ADR 0008 removes).
-	if trimmed := strings.TrimSpace(turnID); trimmed != "" && !a.turnAlreadySettled(adapterSession, trimmed) {
-		events = append(events, newTurnActivityEvent(session, EventTurnCanceled, trimmed, SessionStatusCanceled, "", "", map[string]any{
+	events := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", errPermissionRequestCanceled)
+	// The Adapter.Cancel interface passes the cancel *reason* here, not a turnID:
+	// the controller calls adapter.Cancel(ctx, session, reason). This adapter used
+	// to treat the argument as a turnID and synthesize a terminal for it, so a
+	// controller stop (reason "user") stamped a bogus turn "user" and, when no
+	// turn was live, still fabricated an event that made the controller log
+	// "reconciled runtime work without a turn record" for work that did not
+	// exist. Derive the live turns from our own registry instead, and stamp a
+	// settle-guarded terminal for each real turnID. The waiter is deliberately
+	// left registered: the sidecar's own turn_canceled still settles it (and a
+	// controller stop separately cancels the turn context, which unblocks Exec) —
+	// removing it here would drop that natural settle and break /goal clear.
+	for _, turnID := range a.liveClaudeSDKTurnIDs(adapterSession) {
+		// Skip a turn that already settled on its own, so a cancel racing the
+		// turn's own terminal does not emit a second, contradicting terminal
+		// event (the stuck-view class ADR 0008 removes).
+		if a.turnAlreadySettled(adapterSession, turnID) {
+			continue
+		}
+		events = append(events, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 			"reason": "user",
 		}))
 	}

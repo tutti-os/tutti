@@ -879,7 +879,7 @@ describe("AgentFileMentionPalette", () => {
     ).toBeNull();
   });
 
-  it("shows a fixed loading banner while keeping existing results visible", () => {
+  it("keeps existing results visible while loading without a loading banner", () => {
     const state: AgentMentionSearchState = {
       status: "loading",
       query: "image",
@@ -926,9 +926,7 @@ describe("AgentFileMentionPalette", () => {
       />
     );
 
-    const loadingBanner = screen.getByTestId("agent-mention-loading-banner");
-    expect(loadingBanner).toBeVisible();
-    expect(loadingBanner).toHaveClass("border-b", "border-[var(--line-1)]");
+    expect(screen.queryByTestId("agent-mention-loading-banner")).toBeNull();
     expect(screen.getByText("demo.png")).toBeVisible();
   });
 

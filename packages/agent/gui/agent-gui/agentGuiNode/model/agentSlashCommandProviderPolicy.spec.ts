@@ -319,6 +319,28 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toHaveLength(1);
   });
 
+  it("surfaces only /plan for Cursor and hides agent-advertised slash commands", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "cursor",
+        commands: [
+          { name: "compact" },
+          { name: "goal" },
+          { name: "review" },
+          { name: "browser-use-tutti-10" }
+        ],
+        planSupported: true
+      }).map((command) => command.name)
+    ).toEqual(["plan"]);
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "cursor",
+        commands: [{ name: "plan", description: "provider plan" }],
+        planSupported: false
+      })
+    ).toEqual([]);
+  });
+
   it("keeps non-plan advertised Claude Code controls provider-native", () => {
     expect(
       resolveSlashCommandSubmitEffect({

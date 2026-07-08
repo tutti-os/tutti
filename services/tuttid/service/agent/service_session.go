@@ -220,6 +220,66 @@ func mergeImportRuntimeContextFields(live map[string]any, persisted map[string]a
 	return merged
 }
 
+func serviceSessionWithPersistedFreshness(session RuntimeSession, persisted PersistedSession, resumable bool) Session {
+	if !persistedSessionIsNewerThanRuntime(persisted, session) {
+		return mergePersistedSessionState(serviceSession(session, resumable), persisted)
+	}
+	service := sessionFromPersisted(persisted, resumable)
+	if strings.TrimSpace(service.ProviderSessionID) == "" {
+		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
+	}
+	if service.Settings == nil {
+		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
+	}
+	if len(service.RuntimeContext) == 0 {
+		service.RuntimeContext = clonePayload(session.RuntimeContext)
+	}
+	service.PermissionConfig = composerPermissionConfig(service.Provider, permissionModeIDFromSettings(service.Settings), preferencesbiz.DefaultDesktopLocale)
+	service.TurnLifecycle = persistedSessionTurnLifecycle(persisted)
+	service.SubmitAvailability = persistedSessionSubmitAvailability(persisted)
+	return service
+}
+
+func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session RuntimeSession) bool {
+	persistedUpdatedAtUnixMS := firstNonZeroInt64(persisted.LastEventUnixMS, persisted.UpdatedAtUnixMS)
+	return persistedUpdatedAtUnixMS > 0 &&
+		session.UpdatedAtUnixMS > 0 &&
+		persistedUpdatedAtUnixMS > session.UpdatedAtUnixMS
+}
+
+func persistedSessionTurnLifecycle(session PersistedSession) *TurnLifecycle {
+	status := strings.TrimSpace(session.Status)
+	phase := strings.TrimSpace(session.CurrentPhase)
+	switch {
+	case status == "completed":
+		outcome := "completed"
+		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	case status == "failed" || phase == "failed":
+		outcome := "failed"
+		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	case status == "canceled":
+		outcome := "canceled"
+		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	case phase == "idle":
+		outcome := "completed"
+		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
+	default:
+		return nil
+	}
+}
+
+func persistedSessionSubmitAvailability(session PersistedSession) *SubmitAvailability {
+	if lifecycle := persistedSessionTurnLifecycle(session); lifecycle != nil && strings.TrimSpace(lifecycle.Phase) == "settled" {
+		return &SubmitAvailability{State: "available"}
+	}
+	switch strings.TrimSpace(session.Status) {
+	case "working", "waiting":
+		return &SubmitAvailability{State: "blocked", Reason: "active_turn"}
+	default:
+		return nil
+	}
+}
+
 func permissionModeIDFromSettings(settings *ComposerSettings) string {
 	if settings == nil {
 		return ""

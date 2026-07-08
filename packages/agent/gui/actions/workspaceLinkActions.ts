@@ -70,7 +70,7 @@ export interface OpenAgentSessionLinkAction {
   type: "open-agent-session";
   workspaceId: string;
   agentSessionId: string;
-  provider?: string | null;
+  agentTargetId?: string | null;
   source: WorkspaceLinkActionSource;
 }
 
@@ -316,19 +316,12 @@ export function resolveWorkspaceMentionLinkAction({
   }
 
   if (mention.providerId === "agent-session") {
-    // The mentioned session's own agent provider, when the mention captured
-    // one (see buildSessionMentionItem in agentMentionSearchHelpers.ts).
-    // Older mentions created before that provider was captured leave this
-    // undefined; callers fall back to their own viewing context's provider
-    // in that case, but must NOT do so when a provider was actually
-    // recorded — the mentioned session may belong to a different provider
-    // than the one the mention is being opened from.
-    const provider = mention.scope?.agentProvider?.trim() || null;
+    const agentTargetId = mention.scope?.agentTargetId?.trim() || null;
     return {
       type: "open-agent-session",
       workspaceId,
       agentSessionId: targetId,
-      ...(provider ? { provider } : {}),
+      ...(agentTargetId ? { agentTargetId } : {}),
       source
     };
   }

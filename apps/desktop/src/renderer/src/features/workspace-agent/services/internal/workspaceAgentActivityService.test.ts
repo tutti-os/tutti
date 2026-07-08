@@ -46,7 +46,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   assert.equal(snapshotSession?.currentPhase, "working");
 });
 
-test("WorkspaceAgentActivityService.activateSession omits provider target refs for target-backed create", async () => {
+test("WorkspaceAgentActivityService.activateSession creates target-backed sessions without provider input", async () => {
   const createCalls: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -69,12 +69,6 @@ test("WorkspaceAgentActivityService.activateSession omits provider target refs f
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     mode: "new",
-    provider: "codex",
-    providerTargetRef: {
-      kind: "sharedAgent",
-      provider: "codex",
-      sharedAgentId: "agent-1"
-    },
     title: "Shared Codex",
     visible: true,
     workspaceId: "ws-1"
@@ -92,7 +86,6 @@ test("WorkspaceAgentActivityService.activateSession omits provider target refs f
       model: null,
       permissionModeId: null,
       planMode: null,
-      provider: "codex",
       reasoningEffort: null,
       speed: null,
       title: "Shared Codex",
@@ -130,7 +123,6 @@ test("WorkspaceAgentActivityService keeps explicit Claude model display over def
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hi" }],
     mode: "new",
-    provider: "claude-code",
     settings: { model: "opus" },
     title: "Claude",
     visible: true,

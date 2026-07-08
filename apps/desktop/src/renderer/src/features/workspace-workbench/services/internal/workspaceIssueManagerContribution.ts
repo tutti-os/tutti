@@ -46,10 +46,7 @@ import { requestWorkspaceBrowserLaunch } from "../workspaceBrowserLaunchCoordina
 import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.ts";
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity } from "./workspaceIssueManagerRichTextTriggerProviderRequest.ts";
-import {
-  resolveWorkspaceAgentGuiLabel,
-  workspaceAgentGuiProviders
-} from "./workspaceAgentProviderCatalog.ts";
+import { resolveWorkspaceAgentGuiLabel } from "./workspaceAgentProviderCatalog.ts";
 import { renderIssueManagerLatestRunMessageCenterCard } from "../../ui/IssueManagerLatestRunMessageCenterCard.tsx";
 import { workspaceTaskDockSectionId } from "./workspaceDockSections.ts";
 
@@ -148,7 +145,6 @@ export function createWorkspaceIssueManagerContribution(input: {
     workspaceId: input.workspaceId
   });
   const nodeStateSource = createDesktopIssueManagerNodeStateSource({
-    defaultAgentProvider: input.defaultAgentProvider,
     workspaceId: input.workspaceId
   });
   const identityAdapter = createDesktopIssueManagerIdentityAdapter();
@@ -245,17 +241,7 @@ function resolveIssueManagerReadyAgentTargetOptions(
       .map((status) => status.provider)
   );
 
-  const targetSource =
-    providerTargets && providerTargets.length > 0
-      ? providerTargets
-      : workspaceAgentGuiProviders.map((provider) => ({
-          agentTargetId: `local:${provider}`,
-          disabled: false,
-          iconUrl: agentGuiDockIconUrls[provider],
-          label: resolveWorkspaceAgentGuiLabel(provider),
-          provider
-        }));
-  const options = targetSource
+  const options = (providerTargets ?? [])
     .filter(
       (target) =>
         target.disabled !== true &&

@@ -53,7 +53,8 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 	if claudeConfigDir == "" && home != "" {
 		claudeConfigDir = filepath.Join(home, ".claude")
 	}
-	entries := make([]ProviderAuthWatchEntry, 0, 2)
+	opencodePaths := defaultOpenCodeAuthWatchPaths(home)
+	entries := make([]ProviderAuthWatchEntry, 0, 3)
 	if codexHome != "" {
 		entries = append(entries, ProviderAuthWatchEntry{
 			Provider: agentprovider.Codex,
@@ -79,7 +80,65 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 			ContentFingerprint: claudeProviderAuthContentFingerprint(claudeStatePath),
 		})
 	}
+	if len(opencodePaths) > 0 {
+		entries = append(entries, ProviderAuthWatchEntry{
+			Provider:           agentprovider.OpenCode,
+			Paths:              opencodePaths,
+			ContentFingerprint: hashProviderAuthFileContent,
+		})
+	}
 	return entries
+}
+
+func defaultOpenCodeAuthWatchPaths(home string) []string {
+	paths := []string{}
+	if configPath := strings.TrimSpace(os.Getenv("OPENCODE_CONFIG")); configPath != "" {
+		paths = append(paths, configPath)
+	}
+	configDir := strings.TrimSpace(os.Getenv("OPENCODE_CONFIG_DIR"))
+	if configDir == "" {
+		configDir = strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME"))
+		if configDir != "" {
+			configDir = filepath.Join(configDir, "opencode")
+		}
+	}
+	if configDir == "" && home != "" {
+		configDir = filepath.Join(home, ".config", "opencode")
+	}
+	if configDir != "" {
+		paths = append(paths,
+			filepath.Join(configDir, "opencode.json"),
+			filepath.Join(configDir, "config.json"),
+		)
+	}
+	dataDir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
+	if dataDir != "" {
+		dataDir = filepath.Join(dataDir, "opencode")
+	} else if home != "" {
+		dataDir = filepath.Join(home, ".local", "share", "opencode")
+	}
+	if dataDir != "" {
+		paths = append(paths, filepath.Join(dataDir, "auth.json"))
+	}
+	return uniqueNonEmptyPaths(paths)
+}
+
+func uniqueNonEmptyPaths(paths []string) []string {
+	result := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		cleaned := filepath.Clean(path)
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		result = append(result, cleaned)
+	}
+	return result
 }
 
 // claudeAuthRelevantStateKeys lists the top-level ~/.claude.json fields that
@@ -105,9 +164,13 @@ func claudeProviderAuthContentFingerprint(
 				return fingerprint
 			}
 		}
-		sum := sha256.Sum256(data)
-		return hex.EncodeToString(sum[:])
+		return hashProviderAuthFileContent(path, data)
 	}
+}
+
+func hashProviderAuthFileContent(_ string, data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // jsonSubsetFingerprint hashes the raw values of the given top-level keys of a

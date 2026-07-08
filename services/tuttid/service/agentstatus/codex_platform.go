@@ -66,16 +66,6 @@ func codexPlatformTargetTriple(goos, goarch string) (string, bool) {
 	return "", false
 }
 
-// codexPlatformBinaryPath returns the absolute path to the platform-specific
-// codex binary inside an installed @openai/codex package directory.
-func codexPlatformBinaryPath(codexPkgDir, goos, goarch string) (string, bool) {
-	paths := codexPlatformBinaryCandidatePaths(codexPkgDir, goos, goarch)
-	if len(paths) == 0 {
-		return "", false
-	}
-	return paths[0], true
-}
-
 func codexPlatformBinaryCandidatePaths(codexPkgDir, goos, goarch string) []string {
 	binName := "codex"
 	if goos == "windows" {
@@ -118,19 +108,6 @@ func codexPackageDirForBinary(binaryPath string) string {
 	return filepath.Dir(packageJSONPath)
 }
 
-// codexNPMPrefixFromPackageDir derives the npm global prefix that owns an
-// installed @openai/codex package directory, so an incomplete install can be
-// repaired in place instead of duplicated in a lower-priority directory.
-//
-// npm lays out global packages as <prefix>/lib/node_modules/@openai/codex on
-// Unix and <prefix>/node_modules/@openai/codex on Windows. The prefix is the
-// directory above the node_modules dir, skipping the intermediate "lib" on Unix.
-// Returns "" when pkgDir does not match that layout (e.g. a pnpm content store
-// or a standalone binary), in which case the caller falls back to ~/.local.
-func codexNPMPrefixFromPackageDir(pkgDir string) string {
-	return npmGlobalPrefixFromPackageDir(pkgDir)
-}
-
 func npmGlobalPrefixFromPackageDir(pkgDir string) string {
 	pkgDir = strings.TrimSpace(pkgDir)
 	if pkgDir == "" {
@@ -155,27 +132,6 @@ func npmGlobalPrefixFromPackageDir(pkgDir string) string {
 		return ""
 	}
 	return parent
-}
-
-// codexRepairInstallPrefix returns the npm global prefix owning the existing
-// (incomplete or outdated) @openai/codex installation, so it can be repaired in
-// place. ok is false when there is no existing install, its package directory
-// cannot be located, or it does not match npm's global package layout — in all
-// those cases the caller installs a fresh copy in ~/.local instead.
-func codexRepairInstallPrefix(existingCLIPath string) (string, bool) {
-	existingCLIPath = strings.TrimSpace(existingCLIPath)
-	if existingCLIPath == "" {
-		return "", false
-	}
-	pkgDir := codexPackageDirForBinary(existingCLIPath)
-	if pkgDir == "" {
-		return "", false
-	}
-	prefix := codexNPMPrefixFromPackageDir(pkgDir)
-	if prefix == "" {
-		return "", false
-	}
-	return prefix, true
 }
 
 // codexPlatformPackageMissingPath returns the platform-specific binary path we

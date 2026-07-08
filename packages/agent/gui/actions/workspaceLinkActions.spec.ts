@@ -423,22 +423,17 @@ describe("resolveWorkspaceMentionLinkAction", () => {
     });
   });
 
-  it("restores the mentioned session's own provider from the agentProvider scope key", () => {
-    // Regression for cross-provider mentions (e.g. a Codex conversation
-    // @-mentioning a Claude Code session) resolving to the WRONG provider:
-    // callers default `provider` from their own viewing context only when
-    // the action doesn't already carry one, so the mention must capture the
-    // target session's real provider here rather than leaving it undefined.
+  it("parses the mentioned session's agent target scope", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
-        href: "mention://agent-session/session-1?agentProvider=claude-code&workspaceId=workspace-1",
+        href: "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1",
         source: "agent-markdown"
       })
     ).toEqual({
       type: "open-agent-session",
       workspaceId: "workspace-1",
       agentSessionId: "session-1",
-      provider: "claude-code",
+      agentTargetId: "local:claude-code",
       source: "agent-markdown"
     });
   });

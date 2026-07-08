@@ -314,7 +314,7 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsModelDescriptionInRuntimeContext
 	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
 		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
 	}
-	options, ok := configOptions[0]["options"].([]map[string]string)
+	options, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok || len(options) != 2 {
 		t.Fatalf("model options = %#v, want 2 entries", configOptions[0]["options"])
 	}
@@ -323,6 +323,53 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsModelDescriptionInRuntimeContext
 	}
 	if got := options[1]["description"]; got != "Sonnet 4.6 · Efficient for routine tasks" {
 		t.Fatalf("sonnet description = %q, want the Sonnet description", got)
+	}
+}
+
+func TestMergeLiveModelsIntoComposerOptionsKeepsSupportsImageInput(t *testing.T) {
+	imageSupported := true
+	imageUnsupported := false
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider:          "cursor",
+		EffectiveSettings: ComposerSettings{Model: "gpt-5.5[context=272k,reasoning=medium,fast=false]"},
+		RuntimeContext:    map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{
+			ID:                 "gpt-5.5[context=272k,reasoning=medium,fast=false]",
+			Label:              "GPT-5.5",
+			Value:              "gpt-5.5[context=272k,reasoning=medium,fast=false]",
+			SupportsImageInput: &imageSupported,
+		},
+		{
+			ID:                 "glm-5.2[reasoning=high]",
+			Label:              "GLM-5.2",
+			Value:              "glm-5.2[reasoning=high]",
+			SupportsImageInput: &imageUnsupported,
+		},
+	})
+
+	if len(merged.ModelConfig.Options) != 2 {
+		t.Fatalf("modelConfig options = %#v, want 2 entries", merged.ModelConfig.Options)
+	}
+	if got := merged.ModelConfig.Options[0].SupportsImageInput; got == nil || !*got {
+		t.Fatalf("modelConfig gpt supportsImageInput = %#v, want true", got)
+	}
+	if got := merged.ModelConfig.Options[1].SupportsImageInput; got == nil || *got {
+		t.Fatalf("modelConfig glm supportsImageInput = %#v, want false", got)
+	}
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
+	}
+	options, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(options) != 2 {
+		t.Fatalf("runtime model options = %#v, want 2 entries", configOptions[0]["options"])
+	}
+	if got := options[0]["supportsImageInput"]; got != true {
+		t.Fatalf("runtime gpt supportsImageInput = %#v, want true", got)
+	}
+	if got := options[1]["supportsImageInput"]; got != false {
+		t.Fatalf("runtime glm supportsImageInput = %#v, want false", got)
 	}
 }
 
@@ -358,7 +405,7 @@ func TestMergeLiveModelsIntoComposerOptionsDoesNotAppendUnsupportedSelectedModel
 	if configOptions[0]["currentValue"] != "default" {
 		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
 	}
-	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
 	}

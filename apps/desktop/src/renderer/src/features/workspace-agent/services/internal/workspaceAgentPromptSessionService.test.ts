@@ -49,7 +49,7 @@ test("workspace agent prompt session service creates a new session with initial 
           session: {
             agentSessionId: input.agentSessionId,
             cwd: input.cwd,
-            provider: input.provider ?? "codex",
+            provider: "codex",
             status: "running"
           }
         };
@@ -59,9 +59,9 @@ test("workspace agent prompt session service creates a new session with initial 
 
   const result = await service.createSession({
     agentSessionId: "session-1",
+    agentTargetId: "local:codex",
     cwd: "/workspace/project",
     prompt: "  Build the feature  ",
-    provider: "codex",
     source: "issue_manager",
     title: "Build feature",
     workspaceId: "workspace-1"
@@ -69,10 +69,10 @@ test("workspace agent prompt session service creates a new session with initial 
 
   assert.deepEqual(capturedActivation, {
     agentSessionId: "session-1",
+    agentTargetId: "local:codex",
     cwd: "/workspace/project",
     initialContent: [{ type: "text", text: "Build the feature" }],
     mode: "new",
-    provider: "codex",
     title: "Build feature",
     visible: true,
     workspaceId: "workspace-1"
@@ -131,7 +131,7 @@ test("workspace agent prompt session service reports successful node results", a
           session: {
             agentSessionId: input.agentSessionId,
             cwd: input.cwd,
-            provider: input.provider ?? "codex",
+            provider: "codex",
             status: "running"
           }
         };
@@ -141,8 +141,8 @@ test("workspace agent prompt session service reports successful node results", a
 
   await service.createSession({
     agentSessionId: "session-1",
+    agentTargetId: "local:codex",
     prompt: "Build the feature",
-    provider: "codex",
     workspaceId: "workspace-1"
   });
 
@@ -208,7 +208,7 @@ test("workspace agent prompt session service rejects failed activation", async (
           error: { message: "provider unavailable" },
           session: {
             agentSessionId: input.agentSessionId,
-            provider: input.provider ?? "codex",
+            provider: "codex",
             status: "failed"
           }
         };
@@ -219,8 +219,8 @@ test("workspace agent prompt session service rejects failed activation", async (
   await assert.rejects(
     () =>
       service.createSession({
+        agentTargetId: "local:codex",
         prompt: "Build",
-        provider: "codex",
         workspaceId: "workspace-1"
       }),
     /provider unavailable/
@@ -239,7 +239,7 @@ test("workspace agent prompt session service maps user project selection to cwd"
           session: {
             agentSessionId: input.agentSessionId,
             cwd: input.cwd,
-            provider: input.provider ?? "codex",
+            provider: "codex",
             status: "running"
           }
         };
@@ -254,9 +254,9 @@ test("workspace agent prompt session service maps user project selection to cwd"
 
   await service.createSession({
     agentSessionId: "session-2",
+    agentTargetId: "local:codex",
     cwd: "/workspace/fallback",
     prompt: "Build",
-    provider: "codex",
     userProjectPath: "/workspace/project",
     workspaceId: "workspace-1"
   });
@@ -268,9 +268,9 @@ test("workspace agent prompt session service maps user project selection to cwd"
 
   await service.createSession({
     agentSessionId: "session-3",
+    agentTargetId: "local:codex",
     cwd: "/workspace/fallback",
     prompt: "Build",
-    provider: "codex",
     userProjectPath: "/workspace/no-project",
     workspaceId: "workspace-1"
   });

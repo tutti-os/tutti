@@ -153,13 +153,14 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, options.ProviderCommandResolver),
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
 		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
+		NewOpenCodeAdapterWithHostMetadata(transport, host),
 	}
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewController(adapters, reporter)
@@ -411,6 +412,24 @@ func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID stri
 	return session, nil
 }
 
+func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string, title string) (Session, error) {
+	session, ok := c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	title = strings.TrimSpace(title)
+	if session.Title == title {
+		return session, nil
+	}
+	session.Title = title
+	session.UpdatedAtUnixMS = unixMS(now())
+	c.store(session)
+	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}
+	c.publish(session, events)
+	c.enqueueSessionReport(ctx, session, events)
+	return session, nil
+}
+
 func sessionVisible(visible *bool) bool {
 	return visible == nil || *visible
 }
@@ -478,6 +497,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		return cursorACPModeID(mode) != ""
 	case ProviderGemini, ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
+	case ProviderOpenCode, ProviderOpenClaw:
+		return strings.TrimSpace(mode) == ""
 	}
 	return false
 }
@@ -2507,6 +2528,64 @@ func (c *Controller) applyClaudeCodeMode(current Session, planMode bool, permiss
 	c.enqueueSessionStatePatchReport(context.Background(), nextSession, patch)
 }
 
+// applySessionPlanModeOnly updates the orthogonal plan-mode flag without
+// touching permission tiers or model selection.
+func (c *Controller) applySessionPlanModeOnly(current Session, planMode bool) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	key := sessionKey(current.RoomID, current.AgentSessionID)
+	latest, found := c.sessions[key]
+	if !found {
+		c.mu.Unlock()
+		return
+	}
+	current = latest
+	currentSettings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
+	if currentSettings.PlanMode == planMode {
+		c.mu.Unlock()
+		return
+	}
+	settings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
+	settings.PlanMode = planMode
+	nextSession := current
+	nextSession.Settings = cloneSessionSettings(settings)
+	nextSession.UpdatedAtUnixMS = unixMS(now())
+	c.sessions[key] = nextSession
+	c.mu.Unlock()
+	patch := permissionModeStatePatch(nextSession)
+	c.publishSessionStatePatch(nextSession, patch)
+	c.enqueueSessionStatePatchReport(context.Background(), nextSession, patch)
+}
+
+func (c *Controller) syncCursorPlanModeFromACPUpdate(session Session, modeID string) {
+	if c == nil || strings.TrimSpace(session.Provider) != ProviderCursor {
+		return
+	}
+	planMode, ok := cursorPlanModeFromACPModeID(modeID)
+	if !ok {
+		return
+	}
+	current, found := c.Session(session.RoomID, session.AgentSessionID)
+	if !found || strings.TrimSpace(current.Provider) != ProviderCursor {
+		return
+	}
+	c.applySessionPlanModeOnly(current, planMode)
+}
+
+func (c *Controller) syncCursorPlanModeFromEvents(session Session, events []activityshared.Event) {
+	for _, event := range events {
+		if event.Type != activityshared.EventSessionUpdated {
+			continue
+		}
+		if strings.TrimSpace(asString(event.Payload.Metadata["acpSessionUpdate"])) != "current_mode_update" {
+			continue
+		}
+		c.syncCursorPlanModeFromACPUpdate(session, asString(event.Payload.Metadata["acpModeId"]))
+	}
+}
+
 func permissionModeStatePatch(session Session) agentsessionstore.WorkspaceAgentStatePatch {
 	settings := normalizeSessionSettings(session.Settings, session.Provider, session.PermissionModeID)
 	runtimeContext := map[string]any{
@@ -3241,6 +3320,21 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 	if foundKey == "" {
 		c.mu.Unlock()
 		return
+	}
+	// Cursor mirrors agent-driven plan entry/exit through a separate settings
+	// path that locks internally. Only break the atomic window when such an
+	// event is actually present, otherwise the unlock re-opens the lost-update
+	// race the surrounding lock guards against.
+	if hasACPCurrentModeUpdatedEvent(events) {
+		c.mu.Unlock()
+		c.syncCursorPlanModeFromEvents(session, events)
+		c.mu.Lock()
+		var stillPresent bool
+		session, stillPresent = c.sessions[foundKey]
+		if !stillPresent {
+			c.mu.Unlock()
+			return
+		}
 	}
 	if session.LifecycleAuthority || eventsCarryAdapterLifecycleSnapshot(events) {
 		// ADR 0008: copy snapshots and derive purely — no ready-guard, no

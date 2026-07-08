@@ -12,6 +12,7 @@ export function normalizeManagedAgentProvider(
       return "claude-code";
     case "nexight":
     case "tutti-doc":
+    case "tutti-agent":
       return "tutti";
     default:
       return normalized;

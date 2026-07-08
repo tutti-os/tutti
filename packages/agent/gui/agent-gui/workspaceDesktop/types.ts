@@ -164,6 +164,10 @@ export interface WorkspaceDesktopAgentProbesState {
   snapshot: AgentProbeSnapshot | null;
   isLoadingAvailability: boolean;
   isLoadingUsage: boolean;
+  /** True when the most recent usage probe fetch failed (the retained snapshot,
+   * if any, is stale). Lets surfaces show a refresh/retry affordance instead of
+   * silently displaying old numbers. Absent is treated as "no failure". */
+  usageLoadFailed?: boolean;
 }
 
 export type WorkspaceDesktopAgentProbeDemandChange = (

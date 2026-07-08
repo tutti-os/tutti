@@ -43,7 +43,10 @@ export interface IpcRegistrationDependencies {
   preferences: DesktopHostPreferencesState;
   workspaceFileIconCache?: WorkspaceFileIconCacheStore;
   updateService: AppUpdateService;
-  workspaceLaunch: Pick<WorkspaceLaunch, "openStartupWindow" | "showWorkspace">;
+  workspaceLaunch: Pick<
+    WorkspaceLaunch,
+    "openStartupWindow" | "showAgentWindow" | "showWorkspace"
+  >;
 }
 
 export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {

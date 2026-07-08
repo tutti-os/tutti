@@ -49,6 +49,8 @@ const (
 	cursorPermissionFullAccess = "full-access"
 )
 
+const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
+
 // cursorACPModeID maps Tutti permission tiers onto Cursor's ACP session
 // modes (switched via session/set_mode). Approval strictness within "agent"
 // is governed by the spawn command, not the session mode.
@@ -60,6 +62,19 @@ func cursorACPModeID(mode string) string {
 		return "agent"
 	default:
 		return ""
+	}
+}
+
+// cursorPlanModeFromACPModeID maps Cursor ACP execution modes back to Tutti's
+// orthogonal planMode flag. Permission tiers stay unchanged.
+func cursorPlanModeFromACPModeID(modeID string) (planMode bool, ok bool) {
+	switch strings.TrimSpace(modeID) {
+	case "plan":
+		return true, true
+	case "agent", "ask":
+		return false, true
+	default:
+		return false, false
 	}
 }
 
@@ -81,6 +96,24 @@ func cursorACPCommandResolver(context.Context, string) (ProviderCommand, error) 
 		return ProviderCommand{Command: []string{path, "acp"}}, nil
 	}
 	return ProviderCommand{}, nil
+}
+
+func cursorACPCommandWithPluginDir(command []string, session Session) []string {
+	out := append([]string(nil), command...)
+	pluginDir := sessionEnvValue(session.Env, cursorPluginDirEnv)
+	if pluginDir == "" || len(out) == 0 || hasCursorPluginDirArg(out) {
+		return out
+	}
+	return append([]string{out[0], "--plugin-dir", pluginDir}, out[1:]...)
+}
+
+func hasCursorPluginDirArg(command []string) bool {
+	for _, arg := range command {
+		if arg == "--plugin-dir" || strings.HasPrefix(arg, "--plugin-dir=") {
+			return true
+		}
+	}
+	return false
 }
 
 func NewCursorAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -108,6 +141,7 @@ func newCursorAdapterWithHostMetadata(
 			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
 			env:                 func(session Session) []string { return standardACPEnv(session, host) },
 			commandResolver:     commandResolver,
+			commandWithSettings: cursorACPCommandWithPluginDir,
 			// full-access auto-approves permission requests live; all tiers
 			// switch without a respawn.
 			autoApprovePermissionDecision: cursorAutoApprovePermissionDecision,

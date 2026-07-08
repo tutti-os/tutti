@@ -54,12 +54,14 @@ export function connectDesktopHostPreferencesEventStream(
         defaultAgentProvider: nextPreferences.defaultAgentProvider,
         dockIconStyle: nextPreferences.dockIconStyle,
         dockPlacement: nextPreferences.dockPlacement,
+        featureFlags: nextPreferences.featureFlags,
         locale: nextPreferences.locale,
         minimizeAnimation: nextPreferences.minimizeAnimation,
         sleepPreventionMode: nextPreferences.sleepPreventionMode,
         themeSource: nextPreferences.themeSource,
         updateChannel: nextPreferences.updateChannel,
         updatePolicy: nextPreferences.updatePolicy,
+        workbenchShortcuts: nextPreferences.workbenchShortcuts,
         workbenchWindowSnapping: nextPreferences.workbenchWindowSnapping
       });
 

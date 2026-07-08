@@ -10,6 +10,7 @@ import type {
   AgentActivityDeleteSessionResult,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
+  AgentActivityRenameSessionInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
@@ -201,6 +202,9 @@ export interface IWorkspaceAgentActivityService {
     attachmentId: string;
     workspaceId: string;
   }): Promise<WorkspaceAgentActivityAttachment>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
   setSessionPinned(input: {
     agentSessionId: string;
     pinned: boolean;

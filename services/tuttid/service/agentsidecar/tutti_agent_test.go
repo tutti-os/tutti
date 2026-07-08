@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,6 +73,94 @@ func TestIssueTuttiAgentLLMTokenAppIDEnvOverride(t *testing.T) {
 	}
 }
 
+func TestTuttiAgentUserAuthReadyRejectsExpiredAccessToken(t *testing.T) {
+	expiresAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)
+
+	if tuttiAgentUserAuthReady() {
+		t.Fatal("tuttiAgentUserAuthReady() = true, want false for expired access token")
+	}
+}
+
+func TestTuttiAgentUserAuthReadyAcceptsFutureAccessTokenExpiry(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)
+
+	if !tuttiAgentUserAuthReady() {
+		t.Fatal("tuttiAgentUserAuthReady() = false, want true for unexpired access token")
+	}
+}
+
+func TestTuttiAgentUserAuthReadyAcceptsUnixAccessTokenExpiry(t *testing.T) {
+	expiresAt := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+expiresAt+`,"refresh_token":"lrt_test"}}`)
+
+	if !tuttiAgentUserAuthReady() {
+		t.Fatal("tuttiAgentUserAuthReady() = false, want true for numeric access token expiry")
+	}
+}
+
+func TestTuttiAgentUserAuthReadyRejectsMissingAccessTokenExpiry(t *testing.T) {
+	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","refresh_token":"lrt_test"}}`)
+
+	if tuttiAgentUserAuthReady() {
+		t.Fatal("tuttiAgentUserAuthReady() = true, want false without access token expiry")
+	}
+}
+
+func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t *testing.T) {
+	home := t.TempDir()
+	expiredAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(t, home, `{"tutti_llm":{"access_token":"lat_old","access_token_expires_at":`+strconv.Quote(expiredAt)+`,"refresh_token":"lrt_old"}}`)
+
+	stateDir := t.TempDir()
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+
+	issueRequests := make(chan struct{}, 1)
+	accessExpiresAt := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	refreshExpiresAt := strconv.FormatInt(time.Now().Add(24*time.Hour).Unix(), 10)
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != tuttiAgentLLMTokenIssueRoute {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Cookie"); got != "session_id=session_test" {
+			t.Fatalf("Cookie = %q, want session_id=session_test", got)
+		}
+		issueRequests <- struct{}{}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"` + accessExpiresAt + `","refreshToken":"lrt_new","refreshTokenExpiresAt":"` + refreshExpiresAt + `","tokenType":"Bearer","appId":"tutti","scopes":["llm:models","llm:chat"]}}`))
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+
+	capturePath := filepath.Join(t.TempDir(), "login.json")
+	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
+	installFakeTuttiAgentBinary(t)
+
+	bootstrapTuttiAgentUserAuth(t.Context(), PrepareInput{})
+
+	select {
+	case <-issueRequests:
+	default:
+		t.Fatal("llm token issue request was not sent")
+	}
+	loginJSON, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("read fake tutti-agent login capture: %v", err)
+	}
+	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
+		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+}
+
 func TestLogoutTuttiAgentUserAuthRemovesAuthAndRevokesToken(t *testing.T) {
 	revokeBody := make(chan map[string]string, 1)
 	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -118,4 +207,32 @@ func TestLogoutTuttiAgentUserAuthRemovesAuthAndRevokesToken(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("revoke request was not sent")
 	}
+}
+
+func writeTuttiAgentUserAuth(t *testing.T, home string, authJSON string) {
+	t.Helper()
+	authDir := filepath.Join(home, ".tutti-agent")
+	if err := os.MkdirAll(authDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(authDir, "auth.json"), []byte(authJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+}
+
+func installFakeTuttiAgentBinary(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	binaryPath := filepath.Join(binDir, "tutti-agent")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" != \"login\" ] || [ \"$2\" != \"--with-tutti-llm-tokens\" ]; then\n" +
+		"  echo unexpected arguments: \"$@\" >&2\n" +
+		"  exit 2\n" +
+		"fi\n" +
+		"cat > \"$TUTTI_AGENT_LOGIN_CAPTURE\"\n"
+	if err := os.WriteFile(binaryPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

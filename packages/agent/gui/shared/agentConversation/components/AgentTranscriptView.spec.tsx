@@ -378,7 +378,7 @@ describe("AgentTranscriptView", () => {
     }
   });
 
-  it("uses fast container scrolling for distant user message locator targets", () => {
+  it("uses fixed-duration container scrolling for distant user message locator targets", () => {
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
@@ -481,7 +481,7 @@ describe("AgentTranscriptView", () => {
 
       expect(scrollIntoView).not.toHaveBeenCalled();
       act(() => {
-        vi.advanceTimersByTime(360);
+        vi.advanceTimersByTime(160);
       });
       expect(timeline.scrollTop).toBe(3040);
     } finally {

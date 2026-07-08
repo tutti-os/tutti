@@ -4,8 +4,10 @@ import type {
   AgentProviderStatusSnapshot,
   IAgentProviderStatusService
 } from "../services/agentProviderStatusService.interface";
+import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import {
   ensureDesktopManagedAgentProviderStatuses,
+  hasRequiredDesktopManagedAgentProviderStatuses,
   projectDesktopManagedAgentsStateForAgentGUI
 } from "../services/internal/desktopManagedAgentProviders.ts";
 
@@ -20,9 +22,13 @@ const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
 
 export function useDesktopManagedAgentsState(
   agentProviderStatusService: IAgentProviderStatusService | undefined,
-  options?: { ensureLoaded?: boolean }
+  options?: {
+    ensureLoaded?: boolean;
+    requiredProviders?: readonly WorkspaceAgentProvider[];
+  }
 ): AgentHostManagedAgentsState | null {
   const shouldEnsureLoaded = options?.ensureLoaded !== false;
+  const requiredProviders = options?.requiredProviders;
   const snapshot = useSyncExternalStore(
     agentProviderStatusService
       ? (listener) => agentProviderStatusService.subscribe(listener)
@@ -43,10 +49,14 @@ export function useDesktopManagedAgentsState(
 
   return useMemo(
     () =>
-      agentProviderStatusService
+      agentProviderStatusService &&
+      hasRequiredDesktopManagedAgentProviderStatuses(
+        snapshot,
+        requiredProviders
+      )
         ? projectDesktopManagedAgentsStateForAgentGUI(snapshot)
         : null,
-    [agentProviderStatusService, snapshot]
+    [agentProviderStatusService, requiredProviders, snapshot]
   );
 }
 

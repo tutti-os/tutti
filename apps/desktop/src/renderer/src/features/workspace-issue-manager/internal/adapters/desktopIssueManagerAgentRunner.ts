@@ -1,6 +1,7 @@
 import {
   buildIssueManagerRunPrompt,
   buildIssueManagerTaskBreakdownPrompt,
+  createIssueManagerAgentLaunchMessages,
   createIssueManagerI18nRuntime
 } from "@tutti-os/workspace-issue-manager";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -14,6 +15,7 @@ import type {
 export interface DesktopIssueManagerAgentSessionCreator {
   createSession(input: {
     agentSessionId: string;
+    agentTargetId: string;
     cwd?: string | null;
     prompt: string;
     provider: string;
@@ -47,18 +49,26 @@ export function createDesktopIssueManagerAgentRunner(input: {
 }): IssueManagerAgentRunner {
   return {
     async runTask(request): Promise<IssueManagerAgentRunResult> {
-      const agentTargetId = resolveIssueManagerRequestAgentTargetId(
-        request.agentTargetId,
-        request.provider
+      const copy = createIssueManagerI18nRuntime(input.i18n);
+      const messages = createIssueManagerAgentLaunchMessages(copy);
+      const agentTargetId = resolveIssueManagerRequestAgentTargetIdOrError(
+        request.agentTargetId
       );
+      if (!agentTargetId) {
+        return {
+          errorMessage: messages.agentTargetRequired,
+          status: "failed"
+        };
+      }
       const prompt = buildIssueManagerRunPrompt({
-        copy: createIssueManagerI18nRuntime(input.i18n),
+        copy,
         issue: request.issue,
         task: request.task,
         workspaceRoot: "."
       });
       return openIssueManagerAgentDraft({
         agentTargetId,
+        agentGuiLaunchUnavailableMessage: messages.agentGuiLaunchUnavailable,
         draftPrompt: prompt,
         launchAgentGui: input.launchAgentGui,
         provider: request.provider,
@@ -71,6 +81,7 @@ export function createDesktopIssueManagerAgentRunner(input: {
 
 function openIssueManagerAgentDraft(input: {
   agentTargetId: string;
+  agentGuiLaunchUnavailableMessage: string;
   draftPrompt: string;
   launchAgentGui?: (
     input: DesktopIssueManagerAgentGuiLaunchInput
@@ -86,7 +97,7 @@ function openIssueManagerAgentDraft(input: {
   const launchAgentGui = input.launchAgentGui;
   if (!launchAgentGui) {
     return Promise.resolve({
-      errorMessage: "issue_manager.agent_gui_launch_unavailable",
+      errorMessage: input.agentGuiLaunchUnavailableMessage,
       status: "failed"
     });
   }
@@ -116,8 +127,19 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
 }): IssueManagerAgentBreakdownLauncher {
   return {
     async startBreakdown(request): Promise<IssueManagerAgentBreakdownResult> {
+      const copy = createIssueManagerI18nRuntime(input.i18n);
+      const messages = createIssueManagerAgentLaunchMessages(copy);
+      const agentTargetId = resolveIssueManagerRequestAgentTargetIdOrError(
+        request.agentTargetId
+      );
+      if (!agentTargetId) {
+        return {
+          errorMessage: messages.agentTargetRequired,
+          status: "failed"
+        };
+      }
       const prompt = buildIssueManagerTaskBreakdownPrompt({
-        copy: createIssueManagerI18nRuntime(input.i18n),
+        copy,
         issueDetail: {
           contextRefs: [...request.issueDetail.contextRefs],
           issue: request.issueDetail.issue,
@@ -126,10 +148,8 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
         workspaceId: input.workspaceId
       });
       const session = await openIssueManagerAgentDraft({
-        agentTargetId: resolveIssueManagerRequestAgentTargetId(
-          request.agentTargetId,
-          request.provider
-        ),
+        agentTargetId,
+        agentGuiLaunchUnavailableMessage: messages.agentGuiLaunchUnavailable,
         draftPrompt: prompt,
         launchAgentGui: input.launchAgentGui,
         provider: request.provider,
@@ -143,22 +163,12 @@ export function createDesktopIssueManagerAgentBreakdownLauncher(input: {
   };
 }
 
-function resolveIssueManagerRequestAgentTargetId(
-  agentTargetId: string | null | undefined,
-  provider: string
-): string {
+function resolveIssueManagerRequestAgentTargetIdOrError(
+  agentTargetId: string | null | undefined
+): string | null {
   const normalizedAgentTargetId = agentTargetId?.trim();
   if (normalizedAgentTargetId) {
     return normalizedAgentTargetId;
   }
-  switch (provider.trim()) {
-    case "codex":
-      return "local:codex";
-    case "claude-code":
-      return "local:claude-code";
-    case "cursor":
-      return "local:cursor";
-    default:
-      return "";
-  }
+  return null;
 }

@@ -474,12 +474,13 @@ export function composerSupportForProvider(
   if (
     provider === "claude-code" ||
     provider === "codex" ||
-    provider === "gemini"
+    provider === "gemini" ||
+    provider === "opencode"
   ) {
     return {
       model: true,
       permission: provider === "claude-code" || provider === "codex",
-      reasoning: true,
+      reasoning: provider !== "opencode",
       speed: provider === "claude-code" || provider === "codex",
       plan: false
     };

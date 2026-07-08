@@ -193,9 +193,10 @@ func standardACPPromptImageSupported(raw json.RawMessage) bool {
 }
 
 func standardACPProviderPromptImageSupported(provider string, raw json.RawMessage) bool {
-	if strings.TrimSpace(provider) == ProviderClaudeCode {
-		// Claude Agent ACP supports image prompt content, but current initialize
-		// responses can omit or misreport promptCapabilities.image.
+	switch strings.TrimSpace(provider) {
+	case ProviderClaudeCode, ProviderOpenCode, ProviderCursor:
+		// Some ACP providers support image prompt content, but current
+		// initialize responses can omit or misreport promptCapabilities.image.
 		return true
 	}
 	return standardACPPromptImageSupported(raw)
@@ -1551,8 +1552,13 @@ func (a *standardACPAdapter) effectiveModeID(session Session) string {
 	if a == nil || a.config.permissionModeID == nil {
 		return ""
 	}
-	if a.config.provider == ProviderClaudeCode && session.SettingsValue().PlanMode {
-		return "plan"
+	if session.SettingsValue().PlanMode {
+		if a.config.provider == ProviderClaudeCode || a.config.provider == ProviderCursor {
+			return "plan"
+		}
+		if modeID := a.config.permissionModeID("plan"); modeID != "" {
+			return modeID
+		}
 	}
 	return a.config.permissionModeID(session.PermissionModeID)
 }
@@ -1876,8 +1882,10 @@ func (a *standardACPAdapter) handleACPMessage(
 			"event_count", len(events),
 			"event_type_counts", activityEventTypeCounts(events),
 		)
-		if len(events) > 0 && emit == nil {
-			a.emitSessionEvents(session.AgentSessionID, events)
+		if len(events) > 0 {
+			if emit == nil || hasACPCurrentModeUpdatedEvent(events) {
+				a.emitSessionEvents(session.AgentSessionID, events)
+			}
 		}
 		return events, nil
 	case acpMethodPermission:
@@ -3004,6 +3012,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "usage_update":
+		logACPUsageUpdate(config, session, turnID, params.Update)
 		if event, ok := acpUsageUpdatedEvent(session); ok {
 			return []activityshared.Event{event}
 		}
@@ -3020,11 +3029,15 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "current_mode_update":
-		// The agent is the authoritative source of its current mode. We log
-		// every report so we can verify claude-code emits this on exit-plan
-		// before making it drive the session's persisted mode (the interactive
-		// selection already keeps exit-plan in sync; see syncClaudeCodeModeFromSelection).
+		modeID := acpModeValue(params.Update)
 		logACPCurrentModeUpdate(config, session, params.Update)
+		// Cursor plan mode is orthogonal to permission tiers; mirror agent-driven
+		// plan entry/exit into the session settings that drive the composer badge.
+		if config.provider == ProviderCursor {
+			if event, ok := acpCurrentModeUpdatedEvent(session, modeID); ok {
+				return []activityshared.Event{event}
+			}
+		}
 		return nil
 	case "available_commands_update", "plan":
 		return nil
@@ -3043,6 +3056,63 @@ func logACPCurrentModeUpdate(config standardACPConfig, session Session, update m
 		"provider_session_id", session.ProviderSessionID,
 		"mode_id", strings.TrimSpace(acpModeValue(update)),
 	)
+}
+
+func logACPUsageUpdate(
+	config standardACPConfig,
+	session Session,
+	turnID string,
+	update map[string]any,
+) {
+	parsed, parsedOK := acpUsageValue(update)
+	slog.Info("agent session ACP usage update",
+		"event", "agent_session.acp.usage_update",
+		"provider", config.provider,
+		"adapter", config.adapterName,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", session.ProviderSessionID,
+		"turn_id", turnID,
+		"raw_used", firstACPInt64LogValue(update, "used"),
+		"raw_size", firstACPInt64LogValue(update, "size"),
+		"raw_cost_amount", nestedACPFloatLogValue(update, "cost", "amount"),
+		"raw_cost_currency", nestedACPStringLogValue(update, "cost", "currency"),
+		"parsed_ok", parsedOK,
+		"context_known", parsed.contextKnown,
+		"context_used_tokens", parsed.contextUsedTokens,
+		"context_window_tokens", parsed.contextWindowTokens,
+		"quota_count", len(parsed.quotas),
+	)
+}
+
+func firstACPInt64LogValue(source map[string]any, keys ...string) any {
+	if value, ok := firstACPInt64(source, keys...); ok {
+		return value
+	}
+	return nil
+}
+
+func nestedACPFloatLogValue(source map[string]any, key string, nestedKey string) any {
+	nested, _ := source[key].(map[string]any)
+	if len(nested) == 0 {
+		return nil
+	}
+	if value, ok := acpFloatValue(nested[nestedKey]); ok {
+		return value
+	}
+	return nil
+}
+
+func nestedACPStringLogValue(source map[string]any, key string, nestedKey string) any {
+	nested, _ := source[key].(map[string]any)
+	if len(nested) == 0 {
+		return nil
+	}
+	value := strings.TrimSpace(asString(nested[nestedKey]))
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func logACPGoalUpdate(config standardACPConfig, session Session, turnID string, updateType string, update map[string]any) {

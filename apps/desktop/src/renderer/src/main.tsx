@@ -13,7 +13,12 @@ import {
 } from "./lib/reactDiagnostics";
 import { createRendererDiagnosticSink } from "./app/windows/createRendererDiagnosticsContainer";
 import { DesktopToastProvider } from "./lib/toast";
+import { registerDesktopPastedTextMention } from "./features/workspace-agent/services/registerDesktopPastedTextMention";
 import "./style.css";
+
+// Register host-owned agent mention kinds before the first composer/transcript
+// mounts (module-global registry; the agent-gui pipeline reads it during render).
+registerDesktopPastedTextMention();
 
 const root = document.querySelector<HTMLDivElement>("#app");
 

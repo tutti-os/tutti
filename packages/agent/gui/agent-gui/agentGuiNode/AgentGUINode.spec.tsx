@@ -23,6 +23,7 @@ import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
 import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
+import { getWorkspaceSettingsPanelStore } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -58,6 +59,7 @@ const mockContinueInNewConversation = vi.fn();
 const mockRetryOpenclawGateway = vi.fn();
 const mockCancelDeleteConversation = vi.fn();
 const mockConfirmDeleteConversation = vi.fn();
+const mockRenameConversation = vi.fn<() => Promise<void>>();
 const mockSearchWorkspaceFileManagerEntries = vi.fn();
 const mockListWorkspaceIssues = vi.fn();
 const mockListWorkspaceApps = vi.fn();
@@ -75,6 +77,7 @@ const {
 const mockSelectFiles = vi.fn();
 const mockSelectDirectory = vi.fn();
 const mockEnsureDirectory = vi.fn();
+const mockWriteClipboardText = vi.fn();
 const mockRegisterUploadSources = vi.fn();
 const mockInspectUploadSources = vi.fn();
 const mockPreflightUpload = vi.fn();
@@ -658,6 +661,7 @@ vi.mock("../../i18n/index", () => ({
         "agentHost.agentGui.slashCommandReviewLabel": "review",
         "agentHost.agentGui.slashCommandStatusLabel": "status",
         "agentHost.agentGui.slashCommandUsageLabel": "usage",
+        "agentHost.agentGui.markSessionUnread": "Mark as unread",
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
           "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
@@ -710,12 +714,14 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       editQueuedPrompt: mockEditQueuedPrompt,
       removeProject: mockRemoveProject,
       confirmDeleteProjectConversations: mockConfirmDeleteProjectConversations,
+      markConversationUnread: vi.fn(),
       requestDeleteConversation: mockRequestDeleteConversation,
       retryActivation: mockRetryActivation,
       continueInNewConversation: mockContinueInNewConversation,
       retryOpenclawGateway: mockRetryOpenclawGateway,
       cancelDeleteConversation: mockCancelDeleteConversation,
-      confirmDeleteConversation: mockConfirmDeleteConversation
+      confirmDeleteConversation: mockConfirmDeleteConversation,
+      renameConversation: mockRenameConversation
     }
   })
 }));
@@ -731,6 +737,9 @@ describe("AgentGUINode", () => {
     agentEnvPanelStore.open = false;
     agentEnvPanelStore.provider = null;
     agentEnvPanelStore.focus = null;
+    const workspaceSettingsPanelStore = getWorkspaceSettingsPanelStore();
+    workspaceSettingsPanelStore.section = null;
+    workspaceSettingsPanelStore.requestSequence = 0;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -751,6 +760,7 @@ describe("AgentGUINode", () => {
     mockRetryOpenclawGateway.mockClear();
     mockCancelDeleteConversation.mockClear();
     mockConfirmDeleteConversation.mockClear();
+    mockRenameConversation.mockClear();
     mockSearchWorkspaceFileManagerEntries.mockReset();
     mockListWorkspaceIssues.mockReset();
     mockListWorkspaceApps.mockReset();
@@ -761,6 +771,7 @@ describe("AgentGUINode", () => {
     mockSelectFiles.mockReset();
     mockSelectDirectory.mockReset();
     mockEnsureDirectory.mockReset();
+    mockWriteClipboardText.mockReset();
     mockRegisterUploadSources.mockReset();
     mockInspectUploadSources.mockReset();
     mockPreflightUpload.mockReset();
@@ -799,6 +810,7 @@ describe("AgentGUINode", () => {
     });
     mockBatchGetUserInfo.mockResolvedValue({ users: [] });
     mockEnsureDirectory.mockResolvedValue(undefined);
+    mockWriteClipboardText.mockResolvedValue(undefined);
     mockInspectUploadSources.mockResolvedValue({
       hasGitignore: false,
       gitignoreSourceCount: 0
@@ -809,6 +821,9 @@ describe("AgentGUINode", () => {
       value: {
         account: {
           batchGetUserInfo: mockBatchGetUserInfo
+        },
+        clipboard: {
+          writeText: mockWriteClipboardText
         },
         workspace: {
           selectFiles: mockSelectFiles,
@@ -954,7 +969,7 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
-  it("hides the rail config entry for the unified All provider filter", () => {
+  it("opens Agent settings directly for the unified All provider filter", () => {
     mockViewModel = createViewModel({
       conversationFilter: { kind: "all" },
       providerTargets: [
@@ -965,7 +980,13 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
-    expect(screen.queryByTitle("agentHost.agentGui.agentConfig")).toBeNull();
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentSettingsMenu"));
+
+    expect(screen.queryByTestId("agent-gui-config-menu")).toBeNull();
+    expect(getWorkspaceSettingsPanelStore()).toMatchObject({
+      section: "agent",
+      requestSequence: 1
+    });
   });
 
   it("renders rail config usage from the unified provider filter target", async () => {
@@ -1022,6 +1043,100 @@ describe("AgentGUINode", () => {
       expect(screen.getByText("42% left")).toBeInTheDocument();
     });
     expect(screen.queryByText("11% left")).toBeNull();
+  });
+
+  it("keeps the rail config limits section visible with a retry control when usage returns no quotas", async () => {
+    // Regression: a Claude usage probe that comes back with an empty quota
+    // list (no 5h/7d windows, or a fetch error the main-process probe caught
+    // into lastError) previously made the entire "限制" section disappear from
+    // the config menu with zero feedback. It must instead show an explicit
+    // "unavailable" placeholder plus the refresh control so the user can retry.
+    const onAgentProbeRefreshRequest = vi.fn();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      onAgentProbeRefreshRequest,
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-unavailable")
+      ).toBeInTheDocument();
+    });
+    const refresh = screen.getByTestId("agent-gui-config-usage-refresh");
+    expect(refresh).toBeInTheDocument();
+
+    fireEvent.click(refresh);
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "claude-code",
+      "agent-gui:agent-gui-1:usage-refresh"
+    );
+  });
+
+  it("does not show the unavailable limits placeholder while usage is still loading", async () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: true,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-refresh")
+      ).toHaveAttribute("data-state", "loading");
+    });
+    expect(
+      screen.queryByTestId("agent-gui-config-usage-unavailable")
+    ).toBeNull();
   });
 
   it("requests a fresh agent probe when the title info entry opens", () => {
@@ -1684,7 +1799,7 @@ describe("AgentGUINode", () => {
     expect(getComposerEditor()).toBeTruthy();
   });
 
-  it("shows OpenClaw gateway startup and disables new sessions while starting", () => {
+  it("hides OpenClaw gateway startup while disabling new sessions until ready", () => {
     mockViewModel = createViewModel({
       data: {
         provider: "openclaw",
@@ -1697,8 +1812,8 @@ describe("AgentGUINode", () => {
     renderAgentGUINode({ workbenchWindowZIndex: 41 });
 
     expect(
-      screen.getByText("agentHost.agentGui.openclawGatewayStarting")
-    ).toBeTruthy();
+      screen.queryByText("agentHost.agentGui.openclawGatewayStarting")
+    ).toBeNull();
     const newConversationButton = getChromeNewConversationButton();
     fireEvent.click(newConversationButton);
 
@@ -1911,11 +2026,14 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
+    const emptyHeading = screen.getByRole("heading", {
+      name: "What can help you with?"
+    });
     expect(
-      screen.getByRole("heading", {
-        name: "What can Claude Code help you with?"
+      within(emptyHeading).getByRole("combobox", {
+        name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toBeTruthy();
+    ).toHaveTextContent("Claude Code");
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
@@ -2047,6 +2165,7 @@ describe("AgentGUINode", () => {
       conversations: [
         {
           id: "session-1",
+          agentTargetId: "local:codex",
           provider: "codex",
           title: "Session 1",
           status: "ready",
@@ -2078,6 +2197,7 @@ describe("AgentGUINode", () => {
       conversations: [
         {
           id: "session-1",
+          agentTargetId: "local:codex",
           provider: "codex",
           title: "Project Session",
           status: "ready",
@@ -2322,6 +2442,222 @@ describe("AgentGUINode", () => {
 
     expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1");
     expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens a conversation in a new window from the rail context menu without selecting", async () => {
+    const onOpenConversationWindow =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenConversationWindow"]
+        >
+      >();
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode({ onOpenConversationWindow });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.openConversationWindow"
+        })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1")
+    );
+    expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens rename dialog from rail double-click and saves through controller action", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "Renamed session" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockRenameConversation).toHaveBeenCalledWith(
+        "session-1",
+        "Renamed session"
+      );
+    });
+  });
+
+  it("does not submit a blank rename title", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.renameSessionSave"
+      })
+    ).toBeDisabled();
+    expect(mockRenameConversation).not.toHaveBeenCalled();
+  });
+
+  it("closes the rename dialog from cancel", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.pointerUp(screen.getByRole("button", { name: "common.cancel" }), {
+      button: 0
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", {
+          name: "agentHost.agentGui.renameSessionTitle"
+        })
+      ).toBeNull();
+    });
+  });
+
+  it("copies a conversation mention link from the rail context menu without selecting", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          agentTargetId: "local:codex",
+          provider: "codex",
+          title: "Session [1] \\ draft",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const copyLinkMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.copySessionLink"
+    });
+    fireEvent.pointerUp(copyLinkMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(mockWriteClipboardText).toHaveBeenCalledWith(
+        "[Session \\[1\\] \\\\ draft](mention://agent-session/session-1?agentTargetId=local%3Acodex&workspaceId=room-1)"
+      )
+    );
+    expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens rename dialog from the rail context menu", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const renameMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.renameSession"
+    });
+    fireEvent.pointerUp(renameMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.renameSession"
+        })
+      ).not.toBeInTheDocument()
+    );
+
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toHaveValue("Session 1");
   });
 
   it("renders inline delete confirmation and dispatches confirm without a dialog", () => {
@@ -3534,12 +3870,11 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-queued",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
 
-  it("forwards composer mention link actions with the mention session provider", async () => {
+  it("forwards composer mention link actions without provider fallback", async () => {
     const onLinkAction = vi.fn<(action: WorkspaceLinkAction) => void>();
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
@@ -3565,7 +3900,6 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-draft",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
@@ -6633,7 +6967,6 @@ describe("AgentGUINode", () => {
       type: "open-agent-session",
       workspaceId: "room-1",
       agentSessionId: "session-2",
-      provider: "codex",
       source: "agent-markdown"
     });
   });
@@ -6934,6 +7267,7 @@ function createAgentActivitySnapshotFromViewModel(
     sessions: mockViewModel.conversations.map((conversation) => ({
       workspaceId,
       agentSessionId: conversation.id,
+      agentTargetId: conversation.agentTargetId,
       provider: String(conversation.provider),
       userId: conversation.userId,
       cwd: conversation.cwd,
@@ -7056,6 +7390,13 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     async setSessionPinned(input) {
       return createSession(input.workspaceId, input.agentSessionId);
     },
+    async renameSession(input) {
+      return {
+        ...createSession(input.workspaceId, input.agentSessionId),
+        title: input.title,
+        updatedAtUnixMs: 2
+      };
+    },
     async trackSettingsProjectChange() {},
     async trackDraftComposerSettingsChange() {},
     reportDiagnostic() {},
@@ -7165,6 +7506,7 @@ function createViewModel(
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],

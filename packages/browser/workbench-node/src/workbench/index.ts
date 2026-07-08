@@ -96,6 +96,7 @@ export function createBrowserNodeDefinition({
           externalNodeState: context.externalNodeState
         }),
         feature,
+        hidden: context.node.isMinimized,
         nodeId: context.node.id,
         onFocusRequest: context.isFocused ? undefined : () => context.focus(),
         onNavigated: onNavigated

@@ -294,16 +294,50 @@ func tuttiAgentUserAuthReady() bool {
 	}
 	var payload struct {
 		TuttiLLM *struct {
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
+			AccessToken          string          `json:"access_token"`
+			AccessTokenExpiresAt json.RawMessage `json:"access_token_expires_at"`
+			RefreshToken         string          `json:"refresh_token"`
 		} `json:"tutti_llm"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return false
 	}
-	return payload.TuttiLLM != nil &&
-		strings.TrimSpace(payload.TuttiLLM.AccessToken) != "" &&
-		strings.TrimSpace(payload.TuttiLLM.RefreshToken) != ""
+	if payload.TuttiLLM == nil ||
+		strings.TrimSpace(payload.TuttiLLM.AccessToken) == "" ||
+		strings.TrimSpace(payload.TuttiLLM.RefreshToken) == "" {
+		return false
+	}
+	expiresAt, ok := parseTuttiAgentTokenExpiresAt(payload.TuttiLLM.AccessTokenExpiresAt)
+	if !ok {
+		return false
+	}
+	return time.Now().UTC().Before(expiresAt)
+}
+
+func parseTuttiAgentTokenExpiresAt(raw json.RawMessage) (time.Time, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return time.Time{}, false
+	}
+	var numeric int64
+	if err := json.Unmarshal(raw, &numeric); err == nil && numeric > 0 {
+		return time.Unix(numeric, 0).UTC(), true
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return time.Time{}, false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return time.Time{}, false
+	}
+	if parsed, err := time.Parse(time.RFC3339, text); err == nil {
+		return parsed.UTC(), true
+	}
+	numeric, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || numeric <= 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(numeric, 0).UTC(), true
 }
 
 func userTuttiAgentAuthPath() (string, bool) {

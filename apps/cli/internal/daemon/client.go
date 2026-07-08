@@ -132,18 +132,6 @@ func (client *Client) GetHealth(ctx context.Context) (HealthStatus, error) {
 	return result, nil
 }
 
-func (client *Client) ListCapabilities(ctx context.Context) (CapabilityList, error) {
-	return client.ListCapabilitiesForWorkspace(ctx, "")
-}
-
-func (client *Client) ListCapabilitiesForWorkspace(ctx context.Context, workspaceID string) (CapabilityList, error) {
-	return client.ListCapabilitiesForWorkspaceWithHidden(ctx, workspaceID, false)
-}
-
-func (client *Client) ListCapabilitiesForWorkspaceWithHidden(ctx context.Context, workspaceID string, includeHidden bool) (CapabilityList, error) {
-	return client.ListCapabilitiesForWorkspaceWithOptions(ctx, workspaceID, CapabilityListOptions{IncludeHidden: includeHidden})
-}
-
 func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Context, workspaceID string, options CapabilityListOptions) (CapabilityList, error) {
 	var result CapabilityList
 	path := cliCapabilitiesPath

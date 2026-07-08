@@ -88,10 +88,6 @@ func isWorkspaceAppServerTokenRoute(method string, segments []string) bool {
 	}
 }
 
-func AddrFromEnv() string {
-	return tuttitypes.ResolveDefaultsFromEnv().Transport.TCPAddr
-}
-
 func ListenerSpecFromEnv() (ListenerSpec, error) {
 	defaults := tuttitypes.ResolveDefaultsFromEnv()
 	accessToken := tuttitypes.EnvOrDefault("TUTTID_ACCESS_TOKEN", "")

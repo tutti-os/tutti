@@ -32,6 +32,7 @@ function createAdapters(
   overrides: Partial<WorkspaceLaunchAdapters> = {}
 ): WorkspaceLaunchAdapters {
   return {
+    async showAgentWindow() {},
     async showWorkspaceWindow() {},
     warnStartupWindowResolutionFailure() {},
     ...overrides
@@ -221,6 +222,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async deleteWorkspaceAgentSession() {
+      throw new Error("not used");
+    },
+    async updateWorkspaceAgentSessionTitle() {
       throw new Error("not used");
     },
     async clearWorkspaceAgentSessions() {

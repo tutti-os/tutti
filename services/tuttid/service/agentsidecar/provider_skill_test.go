@@ -14,9 +14,12 @@ func TestWorkspaceAppSkillUsesPreparedCLICommandForAgentLaunchers(t *testing.T) 
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev agent wait --session-id <session-id> --json",
+		"full compact context helper or turn discovery is needed",
 		"When image context may be useful",
 		"turn-resources",
 		"tutti-dev agent session-summary --session-id <caller-session-id> --json",
+		"full compact context helper",
 		"discover candidate turn ids",
 		"tutti-dev agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json",
 		"Images remain grouped under their source message",
@@ -82,7 +85,10 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 	for _, want := range []string{
 		"tutti-dev codex start --prompt <task> --show --json",
 		"tutti-dev claude start --prompt <task> --show --json",
+		"tutti-dev agent wait",
 		"tutti-dev agent session-summary",
+		"returns only recent execution messages",
+		"full compact context helper or turn discovery",
 		"tutti-dev agent turn-resources",
 		"`mention://agent-target/<targetId>?workspaceId=...`",
 		"hand off, do not do it yourself",
@@ -165,6 +171,9 @@ func TestProviderSkillRootDoesNotExposeClaudeCodeProjectSkills(t *testing.T) {
 
 	if root := providerSkillRoot(cwd, "claude-code"); root != "" {
 		t.Fatalf("providerSkillRoot() for claude-code = %q, want empty", root)
+	}
+	if root := providerSkillRoot(cwd, "cursor"); root != "" {
+		t.Fatalf("providerSkillRoot() for cursor = %q, want empty", root)
 	}
 	if root := providerSkillRoot(cwd, "gemini"); root != filepath.Join(cwd, ".gemini", "skills") {
 		t.Fatalf("providerSkillRoot() for gemini = %q, want project skill root", root)

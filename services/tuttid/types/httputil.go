@@ -3,7 +3,6 @@ package types
 import (
 	"crypto/subtle"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -27,23 +26,6 @@ type APIErrorDetails struct {
 
 type APIErrorResponse struct {
 	Error APIErrorDetails `json:"error"`
-}
-
-func DecodeJSON(r *http.Request, dst any) error {
-	if r.Body == nil {
-		return fmt.Errorf("empty body")
-	}
-	defer func() { _ = r.Body.Close() }()
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(dst); err != nil {
-		if strings.Contains(err.Error(), "EOF") {
-			return fmt.Errorf("empty body")
-		}
-		return fmt.Errorf("decode json: %w", err)
-	}
-
-	return nil
 }
 
 func WriteMethodNotAllowed(w http.ResponseWriter) {
@@ -88,10 +70,6 @@ func WithCORS(next http.Handler) http.Handler {
 }
 
 type BearerTokenAuthorizer func(*http.Request, string) bool
-
-func WithBearerTokenAuth(expectedToken string, next http.Handler) http.Handler {
-	return WithBearerTokenAuthFunc(expectedToken, nil, next)
-}
 
 func WithBearerTokenAuthFunc(expectedToken string, authorizer BearerTokenAuthorizer, next http.Handler) http.Handler {
 	expectedToken = strings.TrimSpace(expectedToken)

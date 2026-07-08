@@ -19,6 +19,7 @@ import type {
   DesktopBrowserApi,
   DesktopComputerUseApi,
   DesktopHostFilesApi,
+  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -61,6 +62,7 @@ export interface DesktopWorkbenchContributionContext {
     terminal: ReactNode;
   };
   hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget

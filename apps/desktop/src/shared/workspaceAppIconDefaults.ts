@@ -13,7 +13,10 @@ const DESKTOP_WORKSPACE_APP_DEFAULT_ICON_URLS = {
 export const SEEDED_DESKTOP_WORKSPACE_APP_ICON_IDS = [
   "agent-codex",
   "agent-claude-code",
-  "agent-tutti-agent"
+  "agent-tutti-agent",
+  // Seeded so the home "Task breakdown" suggestion can render the Task Center
+  // (issue-manager) app mention with its real icon even before the app loads.
+  "issue-manager"
 ] as const;
 
 export function resolveDesktopWorkspaceAppDefaultIconUrl(

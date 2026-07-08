@@ -18,6 +18,7 @@ import type {
 const baseItem: WorkspaceAgentMessageCenterItem = {
   id: "message-center-session-1",
   agentSessionId: "session-1",
+  agentTargetId: "local:codex",
   provider: "codex",
   userId: null,
   title: "整理本地文件夹",
@@ -697,12 +698,13 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     });
   });
 
-  it("preserves the card provider for providerless session links", () => {
+  it("preserves the card agent target for targetless session links", () => {
     const onLinkAction = vi.fn();
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
           item={createTestCardItem({
+            agentTargetId: "local:claude-code",
             provider: "claude-code",
             lastAgentMessageSummary:
               "继续 [Claude 会话](mention://agent-session/session-2?workspaceId=workspace-1)"
@@ -721,7 +723,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       type: "open-agent-session",
       workspaceId: "workspace-1",
       agentSessionId: "session-2",
-      provider: "claude-code",
+      agentTargetId: "local:claude-code",
       source: "agent-markdown"
     });
   });

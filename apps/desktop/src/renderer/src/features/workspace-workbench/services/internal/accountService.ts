@@ -83,6 +83,13 @@ export class AccountService implements IAccountService {
       if (this.productSummaryGeneration !== generation) {
         return;
       }
+      // TEMP(debug): 模擬積分狀態，用來驗證 UI。切換方式（DevTools console）：
+      //   localStorage.setItem("tutti.debug.creditsState", "zero")        // 餘額 0
+      //   localStorage.setItem("tutti.debug.creditsState", "unavailable") // 顯示 unavailable
+      //   localStorage.setItem("tutti.debug.creditsState", "error")       // 錯誤紅字
+      //   localStorage.removeItem("tutti.debug.creditsState")             // 還原
+      // 之後執行 accountService.refreshProductSummary({ force: true }) 或重開選單。
+      applyDebugCreditsState(summary);
       this.store.productSummary = summary;
       this.productSummaryRefreshedAt = Date.now();
     } catch (error) {
@@ -248,6 +255,30 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+// TEMP(debug): 依 localStorage 覆寫積分 summary，僅供 UI 驗證，正式上線前移除。
+function applyDebugCreditsState(summary: {
+  credits?: { available_credits?: number | null } | null;
+}): void {
+  let state: string | null = null;
+  try {
+    state = globalThis.localStorage?.getItem("tutti.debug.creditsState");
+  } catch {
+    state = null;
+  }
+  if (!state) {
+    return;
+  }
+  if (state === "error") {
+    throw new Error("insufficient credits (debug)");
+  }
+  const credits = summary.credits ?? {};
+  if (state === "zero") {
+    summary.credits = { ...credits, available_credits: 0 };
+  } else if (state === "unavailable") {
+    summary.credits = { ...credits, available_credits: null };
+  }
 }
 
 function readAccountError(error: unknown): string {

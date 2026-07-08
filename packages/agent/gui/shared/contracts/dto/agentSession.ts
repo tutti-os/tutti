@@ -8,6 +8,7 @@ export type AgentHostAgentSessionProvider =
   | "nexight"
   | "gemini"
   | "hermes"
+  | "opencode"
   | "openclaw";
 export interface AgentHostAgentSessionProviderTargetRef {
   kind: string;

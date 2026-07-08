@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentActivityAdapter } from "./adapter.ts";
-import { createAgentActivityController } from "./controller.ts";
+import {
+  createAgentActivityController,
+  setAgentActivityStoreDiagnosticSink
+} from "./controller.ts";
 import type {
   AgentActivityComposerOptions,
   AgentActivityMessage,
@@ -112,6 +115,53 @@ test("controller snapshot reference is stable until data changes", async () => {
   unsubscribe();
 });
 
+test("controller rejects stale session upserts after newer activity state", () => {
+  const diagnostics: Array<{
+    details: Record<string, unknown>;
+    event: string;
+  }> = [];
+  setAgentActivityStoreDiagnosticSink((event, details) => {
+    diagnostics.push({ event, details });
+  });
+  try {
+    const controller = createAgentActivityController({
+      adapter: fakeAdapter(),
+      workspaceId: "workspace-1"
+    });
+    controller.upsertSession(
+      createSession({
+        status: "completed",
+        updatedAtUnixMs: 2000,
+        turnLifecycle: {
+          activeTurnId: null,
+          phase: "settled",
+          outcome: "completed"
+        },
+        submitAvailability: { state: "available" }
+      })
+    );
+    controller.upsertSession(
+      createSession({
+        status: "working",
+        updatedAtUnixMs: 1000,
+        turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      })
+    );
+
+    const session = controller.getSnapshot().sessions[0];
+    assert.equal(session?.status, "completed");
+    assert.equal(session?.turnLifecycle?.phase, "settled");
+    assert.equal(session?.submitAvailability?.state, "available");
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0]?.event, "session_version_regression");
+    assert.equal(diagnostics[0]?.details.previousKey, 2000);
+    assert.equal(diagnostics[0]?.details.nextKey, 1000);
+  } finally {
+    setAgentActivityStoreDiagnosticSink(null);
+  }
+});
+
 test("controller can list session messages without caching them", async () => {
   const adapter = fakeAdapter({
     listSessionMessages: () =>
@@ -178,6 +228,59 @@ test("controller does not notify subscribers when loaded sessions are unchanged"
   await controller.load();
   assert.equal(notificationCount, 3);
   assert.equal(controller.getSnapshot().sessions[0]?.title, "Renamed session");
+});
+
+test("controller does not notify subscribers when upserted sessions are unchanged", () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter(),
+    workspaceId: "workspace-1"
+  });
+  let notificationCount = 0;
+  controller.subscribe(() => {
+    notificationCount += 1;
+  });
+
+  const session = createSession({
+    currentPhase: "working",
+    lastEventUnixMs: 2000,
+    submitAvailability: { state: "blocked", reason: "active_turn" },
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "running",
+      outcome: null
+    },
+    updatedAtUnixMs: 2000
+  });
+  controller.upsertSession(session);
+  const snapshotAfterFirstUpsert = controller.getSnapshot();
+  assert.equal(notificationCount, 2);
+
+  controller.upsertSession({
+    ...session,
+    submitAvailability: { state: "blocked", reason: "active_turn" },
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "running",
+      outcome: null
+    }
+  });
+  assert.equal(controller.getSnapshot(), snapshotAfterFirstUpsert);
+  assert.equal(notificationCount, 2);
+
+  controller.upsertSession({
+    ...session,
+    lastEventUnixMs: 3000,
+    status: "completed",
+    submitAvailability: { state: "available" },
+    turnLifecycle: {
+      activeTurnId: null,
+      phase: "settled",
+      outcome: "completed"
+    },
+    updatedAtUnixMs: 3000
+  });
+  assert.equal(notificationCount, 3);
+  assert.equal(controller.getSnapshot().sessions[0]?.status, "completed");
 });
 
 test("controller retains one stream for multiple consumers", async () => {
@@ -1563,7 +1666,7 @@ function fakeAdapter(
     createSession: async (input) => ({
       workspaceId: input.workspaceId,
       agentSessionId: "session-1",
-      provider: input.provider,
+      provider: "codex",
       cwd: input.cwd ?? "",
       title: input.title ?? "",
       status: "working"
@@ -1604,6 +1707,14 @@ function fakeAdapter(
         title: "",
         status: "ready"
       }
+    }),
+    renameSession: async (input) => ({
+      workspaceId: input.workspaceId,
+      agentSessionId: input.agentSessionId,
+      provider: "codex",
+      cwd: "",
+      title: input.title,
+      status: "ready"
     }),
     deleteSession: async () => ({ removed: true })
   };

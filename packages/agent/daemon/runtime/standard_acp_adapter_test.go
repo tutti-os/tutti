@@ -342,6 +342,25 @@ func TestCursorAdapterNeverSpawnsWithForceFlag(t *testing.T) {
 	}
 }
 
+func TestCursorAdapterStartUsesPluginDirEnv(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-plugin")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.Env = []string{cursorPluginDirEnv + "=/state/runs/session/cursor-plugin/tutti-cli"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	if got := strings.Join(transport.specs[0].Command, " "); got != "cursor-agent --plugin-dir /state/runs/session/cursor-plugin/tutti-cli acp" {
+		t.Fatalf("command = %q, want cursor plugin-dir before acp", got)
+	}
+}
+
 func TestCursorAdapterFullAccessAutoApprovesWithoutPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -497,6 +516,31 @@ func TestCursorAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	}
 }
 
+func TestCursorAdapterStartUsesPluginDirWithInjectedProviderCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-resolved-plugin")
+	adapter := newCursorAdapterWithHostMetadata(
+		transport,
+		LegacyHostMetadata(),
+		func(_ context.Context, provider string) (ProviderCommand, error) {
+			if provider != ProviderCursor {
+				t.Fatalf("provider = %q, want %q", provider, ProviderCursor)
+			}
+			return ProviderCommand{Command: []string{"/home/user/.local/bin/agent", "acp"}}, nil
+		},
+	)
+	session := standardTestSession(ProviderCursor)
+	session.Env = []string{cursorPluginDirEnv + "=/state/cursor-plugin/tutti-cli"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := strings.Join(transport.specs[0].Command, " "); got != "/home/user/.local/bin/agent --plugin-dir /state/cursor-plugin/tutti-cli acp" {
+		t.Fatalf("command = %q, want resolved cursor binary with plugin-dir", got)
+	}
+}
+
 func TestCursorAdapterStartAppliesModelConfigOption(t *testing.T) {
 	t.Parallel()
 
@@ -552,6 +596,66 @@ func TestCursorACPModeID(t *testing.T) {
 		if got := cursorACPModeID(mode); got != want {
 			t.Fatalf("cursorACPModeID(%q) = %q, want %q", mode, got, want)
 		}
+	}
+}
+
+func TestCursorPlanModeFromACPModeID(t *testing.T) {
+	t.Parallel()
+
+	for modeID, wantPlanMode := range map[string]bool{
+		"plan":  true,
+		"agent": false,
+		"ask":   false,
+	} {
+		got, ok := cursorPlanModeFromACPModeID(modeID)
+		if !ok {
+			t.Fatalf("cursorPlanModeFromACPModeID(%q) ok=false, want true", modeID)
+		}
+		if got != wantPlanMode {
+			t.Fatalf("cursorPlanModeFromACPModeID(%q) = %v, want %v", modeID, got, wantPlanMode)
+		}
+	}
+	if _, ok := cursorPlanModeFromACPModeID("auto"); ok {
+		t.Fatal("cursorPlanModeFromACPModeID(auto) ok=true, want false")
+	}
+}
+
+func TestCursorAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-plan-toggle")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "agent"
+	session.Settings = &SessionSettings{
+		PermissionModeID: "agent",
+		PlanMode:         false,
+	}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	planMode := true
+	session.ProviderSessionID = "cursor-session-plan-toggle"
+	session.Settings.PlanMode = planMode
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan on: %v", err)
+	}
+	if transport.conn.lastModeID() != "plan" {
+		t.Fatalf("mode id = %q, want plan", transport.conn.lastModeID())
+	}
+
+	planMode = false
+	session.Settings.PlanMode = planMode
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan off: %v", err)
+	}
+	if transport.conn.lastModeID() != "agent" {
+		t.Fatalf("mode id = %q, want agent", transport.conn.lastModeID())
 	}
 }
 
@@ -976,6 +1080,64 @@ func TestClaudeCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testin
 		t.Fatalf("Start: %v", err)
 	}
 	session.ProviderSessionID = "claude-session-1"
+
+	content := []PromptContentBlock{{
+		Type: "text",
+		Text: "what is in this screenshot?",
+	}, {
+		Type:     "image",
+		MimeType: "image/png",
+		Data:     "aW1hZ2U=",
+	}}
+	if err := adapter.ValidatePromptContent(session, content); err != nil {
+		t.Fatalf("ValidatePromptContent error = %v, want nil", err)
+	}
+	snapshot := adapter.SessionState(session)
+	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, CapabilityImageInput) {
+		t.Fatalf("runtime capabilities = %#v, want imageInput", snapshot.RuntimeContext["capabilities"])
+	}
+}
+
+func TestOpenCodeAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-1")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-1"
+
+	content := []PromptContentBlock{{
+		Type: "text",
+		Text: "what is in this screenshot?",
+	}, {
+		Type:     "image",
+		MimeType: "image/png",
+		Data:     "aW1hZ2U=",
+	}}
+	if err := adapter.ValidatePromptContent(session, content); err != nil {
+		t.Fatalf("ValidatePromptContent error = %v, want nil", err)
+	}
+	snapshot := adapter.SessionState(session)
+	capabilities, _ := snapshot.RuntimeContext["capabilities"].([]string)
+	if !containsString(capabilities, CapabilityImageInput) {
+		t.Fatalf("runtime capabilities = %#v, want imageInput", snapshot.RuntimeContext["capabilities"])
+	}
+}
+
+func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor", "cursor-session-1")
+	adapter := NewCursorAdapter(transport)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-1"
 
 	content := []PromptContentBlock{{
 		Type: "text",
@@ -4282,6 +4444,76 @@ func TestControllerPublishesIdleStandardACPGoalUpdatesAfterStart(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatal("idle thread_goal_update was not published")
+		}
+	}
+}
+
+func TestControllerSyncCursorPlanModeFromACPUpdate(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-plan-sync")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	controller := NewController([]Adapter{adapter}, nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "agent"
+	session.Settings = &SessionSettings{
+		PermissionModeID: "agent",
+		PlanMode:         false,
+	}
+
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:           session.RoomID,
+		AgentSessionID:   session.AgentSessionID,
+		Provider:         session.Provider,
+		CWD:              session.CWD,
+		PermissionModeID: session.PermissionModeID,
+		Settings:         session.Settings,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	stream, unsubscribe, ok := controller.Subscribe(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe ok=false, want live session stream")
+	}
+	defer unsubscribe()
+
+	transport.conn.sendJSON(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  acpMethodUpdate,
+		"params": map[string]any{
+			"sessionId": transport.conn.sessionID,
+			"update": map[string]any{
+				"sessionUpdate": "current_mode_update",
+				"currentModeId": "plan",
+			},
+		},
+	})
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-stream:
+			if event.EventType != StreamEventStatePatch {
+				continue
+			}
+			patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
+			if !ok {
+				t.Fatalf("event data = %#v, want WorkspaceAgentStatePatch", event.Data)
+			}
+			if patch.Settings != nil && patch.Settings["planMode"] == true {
+				stored, ok := controller.get(started.Session.RoomID, started.Session.AgentSessionID)
+				if !ok || stored.Settings == nil || !stored.Settings.PlanMode {
+					t.Fatalf("stored session settings = %#v, want planMode true", stored.Settings)
+				}
+				if stored.PermissionModeID != "agent" {
+					t.Fatalf("permission mode = %q, want unchanged agent", stored.PermissionModeID)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("cursor current_mode_update did not publish planMode state patch")
 		}
 	}
 }

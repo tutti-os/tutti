@@ -45,6 +45,7 @@ test("desktop agent activity runtime hides prompt uploads without archive suppor
   );
 
   assert.equal(runtime.promptContentUploadSupport?.file, false);
+  assert.equal(runtime.promptContentUploadSupport?.image, false);
   assert.equal(runtime.uploadPromptContent, undefined);
 });
 
@@ -66,6 +67,7 @@ test("desktop agent activity runtime archives prompt file uploads", async () => 
     }
   );
 
+  assert.equal(runtime.promptContentUploadSupport?.image, true);
   const result = await runtime.uploadPromptContent?.({
     workspaceId: "workspace-1",
     content: [
@@ -99,6 +101,84 @@ test("desktop agent activity runtime archives prompt file uploads", async () => 
       }
     ]
   });
+});
+
+test("desktop agent activity runtime archives inline file data (pasted text)", async () => {
+  const archiveInputs: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile(input) {
+          archiveInputs.push(input);
+          return {
+            name: input.displayName ?? "pasted-text.txt",
+            path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/aa/deadbeef.txt",
+            sizeBytes: 36
+          };
+        }
+      }
+    }
+  );
+
+  const result = await runtime.uploadPromptContent?.({
+    workspaceId: "workspace-1",
+    content: [
+      {
+        type: "file",
+        data: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+        mimeType: "text/plain",
+        name: "pasted-text.txt"
+      }
+    ]
+  });
+
+  // Inline bytes are archived via dataBase64 (no hostPath).
+  assert.deepEqual(archiveInputs, [
+    {
+      workspaceID: "workspace-1",
+      dataBase64: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+      displayName: "pasted-text.txt",
+      mimeType: "text/plain"
+    }
+  ]);
+  // The base64 payload is dropped from the returned block; path/size are filled.
+  assert.deepEqual(result, {
+    content: [
+      {
+        type: "file",
+        mimeType: "text/plain",
+        name: "pasted-text.txt",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/aa/deadbeef.txt",
+        sizeBytes: 36,
+        uploadStatus: "uploaded"
+      }
+    ]
+  });
+});
+
+test("desktop agent activity runtime rejects file uploads without hostPath or data", async () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile() {
+          throw new Error("should not archive");
+        }
+      }
+    }
+  );
+
+  const uploadPromptContent = runtime.uploadPromptContent;
+  assert.ok(uploadPromptContent);
+  await assert.rejects(
+    () =>
+      uploadPromptContent({
+        workspaceId: "workspace-1",
+        content: [{ type: "file", name: "empty.txt" }]
+      }),
+    /requires hostPath or data/
+  );
 });
 
 test("desktop agent activity runtime archives prompt image uploads", async () => {
@@ -153,6 +233,39 @@ test("desktop agent activity runtime archives prompt image uploads", async () =>
   });
 });
 
+test("desktop agent activity runtime reads archived prompt assets", async () => {
+  const readInputs: string[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async readLocalPreviewFile(path) {
+          readInputs.push(path);
+          return new Uint8Array([105, 109, 97, 103, 101]);
+        }
+      }
+    }
+  );
+
+  const result = await runtime.readPromptAsset?.({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    mimeType: "image/png",
+    name: "image.png",
+    path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
+  });
+
+  assert.deepEqual(readInputs, [
+    "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
+  ]);
+  assert.deepEqual(result, {
+    data: "aW1hZ2U=",
+    mimeType: "image/png",
+    name: "image.png",
+    path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
+  });
+});
+
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
@@ -169,6 +282,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       throw new Error("not implemented");
     },
     deleteSession: async () => {
+      throw new Error("not implemented");
+    },
+    renameSession: async () => {
       throw new Error("not implemented");
     },
     getSession: async () => {

@@ -217,6 +217,20 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionPinned() = %#v ok=%v error=%v", pinned, ok, err)
 	}
 
+	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "  Renamed session  ")
+	if err != nil || !ok || renamed.Title != "Renamed session" || renamed.UpdatedAtUnixMS <= pinned.UpdatedAtUnixMS {
+		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
+	}
+
+	blankRenamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "   ")
+	if err != nil || ok {
+		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)
+	}
+	sessionAfterBlankTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !ok || sessionAfterBlankTitle.Title != "Renamed session" {
+		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
+	}
+
 	removed, err := store.DeleteSession(ctx, "ws-1", "session-1")
 	if err != nil || !removed {
 		t.Fatalf("DeleteSession() removed=%v error=%v", removed, err)

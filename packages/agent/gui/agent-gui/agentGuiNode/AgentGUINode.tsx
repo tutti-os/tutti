@@ -22,6 +22,7 @@ import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
@@ -80,6 +81,8 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
+import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type {
@@ -88,6 +91,75 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
+
+// The Task Center is the workspace issue/task app; mentioning it seeds the
+// composer with a real app-mention chip the agent can resolve.
+const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
+
+function buildAgentHomeSuggestions(
+  t: TranslateFn,
+  workspaceId: string,
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
+): AgentHomeSuggestionCategory[] {
+  const key = (suffix: string): string =>
+    `agentHost.agentGui.homeSuggestions.${suffix}`;
+  const taskCenterLabel = t(key("breakdown.taskCenterLabel"));
+  // Resolve the Task Center app icon so the seeded mention renders as a proper
+  // workspace-app chip (same as a picker-inserted one), not a bare fallback.
+  const taskCenterIconUrl =
+    workspaceAppIcons
+      .find((entry) => entry.appId === TASK_CENTER_WORKSPACE_APP_ID)
+      ?.iconUrl?.trim() || undefined;
+  // A workspace-app mention only rehydrates into a chip when it carries a
+  // workspaceId; without one (e.g. preview), fall back to plain "@label" text.
+  const taskCenterMention = workspaceId
+    ? `[@${taskCenterLabel}](${createRichTextMentionHref({
+        providerId: "workspace-app",
+        entityId: TASK_CENTER_WORKSPACE_APP_ID,
+        label: taskCenterLabel,
+        scope: {
+          workspaceId,
+          ...(taskCenterIconUrl ? { icon: taskCenterIconUrl } : {})
+        }
+      })})`
+    : `@${taskCenterLabel}`;
+  return [
+    {
+      id: "about-tutti",
+      icon: "about",
+      label: t(key("about.title")),
+      prompt: t(key("about.prompt"))
+    },
+    {
+      id: "task-breakdown",
+      icon: "breakdown",
+      label: t(key("breakdown.title")),
+      prompt: t(key("breakdown.prompt"), { taskCenterMention })
+    },
+    {
+      id: "quality-review",
+      icon: "review",
+      // Fills the composer with the review prompt; the user types "@" where they
+      // want to pick the session whose output to review.
+      label: t(key("review.title")),
+      prompt: t(key("review.prompt"))
+    },
+    {
+      id: "agent-interaction",
+      icon: "interaction",
+      // Fills the composer with the interaction prompt; the user types "@" where
+      // they want to pick the agents to have interact.
+      label: t(key("interaction.title")),
+      prompt: t(key("interaction.prompt"))
+    },
+    {
+      id: "import-session",
+      icon: "import",
+      label: t(key("import.title")),
+      action: "import-session"
+    }
+  ];
+}
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -196,6 +268,7 @@ export interface AgentGUINodeProps {
   accountMenuState?: AgentGUIAccountMenuState | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /**
    * Controls how the provider rail composes its list. "catalog" (default) adds
    * the static local catalog + placeholders + coming-soon; "exact" renders only
@@ -239,6 +312,7 @@ export interface AgentGUINodeProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
   onAgentProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -585,6 +659,8 @@ function areAgentGUINodePropsEqual(
     previous.accountMenuState === next.accountMenuState &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailAllPresentation?.iconUrl ===
+      next.providerRailAllPresentation?.iconUrl &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
@@ -604,6 +680,7 @@ function areAgentGUINodePropsEqual(
     previous.workspaceAgentProbes === next.workspaceAgentProbes &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
+    previous.providerAuthAccountLabels === next.providerAuthAccountLabels &&
     previous.managedAgentsState === next.managedAgentsState &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
@@ -647,6 +724,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   accountMenuState = null,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailAllPresentation = null,
   providerRailMode = "catalog",
   renderProviderRailEmpty,
   renderSidebarFooter,
@@ -672,6 +750,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceAgentProbes,
   onAgentProbeDemandChange,
   onAgentProbeRefreshRequest,
+  providerAuthAccountLabels,
   managedAgentsState,
   contextMentionProviders,
   workspaceAppIcons,
@@ -693,13 +772,16 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
+      const agentTargetId = state.agentTargetId?.trim() || null;
       onLinkAction?.(
-        action.type === "open-agent-session" && !action.provider
-          ? { ...action, provider: state.provider }
+        action.type === "open-agent-session" &&
+          !action.agentTargetId &&
+          agentTargetId
+          ? { ...action, agentTargetId }
           : action
       );
     },
-    [onLinkAction, state.provider]
+    [onLinkAction, state.agentTargetId]
   );
   const handleAgentProviderLogin = useCallback(
     (provider?: string | null) => {
@@ -1059,6 +1141,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       slashStatusBaseUrl: t("agentHost.agentGui.slashStatusBaseUrl"),
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
+      slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;
@@ -1075,6 +1158,22 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
+      ),
+      slashStatusUsageJustUpdated: t(
+        "agentHost.agentGui.slashStatusUsageJustUpdated"
+      ),
+      slashStatusUsageMinutesAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageMinutesAgo", { count }),
+      slashStatusUsageHoursAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageHoursAgo", { count }),
+      slashStatusUsageUpdating: t(
+        "agentHost.agentGui.slashStatusUsageUpdating"
+      ),
+      slashStatusUsageRefreshFailed: t(
+        "agentHost.agentGui.slashStatusUsageRefreshFailed"
+      ),
+      slashStatusUsageRefreshAria: t(
+        "agentHost.agentGui.slashStatusUsageRefreshAria"
       ),
       usageChipLabel: (input: { percent: number }) =>
         t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
@@ -1095,6 +1194,12 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      homeSuggestions: buildAgentHomeSuggestions(
+        t,
+        workspaceId,
+        workspaceAppIcons ?? []
+      ),
+      homeSuggestionsClose: t("agentHost.agentGui.homeSuggestionsClose"),
       emptyForProvider: (provider: string) =>
         t("agentHost.agentGui.empty", {
           provider: resolveAgentGUIProviderDisplayLabel(
@@ -1285,7 +1390,18 @@ export const AgentGUINode = memo(function AgentGUINode({
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
+      copySessionLink: t("agentHost.agentGui.copySessionLink"),
+      renameSession: t("agentHost.agentGui.renameSession"),
+      renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
+      renameSessionDescription: t(
+        "agentHost.agentGui.renameSessionDescription"
+      ),
+      renameSessionPlaceholder: t(
+        "agentHost.agentGui.renameSessionPlaceholder"
+      ),
+      renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
+      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
       deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),
@@ -1478,15 +1594,25 @@ export const AgentGUINode = memo(function AgentGUINode({
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
       fileMentionError: t("agentHost.agentGui.fileMentionError"),
       fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
+      fileDropHint: t("agentHost.agentGui.fileDropHint"),
       mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
+      handoffConversationTooltip: t(
+        "agentHost.agentGui.handoffConversationTooltip"
+      ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
-    [displayProviderLabel, fallbackAgentTitle, t]
+    [
+      displayProviderLabel,
+      fallbackAgentTitle,
+      t,
+      workspaceId,
+      workspaceAppIcons
+    ]
   );
   const workspaceFileReferenceCopy = useMemo<WorkspaceFileReferenceCopy>(
     () => ({
@@ -1578,6 +1704,26 @@ export const AgentGUINode = memo(function AgentGUINode({
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]
   );
+  // The provider whose limits the rail config menu renders: the rail filter
+  // provider when one is active, otherwise the active window provider. Read
+  // freshness + attempt state from this same probe so an empty or failed usage
+  // result stays coherent with the meters (or absence of them).
+  const slashStatusUsageProbe = railStatusProvider
+    ? railAgentProbe
+    : activeAgentProbe;
+  const slashStatusUsageCapturedAtUnixMs =
+    slashStatusUsageProbe?.usage?.capturedAtUnixMs ?? null;
+  const slashStatusUsageDidFail =
+    workspaceAgentProbes?.usageLoadFailed ?? false;
+  // True once a usage probe has actually run for this provider — it came back
+  // with a usage snapshot (possibly zero quotas) or a usage error. Lets the
+  // config menu show an explicit "no limits / retry" row instead of hiding the
+  // whole section when the numbers resolve empty (e.g. a Claude OAuth usage
+  // response with no 5h/7d windows, or a usage fetch the probe caught into
+  // `lastError`), which previously made the limits look like they vanished.
+  const slashStatusUsageAttempted =
+    Boolean(slashStatusUsageProbe?.usage) ||
+    Boolean(slashStatusUsageProbe?.lastError);
   const agentProbeLines = useMemo(() => {
     return buildDockAgentProbeTooltipLines(
       activeAgentProbe,
@@ -1646,6 +1792,25 @@ export const AgentGUINode = memo(function AgentGUINode({
     onAgentProbeRefreshRequest(
       railStatusProvider ?? activeProbeProvider,
       `agent-gui:${nodeId}:config`
+    );
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeRefreshRequest,
+    previewMode,
+    railStatusProvider
+  ]);
+  // Manual "refresh now" from the config menu's freshness control. Same probe
+  // fetch as opening the menu, but callable while the menu stays open (open-only
+  // handlers fire once on the open transition). The control disables itself
+  // while a fetch is in flight, so this cannot hammer the vendor usage API.
+  const handleAgentUsageRefresh = useCallback(() => {
+    if (previewMode || !onAgentProbeRefreshRequest) {
+      return;
+    }
+    onAgentProbeRefreshRequest(
+      railStatusProvider ?? activeProbeProvider,
+      `agent-gui:${nodeId}:usage-refresh`
     );
   }, [
     activeProbeProvider,
@@ -1728,6 +1893,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
             renderProviderRailEmpty={renderProviderRailEmpty}
+            providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}
@@ -1739,7 +1905,12 @@ export const AgentGUINode = memo(function AgentGUINode({
             }
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
+            slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+            slashStatusUsageDidFail={slashStatusUsageDidFail}
+            slashStatusUsageAttempted={slashStatusUsageAttempted}
+            providerAuthAccountLabels={providerAuthAccountLabels}
             onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
+            onAgentUsageRefresh={handleAgentUsageRefresh}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             onHandoffConversation={onHandoffConversation}

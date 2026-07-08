@@ -11,6 +11,11 @@ const styles = {
   composerFooterRight: "agent-gui-node__composer-footer-right",
   composerHero: "agent-gui-node__composer-hero",
   composerFloatingPrompt: "agent-gui-node__composer-floating-prompt",
+  composerFileDropOverlay: "agent-gui-node__composer-file-drop-overlay",
+  composerFileDropOverlayActive:
+    "agent-gui-node__composer-file-drop-overlay--active",
+  composerFileDropOverlayCard:
+    "agent-gui-node__composer-file-drop-overlay-card",
   composerHandoffIcon: "agent-gui-node__composer-handoff-icon",
   composerHandoffAnimatedIcon: "agent-gui-node__composer-handoff-icon-animated",
   composerHandoffMenuContent: "agent-gui-node__composer-handoff-menu-content",
@@ -116,6 +121,19 @@ const styles = {
   emptyHeroProvider: "agent-gui-node__empty-hero-provider",
   emptyHeroProviderSelect: "agent-gui-node__empty-hero-provider-select",
   emptyHeroTitle: "agent-gui-node__empty-hero-title",
+  emptyHeroSuggestions: "agent-gui-node__empty-hero-suggestions",
+  emptyHeroSuggestionsChips: "agent-gui-node__empty-hero-suggestions-chips",
+  emptyHeroSuggestionsChip: "agent-gui-node__empty-hero-suggestions-chip",
+  emptyHeroSuggestionsChipIcon:
+    "agent-gui-node__empty-hero-suggestions-chip-icon",
+  emptyHeroSuggestionsCard: "agent-gui-node__empty-hero-suggestions-card",
+  emptyHeroSuggestionsCardHeader:
+    "agent-gui-node__empty-hero-suggestions-card-header",
+  emptyHeroSuggestionsCardTitle:
+    "agent-gui-node__empty-hero-suggestions-card-title",
+  emptyHeroSuggestionsCardClose:
+    "agent-gui-node__empty-hero-suggestions-card-close",
+  emptyHeroSuggestionsItem: "agent-gui-node__empty-hero-suggestions-item",
   emptyProviderGate: "agent-gui-node__empty-provider-gate",
   emptyProviderGateAction: "agent-gui-node__empty-provider-gate-action",
   emptyProviderGateDescription:
@@ -140,9 +158,13 @@ const styles = {
   providerRailAvatar: "agent-gui-node__provider-rail-avatar",
   providerRailAvatarIcon: "agent-gui-node__provider-rail-avatar-icon",
   providerRailAvatarImage: "agent-gui-node__provider-rail-avatar-image",
+  providerRailBadge: "agent-gui-node__provider-rail-badge",
+  providerRailBadgeImage: "agent-gui-node__provider-rail-badge-image",
   providerRailLaunchpadIcon: "agent-gui-node__provider-rail-launchpad-icon",
+  emptyHeroIconSlot: "agent-gui-node__empty-hero-icon-slot",
   emptyHeroLaunchpadIcon: "agent-gui-node__empty-hero-launchpad-icon",
   providerRailLaunchpadItem: "agent-gui-node__provider-rail-launchpad-item",
+  providerRailConfigButton: "agent-gui-node__provider-rail-config-button",
   providerRailFooter: "agent-gui-node__provider-rail-footer",
   providerRailPanel: "agent-gui-node__provider-rail-panel",
   providerRailSeparator: "agent-gui-node__provider-rail-separator",

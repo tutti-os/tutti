@@ -27,6 +27,7 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
   const capturedPrompt = capturedLaunch?.draftPrompt ?? "";
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
+  assert.equal(capturedLaunch?.agentTargetId, "local:codex");
   assert.equal(capturedLaunch?.provider, "codex");
   assert.equal(capturedLaunch?.userProjectPath, undefined);
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
@@ -59,7 +60,23 @@ test("desktop issue-manager agent runner reports unavailable agent GUI launcher"
   const result = await runner.runTask(createRunRequest());
 
   assert.deepEqual(result, {
-    errorMessage: "issue_manager.agent_gui_launch_unavailable",
+    errorMessage: "Agent session drafting is unavailable.",
+    status: "failed"
+  });
+});
+
+test("desktop issue-manager agent runner rejects provider-only execute launch", async () => {
+  const runner = createDesktopIssueManagerAgentRunner({
+    launchAgentGui() {
+      throw new Error("launch should not be called");
+    },
+    workspaceId: "workspace-1"
+  });
+
+  const result = await runner.runTask(createRunRequest({ agentTargetId: " " }));
+
+  assert.deepEqual(result, {
+    errorMessage: "Select an available agent target first.",
     status: "failed"
   });
 });
@@ -145,6 +162,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
       tasks: []
     },
     executionDirectory: "/Users/example/project/tutti",
+    agentTargetId: "remote:gemini",
     provider: "gemini",
     workspaceId: "workspace-1"
   });
@@ -152,6 +170,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
   assert.deepEqual(result, { status: "opened" });
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
+  assert.equal(capturedLaunch?.agentTargetId, "remote:gemini");
   assert.match(
     capturedLaunch?.draftPrompt ?? "",
     /Break this task reference down into executable tasks/
@@ -192,6 +211,7 @@ test("desktop issue-manager agent breakdown launcher sends localized prompt", as
       },
       tasks: []
     },
+    agentTargetId: "remote:gemini",
     provider: "gemini",
     workspaceId: "workspace-1"
   });
@@ -223,8 +243,13 @@ function createAgentSessionCreator(
   };
 }
 
-function createRunRequest(input?: { executionDirectory?: string | null }) {
+function createRunRequest(input?: {
+  agentTargetId?: string;
+  executionDirectory?: string | null;
+}) {
   return {
+    agentTargetId:
+      input && "agentTargetId" in input ? input.agentTargetId : "local:codex",
     ...(input?.executionDirectory
       ? { executionDirectory: input.executionDirectory }
       : {}),

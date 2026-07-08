@@ -48,6 +48,7 @@ export function buildSessionMentionItem(input: {
       translate("agentHost.agentGui.mentionCollaboratorFallback")
   );
   const sessionProvider = input.session.provider?.trim() ?? "";
+  const sessionAgentTargetId = input.session.agentTargetId?.trim() ?? "";
   const agentName = workspaceAgentProviderLabel(sessionProvider || "unknown");
   const inputPreview =
     compactText(input.summary?.latestUserRequirement) ||
@@ -81,20 +82,12 @@ export function buildSessionMentionItem(input: {
       label: mentionTitle,
       scope: {
         workspaceId: input.workspaceId,
-        // Captures the mentioned session's OWN agent provider (e.g.
-        // "claude-code") so opening the mention later can restore it. Without
-        // this, resolveWorkspaceMentionLinkAction() has no provider to put on
-        // the resulting open-agent-session action, and callers were falling
-        // back to defaulting it from the CURRENT/viewing node's own provider
-        // — which is wrong whenever a session is mentioned across providers
-        // (e.g. a Codex conversation @-mentioning a Claude Code session) and
-        // could overwrite the target session's stored cwd/visibility with
-        // data reported under the wrong provider context.
-        ...(sessionProvider ? { agentProvider: sessionProvider } : {})
+        ...(sessionAgentTargetId ? { agentTargetId: sessionAgentTargetId } : {})
       }
     }),
     workspaceId: input.workspaceId,
     targetId: input.session.agentSessionId,
+    ...(sessionAgentTargetId ? { agentTargetId: sessionAgentTargetId } : {}),
     name: `${initiatorName} & ${agentName} ${mentionTitle}`.trim(),
     title: mentionTitle,
     scope,

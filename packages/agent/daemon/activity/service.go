@@ -1607,12 +1607,19 @@ func explicitTurnLifecycleOutcomeFromActivityEvent(event activityshared.Event) s
 }
 
 func submitAvailabilityForTurnLifecyclePhase(phase string) *WorkspaceAgentSubmitAvailability {
-	switch phase {
-	case "settled":
+	// Classify the phase the same way reporter.go's
+	// submitAvailabilityPatchForSnapshotPhase does. Hardcoding only
+	// "submitted"/"running" missed the other live phases (working, streaming,
+	// waiting_*): those fell through to nil, which drops SubmitAvailability from
+	// the pushed state patch, so the GUI kept its previous "available" value
+	// while a turn was actually running and let the user submit — the daemon
+	// then rejected the send with "agent session already has an active turn".
+	switch {
+	case phase == "settled":
 		return &WorkspaceAgentSubmitAvailability{State: "available"}
-	case "waiting":
+	case activityshared.TurnLifecyclePhaseIsWaiting(phase):
 		return &WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
-	case "submitted", "running":
+	case activityshared.TurnLifecyclePhaseIsLive(phase):
 		return &WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
 	default:
 		return nil

@@ -3,8 +3,11 @@ package agent
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +77,37 @@ func TestAgentModelCatalogInvalidateIgnoresOtherProviders(t *testing.T) {
 	}
 	if lister.calls != 1 {
 		t.Fatalf("lister calls = %d, want 1 (codex cache must survive unrelated invalidations)", lister.calls)
+	}
+}
+
+func TestAgentModelCatalogEnrichesOpenCodeModelsWithImageCapability(t *testing.T) {
+	now := time.UnixMilli(1000)
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{{
+			ID:          "openai/gpt-5.2-pro",
+			DisplayName: "GPT-5.2 Pro",
+			IsDefault:   true,
+		}},
+	}
+	catalog := &CachedAgentModelCatalog{
+		OpenCode: lister,
+		ModelCapabilities: fakeModelCapabilitiesResolver{
+			"opencode:openai/gpt-5.2-pro": true,
+		},
+		Now: func() time.Time {
+			return now
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "opencode")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 1 {
+		t.Fatalf("models = %#v, want one OpenCode model", result.Models)
+	}
+	if result.Models[0].SupportsImageInput == nil || !*result.Models[0].SupportsImageInput {
+		t.Fatalf("supportsImageInput = %#v, want true", result.Models[0].SupportsImageInput)
 	}
 }
 
@@ -215,4 +249,85 @@ func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.
 	if string(userConfigAfterPrepare) != userConfig {
 		t.Fatalf("user tutti-agent config was modified: %q", string(userConfigAfterPrepare))
 	}
+}
+
+func TestDefaultTuttiAgentModelListerBootstrapsExpiredTuttiAgentAuth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stateDir := filepath.Join(home, "state")
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+
+	userAgentHome := filepath.Join(home, ".tutti-agent")
+	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	expiredAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	authJSON := `{"tutti_llm":{"access_token":"lat_old","access_token_expires_at":` + strconv.Quote(expiredAt) + `,"refresh_token":"lrt_old"}}`
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(authJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	issueRequests := make(chan struct{}, 1)
+	accessExpiresAt := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	refreshExpiresAt := strconv.FormatInt(time.Now().Add(24*time.Hour).Unix(), 10)
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/v1/llm-token" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Cookie"); got != "session_id=session_test" {
+			t.Fatalf("Cookie = %q, want session_id=session_test", got)
+		}
+		issueRequests <- struct{}{}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"data":{"accessToken":"lat_new","accessTokenExpiresAt":"` + accessExpiresAt + `","refreshToken":"lrt_new","refreshTokenExpiresAt":"` + refreshExpiresAt + `","tokenType":"Bearer","appId":"tutti","scopes":["llm:models","llm:chat"]}}`))
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+
+	capturePath := filepath.Join(t.TempDir(), "login.json")
+	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
+	installFakeTuttiAgentModelListBinary(t)
+
+	lister := defaultTuttiAgentModelLister()
+	if _, err := lister.PrepareEnv(nil); err != nil {
+		t.Fatalf("PrepareEnv() error = %v", err)
+	}
+
+	select {
+	case <-issueRequests:
+	default:
+		t.Fatal("llm token issue request was not sent")
+	}
+	loginJSON, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("read fake tutti-agent login capture: %v", err)
+	}
+	if !strings.Contains(string(loginJSON), `"access_token":"lat_new"`) {
+		t.Fatalf("login payload = %s, want issued access token", string(loginJSON))
+	}
+}
+
+func installFakeTuttiAgentModelListBinary(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	binaryPath := filepath.Join(binDir, "tutti-agent")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" != \"login\" ] || [ \"$2\" != \"--with-tutti-llm-tokens\" ]; then\n" +
+		"  echo unexpected arguments: \"$@\" >&2\n" +
+		"  exit 2\n" +
+		"fi\n" +
+		"cat > \"$TUTTI_AGENT_LOGIN_CAPTURE\"\n"
+	if err := os.WriteFile(binaryPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

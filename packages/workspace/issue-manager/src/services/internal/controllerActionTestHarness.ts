@@ -3,6 +3,7 @@ import type {
   IssueManagerContextRef,
   IssueManagerIssueDetail,
   IssueManagerIssueSummary,
+  IssueManagerAgentTargetOption,
   IssueManagerAnalyticsAdapter,
   IssueManagerNodeState,
   IssueManagerRun,
@@ -26,6 +27,7 @@ export function createControllerActionsHarness(input?: {
     NonNullable<IssueManagerFeature["agentSessionOpener"]>
   >;
   analytics?: IssueManagerAnalyticsAdapter;
+  agentTargetOptions?: readonly IssueManagerAgentTargetOption[];
   agentRunner?: Partial<IssueManagerFeature["agentRunner"]>;
   backend?: Partial<IssueManagerFeature["backend"]>;
   executionDirectoryPicker?: Partial<
@@ -110,6 +112,11 @@ export function createControllerActionsHarness(input?: {
           ...input.agentSessionOpener
         }
       : undefined,
+    agentTargetOptions: {
+      getOptions() {
+        return input?.agentTargetOptions ?? defaultAgentTargetOptions;
+      }
+    },
     backend: {
       addContextRefs() {
         return resolved([]);
@@ -283,6 +290,24 @@ export function createControllerActionsHarness(input?: {
     taskEditorModeState
   };
 }
+
+const defaultAgentTargetOptions: readonly IssueManagerAgentTargetOption[] = [
+  {
+    agentTargetId: "local:codex",
+    label: "Codex",
+    provider: "codex"
+  },
+  {
+    agentTargetId: "local:claude-code",
+    label: "Claude Code",
+    provider: "claude-code"
+  },
+  {
+    agentTargetId: "local:gemini",
+    label: "Gemini",
+    provider: "gemini"
+  }
+];
 
 function resolved<TValue>(value: TValue): Promise<TValue> {
   return Promise.resolve(value);

@@ -116,9 +116,14 @@ func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := &recordingClaudeSDKConnection{}
-	session, _ := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
-	events, err := adapter.Cancel(context.Background(), session, "turn-live")
+	// The live turn is identified by the adapter's own registry, not by the
+	// Cancel argument (which is the cancel reason). Register a live turn and pass
+	// an unrelated reason to prove the terminal is stamped for the real turnID.
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
+
+	events, err := adapter.Cancel(context.Background(), session, "user")
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -126,12 +131,54 @@ func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
 	// event construction.
 	snapshot := claudeSDKSnapshotForEvent(t, events, activityshared.EventTurnCompleted)
 	if snapshot.Phase != string(activityshared.TurnPhaseSettled) ||
-		snapshot.Outcome != string(activityshared.TurnOutcomeInterrupted) {
+		snapshot.Outcome != string(activityshared.TurnOutcomeInterrupted) ||
+		snapshot.ActiveTurnID != "" {
 		t.Fatalf("cancel snapshot = %#v", snapshot)
 	}
 	sent := conn.sentRequests()
 	if len(sent) != 1 || sent[0].Type != "cancel" {
 		t.Fatalf("sent requests = %#v, want one cancel", sent)
+	}
+}
+
+// The controller calls adapter.Cancel(ctx, session, reason) — the third argument
+// is the cancel reason ("user"), not a turnID. Cancel must stamp the interrupted
+// terminal for the real live turnID taken from its own registry, never for the
+// reason string, and must leave the waiter registered so the sidecar's own
+// turn_canceled can still settle it (removing it would break /goal clear and
+// drop the natural settle).
+func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &recordingClaudeSDKConnection{}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
+
+	// Reason is the free-form stop reason the controller passes, not a turnID.
+	events, err := adapter.Cancel(context.Background(), session, "user")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+
+	var canceledTurnIDs []string
+	for _, event := range events {
+		if event.Type == activityshared.EventTurnCompleted {
+			canceledTurnIDs = append(canceledTurnIDs, event.Payload.TurnID)
+		}
+		if event.Payload.TurnID == "user" {
+			t.Fatalf("Cancel stamped a terminal for the reason string as a turnID: %#v", event)
+		}
+	}
+	if len(canceledTurnIDs) != 1 || canceledTurnIDs[0] != "turn-live" {
+		t.Fatalf("canceled turn ids = %#v, want [turn-live]", canceledTurnIDs)
+	}
+	// The waiter must survive so the sidecar's natural turn_canceled still settles
+	// it (the /goal clear contract; the controller separately cancels the turn
+	// context to unblock Exec).
+	if adapter.claudeSDKTurnWaiter(adapterSession, "turn-live") == nil {
+		t.Fatal("Cancel removed the live turn waiter; the sidecar settle would be dropped")
 	}
 }
 

@@ -99,6 +99,12 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			Description: "List agent sessions.",
 		},
 		{
+			ID:          "agent-context.agent.wait",
+			Path:        []string{"agent", "wait"},
+			Summary:     "Wait for an agent session stop point",
+			Description: "Wait for recent agent execution messages.",
+		},
+		{
 			ID:          "workspace-apps.app.open",
 			Path:        []string{"app", "open"},
 			Summary:     "Open a workspace app",
@@ -318,7 +324,7 @@ func TestCommandGuideSummaryIncludesScopeDescriptions(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"- `tutti-dev agent ...` - agent sessions, summaries, turn resources, active peers.",
+		"- `tutti-dev agent ...` - agent sessions, waits, summaries, turn resources, active peers.",
 		"- `tutti-dev app ...` - open/show installed app windows only when explicitly requested.",
 		"- `tutti-dev issue ...` - issue/topic/task/run inspection and execution state.",
 		"- `tutti-dev aimc ...` - workspace app commands for AI Canvas (App id: ai-media-canvas).",
@@ -371,6 +377,10 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev agent wait --session-id <session-id> --json") ||
+		!strings.Contains(guide, "use `agent session-summary` when you need the full compact session context") {
+		t.Fatalf("guide = %q, want tutti-dev wait fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
 		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)

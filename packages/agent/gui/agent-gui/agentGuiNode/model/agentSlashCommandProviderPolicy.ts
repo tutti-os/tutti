@@ -103,13 +103,9 @@ const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   ...ACP_FALLBACK_COMMANDS,
   { name: REVIEW_COMMAND }
 ];
-// Cursor has no usage/quota surface (`status`) or speed dimension (`fast`);
-// `compact` stays capability-gated and `goal` is intercepted generically by
-// the standard ACP adapter.
-const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  { name: "compact" },
-  { name: "goal" }
-];
+// Cursor exposes only Tutti's local `/plan` toggle; every other slash entry is
+// hidden from the composer palette.
+const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [];
 const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
   "compact",
   "context",
@@ -377,10 +373,13 @@ function isSlashPaletteCommandVisible(
   provider: AgentSlashCommandProvider,
   commandName: string
 ): boolean {
-  return (
-    provider !== "claude-code" ||
-    CLAUDE_CODE_SLASH_PALETTE_COMMANDS.has(commandName)
-  );
+  if (provider === "claude-code") {
+    return CLAUDE_CODE_SLASH_PALETTE_COMMANDS.has(commandName);
+  }
+  if (provider === "cursor") {
+    return false;
+  }
+  return true;
 }
 
 function isLocalStatusCommand(

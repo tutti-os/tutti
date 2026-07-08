@@ -41,9 +41,23 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 		}
 		return capabilities
 	}
+	if provider == ProviderOpenCode {
+		capabilities := []string{CapabilityPlanMode, CapabilityInterrupt}
+		if promptImage {
+			capabilities = append([]string{CapabilityImageInput}, capabilities...)
+		}
+		return capabilities
+	}
 	capabilities := []string{CapabilityInterrupt}
 	if promptImage {
 		capabilities = append(capabilities, CapabilityImageInput)
+	}
+	// Cursor exposes plan mode through ACP session/set_mode ("plan"); advertise
+	// it so the composer plan badge survives the authoritative session snapshots
+	// emitted during/after a turn (otherwise supportsPlanMode flips to false and
+	// the badge vanishes once the reply settles).
+	if provider == ProviderCursor {
+		capabilities = append(capabilities, CapabilityPlanMode)
 	}
 	for _, command := range state.availableCommands {
 		if strings.EqualFold(strings.TrimSpace(command.Name), "compact") {

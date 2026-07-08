@@ -314,6 +314,12 @@ function createWebHostApi(): DesktopHostApi {
       capturePreview() {
         return Promise.resolve(null);
       },
+      minimize() {
+        return Promise.reject(electronDebugRequired("minimize"));
+      },
+      openAgentWindow() {
+        return Promise.reject(electronDebugRequired("openAgentWindow"));
+      },
       onCloseRequest() {
         return () => {};
       },
@@ -322,6 +328,9 @@ function createWebHostApi(): DesktopHostApi {
       },
       resolveCloseRequest() {
         return undefined;
+      },
+      toggleMaximize() {
+        return Promise.reject(electronDebugRequired("toggleMaximize"));
       }
     },
     notifications: {

@@ -18,6 +18,7 @@ import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
   AgentComposerDraftImage,
+  AgentComposerDraftLargeText,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
   AgentGUIQueuedPromptVM
@@ -41,7 +42,8 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from "@tutti-os/ui-system";
-import { ListChecks, Target, X } from "lucide-react";
+import { FileText, ListChecks, Target, X } from "lucide-react";
+import { translate } from "../../i18n/index";
 import {
   createMentionPaletteStateAdapter,
   makeAtPanelKeyDown,
@@ -68,9 +70,11 @@ import {
 } from "./model/agentComposerTriggerQueries";
 import {
   agentComposerDraftHasContent,
+  agentComposerDraftDisplayPrompt,
   agentComposerDraftToPromptContent,
   emptyAgentComposerDraft,
   MAX_AGENT_COMPOSER_DRAFT_IMAGES,
+  pastedTextPreview,
   textPromptContent
 } from "./model/agentComposerDraft";
 import {
@@ -195,6 +199,36 @@ const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
   DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
 const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
+const AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX = "pasted-text";
+
+const AGENT_COMPOSER_PASTED_TEXT_MIME = "text/plain";
+
+function agentComposerTextByteLength(text: string): number {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(text).byteLength;
+  }
+  return text.length;
+}
+
+/**
+ * First non-empty line of a pasted-text draft, used as the chip preview title
+ * (Codex-style: the first line above the "Pasted text" subtitle).
+ */
+
+/**
+ * Base64-encode UTF-8 text for upload. A bare `btoa(text)` throws on any
+ * non-Latin1 character (e.g. CJK), so encode to UTF-8 bytes first and feed the
+ * bytes to `btoa` in chunks to avoid overflowing the argument list.
+ */
+function agentComposerTextToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
 
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
@@ -204,6 +238,8 @@ export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
   mentionItems: readonly AgentContextMentionItem[];
 }
+
+export interface AgentComposerSubmitOptions {}
 
 export interface AgentComposerProps {
   workspaceId: string;
@@ -236,6 +272,7 @@ export interface AgentComposerProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   selectedProviderTarget?: AgentGUIProviderTarget | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  handoffProviderTargets?: readonly AgentGUIProviderTarget[];
   providerSelectReadonly?: boolean;
   onProviderSelect?: (input: {
     provider: AgentGUIProvider;
@@ -391,12 +428,14 @@ export interface AgentComposerProps {
     fileMentionEmpty: string;
     fileMentionError: string;
     fileMentionTabHint: string;
+    fileDropHint: string;
     mentionPalette: string;
     removeMention: string;
     addReference: string;
     addContent: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
+    handoffConversationTooltip: string;
     handoffConversationMenu: string;
     providerSwitchLabel: string;
     projectLocked: string;
@@ -442,7 +481,8 @@ export interface AgentComposerProps {
   ) => void;
   onSubmit: (
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions
   ) => void;
   onSubmitGuidance?: (
     content: AgentPromptContentBlock[],
@@ -711,8 +751,10 @@ function AgentUsageChip({
       {usagePopoverOpen ? (
         <PopoverContent
           ref={usagePopoverContentRef}
-          side="bottom"
-          align="end"
+          side="top"
+          align="center"
+          sideOffset={8}
+          collisionPadding={16}
           className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
           data-testid="agent-gui-usage-popover"
           onOpenAutoFocus={(event) => event.preventDefault()}
@@ -852,6 +894,23 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+function isPointInsideElement(
+  element: HTMLElement | null,
+  clientX: number,
+  clientY: number
+): boolean {
+  if (!element) {
+    return false;
+  }
+  const bounds = element.getBoundingClientRect();
+  return (
+    clientX >= bounds.left &&
+    clientX <= bounds.right &&
+    clientY >= bounds.top &&
+    clientY <= bounds.bottom
+  );
+}
+
 function AgentComposerMaskIcon({
   iconUrl,
   marker
@@ -930,8 +989,12 @@ function AgentComposerHandoffIcon({
   isPlaying: boolean;
 }): JSX.Element {
   const [isLottieReady, setIsLottieReady] = useState(false);
+  const shouldLoadAnimation = !disabled && isPlaying;
 
   useEffect(() => {
+    if (!shouldLoadAnimation) {
+      return;
+    }
     let isMounted = true;
     void loadHandoffLottiePlayer().then((isReady) => {
       if (isMounted) {
@@ -941,9 +1004,9 @@ function AgentComposerHandoffIcon({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [shouldLoadAnimation]);
 
-  const shouldShowAnimation = !disabled && isPlaying && isLottieReady;
+  const shouldShowAnimation = shouldLoadAnimation && isLottieReady;
 
   return (
     <span
@@ -965,13 +1028,15 @@ function AgentComposerHandoffIcon({
           maskSize: "contain"
         }}
       />
-      <dotlottie-wc
-        autoplay
-        className={styles.composerHandoffAnimatedIcon}
-        data-active={shouldShowAnimation ? "true" : undefined}
-        loop
-        src={HANDOFF_LOTTIE_ANIMATION_SRC}
-      />
+      {shouldShowAnimation ? (
+        <dotlottie-wc
+          autoplay
+          className={styles.composerHandoffAnimatedIcon}
+          data-active="true"
+          loop
+          src={HANDOFF_LOTTIE_ANIMATION_SRC}
+        />
+      ) : null}
     </span>
   );
 }
@@ -999,6 +1064,7 @@ export function AgentComposer({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
   selectedProviderTarget = null,
   providerTargets = [],
+  handoffProviderTargets,
   providerSelectReadonly = false,
   onProviderSelect,
   onHandoffConversation,
@@ -1049,6 +1115,7 @@ export function AgentComposer({
   const isGoalModeActive = goalDraftObjective !== null;
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
+  const draftLargeTexts = draftContent.largeTexts ?? [];
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
@@ -1104,6 +1171,8 @@ export function AgentComposer({
   const draftPromptRef = useRef(draftPrompt);
   const draftImagesRef = useRef<AgentComposerDraftImage[]>(draftImages);
   const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
+  const draftLargeTextsRef =
+    useRef<AgentComposerDraftLargeText[]>(draftLargeTexts);
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
     null
@@ -1413,6 +1482,10 @@ export function AgentComposer({
   }, [draftFiles]);
 
   useEffect(() => {
+    draftLargeTextsRef.current = draftLargeTexts;
+  }, [draftLargeTexts]);
+
+  useEffect(() => {
     if (
       previousSlashStatusAgentSessionIdRef.current === slashStatusAgentSessionId
     ) {
@@ -1647,6 +1720,7 @@ export function AgentComposer({
       const canSubmitWhileSending = canQueueWhileBusy && isSendingTurn;
       const currentDraftImages = draftImagesRef.current;
       const currentDraftFiles = draftFilesRef.current;
+      const currentDraftLargeTexts = draftLargeTextsRef.current;
       const hasUploadingImages = currentDraftImages.some(
         (image) => image.uploading
       );
@@ -1657,6 +1731,12 @@ export function AgentComposer({
         (file) => file.uploading
       );
       const hasFailedFiles = currentDraftFiles.some((file) => file.uploadError);
+      const hasUploadingLargeTexts = currentDraftLargeTexts.some(
+        (item) => item.uploading
+      );
+      const hasFailedLargeTexts = currentDraftLargeTexts.some(
+        (item) => item.uploadError
+      );
       if (
         isSelectedProjectMissing ||
         submitDisabled ||
@@ -1664,6 +1744,8 @@ export function AgentComposer({
         hasFailedImages ||
         hasUploadingFiles ||
         hasFailedFiles ||
+        hasUploadingLargeTexts ||
+        hasFailedLargeTexts ||
         (disabled && !canQueueWhileBusy) ||
         (isSendingTurn && !canSubmitWhileSending)
       ) {
@@ -1674,7 +1756,8 @@ export function AgentComposer({
         ...draftContent,
         prompt: nextPrompt,
         images: currentDraftImages,
-        files: currentDraftFiles
+        files: currentDraftFiles,
+        largeTexts: currentDraftLargeTexts
       };
       if (!agentComposerDraftHasContent(nextDraftContent)) {
         return;
@@ -1711,13 +1794,23 @@ export function AgentComposer({
         provider,
         skills: availableSkills
       });
+      const submitDisplayPrompt =
+        agentComposerDraftDisplayPrompt(nextDraftContent);
       if (options?.guidance === true) {
         if (!onSubmitGuidance) {
           return;
         }
-        onSubmitGuidance(submitContent);
+        if (submitDisplayPrompt) {
+          onSubmitGuidance(submitContent, submitDisplayPrompt);
+        } else {
+          onSubmitGuidance(submitContent);
+        }
       } else {
-        onSubmit(submitContent);
+        if (submitDisplayPrompt) {
+          onSubmit(submitContent, submitDisplayPrompt);
+        } else {
+          onSubmit(submitContent);
+        }
       }
       // Starting a brand-new conversation (no active conversation yet) is
       // async — session creation + activation round trip — before the view
@@ -1731,6 +1824,7 @@ export function AgentComposer({
         draftPromptRef.current = "";
         draftImagesRef.current = [];
         draftFilesRef.current = [];
+        draftLargeTextsRef.current = [];
         setPaletteDraftPrompt("");
         onDraftContentChange(emptyAgentComposerDraft());
       }
@@ -2209,7 +2303,8 @@ export function AgentComposer({
       onDraftContentChange({
         prompt: draftPromptRef.current,
         images: nextDraftImages,
-        files: draftFilesRef.current
+        files: draftFilesRef.current,
+        largeTexts: draftLargeTextsRef.current
       });
       if (!uploadPromptContent) {
         return;
@@ -2230,9 +2325,15 @@ export function AgentComposer({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
-            const uploadedPath = uploadedImage?.path?.trim() ?? "";
-            if (!uploadedPath) {
-              throw new Error("Prompt image upload completed without path.");
+            if (
+              !uploadedImage ||
+              (!uploadedImage.attachmentId &&
+                !uploadedImage.path &&
+                !uploadedImage.data)
+            ) {
+              throw new Error(
+                "Prompt image upload completed without usable image reference."
+              );
             }
             const uploadedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
@@ -2240,7 +2341,11 @@ export function AgentComposer({
                     id: image.id,
                     name: image.name,
                     mimeType: image.mimeType,
-                    path: uploadedPath,
+                    ...(uploadedImage.attachmentId
+                      ? { attachmentId: uploadedImage.attachmentId }
+                      : {}),
+                    ...(uploadedImage.data ? { data: uploadedImage.data } : {}),
+                    ...(uploadedImage.path ? { path: uploadedImage.path } : {}),
                     previewUrl: image.previewUrl,
                     uploading: false
                   }
@@ -2250,7 +2355,8 @@ export function AgentComposer({
             onDraftContentChange({
               prompt: draftPromptRef.current,
               images: uploadedDraftImages,
-              files: draftFilesRef.current
+              files: draftFilesRef.current,
+              largeTexts: draftLargeTextsRef.current
             });
           })
           .catch((error: unknown) => {
@@ -2269,7 +2375,8 @@ export function AgentComposer({
             onDraftContentChange({
               prompt: draftPromptRef.current,
               images: failedDraftImages,
-              files: draftFilesRef.current
+              files: draftFilesRef.current,
+              largeTexts: draftLargeTextsRef.current
             });
           });
       }
@@ -2292,7 +2399,8 @@ export function AgentComposer({
       onDraftContentChange({
         prompt: draftPromptRef.current,
         images: nextDraftImages,
-        files: draftFilesRef.current
+        files: draftFilesRef.current,
+        largeTexts: draftLargeTextsRef.current
       });
     },
     [onDraftContentChange]
@@ -2307,10 +2415,173 @@ export function AgentComposer({
       onDraftContentChange({
         prompt: draftPromptRef.current,
         images: draftImagesRef.current,
-        files: nextDraftFiles
+        files: nextDraftFiles,
+        largeTexts: draftLargeTextsRef.current
       });
     },
     [onDraftContentChange]
+  );
+
+  const removeDraftLargeText = useCallback(
+    (id: string): void => {
+      const nextDraftLargeTexts = draftLargeTextsRef.current.filter(
+        (item) => item.id !== id
+      );
+      draftLargeTextsRef.current = nextDraftLargeTexts;
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: draftImagesRef.current,
+        files: draftFilesRef.current,
+        largeTexts: nextDraftLargeTexts
+      });
+    },
+    [onDraftContentChange]
+  );
+
+  // "Show in text field": dissolve a pasted-text chip back into the composer as
+  // inline prompt text and drop the attachment. Only possible while the full
+  // body is still in memory (a fresh paste); a chip restored from a queued
+  // message carries only the landed path, so expansion is unavailable there.
+  const expandDraftLargeTextToPrompt = useCallback(
+    (id: string): void => {
+      const item = draftLargeTextsRef.current.find((entry) => entry.id === id);
+      if (!item || !item.text.trim()) {
+        return;
+      }
+      const currentPrompt = draftPromptRef.current;
+      const nextPrompt = currentPrompt.trim()
+        ? `${currentPrompt}\n${item.text}`
+        : item.text;
+      const nextDraftLargeTexts = draftLargeTextsRef.current.filter(
+        (entry) => entry.id !== id
+      );
+      draftPromptRef.current = nextPrompt;
+      draftLargeTextsRef.current = nextDraftLargeTexts;
+      setPaletteDraftPrompt(nextPrompt);
+      onDraftContentChange({
+        prompt: nextPrompt,
+        images: draftImagesRef.current,
+        files: draftFilesRef.current,
+        largeTexts: nextDraftLargeTexts
+      });
+      window.requestAnimationFrame(() => {
+        editorHandleRef.current?.focusAtEnd();
+      });
+    },
+    [onDraftContentChange]
+  );
+
+  const handlePastedLargeText = useCallback(
+    (text: string): void => {
+      const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      if (!normalizedText.trim()) {
+        return;
+      }
+      // Capability is resolved at paste time (not render time): the editor
+      // always routes large pastes here, so a runtime that becomes ready a tick
+      // after mount still lands the very first paste as a chip.
+      const uploadPromptContent =
+        agentActivityRuntime?.uploadPromptContent &&
+        (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
+          ? agentActivityRuntime.uploadPromptContent
+          : undefined;
+      if (!uploadPromptContent) {
+        // Landing is unsupported by this runtime (e.g. web). The editor already
+        // swallowed the native paste, so re-insert the text inline via the
+        // controlled prompt value to avoid losing it.
+        const currentPrompt = draftPromptRef.current;
+        const nextPrompt = currentPrompt.trim()
+          ? `${currentPrompt}\n${normalizedText}`
+          : normalizedText;
+        draftPromptRef.current = nextPrompt;
+        setPaletteDraftPrompt(nextPrompt);
+        onDraftContentChange({
+          prompt: nextPrompt,
+          images: draftImagesRef.current,
+          files: draftFilesRef.current,
+          largeTexts: draftLargeTextsRef.current
+        });
+        window.requestAnimationFrame(() => {
+          editorHandleRef.current?.focusAtEnd();
+        });
+        return;
+      }
+      const id = crypto.randomUUID();
+      const name = `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}.txt`;
+      const sizeBytes = agentComposerTextByteLength(normalizedText);
+      const nextDraftLargeTexts = [
+        ...draftLargeTextsRef.current,
+        {
+          id,
+          name,
+          text: normalizedText,
+          sizeBytes,
+          uploading: true
+        }
+      ];
+      draftLargeTextsRef.current = nextDraftLargeTexts;
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: draftImagesRef.current,
+        files: draftFilesRef.current,
+        largeTexts: nextDraftLargeTexts
+      });
+      void uploadPromptContent({
+        workspaceId,
+        content: [
+          {
+            type: "file",
+            data: agentComposerTextToBase64(normalizedText),
+            mimeType: AGENT_COMPOSER_PASTED_TEXT_MIME,
+            name
+          }
+        ]
+      })
+        .then((result) => {
+          const uploadedFile = result.content.find(
+            (block) => block.type === "file"
+          );
+          const uploadedPath = uploadedFile?.path?.trim() ?? "";
+          if (!uploadedPath) {
+            throw new Error("Prompt text upload completed without path.");
+          }
+          const uploadedDraftLargeTexts = draftLargeTextsRef.current.map(
+            (item) =>
+              item.id === id
+                ? {
+                    ...item,
+                    path: uploadedPath,
+                    sizeBytes: uploadedFile?.sizeBytes ?? item.sizeBytes,
+                    uploading: false
+                  }
+                : item
+          );
+          draftLargeTextsRef.current = uploadedDraftLargeTexts;
+          onDraftContentChange({
+            prompt: draftPromptRef.current,
+            images: draftImagesRef.current,
+            files: draftFilesRef.current,
+            largeTexts: uploadedDraftLargeTexts
+          });
+        })
+        .catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const failedDraftLargeTexts = draftLargeTextsRef.current.map((item) =>
+            item.id === id
+              ? { ...item, uploading: false, uploadError: message }
+              : item
+          );
+          draftLargeTextsRef.current = failedDraftLargeTexts;
+          onDraftContentChange({
+            prompt: draftPromptRef.current,
+            images: draftImagesRef.current,
+            files: draftFilesRef.current,
+            largeTexts: failedDraftLargeTexts
+          });
+        });
+    },
+    [agentActivityRuntime, onDraftContentChange, workspaceId]
   );
 
   const applyReferencePickResult = useCallback(
@@ -2540,11 +2811,15 @@ export function AgentComposer({
     )
       ? [selectedProviderSwitchTarget, ...enabledProviderSwitchTargets]
       : enabledProviderSwitchTargets;
+  const enabledHandoffProviderTargets = useMemo(
+    () =>
+      (handoffProviderTargets ?? providerMenuTargets).filter(
+        (target) => target.disabled !== true
+      ),
+    [handoffProviderTargets, providerMenuTargets]
+  );
   const handoffMenuTargets = selectedProviderSwitchTarget
-    ? providerMenuTargets.filter((target) => {
-        if (target.disabled === true) {
-          return false;
-        }
+    ? enabledHandoffProviderTargets.filter((target) => {
         if (target.targetId === selectedProviderSwitchTarget.targetId) {
           return false;
         }
@@ -2554,7 +2829,7 @@ export function AgentComposer({
         const targetAgentTargetId = target.agentTargetId ?? target.targetId;
         return targetAgentTargetId !== selectedAgentTargetId;
       })
-    : providerMenuTargets;
+    : enabledHandoffProviderTargets;
   const selectedProviderLabel =
     selectedProviderSwitchTarget?.label ??
     selectedProviderTarget?.label ??
@@ -2604,6 +2879,9 @@ export function AgentComposer({
     },
     [addDraftImages, scheduleComposerFocus]
   );
+  const [fileDropOverlayHost, setFileDropOverlayHost] =
+    useState<HTMLElement | null>(null);
+  const [fileDropOverlayActive, setFileDropOverlayActive] = useState(false);
   useEffect(() => {
     const composer = composerRef.current;
     const dropTarget = composer?.closest("#agent-gui-detail") ?? composer;
@@ -2611,9 +2889,16 @@ export function AgentComposer({
       return undefined;
     }
     let isDisposed = false;
+    setFileDropOverlayHost(dropTarget as HTMLElement);
 
     const isDragEvent = (event: Event): event is DragEvent =>
       "dataTransfer" in event;
+
+    const clearDropOverlay = (): void => {
+      if (!isDisposed) {
+        setFileDropOverlayActive(false);
+      }
+    };
 
     const containsEventTarget = (event: DragEvent): boolean => {
       const target = event.target;
@@ -2677,10 +2962,14 @@ export function AgentComposer({
         drag.hasImageFiles &&
         !promptImagesSupported
       ) {
+        clearDropOverlay();
         return;
       }
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = "copy";
+      }
+      if (!isDisposed) {
+        setFileDropOverlayActive(true);
       }
     };
 
@@ -2694,6 +2983,7 @@ export function AgentComposer({
       }
       event.preventDefault();
       event.stopPropagation();
+      clearDropOverlay();
       if (drop.regularFiles.length > 0) {
         editorHandleRef.current?.focusAtEnd();
         void applyDroppedFileReferences(drop.regularFiles).then(() => {
@@ -2718,12 +3008,63 @@ export function AgentComposer({
       });
     };
 
+    // `dragleave` is unreliable across nested children, so mirror the file
+    // manager and clear the overlay from a capture-phase document listener
+    // whenever the pointer leaves the drop target's bounds.
+    const handleDocumentDragOver: EventListener = (event): void => {
+      if (!isDragEvent(event)) {
+        return;
+      }
+      if (
+        isPointInsideElement(
+          dropTarget as HTMLElement,
+          event.clientX,
+          event.clientY
+        )
+      ) {
+        return;
+      }
+      clearDropOverlay();
+    };
+
+    // Once the drag leaves the window entirely, `dragover` stops firing (so the
+    // handler above can never fire) and external file drags never dispatch a
+    // renderer-side `dragend` — leaving the overlay stuck. A `dragleave` whose
+    // pointer sits at/outside the viewport edge (or has no relatedTarget) means
+    // the cursor left the window, so clear the overlay then.
+    const handleDocumentDragLeave: EventListener = (event): void => {
+      if (!isDragEvent(event)) {
+        return;
+      }
+      const leftWindow =
+        event.relatedTarget === null ||
+        event.clientX <= 0 ||
+        event.clientY <= 0 ||
+        event.clientX >= window.innerWidth ||
+        event.clientY >= window.innerHeight;
+      if (leftWindow) {
+        clearDropOverlay();
+      }
+    };
+
     dropTarget.addEventListener("dragover", handleDragOver);
     dropTarget.addEventListener("drop", handleDrop);
+    document.addEventListener("dragover", handleDocumentDragOver, true);
+    document.addEventListener("dragleave", handleDocumentDragLeave, true);
+    window.addEventListener("dragend", clearDropOverlay);
+    window.addEventListener("drop", clearDropOverlay);
+    window.addEventListener("blur", clearDropOverlay);
     return () => {
       isDisposed = true;
+      setFileDropOverlayHost(null);
+      setFileDropOverlayActive(false);
       dropTarget.removeEventListener("dragover", handleDragOver);
       dropTarget.removeEventListener("drop", handleDrop);
+      document.removeEventListener("dragover", handleDocumentDragOver, true);
+      document.removeEventListener("dragleave", handleDocumentDragLeave, true);
+      window.removeEventListener("dragend", clearDropOverlay);
+      window.removeEventListener("drop", clearDropOverlay);
+      window.removeEventListener("blur", clearDropOverlay);
     };
   }, [
     addDraftImages,
@@ -2762,7 +3103,10 @@ export function AgentComposer({
   const showProjectMissingProbe =
     !showProjectRow &&
     Boolean(composerSettings.projectLocked) &&
-    selectedProjectPath !== "";
+    selectedProjectPath !== "" &&
+    // Remote runtimes (shared/cloud sandbox) run their cwd off the local
+    // filesystem, so the local existence check would always false-positive.
+    !composerSettings.projectPathIsRemote;
   const activePromptTipId = activePromptTip?.id ?? null;
   const activePromptTipText = activePromptTip
     ? `${labels.promptTipsPrefix}${activePromptTip.label} · ${activePromptTip.prompt}`
@@ -2841,11 +3185,18 @@ export function AgentComposer({
     }
 
     const measure = (): void => {
-      const attachmentArea = inputArea.querySelector(
-        '[data-testid="agent-gui-composer-image-drafts"]'
+      // Both attachment rows contribute to the composer height: images live in
+      // one container and files/pasted-text chips in another. Measuring only the
+      // image row clipped the taller pasted-text chip ("展示不全").
+      const attachmentAreas = inputArea.querySelectorAll(
+        '[data-testid="agent-gui-composer-image-drafts"], [data-testid="agent-gui-composer-file-drafts"]'
       );
-      const attachmentHeight =
-        attachmentArea instanceof HTMLElement ? attachmentArea.scrollHeight : 0;
+      let attachmentHeight = 0;
+      attachmentAreas.forEach((area) => {
+        if (area instanceof HTMLElement) {
+          attachmentHeight += area.scrollHeight;
+        }
+      });
       const textHeight = Math.min(
         DOCK_COMPOSER_INPUT_MAX_HEIGHT,
         Math.max(
@@ -2947,7 +3298,13 @@ export function AgentComposer({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [draftFiles.length, draftImages.length, isHeroLayout, paletteDraftPrompt]);
+  }, [
+    draftFiles.length,
+    draftImages.length,
+    draftLargeTexts.length,
+    isHeroLayout,
+    paletteDraftPrompt
+  ]);
   const inputShellStyle = useMemo<CSSProperties | undefined>(
     () =>
       showFileMentionPalette || showFloatingCommandMenu
@@ -2981,6 +3338,12 @@ export function AgentComposer({
   const hasFailedDraftImages = draftImages.some((image) => image.uploadError);
   const hasUploadingDraftFiles = draftFiles.some((file) => file.uploading);
   const hasFailedDraftFiles = draftFiles.some((file) => file.uploadError);
+  const hasUploadingDraftLargeTexts = draftLargeTexts.some(
+    (item) => item.uploading
+  );
+  const hasFailedDraftLargeTexts = draftLargeTexts.some(
+    (item) => item.uploadError
+  );
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
   const shouldShowStopButton = showStopButton && !isQueueMode;
   const sendButtonState = isQueueMode
@@ -3004,6 +3367,7 @@ export function AgentComposer({
   const disabledReasonText = disabledReason?.trim() ?? "";
   const effectivePlaceholder = disabledReasonText || placeholder;
   const visibleDraftFiles = draftFiles;
+  const visibleDraftLargeTexts = draftLargeTexts;
   useEffect(() => {
     if (previousSelectedProjectPathRef.current === selectedProjectPath) {
       return;
@@ -3073,6 +3437,8 @@ export function AgentComposer({
         hasFailedDraftImages ||
         hasUploadingDraftFiles ||
         hasFailedDraftFiles ||
+        hasUploadingDraftLargeTexts ||
+        hasFailedDraftLargeTexts ||
         sendButtonBusy
       }
       aria-label={labels.send}
@@ -3123,6 +3489,26 @@ export function AgentComposer({
     </span>
   ) : null;
 
+  const fileDropOverlay =
+    fileDropOverlayHost !== null
+      ? createPortal(
+          <div
+            aria-hidden="true"
+            data-testid="agent-gui-composer-file-drop-overlay"
+            data-active={fileDropOverlayActive ? "true" : "false"}
+            className={cn(
+              styles.composerFileDropOverlay,
+              fileDropOverlayActive && styles.composerFileDropOverlayActive
+            )}
+          >
+            <span className={styles.composerFileDropOverlayCard}>
+              {labels.fileDropHint}
+            </span>
+          </div>,
+          fileDropOverlayHost
+        )
+      : null;
+
   return (
     <form
       ref={composerRef}
@@ -3130,6 +3516,7 @@ export function AgentComposer({
       data-layout={layoutMode}
       onSubmit={submit}
     >
+      {fileDropOverlay}
       {visibleActivePrompt ? (
         <div
           className={styles.composerFloatingPrompt}
@@ -3266,11 +3653,85 @@ export function AgentComposer({
                     ))}
                   </div>
                 ) : null}
-                {visibleDraftFiles.length > 0 ? (
+                {visibleDraftFiles.length > 0 ||
+                visibleDraftLargeTexts.length > 0 ? (
                   <div
                     className="mb-2 flex max-w-[520px] flex-wrap gap-2"
                     data-testid="agent-gui-composer-file-drafts"
                   >
+                    {visibleDraftLargeTexts.map((item, index) => {
+                      const displayName = `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}-${index + 1}.txt`;
+                      const preview =
+                        pastedTextPreview(item.text) || displayName;
+                      const attachmentTitle = translate(
+                        "agentHost.agentGui.pastedTextAttachmentTitle"
+                      );
+                      const restoreLabel = translate(
+                        "agentHost.agentGui.pastedTextRestoreToComposer"
+                      );
+                      const canRestore =
+                        !item.uploading && item.text.trim() !== "";
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "group relative inline-flex max-w-full items-center gap-2 rounded-[10px] border border-[var(--line-1)] bg-[var(--background-fronted)] py-1.5 pl-1.5 pr-8 text-xs text-[var(--text-primary)]",
+                            item.uploadError &&
+                              "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
+                          )}
+                          data-testid="agent-gui-composer-large-text-draft"
+                          data-uploading={item.uploading ? "true" : undefined}
+                          data-upload-error={
+                            item.uploadError ? "true" : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="flex min-w-0 items-center gap-2 rounded-[8px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] disabled:cursor-default"
+                            disabled={!canRestore}
+                            aria-label={restoreLabel}
+                            title={canRestore ? restoreLabel : preview}
+                            onClick={() =>
+                              expandDraftLargeTextToPrompt(item.id)
+                            }
+                          >
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-[var(--transparency-hover)] text-[var(--text-secondary)]">
+                              {item.uploading ? (
+                                <Spinner
+                                  size={16}
+                                  strokeWidth={2.4}
+                                  trackColor="var(--transparency-hover)"
+                                  testId="agent-gui-composer-large-text-upload-spinner"
+                                />
+                              ) : (
+                                <FileText
+                                  size={16}
+                                  strokeWidth={2}
+                                  aria-hidden
+                                />
+                              )}
+                            </span>
+                            <span className="flex min-w-0 flex-col">
+                              <span className="max-w-[200px] truncate font-medium text-[var(--text-primary)]">
+                                {preview}
+                              </span>
+                              <span className="max-w-[200px] truncate text-[11px] text-[var(--text-tertiary)]">
+                                {attachmentTitle}
+                              </span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="absolute right-1.5 top-1.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
+                            aria-label={labels.removeMention}
+                            title={labels.removeMention}
+                            onClick={() => removeDraftLargeText(item.id)}
+                          >
+                            <X size={12} strokeWidth={2.4} aria-hidden />
+                          </button>
+                        </div>
+                      );
+                    })}
                     {visibleDraftFiles.map((file) => (
                       <div
                         key={file.id}
@@ -3345,6 +3806,7 @@ export function AgentComposer({
                     promptImagesSupported={promptImagesSupported}
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
+                    onPasteLargeText={handlePastedLargeText}
                     getReferenceForFile={getReferenceForFile}
                     onDropFiles={
                       promptFilesSupported
@@ -3591,83 +4053,94 @@ export function AgentComposer({
                 </TooltipProvider>
               </div>
               {showHandoffSelect ? (
-                <Select
-                  value={HANDOFF_SELECT_IDLE_VALUE}
-                  disabled={handoffDisabled}
-                  onValueChange={(nextTargetId) => {
-                    const target = handoffMenuTargets.find(
-                      (candidate) => candidate.targetId === nextTargetId
-                    );
-                    if (!target || target.disabled === true) {
-                      return;
-                    }
-                    onHandoffConversation?.(target);
-                  }}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    aria-label={effectiveHandoffLabel}
-                    title={effectiveHandoffLabel}
-                    onBlur={() => {
-                      setIsHandoffIconPlaying(false);
-                    }}
-                    onFocus={() => {
-                      setIsHandoffIconPlaying(true);
-                    }}
-                    onMouseEnter={() => {
-                      setIsHandoffIconPlaying(true);
-                    }}
-                    onMouseLeave={() => {
-                      setIsHandoffIconPlaying(false);
-                    }}
-                    className={cn(
-                      styles.composerMenuTrigger,
-                      styles.composerProviderSelect,
-                      styles.composerHandoffTrigger,
-                      "w-auto max-w-[180px] [&>svg:last-child]:hidden"
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <AgentComposerHandoffIcon
-                        disabled={handoffDisabled}
-                        isPlaying={isHandoffIconPlaying}
-                      />
-                      <span className="min-w-0 truncate">
-                        {effectiveHandoffLabel}
-                      </span>
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent
-                    align="start"
-                    className={cn(
-                      styles.composerMenuContent,
-                      styles.composerHandoffMenuContent,
-                      "min-w-[190px]"
-                    )}
-                    aria-label={effectiveHandoffMenuLabel}
-                  >
-                    {handoffMenuTargets.map((target) => (
-                      <SelectItem
-                        key={`${target.provider}:${target.targetId}`}
-                        value={target.targetId}
-                        className={cn(styles.composerMenuItem, "gap-2")}
-                        disabled={target.disabled === true}
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <img
-                            alt=""
-                            aria-hidden="true"
-                            className="size-4 shrink-0 rounded-[4px]"
-                            src={resolveComposerProviderTargetIconUrl(target)}
-                          />
-                          <span className="min-w-0 truncate">
-                            {target.label}
+                <TooltipProvider>
+                  <Tooltip>
+                    <Select
+                      value={HANDOFF_SELECT_IDLE_VALUE}
+                      disabled={handoffDisabled}
+                      onValueChange={(nextTargetId) => {
+                        const target = handoffMenuTargets.find(
+                          (candidate) => candidate.targetId === nextTargetId
+                        );
+                        if (!target || target.disabled === true) {
+                          return;
+                        }
+                        onHandoffConversation?.(target);
+                      }}
+                    >
+                      <TooltipTrigger asChild>
+                        <SelectTrigger
+                          size="sm"
+                          aria-label={effectiveHandoffLabel}
+                          title={labels.handoffConversationTooltip}
+                          onBlur={() => {
+                            setIsHandoffIconPlaying(false);
+                          }}
+                          onFocus={() => {
+                            setIsHandoffIconPlaying(true);
+                          }}
+                          onMouseEnter={() => {
+                            setIsHandoffIconPlaying(true);
+                          }}
+                          onMouseLeave={() => {
+                            setIsHandoffIconPlaying(false);
+                          }}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerProviderSelect,
+                            styles.composerHandoffTrigger,
+                            "w-auto max-w-[180px] [&>svg:last-child]:hidden"
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <AgentComposerHandoffIcon
+                              disabled={handoffDisabled}
+                              isPlaying={isHandoffIconPlaying}
+                            />
+                            <span className="min-w-0 truncate">
+                              {effectiveHandoffLabel}
+                            </span>
                           </span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        </SelectTrigger>
+                      </TooltipTrigger>
+                      <SelectContent
+                        align="start"
+                        className={cn(
+                          styles.composerMenuContent,
+                          styles.composerHandoffMenuContent,
+                          "min-w-[190px]"
+                        )}
+                        aria-label={effectiveHandoffMenuLabel}
+                      >
+                        {handoffMenuTargets.map((target) => (
+                          <SelectItem
+                            key={`${target.provider}:${target.targetId}`}
+                            value={target.targetId}
+                            className={cn(styles.composerMenuItem, "gap-2")}
+                            disabled={target.disabled === true}
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <img
+                                alt=""
+                                aria-hidden="true"
+                                className="size-4 shrink-0 rounded-[4px]"
+                                src={resolveComposerProviderTargetIconUrl(
+                                  target
+                                )}
+                              />
+                              <span className="min-w-0 truncate">
+                                {target.label}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <TooltipContent side="top">
+                      {labels.handoffConversationTooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
                   value={selectedProviderSwitchTarget.targetId}

@@ -733,6 +733,11 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 	}
 	adapter.storeSession(session.AgentSessionID, adapterSession)
 
+	// A turn parked on an approval has a live Exec waiter in the registry; the
+	// interrupted terminal is stamped for that registered turnID, not for the
+	// cancel argument (which is the reason).
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-cancel", nil)
+
 	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-cancel", claudeSDKSidecarEvent{
 		Type: "approval_requested",
 		Payload: map[string]any{
@@ -748,7 +753,7 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 		t.Fatal("pending prompt missing before cancel")
 	}
 
-	events, err := adapter.Cancel(context.Background(), session, "turn-cancel")
+	events, err := adapter.Cancel(context.Background(), session, "user")
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}

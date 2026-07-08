@@ -687,6 +687,10 @@ export function createIssueManagerControllerActions(
         selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
+      if (runPlan.kind === "blocked") {
+        notifyTip(copy.t(runPlan.notificationKey));
+        return;
+      }
       if (runPlan.kind !== "ready") {
         return;
       }
@@ -751,6 +755,10 @@ export function createIssueManagerControllerActions(
         selectedAgentTargetId: nodeState.selectedAgentTargetId,
         taskDetail: taskDetail.value
       });
+      if (breakdownPlan.kind === "blocked") {
+        notifyTip(copy.t(breakdownPlan.notificationKey));
+        return;
+      }
       if (breakdownPlan.kind !== "ready") {
         return;
       }

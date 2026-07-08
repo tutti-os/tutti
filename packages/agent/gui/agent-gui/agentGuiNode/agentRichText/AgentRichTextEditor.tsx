@@ -77,6 +77,7 @@ export interface AgentRichTextEditorProps {
   promptImagesSupported?: boolean;
   onPromptImagesUnsupported?: () => void;
   onPasteImages?: (images: AgentRichTextPastedImage[]) => void;
+  onPasteLargeText?: (text: string) => void;
   getReferenceForFile?: (file: File) => WorkspaceFileReference | null;
   onDropFiles?: (files: readonly File[]) => void;
 }
@@ -100,6 +101,14 @@ interface AgentRichTextContextMenuState {
   selectionTo: number;
   x: number;
   y: number;
+}
+
+// Aligns with the Codex desktop composer: a paste is treated as a large-text
+// attachment purely by character count (no line-count heuristic).
+const AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS = 5_000;
+
+export function isAgentRichTextLargeTextPaste(text: string): boolean {
+  return text.trim().length >= AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS;
 }
 
 function buildWorkspaceFileMentionDropContent(
@@ -475,6 +484,7 @@ export const AgentRichTextEditor = forwardRef<
     promptImagesSupported = true,
     onPromptImagesUnsupported,
     onPasteImages,
+    onPasteLargeText,
     getReferenceForFile,
     onDropFiles
   },
@@ -497,6 +507,7 @@ export const AgentRichTextEditor = forwardRef<
   const onLinkClickRef = useRef(onLinkClick);
   const onPromptImagesUnsupportedRef = useRef(onPromptImagesUnsupported);
   const onPasteImagesRef = useRef(onPasteImages);
+  const onPasteLargeTextRef = useRef(onPasteLargeText);
   const onDropFilesRef = useRef(onDropFiles);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
   const getReferenceForFileRef = useRef(getReferenceForFile);
@@ -516,6 +527,10 @@ export const AgentRichTextEditor = forwardRef<
   const insertPlainText = useCallback((text: string): void => {
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed || !text) {
+      return;
+    }
+    if (onPasteLargeTextRef.current && isAgentRichTextLargeTextPaste(text)) {
+      onPasteLargeTextRef.current(text);
       return;
     }
     suppressPastedAtSuggestionRef.current =
@@ -649,6 +664,7 @@ export const AgentRichTextEditor = forwardRef<
   onLinkClickRef.current = onLinkClick;
   onPromptImagesUnsupportedRef.current = onPromptImagesUnsupported;
   onPasteImagesRef.current = onPasteImages;
+  onPasteLargeTextRef.current = onPasteLargeText;
   onDropFilesRef.current = onDropFiles;
   promptImagesSupportedRef.current = promptImagesSupported;
   getReferenceForFileRef.current = getReferenceForFile;
@@ -827,6 +843,13 @@ export const AgentRichTextEditor = forwardRef<
             return false;
           }
           event.preventDefault();
+          if (
+            onPasteLargeTextRef.current &&
+            isAgentRichTextLargeTextPaste(text)
+          ) {
+            onPasteLargeTextRef.current(text);
+            return true;
+          }
           const currentEditor = editorRef.current;
           if (!currentEditor) {
             return true;

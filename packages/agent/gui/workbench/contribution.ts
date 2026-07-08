@@ -27,6 +27,7 @@ import {
 } from "./launch.ts";
 import {
   agentGuiWorkbenchProviderFromInstanceId,
+  agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState
@@ -72,6 +73,14 @@ export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
 export const AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT =
   "tutti:agent-gui-workbench-new-conversation";
 
+/**
+ * Fired when the empty-hero "Import session" suggestion is chosen. The host
+ * chrome (which owns the external-agent import wizard state) listens for this
+ * and opens the wizard.
+ */
+export const AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT =
+  "tutti:agent-gui-workbench-open-external-import";
+
 export interface AgentGuiWorkbenchConversationRailToggleDetail {
   conversationRailCollapsed: boolean;
   instanceId: string;
@@ -95,6 +104,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   minimize: string;
   newConversation: string;
   nodeTitle: string;
+  openDetachedWindow: string;
   restore: string;
 }
 
@@ -110,6 +120,7 @@ export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   minimize: "Minimize",
   newConversation: "New conversation",
   nodeTitle: "Agent",
+  openDetachedWindow: "Open in detached window",
   restore: "Restore"
 };
 
@@ -162,6 +173,13 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     payload: unknown;
     reason: WorkbenchHostLaunchRequest["reason"];
   }) => unknown | null | undefined;
+  onOpenDetachedWindow?: (input: {
+    agentSessionId?: string | null;
+    agentTargetId?: string | null;
+    providerTargets?: readonly AgentGUIProviderTarget[];
+    provider: AgentGuiWorkbenchProvider;
+    workspaceId: string;
+  }) => void | Promise<void>;
   unifiedDockIconUrl?: string;
   workspaceId: string;
 }
@@ -261,13 +279,23 @@ export function createAgentGuiWorkbenchContribution(
             input.resolveDockPopupTitle?.(workbenchState) ??
             workbenchState.lastActiveConversationTitle ??
             null;
+          // Resolve the icon from a *known* provider only. During a freshly
+          // created session the provider is not encoded yet; falling back to
+          // `provider` (which defaults to "codex") would flash the wrong icon,
+          // so we leave the URL empty and let the header render a neutral
+          // placeholder until the real provider resolves.
+          const iconProvider =
+            providerFromActivation(activation) ??
+            agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
+          const conversationIconFallbackUrl = iconProvider
+            ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
+              resolveAgentGuiWorkbenchProviderIconUrl({
+                dockIconUrls: input.dockIconUrls,
+                provider: iconProvider
+              }))
+            : null;
           const conversationIconUrl =
-            conversationIdentity?.iconUrl ??
-            resolveAgentGuiSessionProviderIconUrl(provider) ??
-            resolveAgentGuiWorkbenchProviderIconUrl({
-              dockIconUrls: input.dockIconUrls,
-              provider
-            });
+            conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
             nodeStateSource.writeNodeState({
               instanceId,
@@ -308,6 +336,7 @@ export function createAgentGuiWorkbenchContribution(
           return createElement(AgentGuiWorkbenchHeader, {
             copy,
             conversationIconUrl,
+            conversationIconFallbackUrl,
             conversationTitle,
             conversationRailWidthPx,
             displayMode,
@@ -323,6 +352,17 @@ export function createAgentGuiWorkbenchContribution(
             },
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
+            onOpenDetachedWindow: input.onOpenDetachedWindow
+              ? () => {
+                  void input.onOpenDetachedWindow?.({
+                    agentSessionId: workbenchState.lastActiveAgentSessionId,
+                    agentTargetId: nodeState.agentTargetId,
+                    providerTargets: input.providerTargets ?? undefined,
+                    provider,
+                    workspaceId: input.workspaceId
+                  });
+                }
+              : undefined,
             onPointerDown: (event) => {
               dragHandleProps.onPointerDown?.(event);
               if (!isFocused) {

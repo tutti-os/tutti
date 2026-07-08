@@ -576,6 +576,36 @@ func acpGoalUpdatedEvent(session Session, updateType string) (activityshared.Eve
 	return event, true
 }
 
+func acpCurrentModeUpdatedEvent(session Session, modeID string) (activityshared.Event, bool) {
+	ctx, ok := activityEventContext(session, newID(), "")
+	if !ok {
+		return activityshared.Event{}, false
+	}
+	modeID = strings.TrimSpace(modeID)
+	if modeID == "" {
+		return activityshared.Event{}, false
+	}
+	event := activityshared.NewSessionUpdated(ctx, "")
+	event.Payload.Metadata = map[string]any{
+		"acpSessionUpdate": "current_mode_update",
+		"acpModeId":        modeID,
+	}
+	return event, true
+}
+
+func hasACPCurrentModeUpdatedEvent(events []activityshared.Event) bool {
+	for _, event := range events {
+		if event.Type != activityshared.EventSessionUpdated {
+			continue
+		}
+		if strings.TrimSpace(asString(event.Payload.Metadata["acpSessionUpdate"])) != "current_mode_update" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func newSessionTitleActivityEvent(session Session, title string) activityshared.Event {
 	ctx, ok := activityEventContext(session, newID(), "")
 	if !ok {

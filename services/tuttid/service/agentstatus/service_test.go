@@ -175,11 +175,12 @@ func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 
 func TestParseCursorAuthStatusOutput(t *testing.T) {
 	for _, tt := range []struct {
-		output string
-		status AuthStatus
-		ok     bool
+		output       string
+		status       AuthStatus
+		accountLabel string
+		ok           bool
 	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, accountLabel: "user@example.com", ok: true},
 		{output: "cursor-agent 2026.06.10\nStatus: Authenticated", status: AuthAuthenticated, ok: true},
 		{output: "Not logged in. Run cursor-agent login to sign in.", status: AuthRequired, ok: true},
 		{output: "You are currently logged out", status: AuthRequired, ok: true},
@@ -192,6 +193,72 @@ func TestParseCursorAuthStatusOutput(t *testing.T) {
 		}
 		if ok && auth.Status != tt.status {
 			t.Fatalf("parseCursorAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
+		}
+		if ok && auth.AccountLabel != tt.accountLabel {
+			t.Fatalf("parseCursorAuthStatusOutput(%q) accountLabel = %q, want %q", tt.output, auth.AccountLabel, tt.accountLabel)
+		}
+	}
+}
+
+func TestParseCursorAboutJSON(t *testing.T) {
+	auth, ok := parseCursorAboutJSON([]byte(`{
+		"cliVersion": "2026.07.01-41b2de7",
+		"subscriptionTier": "Ultra",
+		"userEmail": "user@example.com"
+	}`))
+	if !ok {
+		t.Fatal("parseCursorAboutJSON() ok = false, want true")
+	}
+	if auth.Status != AuthAuthenticated {
+		t.Fatalf("status = %q, want authenticated", auth.Status)
+	}
+	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
+		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
+	}
+	if auth.AuthMethod != "cursor_login" {
+		t.Fatalf("authMethod = %q, want cursor_login", auth.AuthMethod)
+	}
+
+	auth, ok = parseCursorAboutJSON([]byte(`{"userEmail": null}`))
+	if !ok || auth.Status != AuthRequired {
+		t.Fatalf("null userEmail = %#v, want required auth", auth)
+	}
+}
+
+func TestParseCursorAboutText(t *testing.T) {
+	auth, ok := parseCursorAboutText([]byte(`About Cursor CLI
+
+CLI Version         2026.07.01-41b2de7
+Subscription Tier   Ultra
+User Email          user@example.com
+`))
+	if !ok {
+		t.Fatal("parseCursorAboutText() ok = false, want true")
+	}
+	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
+		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
+	}
+}
+
+func TestParseOpenCodeAuthStatusOutput(t *testing.T) {
+	for _, tt := range []struct {
+		output string
+		status AuthStatus
+		ok     bool
+	}{
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "Status: authenticated", status: AuthAuthenticated, ok: true},
+		{output: "Not authenticated. Run opencode auth login.", status: AuthRequired, ok: true},
+		{output: "No providers are authenticated", status: AuthRequired, ok: true},
+		{output: "", ok: false},
+		{output: "unexpected opencode error", ok: false},
+	} {
+		auth, ok := parseOpenCodeAuthStatusOutput([]byte(tt.output))
+		if ok != tt.ok {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) ok = %v, want %v", tt.output, ok, tt.ok)
+		}
+		if ok && auth.Status != tt.status {
+			t.Fatalf("parseOpenCodeAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
 		}
 	}
 }
@@ -455,10 +522,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	if err := os.Symlink(codexPath, visiblePath); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
@@ -504,10 +568,7 @@ func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -589,10 +650,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 
 	service := probeTestService(home)
 	service.Environ = func() []string {
@@ -606,7 +664,7 @@ func TestServiceRunActionReinstallsCodexWhenPlatformPackageIncomplete(t *testing
 	// must install at the npm global prefix that owns it — not duplicate the
 	// package in ~/.local. Derive the expected prefix the same way production does
 	// (via EvalSymlinks, so it matches on macOS where /var -> /private/var).
-	wantPrefix, wantPrefixOK := codexRepairInstallPrefix(filepath.Join(binDir, "codex"))
+	wantPrefix, wantPrefixOK := managedNPMRepairInstallPrefix(filepath.Join(binDir, "codex"), "@openai/codex")
 	if !wantPrefixOK {
 		t.Fatalf("expected repair prefix to be derivable for %s", filepath.Join(binDir, "codex"))
 	}
@@ -660,10 +718,7 @@ func TestServiceRunActionRepairsCodexWhenAppServerLaunchFails(t *testing.T) {
 	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
 		t.Fatalf("symlink codex: %v", err)
 	}
-	platformBinary, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex platform package is unsupported for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	platformBinary := requireTestCodexPlatformBinaryPath(t, pkgDir)
 	writeExecutable(t, platformBinary, "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
@@ -954,7 +1009,7 @@ func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read captured npm registry: %v", err)
 	}
-	if got := string(registryBytes); got != "https://registry.npmmirror.com" {
+	if got := string(registryBytes); got != "https://repo.huaweicloud.com/repository/npm/" {
 		t.Fatalf("npm_config_registry = %q, want ranked mirror registry", got)
 	}
 }
@@ -1437,7 +1492,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
 		// Platform support was already checked on the test goroutine below, so ok
 		// is true here.
-		platformPath, _ := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+		platformPath := requireTestCodexPlatformBinaryPath(t, pkgDir)
 		writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
 		if err := os.Symlink(codexPath, filepath.Join(binDir, "codex-test")); err != nil {
 			t.Errorf("symlink codex: %v", err)
@@ -1445,9 +1500,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		}
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
-	if _, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH); !ok {
-		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	_ = requireTestCodexPlatformBinaryPath(t, pkgDir)
 	go func() {
 		result, err := service.RunAction(context.Background(), RunActionInput{
 			Provider: "codex",
@@ -1932,6 +1985,57 @@ func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *tes
 	}
 	if slices.Contains(result.Command, "exec") {
 		t.Fatalf("Command = %#v, want installed bin without npm exec", result.Command)
+	}
+}
+
+func TestServiceResolveProviderCommandPrefersUserNodeForCodex(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/usr/bin/env node\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
+		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, must not inject managed node when user node is available", result.Env)
+	}
+}
+
+func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
+		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed node fallback", result.Env)
 	}
 }
 

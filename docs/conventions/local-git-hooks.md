@@ -109,6 +109,11 @@ not pass those missing paths to Vitest as explicit targets. Deleting source file
 should still keep the surrounding package validation active so typecheck can
 catch broken imports.
 
+When the changed set includes deleted TypeScript or JavaScript files,
+`check:changed` should also exclude those missing paths from the `lint:changed`
+Oxlint invocation while still preserving the broader changed-file set for
+boundary checks and package validation.
+
 ## UI Boundary Enforcement
 
 The shared UI boundary is enforced in two modes:

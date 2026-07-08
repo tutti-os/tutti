@@ -436,6 +436,24 @@ func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceI
 	return persisted, true, nil
 }
 
+func (p *ActivityProjection) UpdateSessionTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (PersistedSession, bool, error) {
+	if p == nil || p.repo == nil {
+		return PersistedSession{}, false, nil
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	session, ok, err := p.repo.UpdateSessionTitle(ctx, workspaceID, agentSessionID, strings.TrimSpace(title))
+	if err != nil {
+		return PersistedSession{}, false, err
+	}
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	persisted := persistedSessionFromActivity(session)
+	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_update", activitySessionUpdateEventPayload(workspaceID, agentSessionID, persisted.UpdatedAtUnixMS))
+	return persisted, true, nil
+}
+
 func (p *ActivityProjection) ReconcileStaleTurnOnResume(ctx context.Context, session PersistedSession) error {
 	if p == nil || p.repo == nil {
 		return nil

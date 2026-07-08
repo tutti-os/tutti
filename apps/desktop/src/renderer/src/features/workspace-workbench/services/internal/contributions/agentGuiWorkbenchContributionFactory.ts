@@ -17,6 +17,7 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         defaultAgentProvider: context.defaultAgentProvider,
         defaultProviderTargetId: context.defaultProviderTargetId,
         hostFilesApi: context.hostFilesApi,
+        hostWindowApi: context.hostWindowApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
         providerTargets: context.providerTargets,

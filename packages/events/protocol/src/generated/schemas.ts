@@ -16,11 +16,14 @@ export const preferencesDesktopPreferencesSchema = {
     "dockIconStyle",
     "dockPlacement",
     "fileDefaultOpenersByExtension",
+    "featureFlags",
+    "workbenchShortcuts",
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
     "enableCursorAgent",
+    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -173,6 +176,24 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             }
           }
+        },
+        opencode: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
         }
       }
     },
@@ -224,6 +245,9 @@ export const preferencesDesktopPreferencesSchema = {
         },
         openclaw: {
           type: "boolean"
+        },
+        opencode: {
+          type: "boolean"
         }
       }
     },
@@ -262,6 +286,28 @@ export const preferencesDesktopPreferencesSchema = {
         enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
       }
     },
+    featureFlags: {
+      type: "object",
+      additionalProperties: {
+        type: "boolean"
+      },
+      maxProperties: 64
+    },
+    workbenchShortcuts: {
+      type: "object",
+      additionalProperties: false,
+      required: ["newAgentConversation", "newSameTypeWindow"],
+      properties: {
+        newAgentConversation: {
+          type: ["string", "null"],
+          maxLength: 80
+        },
+        newSameTypeWindow: {
+          type: ["string", "null"],
+          maxLength: 80
+        }
+      }
+    },
     locale: {
       type: "string",
       enum: ["en", "zh-CN"]
@@ -278,6 +324,9 @@ export const preferencesDesktopPreferencesSchema = {
       type: "boolean"
     },
     enableCursorAgent: {
+      type: "boolean"
+    },
+    enableOpenCodeAgent: {
       type: "boolean"
     },
     themeSource: {
@@ -1114,11 +1163,14 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "dockIconStyle",
         "dockPlacement",
         "fileDefaultOpenersByExtension",
+        "featureFlags",
+        "workbenchShortcuts",
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
         "enableCursorAgent",
+        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1271,6 +1323,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            opencode: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1322,6 +1392,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             },
             openclaw: {
               type: "boolean"
+            },
+            opencode: {
+              type: "boolean"
             }
           }
         },
@@ -1360,6 +1433,28 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
           }
         },
+        featureFlags: {
+          type: "object",
+          additionalProperties: {
+            type: "boolean"
+          },
+          maxProperties: 64
+        },
+        workbenchShortcuts: {
+          type: "object",
+          additionalProperties: false,
+          required: ["newAgentConversation", "newSameTypeWindow"],
+          properties: {
+            newAgentConversation: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            }
+          }
+        },
         locale: {
           type: "string",
           enum: ["en", "zh-CN"]
@@ -1376,6 +1471,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           type: "boolean"
         },
         enableCursorAgent: {
+          type: "boolean"
+        },
+        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1453,11 +1551,14 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "dockIconStyle",
         "dockPlacement",
         "fileDefaultOpenersByExtension",
+        "featureFlags",
+        "workbenchShortcuts",
         "locale",
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
         "enableCursorAgent",
+        "enableOpenCodeAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1610,6 +1711,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 }
               }
+            },
+            opencode: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
             }
           }
         },
@@ -1661,6 +1780,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             },
             openclaw: {
               type: "boolean"
+            },
+            opencode: {
+              type: "boolean"
             }
           }
         },
@@ -1699,6 +1821,28 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
           }
         },
+        featureFlags: {
+          type: "object",
+          additionalProperties: {
+            type: "boolean"
+          },
+          maxProperties: 64
+        },
+        workbenchShortcuts: {
+          type: "object",
+          additionalProperties: false,
+          required: ["newAgentConversation", "newSameTypeWindow"],
+          properties: {
+            newAgentConversation: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            }
+          }
+        },
         locale: {
           type: "string",
           enum: ["en", "zh-CN"]
@@ -1715,6 +1859,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           type: "boolean"
         },
         enableCursorAgent: {
+          type: "boolean"
+        },
+        enableOpenCodeAgent: {
           type: "boolean"
         },
         themeSource: {

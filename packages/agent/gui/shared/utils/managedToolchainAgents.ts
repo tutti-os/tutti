@@ -17,6 +17,7 @@ export type AgentHostManagedToolchainAgent = {
     | "cursor"
     | "gemini"
     | "openclaw"
+    | "opencode"
     | "nexight"
     | "hermes";
   aliases?: string[];
@@ -87,6 +88,16 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
       runtimeManaged: true,
       helperProvider: "openclaw",
       aliases: ["open claw"]
+    },
+    {
+      id: "opencode",
+      // i18n-check-ignore: Provider brand name.
+      label: "OpenCode",
+      toolIds: ["opencode-cli"],
+      agentIds: ["opencode"],
+      runtimeManaged: true,
+      helperProvider: "opencode",
+      aliases: ["open code", "open-code", "opencode-ai"]
     },
     {
       id: "gemini",

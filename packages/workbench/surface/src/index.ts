@@ -93,6 +93,8 @@ export {
 } from "./react/WorkbenchSurface.tsx";
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";
+export { selectFocusedWorkbenchNode } from "./core/selectors.ts";
+export { isEditableShortcutTarget } from "./react/hooks/workbenchShortcutIntent.ts";
 export {
   createWorkbenchWindowChromeI18nRuntime,
   workbenchWindowChromeI18nNamespace,

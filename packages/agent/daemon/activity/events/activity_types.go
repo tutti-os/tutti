@@ -12,6 +12,7 @@ const (
 	ProviderClaudeCode Provider = "claude-code"
 	ProviderGemini     Provider = "gemini"
 	ProviderOpenClaw   Provider = "openclaw"
+	ProviderOpenCode   Provider = "opencode"
 	ProviderHermes     Provider = "hermes"
 )
 
@@ -169,6 +170,8 @@ func NormalizeProvider(value string) (Provider, bool) {
 		return ProviderClaudeCode, true
 	case string(ProviderOpenClaw), "open_claw":
 		return ProviderOpenClaw, true
+	case string(ProviderOpenCode), "open-code", "opencode-ai", "opencode_ai":
+		return ProviderOpenCode, true
 	case string(ProviderHermes), "hermes-agent", "hermes_agent":
 		return ProviderHermes, true
 	default:

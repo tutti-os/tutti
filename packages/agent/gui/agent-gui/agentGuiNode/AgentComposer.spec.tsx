@@ -52,9 +52,12 @@ const workspaceUserProjectI18n = createWorkspaceUserProjectI18nRuntime(
 function createDraft(
   prompt: string,
   images: AgentComposerDraft["images"] = [],
-  files: AgentComposerDraft["files"] = []
+  files: AgentComposerDraft["files"] = [],
+  largeTexts?: AgentComposerDraft["largeTexts"]
 ): AgentComposerDraft {
-  return { prompt, images, files };
+  return largeTexts
+    ? { prompt, images, files, largeTexts }
+    : { prompt, images, files };
 }
 
 function createFileDataTransfer(files: readonly File[]): DataTransfer {
@@ -119,8 +122,10 @@ vi.mock("@tutti-os/ui-system", async (importOriginal) => {
   };
   type MockPopoverContentProps = React.ComponentProps<"div"> & {
     align?: string;
+    collisionPadding?: number;
     onOpenAutoFocus?: (event: Event) => void;
     side?: string;
+    sideOffset?: number;
   };
   return {
     ...actual,
@@ -152,15 +157,17 @@ vi.mock("@tutti-os/ui-system", async (importOriginal) => {
     PopoverContent: React.forwardRef<HTMLDivElement, MockPopoverContentProps>(
       (
         {
-          align: _align,
+          align,
           children,
+          collisionPadding: _collisionPadding,
           onOpenAutoFocus: _onOpenAutoFocus,
-          side: _side,
+          side,
+          sideOffset: _sideOffset,
           ...props
         },
         ref
       ) => (
-        <div ref={ref} {...props}>
+        <div ref={ref} data-align={align} data-side={side} {...props}>
           {children}
         </div>
       )
@@ -177,6 +184,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           disabled,
           onChange,
           onPasteImages,
+          onPasteLargeText,
           onFileMentionSuggestionChange,
           onKeyDownForPalette,
           onSubmit,
@@ -190,6 +198,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
           onChange: (value: string) => void;
           onFileMentionSuggestionChange?: (state: any) => void;
           onPasteImages?: (images: unknown[]) => void;
+          onPasteLargeText?: (text: string) => void;
           onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
           onSubmit?: () => void;
           onSubmitGuidance?: () => void;
@@ -304,6 +313,15 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               }
             >
               paste image
+            </button>
+            <button
+              type="button"
+              data-testid="mock-paste-large-text"
+              onClick={() =>
+                onPasteLargeText?.("first pasted line\nsecond pasted line")
+              }
+            >
+              paste large text
             </button>
           </>
         );
@@ -1151,6 +1169,136 @@ describe("AgentComposer", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
 
     expect(onHandoffConversation).toHaveBeenCalledWith(claudeTarget);
+  });
+
+  it("omits targets that are not handoff-capable from the handoff menu", async () => {
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+    const cursorTarget = {
+      targetId: "local:cursor",
+      agentTargetId: "local:cursor",
+      provider: "cursor" as const,
+      ref: { kind: "local-provider", provider: "cursor" as const },
+      label: "Cursor"
+    };
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        selectedProviderTarget={codexTarget}
+        providerTargets={[codexTarget, claudeTarget, cursorTarget]}
+        handoffProviderTargets={[codexTarget, claudeTarget]}
+        providerSelectReadonly
+        onHandoffConversation={vi.fn()}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Handoff" }), {
+      key: "ArrowDown"
+    });
+
+    expect(
+      await screen.findByRole("option", { name: "Claude Code" })
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: "Cursor" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a handoff tooltip label on the handoff trigger", () => {
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        selectedProviderTarget={codexTarget}
+        providerTargets={[codexTarget, claudeTarget]}
+        providerSelectReadonly
+        onHandoffConversation={vi.fn()}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Handoff" })).toHaveAttribute(
+      "title",
+      "交接给其他 Agent"
+    );
   });
 
   it("marks the handoff icon disabled with the handoff trigger", () => {
@@ -2336,7 +2484,10 @@ describe("AgentComposer", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    const usagePopover = screen.getByTestId("agent-gui-usage-popover");
+    expect(usagePopover).toBeVisible();
+    expect(usagePopover).toHaveAttribute("data-side", "top");
+    expect(usagePopover).toHaveAttribute("data-align", "center");
     fireEvent.click(usageChip);
     expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
     expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
@@ -3048,6 +3199,53 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("skips the missing directory check for remote-cwd runtimes", async () => {
+    mockProjectMissingState.current = true;
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("hi")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          projectLocked: true,
+          selectedProjectPath: "/sandbox/shared",
+          projectPathIsRemote: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    // Even with the probe reporting "missing", a remote-cwd runtime never
+    // mounts it, so no danger notice and the input stays usable.
+    expect(screen.queryByTestId("agent-gui-missing-project-notice")).toBeNull();
+    expect(screen.getByPlaceholderText("placeholder")).not.toBeDisabled();
+    fireEvent.submit(container.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the project row visible in the hero composer", () => {
     const { container } = render(
       <AgentComposer
@@ -3735,6 +3933,260 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("falls back to inline text when the runtime cannot land pasted text", () => {
+    // Runtime without uploadPromptContent (e.g. web): the large paste must not
+    // be lost — it is re-inserted inline instead of becoming an un-landable chip.
+    setAgentActivityRuntimeForTests({} as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("hello");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("mock-paste-large-text"));
+
+    expect(draftContent.prompt).toBe(
+      "hello\nfirst pasted line\nsecond pasted line"
+    );
+    expect(draftContent.largeTexts ?? []).toEqual([]);
+    expect(
+      screen.queryByTestId("agent-gui-composer-large-text-draft")
+    ).not.toBeInTheDocument();
+  });
+
+  it("lands pasted large text as a file and submits a pasted-text file block", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-large-text"));
+
+    // Phase 1: uploads the pasted text as UTF-8 base64 in a file block.
+    expect(uploadPromptContent).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      content: [
+        {
+          type: "file",
+          data: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+          mimeType: "text/plain",
+          name: "pasted-text.txt"
+        }
+      ]
+    });
+    expect(draftContent.largeTexts?.[0]).toMatchObject({
+      text: "first pasted line\nsecond pasted line",
+      uploading: true
+    });
+    expect(draftContent.largeTexts?.[0]?.id).toEqual(expect.any(String));
+
+    // Phase 2: uploading → spinner shown, submit blocked.
+    rerender(renderComposer());
+    expect(
+      screen.getByTestId("agent-gui-composer-large-text-upload-spinner")
+    ).toBeInTheDocument();
+    // Codex-style chip: first-chars preview + "pasted text" subtitle.
+    const largeTextChip = screen.getByTestId(
+      "agent-gui-composer-large-text-draft"
+    );
+    expect(largeTextChip).toHaveTextContent("first past…");
+    expect(largeTextChip).toHaveTextContent("Pasted text");
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+
+    // Phase 3: upload resolves → path filled, uploading cleared.
+    resolveUpload({
+      content: [
+        {
+          type: "file",
+          path: "/archive/aa/deadbeef.txt",
+          name: "pasted-text.txt",
+          sizeBytes: 36
+        }
+      ]
+    });
+    await waitFor(() =>
+      expect(draftContent.largeTexts?.[0]).toMatchObject({
+        path: "/archive/aa/deadbeef.txt",
+        uploading: false
+      })
+    );
+    rerender(renderComposer());
+
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).not.toBeDisabled();
+    fireEvent.click(sendButton);
+
+    // Submit carries a structured pasted-text file block — no inlined body and
+    // no instruction copy (the instruction is injected later, at send time).
+    // The display prompt encodes a pasted-text mention link carrying the landed
+    // path + size (the entity id is a per-paste random uuid).
+    expect(onSubmit).toHaveBeenCalledWith(
+      [
+        {
+          type: "file",
+          kind: "pasted-text",
+          path: "/archive/aa/deadbeef.txt",
+          name: "first past…",
+          sizeBytes: 36
+        }
+      ],
+      expect.stringMatching(
+        /^\[@[^\]]+\]\(mention:\/\/pasted-text\/[0-9a-f-]+\?path=%2Farchive%2Faa%2Fdeadbeef\.txt&size=36\)$/
+      )
+    );
+  });
+
+  it("restores a pasted-text chip back into the composer as inline text", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("hello");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-large-text"));
+    resolveUpload({
+      content: [
+        {
+          type: "file",
+          path: "/archive/aa/deadbeef.txt",
+          name: "pasted-text.txt",
+          sizeBytes: 36
+        }
+      ]
+    });
+    await waitFor(() =>
+      expect(draftContent.largeTexts?.[0]).toMatchObject({ uploading: false })
+    );
+    rerender(renderComposer());
+
+    // "Show in text field" dissolves the chip back into the prompt.
+    fireEvent.click(screen.getByRole("button", { name: "Show in text field" }));
+
+    expect(draftContent.prompt).toBe(
+      "hello\nfirst pasted line\nsecond pasted line"
+    );
+    expect(draftContent.largeTexts ?? []).toEqual([]);
+  });
+
   it("uploads pasted images immediately and submits the staged path", async () => {
     type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
     let resolveUpload: (result: UploadResult) => void = () => undefined;
@@ -3814,14 +4266,14 @@ describe("AgentComposer", () => {
         {
           type: "image",
           mimeType: "image/png",
-          path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
+          path: "/var/cache/tsh/local-assets/workspace-1/screen.png",
           name: "screen.png"
         }
       ]
     });
     await waitFor(() =>
       expect(draftContent.images[0]).toMatchObject({
-        path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
+        path: "/var/cache/tsh/local-assets/workspace-1/screen.png",
         uploading: false
       })
     );
@@ -3834,10 +4286,80 @@ describe("AgentComposer", () => {
       {
         type: "image",
         mimeType: "image/png",
-        path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
+        path: "/var/cache/tsh/local-assets/workspace-1/screen.png",
         name: "screen.png"
       }
     ]);
+  });
+
+  it("marks uploaded images without usable references as failed", async () => {
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "image" as const,
+          mimeType: "image/png" as const,
+          name: "screen.png"
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+
+    await waitFor(() =>
+      expect(draftContent.images[0]).toMatchObject({
+        uploading: false,
+        uploadError:
+          "Prompt image upload completed without usable image reference."
+      })
+    );
+    rerender(renderComposer());
+
+    expect(
+      screen.getByTestId("agent-gui-composer-image-draft")
+    ).toHaveAttribute("data-upload-error", "true");
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("uploads host-local references before inserting file mention anchors", async () => {
@@ -4862,12 +5384,14 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionEmpty: "空",
     fileMentionError: "错误",
     fileMentionTabHint: "Tab 提示",
+    fileDropHint: "拖放文件以添加到对话",
     mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",
     addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
     handoffConversation: "Handoff",
+    handoffConversationTooltip: "交接给其他 Agent",
     handoffConversationMenu: "选择 Agent",
     providerSwitchLabel: "切换 Provider",
     reviewPicker: {

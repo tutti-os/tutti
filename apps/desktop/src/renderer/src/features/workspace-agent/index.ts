@@ -6,6 +6,10 @@ export { preloadDesktopAgentGuiMentionBrowse } from "./services/preloadDesktopAg
 export { createDesktopAgentActivityRuntime } from "./services/createDesktopAgentActivityRuntime";
 export { createDesktopAgentHostApi } from "./services/createDesktopAgentHostApi";
 export { createDesktopAgentGeneratedFileMentionProvider } from "./services/internal/createDesktopAgentGeneratedFileMentionProvider";
+export {
+  desktopManagedAgentProviders,
+  ensureAllDesktopManagedAgentProviderStatuses
+} from "./services/internal/desktopManagedAgentProviders";
 export { IWorkspaceAgentActivityService } from "./services/workspaceAgentActivityService.interface";
 export { IWorkspaceAgentPromptSessionService } from "./services/workspaceAgentPromptSessionService.interface";
 export {

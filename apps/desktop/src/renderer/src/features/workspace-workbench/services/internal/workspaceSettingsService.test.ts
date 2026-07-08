@@ -1086,6 +1086,7 @@ function createDesktopPreferencesService(input: {
   onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
   onSetDockPlacement?: IDesktopPreferencesService["setDockPlacement"];
+  onSetFeatureFlags?: IDesktopPreferencesService["setFeatureFlags"];
   onSetFileDefaultOpenersByExtension?: IDesktopPreferencesService["setFileDefaultOpenersByExtension"];
   onSetLocale?: IDesktopPreferencesService["setLocale"];
   onSetMinimizeAnimation?: IDesktopPreferencesService["setMinimizeAnimation"];
@@ -1093,6 +1094,7 @@ function createDesktopPreferencesService(input: {
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
   onSetUpdateChannel?: IDesktopPreferencesService["setUpdateChannel"];
   onSetUpdatePolicy?: IDesktopPreferencesService["setUpdatePolicy"];
+  onSetWorkbenchShortcuts?: IDesktopPreferencesService["setWorkbenchShortcuts"];
   onSetWorkbenchWindowSnapping?: IDesktopPreferencesService["setWorkbenchWindowSnapping"];
   state: DesktopPreferencesReadableStoreState;
 }): IDesktopPreferencesService {
@@ -1112,6 +1114,7 @@ function createDesktopPreferencesService(input: {
     setDockIconStyle: input.onSetDockIconStyle ?? (async (style) => style),
     setDockPlacement:
       input.onSetDockPlacement ?? (async (placement) => placement),
+    setFeatureFlags: input.onSetFeatureFlags ?? (async (flags) => flags),
     setFileDefaultOpenersByExtension:
       input.onSetFileDefaultOpenersByExtension ??
       (async (openersByExtension) => openersByExtension),
@@ -1120,8 +1123,11 @@ function createDesktopPreferencesService(input: {
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
     setEnableCursorAgent: async (enable) => enable,
+    setEnableOpenCodeAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
+    setWorkbenchShortcuts:
+      input.onSetWorkbenchShortcuts ?? (async (shortcuts) => shortcuts),
     setWorkbenchWindowSnapping:
       input.onSetWorkbenchWindowSnapping ?? (async (value) => value),
     setThemeSource:
@@ -1147,9 +1153,11 @@ function createPreferencesState(
     changingDefaultAgentProvider: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
+    changingFeatureFlags: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
     changingEnableCursorAgent: null,
+    changingEnableOpenCodeAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1159,15 +1167,21 @@ function createPreferencesState(
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    featureFlags: {},
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",
     theme: createTheme("system"),
     updateChannel: "stable",
     updatePolicy: "prompt",
+    workbenchShortcuts: {
+      newAgentConversation: null,
+      newSameTypeWindow: null
+    },
     workbenchWindowSnapping: {
       enabled: false,
       shortcutPreset: "commandArrows"

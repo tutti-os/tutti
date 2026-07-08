@@ -158,18 +158,6 @@ func WithParams(params map[string]any) Option {
 	}
 }
 
-func WithRetryable(retryable bool) Option {
-	return func(target *ProtocolError) {
-		target.Retryable = retryable
-	}
-}
-
-func WithCorrelationID(correlationID string) Option {
-	return func(target *ProtocolError) {
-		target.CorrelationID = correlationID
-	}
-}
-
 func New(
 	statusCode int,
 	code tuttigenerated.ApiErrorDetailsCode,
@@ -197,10 +185,6 @@ func EmptyBody(options ...Option) *ProtocolError {
 
 func MalformedRequest(options ...Option) *ProtocolError {
 	return InvalidRequest(ReasonMalformedRequest, options...)
-}
-
-func MethodNotAllowed(options ...Option) *ProtocolError {
-	return New(StatusMethodNotAllowed, tuttigenerated.MethodNotAllowed, ReasonMethodNotAllowed, options...)
 }
 
 func ServiceUnavailable(reason string, options ...Option) *ProtocolError {

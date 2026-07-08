@@ -106,6 +106,66 @@ Use this shape for new entries:
   [controller.go](../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
 
+### Renderer tile memory warnings from hidden autoplay animation
+
+- Symptom:
+  Electron or Chromium logs repeatedly print
+  `tile memory limits exceeded, some content may not draw`. DevTools
+  performance traces show continuous `FireAnimationFrame`, `Layerize`, and
+  `Commit` activity while the visible UI looks mostly idle.
+- Quick checks:
+  In the trace, group `FunctionCall` or `v8.callFunction` events by `url` and
+  `functionName`. Hidden animation players often still appear as repeated
+  `requestAnimationFrame` callbacks even when their DOM node has
+  `opacity: 0`.
+- Root cause:
+  CSS-hidden animation elements are still live renderers. An autoplay/looping
+  Lottie, canvas, or WebGL player can keep scheduling frames and force layer
+  updates across every mounted instance.
+- Fix:
+  Mount animation players only while the animation is actually visible, and
+  defer loading third-party animation runtimes until an active state needs
+  them. Do not rely on `opacity`, `visibility`, or off-screen placement to stop
+  playback.
+- Validation:
+  Re-record a short DevTools trace after the fix. Idle UI should no longer show
+  the hidden player's function as a high-frequency `requestAnimationFrame`
+  source, and Chromium tile memory warnings should stop during idle.
+
+### Agent session stays loading after a completed turn
+
+- Symptom:
+  AgentGUI shows the assistant response as completed, but the conversation or
+  sidebar remains in a loading/running state. Desktop logs may contain
+  `agent.activity.store.session_version_regression` where the previous session
+  is `settled`/`available` and the next session is older
+  `running`/`active_turn`.
+- Quick checks:
+  Compare the desktop `reconcile.state_fetch.resolved` session timestamp with
+  the latest inline `state_patch` timestamp. In `tuttid.log`, check whether
+  runtime emitted a terminal `turn_phase=settled` event before the fetch
+  response was applied.
+- Root cause:
+  Activity projection can accept and broadcast a newer completed state while
+  `GetWorkspaceAgentSession` still prefers an older live runtime snapshot for
+  the same session. The projection store has timestamp regression protection,
+  but the service read path can bypass it when a runtime session is present.
+- Fix:
+  In service read paths, compare persisted projection freshness against the
+  runtime snapshot. If persisted state is newer, return the projected session
+  state and synthesize non-live turn lifecycle/submit availability instead of
+  exposing the stale runtime active turn.
+- Validation:
+  Add service coverage where runtime reports `working/running/active_turn` with
+  an older `UpdatedAtUnixMS`, while persisted state reports
+  `completed/idle/available` with a newer `LastEventUnixMS`. Validate both
+  `Get` and `List` do not return the old active turn. Run
+  `go test ./services/tuttid/service/agent`.
+- References:
+  [service_session.go](../../services/tuttid/service/agent/service_session.go)
+  [service.go](../../services/tuttid/service/agent/service.go)
+  [service_session_list.go](../../services/tuttid/service/agent/service_session_list.go)
+
 ### Claude composer model list stays stale after credential switch
 
 - Symptom:
@@ -204,21 +264,24 @@ Use this shape for new entries:
   when an optional dependency fetch failed, which leaves the launcher installed
   but unable to start. A registry can also be reachable but too slow for the
   platform tarball, so retrying the same source burns the install timeout before
-  mirrors are tried. The launcher itself uses `#!/usr/bin/env node`, so every
-  daemon-run Codex command (`--version`, `login status`, and `app-server`) must
-  run with the Tutti-managed Node bin directory on `PATH`; fixing only the npm
-  install command leaves post-install probes broken on machines without system
-  Node.
+  mirrors are tried. The launcher itself uses `#!/usr/bin/env node`, so
+  daemon-run Codex commands (`--version`, `login status`, and `app-server`) need
+  a usable Node on `PATH`. Tutti should prefer the user's Node environment, but
+  fall back to the managed Node runtime when the visible `codex` shim exists and
+  no user Node is resolvable.
 - Fix:
   Keep Codex installs on the Tutti-managed Node/npm runtime, install with
   optional dependencies included, and rank configured npm registries with a
   lightweight package metadata probe before attempting the install. Preserve
   `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no mirror
-  fallback. Also pass the same managed Node `PATH` through provider command
-  resolution, version checks, auth-status checks, and adapter probes. If the
-  CLI path exists but `codex app-server` cannot launch, treat the failed probe
-  as a repair trigger so the install action does not clear immediately without
-  running an installer.
+  fallback. Provider command resolution should leave the user's Node first when
+  it is available, and only append managed Node runtime env (`TUTTI_APP_NODE`,
+  `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
+  app-server adapter consumes that provider command resolution; otherwise status
+  probes can pass while session startup still fails with `env: node: No such
+file or directory`. If the CLI path exists but `codex app-server` cannot
+  launch, treat the failed probe as a repair trigger so the install action does
+  not clear immediately without running an installer.
 - Validation:
   Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
   `codex --version`, the platform package metadata and vendor binary, and a
@@ -229,6 +292,38 @@ Use this shape for new entries:
   [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
   [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)
   [codex_platform.go](../../services/tuttid/service/agentstatus/codex_platform.go)
+  [provider_resolution.go](../../services/tuttid/service/agentstatus/provider_resolution.go)
+  [codex_appserver_adapter.go](../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+
+### Tutti Agent npm install misses the platform package
+
+- Symptom:
+  The Tutti Agent provider setup reaches the login screen or reports the CLI as
+  installed, but `tutti-agent login` or `tutti-agent app-server` fails with
+  `Missing optional dependency @tutti-os/tutti-agent-<platform>`.
+- Quick checks:
+  Check the selected registry for both `@tutti-os/tutti-agent` and the exact
+  alias target version, such as
+  `@tutti-os/tutti-agent@0.0.1-darwin-arm64`. Do not treat a successful
+  aggregate package metadata fetch as proof that the platform tarball is
+  available.
+- Root cause:
+  `@tutti-os/tutti-agent` follows the Codex npm layout: a JavaScript launcher
+  plus per-platform optional dependencies expressed as npm aliases. npm can
+  complete the aggregate install even when a mirror has not synced the platform
+  optional dependency version.
+- Fix:
+  Keep the package layout aligned with Codex and use registries that carry the
+  platform optional dependency versions. The daemon default chain intentionally
+  excludes mirrors that only sync the aggregate package. Preserve
+  `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no fallback.
+- Validation:
+  Install into a temporary prefix/cache and verify the provider probe, not only
+  npm's exit code. Confirm `tutti-agent app-server` can start far enough to pass
+  the daemon readiness probe.
+- References:
+  [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
+  [tutti_agent.go](../../services/tuttid/service/agentsidecar/tutti_agent.go)
 
 ### Dynamic CLI input rejects plausible flags
 
@@ -1137,6 +1232,50 @@ delimited by ---`, and the composer skill picker may show partial or
   [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
   [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
 
+### Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes
+
+- Symptom:
+  Starting a Cursor Agent session through Tutti leaves new Tutti-managed skill
+  directories under the repository, such as `.cursor/skills/tutti-cli` or
+  `.cursor/skills/tutti-cli-tutti-6`, or appends a `BEGIN TUTTI-RUNTIME`
+  managed block to the tracked project `AGENTS.md`. The directories may
+  accumulate across runs and the managed block can appear as a tracked working
+  tree change.
+- Quick checks:
+  Inspect the session sidecar manifest for `provider-skill` entries pointing
+  inside the workspace cwd. For current sessions, `TUTTI_CURSOR_PLUGIN_DIR`
+  should point under the session runtime root, for example
+  `~/.tutti-dev/agent/runs/<session>/cursor-plugin/tutti-cli`, and the Cursor
+  ACP command should include `--plugin-dir <that-dir>` before `acp`. The
+  project `AGENTS.md` should not receive a `TUTTI-RUNTIME` managed block for
+  Cursor sessions.
+- Root cause:
+  Cursor supports local plugins via `cursor-agent --plugin-dir`, but the
+  previous sidecar path reused project-local native skill installation and wrote
+  Tutti injected skills to `cwd/.cursor/skills`. Repeated runs then allocated
+  suffixed names instead of overwriting the session-owned materialization. The
+  same Cursor preparation path also wrote provider instructions into
+  `cwd/AGENTS.md`, which dirtied tracked repositories.
+- Fix:
+  Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`, expose it through
+  `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
+  `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
+  `.cursor/skills` discoverable for composer options, but never write Tutti
+  injected skills or Tutti runtime instructions into the workspace cwd for
+  Cursor sessions.
+- Validation:
+  Add `agentsidecar` coverage that Cursor prepare creates the runtime plugin
+  while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
+  coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
+  that Cursor composer skill discovery includes plugin skills. Then run
+  `cd services/tuttid && go test ./service/agentsidecar ./service/agent` and
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [cursor.go](../../services/tuttid/service/agentsidecar/cursor.go)
+  [acp_provider_cursor.go](../../packages/agent/daemon/runtime/acp_provider_cursor.go)
+  [skill_options.go](../../services/tuttid/service/agent/skill_options.go)
+
 ### Codex provider shows login required when global service tier is legacy
 
 - Symptom:
@@ -1550,6 +1689,38 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
   [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
+
+### Cursor ACP context ring stays empty or usage looks wrong
+
+- Symptom:
+  A Cursor AgentGUI session shows an empty context ring, `0%`, or stale context
+  usage while the session is actively running. Check & Settings may show the
+  Cursor subscription tier from `cursor-agent about`, but account quota still
+  reads as unsupported.
+- Quick checks:
+  Grep tuttid logs for `event=agent_session.acp.usage_update` while reproducing
+  the session. Inspect `provider`, `parsed_ok`, `context_known`, `raw_used`,
+  `raw_size`, `used_tokens`, `total_tokens`, and `quota_count` on each event.
+  If no events appear, Cursor is not pushing ACP `usage_update` for that
+  session. If events appear with `parsed_ok=false` or missing `raw_used` /
+  `raw_size`, inspect the raw ACP payload shape before changing AgentGUI.
+- Root cause:
+  Tutti's standard ACP adapter already normalizes `usage_update` into runtime
+  context, but Cursor may omit the event or publish a different payload than
+  Codex/Claude bridges. Subscription tier display comes from auth probing, not
+  from `usage_update`.
+- Fix:
+  Use the diagnostic log fields to decide whether to fix adapter parsing or wait
+  for Cursor to publish usage updates. Do not mask missing usage in AgentGUI
+  when the provider never sent `usage_update`.
+- Validation:
+  Run `go test ./packages/agent/daemon/runtime -run UsageUpdate` and start a
+  Cursor session while tailing tuttid logs for
+  `agent_session.acp.usage_update`.
+- References:
+  [standard_acp_adapter.go](../../packages/agent/daemon/runtime/standard_acp_adapter.go)
+  [acp_live_state.go](../../packages/agent/daemon/runtime/acp_live_state.go)
+  [service_helpers.go](../../services/tuttid/service/agentstatus/service_helpers.go)
 
 ### Claude SDK model aliases resolve to configured Anthropic defaults
 

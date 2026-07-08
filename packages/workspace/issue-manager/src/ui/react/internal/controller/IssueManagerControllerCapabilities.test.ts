@@ -93,7 +93,7 @@ test("controller capabilities detect execution directory support from the projec
   );
 });
 
-test("agent target options default to Codex only when no host adapter is configured", () => {
+test("agent target options are empty when no host adapter is configured", () => {
   assert.deepEqual(
     resolveIssueManagerAgentTargetOptions(
       createFeature({
@@ -104,7 +104,7 @@ test("agent target options default to Codex only when no host adapter is configu
         }
       })
     ),
-    [{ agentTargetId: "local:codex", label: "Codex", provider: "codex" }]
+    []
   );
 });
 

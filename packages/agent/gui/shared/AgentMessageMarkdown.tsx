@@ -17,7 +17,7 @@ import {
   useRef,
   useState
 } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, FileText } from "lucide-react";
 import { translate, useTranslation } from "../i18n/index";
 import { ZoomableImage } from "../app/renderer/components/ZoomableImage";
 import { cn } from "../app/renderer/lib/utils";
@@ -891,9 +891,16 @@ function MentionLink({
         activateMarkdownLinkFromKey(event, href, onLinkClick);
       }}
     >
-      {mention.kind === "workspace-app" ||
-      mention.kind === "workspace-reference" ||
-      mention.kind === "agent-target" ? (
+      {mention.kind === "pasted-text" ? (
+        <span
+          className="grid h-4 w-4 shrink-0 place-items-center text-[var(--text-tertiary)]"
+          aria-hidden="true"
+        >
+          <FileText size={14} strokeWidth={2} />
+        </span>
+      ) : mention.kind === "workspace-app" ||
+        mention.kind === "workspace-reference" ||
+        mention.kind === "agent-target" ? (
         <span
           className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
           aria-hidden="true"
@@ -1642,7 +1649,8 @@ type MentionKind =
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
-  | "workspace-issue";
+  | "workspace-issue"
+  | "pasted-text";
 
 interface ParsedMentionLink {
   agentProviderId?: string;
@@ -1682,14 +1690,17 @@ function parseMentionLink(
               ? "workspace-issue"
               : resource === "agent-target"
                 ? "agent-target"
-                : resource;
+                : resource === "pasted-text"
+                  ? "pasted-text"
+                  : resource;
   if (
     kind !== "session" &&
     kind !== "agent-target" &&
     kind !== "workspace-app" &&
     kind !== "workspace-reference" &&
     kind !== "workspace-app-factory" &&
-    kind !== "workspace-issue"
+    kind !== "workspace-issue" &&
+    kind !== "pasted-text"
   ) {
     return null;
   }
@@ -1700,6 +1711,9 @@ function parseMentionLink(
   const label =
     rawLabel.trim().replace(/^@+/, "").trim() ||
     (kind === "workspace-app-factory" ? appFactoryFallbackLabel : "");
+  if (kind === "pasted-text") {
+    return { kind, label, participant: label, summary: "" };
+  }
   if (kind === "workspace-app" || kind === "workspace-app-factory") {
     const appId = kind === "workspace-app" ? entityId : "";
     const workspaceId = mention.scope?.workspaceId?.trim() || "";

@@ -1,4 +1,6 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
 
 export interface WorkspaceLaunchOwnerWindow {
   close(): void;
@@ -6,12 +8,23 @@ export interface WorkspaceLaunchOwnerWindow {
 }
 
 export interface WorkspaceLaunchAdapters {
+  showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   showWorkspaceWindow(workspaceID: string): Promise<void>;
   warnStartupWindowResolutionFailure(error: unknown): void;
 }
 
+export interface WorkspaceLaunchAgentWindowInput {
+  agentSessionID?: string | null;
+  agentTargetID?: string | null;
+  providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  provider?: string | null;
+  workspaceID: string;
+}
+
 export interface WorkspaceLaunch {
   openStartupWindow(): Promise<void>;
+  showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
   showWorkspace(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
@@ -37,6 +50,9 @@ export function createWorkspaceLaunch(
       }
     },
 
+    showAgentWindow(input) {
+      return deps.adapters.showAgentWindow(input);
+    },
     showWorkspace
   };
 

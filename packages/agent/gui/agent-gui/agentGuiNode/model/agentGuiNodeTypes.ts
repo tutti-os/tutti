@@ -61,6 +61,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 }
 
 export interface AgentGUIProviderSkillOption {
@@ -84,6 +85,7 @@ export interface AgentComposerDraftImage {
   id: string;
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  attachmentId?: string;
   data?: string;
   path?: string;
   previewUrl: string;
@@ -103,10 +105,93 @@ export interface AgentComposerDraftFile {
   uploadError?: string;
 }
 
+export interface AgentComposerDraftLargeText {
+  id: string;
+  name: string;
+  text: string;
+  sizeBytes?: number;
+  path?: string;
+  uploading?: boolean;
+  uploadError?: string;
+}
+
+/**
+ * Marks a prompt `file` content block as a pasted-text attachment (as opposed
+ * to a user-attached file). Carried on the block `kind` so the round-trip
+ * (submit → queue → edit-restore) can rebuild a large-text chip instead of a
+ * regular file chip, and so the codex-style "read this file" instruction is
+ * materialized only for these blocks at send time.
+ */
+export const AGENT_PASTED_TEXT_BLOCK_KIND = "pasted-text";
+
+/**
+ * Provider id of the custom mention kind used to render a pasted-text chip in
+ * the conversation flow. The mention href (`mention://pasted-text/...`) carries
+ * the landed archive path + size so the host can render the chip and open a
+ * preview on click. Registered via registerAgentCustomMentionKind.
+ */
+export const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
+
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];
   files?: AgentComposerDraftFile[];
+  largeTexts?: AgentComposerDraftLargeText[];
+}
+
+/**
+ * Built-in glyph for a home-suggestion category chip. Keeps the localized data
+ * free of any component references so it can live in the i18n label bundle.
+ */
+export type AgentHomeSuggestionIcon =
+  | "write"
+  | "code"
+  | "research"
+  | "handoff"
+  | "breakdown"
+  | "review"
+  | "interaction"
+  | "about"
+  | "import";
+
+/**
+ * Host-level action a chip can trigger. A chip may carry an action alongside a
+ * `prompt` — both fire on click (the prompt fills, then the action runs).
+ * `import-session` opens the external-agent session import wizard.
+ */
+export type AgentHomeSuggestionAction = "import-session";
+
+export interface AgentHomeSuggestionItem {
+  id: string;
+  /** Text shown in the suggestion row. */
+  label: string;
+  /**
+   * Prompt inserted into the composer when the suggestion is chosen. Defaults
+   * to `label` when omitted so short labels can double as the prompt.
+   */
+  prompt?: string;
+}
+
+export interface AgentHomeSuggestionCategory {
+  id: string;
+  /** Chip / card header label. */
+  label: string;
+  icon?: AgentHomeSuggestionIcon;
+  /**
+   * Suggestions revealed in an expandable card when the chip is chosen. Omit
+   * (or leave empty) for a direct-fill chip that uses `prompt` instead.
+   */
+  items?: AgentHomeSuggestionItem[];
+  /**
+   * When set, the chip fills the composer with this prompt immediately on click
+   * instead of expanding a card of `items`.
+   */
+  prompt?: string;
+  /**
+   * When set, the chip triggers a host action on click instead of filling the
+   * composer or expanding `items`.
+   */
+  action?: AgentHomeSuggestionAction;
 }
 
 export interface AgentGUIComposerSettingsVM {
@@ -146,6 +231,11 @@ export interface AgentGUIComposerSettingsVM {
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
   projectLocked?: boolean;
+  // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
+  // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the
+  // local "working directory missing" existence check is skipped. Project
+  // selection/listing stays available. Absent/false => local (legacy behaviour).
+  projectPathIsRemote?: boolean;
   // Collapse the model list to the latest version per model family (providers
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.
@@ -171,6 +261,7 @@ export interface AgentGUINodeViewModel {
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
   providerTargets: readonly AgentGUIProviderTarget[];
+  handoffProviderTargets: readonly AgentGUIProviderTarget[];
   providerTargetsLoading: boolean;
   /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
   providerRailMode: AgentGUIProviderRailMode;

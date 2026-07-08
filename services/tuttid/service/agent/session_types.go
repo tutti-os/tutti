@@ -17,6 +17,7 @@ type Service struct {
 	AnalyticsReporter             reporterservice.Reporter
 	AvailabilityChecker           ProviderAvailabilityChecker
 	ModelCatalog                  AgentModelCatalog
+	ModelCapabilities             ModelCapabilitiesResolver
 	AgentTargetStore              AgentTargetStore
 	SessionReader                 SessionReader
 	UserProjectReader             UserProjectReader
@@ -56,6 +57,7 @@ type RuntimeController interface {
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
 	Resume(context.Context, RuntimeResumeInput) (RuntimeSession, error)
 	Session(workspaceID string, agentSessionID string) (RuntimeSession, bool)
+	SetTitle(context.Context, RuntimeSetTitleInput) (RuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (RuntimeSession, error)
 	Sessions(workspaceID string) []RuntimeSession
 	Start(context.Context, RuntimeStartInput) (RuntimeSession, error)
@@ -223,6 +225,10 @@ type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
 }
 
+type SessionTitleUpdater interface {
+	UpdateSessionTitle(context.Context, string, string, string) (PersistedSession, bool, error)
+}
+
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
@@ -385,6 +391,12 @@ type RuntimeSetVisibleInput struct {
 	Visible        bool
 }
 
+type RuntimeSetTitleInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Title          string
+}
+
 type ComposerSettingsPatch struct {
 	Model            *string
 	PermissionModeID *string
@@ -473,6 +485,37 @@ type SubmitInteractiveInput struct {
 type StreamInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+}
+
+type WaitInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	AfterVersion   *uint64
+	MessageLimit   int
+	Timeout        time.Duration
+}
+
+type WaitReason string
+
+const (
+	WaitReasonReady           WaitReason = "ready"
+	WaitReasonWaiting         WaitReason = "waiting"
+	WaitReasonWaitingApproval WaitReason = "waiting_approval"
+	WaitReasonWaitingInput    WaitReason = "waiting_input"
+	WaitReasonCompleted       WaitReason = "completed"
+	WaitReasonFailed          WaitReason = "failed"
+	WaitReasonCanceled        WaitReason = "canceled"
+	WaitReasonTimeout         WaitReason = "timeout"
+)
+
+type WaitResult struct {
+	Session        Session
+	Messages       []SessionMessage
+	LatestVersion  uint64
+	HasMore        bool
+	Reason         WaitReason
+	TimedOut       bool
+	EffectiveAfter uint64
 }
 
 type StreamEvent struct {

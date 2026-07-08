@@ -261,7 +261,6 @@ function installTestAgentHostApi(): void {
   }
   let testAgentHostApi: AgentHostInputApi | AgentHostRuntimeApi | null = {
     account: {},
-    agentGuiBatch: {},
     clipboard: {},
     debug: {},
     filesystem: {},

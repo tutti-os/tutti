@@ -18,6 +18,7 @@ import {
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationListQuerySnapshot,
   markAgentGUIConversationCompletionObserved,
+  markAgentGUIConversationUnreadCompletion,
   resetAgentGUIConversationListStoreForTests,
   scheduleAgentGUIConversationListProjection,
   setAgentGUIConversationListActiveConversation,
@@ -364,6 +365,26 @@ describe("agentGuiConversationListStore", () => {
     expect(allCodexKey).toBe(allClaudeKey);
     expect(targetCodexKey).toBe(targetClaudeKey);
     expect(legacyCodexKey).not.toBe(legacyClaudeKey);
+  });
+
+  it("splits query keys by sessionOrigin so local and shared runtimes stay isolated", () => {
+    const localQuery: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const sharedQuery: AgentGUIConversationListQuery = {
+      ...localQuery,
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_SHARED"
+    };
+
+    const localKey = createAgentGUIConversationListQueryKey(localQuery);
+    const sharedKey = createAgentGUIConversationListQueryKey(sharedQuery);
+
+    expect(localKey).not.toBeNull();
+    expect(sharedKey).not.toBeNull();
+    expect(localKey).not.toBe(sharedKey);
   });
 
   it("projects explicit conversation filters from the current runtime snapshot without reloading sessions", async () => {
@@ -827,6 +848,90 @@ describe("agentGuiConversationListStore", () => {
       getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
         ?.hasUnreadCompletion
     ).toBe(false);
+  });
+
+  it("allows manually marking an active completed conversation unread", () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    ensureAgentGUIConversationListQuery(query);
+
+    setAgentGUIConversationListConversationsForTests(query, [
+      conversation("session-1", {
+        hasUnreadCompletion: false,
+        status: "completed",
+        unreadCompletionKey: "session:session-1:completed"
+      })
+    ]);
+    setAgentGUIConversationListActiveConversation({
+      query,
+      ownerKey: "panel-1",
+      conversationId: "session-1"
+    });
+
+    markAgentGUIConversationUnreadCompletion({
+      query,
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+    ).toEqual(
+      expect.objectContaining({
+        hasUnreadCompletion: true,
+        unreadCompletionKey: "session:session-1:completed"
+      })
+    );
+
+    setAgentGUIConversationListActiveConversation({
+      query,
+      ownerKey: "panel-1",
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+    ).toEqual(
+      expect.objectContaining({
+        hasUnreadCompletion: true,
+        unreadCompletionKey: "session:session-1:completed"
+      })
+    );
+  });
+
+  it("allows manually marking a ready conversation unread without an existing key", () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    ensureAgentGUIConversationListQuery(query);
+
+    setAgentGUIConversationListConversationsForTests(query, [
+      conversation("session-1", {
+        hasUnreadCompletion: false,
+        status: "ready",
+        unreadCompletionKey: null
+      })
+    ]);
+
+    markAgentGUIConversationUnreadCompletion({
+      query,
+      conversationId: "session-1"
+    });
+
+    expect(
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+    ).toEqual(
+      expect.objectContaining({
+        hasUnreadCompletion: true,
+        unreadCompletionKey: "session:session-1:completed"
+      })
+    );
   });
 
   // NOTE: project metadata is no longer canonical store state — it is a

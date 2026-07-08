@@ -15,6 +15,7 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 func (s Service) probeCommandWithReadyAfter(
@@ -377,7 +378,7 @@ func (s Service) codexPlatformBinaryOK(binaryPath string) bool {
 	return ok
 }
 
-func codexProviderChecks(status ProviderStatus, platformBinaryOK bool) []ProviderCheck {
+func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRuntime ProviderCheck) []ProviderCheck {
 	return []ProviderCheck{
 		{
 			Name:   "cli_present",
@@ -394,11 +395,34 @@ func codexProviderChecks(status ProviderStatus, platformBinaryOK bool) []Provide
 			Passed: codexVersionMeetsMinimum(status.CLI.Version),
 			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
 		},
+		nodeRuntime,
 		{
 			Name:   "auth",
 			Passed: status.Auth.Status == AuthAuthenticated,
 			Detail: providerAvailabilityAuthDetailForStatus(status.Auth),
 		},
+	}
+}
+
+func (s Service) codexNodeRuntimeCheck(spec ProviderSpec) ProviderCheck {
+	if nodePath := strings.TrimSpace(managedruntime.EnvValue(spec.AdapterEnv, "TUTTI_APP_NODE")); nodePath != "" {
+		return ProviderCheck{
+			Name:   "node_runtime",
+			Passed: true,
+			Detail: "Using Tutti managed Node fallback: " + nodePath,
+		}
+	}
+	if resolved := s.userNodeRuntimePath(spec.AdapterEnv); resolved != "" {
+		return ProviderCheck{
+			Name:   "node_runtime",
+			Passed: true,
+			Detail: "Using user Node from PATH: " + resolved,
+		}
+	}
+	return ProviderCheck{
+		Name:   "node_runtime",
+		Passed: false,
+		Detail: "Node runtime not found",
 	}
 }
 
@@ -484,6 +508,9 @@ func (s Service) authStatusCommandRetryDelay() time.Duration {
 }
 
 func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) (AuthInfo, bool) {
+	if agentprovider.Normalize(spec.Provider) == agentprovider.Cursor {
+		return runCursorAuthStatusCommand(ctx, binaryPath, env)
+	}
 	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
 	defer cancel()
 	command := exec.CommandContext(commandCtx, binaryPath, spec.AuthStatusCommand...)
@@ -529,6 +556,8 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return parseCodexAuthStatusOutput(output)
 	case agentprovider.Cursor:
 		return parseCursorAuthStatusOutput(output)
+	case agentprovider.OpenCode:
+		return parseOpenCodeAuthStatusOutput(output)
 	default:
 		return AuthInfo{}, false
 	}
@@ -557,17 +586,15 @@ func parseCodexAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	return AuthInfo{}, false
 }
 
-// parseCursorAuthStatusOutput interprets `cursor-agent status` output, which
-// reports the login state as human-readable text (e.g. "Logged in as
-// user@example.com" / "Not logged in. Run cursor-agent login").
-func parseCursorAuthStatusOutput(output []byte) (AuthInfo, bool) {
+func parseOpenCodeAuthStatusOutput(output []byte) (AuthInfo, bool) {
 	normalized := strings.ToLower(string(bytes.TrimSpace(output)))
 	if normalized == "" {
 		return AuthInfo{}, false
 	}
 	if strings.Contains(normalized, "not logged in") ||
-		strings.Contains(normalized, "logged out") ||
 		strings.Contains(normalized, "not authenticated") ||
+		strings.Contains(normalized, "no authenticated") ||
+		strings.Contains(normalized, "no providers") ||
 		strings.Contains(normalized, "unauthenticated") {
 		return AuthInfo{Status: AuthRequired}, true
 	}
