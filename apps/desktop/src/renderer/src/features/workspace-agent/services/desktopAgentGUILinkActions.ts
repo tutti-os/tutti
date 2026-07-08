@@ -1,6 +1,11 @@
 import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
-import { AGENT_PASTED_TEXT_MENTION_KIND } from "@tutti-os/agent-gui";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+
+// Value mirror of AGENT_PASTED_TEXT_MENTION_KIND from @tutti-os/agent-gui.
+// Kept as a local literal so this module (loaded by the node --test runner)
+// does not pull the whole agent-gui barrel, whose extensionless internal
+// imports the test runner cannot resolve.
+const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
 import { normalizeDesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 
