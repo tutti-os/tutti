@@ -75,7 +75,7 @@ export function resolveDesktopWorkspaceFileDefaultLocationId(input: {
     : DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID;
 }
 
-export function desktopWorkspaceFileProjectLocationId(
+function desktopWorkspaceFileProjectLocationId(
   project: Pick<WorkspaceUserProject, "id">
 ): string {
   return `project:${project.id}`;

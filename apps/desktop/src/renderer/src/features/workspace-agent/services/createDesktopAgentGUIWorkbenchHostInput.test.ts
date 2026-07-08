@@ -1181,10 +1181,10 @@ test("desktop agent GUI workbench host input tracks runtime new session activati
   await hostInput.agentActivityRuntime.activateSession({
     workspaceId,
     agentSessionId: "session-runtime-start-1",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "Track initial prompt" }],
     mode: "new",
-    provider: "codex",
     settings: {
       model: "gpt-5",
       permissionModeId: "auto"
@@ -2064,7 +2064,8 @@ function createWorkspaceAgentActivityService(
       return {
         ...emptySession(),
         agentSessionId: input.agentSessionId ?? "session-1",
-        provider: input.provider
+        provider:
+          input.agentTargetId === "local:claude-code" ? "claude-code" : "codex"
       };
     },
     async deleteSession() {

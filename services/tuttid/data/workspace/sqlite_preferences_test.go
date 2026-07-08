@@ -336,3 +336,26 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?
 		t.Fatalf("agent target defaults = %#v, want newer data preserved", preferences.AgentComposerDefaultsByAgentTarget)
 	}
 }
+
+func TestDesktopPreferencesFeatureFlagsRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	in := preferencesbiz.DefaultDesktopPreferences()
+	in.FeatureFlags = map[string]bool{"lab.enabled": true, "lab.workbenchShortcuts": true}
+	in.WorkbenchShortcuts = preferencesbiz.DesktopWorkbenchShortcuts{NewAgentConversation: "Meta+K"}
+	if _, err := store.PutDesktopPreferences(ctx, in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetDesktopPreferences(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.FeatureFlags["lab.enabled"] || !got.FeatureFlags["lab.workbenchShortcuts"] {
+		t.Fatalf("flags not persisted: %v", got.FeatureFlags)
+	}
+	if got.WorkbenchShortcuts.NewAgentConversation != "Meta+K" || got.WorkbenchShortcuts.NewSameTypeWindow != "" {
+		t.Fatalf("shortcuts wrong: %+v", got.WorkbenchShortcuts)
+	}
+}

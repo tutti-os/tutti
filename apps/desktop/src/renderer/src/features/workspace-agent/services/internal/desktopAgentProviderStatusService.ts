@@ -46,6 +46,7 @@ import {
   type AgentAnalyticsFlow,
   type AgentAnalyticsNode
 } from "./agentNodeResultAnalytics.ts";
+import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   loginStatusPollDurationMs?: number;
@@ -157,6 +158,16 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     );
   }
 
+  hydrate(snapshot: AgentProviderStatusSnapshot): void {
+    // Only seed from a bootstrap snapshot before this instance has ever
+    // captured its own data — otherwise a stale hand-off (or one that raced
+    // with a real response) could regress already-loaded local state.
+    if (this.snapshot.capturedAt) {
+      return;
+    }
+    this.setSnapshot(snapshot);
+  }
+
   isActionPending(provider: WorkspaceAgentProvider, actionId: string): boolean {
     return this.snapshot.pendingActions.some(
       (action) => action.provider === provider && action.actionId === actionId
@@ -206,13 +217,19 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then(async (response) => {
+        let responseProviders = response.providers;
         if (this.requestSequence === requestId) {
           const previousStatuses = this.snapshot.statuses;
-          const reconciledStatuses = this.reconcileProviderStatuses(
-            previousStatuses,
-            response.providers,
-            input.providers
-          );
+          const maybeReconciledStatuses =
+            this.reconcileProviderStatusesWithProbe(
+              previousStatuses,
+              response.providers,
+              input.providers
+            );
+          const reconciledStatuses = Array.isArray(maybeReconciledStatuses)
+            ? maybeReconciledStatuses
+            : await maybeReconciledStatuses;
+          responseProviders = [...reconciledStatuses];
           this.setSnapshot({
             capturedAt: response.capturedAt,
             defaultProvider: response.defaultProvider,
@@ -238,7 +255,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           provider: input.providers?.[0] ?? response.defaultProvider ?? null,
           success: true
         });
-        return response;
+        return {
+          ...response,
+          providers: responseProviders
+        };
       })
       .catch(async (error: unknown) => {
         if (this.requestSequence === requestId) {
@@ -520,6 +540,24 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       }
     }
     return merged;
+  }
+
+  private reconcileProviderStatusesWithProbe(
+    previousStatuses: readonly AgentProviderStatus[],
+    responseStatuses: readonly AgentProviderStatus[],
+    requestedProviders: readonly WorkspaceAgentProvider[] | undefined
+  ): readonly AgentProviderStatus[] | Promise<readonly AgentProviderStatus[]> {
+    const reconciledStatuses = this.reconcileProviderStatuses(
+      previousStatuses,
+      responseStatuses,
+      requestedProviders
+    );
+    return applyDesktopAgentProviderRuntimeProbeFallbacks({
+      probeProvider: (provider) =>
+        this.dependencies.tuttidClient.probeAgentProvider(provider),
+      requestedProviders,
+      statuses: reconciledStatuses
+    });
   }
 
   /**

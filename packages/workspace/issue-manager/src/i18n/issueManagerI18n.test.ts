@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
+  createIssueManagerAgentLaunchMessages,
   createIssueManagerI18nRuntime,
   issueManagerI18nResources
 } from "./issueManagerI18n.ts";
@@ -47,6 +48,18 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("labels.taskCount", { count: 7 }), "7 个子任务");
   assert.equal(copy.t("labels.taskDetails"), "任务详情");
   assert.equal(copy.t("labels.taskList"), "任务");
+  assert.equal(
+    copy.t("messages.agentTargetRequired"),
+    "请先选择可用的 Agent 目标。"
+  );
+  assert.equal(
+    copy.t("messages.agentGuiLaunchUnavailable"),
+    "当前环境无法创建 Agent 草稿。"
+  );
+  assert.deepEqual(createIssueManagerAgentLaunchMessages(copy), {
+    agentGuiLaunchUnavailable: "当前环境无法创建 Agent 草稿。",
+    agentTargetRequired: "请先选择可用的 Agent 目标。"
+  });
   assert.equal(copy.t("messages.noIssues"), "还没有任务");
   assert.equal(copy.t("messages.noTasks"), "还没有任务");
   assert.equal(copy.t("status.notStarted"), "待开始");
@@ -101,6 +114,18 @@ test("en task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("labels.taskCount", { count: 7 }), "7 subtasks");
   assert.equal(copy.t("labels.taskDetails"), "Task details");
   assert.equal(copy.t("labels.taskList"), "Tasks");
+  assert.equal(
+    copy.t("messages.agentTargetRequired"),
+    "Select an available agent target first."
+  );
+  assert.equal(
+    copy.t("messages.agentGuiLaunchUnavailable"),
+    "Agent session drafting is unavailable."
+  );
+  assert.deepEqual(createIssueManagerAgentLaunchMessages(copy), {
+    agentGuiLaunchUnavailable: "Agent session drafting is unavailable.",
+    agentTargetRequired: "Select an available agent target first."
+  });
   assert.equal(copy.t("messages.noIssues"), "No tasks yet");
   assert.equal(copy.t("messages.noTasks"), "No tasks yet");
   assert.equal(copy.t("status.notStarted"), "Todo");

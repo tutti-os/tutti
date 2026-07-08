@@ -98,7 +98,7 @@ There are also real architectural debts:
   migrated path name. Treat its stores as package-owned AgentGUI UI stores, not
   desktop renderer ownership.
 - `packages/agent/gui/agent-gui/**` still contains more than AgentGuiNode
-  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`, batch runner). Treat
+  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`). Treat
   that folder as the legacy workspace-node area. Do not infer that all code
   inside it belongs to the conversation node.
 - Some Host API compatibility types still exist for tests, projection, and old
@@ -163,10 +163,11 @@ resolve an `AgentGUIProviderTarget`, return the node to the home composer when
 switching targets, and preserve the real provider identity used by runtime
 create/send commands. Once a session is active, the composer provider select is
 display-only and must not switch the running session. The conversation rail
-target grid is a list filter first: clicking Codex or Claude Code while a
-session is active may scope the visible rail list, but must not unactivate the
-session or rewrite the session-owned composer target. Only empty-home rail
-target clicks may also sync the home composer launch target.
+target grid is a navigation surface: clicking Codex or Claude Code scopes the
+visible rail list and reopens the first already-loaded conversation matching
+that target. Only when no matching conversation is available should the target
+click enter that target's empty home composer. Empty-home rail target clicks may
+also sync the home composer launch target.
 In an active session, the composer footer may replace the display-only provider
 select with a handoff affordance. Handoff is a workbench launch, not an
 in-session provider switch: AgentGUI serializes the active session as a single
@@ -175,13 +176,19 @@ through the host launch callback, and the desktop workbench opens a new empty
 composer for that target via the existing draft prefill activation path. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
-a Codex panel before the draft prefill effect runs.
+a Codex panel before the draft prefill effect runs. The prefilled handoff panel
+must also scope the conversation rail to the selected target instead of opening
+on `All`; the target-specific rail selection is part of the handoff activation
+state, not a later user filter choice.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
 left rail selection follows the active empty composer target. When the rail is
 in `All`, provider selection changes only the empty composer target and keeps
 the aggregate rail selection intact.
+Provider selection from either the empty-home title control or the composer
+footer should also request focus for the composer input, matching provider rail
+target clicks so users can continue typing immediately after switching agents.
 The empty composer chrome and settings defaults must follow the selected
 provider target immediately, including the empty-state artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
@@ -190,7 +197,10 @@ or target-scoped defaults may still provide the next settings.
 Host feature switches that disable a provider for new conversations should keep
 the provider target present with `disabled: true` when another surface still
 needs to show the provider in a disabled state. Filter the target out only for
-surfaces that should completely hide it.
+surfaces that should completely hide it. All empty-home new-conversation
+affordances, including rail toolbar and section actions, must read the selected
+provider target's disabled state so coming-soon targets remain inspectable but
+cannot start sessions.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -205,6 +215,10 @@ Provider rail containers and tiles are interactive workbench chrome: they must
 explicitly release host/window drag regions with `nodrag` and
 `-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
 captured as drag gestures before AgentGUI sees the provider filter action.
+Provider rail target ordering is also UI-local chrome state. Drag sorting may
+persist a workspace-scoped order in browser-local storage, but must not write
+that preference into controller state, session state, or durable AgentGUI node
+data. The aggregate `All` target stays fixed above provider-specific targets.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
@@ -228,6 +242,23 @@ current provider target list second, and from legacy node/session `provider`
 only when no target can be resolved. A non-ready provider replaces only the
 empty-home composer with a friendly gate; active/history conversations and
 existing-session composer behavior remain outside this gate.
+When the desktop status list returns an ambiguous startup result for a provider
+whose runtime command is more authoritative than its lightweight status check
+(for example Cursor), the desktop status service may run a provider-specific
+runtime probe and fold a ready result back into the provider status snapshot
+before projecting the empty-home readiness gate.
+Startup provider detection should be progressive: desktop may publish the first
+ready managed provider as soon as it is confirmed, then continue detecting the
+remaining providers in the background. When the empty-home rail is still on
+`All`, no user-selected composer target exists, and the current default target
+is still gated, AgentGUI may move the home composer to that first ready target
+so the user can start typing without waiting for every provider to finish
+detection.
+Progressive detection snapshots are partial by design. A provider missing from
+the current snapshot means "not checked yet", not "install or login required".
+Desktop AgentGUI hosts that project managed-agent readiness for an already-open
+provider panel must wait until that provider appears in the status snapshot
+before replacing the composer with setup UI or disabling active-session sends.
 Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
@@ -250,6 +281,16 @@ panel-scoped AgentGUI container and then activate the durable session. The
 explicit new-window action must pass `openInNewWindow` so the descriptor creates
 a fresh panel-scoped AgentGUI instance while still activating the same durable
 session.
+The detached Agent button in desktop chrome is a different window boundary: it
+asks main to create an Electron `BrowserWindow` with the `view=agent` renderer
+intent. That window is Agent-only, but it is not a separate app bundle or a
+separate data owner. It reuses the workspace renderer services, preload host
+capabilities, `tuttid` client, `WorkspaceAgentActivityService`, account state,
+provider status, and project/file services for the same `workspaceId`.
+Standalone Agent window state may keep a minimal UI-local workbench node
+context, but durable conversations, session activation, login, provider
+readiness, and file/project data must still flow through the shared desktop
+AgentGUI host input and activity runtime.
 Opening an existing session is session-authoritative. If the launch payload has
 no `agentTargetId` or provider target id, workbench node state must clear any
 previous target constraint instead of inheriting it from the reused node. When a
@@ -612,7 +653,9 @@ conversation detail just to show "connecting conversation". After activation
 succeeds, the controller attaches the conversation and records the optimistic
 user message before loading runtime projection. For Claude Code,
 `desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
-session before calling `sendWorkspaceAgentSessionInput`.
+session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
+options must opt out of that promotion path because the hidden draft has already
+created and prepared its runtime.
 
 ### Sending To An Existing Conversation
 
@@ -1009,6 +1052,11 @@ User-visible rules:
 - User composer defaults are owned by desktop preferences. AgentGUI may request
   a defaults write only from the home/new composer path, through an explicit host
   callback.
+- Lab-mode AgentGUI affordances are desktop-preference driven through generic
+  feature flags. AgentGUI must not receive experiment-specific props or create
+  git worktrees itself; new experiments should add a desktop feature-flag
+  catalog entry and keep any product-specific behavior in the owning desktop or
+  daemon layer.
 - Target-backed home/new composer defaults and draft settings must be keyed by
   `agentTargetId` first. Provider-keyed defaults are legacy fallback only, so two
   targets under the same provider cannot share model, permission, reasoning,
@@ -1270,7 +1318,7 @@ activity data source:
 ### Provider Targets
 
 AgentGUI distinguishes launch authority, real provider identity, and legacy
-provider-target compatibility. `agentTargetId` is the authority for new
+provider-target state recovery. `agentTargetId` is required authority for new
 session launches, workbench target selection, and AgentGUI node state. The
 daemon resolves that id against `agent_targets` and derives the execution
 provider and runtime `providerTargetRef` from the trusted target `launchRef`.
@@ -1286,14 +1334,22 @@ telemetry, and provider execution policy.
 AgentGUI owns only target display and passthrough:
 
 - show `target.label` for new-session surfaces
+- render optional `target.badge` as target presentation metadata on provider
+  rail tiles; product ownership, sharing, avatar, or availability semantics
+  stay in the host-projected target data
 - keep provider behavior keyed by `target.provider`
 - persist `agentTargetId` in new workbench node state when the host target has
   one
 - read legacy `providerTargetId` / `providerTargetRef` from old workbench node
   state to recover the selected target
 - pass `agentTargetId` through `AgentActivityRuntime.activateSession`
-- pass `providerTargetRef` only as a legacy opaque compatibility hint for
-  provider-only launches
+- pass `providerTargetRef` only as legacy opaque state for selection recovery;
+  it must not authorize or replace `agentTargetId` for new launches
+
+New-session surfaces, including the composer, batch runner, App Center, and
+issue-manager launchers, must fail or disable launch when no `agentTargetId` is
+available. They must not synthesize `local:<provider>` from a provider-only
+selection as a compatibility fallback.
 
 `providerTargetId` and `providerTargetRef` are transition fields, not daemon
 authority. AgentGUI must not interpret `ref.kind`, mint invocation-control
@@ -1318,6 +1374,9 @@ may select their empty composer state, but launch/send controls stay disabled
 until their real `/agents` targets are supported. The historical `nexight`
 "Tutti" placeholder must not be synthesized into the default AgentGUI rail; use
 the first-party `tutti-agent` provider path for Tutti Agent entry points.
+OpenCode is not a future placeholder: it is a real local provider target backed
+by `local:opencode`, but desktop hides it behind the `enableOpenCodeAgent`
+developer preference until the preview is enabled.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId` for supported
@@ -1541,6 +1600,14 @@ provider capability/options
 Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
+Active-session settings are first-class session state, not composer defaults.
+The controller should submit the runtime settings patch and let the provider
+adapter decide whether the change can be applied live or requires a new
+session. Provider capability differences belong in the daemon runtime adapter:
+for example, OpenCode model and reasoning-effort changes are live ACP
+`session/set_config_option` updates, while spawn-time-only provider settings may
+return the `agent.settings_require_new_session` reason. The UI should surface
+that reason as guidance, not as an unhandled runtime error.
 
 ### Mention Or File Reference
 

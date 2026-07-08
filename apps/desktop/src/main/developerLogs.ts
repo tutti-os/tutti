@@ -429,9 +429,7 @@ async function discoverDeveloperDiagnosticsArtifacts(
   return artifacts;
 }
 
-export function createDefaultDeveloperLogsExportFileName(
-  now = new Date()
-): string {
+function createDefaultDeveloperLogsExportFileName(now = new Date()): string {
   const pad = (value: number): string => String(value).padStart(2, "0");
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
     now.getHours()

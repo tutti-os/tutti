@@ -142,9 +142,26 @@ export const en = {
       expandConversationRail: "Expand session list",
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
+      openDetachedWindow: "Open in detached window",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable"
+    },
+    accountMenu: {
+      title: "Tutti Agent",
+      member: "Manage subscription",
+      creditsBalance: "Credits",
+      accountCenter: "Account settings",
+      free: "Free",
+      signIn: "Sign in",
+      signOut: "Sign out",
+      loading: "Loading",
+      unavailable: "--",
+      dataUnavailable: "Some account data is unavailable",
+      rewardToastTitle: "New user credits",
+      rewardToastCreditsUnit: "credits",
+      rewardToastDescription: "Added to account balance",
+      rewardToastClose: "Close credits reward notification"
     },
     agentEnv: {
       configTitle: "{{provider}} environment",
@@ -632,7 +649,8 @@ export const en = {
         appearance: "Appearance",
         agent: "Agent",
         developer: "Developer",
-        general: "General"
+        general: "General",
+        lab: "Lab"
       },
       about: {
         appName: "Tutti",
@@ -739,6 +757,12 @@ export const en = {
         enableCursorAgentLabel: "Enable Cursor agent",
         enableCursorAgentSaveFailed:
           "We couldn't update the Cursor agent setting right now.",
+        enableOpenCodeAgentDescription:
+          "Show the OpenCode agent across the app. Off by default while OpenCode support is in preview.",
+        // i18n-check-ignore: Provider brand name.
+        enableOpenCodeAgentLabel: "Enable OpenCode agent",
+        enableOpenCodeAgentSaveFailed:
+          "We couldn't update the OpenCode agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
@@ -756,6 +780,9 @@ export const en = {
         fileDefaultOpenersDescription:
           "Choose what opens first when a workspace file is activated by extension.",
         fileDefaultOpenersLabel: "Default file openers",
+        labVisibilityDescription:
+          "Shows experimental controls in a separate Settings tab.",
+        labVisibilityLabel: "Show Lab tab",
         logMissing: "No file yet",
         logOpenFailed: "We couldn't open that log path right now.",
         logsCleared: "Cleared {{count}} log files ({{size}}).",
@@ -790,6 +817,16 @@ export const en = {
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"
+      },
+      lab: {
+        clearShortcutLabel: "Clear {{label}}",
+        newAgentConversationShortcutLabel: "New Agent conversation",
+        newSameTypeWindowShortcutLabel: "New same-type window",
+        preferencesSaveFailed: "We couldn't update Lab preferences.",
+        shortcutUnbound: "Unbound",
+        workbenchShortcutsDescription:
+          "Enables configurable workbench shortcut actions.",
+        workbenchShortcutsLabel: "Workbench shortcuts"
       },
       title: "Settings",
       trigger: "Settings"
@@ -876,6 +913,8 @@ export const en = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
+        manageProviderOpenCode: "OpenCode",
+        manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "Sign-in required",
         manageStatusAvailable: "Available to connect",

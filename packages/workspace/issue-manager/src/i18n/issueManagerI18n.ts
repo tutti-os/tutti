@@ -125,6 +125,8 @@ const issueManagerEn = {
   },
   messages: {
     clipboardUnavailable: "Clipboard is unavailable.",
+    agentTargetRequired: "Select an available agent target first.",
+    agentGuiLaunchUnavailable: "Agent session drafting is unavailable.",
     agentSessionOpenFailed: "Couldn't open the agent session.",
     breakdownOpenFailed: "Couldn't open the agent task breakdown.",
     breakdownUnavailable: "Agent task breakdown is unavailable.",
@@ -361,6 +363,8 @@ const issueManagerZhCN = {
   },
   messages: {
     clipboardUnavailable: "当前环境无法访问剪贴板。",
+    agentTargetRequired: "请先选择可用的 Agent 目标。",
+    agentGuiLaunchUnavailable: "当前环境无法创建 Agent 草稿。",
     agentSessionOpenFailed: "打开 Agent 会话失败。",
     breakdownOpenFailed: "打开 Agent 任务拆解失败。",
     breakdownUnavailable: "当前环境暂不支持 Agent 任务拆解。",
@@ -518,4 +522,16 @@ export function createIssueManagerI18nRuntime(
     runtime ?? defaultIssueManagerI18n,
     issueManagerI18nNamespace
   );
+}
+
+export function createIssueManagerAgentLaunchMessages(
+  copy: IssueManagerI18nRuntime
+): {
+  agentGuiLaunchUnavailable: string;
+  agentTargetRequired: string;
+} {
+  return {
+    agentGuiLaunchUnavailable: copy.t("messages.agentGuiLaunchUnavailable"),
+    agentTargetRequired: copy.t("messages.agentTargetRequired")
+  };
 }

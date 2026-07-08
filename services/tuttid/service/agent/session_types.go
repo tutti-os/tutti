@@ -475,6 +475,37 @@ type StreamInput struct {
 	AgentSessionID string
 }
 
+type WaitInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	AfterVersion   *uint64
+	MessageLimit   int
+	Timeout        time.Duration
+}
+
+type WaitReason string
+
+const (
+	WaitReasonReady           WaitReason = "ready"
+	WaitReasonWaiting         WaitReason = "waiting"
+	WaitReasonWaitingApproval WaitReason = "waiting_approval"
+	WaitReasonWaitingInput    WaitReason = "waiting_input"
+	WaitReasonCompleted       WaitReason = "completed"
+	WaitReasonFailed          WaitReason = "failed"
+	WaitReasonCanceled        WaitReason = "canceled"
+	WaitReasonTimeout         WaitReason = "timeout"
+)
+
+type WaitResult struct {
+	Session        Session
+	Messages       []SessionMessage
+	LatestVersion  uint64
+	HasMore        bool
+	Reason         WaitReason
+	TimedOut       bool
+	EffectiveAfter uint64
+}
+
 type StreamEvent struct {
 	OccurredAt time.Time
 	Payload    map[string]any

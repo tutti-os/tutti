@@ -1455,12 +1455,98 @@ test("controller actions report unavailable agent task breakdown", async () => {
   ]);
 });
 
+test("controller actions notify when running without an available agent target", async () => {
+  let runCalls = 0;
+  const harness = createControllerActionsHarness({
+    agentRunner: {
+      async runTask() {
+        runCalls += 1;
+        return {
+          status: "completed"
+        };
+      }
+    },
+    agentTargetOptions: [],
+    issueDetail: {
+      contextRefs: [],
+      issue: createIssueSummary({
+        issueId: "issue-1",
+        title: "Plan migration"
+      }),
+      latestOutputs: [],
+      recentRuns: [],
+      tasks: [
+        createTaskSummary({
+          issueId: "issue-1",
+          taskId: "task-1",
+          title: "Port renderer"
+        })
+      ]
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentTargetId: "local:codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: "task-1"
+    }
+  });
+
+  await harness.actions.runTask();
+
+  assert.equal(runCalls, 0);
+  assert.deepEqual(harness.notificationState.history, [
+    "messages.agentTargetRequired"
+  ]);
+  assert.deepEqual(harness.isRunningTaskState.history, []);
+});
+
+test("controller actions notify when breaking down without an available agent target", async () => {
+  let breakdownCalls = 0;
+  const harness = createControllerActionsHarness({
+    agentBreakdownLauncher: {
+      async startBreakdown() {
+        breakdownCalls += 1;
+        return {
+          status: "opened"
+        };
+      }
+    },
+    agentTargetOptions: [],
+    issueDetail: {
+      contextRefs: [],
+      issue: createIssueSummary({
+        issueId: "issue-1",
+        title: "Plan migration"
+      }),
+      latestOutputs: [],
+      recentRuns: [],
+      tasks: []
+    },
+    nodeState: {
+      issueSearchQuery: "",
+      issueStatusFilter: "all",
+      selectedAgentTargetId: "local:codex",
+      selectedIssueId: "issue-1",
+      selectedTaskId: null
+    }
+  });
+
+  await harness.actions.startTaskBreakdown();
+
+  assert.equal(breakdownCalls, 0);
+  assert.deepEqual(harness.notificationState.history, [
+    "messages.agentTargetRequired"
+  ]);
+  assert.deepEqual(harness.isRunningTaskState.history, []);
+});
+
 test("controller actions report run result error messages", async () => {
   const harness = createControllerActionsHarness({
     agentRunner: {
       async runTask() {
         return {
-          errorMessage: "issue_manager.agent_gui_launch_unavailable",
+          errorMessage: "Agent session drafting is unavailable.",
           status: "failed"
         };
       }
@@ -1503,7 +1589,7 @@ test("controller actions report run result error messages", async () => {
   await harness.actions.runTask();
 
   assert.deepEqual(harness.notificationState.history, [
-    "issue_manager.agent_gui_launch_unavailable"
+    "Agent session drafting is unavailable."
   ]);
   assert.deepEqual(harness.isRunningTaskState.history, [true, false]);
   assert.equal(harness.refreshDetailsCount, 1);

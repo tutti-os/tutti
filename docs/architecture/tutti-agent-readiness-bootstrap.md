@@ -111,7 +111,6 @@ The installer should reuse the existing agent npm registry chain:
    registry and disables fallback.
 2. Otherwise rank and retry:
    - `https://registry.npmjs.org`
-   - `https://registry.npmmirror.com`
    - `https://repo.huaweicloud.com/repository/npm/`
    - `https://mirrors.cloud.tencent.com/npm/`
 
@@ -119,6 +118,9 @@ This is appropriate for `tutti-agent`. The package is first-party, but the npm
 dependency graph still needs reliable access from China and from enterprise
 networks. Ranking should probe metadata for the exact package being installed,
 then attempt install per registry with the existing per-registry timeout.
+Mirrors must carry the aggregate package and its platform optional dependency
+versions; a registry that only syncs the aggregate package can make npm exit
+successfully while leaving the installed launcher unable to start.
 
 The command shape should match Codex's robust behavior:
 

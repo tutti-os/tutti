@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:207ff16f7ec916e1"
+	BusinessEventCatalogRevision = "sha256:e36ea08ddf0695d3"
 )
 
 type Topic string
@@ -109,6 +109,12 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"openclaw,omitempty"`
+		Opencode *struct {
+			Model            *string `json:"model,omitempty"`
+			PermissionModeId *string `json:"permissionModeId,omitempty"`
+			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
+		} `json:"opencode,omitempty"`
 	} `json:"agentComposerDefaultsByProvider"`
 	AgentComposerDefaultsByAgentTarget *map[string]struct {
 		Model            *string `json:"model,omitempty"`
@@ -125,6 +131,7 @@ type PreferencesDesktopPreferences struct {
 		Gemini     *bool `json:"gemini,omitempty"`
 		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
+		Opencode   *bool `json:"opencode,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
 	AgentConversationDetailMode   string            `json:"agentConversationDetailMode"`
 	AgentDockLayout               string            `json:"agentDockLayout"`
@@ -134,15 +141,21 @@ type PreferencesDesktopPreferences struct {
 	DockIconStyle                 string            `json:"dockIconStyle"`
 	DockPlacement                 string            `json:"dockPlacement"`
 	FileDefaultOpenersByExtension map[string]string `json:"fileDefaultOpenersByExtension"`
-	Locale                        string            `json:"locale"`
-	MinimizeAnimation             string            `json:"minimizeAnimation"`
-	SleepPreventionMode           string            `json:"sleepPreventionMode"`
-	ShowAppDeveloperSources       bool              `json:"showAppDeveloperSources"`
-	EnableCursorAgent             bool              `json:"enableCursorAgent"`
-	ThemeSource                   string            `json:"themeSource"`
-	UpdateChannel                 string            `json:"updateChannel"`
-	UpdatePolicy                  string            `json:"updatePolicy"`
-	WorkbenchWindowSnapping       *struct {
+	FeatureFlags                  map[string]bool   `json:"featureFlags"`
+	WorkbenchShortcuts            struct {
+		NewAgentConversation *string `json:"newAgentConversation"`
+		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	} `json:"workbenchShortcuts"`
+	Locale                  string `json:"locale"`
+	MinimizeAnimation       string `json:"minimizeAnimation"`
+	SleepPreventionMode     string `json:"sleepPreventionMode"`
+	ShowAppDeveloperSources bool   `json:"showAppDeveloperSources"`
+	EnableCursorAgent       bool   `json:"enableCursorAgent"`
+	EnableOpenCodeAgent     bool   `json:"enableOpenCodeAgent"`
+	ThemeSource             string `json:"themeSource"`
+	UpdateChannel           string `json:"updateChannel"`
+	UpdatePolicy            string `json:"updatePolicy"`
+	WorkbenchWindowSnapping *struct {
 		Enabled        bool   `json:"enabled"`
 		ShortcutPreset string `json:"shortcutPreset"`
 	} `json:"workbenchWindowSnapping,omitempty"`

@@ -36,7 +36,9 @@ Fallback only when matching skill is unavailable:
 - Issue mention: parse id/query, start with `{{CLI_COMMAND}} issue get --issue-id <issue-id> --json`.
 - App mention: open only on explicit open/show request with `{{CLI_COMMAND}} app open --app-id <appId> --json`; for `agent-codex` use `{{CLI_COMMAND}} codex start --prompt <task> --show --json`; for `agent-claude-code` use `{{CLI_COMMAND}} claude start --prompt <task> --show --json`; for other apps, match `App id: <appId>` in `command-guide.md`. Do not invent `{{CLI_COMMAND}} workspace-app ...`.
 - Reference mention: `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`, then read returned paths.
-- Agent-session mention: `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json`.
+- Agent-session mention: prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json` for recent execution progress; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper.
+- After `agent start`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
+- After `agent send`, use `{{CLI_COMMAND}} agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` with the returned `waitAfterVersion`; `agent wait` returns only recent execution messages.
 - Agent-target mention: choose `{{CLI_COMMAND}} agent ...`, `{{CLI_COMMAND}} codex ...`, or `{{CLI_COMMAND}} claude ...` from the user's prompt. Starting a new session is one possible workflow, but active-peer inspection, historical session lookup, and other agent CLI workflows are also valid.
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 

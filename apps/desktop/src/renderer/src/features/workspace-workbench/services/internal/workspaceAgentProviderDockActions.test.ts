@@ -89,6 +89,7 @@ function stubService(
       statuses: []
     }),
     getStatus: () => null,
+    hydrate: () => {},
     isActionPending: () => false,
     ensureLoaded: async () => null,
     refresh: async () => {},

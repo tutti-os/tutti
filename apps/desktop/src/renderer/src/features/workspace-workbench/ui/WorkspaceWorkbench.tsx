@@ -10,6 +10,7 @@ import {
   type IssueManagerOpenActivationPayload
 } from "@tutti-os/workspace-issue-manager/workbench";
 import {
+  isEditableShortcutTarget,
   type WorkbenchHostCloseDialogRequest,
   type WorkbenchContribution,
   type WorkbenchHostHandle,
@@ -97,6 +98,10 @@ import {
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
+import {
+  StandaloneAgentWindow,
+  type StandaloneAgentWindowProps
+} from "./StandaloneAgentWindow.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
@@ -106,11 +111,21 @@ import type {
   TuttiExternalFileOpenInput,
   TuttiExternalWorkspaceOpenRouteIntent
 } from "@tutti-os/workspace-external-core/contracts";
+import {
+  isFeatureEnabled,
+  LAB_WORKBENCH_SHORTCUTS_FLAG
+} from "../../../../../shared/featureFlags/catalog.ts";
+import { resolveWorkbenchShortcutAction } from "../services/workspaceWorkbenchShortcutService.ts";
+import {
+  openWorkspaceWorkbenchAgentConversationShortcut,
+  openWorkspaceWorkbenchSameTypeWindowShortcut
+} from "../services/workspaceWorkbenchShortcutActions.ts";
 
 const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
+  agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
   routeView: string;
@@ -118,6 +133,7 @@ interface WorkspaceWorkbenchProps {
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
+  agentWindowInput,
   enableWindowCloseGuard,
   headerSlot,
   routeView,
@@ -149,6 +165,15 @@ export function WorkspaceWorkbench({
 
   if (state.status === "loading" || !state.workspace) {
     return <main className="h-screen min-h-0 bg-background" />;
+  }
+
+  if (routeView === "agent" && agentWindowInput) {
+    return (
+      <StandaloneAgentWindow
+        {...agentWindowInput}
+        workspace={state.workspace}
+      />
+    );
   }
 
   return (
@@ -624,6 +649,63 @@ function ReadyWorkspaceWorkbench({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [runtime.missionControl, runtime.shortcutsEnabled]);
+
+  useEffect(() => {
+    if (
+      !workbenchHost ||
+      !runtime.shortcutsEnabled ||
+      !isFeatureEnabled(runtime.featureFlags, LAB_WORKBENCH_SHORTCUTS_FLAG)
+    ) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        isEditableShortcutTarget(event.target)
+      ) {
+        return;
+      }
+      const action = resolveWorkbenchShortcutAction(
+        event,
+        runtime.workbenchShortcuts
+      );
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === "new-agent-conversation") {
+        void openWorkspaceWorkbenchAgentConversationShortcut({
+          defaultProvider: normalizeDesktopAgentGUIProvider(
+            runtime.defaultAgentProvider
+          ),
+          host: workbenchHost,
+          workspaceId: state.workspace.id
+        });
+        return;
+      }
+      void openWorkspaceWorkbenchSameTypeWindowShortcut({
+        defaultProvider: normalizeDesktopAgentGUIProvider(
+          runtime.defaultAgentProvider
+        ),
+        host: workbenchHost
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [
+    runtime.featureFlags,
+    runtime.workbenchShortcuts,
+    runtime.shortcutsEnabled,
+    runtime.defaultAgentProvider,
+    state.workspace.id,
+    workbenchHost
+  ]);
 
   return (
     <main

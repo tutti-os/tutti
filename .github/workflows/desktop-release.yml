@@ -70,6 +70,50 @@ jobs:
           ref: ${{ steps.target.outputs.release_target }}
           fetch-depth: 0
 
+      - name: Validate stable release branch
+        shell: bash
+        env:
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
+          RELEASE_REF_NAME: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [[ "${RELEASE_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            exit 0
+          fi
+
+          case "${RELEASE_MODE:-}" in
+            patch_release|minor_release|major_release)
+              ;;
+            *)
+              exit 0
+              ;;
+          esac
+
+          if [[ "${RELEASE_REF_TYPE}" != "branch" ]]; then
+            echo "Stable desktop release modes must be run from main or a release/* branch." >&2
+            exit 1
+          fi
+
+          case "${RELEASE_REF_NAME}" in
+            main|release/*)
+              ;;
+            *)
+              echo "Stable desktop release modes must be run from main or a release/* branch, not ${RELEASE_REF_NAME}." >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "${RELEASE_REF_NAME}" == "main" ]]; then
+            release_branch_refs="$(git ls-remote --heads origin "refs/heads/release/*")"
+            if [[ -n "${release_branch_refs}" ]]; then
+              echo "Stable desktop release modes must run from a release/* branch while release branches exist." >&2
+              echo "Found release branches:" >&2
+              printf "%s\n" "${release_branch_refs}" | sed -E "s#^[[:xdigit:]]+[[:space:]]+refs/heads/#- #" >&2
+              exit 1
+            fi
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:

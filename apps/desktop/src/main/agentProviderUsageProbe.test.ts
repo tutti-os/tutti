@@ -2,9 +2,19 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { listDesktopWorkspaceAgentProbes } from "./agentProviderUsageProbe.ts";
+import { beforeEach, test } from "node:test";
+import {
+  desktopAgentUsageProbeLogLevel,
+  listDesktopWorkspaceAgentProbes,
+  resetUsageProbeCacheForTesting
+} from "./agentProviderUsageProbe.ts";
 import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
+
+// The probe caches usage results per provider in module state; clear it so one
+// case's result never leaks into the next.
+beforeEach(() => {
+  resetUsageProbeCacheForTesting();
+});
 
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {
   const previousCodexHome = process.env.CODEX_HOME;
@@ -323,6 +333,121 @@ test("listDesktopWorkspaceAgentProbes requires a Claude custom API token", async
     restoreOptionalEnv("ANTHROPIC_API_KEY", previousAnthropicAPIKey);
     await rm(directory, { force: true, recursive: true });
   }
+});
+
+test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", async () => {
+  const previousHome = process.env.HOME;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-claude-throttle-"));
+  let fetchCount = 0;
+  try {
+    process.env.HOME = directory;
+    await mkdir(join(directory, ".claude"), { recursive: true });
+    await writeFile(
+      join(directory, ".claude", ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "claude-access-token-1",
+          expiresAt: 4102444800000,
+          subscriptionType: "pro"
+        }
+      })
+    );
+    setOutboundFetcherForTesting(async () => {
+      fetchCount += 1;
+      return new Response(
+        JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2026-06-11T12:00:00.000Z" }
+        }),
+        { status: 200 }
+      );
+    });
+
+    const input = {
+      includeUsage: true,
+      providers: ["claude-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    };
+    const first = await listDesktopWorkspaceAgentProbes(input);
+    const second = await listDesktopWorkspaceAgentProbes(input);
+    const third = await listDesktopWorkspaceAgentProbes(input);
+
+    // Three back-to-back probes must hit the vendor API only once; the rest are
+    // served from the short-lived cache.
+    assert.equal(fetchCount, 1);
+    assert.deepEqual(
+      second.providers[0]?.usage?.quotas,
+      first.providers[0]?.usage?.quotas
+    );
+    assert.deepEqual(
+      third.providers[0]?.usage?.quotas,
+      first.providers[0]?.usage?.quotas
+    );
+  } finally {
+    restoreOptionalEnv("HOME", previousHome);
+    setOutboundFetcherForTesting(null);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("listDesktopWorkspaceAgentProbes stops re-hitting a rate-limited usage endpoint", async () => {
+  const previousHome = process.env.HOME;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-claude-429-"));
+  let fetchCount = 0;
+  try {
+    process.env.HOME = directory;
+    await mkdir(join(directory, ".claude"), { recursive: true });
+    await writeFile(
+      join(directory, ".claude", ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "claude-access-token-1",
+          expiresAt: 4102444800000,
+          subscriptionType: "pro"
+        }
+      })
+    );
+    setOutboundFetcherForTesting(async () => {
+      fetchCount += 1;
+      return new Response("", { status: 429 });
+    });
+
+    const input = {
+      includeUsage: true,
+      providers: ["claude-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    };
+    const first = await listDesktopWorkspaceAgentProbes(input);
+    await listDesktopWorkspaceAgentProbes(input);
+    await listDesktopWorkspaceAgentProbes(input);
+
+    // The 429 is surfaced once, then the cooldown suppresses further calls to
+    // the already-limited endpoint.
+    assert.equal(fetchCount, 1);
+    assert.equal(first.providers[0]?.lastError?.code, "execution_failed");
+    assert.match(first.providers[0]?.lastError?.message ?? "", /rate limited/i);
+  } finally {
+    restoreOptionalEnv("HOME", previousHome);
+    setOutboundFetcherForTesting(null);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("desktopAgentUsageProbeLogLevel warns on a real usage fetch failure", () => {
+  assert.equal(desktopAgentUsageProbeLogLevel(0, "session_expired"), "warn");
+  assert.equal(desktopAgentUsageProbeLogLevel(0, "execution_failed"), "warn");
+  // Even if a stale quota lingered, an error code still means the fetch failed.
+  assert.equal(desktopAgentUsageProbeLogLevel(2, "parse_failed"), "warn");
+});
+
+test("desktopAgentUsageProbeLogLevel flags an empty-but-not-errored result", () => {
+  assert.equal(desktopAgentUsageProbeLogLevel(0, null), "info");
+});
+
+test("desktopAgentUsageProbeLogLevel stays quiet for normal or unsupported results", () => {
+  assert.equal(desktopAgentUsageProbeLogLevel(2, null), "debug");
+  assert.equal(desktopAgentUsageProbeLogLevel(0, "unsupported"), "debug");
 });
 
 function restoreOptionalEnv(key: string, value: string | undefined): void {

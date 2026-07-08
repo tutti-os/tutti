@@ -63,13 +63,12 @@ const providerLabelKeys = {
   cursor: "workspace.workbenchDesktop.agentProviders.manageProviderCursor",
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
+  nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
   openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
+  opencode: "workspace.workbenchDesktop.agentProviders.manageProviderOpenCode",
   "tutti-agent":
     "workspace.workbenchDesktop.agentProviders.manageProviderTuttiAgent"
-} as const satisfies Record<
-  (typeof desktopAgentProviderManageDialogProviders)[number],
-  DesktopI18nKey
->;
+} as const satisfies Record<WorkspaceAgentProvider, DesktopI18nKey>;
 
 const statusLabelKeys = {
   auth_required:
@@ -98,10 +97,14 @@ export function DesktopAgentProviderManageDialog({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
     () =>
-      new Set<WorkspaceAgentProvider>(
-        desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]
-      ),
-    [desktopPreferencesState.enableCursorAgent]
+      new Set<WorkspaceAgentProvider>([
+        ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
+        ...(desktopPreferencesState.enableOpenCodeAgent ? [] : ["opencode"])
+      ] as WorkspaceAgentProvider[]),
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
   );
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()

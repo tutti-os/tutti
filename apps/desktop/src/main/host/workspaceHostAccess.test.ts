@@ -13,6 +13,7 @@ function createAdapters(
   overrides: Partial<WorkspaceLaunchAdapters> = {}
 ): WorkspaceLaunchAdapters {
   return {
+    async showAgentWindow() {},
     async showWorkspaceWindow() {},
     warnStartupWindowResolutionFailure() {},
     ...overrides

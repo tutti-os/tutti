@@ -101,7 +101,16 @@ func TestProviderAuthWatcherStartWithoutCallbackIsInert(_ *testing.T) {
 	watcher.Close()
 }
 
-func TestDefaultProviderAuthWatchEntriesCoverCodexAndClaude(t *testing.T) {
+func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, "opencode-config")
+	dataDir := filepath.Join(home, "opencode-data")
+	configPath := filepath.Join(home, "custom-opencode.json")
+	t.Setenv("HOME", home)
+	t.Setenv("OPENCODE_CONFIG", configPath)
+	t.Setenv("OPENCODE_CONFIG_DIR", configDir)
+	t.Setenv("XDG_DATA_HOME", dataDir)
+
 	entries := DefaultProviderAuthWatchEntries()
 	byProvider := make(map[string][]string, len(entries))
 	for _, entry := range entries {
@@ -112,6 +121,20 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexAndClaude(t *testing.T) {
 	}
 	if len(byProvider[agentprovider.ClaudeCode]) == 0 {
 		t.Fatal("expected claude-code watch paths")
+	}
+	opencodePaths := byProvider[agentprovider.OpenCode]
+	if len(opencodePaths) == 0 {
+		t.Fatal("expected opencode watch paths")
+	}
+	for _, want := range []string{
+		configPath,
+		filepath.Join(configDir, "opencode.json"),
+		filepath.Join(configDir, "config.json"),
+		filepath.Join(dataDir, "opencode", "auth.json"),
+	} {
+		if !containsString(opencodePaths, want) {
+			t.Fatalf("opencode paths = %v, want %q", opencodePaths, want)
+		}
 	}
 }
 
@@ -168,6 +191,45 @@ func TestProviderAuthWatcherIgnoresNonAuthClaudeStateChurn(t *testing.T) {
 	}
 }
 
+func TestProviderAuthWatcherReportsOpenCodeConfigRewrites(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "opencode.json")
+	if err := os.WriteFile(configPath, []byte(`{"model":"openai/gpt-5"}`), 0o600); err != nil {
+		t.Fatalf("write baseline config file: %v", err)
+	}
+
+	changes := make(chan []string, 8)
+	watcher := &ProviderAuthWatcher{
+		Entries: []ProviderAuthWatchEntry{
+			{
+				Provider:           agentprovider.OpenCode,
+				Paths:              []string{configPath},
+				ContentFingerprint: hashProviderAuthFileContent,
+			},
+		},
+		Interval: 5 * time.Millisecond,
+		OnChange: func(providers []string) {
+			changes <- providers
+		},
+	}
+	watcher.Start()
+	defer watcher.Close()
+
+	time.Sleep(20 * time.Millisecond)
+	if err := os.WriteFile(configPath, []byte(`{"model":"openai/gpt-5.3-codex-spark"}`), 0o600); err != nil {
+		t.Fatalf("rewrite config file: %v", err)
+	}
+
+	select {
+	case providers := <-changes:
+		if len(providers) != 1 || providers[0] != agentprovider.OpenCode {
+			t.Fatalf("OnChange providers = %v, want [opencode]", providers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not report the opencode config rewrite")
+	}
+}
+
 func TestProviderAuthFileChangedPrefersContentKey(t *testing.T) {
 	previous := providerAuthFileFingerprint{
 		exists: true, modTime: time.UnixMilli(1000), size: 10, contentKey: "same",
@@ -189,6 +251,15 @@ func TestProviderAuthFileChangedPrefersContentKey(t *testing.T) {
 	if !providerAuthFileChanged(previous, next) {
 		t.Fatal("stat change without content keys must report")
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestJSONSubsetFingerprintTracksOnlySelectedKeys(t *testing.T) {

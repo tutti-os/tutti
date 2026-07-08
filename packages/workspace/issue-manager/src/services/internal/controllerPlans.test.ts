@@ -18,8 +18,22 @@ import {
 } from "./controllerActionTestHarness.ts";
 
 test("controllerPlans create run-task plans from detail and agent target intent", () => {
+  const agentTargetOptions = [
+    {
+      agentTargetId: "local:codex",
+      label: "Codex",
+      provider: "codex"
+    },
+    {
+      agentTargetId: "local:claude-code",
+      label: "Claude Code",
+      provider: "claude-code"
+    }
+  ];
+
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
+      agentTargetOptions,
       issueDetail: null,
       selectedAgentTargetId: "local:codex",
       taskDetail: createTaskDetail()
@@ -28,6 +42,7 @@ test("controllerPlans create run-task plans from detail and agent target intent"
   );
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
+      agentTargetOptions,
       issueDetail: createIssueDetail(),
       agentTargetIdOverride: " local:claude-code ",
       selectedAgentTargetId: "local:codex",
@@ -42,6 +57,7 @@ test("controllerPlans create run-task plans from detail and agent target intent"
   );
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
+      agentTargetOptions,
       issueDetail: createIssueDetail(),
       agentTargetIdOverride: "   ",
       selectedAgentTargetId: "local:codex",
@@ -52,6 +68,39 @@ test("controllerPlans create run-task plans from detail and agent target intent"
       kind: "ready",
       provider: "codex",
       shouldUpdateSelectedAgentTargetId: false
+    }
+  );
+});
+
+test("controllerPlans block run-task plans when the selected agent target is unavailable", () => {
+  assert.deepEqual(
+    createIssueManagerRunTaskPlan({
+      agentTargetOptions: [],
+      issueDetail: createIssueDetail(),
+      selectedAgentTargetId: "local:codex",
+      taskDetail: createTaskDetail()
+    }),
+    {
+      kind: "blocked",
+      notificationKey: "messages.agentTargetRequired"
+    }
+  );
+  assert.deepEqual(
+    createIssueManagerRunTaskPlan({
+      agentTargetOptions: [
+        {
+          agentTargetId: "local:codex",
+          label: "Codex",
+          provider: "   "
+        }
+      ],
+      issueDetail: createIssueDetail(),
+      selectedAgentTargetId: "local:codex",
+      taskDetail: createTaskDetail()
+    }),
+    {
+      kind: "blocked",
+      notificationKey: "messages.agentTargetRequired"
     }
   );
 });

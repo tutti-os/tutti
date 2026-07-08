@@ -3004,6 +3004,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "usage_update":
+		logACPUsageUpdate(config, session, turnID, params.Update)
 		if event, ok := acpUsageUpdatedEvent(session); ok {
 			return []activityshared.Event{event}
 		}
@@ -3043,6 +3044,63 @@ func logACPCurrentModeUpdate(config standardACPConfig, session Session, update m
 		"provider_session_id", session.ProviderSessionID,
 		"mode_id", strings.TrimSpace(acpModeValue(update)),
 	)
+}
+
+func logACPUsageUpdate(
+	config standardACPConfig,
+	session Session,
+	turnID string,
+	update map[string]any,
+) {
+	parsed, parsedOK := acpUsageValue(update)
+	slog.Info("agent session ACP usage update",
+		"event", "agent_session.acp.usage_update",
+		"provider", config.provider,
+		"adapter", config.adapterName,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", session.ProviderSessionID,
+		"turn_id", turnID,
+		"raw_used", firstACPInt64LogValue(update, "used"),
+		"raw_size", firstACPInt64LogValue(update, "size"),
+		"raw_cost_amount", nestedACPFloatLogValue(update, "cost", "amount"),
+		"raw_cost_currency", nestedACPStringLogValue(update, "cost", "currency"),
+		"parsed_ok", parsedOK,
+		"context_known", parsed.contextKnown,
+		"context_used_tokens", parsed.contextUsedTokens,
+		"context_window_tokens", parsed.contextWindowTokens,
+		"quota_count", len(parsed.quotas),
+	)
+}
+
+func firstACPInt64LogValue(source map[string]any, keys ...string) any {
+	if value, ok := firstACPInt64(source, keys...); ok {
+		return value
+	}
+	return nil
+}
+
+func nestedACPFloatLogValue(source map[string]any, key string, nestedKey string) any {
+	nested, _ := source[key].(map[string]any)
+	if len(nested) == 0 {
+		return nil
+	}
+	if value, ok := acpFloatValue(nested[nestedKey]); ok {
+		return value
+	}
+	return nil
+}
+
+func nestedACPStringLogValue(source map[string]any, key string, nestedKey string) any {
+	nested, _ := source[key].(map[string]any)
+	if len(nested) == 0 {
+		return nil
+	}
+	value := strings.TrimSpace(asString(nested[nestedKey]))
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func logACPGoalUpdate(config standardACPConfig, session Session, turnID string, updateType string, update map[string]any) {

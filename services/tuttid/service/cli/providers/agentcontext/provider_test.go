@@ -44,6 +44,7 @@ type fakeAgentSessions struct {
 	sessionID       string
 	cancelCallCount int
 	limit           int
+	waitInput       agentservice.WaitInput
 	turnID          string
 	afterVersion    uint64
 	beforeVersion   uint64
@@ -62,6 +63,11 @@ type fakeAgentSessions struct {
 	availability    []agentservice.ProviderAvailability
 	availabilityErr error
 	availabilityIn  []agentservice.ProviderAvailabilityInput
+	waitResult      agentservice.WaitResult
+}
+
+func newTestProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
+	return NewProviderWithLaunchPublisher(workspaces, sessions, nil)
 }
 
 func newTestCodexStartCommand(provider Provider) cliservice.Command {
@@ -332,6 +338,39 @@ func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, ses
 	}, nil
 }
 
+func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput) (agentservice.WaitResult, error) {
+	f.workspaceID = input.WorkspaceID
+	f.sessionID = input.AgentSessionID
+	f.waitInput = input
+	if f.waitResult.Session.ID != "" || f.waitResult.Reason != "" {
+		return f.waitResult, nil
+	}
+	effectiveAfter := uint64(0)
+	if input.AfterVersion != nil {
+		effectiveAfter = *input.AfterVersion
+	}
+	return agentservice.WaitResult{
+		Session: agentservice.Session{
+			ID:       input.AgentSessionID,
+			Provider: "codex",
+			Status:   "waiting",
+			Visible:  true,
+		},
+		Messages: []agentservice.SessionMessage{{
+			AgentSessionID: input.AgentSessionID,
+			MessageID:      "message-2",
+			Role:           "assistant",
+			Kind:           "text",
+			Status:         "completed",
+			Payload:        map[string]any{"content": "Recent output"},
+			Version:        6,
+		}},
+		LatestVersion:  6,
+		Reason:         agentservice.WaitReasonWaitingInput,
+		EffectiveAfter: effectiveAfter,
+	}, nil
+}
+
 type fakeAgentGUILaunchPublisher struct {
 	requests []agentgui.LaunchRequest
 }
@@ -392,9 +431,16 @@ func equalStrings(left []string, right []string) bool {
 	return true
 }
 
+func waitAfterVersionValue(value *uint64) (uint64, bool) {
+	if value == nil {
+		return 0, false
+	}
+	return *value, true
+}
+
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1", "limit": "20", "after-version": "3"},
@@ -455,7 +501,7 @@ func TestSessionSummaryCommandIncludesImageCompactMetadata(t *testing.T) {
 			Version: 2,
 		}},
 	}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1"},
@@ -530,7 +576,7 @@ func TestTurnResourcesCommandReturnsImagesGroupedByUserMessage(t *testing.T) {
 			},
 		},
 	}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newTurnResourcesCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newTurnResourcesCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-2"},
@@ -562,7 +608,7 @@ func TestTurnResourcesCommandReturnsImagesGroupedByUserMessage(t *testing.T) {
 
 func TestTurnResourcesCommandRejectsBlankTurnID(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newTurnResourcesCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newTurnResourcesCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "   "},
@@ -578,7 +624,7 @@ func TestTurnResourcesCommandRejectsBlankTurnID(t *testing.T) {
 
 func TestSessionSummaryCommandUsesDescendingBeforeVersion(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1", "limit": "50", "order": "desc", "before-version": "99"},
@@ -599,7 +645,7 @@ func TestSessionSummaryCommandUsesDescendingBeforeVersion(t *testing.T) {
 
 func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"session-id": "SESSION-1", "order": "sideways"},
@@ -609,9 +655,177 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	}
 }
 
+func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{
+				ID:       "SESSION-1",
+				Provider: "codex",
+				Status:   "waiting",
+				Visible:  true,
+				TurnLifecycle: &agentservice.TurnLifecycle{
+					Phase: "waiting_input",
+				},
+			},
+			Messages: []agentservice.SessionMessage{
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "assistant-1",
+					Role:           "assistant",
+					Kind:           "text",
+					Status:         "completed",
+					Payload:        map[string]any{"content": "First reply"},
+					Version:        8,
+				},
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "tool-1",
+					Role:           "tool",
+					Kind:           "call",
+					Status:         "completed",
+					Payload:        map[string]any{"name": "Read files", "status": "completed"},
+					Version:        9,
+				},
+			},
+			LatestVersion:  9,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
+		},
+	}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "limit": "5", "timeout-ms": "2500"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
+	if sessions.waitInput.WorkspaceID != "workspace-1" ||
+		sessions.waitInput.AgentSessionID != "SESSION-1" ||
+		!ok ||
+		waitAfterVersion != 7 ||
+		sessions.waitInput.MessageLimit != 5 ||
+		sessions.waitInput.Timeout != 2500*time.Millisecond {
+		t.Fatalf("wait input = %#v", sessions.waitInput)
+	}
+	if output.Value["agentSessionId"] != "SESSION-1" ||
+		output.Value["reason"] != "waiting_input" ||
+		output.Value["timedOut"] != false ||
+		output.Value["latestVersion"] != uint64(9) ||
+		output.Value["effectiveAfter"] != uint64(7) {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	session := output.Value["session"].(map[string]any)
+	if _, ok := session["settings"]; ok {
+		t.Fatalf("wait session should stay compact: %#v", session)
+	}
+	messages := output.Value["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	first := messages[0].(map[string]any)
+	if first["messageId"] != "assistant-1" || first["text"] != "First reply" {
+		t.Fatalf("first message = %#v", first)
+	}
+	second := messages[1].(map[string]any)
+	if second["messageId"] != "tool-1" || second["text"] != "call: Read files" {
+		t.Fatalf("second message = %#v", second)
+	}
+}
+
+func TestWaitCommandPreservesExplicitZeroAfterVersion(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "0"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
+	if !ok || waitAfterVersion != 0 {
+		t.Fatalf("wait after version = %#v, want explicit zero", sessions.waitInput.AfterVersion)
+	}
+}
+
+func TestWaitCommandIncludesImageCompactMetadata(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		localPaths: map[string]string{"attachment-1": "/tmp/agent/attachments/SESSION-1/attachment-1.png"},
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{
+				ID:       "SESSION-1",
+				Provider: "codex",
+				Status:   "waiting",
+				Visible:  true,
+			},
+			Messages: []agentservice.SessionMessage{{
+				AgentSessionID: "SESSION-1",
+				MessageID:      "message-1",
+				Role:           "user",
+				Kind:           "text",
+				Status:         "completed",
+				Payload: map[string]any{
+					"content": []any{
+						map[string]any{"type": "text", "text": "look"},
+						map[string]any{
+							"type":         "image",
+							"attachmentId": "attachment-1",
+							"mimeType":     "image/png",
+							"name":         "shot.png",
+						},
+					},
+				},
+				Version: 8,
+			}},
+			LatestVersion:  8,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
+		},
+	}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	messages := output.Value["messages"].([]any)
+	images := messages[0].(map[string]any)["images"].([]any)
+	image := images[0].(map[string]any)
+	if image["attachmentId"] != "attachment-1" ||
+		image["mimeType"] != "image/png" ||
+		image["name"] != "shot.png" ||
+		image["localPath"] != "/tmp/agent/attachments/SESSION-1/attachment-1.png" {
+		t.Fatalf("image = %#v", image)
+	}
+}
+
+func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.waitInput.AfterVersion != nil {
+		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
+	}
+	if sessions.waitInput.Timeout != 5*time.Minute {
+		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)
+	}
+}
+
 func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -636,7 +850,7 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 
 func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
 	required, ok := command.Capability.InputSchema["required"].([]string)
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
@@ -711,7 +925,7 @@ func TestStartCommandUsesComposerDefaults(t *testing.T) {
 
 func TestProvidersCommandReturnsAvailability(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProvidersCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProvidersCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"provider": "codex"},
@@ -757,7 +971,7 @@ func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 
 func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newComposerOptionsCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newComposerOptionsCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -804,7 +1018,7 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 
 func TestComposerOptionsCommandCanDisableCapabilityCatalog(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newComposerOptionsCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newComposerOptionsCommand()
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -861,7 +1075,7 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 
 func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSkillBundleCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSkillBundleCommand()
 	if command.Capability.ID != appID+".agent.tutti-cli-skill-bundle" ||
 		strings.Join(command.Capability.Path, " ") != "agent tutti-cli-skill-bundle" {
 		t.Fatalf("command capability = %#v", command.Capability)
@@ -937,7 +1151,7 @@ func TestSkillBundleSkillsValuePreservesMaterializedPathWhenPresent(t *testing.T
 	}
 }
 
-func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
+func TestStartCommandLeavesVisibilityUnsetAndShowPublishesLaunch(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	publisher := &fakeAgentGUILaunchPublisher{}
 	provider := NewProviderWithLaunchPublisher(
@@ -953,10 +1167,10 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 			Source: "cli",
 		},
 	}); err != nil {
-		t.Fatalf("Handler headless: %v", err)
+		t.Fatalf("Handler default visibility: %v", err)
 	}
-	if sessions.createInput.Visible == nil || *sessions.createInput.Visible {
-		t.Fatalf("Visible = %#v, want false", sessions.createInput.Visible)
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
 	}
 	if len(publisher.requests) != 0 {
 		t.Fatalf("launch requests = %#v, want none", publisher.requests)
@@ -970,17 +1184,71 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Handler show: %v", err)
 	}
-	if sessions.createInput.Visible == nil || !*sessions.createInput.Visible {
-		t.Fatalf("Visible = %#v, want true", sessions.createInput.Visible)
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
 	}
 	if len(publisher.requests) != 1 || publisher.requests[0].AgentSessionID != "SESSION-NEW" || publisher.requests[0].Source != "cli" {
 		t.Fatalf("launch requests = %#v", publisher.requests)
 	}
 }
 
+func TestStartCommandShowDoesNotHideSession(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	publisher := &fakeAgentGUILaunchPublisher{}
+	provider := NewProviderWithLaunchPublisher(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		publisher,
+	)
+	command := newTestCodexStartCommand(provider)
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"model":  "gpt-5",
+			"prompt": "do work",
+			"show":   "true",
+		},
+		Context: cliservice.InvokeContext{
+			Source: "cli",
+		},
+	}); err != nil {
+		t.Fatalf("Handler show: %v", err)
+	}
+	if sessions.createInput.Visible != nil {
+		t.Fatalf("Visible = %#v, want nil", sessions.createInput.Visible)
+	}
+	if len(publisher.requests) != 1 || publisher.requests[0].Reason != "start_show" {
+		t.Fatalf("launch requests = %#v", publisher.requests)
+	}
+}
+
+func TestStartCommandHiddenCreatesHiddenSession(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestCodexStartCommand(newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	))
+
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"model":  "gpt-5",
+			"prompt": "do work",
+			"hidden": "true",
+		},
+		Context: cliservice.InvokeContext{
+			Source: "cli",
+		},
+	}); err != nil {
+		t.Fatalf("Handler hidden: %v", err)
+	}
+	if sessions.createInput.Visible == nil || *sessions.createInput.Visible {
+		t.Fatalf("Visible = %#v, want false", sessions.createInput.Visible)
+	}
+}
+
 func TestStartCommandPassesComposerSettings(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -1009,7 +1277,7 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 
 func TestStartCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	imagePath := filepath.Join(t.TempDir(), "shot.png")
 	if err := os.WriteFile(imagePath, []byte("png-bytes"), 0o600); err != nil {
 		t.Fatalf("write image: %v", err)
@@ -1043,7 +1311,7 @@ func TestStartCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 
 func TestStartCommandRejectsUnsupportedImageExtension(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -1062,7 +1330,7 @@ func TestStartCommandRejectsUnsupportedImageExtension(t *testing.T) {
 
 func TestStartCommandPreservesCommaInImagePath(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	imagePath := filepath.Join(t.TempDir(), "shot,one.png")
 	if err := os.WriteFile(imagePath, []byte("comma-path-bytes"), 0o600); err != nil {
 		t.Fatalf("write image: %v", err)
@@ -1092,7 +1360,7 @@ func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
 	}
-	command := newTestClaudeStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestClaudeStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"model": "sonnet", "prompt": "do work"},
@@ -1115,7 +1383,7 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
 	}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
@@ -1140,7 +1408,7 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 
 func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"model": "gpt-5", "prompt": "do work"},
@@ -1155,7 +1423,7 @@ func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
 
 func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
 	sessions := &fakeAgentSessions{getErr: agentservice.ErrSessionNotFound}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"model": "gpt-5", "prompt": "do work"},
@@ -1172,7 +1440,7 @@ func TestStartCommandMissingCallerSessionLeavesCwdForAllocator(t *testing.T) {
 }
 
 func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
-	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{})
+	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{})
 	commands := provider.Commands()
 	codex := commandByID(t, commands, "agent-context.codex.start")
 	claude := commandByID(t, commands, "agent-context.claude.start")
@@ -1203,7 +1471,7 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		"claude": {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
 	} {
 		sessions := &fakeAgentSessions{}
-		command := commandByID(t, NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
+		command := commandByID(t, newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
 		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 			Input: map[string]any{"model": "model-1", "prompt": "do work"},
 		})
@@ -1270,7 +1538,7 @@ func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
 				availabilityErr: tc.availabilityErr,
 			}
 			registry, err := cliservice.NewRegistryFromProviders(
-				NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
+				newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
 			)
 			if err != nil {
 				t.Fatalf("NewRegistryFromProviders: %v", err)
@@ -1292,7 +1560,7 @@ func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
 
 func TestProviderCapabilitiesHideAgentAppsWithoutSessions(t *testing.T) {
 	registry, err := cliservice.NewRegistryFromProviders(
-		NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, nil),
+		newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, nil),
 	)
 	if err != nil {
 		t.Fatalf("NewRegistryFromProviders: %v", err)
@@ -1308,7 +1576,7 @@ func TestProviderCapabilitiesHideAgentAppsWithoutSessions(t *testing.T) {
 }
 
 func TestProviderCapabilityFilterKeepsGenericAndNonAgentAppCapabilities(t *testing.T) {
-	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{
+	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{
 		availability: []agentservice.ProviderAvailability{
 			providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
 			providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
@@ -1344,7 +1612,7 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 		},
 	}
 	registry, err := cliservice.NewRegistryFromProviders(
-		NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
+		newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
 	)
 	if err != nil {
 		t.Fatalf("NewRegistryFromProviders: %v", err)
@@ -1377,7 +1645,7 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 
 func TestProviderStartCommandRequiresPrompt(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 	required, ok := command.Capability.InputSchema["required"].([]string)
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
@@ -1474,7 +1742,7 @@ func TestOpenCommandPublishesLaunchIntent(t *testing.T) {
 
 func TestGetCommandReturnsSession(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(
+	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 	).newGetCommand()
@@ -1500,7 +1768,7 @@ func TestGetCommandReturnsSession(t *testing.T) {
 
 func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(
+	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 	).newSendCommand()
@@ -1540,8 +1808,33 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	}
 }
 
+func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newSendCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"prompt":     "continue",
+			"session-id": "SESSION-1",
+		},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.limit != 1 || sessions.order != agentactivitybiz.MessageOrderDesc {
+		t.Fatalf("list messages input = limit %d order %q", sessions.limit, sessions.order)
+	}
+	if output.Value["waitAfterVersion"] != uint64(2) {
+		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
 func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
-	command := NewProvider(
+	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		&fakeAgentSessions{},
 	).newSendCommand()
@@ -1565,7 +1858,7 @@ func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
 
 func TestCancelCommandCancelsSession(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(
+	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 	).newCancelCommand()
@@ -1586,7 +1879,7 @@ func TestCancelCommandCancelsSession(t *testing.T) {
 
 func TestSessionSummaryIncludesCompactSession(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input:      map[string]any{"session-id": "SESSION-1"},
@@ -1605,7 +1898,7 @@ func TestSessionSummaryIncludesCompactSession(t *testing.T) {
 }
 
 func TestProviderCommandsExcludeRemovedSessionAliases(t *testing.T) {
-	commands := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).Commands()
+	commands := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).Commands()
 	for _, command := range commands {
 		switch command.Capability.ID {
 		case "agent-context.agent.list", "agent-context.agent.session.messages":
@@ -1615,7 +1908,7 @@ func TestProviderCommandsExcludeRemovedSessionAliases(t *testing.T) {
 }
 
 func TestActivePeersReturnsServiceProjection(t *testing.T) {
-	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newActivePeersCommand()
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newActivePeersCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{})
 	if err != nil {

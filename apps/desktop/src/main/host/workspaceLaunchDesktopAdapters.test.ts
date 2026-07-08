@@ -41,6 +41,21 @@ test("workspace window readiness shows when load completes without ready-to-show
   assert.equal(target.showCount, 1);
 });
 
+test("workspace window readiness can show without maximizing", async () => {
+  const target = createWorkspaceWindowReadyTarget();
+
+  await awaitWorkspaceWindowReady(
+    target.window,
+    () => {
+      target.emit("ready-to-show");
+    },
+    { maximizeOnShow: false }
+  );
+
+  assert.equal(target.maximizeCount, 0);
+  assert.equal(target.showCount, 1);
+});
+
 interface WorkspaceWindowReadyTargetFixture {
   closeCount: number;
   emit: (event: string, ...args: unknown[]) => void;

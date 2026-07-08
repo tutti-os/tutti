@@ -49,7 +49,7 @@ export function workspaceAppScopeSegment(
     .slice(0, 16);
 }
 
-export function safeWorkspaceAppPathSegment(value: string): string {
+function safeWorkspaceAppPathSegment(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
     return "_";

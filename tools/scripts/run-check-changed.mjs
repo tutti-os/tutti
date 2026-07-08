@@ -6,7 +6,7 @@ import {
   readFileSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildGoLintLane,
@@ -18,7 +18,8 @@ import {
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
-const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmCommand = resolvePnpmCommand();
+const pnpmShellCommand = formatCommand(pnpmCommand);
 const maxParallel = Number.parseInt(readOption("--max-parallel") ?? "4", 10);
 const tailLines = readPositiveIntegerOption("--tail-lines", 80);
 const dryRun = process.argv.includes("--dry-run");
@@ -30,56 +31,59 @@ const tmpRoot = join(workspaceRoot, ".tmp", "check-runs");
 const latestSummaryPath = join(tmpRoot, "latest.json");
 
 const packageInfos = loadPackageInfos();
-const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
 
-if (lanes.length === 0) {
-  console.log(
-    failedOnly
-      ? "check:changed found no failed lanes in the latest run"
-      : "check:changed found no changed files to validate"
+export async function main() {
+  const lanes = failedOnly ? readFailedLanes() : buildChangedLanes();
+
+  if (lanes.length === 0) {
+    console.log(
+      failedOnly
+        ? "check:changed found no failed lanes in the latest run"
+        : "check:changed found no changed files to validate"
+    );
+    return;
+  }
+
+  if (dryRun) {
+    printPlan(lanes);
+    return;
+  }
+
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+  const runDirectory = join(tmpRoot, runId);
+  mkdirSync(runDirectory, { recursive: true });
+
+  if (verbose) {
+    console.log(`check:changed running ${lanes.length} lane(s)`);
+    console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
+  }
+
+  const startedAt = Date.now();
+  const results = await runLanes(lanes, runDirectory);
+  const durationMs = Date.now() - startedAt;
+  const summary = {
+    baseRef,
+    durationMs,
+    failedOnly,
+    pushReady,
+    runDirectory,
+    startedAt: new Date(startedAt).toISOString(),
+    tailLines,
+    results
+  };
+  writeFileSync(
+    join(runDirectory, "summary.json"),
+    `${JSON.stringify(summary, null, 2)}\n`
   );
-  process.exit(0);
-}
+  mkdirSync(tmpRoot, { recursive: true });
+  writeFileSync(latestSummaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
-if (dryRun) {
-  printPlan(lanes);
-  process.exit(0);
-}
+  const failures = results.filter((result) => result.exitCode !== 0);
+  printSummary(results, failures, durationMs, runDirectory);
 
-const runId = new Date().toISOString().replace(/[:.]/g, "-");
-const runDirectory = join(tmpRoot, runId);
-mkdirSync(runDirectory, { recursive: true });
-
-if (verbose) {
-  console.log(`check:changed running ${lanes.length} lane(s)`);
-  console.log(`logs: ${relative(workspaceRoot, runDirectory)}`);
-}
-
-const startedAt = Date.now();
-const results = await runLanes(lanes, runDirectory);
-const durationMs = Date.now() - startedAt;
-const summary = {
-  baseRef,
-  durationMs,
-  failedOnly,
-  pushReady,
-  runDirectory,
-  startedAt: new Date(startedAt).toISOString(),
-  tailLines,
-  results
-};
-writeFileSync(
-  join(runDirectory, "summary.json"),
-  `${JSON.stringify(summary, null, 2)}\n`
-);
-mkdirSync(tmpRoot, { recursive: true });
-writeFileSync(latestSummaryPath, `${JSON.stringify(summary, null, 2)}\n`);
-
-const failures = results.filter((result) => result.exitCode !== 0);
-printSummary(results, failures, durationMs);
-
-if (failures.length > 0) {
-  process.exitCode = 1;
+  if (failures.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
 function buildChangedLanes() {
@@ -105,12 +109,18 @@ function buildChangedLanes() {
     ]
   });
 
-  const lintFiles = changedFiles.filter(isLintableCodeFile);
+  const lintFiles = selectExistingLintFiles(changedFiles);
   if (lintFiles.length > 0) {
     addLane({
       key: "lint:changed",
       label: "lint:changed",
-      command: [pnpmCommand, "exec", "oxlint", "--deny-warnings", ...lintFiles]
+      command: [
+        ...pnpmCommand,
+        "exec",
+        "oxlint",
+        "--deny-warnings",
+        ...lintFiles
+      ]
     });
   }
 
@@ -118,7 +128,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:electron",
       label: "boundary:electron",
-      command: [pnpmCommand, "run", "check:electron-runtime-boundaries"]
+      command: [...pnpmCommand, "run", "check:electron-runtime-boundaries"]
     });
   }
 
@@ -126,7 +136,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:ui",
       label: "boundary:ui",
-      command: [pnpmCommand, "run", "check:ui-boundaries"]
+      command: [...pnpmCommand, "run", "check:ui-boundaries"]
     });
   }
 
@@ -138,7 +148,7 @@ function buildChangedLanes() {
     addLane({
       key: "boundary:renderer",
       label: "boundary:renderer",
-      command: [pnpmCommand, "run", "check:renderer-boundaries"]
+      command: [...pnpmCommand, "run", "check:renderer-boundaries"]
     });
   }
 
@@ -160,7 +170,7 @@ function buildChangedLanes() {
         buildGoTestLane({
           forceBuiltinGenerate,
           moduleRoot,
-          pnpmCommand,
+          pnpmCommand: pnpmShellCommand,
           shellQuote,
           targets
         })
@@ -171,7 +181,7 @@ function buildChangedLanes() {
       addLane({
         key: "build:go",
         label: "build:go",
-        command: [pnpmCommand, "run", "build:go"]
+        command: [...pnpmCommand, "run", "build:go"]
       });
     }
   }
@@ -231,7 +241,7 @@ function buildChangedLanes() {
       addLane({
         key: `${packageInfo.name}:build`,
         label: `${packageInfo.name}:build`,
-        command: [pnpmCommand, "--filter", packageInfo.name, "build"]
+        command: [...pnpmCommand, "--filter", packageInfo.name, "build"]
       });
     }
   }
@@ -240,7 +250,7 @@ function buildChangedLanes() {
     addLane({
       key: "test:tools",
       label: "test:tools",
-      command: [pnpmCommand, "run", "test:tools"]
+      command: [...pnpmCommand, "run", "test:tools"]
     });
   }
 
@@ -261,7 +271,7 @@ function readFailedLanes() {
     }));
 }
 
-async function runLanes(inputLanes, runDirectory) {
+export async function runLanes(inputLanes, runDirectory) {
   const results = [];
   let nextIndex = 0;
   const workerCount = Math.max(1, Math.min(maxParallel, inputLanes.length));
@@ -269,8 +279,9 @@ async function runLanes(inputLanes, runDirectory) {
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
       while (nextIndex < inputLanes.length) {
-        const lane = inputLanes[nextIndex++];
-        results.push(await runLane(lane, runDirectory));
+        const laneIndex = nextIndex++;
+        const lane = inputLanes[laneIndex];
+        results.push(await runLane(lane, laneIndex, runDirectory));
       }
     })
   );
@@ -278,8 +289,7 @@ async function runLanes(inputLanes, runDirectory) {
   return results.sort((left, right) => left.index - right.index);
 }
 
-function runLane(lane, runDirectory) {
-  const index = lanes.indexOf(lane);
+function runLane(lane, index, runDirectory) {
   const logPath = join(runDirectory, `${sanitizeFileName(lane.key)}.log`);
   const logStream = createWriteStream(logPath, { flags: "w" });
   const startedAt = Date.now();
@@ -340,7 +350,7 @@ function printPlan(inputLanes) {
   }
 }
 
-function printSummary(results, failures, durationMs) {
+export function printSummary(results, failures, durationMs, runDirectory) {
   if (failures.length === 0) {
     console.log(
       `check:changed passed ${results.length} lane(s) in ${formatDuration(durationMs)}`
@@ -428,6 +438,25 @@ function resolveDefaultBaseRef() {
   return "HEAD";
 }
 
+function resolvePnpmCommand() {
+  const fallback = [process.platform === "win32" ? "pnpm.cmd" : "pnpm"];
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(join(workspaceRoot, "package.json"), "utf8")
+    );
+    const match = /^pnpm@(.+)$/u.exec(String(packageJson.packageManager ?? ""));
+    if (!match) {
+      return fallback;
+    }
+    return [
+      process.platform === "win32" ? "corepack.cmd" : "corepack",
+      `pnpm@${match[1]}`
+    ];
+  } catch {
+    return fallback;
+  }
+}
+
 function readOption(name) {
   const index = process.argv.indexOf(name);
   if (index === -1) {
@@ -447,6 +476,15 @@ function readPositiveIntegerOption(name, defaultValue) {
 
 function isLintableCodeFile(file) {
   return /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/u.test(file);
+}
+
+export function selectExistingLintFiles(
+  changedFiles,
+  fileExists = fileExistsWithinWorkspace
+) {
+  return changedFiles.filter(
+    (file) => isLintableCodeFile(file) && fileExists(file)
+  );
 }
 
 function isTestFile(file) {
@@ -497,6 +535,10 @@ function isUiBoundaryRelevant(file) {
       file.startsWith("tools/")) &&
     /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
   );
+}
+
+function fileExistsWithinWorkspace(file) {
+  return existsSync(join(workspaceRoot, file));
 }
 
 function formatCommand(command) {
@@ -568,4 +610,14 @@ function stripPnpmFailureBoilerplate(lines) {
       !line.startsWith("Exit status ") &&
       !/^\/.*:$/.test(line)
   );
+}
+
+const currentPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
+  main().catch((error) => {
+    console.error(
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+    process.exitCode = 1;
+  });
 }

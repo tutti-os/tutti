@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   agentGuiWorkbenchProviderFromInstanceId,
+  agentGuiWorkbenchProviderFromInstanceIdOrNull,
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,
   createDefaultAgentGuiWorkbenchNodeState,
@@ -169,6 +170,20 @@ describe("agent gui workbench state", () => {
     expect(
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:unsupported")
     ).toBe("codex");
+  });
+
+  it("returns null instead of defaulting when the provider is unresolved", () => {
+    expect(
+      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui")
+    ).toBeNull();
+    expect(agentGuiWorkbenchProviderFromInstanceIdOrNull("")).toBeNull();
+    expect(agentGuiWorkbenchProviderFromInstanceIdOrNull(undefined)).toBeNull();
+    expect(
+      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:unsupported")
+    ).toBeNull();
+    expect(
+      agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:tutti-agent")
+    ).toBe("tutti-agent");
   });
 
   it("uses instance launch state only until node state is written", () => {

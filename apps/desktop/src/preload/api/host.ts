@@ -193,6 +193,15 @@ export function createHostDesktopApi(): DesktopHostApi {
           input
         );
       },
+      minimize(): Promise<void> {
+        return invokeDesktopApi(desktopIpcChannels.host.window.minimize);
+      },
+      openAgentWindow(input): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.openAgentWindow,
+          input
+        );
+      },
       onCloseRequest(listener): () => void {
         const handler = (
           _event: Electron.IpcRendererEvent,
@@ -233,6 +242,9 @@ export function createHostDesktopApi(): DesktopHostApi {
           desktopIpcChannels.host.window.closeRequestResolved,
           payload
         );
+      },
+      toggleMaximize(): Promise<void> {
+        return invokeDesktopApi(desktopIpcChannels.host.window.toggleMaximize);
       }
     },
     notifications: {

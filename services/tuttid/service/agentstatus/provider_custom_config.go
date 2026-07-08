@@ -95,6 +95,13 @@ func providerCustomConfigEnvVars(provider string) []string {
 		}
 	case agentprovider.Gemini:
 		return []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}
+	case agentprovider.OpenCode:
+		return []string{
+			"OPENCODE_CONFIG",
+			"OPENCODE_CONFIG_DIR",
+			"OPENCODE_CONFIG_CONTENT",
+			"OPENCODE_PERMISSION",
+		}
 	default:
 		return nil
 	}

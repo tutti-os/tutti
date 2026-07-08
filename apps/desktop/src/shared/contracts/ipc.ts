@@ -13,8 +13,13 @@ import type {
 } from "../preferences/index.ts";
 import type {
   AgentProviderProbeListInput,
-  AgentProviderProbeListResult
+  AgentProviderProbeListResult,
+  AgentGUIProviderTarget
 } from "@tutti-os/agent-gui";
+import type {
+  AgentProviderStatus,
+  WorkspaceAgentProvider
+} from "@tutti-os/client-tuttid-ts";
 import type {
   BrowserNodeActivationInput,
   BrowserNodeEvent,
@@ -191,8 +196,11 @@ export const desktopIpcChannels = {
       closeRequest: "host:window:closeRequest",
       closeRequestResolved: "host:window:closeRequestResolved",
       layout: "host:window:layout",
+      minimize: "host:window:minimize",
       minimizeState: "host:window:minimizeState",
-      quitShortcutToast: "host:window:quitShortcutToast"
+      openAgentWindow: "host:window:openAgentWindow",
+      quitShortcutToast: "host:window:quitShortcutToast",
+      toggleMaximize: "host:window:toggleMaximize"
     },
     workspace: {
       openWorkspaceAppFolder: "host:workspace:openWorkspaceAppFolder",
@@ -227,6 +235,27 @@ export interface DesktopHostWindowCapturePreviewInput {
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
   reason: "quit" | "window-close";
+}
+
+export interface DesktopHostOpenAgentWindowInput {
+  agentSessionId?: string | null;
+  agentTargetId?: string | null;
+  providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  provider?: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopAgentProviderStatusSnapshot {
+  capturedAt: string | null;
+  defaultProvider: WorkspaceAgentProvider | null;
+  error: string | null;
+  isLoading: boolean;
+  pendingActions: readonly {
+    actionId: string;
+    provider: WorkspaceAgentProvider;
+  }[];
+  statuses: readonly AgentProviderStatus[];
 }
 
 export interface DesktopHostWindowCloseRequestResolutionPayload {
@@ -869,6 +898,10 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window
     .capturePreview]: DesktopHostWindowCapturePreviewInput;
+  [desktopIpcChannels.host.window.minimize]: undefined;
+  [desktopIpcChannels.host.window
+    .openAgentWindow]: DesktopHostOpenAgentWindowInput;
+  [desktopIpcChannels.host.window.toggleMaximize]: undefined;
   [desktopIpcChannels.host.workspace
     .openWorkspaceAppFolder]: DesktopWorkspaceAppPayload;
   [desktopIpcChannels.host.workspace.showWorkspace]: string;
@@ -987,6 +1020,9 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
   [desktopIpcChannels.host.window.capturePreview]: string | null;
+  [desktopIpcChannels.host.window.minimize]: void;
+  [desktopIpcChannels.host.window.openAgentWindow]: void;
+  [desktopIpcChannels.host.window.toggleMaximize]: void;
   [desktopIpcChannels.host.workspace.openWorkspaceAppFolder]: void;
   [desktopIpcChannels.host.workspace.showWorkspace]: void;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationResult;

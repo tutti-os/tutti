@@ -259,16 +259,10 @@ export interface AgentActivityUpdatedApplyResult {
   statePatch: AgentActivityStatePatch | null;
 }
 
-export interface AgentActivityProviderTargetRef {
-  kind: string;
-  provider: string;
-  [key: string]: unknown;
-}
-
 export interface AgentActivityCreateSessionInput {
   workspaceId: string;
   agentSessionId?: string | null;
-  agentTargetId?: string | null;
+  agentTargetId: string;
   cwd?: string | null;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
@@ -277,12 +271,6 @@ export interface AgentActivityCreateSessionInput {
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
-  provider: string;
-  /**
-   * Opaque host-owned launch target reference. It is not authority; adapters
-   * must re-authenticate and resolve it before using any concrete invocation.
-   */
-  providerTargetRef?: AgentActivityProviderTargetRef | null;
   reasoningEffort?: string | null;
   runtimeContext?: Record<string, unknown> | null;
   speed?: string | null;

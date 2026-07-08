@@ -342,6 +342,25 @@ func TestCursorAdapterNeverSpawnsWithForceFlag(t *testing.T) {
 	}
 }
 
+func TestCursorAdapterStartUsesPluginDirEnv(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-plugin")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.Env = []string{cursorPluginDirEnv + "=/state/runs/session/cursor-plugin/tutti-cli"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	if got := strings.Join(transport.specs[0].Command, " "); got != "cursor-agent --plugin-dir /state/runs/session/cursor-plugin/tutti-cli acp" {
+		t.Fatalf("command = %q, want cursor plugin-dir before acp", got)
+	}
+}
+
 func TestCursorAdapterFullAccessAutoApprovesWithoutPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -494,6 +513,31 @@ func TestCursorAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	}
 	if got := strings.Join(transport.specs[0].Command, " "); got != "/home/user/.local/bin/agent acp" {
 		t.Fatalf("command = %q, want resolved cursor binary", got)
+	}
+}
+
+func TestCursorAdapterStartUsesPluginDirWithInjectedProviderCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-resolved-plugin")
+	adapter := newCursorAdapterWithHostMetadata(
+		transport,
+		LegacyHostMetadata(),
+		func(_ context.Context, provider string) (ProviderCommand, error) {
+			if provider != ProviderCursor {
+				t.Fatalf("provider = %q, want %q", provider, ProviderCursor)
+			}
+			return ProviderCommand{Command: []string{"/home/user/.local/bin/agent", "acp"}}, nil
+		},
+	)
+	session := standardTestSession(ProviderCursor)
+	session.Env = []string{cursorPluginDirEnv + "=/state/cursor-plugin/tutti-cli"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := strings.Join(transport.specs[0].Command, " "); got != "/home/user/.local/bin/agent --plugin-dir /state/cursor-plugin/tutti-cli acp" {
+		t.Fatalf("command = %q, want resolved cursor binary with plugin-dir", got)
 	}
 }
 

@@ -392,7 +392,6 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 			ShortcutPreset: windowSnappingShortcutPreset,
 		}
 	}
-
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
@@ -411,9 +410,15 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		DockIconStyle:               dockIconStyle,
 		DockPlacement:               dockPlacement,
 		EnableCursorAgent:           request.Body.Preferences.EnableCursorAgent,
+		EnableOpenCodeAgent:         request.Body.Preferences.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),
+		FeatureFlags: map[string]bool(request.Body.Preferences.FeatureFlags),
+		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
+			NewAgentConversation: optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewAgentConversation),
+			NewSameTypeWindow:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+		},
 		Locale:                  locale,
 		MinimizeAnimation:       minimizeAnimation,
 		SleepPreventionMode:     sleepPreventionMode,

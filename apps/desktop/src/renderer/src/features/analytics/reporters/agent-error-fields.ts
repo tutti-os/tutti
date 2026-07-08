@@ -53,7 +53,7 @@ export function agentAnalyticsErrorFields(
   };
 }
 
-export function errorMessageOf(error: unknown): string {
+function errorMessageOf(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
   }

@@ -86,9 +86,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.Metadata, nil)
+	requestedModel := value(input.Model)
 	input.Model = s.resolveCreateSessionModel(ctx, provider, input.Model)
 	nodeStartedAt = time.Now()
-	if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), value(input.Model)); err != nil {
+	if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return Session{}, err
 	}
@@ -421,13 +422,11 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				}
 			}
 		}
-		service := serviceSession(
-			session,
-			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
-		)
+		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
+		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
 			if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
-				service = mergePersistedSessionState(service, persisted)
+				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
 		return service, nil

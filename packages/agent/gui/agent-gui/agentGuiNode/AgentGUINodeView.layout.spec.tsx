@@ -21,6 +21,7 @@ import {
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets
 } from "../../providerTargets";
+import { agentGUIProviderRailOrderStorageKey } from "./model/agentGuiProviderRailOrder";
 import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime,
@@ -94,6 +95,33 @@ function ensurePointerCaptureApi(): void {
       value: () => {}
     });
   }
+}
+
+function createDataTransferStub(): DataTransfer {
+  const store = new Map<string, string>();
+  return {
+    dropEffect: "none",
+    effectAllowed: "none",
+    files: [] as unknown as FileList,
+    items: [] as unknown as DataTransferItemList,
+    get types() {
+      return [...store.keys()];
+    },
+    clearData(format?: string) {
+      if (format) {
+        store.delete(format);
+      } else {
+        store.clear();
+      }
+    },
+    getData(format: string) {
+      return store.get(format) ?? "";
+    },
+    setData(format: string, data: string) {
+      store.set(format, data);
+    },
+    setDragImage() {}
+  };
 }
 
 vi.mock("./AgentSessionChrome", () => ({
@@ -185,6 +213,7 @@ describe("AgentGUINodeView layout persistence", () => {
     conversationMetaMock.calls = [];
     composerMock.calls = [];
     statusDotMock.calls = [];
+    globalThis.localStorage.clear();
     vi.useRealTimers();
   });
 
@@ -855,6 +884,99 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti);
   });
 
+  it("persists provider rail tile order after drag sorting", async () => {
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const cursorTarget = createLocalAgentGUIProviderTarget("cursor");
+    const dataTransfer = createDataTransferStub();
+
+    const { rerender } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerTargets: [codexTarget, claudeTarget, cursorTarget]
+      }
+    });
+
+    const providerTileLabels = () =>
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"));
+
+    expect(providerTileLabels()).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Hermes",
+      "OpenClaw"
+    ]);
+
+    const codexTile = screen.getByRole("tab", { name: "Codex" });
+    const cursorTile = screen.getByRole("tab", { name: "Cursor" });
+    const providerRail = screen.getByRole("tablist");
+    vi.spyOn(codexTile, "getBoundingClientRect").mockReturnValue({
+      bottom: 52,
+      height: 52,
+      left: 0,
+      right: 52,
+      top: 0,
+      width: 52,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    });
+
+    fireEvent.dragStart(cursorTile, { dataTransfer });
+    fireEvent.dragOver(codexTile, {
+      clientY: 8,
+      dataTransfer
+    });
+    fireEvent.dragOver(codexTile, {
+      clientY: 30,
+      dataTransfer
+    });
+    fireEvent.dragOver(cursorTile, { dataTransfer });
+    fireEvent.dragOver(providerRail, { dataTransfer });
+    fireEvent.drop(providerRail, {
+      clientY: 372,
+      dataTransfer
+    });
+
+    expect(providerTileLabels()).toEqual([
+      "All",
+      "Cursor",
+      "Codex",
+      "Claude Code",
+      "Hermes",
+      "OpenClaw"
+    ]);
+    expect(
+      globalThis.localStorage.getItem(
+        agentGUIProviderRailOrderStorageKey("room-1")
+      )
+    ).toBe(
+      '["local:cursor","local:codex","local:claude-code","local:hermes","local:openclaw"]'
+    );
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: {
+          ...createViewModel(),
+          providerTargets: [codexTarget, claudeTarget, cursorTarget]
+        }
+      })
+    );
+
+    await waitFor(() => {
+      expect(providerTileLabels()).toEqual([
+        "All",
+        "Cursor",
+        "Codex",
+        "Claude Code",
+        "Hermes",
+        "OpenClaw"
+      ]);
+    });
+  });
+
   it("uses Cursor colorful artwork for the provider rail even when the target has a session icon", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -1151,6 +1273,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       }
     });
@@ -1172,6 +1295,42 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
 
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
+  });
+
+  it("requests composer focus after switching the empty hero provider select", async () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: codexTarget,
+        providerTargets: [codexTarget, claudeTarget]
+      },
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex",
+        providerSwitchLabel: "Switch provider"
+      }
+    });
+
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
+
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Switch provider" }),
+      { key: "ArrowDown" }
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
+
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: "claude-code",
+      providerTargetId: claudeTarget.targetId
+    });
+    await waitFor(() => {
+      expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
+    });
   });
 
   it("selects the All tile for daemon local Codex targets", () => {
@@ -1285,6 +1444,46 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByRole("tab", { name: "Hermes" })).toBeNull();
   });
 
+  it("renders provider target badges on rail tiles", () => {
+    const { container } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex",
+            badge: {
+              iconUrl: "app://alice-avatar.png",
+              label: "Alice avatar"
+            }
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(
+      screen.getByRole("tab", { name: "Alice's Codex, Alice avatar" })
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(".agent-gui-node__provider-rail-badge")
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector<HTMLImageElement>(
+          ".agent-gui-node__provider-rail-badge-image"
+        )
+        ?.getAttribute("src")
+    ).toBe("app://alice-avatar.png");
+  });
+
   it("preserves the host-provided target order in exact rail mode", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -1358,8 +1557,9 @@ describe("AgentGUINodeView layout persistence", () => {
       "All",
       "Codex",
       "Claude Code",
-      "Tutti Agent",
       "Cursor",
+      "Tutti Agent",
+      "OpenCode",
       "Hermes",
       "OpenClaw"
     ]);
@@ -1440,6 +1640,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "切换 Provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "交接给其他 Agent",
         handoffConversationMenu: "选择 Agent"
       },
       viewModel: {
@@ -1469,6 +1670,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -1509,6 +1711,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -1758,6 +1961,35 @@ describe("AgentGUINodeView layout persistence", () => {
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
+
+  it("disables the toolbar new conversation action for unavailable provider targets", () => {
+    const actions = createActions();
+    const unavailableTarget = {
+      ...createLocalAgentGUIProviderTarget("nexight"),
+      disabled: true
+    };
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        selectedProviderTarget: unavailableTarget,
+        providerTargets: [unavailableTarget]
+      }
+    });
+
+    const newConversationButton = container.querySelector<HTMLButtonElement>(
+      ".agent-gui-node__new-conversation-icon-button"
+    );
+    if (!newConversationButton) {
+      throw new Error("Expected toolbar new conversation button to render.");
+    }
+
+    expect(newConversationButton).toBeDisabled();
+    fireEvent.click(newConversationButton);
+
+    expect(actions.createConversation).not.toHaveBeenCalled();
+  });
+
   it("defers rendering conversation items for collapsed project sections", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -4208,13 +4440,16 @@ describe("AgentGUINodeView provider readiness gate", () => {
       })
     });
 
+    // The pending label is shown on the action button only, not duplicated
+    // as a separate standalone status line.
     expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate-pending")
-    ).toHaveTextContent("providerGatePendingInstall");
+      screen.queryByTestId("agent-gui-provider-readiness-gate-pending")
+    ).toBeNull();
 
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
     );
+    expect(action).toHaveTextContent("providerGatePendingInstall");
     expect(action).toBeDisabled();
     fireEvent.click(action);
     expect(onAction).not.toHaveBeenCalled();
@@ -5027,6 +5262,7 @@ function createLabels(): AgentGUIViewLabels {
       "computerUseCapabilitySettingsDescription",
     slashStatusTitle: "slashStatusTitle",
     slashStatusSession: "slashStatusSession",
+    slashStatusAccount: "slashStatusAccount",
     slashStatusBaseUrl: "slashStatusBaseUrl",
     slashStatusContext: "slashStatusContext",
     slashStatusLimits: "slashStatusLimits",
@@ -5035,6 +5271,13 @@ function createLabels(): AgentGUIViewLabels {
       `${percentLeft}:${usedTokens}:${totalTokens}`,
     slashStatusContextUnavailable: "slashStatusContextUnavailable",
     slashStatusLimitsUnavailable: "slashStatusLimitsUnavailable",
+    slashStatusUsageJustUpdated: "slashStatusUsageJustUpdated",
+    slashStatusUsageMinutesAgo: (count) =>
+      `slashStatusUsageMinutesAgo:${count}`,
+    slashStatusUsageHoursAgo: (count) => `slashStatusUsageHoursAgo:${count}`,
+    slashStatusUsageUpdating: "slashStatusUsageUpdating",
+    slashStatusUsageRefreshFailed: "slashStatusUsageRefreshFailed",
+    slashStatusUsageRefreshAria: "slashStatusUsageRefreshAria",
     usageChipLabel: ({ percent }) => `usageChip:${percent}`,
     usageTooltipLabel: "usageTooltipLabel",
     usagePopoverTitle: "usagePopoverTitle",
@@ -5053,12 +5296,14 @@ function createLabels(): AgentGUIViewLabels {
     fileMentionEmpty: "fileMentionEmpty",
     fileMentionError: "fileMentionError",
     fileMentionTabHint: "fileMentionTabHint",
+    fileDropHint: "fileDropHint",
     mentionPalette: "mentionPalette",
     removeMention: "removeMention",
     addReference: "addReference",
     addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     handoffConversation: "Handoff",
+    handoffConversationTooltip: "Hand off to another agent",
     handoffConversationMenu: "Choose agent",
     syncPending: "syncPending",
     syncSynced: "syncSynced",

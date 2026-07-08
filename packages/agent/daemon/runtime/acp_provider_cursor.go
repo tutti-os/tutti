@@ -49,6 +49,8 @@ const (
 	cursorPermissionFullAccess = "full-access"
 )
 
+const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
+
 // cursorACPModeID maps Tutti permission tiers onto Cursor's ACP session
 // modes (switched via session/set_mode). Approval strictness within "agent"
 // is governed by the spawn command, not the session mode.
@@ -83,6 +85,24 @@ func cursorACPCommandResolver(context.Context, string) (ProviderCommand, error) 
 	return ProviderCommand{}, nil
 }
 
+func cursorACPCommandWithPluginDir(command []string, session Session) []string {
+	out := append([]string(nil), command...)
+	pluginDir := sessionEnvValue(session.Env, cursorPluginDirEnv)
+	if pluginDir == "" || len(out) == 0 || hasCursorPluginDirArg(out) {
+		return out
+	}
+	return append([]string{out[0], "--plugin-dir", pluginDir}, out[1:]...)
+}
+
+func hasCursorPluginDirArg(command []string) bool {
+	for _, arg := range command {
+		if arg == "--plugin-dir" || strings.HasPrefix(arg, "--plugin-dir=") {
+			return true
+		}
+	}
+	return false
+}
+
 func NewCursorAdapter(transport ProcessTransport) *standardACPAdapter {
 	return NewCursorAdapterWithHostMetadata(transport, LegacyHostMetadata())
 }
@@ -108,6 +128,7 @@ func newCursorAdapterWithHostMetadata(
 			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
 			env:                 func(session Session) []string { return standardACPEnv(session, host) },
 			commandResolver:     commandResolver,
+			commandWithSettings: cursorACPCommandWithPluginDir,
 			// full-access auto-approves permission requests live; all tiers
 			// switch without a respawn.
 			autoApprovePermissionDecision: cursorAutoApprovePermissionDecision,

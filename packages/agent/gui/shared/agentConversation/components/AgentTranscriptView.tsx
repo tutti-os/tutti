@@ -29,10 +29,7 @@ const AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS = 160;
 const AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX = 30;
 const AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX = 36;
 const AGENT_MESSAGE_LOCATOR_BOTTOM_SAFE_INSET_MAX_PX = 48;
-const AGENT_MESSAGE_LOCATOR_NATIVE_SMOOTH_MAX_DISTANCE_PX = 720;
-const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS = 8;
-const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS = 120;
-const AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MAX_DURATION_MS = 320;
+const AGENT_MESSAGE_LOCATOR_SCROLL_DURATION_MS = 160;
 const agentMessageLocatorScrollAnimations = new WeakMap<HTMLElement, number>();
 
 interface AgentTranscriptTurnGroup {
@@ -836,16 +833,7 @@ function scrollTranscriptRowIntoView(
   }
 
   const targetScrollTop = targetScrollTopForTranscriptRow(row, scrollParent);
-  const distance = Math.abs(targetScrollTop - scrollParent.scrollTop);
-  if (distance <= AGENT_MESSAGE_LOCATOR_NATIVE_SMOOTH_MAX_DISTANCE_PX) {
-    row.scrollIntoView({
-      block: "center",
-      behavior: "smooth"
-    });
-    return;
-  }
-
-  animateMessageLocatorScroll(scrollParent, targetScrollTop, distance);
+  animateMessageLocatorScroll(scrollParent, targetScrollTop);
 }
 
 function targetScrollTopForTranscriptRow(
@@ -871,8 +859,7 @@ function targetScrollTopForTranscriptRow(
 
 function animateMessageLocatorScroll(
   scrollParent: HTMLElement,
-  targetScrollTop: number,
-  distance: number
+  targetScrollTop: number
 ): void {
   const previousAnimation =
     agentMessageLocatorScrollAnimations.get(scrollParent);
@@ -882,17 +869,13 @@ function animateMessageLocatorScroll(
 
   const startScrollTop = scrollParent.scrollTop;
   const delta = targetScrollTop - startScrollTop;
-  const durationMs = Math.max(
-    AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MIN_DURATION_MS,
-    Math.min(
-      AGENT_MESSAGE_LOCATOR_FAST_SCROLL_MAX_DURATION_MS,
-      distance / AGENT_MESSAGE_LOCATOR_FAST_SCROLL_SPEED_PX_PER_MS
-    )
-  );
   const startedAt = performance.now();
 
   const step = (now: number): void => {
-    const progress = Math.min(1, (now - startedAt) / durationMs);
+    const progress = Math.min(
+      1,
+      (now - startedAt) / AGENT_MESSAGE_LOCATOR_SCROLL_DURATION_MS
+    );
     scrollParent.scrollTop = startScrollTop + delta * progress;
     if (progress >= 1) {
       scrollParent.scrollTop = targetScrollTop;

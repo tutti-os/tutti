@@ -227,7 +227,7 @@ function isImageThumbnailEntry(
   );
 }
 
-export function isApplicationBundleName(name: string): boolean {
+function isApplicationBundleName(name: string): boolean {
   return name.trim().toLowerCase().endsWith(".app");
 }
 

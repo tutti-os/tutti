@@ -6,6 +6,10 @@ import type {
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopLocale } from "@shared/i18n";
+import {
+  defaultDesktopWorkbenchShortcuts,
+  desktopFeatureFlagsEqual
+} from "../../../../../../shared/preferences/index.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClient.ts";
 import { createDesktopPreferencesClient as createDesktopPreferencesFeatureClient } from "./adapters/desktopPreferencesClient.ts";
@@ -32,7 +36,8 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           appCatalogChannel: "production",
           browserUseConnectionMode: "isolated",
           defaultAgentProvider: "codex",
-
+          featureFlags: {},
+          workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
           dockIconStyle: "default",
           dockPlacement: "bottom",
           fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -41,6 +46,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
           sleepPreventionMode: "never",
           showAppDeveloperSources: false,
           enableCursorAgent: false,
+          enableOpenCodeAgent: false,
           themeSource: "dark",
           updateChannel: "stable",
           updatePolicy: "prompt"
@@ -98,7 +104,8 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -107,6 +114,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -142,6 +150,68 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
   service.dispose();
 });
 
+test("DesktopPreferencesService ignores persisted legacy provider defaults when publishing new writes", async () => {
+  const client = createDesktopPreferencesClient({
+    getDesktopPreferences: async () => ({
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {
+          codex: {
+            model: "gpt-5"
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {},
+        agentGuiConversationRailCollapsedByProvider: {},
+        agentConversationDetailMode: "coding",
+        agentDockLayout: "unified",
+        appCatalogChannel: "production",
+        browserUseConnectionMode: "isolated",
+        defaultAgentProvider: "codex",
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        featureFlags: {},
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+        locale: "en",
+        minimizeAnimation: "scale",
+        sleepPreventionMode: "never",
+        showAppDeveloperSources: false,
+        enableCursorAgent: false,
+        enableOpenCodeAgent: false,
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt",
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts
+      }
+    })
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+
+  assert.deepEqual(service.store.agentComposerDefaultsByProvider, {});
+
+  const savedLocalePromise = service.setLocale("zh-CN");
+  assert.deepEqual(
+    client.updatedRequests.at(-1)?.agentComposerDefaultsByProvider,
+    {}
+  );
+  client.emitDesktopPreferencesUpdated(client.updatedRequests.at(-1)!);
+
+  await savedLocalePromise;
+  service.dispose();
+});
+
 test("DesktopPreferencesService publishes locale writes and converges on the authoritative event", async () => {
   const appliedLocales: DesktopLocale[] = [];
   const client = createDesktopPreferencesClient({});
@@ -173,7 +243,8 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -182,6 +253,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -199,7 +271,8 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -208,6 +281,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -280,7 +354,8 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -289,6 +364,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "dark",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -314,7 +390,8 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -323,6 +400,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "dark",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -412,7 +490,8 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -421,6 +500,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
       sleepPreventionMode: "whileAgentRunning",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -437,7 +517,8 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -446,6 +527,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
     sleepPreventionMode: "whileAgentRunning",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -485,7 +567,8 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -494,6 +577,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "auto"
@@ -510,7 +594,8 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -519,6 +604,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "auto"
@@ -651,7 +737,8 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "left",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -660,6 +747,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt"
@@ -676,7 +764,8 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "left",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -685,6 +774,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -727,7 +817,8 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
       appCatalogChannel: "production",
       browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
-
+      featureFlags: {},
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       dockIconStyle: "default",
       dockPlacement: "bottom",
       fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -736,6 +827,7 @@ test("DesktopPreferencesService publishes workbench window snapping preference w
       sleepPreventionMode: "never",
       showAppDeveloperSources: false,
       enableCursorAgent: false,
+      enableOpenCodeAgent: false,
       themeSource: "system",
       updateChannel: "stable",
       updatePolicy: "prompt",
@@ -817,7 +909,8 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -826,6 +919,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -842,7 +936,8 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -851,6 +946,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -899,6 +995,92 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
   service.dispose();
 });
 
+test("DesktopPreferencesService keeps featureFlags store identity when an authoritative snapshot leaves flags unchanged", async () => {
+  const initialFeatureFlags = { "lab.enabled": true };
+  const client = createDesktopPreferencesClient({
+    getDesktopPreferences: async () => ({
+      initialized: true,
+      preferences: {
+        agentComposerDefaultsByProvider: {},
+        agentGuiConversationRailCollapsedByProvider: {},
+        agentConversationDetailMode: "coding",
+        agentDockLayout: "legacySplit",
+        appCatalogChannel: "production",
+        browserUseConnectionMode: "isolated",
+        defaultAgentProvider: "codex",
+        enableCursorAgent: false,
+        enableOpenCodeAgent: false,
+        featureFlags: initialFeatureFlags,
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+        dockIconStyle: "default",
+        dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+        locale: "en",
+        minimizeAnimation: "scale",
+        sleepPreventionMode: "never",
+        showAppDeveloperSources: false,
+        themeSource: "system",
+        updateChannel: "stable",
+        updatePolicy: "prompt"
+      }
+    })
+  });
+
+  const service = new DesktopPreferencesService({
+    applyLocale() {},
+    applyTheme() {},
+    client,
+    initialLocale: "en",
+    initialTheme: {
+      appearance: "light",
+      source: "system"
+    },
+    resolveTheme
+  });
+
+  await settle();
+  const featureFlagsBeforeUpdate = service.store.featureFlags;
+  assert.deepEqual(featureFlagsBeforeUpdate, { "lab.enabled": true });
+
+  client.emitDesktopPreferencesUpdated({
+    agentComposerDefaultsByProvider: {},
+    agentGuiConversationRailCollapsedByProvider: {},
+    agentConversationDetailMode: "coding",
+    agentDockLayout: "legacySplit",
+    appCatalogChannel: "production",
+    browserUseConnectionMode: "isolated",
+    defaultAgentProvider: "codex",
+    enableCursorAgent: false,
+    enableOpenCodeAgent: false,
+    featureFlags: { "lab.enabled": true },
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+    locale: "zh-CN",
+    minimizeAnimation: "scale",
+    sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
+    themeSource: "system",
+    updateChannel: "stable",
+    updatePolicy: "prompt"
+  });
+
+  assert.equal(service.store.locale, "zh-CN");
+  assert.ok(
+    desktopFeatureFlagsEqual(service.store.featureFlags, {
+      "lab.enabled": true
+    })
+  );
+  assert.equal(
+    service.store.featureFlags,
+    featureFlagsBeforeUpdate,
+    "featureFlags reference should stay identical when the authoritative snapshot leaves the flags unchanged"
+  );
+
+  service.dispose();
+});
+
 test("DesktopPreferencesService rejects mismatched App Center source confirmations", async () => {
   const tuttidClient = createSequentialTuttidClient([
     {
@@ -912,7 +1094,8 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -921,6 +1104,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -937,7 +1121,8 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -946,6 +1131,7 @@ test("DesktopPreferencesService rejects mismatched App Center source confirmatio
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
@@ -1024,7 +1210,8 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -1033,6 +1220,7 @@ test("DesktopPreferencesService remembers agent composer defaults per agent targ
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -1109,7 +1297,8 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
-
+    featureFlags: {},
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
     dockIconStyle: "default",
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -1118,6 +1307,7 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
     sleepPreventionMode: "never",
     showAppDeveloperSources: false,
     enableCursorAgent: false,
+    enableOpenCodeAgent: false,
     themeSource: "system",
     updateChannel: "stable",
     updatePolicy: "prompt"
@@ -1222,7 +1412,8 @@ function createDesktopPreferencesClient(
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
         defaultAgentProvider: "codex",
-
+        featureFlags: {},
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
         dockIconStyle: "default",
         dockPlacement: "bottom",
         fileDefaultOpenersByExtension: { html: "defaultBrowser" },
@@ -1231,6 +1422,7 @@ function createDesktopPreferencesClient(
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
         enableCursorAgent: false,
+        enableOpenCodeAgent: false,
         themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"

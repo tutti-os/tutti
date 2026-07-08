@@ -4,7 +4,7 @@ import {
   type DesktopLocale
 } from "@shared/i18n";
 
-export function resolveDesktopLocaleFromElectron(input: {
+function resolveDesktopLocaleFromElectron(input: {
   appLocale?: string | null;
   preferredSystemLanguages?: readonly string[] | null;
 }): DesktopLocale {

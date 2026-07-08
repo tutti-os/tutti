@@ -4,19 +4,11 @@ import type {
 } from "../../../../contracts/index.ts";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 
-export const defaultIssueManagerAgentTargetOptions = [
-  {
-    agentTargetId: "local:codex",
-    label: "Codex",
-    provider: "codex"
-  }
-] as const satisfies readonly IssueManagerAgentTargetOption[];
-
 export function resolveIssueManagerAgentTargetOptions(
   feature: IssueManagerFeature
 ): readonly IssueManagerAgentTargetOption[] {
   if (!feature.agentTargetOptions) {
-    return defaultIssueManagerAgentTargetOptions;
+    return [];
   }
 
   const configuredOptions = feature.agentTargetOptions.getOptions();

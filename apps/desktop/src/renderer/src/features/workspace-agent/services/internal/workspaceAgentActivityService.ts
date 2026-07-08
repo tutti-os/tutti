@@ -405,7 +405,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       agentSessionId: input.agentSessionId?.trim() ?? null,
       event: "activity_service.create.entered",
       metadata: input.metadata,
-      provider: input.provider,
+      provider: null,
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
@@ -414,7 +414,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       agentSessionId: input.agentSessionId?.trim() ?? null,
       event: "activity_service.create.adapter_requested",
       metadata: input.metadata,
-      provider: input.provider,
+      provider: null,
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
@@ -422,10 +422,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       input,
       this.dependencies.workspaceUserProjectService
     );
-    const adapterInput = sessionInput.agentTargetId
-      ? { ...sessionInput, providerTargetRef: null }
-      : sessionInput;
-    const session = await entry.adapter.createSession(adapterInput);
+    const session = await entry.adapter.createSession(sessionInput);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       event: "activity_service.create.adapter_resolved",
@@ -451,13 +448,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): ReturnType<IWorkspaceAgentActivityService["activateSession"]> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const requestedAgentSessionId = input.agentSessionId.trim();
-    const provider = resolveDesktopAgentGUIProvider(input.provider);
     const workspaceState = desktopAgentHostWorkspaceState(workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: requestedAgentSessionId,
       event: "activity_service.activate.entered",
       metadata: input.metadata,
-      provider,
+      provider: null,
       workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
     });
@@ -466,7 +462,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         agentSessionId: requestedAgentSessionId,
         event: "activity_service.activate.cwd_resolve_requested",
         metadata: input.metadata,
-        provider,
+        provider: null,
         workspaceId
       });
     }
@@ -483,7 +479,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         agentSessionId: requestedAgentSessionId,
         event: "activity_service.activate.cwd_resolved",
         metadata: input.metadata,
-        provider,
+        provider: null,
         workspaceId,
         fields: {
           agentTargetId: input.agentTargetId ?? null,
@@ -499,14 +495,14 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         agentSessionId: requestedAgentSessionId,
         event: "activity_service.activate.create_requested",
         metadata: input.metadata,
-        provider,
+        provider: null,
         workspaceId,
         fields: { agentTargetId: input.agentTargetId ?? null }
       });
       session = await this.createSession({
         workspaceId,
         agentSessionId: requestedAgentSessionId,
-        ...(input.agentTargetId ? { agentTargetId: input.agentTargetId } : {}),
+        agentTargetId: input.agentTargetId,
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
@@ -514,10 +510,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         model: input.settings?.model ?? null,
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
-        provider,
-        ...(input.agentTargetId
-          ? {}
-          : { providerTargetRef: input.providerTargetRef ?? null }),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
         ...(resolvedCwd?.noProject
           ? { runtimeContext: { noProject: true } }
@@ -834,8 +826,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
     const adapter = createDesktopAgentActivityAdapter({
       tuttidClient: this.dependencies.tuttidClient,
-      runtimeApi: this.dependencies.runtimeApi,
-      agentProviderStatusService: this.dependencies.agentProviderStatusService
+      runtimeApi: this.dependencies.runtimeApi
     });
     const controller = createAgentActivityController({
       adapter,

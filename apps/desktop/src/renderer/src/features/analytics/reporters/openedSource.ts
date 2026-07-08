@@ -29,7 +29,7 @@ export function createAnalyticsOpenedSourceParams(
   };
 }
 
-export function toAnalyticsOpenTrigger(
+function toAnalyticsOpenTrigger(
   source: AnalyticsOpenSource
 ): AnalyticsOpenTrigger {
   return source === "restore" || source === "agent_command"

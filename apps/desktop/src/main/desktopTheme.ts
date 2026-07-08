@@ -11,11 +11,11 @@ const desktopWindowBackgroundColors: Record<DesktopThemeAppearance, string> = {
   light: "#f7f4ee"
 };
 
-export function resolveDesktopThemeAppearance(): DesktopThemeAppearance {
+function resolveDesktopThemeAppearance(): DesktopThemeAppearance {
   return nativeTheme.shouldUseDarkColors ? "dark" : "light";
 }
 
-export function resolveDesktopThemeSource(): DesktopThemeSource {
+function resolveDesktopThemeSource(): DesktopThemeSource {
   const source = nativeTheme.themeSource;
   return source === "dark" || source === "light" || source === "system"
     ? source

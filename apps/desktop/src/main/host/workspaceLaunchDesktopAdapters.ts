@@ -9,6 +9,7 @@ import { getDesktopLogger } from "../logging";
 import type { WorkspaceLaunchAdapters } from "./workspaceLaunch";
 import {
   createWorkspaceWindow,
+  loadAgentWindowContent,
   loadWorkspaceWindowContent
 } from "../windows/workspaceWindow";
 import { awaitWorkspaceWindowReady } from "./workspaceWindowReady.ts";
@@ -28,6 +29,39 @@ export function createWorkspaceLaunchDesktopAdapters(
   options: WorkspaceLaunchDesktopAdapterOptions
 ): WorkspaceLaunchAdapters {
   return {
+    async showAgentWindow(input) {
+      const agentWindow = createWorkspaceWindow({
+        browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+        enableDevelopmentReloadShortcut:
+          options.enableDevelopmentReloadShortcut === true,
+        locale: options.getLocale(),
+        preloadPath: options.preloadPath,
+        rendererUrl: options.rendererUrl,
+        theme: options.getTheme(),
+        windowKind: "agent",
+        workspaceAppPreloadPath: options.workspaceAppPreloadPath,
+        workspaceID: input.workspaceID
+      });
+      await awaitWorkspaceWindowReady(
+        agentWindow,
+        () => {
+          loadAgentWindowContent(agentWindow, {
+            agentSessionID: input.agentSessionID,
+            agentTargetID: input.agentTargetID,
+            dockPlacement: options.getDockPlacement(),
+            locale: options.getLocale(),
+            providerStatusSnapshot: input.providerStatusSnapshot,
+            providerTargets: input.providerTargets,
+            provider: input.provider,
+            rendererUrl: options.rendererUrl,
+            theme: options.getTheme(),
+            workspaceID: input.workspaceID
+          });
+        },
+        { maximizeOnShow: false }
+      );
+    },
+
     async showWorkspaceWindow(workspaceID) {
       const workspaceWindow = createWorkspaceWindow({
         browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,

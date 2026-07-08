@@ -4316,11 +4316,14 @@ components:
         - dockIconStyle
         - dockPlacement
         - fileDefaultOpenersByExtension
+        - featureFlags
+        - workbenchShortcuts
         - locale
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
         - enableCursorAgent
+        - enableOpenCodeAgent
         - themeSource
         - updateChannel
         - updatePolicy
@@ -4347,8 +4350,14 @@ components:
           $ref: "#/components/schemas/DesktopDockPlacement"
         enableCursorAgent:
           type: boolean
+        enableOpenCodeAgent:
+          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
+        featureFlags:
+          $ref: "#/components/schemas/DesktopFeatureFlags"
+        workbenchShortcuts:
+          $ref: "#/components/schemas/DesktopWorkbenchShortcuts"
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         minimizeAnimation:
@@ -4365,6 +4374,27 @@ components:
           $ref: "#/components/schemas/DesktopUpdatePolicy"
         workbenchWindowSnapping:
           $ref: "#/components/schemas/DesktopWorkbenchWindowSnapping"
+    DesktopFeatureFlags:
+      type: object
+      additionalProperties:
+        type: boolean
+    DesktopWorkbenchShortcuts:
+      type: object
+      additionalProperties: false
+      required:
+        - newAgentConversation
+        - newSameTypeWindow
+      properties:
+        newAgentConversation:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
+        newSameTypeWindow:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
     DesktopWorkbenchWindowSnapping:
       type: object
       additionalProperties: false
@@ -4428,6 +4458,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        opencode:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentComposerDefaultsByAgentTarget:
       type: object
       additionalProperties:
@@ -4451,6 +4483,8 @@ components:
         hermes:
           type: boolean
         openclaw:
+          type: boolean
+        opencode:
           type: boolean
     DesktopFileDefaultOpener:
       type: string
@@ -4495,6 +4529,7 @@ components:
         - claude-code
         - tutti-agent
         - cursor
+        - opencode
     AgentTargetSource:
       type: string
       enum:
@@ -5777,6 +5812,7 @@ components:
         - gemini
         - hermes
         - openclaw
+        - opencode
     WorkspaceAgentSessionStatus:
       type: string
       enum:

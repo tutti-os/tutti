@@ -23,6 +23,7 @@ import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
 import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
+import { getWorkspaceSettingsPanelStore } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -731,6 +732,9 @@ describe("AgentGUINode", () => {
     agentEnvPanelStore.open = false;
     agentEnvPanelStore.provider = null;
     agentEnvPanelStore.focus = null;
+    const workspaceSettingsPanelStore = getWorkspaceSettingsPanelStore();
+    workspaceSettingsPanelStore.section = null;
+    workspaceSettingsPanelStore.requestSequence = 0;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -954,7 +958,7 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
-  it("hides the rail config entry for the unified All provider filter", () => {
+  it("opens Agent settings directly for the unified All provider filter", () => {
     mockViewModel = createViewModel({
       conversationFilter: { kind: "all" },
       providerTargets: [
@@ -965,7 +969,13 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
-    expect(screen.queryByTitle("agentHost.agentGui.agentConfig")).toBeNull();
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentSettingsMenu"));
+
+    expect(screen.queryByTestId("agent-gui-config-menu")).toBeNull();
+    expect(getWorkspaceSettingsPanelStore()).toMatchObject({
+      section: "agent",
+      requestSequence: 1
+    });
   });
 
   it("renders rail config usage from the unified provider filter target", async () => {
@@ -1022,6 +1032,100 @@ describe("AgentGUINode", () => {
       expect(screen.getByText("42% left")).toBeInTheDocument();
     });
     expect(screen.queryByText("11% left")).toBeNull();
+  });
+
+  it("keeps the rail config limits section visible with a retry control when usage returns no quotas", async () => {
+    // Regression: a Claude usage probe that comes back with an empty quota
+    // list (no 5h/7d windows, or a fetch error the main-process probe caught
+    // into lastError) previously made the entire "限制" section disappear from
+    // the config menu with zero feedback. It must instead show an explicit
+    // "unavailable" placeholder plus the refresh control so the user can retry.
+    const onAgentProbeRefreshRequest = vi.fn();
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      onAgentProbeRefreshRequest,
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: false,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-unavailable")
+      ).toBeInTheDocument();
+    });
+    const refresh = screen.getByTestId("agent-gui-config-usage-refresh");
+    expect(refresh).toBeInTheDocument();
+
+    fireEvent.click(refresh);
+    expect(onAgentProbeRefreshRequest).toHaveBeenCalledWith(
+      "claude-code",
+      "agent-gui:agent-gui-1:usage-refresh"
+    );
+  });
+
+  it("does not show the unavailable limits placeholder while usage is still loading", async () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: claudeTarget.agentTargetId ?? ""
+      },
+      selectedProviderTarget: claudeTarget,
+      providerTargets: [claudeTarget]
+    });
+
+    renderAgentGUINode({
+      workspaceAgentProbes: {
+        isLoadingAvailability: false,
+        isLoadingUsage: true,
+        snapshot: {
+          workspaceId: "workspace-1",
+          capturedAtUnixMs: 1,
+          providers: [
+            {
+              provider: "claude-code",
+              availability: { status: "available", detailsVisible: false },
+              usage: { capturedAtUnixMs: 1, quotas: [] }
+            }
+          ]
+        }
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-config-usage-refresh")
+      ).toHaveAttribute("data-state", "loading");
+    });
+    expect(
+      screen.queryByTestId("agent-gui-config-usage-unavailable")
+    ).toBeNull();
   });
 
   it("requests a fresh agent probe when the title info entry opens", () => {
@@ -1684,7 +1788,7 @@ describe("AgentGUINode", () => {
     expect(getComposerEditor()).toBeTruthy();
   });
 
-  it("shows OpenClaw gateway startup and disables new sessions while starting", () => {
+  it("hides OpenClaw gateway startup while disabling new sessions until ready", () => {
     mockViewModel = createViewModel({
       data: {
         provider: "openclaw",
@@ -1697,8 +1801,8 @@ describe("AgentGUINode", () => {
     renderAgentGUINode({ workbenchWindowZIndex: 41 });
 
     expect(
-      screen.getByText("agentHost.agentGui.openclawGatewayStarting")
-    ).toBeTruthy();
+      screen.queryByText("agentHost.agentGui.openclawGatewayStarting")
+    ).toBeNull();
     const newConversationButton = getChromeNewConversationButton();
     fireEvent.click(newConversationButton);
 
@@ -1911,11 +2015,14 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
+    const emptyHeading = screen.getByRole("heading", {
+      name: "What can help you with?"
+    });
     expect(
-      screen.getByRole("heading", {
-        name: "What can Claude Code help you with?"
+      within(emptyHeading).getByRole("combobox", {
+        name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toBeTruthy();
+    ).toHaveTextContent("Claude Code");
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );

@@ -25,7 +25,6 @@ export function findWorkspaceFileLocationById(
 
 export function resolveWorkspaceFileLocationDefaultId(input: {
   defaultLocationId?: string | null;
-  fallbackToFirst?: boolean;
   persistedLocationId?: string | null;
   sections: readonly WorkspaceFileLocationSection[];
 }): string | null {
@@ -44,10 +43,6 @@ export function resolveWorkspaceFileLocationDefaultId(input: {
   );
   if (preferred) {
     return preferred.id;
-  }
-
-  if (input.fallbackToFirst === false) {
-    return null;
   }
   return flattenWorkspaceFileLocations(sections)[0]?.id ?? null;
 }

@@ -87,8 +87,8 @@ func TestProbeRegistryReportsRankedMirrorWhenOfficialMetadataIsSlow(t *testing.T
 	})
 
 	got := svc.probeRegistry(context.Background(), "@openai/codex")
-	if !got.Reachable || got.Endpoint != npmmirrorRegistry {
-		t.Fatalf("probeRegistry() = %#v, want ranked mirror %q", got, npmmirrorRegistry)
+	if !got.Reachable || got.Endpoint != huaweiNPMRegistry {
+		t.Fatalf("probeRegistry() = %#v, want ranked mirror %q", got, huaweiNPMRegistry)
 	}
 }
 

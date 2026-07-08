@@ -23,11 +23,9 @@ const (
 	officialNPMRegistry = "https://registry.npmjs.org"
 
 	// CN-available fallback mirrors, used when public npm is slow or blocked.
-	// All three were verified to host the full @agentclientprotocol/claude-agent-acp
-	// dependency tree end-to-end, including the @anthropic-ai/claude-agent-sdk-*
-	// platform binaries (the highest-risk packages). They serve identical tarballs,
-	// so npm integrity verification is unaffected.
-	npmmirrorRegistry  = "https://registry.npmmirror.com"               // Alibaba
+	// These mirrors were verified to host large platform optional-dependency
+	// packages end-to-end. They serve identical tarballs, so npm integrity
+	// verification is unaffected.
 	huaweiNPMRegistry  = "https://repo.huaweicloud.com/repository/npm/" // Huawei Cloud
 	tencentNPMRegistry = "https://mirrors.cloud.tencent.com/npm/"       // Tencent Cloud
 
@@ -68,7 +66,6 @@ func (s Service) agentNPMRegistries() []string {
 	}
 	return []string{
 		officialNPMRegistry,
-		npmmirrorRegistry,
 		huaweiNPMRegistry,
 		tencentNPMRegistry,
 	}

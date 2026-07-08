@@ -1,8 +1,10 @@
 import {
   desktopIpcChannels,
+  type DesktopHostOpenAgentWindowInput,
   type DesktopHostWindowCapturePreviewInput
 } from "../../shared/contracts/ipc";
 import { createDesktopWindowAccess } from "../host/desktopWindowAccess";
+import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
@@ -12,7 +14,11 @@ const capturePreviewTimeoutMs = 2_000;
 let capturePreviewQueue: Promise<void> = Promise.resolve();
 let capturePreviewSequence = 0;
 
-export function registerHostWindowIpc(): void {
+export interface HostWindowIpcDependencies {
+  workspaceLaunch: Pick<WorkspaceLaunch, "showAgentWindow">;
+}
+
+export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   const windowAccess = createDesktopWindowAccess();
   const logger = getDesktopLogger();
 
@@ -128,6 +134,70 @@ export function registerHostWindowIpc(): void {
       });
     }
   );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.openAgentWindow,
+    async (event, input) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      await deps.workspaceLaunch.showAgentWindow(
+        normalizeAgentWindowInput(input)
+      );
+      if (!ownerWindow || ownerWindow.isDestroyed()) {
+        return;
+      }
+
+      ownerWindow.minimize();
+    }
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.minimize,
+    (event) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow || ownerWindow.isDestroyed()) {
+        return;
+      }
+
+      ownerWindow.minimize();
+    }
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.toggleMaximize,
+    (event) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow || ownerWindow.isDestroyed()) {
+        return;
+      }
+
+      if (ownerWindow.isFullScreen()) {
+        ownerWindow.setFullScreen(false);
+        return;
+      }
+
+      if (ownerWindow.isMaximized()) {
+        ownerWindow.unmaximize();
+        return;
+      }
+
+      ownerWindow.maximize();
+    }
+  );
+}
+
+function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
+  const workspaceID = input.workspaceId.trim();
+  if (!workspaceID) {
+    throw new Error("workspaceId is required to open an agent window");
+  }
+  return {
+    agentSessionID: input.agentSessionId?.trim() || null,
+    agentTargetID: input.agentTargetId?.trim() || null,
+    providerStatusSnapshot: input.providerStatusSnapshot ?? null,
+    providerTargets: input.providerTargets,
+    provider: input.provider?.trim() || null,
+    workspaceID
+  };
 }
 
 function capturePageWithTimeout(

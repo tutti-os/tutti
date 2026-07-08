@@ -2647,6 +2647,62 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{
+				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true},
+				{ID: "openai/gpt-5.3-codex", DisplayName: "GPT-5.3 Codex"},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "opencode",
+		Settings: ComposerSettings{
+			ReasoningEffort: "none",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("effectiveSettings.model = %q, want openai/gpt-5.3-codex-spark", options.EffectiveSettings.Model)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "high" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) < 2 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("model option = %#v", configOptions[0])
+	}
+	if configOptions[1]["id"] != "effort" || configOptions[1]["currentValue"] != "high" {
+		t.Fatalf("reasoning option = %#v", configOptions[1])
+	}
+	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if !ok {
+		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+	}
+	for _, option := range reasoningOptions {
+		if option["value"] == "none" || option["value"] == "minimal" {
+			t.Fatalf("reasoning options = %#v, want only opencode-supported efforts", reasoningOptions)
+		}
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
+		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	if len(runtime.sessions) != 0 {
+		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
 func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -3952,6 +4008,100 @@ func TestServiceFallsBackToPersistedSessions(t *testing.T) {
 	}
 	if !got.Resumable {
 		t.Fatal("persisted session resumable = false, want true")
+	}
+}
+
+func TestServiceGetUsesNewerPersistedStateOverStaleRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                "session-1",
+		WorkspaceID:       "ws-1",
+		Provider:          "claude-code",
+		ProviderSessionID: "provider-session-1",
+		Status:            "working",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+		UpdatedAtUnixMS:    1000,
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "claude-code",
+				ProviderSessionID: "provider-session-1",
+				Status:            "completed",
+				CurrentPhase:      "idle",
+				LastEventUnixMS:   2000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "completed" {
+		t.Fatalf("status = %q, want completed", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID != nil || got.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("turn lifecycle = %#v, want settled without active turn", got.TurnLifecycle)
+	}
+	if got.SubmitAvailability == nil || got.SubmitAvailability.State != "available" {
+		t.Fatalf("submit availability = %#v, want available", got.SubmitAvailability)
+	}
+
+	list, err := service.List(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 || list[0].Status != "completed" {
+		t.Fatalf("list = %#v, want completed persisted state", list)
+	}
+}
+
+func TestServiceGetKeepsRuntimeStateWhenPersistedStateIsNotNewer(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                 "session-1",
+		WorkspaceID:        "ws-1",
+		Provider:           "claude-code",
+		Status:             "working",
+		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &activeTurnID, Phase: "running"},
+		UpdatedAtUnixMS:    2000,
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "claude-code",
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 1000,
+				UpdatedAtUnixMS: 1000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "running" {
+		t.Fatalf("status = %q, want runtime running", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID == nil || *got.TurnLifecycle.ActiveTurnID != activeTurnID {
+		t.Fatalf("turn lifecycle = %#v, want live runtime turn", got.TurnLifecycle)
 	}
 }
 

@@ -159,6 +159,7 @@ func NewDefaultControllerWithOptions(
 		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
+		NewOpenCodeAdapterWithHostMetadata(transport, host),
 	}
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewController(adapters, reporter)
@@ -477,6 +478,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		return cursorACPModeID(mode) != ""
 	case ProviderGemini, ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
+	case ProviderOpenCode, ProviderOpenClaw:
+		return strings.TrimSpace(mode) == ""
 	}
 	return false
 }

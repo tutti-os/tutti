@@ -1,7 +1,6 @@
 import type {
   AgentActivityAdapter,
   AgentActivityMessage,
-  AgentActivityProviderTargetRef,
   AgentActivitySession,
   AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
@@ -13,10 +12,8 @@ import type {
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
-import type { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
-import { shouldRefreshProviderStatusAfterSessionError } from "./internal/desktopAgentProviderStatusSync.ts";
 import {
   normalizedTuttidMessageOccurredAtUnixMs,
   normalizedTuttidMessageTurnId
@@ -24,7 +21,6 @@ import {
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
-  agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
   agentSessionCreateRequestTimeoutMs?: number;
   composerOptionsRequestTimeoutMs?: number;
   tuttidClient: TuttidClient;
@@ -36,7 +32,6 @@ const defaultComposerOptionsRequestTimeoutMs = 15_000;
 const agentActivitySessionListLimit = 100;
 
 export function createDesktopAgentActivityAdapter({
-  agentProviderStatusService,
   agentSessionCreateRequestTimeoutMs = defaultAgentSessionCreateRequestTimeoutMs,
   composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
   tuttidClient,
@@ -47,170 +42,6 @@ export function createDesktopAgentActivityAdapter({
   // down and creating a brand new hidden session on every toggle.
   const claudeDrafts = new Map<string, ClaudeDraftSessionEntry>();
 
-  const deleteClaudeDraft = (entry: ClaudeDraftSessionEntry): void => {
-    if (entry.status === "promoted") {
-      return;
-    }
-    entry.status = "disposed";
-    if (claudeDrafts.get(entry.cacheKey) === entry) {
-      claudeDrafts.delete(entry.cacheKey);
-    }
-    void entry.promise
-      .then((session) =>
-        tuttidClient.deleteWorkspaceAgentSession(entry.workspaceId, session.id)
-      )
-      .catch(() => undefined);
-  };
-
-  const createClaudeDraft = (
-    input: ClaudeDraftInput,
-    cwd: string | null,
-    settingsKey: string
-  ): Promise<WorkspaceAgentSession> => {
-    const draftKey = claudeDraftKey({ ...input, cwd });
-    const agentSessionId =
-      normalizeText(input.agentSessionId) ??
-      createDesktopAgentActivitySessionId();
-    const agentTargetId = requiredAgentTargetId(input.agentTargetId);
-    const promise = withAbortableRequestTimeout(
-      (signal) => {
-        const runtimeContext = createSessionRuntimeContext({ cwd });
-        return tuttidClient.createWorkspaceAgentSession(
-          input.workspaceId,
-          {
-            agentSessionId,
-            agentTargetId,
-            cwd,
-            initialContent: [],
-            model: input.settings.model,
-            permissionModeId: input.settings.permissionModeId,
-            planMode: input.settings.planMode,
-            provider: "claude-code",
-            reasoningEffort: input.settings.reasoningEffort,
-            ...(runtimeContext ? { runtimeContext } : {}),
-            speed: input.settings.speed,
-            title: null,
-            visible: false
-          },
-          { signal }
-        );
-      },
-      {
-        signal: input.signal,
-        timeoutMessage: "Agent session create request timed out.",
-        timeoutMs: agentSessionCreateRequestTimeoutMs
-      }
-    ).then((session) => sessionWithClaudeDraftContext(session, draftKey));
-    const entry: ClaudeDraftSessionEntry = {
-      cacheKey: claudeDraftCacheKey(input),
-      cwd,
-      promise,
-      providerTargetKey: claudeDraftTargetKey(input),
-      sessionId: agentSessionId,
-      settingsKey,
-      status: "starting",
-      workspaceId: input.workspaceId
-    };
-    claudeDrafts.set(entry.cacheKey, entry);
-    void promise.then(
-      (session) => {
-        if (entry.status === "starting") {
-          entry.status = "ready";
-          entry.sessionId = session.id;
-        }
-      },
-      () => {
-        entry.status = "failed";
-        if (claudeDrafts.get(entry.cacheKey) === entry) {
-          claudeDrafts.delete(entry.cacheKey);
-        }
-      }
-    );
-    return promise;
-  };
-
-  const ensureClaudeDraft = (
-    input: ClaudeDraftInput
-  ): Promise<WorkspaceAgentSession> => {
-    const cwd = input.cwd ?? null;
-    const settingsKey = JSON.stringify(input.settings);
-    const providerTargetKey = claudeDraftTargetKey(input);
-    const existing = claudeDrafts.get(claudeDraftCacheKey(input));
-    if (
-      existing &&
-      existing.status !== "disposed" &&
-      existing.status !== "failed" &&
-      existing.cwd === cwd &&
-      existing.providerTargetKey === providerTargetKey &&
-      (!input.agentSessionId || existing.sessionId === input.agentSessionId)
-    ) {
-      if (existing.settingsKey === settingsKey) {
-        return existing.promise;
-      }
-      // Settings changed (e.g. plan/permission mode toggled): patch the live
-      // draft in place rather than recreating a session. The returned session
-      // carries the refreshed permissionConfig/runtimeContext.
-      const draftKey = claudeDraftKey({ ...input, cwd });
-      existing.settingsKey = settingsKey;
-      const updated = existing.promise.then((session) =>
-        tuttidClient
-          .updateWorkspaceAgentSessionSettings(input.workspaceId, session.id, {
-            model: input.settings.model,
-            permissionModeId: input.settings.permissionModeId,
-            planMode: input.settings.planMode,
-            reasoningEffort: input.settings.reasoningEffort,
-            speed: input.settings.speed
-          })
-          .then((next) => sessionWithClaudeDraftContext(next, draftKey))
-      );
-      existing.promise = updated;
-      void updated.then(
-        (session) => {
-          if (existing.status === "starting" || existing.status === "ready") {
-            existing.status = "ready";
-            existing.sessionId = session.id;
-          }
-        },
-        () => {
-          // Keep the existing draft if the in-place update fails; the final
-          // settings are applied again when the draft is promoted on send.
-        }
-      );
-      return updated;
-    }
-    const requestedAgentSessionId = normalizeText(input.agentSessionId);
-    const existingSameRequestedSession = requestedAgentSessionId
-      ? Array.from(claudeDrafts.values()).find(
-          (entry) =>
-            entry.workspaceId === input.workspaceId &&
-            entry.sessionId === requestedAgentSessionId &&
-            entry.providerTargetKey !== providerTargetKey &&
-            !isDeadDraftStatus(entry.status)
-        )
-      : undefined;
-    const shouldCreateFreshDraftSession =
-      (existing &&
-        existing.providerTargetKey !== providerTargetKey &&
-        requestedAgentSessionId === existing.sessionId) ||
-      existingSameRequestedSession !== undefined;
-    if (existing) {
-      deleteClaudeDraft(existing);
-    }
-    if (
-      existingSameRequestedSession &&
-      existingSameRequestedSession !== existing
-    ) {
-      deleteClaudeDraft(existingSameRequestedSession);
-    }
-    return createClaudeDraft(
-      shouldCreateFreshDraftSession
-        ? { ...input, agentSessionId: null }
-        : input,
-      cwd,
-      settingsKey
-    );
-  };
-
   const promoteClaudeDraft = async (
     input: Parameters<AgentActivityAdapter["createSession"]>[0]
   ): Promise<AgentActivitySession | null> => {
@@ -218,11 +49,7 @@ export function createDesktopAgentActivityAdapter({
     const initialContent = toTuttidPromptContentBlocks(
       input.initialContent ?? []
     );
-    if (
-      workspaceAgentProvider(input.provider) !== "claude-code" ||
-      !agentSessionId ||
-      initialContent.length === 0
-    ) {
+    if (!agentSessionId || initialContent.length === 0) {
       return null;
     }
     const entry = claudeDrafts.get(claudeDraftCacheKey(input));
@@ -368,7 +195,7 @@ export function createDesktopAgentActivityAdapter({
         agentSessionId: input.agentSessionId?.trim() ?? null,
         event: "renderer_adapter.create.entered",
         metadata: input.metadata,
-        provider: input.provider,
+        provider: null,
         workspaceId: input.workspaceId
       });
       try {
@@ -383,40 +210,13 @@ export function createDesktopAgentActivityAdapter({
           });
           return promoted;
         }
-        if (
-          workspaceAgentProvider(input.provider) === "claude-code" &&
-          (input.initialContent?.length ?? 0) > 0
-        ) {
-          const draft = await ensureClaudeDraft({
-            agentSessionId: input.agentSessionId?.trim() ?? null,
-            agentTargetId: input.agentTargetId ?? null,
-            cwd: input.cwd ?? null,
-            settings: normalizedClaudeDraftSettings({
-              model: input.model,
-              permissionModeId: input.permissionModeId,
-              planMode: input.planMode,
-              reasoningEffort: input.reasoningEffort,
-              speed: input.speed
-            }),
-            providerTargetRef: input.providerTargetRef ?? null,
-            signal: input.signal,
-            workspaceId: input.workspaceId
-          });
-          const promotedDraft = await promoteClaudeDraft({
-            ...input,
-            agentSessionId: draft.id
-          });
-          if (promotedDraft) {
-            return promotedDraft;
-          }
-        }
         const agentSessionId =
           input.agentSessionId?.trim() || createDesktopAgentActivitySessionId();
         reportDesktopAgentSubmitTrace(runtimeApi, {
           agentSessionId,
           event: "renderer_adapter.create.http_requested",
           metadata: input.metadata,
-          provider: input.provider,
+          provider: null,
           workspaceId: input.workspaceId
         });
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
@@ -437,7 +237,6 @@ export function createDesktopAgentActivityAdapter({
                 model: input.model ?? null,
                 planMode: input.planMode ?? null,
                 permissionModeId: input.permissionModeId ?? null,
-                provider: workspaceAgentProvider(input.provider),
                 reasoningEffort: input.reasoningEffort ?? null,
                 ...(runtimeContext ? { runtimeContext } : {}),
                 speed: input.speed ?? null,
@@ -466,10 +265,6 @@ export function createDesktopAgentActivityAdapter({
           session
         );
       } catch (error) {
-        const provider = workspaceAgentProvider(input.provider);
-        if (shouldRefreshProviderStatusAfterSessionError(error)) {
-          void agentProviderStatusService?.refresh([provider]).catch(() => {});
-        }
         throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
       }
     },
@@ -690,94 +485,32 @@ export function createDesktopAgentActivitySessionId(): string {
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
 }
 
-type ClaudeDraftStatus =
-  | "starting"
-  | "ready"
-  | "failed"
-  | "promoted"
-  | "disposed";
-
-interface ClaudeDraftSettings {
-  model: string | null;
-  permissionModeId: string | null;
-  planMode: boolean | null;
-  reasoningEffort: string | null;
-  speed: string | null;
-}
-
-interface ClaudeDraftInput {
-  agentSessionId?: string | null;
-  agentTargetId?: string | null;
-  cwd: string | null;
-  providerTargetRef?: AgentActivityProviderTargetRef | null;
-  settings: ClaudeDraftSettings;
-  signal?: AbortSignal;
-  workspaceId: string;
-}
+type ClaudeDraftStatus = "starting" | "ready" | "failed" | "promoted";
 
 interface ClaudeDraftSessionEntry {
   cacheKey: string;
-  cwd: string | null;
   providerTargetKey: string;
-  settingsKey: string;
   promise: Promise<WorkspaceAgentSession>;
   sessionId: string;
   status: ClaudeDraftStatus;
-  workspaceId: string;
-}
-
-function normalizedClaudeDraftSettings(
-  settings:
-    | {
-        model?: string | null;
-        permissionModeId?: string | null;
-        planMode?: boolean | null;
-        reasoningEffort?: string | null;
-        speed?: string | null;
-      }
-    | null
-    | undefined
-): ClaudeDraftSettings {
-  return {
-    model: normalizeText(settings?.model) ?? null,
-    permissionModeId: normalizeText(settings?.permissionModeId) ?? null,
-    planMode: settings?.planMode ?? null,
-    reasoningEffort: normalizeText(settings?.reasoningEffort) ?? null,
-    speed: normalizeText(settings?.speed) ?? null
-  };
 }
 
 function isDeadDraftStatus(status: ClaudeDraftStatus): boolean {
-  return status === "disposed" || status === "failed";
+  return status === "failed";
 }
 
-function claudeDraftKey(input: ClaudeDraftInput): string {
-  return JSON.stringify({
-    agentTargetId: normalizeText(input.agentTargetId) ?? "",
-    cwd: input.cwd ?? "",
-    providerTargetRef: sortProviderTargetRefValue(input.providerTargetRef),
-    settings: input.settings,
-    workspaceId: input.workspaceId
-  });
-}
-
-function claudeDraftCacheKey(
-  input: Pick<
-    ClaudeDraftInput,
-    "agentTargetId" | "providerTargetRef" | "workspaceId"
-  >
-): string {
+function claudeDraftCacheKey(input: {
+  agentTargetId?: string | null;
+  workspaceId: string;
+}): string {
   return `${input.workspaceId}:${claudeDraftTargetKey(input)}`;
 }
 
-function claudeDraftTargetKey(
-  input: Pick<ClaudeDraftInput, "agentTargetId" | "providerTargetRef">
-): string {
+function claudeDraftTargetKey(input: {
+  agentTargetId?: string | null;
+}): string {
   const agentTargetId = normalizeText(input.agentTargetId);
-  if (agentTargetId) {
-    return `agentTarget:${agentTargetId}`;
-  }
-  return `providerTarget:${providerTargetRefKey(input.providerTargetRef)}`;
+  return `agentTarget:${agentTargetId ?? ""}`;
 }
 
 function requiredAgentTargetId(value: string | null | undefined): string {
@@ -797,40 +530,6 @@ function createSessionRuntimeContext(input: {
     runtimeContext.noProject = true;
   }
   return Object.keys(runtimeContext).length > 0 ? runtimeContext : undefined;
-}
-
-function providerTargetRefKey(
-  value: AgentActivityProviderTargetRef | null | undefined
-): string {
-  return JSON.stringify(sortProviderTargetRefValue(value ?? null));
-}
-
-function sortProviderTargetRefValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortProviderTargetRefValue);
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => [key, sortProviderTargetRefValue(entryValue)])
-  );
-}
-
-function sessionWithClaudeDraftContext(
-  session: WorkspaceAgentSession,
-  draftKey: string
-): WorkspaceAgentSession {
-  return {
-    ...session,
-    runtimeContext: {
-      ...recordValue(session.runtimeContext),
-      draftAgentSessionId: session.id,
-      draftKey
-    }
-  };
 }
 
 function toTuttidPromptContentBlocks(

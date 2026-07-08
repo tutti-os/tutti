@@ -186,6 +186,20 @@ func DefaultRegistry() Registry {
 			},
 			LoginArgs: []string{"login"},
 		},
+		agentprovider.OpenCode: {
+			Provider:          agentprovider.OpenCode,
+			BinaryNames:       []string{"opencode"},
+			AdapterCommand:    []string{"opencode", "acp"},
+			AuthStatusCommand: []string{"auth", "list"},
+			AuthMarkerPaths:   []string{"~/.local/share/opencode/auth.json"},
+			Install: InstallerSpec{
+				Kind:           InstallerKindOfficialScript,
+				DisplayCommand: "curl -fsSL https://opencode.ai/install | bash",
+				ScriptURL:      "https://opencode.ai/install",
+				ScriptShell:    "bash",
+			},
+			LoginArgs: []string{"auth", "login"},
+		},
 	}
 	providers := agentprovider.All()
 	specs := make([]ProviderSpec, 0, len(providers))

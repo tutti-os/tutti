@@ -33,6 +33,7 @@ export type {
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
+  AgentGUIProviderTargetBadge,
   AgentGUIProviderTargetRef
 } from "./types";
 export {

@@ -17,7 +17,7 @@ func TestBuiltinProviderCapabilitiesAreFrameworkCompliant(t *testing.T) {
 	providers := []cliservice.Provider{
 		diagnostics.NewProvider(),
 		issuemanager.NewProvider(nil, nil, nil),
-		agentcontext.NewProvider(nil, nil),
+		agentcontext.NewProviderWithLaunchPublisher(nil, nil, nil),
 		browser.NewProvider(nil, nil),
 		computer.NewProvider(nil, nil),
 	}

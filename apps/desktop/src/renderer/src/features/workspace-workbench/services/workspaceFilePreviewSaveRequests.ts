@@ -1,4 +1,4 @@
-export const workspaceFilePreviewSaveRequestEvent =
+const workspaceFilePreviewSaveRequestEvent =
   "tutti:workspace-file-preview-save-request";
 
 export interface WorkspaceFilePreviewSaveRequestDetail {

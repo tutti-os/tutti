@@ -13,7 +13,7 @@ export interface WorkspaceAppFrontendLogRecord extends TuttiExternalLogInput {
   webSource?: string;
 }
 
-export const workspaceAppFrontendLogRateLimitPerSecond = 50;
+const workspaceAppFrontendLogRateLimitPerSecond = 50;
 
 export function resolveWorkspaceAppWebLogPath(
   stateRootDir: string,
@@ -116,7 +116,7 @@ export class WorkspaceAppFrontendLogWriter {
   }
 }
 
-export function resolveWorkspaceAppFrontendLogLevel(
+function resolveWorkspaceAppFrontendLogLevel(
   event: string
 ): DesktopRuntimeLogLevel {
   return event.includes("failed") ? "warn" : "info";

@@ -831,6 +831,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             terminal: createWorkspaceDockImageIcon(dockIcons.terminal)
           },
           hostFilesApi: this.dependencies.hostFilesApi,
+          hostWindowApi: this.dependencies.hostWindowApi,
           i18n: input.i18n,
           onCapabilitySettingsRequest: (target) => {
             capabilitySettingsRequestRef.current?.(target);

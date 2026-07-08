@@ -56,6 +56,7 @@ import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
 import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
+import { WorkspaceAccountMenu } from "./WorkspaceAccountMenu";
 import { WorkspaceFeedbackGroupPopover } from "./WorkspaceFeedbackGroupPopover";
 import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceChromeState } from "./useWorkspaceChromeState";
@@ -239,6 +240,7 @@ export function WorkspaceChrome({
             selectedWallpaperID={selectedWallpaperID}
             workspace={workspace}
           />
+          <WorkspaceAccountMenu />
         </div>
       </header>
       <ExternalAgentSessionImportPrompt

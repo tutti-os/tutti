@@ -239,6 +239,7 @@ export interface AgentGUINodeProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
   onAgentProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -604,6 +605,7 @@ function areAgentGUINodePropsEqual(
     previous.workspaceAgentProbes === next.workspaceAgentProbes &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
+    previous.providerAuthAccountLabels === next.providerAuthAccountLabels &&
     previous.managedAgentsState === next.managedAgentsState &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
@@ -672,6 +674,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceAgentProbes,
   onAgentProbeDemandChange,
   onAgentProbeRefreshRequest,
+  providerAuthAccountLabels,
   managedAgentsState,
   contextMentionProviders,
   workspaceAppIcons,
@@ -1059,6 +1062,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       slashStatusBaseUrl: t("agentHost.agentGui.slashStatusBaseUrl"),
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
+      slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;
@@ -1075,6 +1079,22 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
       slashStatusLimitsUnavailable: t(
         "agentHost.agentGui.slashStatusLimitsUnavailable"
+      ),
+      slashStatusUsageJustUpdated: t(
+        "agentHost.agentGui.slashStatusUsageJustUpdated"
+      ),
+      slashStatusUsageMinutesAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageMinutesAgo", { count }),
+      slashStatusUsageHoursAgo: (count: number) =>
+        t("agentHost.agentGui.slashStatusUsageHoursAgo", { count }),
+      slashStatusUsageUpdating: t(
+        "agentHost.agentGui.slashStatusUsageUpdating"
+      ),
+      slashStatusUsageRefreshFailed: t(
+        "agentHost.agentGui.slashStatusUsageRefreshFailed"
+      ),
+      slashStatusUsageRefreshAria: t(
+        "agentHost.agentGui.slashStatusUsageRefreshAria"
       ),
       usageChipLabel: (input: { percent: number }) =>
         t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
@@ -1478,12 +1498,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
       fileMentionError: t("agentHost.agentGui.fileMentionError"),
       fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
+      fileDropHint: t("agentHost.agentGui.fileDropHint"),
       mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
+      handoffConversationTooltip: t(
+        "agentHost.agentGui.handoffConversationTooltip"
+      ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]
@@ -1578,6 +1602,26 @@ export const AgentGUINode = memo(function AgentGUINode({
     () => slashStatusLimitsFromQuotas(railSlashStatusQuotaSource, null, t),
     [railSlashStatusQuotaSource, t]
   );
+  // The provider whose limits the rail config menu renders: the rail filter
+  // provider when one is active, otherwise the active window provider. Read
+  // freshness + attempt state from this same probe so an empty or failed usage
+  // result stays coherent with the meters (or absence of them).
+  const slashStatusUsageProbe = railStatusProvider
+    ? railAgentProbe
+    : activeAgentProbe;
+  const slashStatusUsageCapturedAtUnixMs =
+    slashStatusUsageProbe?.usage?.capturedAtUnixMs ?? null;
+  const slashStatusUsageDidFail =
+    workspaceAgentProbes?.usageLoadFailed ?? false;
+  // True once a usage probe has actually run for this provider — it came back
+  // with a usage snapshot (possibly zero quotas) or a usage error. Lets the
+  // config menu show an explicit "no limits / retry" row instead of hiding the
+  // whole section when the numbers resolve empty (e.g. a Claude OAuth usage
+  // response with no 5h/7d windows, or a usage fetch the probe caught into
+  // `lastError`), which previously made the limits look like they vanished.
+  const slashStatusUsageAttempted =
+    Boolean(slashStatusUsageProbe?.usage) ||
+    Boolean(slashStatusUsageProbe?.lastError);
   const agentProbeLines = useMemo(() => {
     return buildDockAgentProbeTooltipLines(
       activeAgentProbe,
@@ -1646,6 +1690,25 @@ export const AgentGUINode = memo(function AgentGUINode({
     onAgentProbeRefreshRequest(
       railStatusProvider ?? activeProbeProvider,
       `agent-gui:${nodeId}:config`
+    );
+  }, [
+    activeProbeProvider,
+    nodeId,
+    onAgentProbeRefreshRequest,
+    previewMode,
+    railStatusProvider
+  ]);
+  // Manual "refresh now" from the config menu's freshness control. Same probe
+  // fetch as opening the menu, but callable while the menu stays open (open-only
+  // handlers fire once on the open transition). The control disables itself
+  // while a fetch is in flight, so this cannot hammer the vendor usage API.
+  const handleAgentUsageRefresh = useCallback(() => {
+    if (previewMode || !onAgentProbeRefreshRequest) {
+      return;
+    }
+    onAgentProbeRefreshRequest(
+      railStatusProvider ?? activeProbeProvider,
+      `agent-gui:${nodeId}:usage-refresh`
     );
   }, [
     activeProbeProvider,
@@ -1739,7 +1802,12 @@ export const AgentGUINode = memo(function AgentGUINode({
             }
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
+            slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+            slashStatusUsageDidFail={slashStatusUsageDidFail}
+            slashStatusUsageAttempted={slashStatusUsageAttempted}
+            providerAuthAccountLabels={providerAuthAccountLabels}
             onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
+            onAgentUsageRefresh={handleAgentUsageRefresh}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             onHandoffConversation={onHandoffConversation}

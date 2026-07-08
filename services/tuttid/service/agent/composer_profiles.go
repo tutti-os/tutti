@@ -156,6 +156,13 @@ var composerProfiles = map[string]composerProfile{
 	agentprovider.OpenClaw: {
 		Capabilities: []string{"interrupt"},
 	},
+	agentprovider.OpenCode: {
+		ModelSelection:         true,
+		UsesModelCatalog:       true,
+		ReasoningEffort:        true,
+		DefaultReasoningEffort: "high",
+		Capabilities:           []string{"interrupt"},
+	},
 }
 
 // composerProfileFor resolves the provider's composer profile. Unknown

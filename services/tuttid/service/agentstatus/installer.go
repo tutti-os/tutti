@@ -614,10 +614,10 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	// make every user-mode npm install fail with EACCES before any registry is hit.
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(npmSpec.PrefixDir, agentNPMCacheDirName))
 
-	// Try official npm first (fastest when reachable), then fall back through the
-	// CN-available mirrors when it is slow or blocked. Each attempt is bounded so a
-	// blocked registry fails over quickly instead of consuming the whole budget;
-	// the npm_config_registry value selects the source.
+	// Rank official npm and the CN-available mirrors with a lightweight metadata
+	// probe, then install through that order. Each attempt is bounded so a blocked
+	// registry fails over quickly instead of consuming the whole budget; the
+	// npm_config_registry value selects the source.
 	packageName, _ := splitNPMPackageSpec(npmSpec.Package)
 	registries := s.rankedAgentNPMRegistries(ctx, packageName)
 	var result InstallCommandResult

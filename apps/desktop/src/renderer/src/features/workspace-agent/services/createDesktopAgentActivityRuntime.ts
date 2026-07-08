@@ -163,7 +163,7 @@ export function createDesktopAgentActivityRuntime(
         workspaceId: input.workspaceId,
         fields: {
           mode: input.mode,
-          provider: resolveDesktopAgentGUIProvider(input.provider)
+          provider: null
         }
       });
       const flow = "session_create" as const;
@@ -184,7 +184,7 @@ export function createDesktopAgentActivityRuntime(
           fallbackErrorCode,
           flow,
           node,
-          provider: resolveDesktopAgentGUIProvider(input.provider),
+          provider: null,
           success: false
         });
         throw error;

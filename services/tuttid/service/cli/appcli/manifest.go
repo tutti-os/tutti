@@ -22,10 +22,6 @@ func ReadManifest(path string) (Manifest, error) {
 	return appclicore.ReadManifest(path)
 }
 
-func ValidateManifest(manifest Manifest) error {
-	return appclicore.ValidateManifest(manifest)
-}
-
 func CLIManifestPath(packageDir string, manifestPath string) (string, error) {
 	return appclicore.PackageRelativePath(packageDir, manifestPath)
 }

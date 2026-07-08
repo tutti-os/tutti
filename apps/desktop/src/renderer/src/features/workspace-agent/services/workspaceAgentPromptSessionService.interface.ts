@@ -2,9 +2,9 @@ import { createDecorator } from "@tutti-os/infra/di";
 
 export interface WorkspaceAgentPromptSessionCreateInput {
   agentSessionId?: string | null;
+  agentTargetId: string;
   cwd?: string | null;
   prompt: string;
-  provider?: string | null;
   source?: string | null;
   title?: string | null;
   userProjectPath?: string | null;

@@ -90,12 +90,11 @@ export interface AgentGUIProviderTarget {
 
 AgentGUI does not interpret `ref.kind` and does not treat `targetId` or `ref`
 as authority. It displays `target.label`, keeps provider logic keyed by the
-real `target.provider`, and passes `providerTargetRef` through activation.
-Trusted host code must re-authenticate the current user/workspace and resolve
-any invocation plan before launching.
+real `target.provider`, and starts new sessions with the selected
+`agentTargetId`. Trusted host code must re-authenticate the current
+user/workspace and resolve any invocation plan before launching.
 
 If `providerTargets` is omitted or empty, AgentGUI creates local targets such as
 `local:codex` and `local:claude-code` from the static provider catalog for
 display/backward compatibility. Those static catalog targets are not persisted
-or sent as `providerTargetRef`; legacy hosts continue to receive only the real
-`provider`.
+or sent as session creation authority.

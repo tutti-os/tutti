@@ -26,6 +26,7 @@ import type {
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
+  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -68,6 +69,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   defaultAgentProvider?: string | null;
   defaultProviderTargetId?: string | null;
   hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
@@ -205,7 +207,10 @@ export function createWorkspaceAgentGuiContribution(input: {
         "workspace.agentGui.fallbackAgentLabel"
       ),
       newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
-      nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent)
+      nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
+      openDetachedWindow: input.appI18n.t(
+        "workspace.agentGui.openDetachedWindow"
+      )
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
@@ -229,6 +234,23 @@ export function createWorkspaceAgentGuiContribution(input: {
       }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
+    onOpenDetachedWindow: (request) => {
+      // Hand off whatever this window already has cached right now — do not
+      // block the click on a full provider probe (it can take seconds and
+      // makes opening the window feel unresponsive). The detached window
+      // hydrates from this snapshot instantly, then keeps checking any
+      // providers it's still missing in the background (see
+      // StandaloneAgentWindow's own ensureAll effect); hydrate only ever
+      // merges in new data, so a partial hand-off here is safe.
+      input.hostWindowApi.openAgentWindow({
+        agentSessionId: request.agentSessionId,
+        agentTargetId: request.agentTargetId,
+        providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
+        providerTargets: request.providerTargets,
+        provider: request.provider,
+        workspaceId: request.workspaceId
+      });
+    },
     renderPreview: (context, helpers) =>
       createElement(
         DesktopAgentGUIWorkbenchDockPreviewFrame,
@@ -341,29 +363,43 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
   const session = snapshot.sessions.find(
     (item) => item.agentSessionId === agentSessionId
   );
-  const provider = isAgentGuiWorkbenchProvider(session?.provider)
+  // Prefer the target the workbench state already committed to when the session
+  // was created. The activity snapshot lags a few frames behind session
+  // creation, so relying on it alone briefly reports an unknown provider and
+  // flashes the wrong (codex) icon; the committed agentTargetId is correct
+  // immediately.
+  const agentTargetId = session?.agentTargetId ?? state?.agentTargetId ?? null;
+  const providerTarget = agentTargetId
+    ? (input.providerTargets?.find(
+        (target) => target.agentTargetId === agentTargetId
+      ) ?? null)
+    : null;
+  const resolvedProvider = isAgentGuiWorkbenchProvider(session?.provider)
     ? session.provider
-    : "codex";
+    : isAgentGuiWorkbenchProvider(providerTarget?.provider)
+      ? providerTarget.provider
+      : null;
   const title =
     resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId,
       fallbackTitle: state?.lastActiveConversationTitle ?? null,
-      provider,
+      provider: resolvedProvider ?? "codex",
       snapshot
     }).title ??
     state?.lastActiveConversationTitle ??
     null;
-  const targetIconUrl = session?.agentTargetId
-    ? input.providerTargets?.find(
-        (target) => target.agentTargetId === session.agentTargetId
-      )?.iconUrl
-    : null;
+  // Never fall back to a concrete provider's icon (e.g. codex) while the real
+  // provider is still unknown — leave iconUrl null so the header renders a
+  // neutral placeholder until the provider resolves.
+  const iconUrl =
+    providerTarget?.iconUrl ??
+    (resolvedProvider
+      ? (resolveAgentGuiSessionProviderIconUrl(resolvedProvider) ??
+        input.dockIconUrls?.[resolvedProvider] ??
+        null)
+      : null);
   return {
-    iconUrl:
-      targetIconUrl ??
-      resolveAgentGuiSessionProviderIconUrl(provider) ??
-      input.dockIconUrls?.[provider] ??
-      null,
+    iconUrl,
     title
   };
 }

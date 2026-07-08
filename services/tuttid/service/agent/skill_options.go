@@ -59,6 +59,8 @@ func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]co
 		return codexComposerSkillRoots(cwd, env), codexSkillTrigger
 	case agentprovider.ClaudeCode:
 		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
+	case agentprovider.Cursor:
+		return cursorComposerSkillRoots(cwd, env), cursorSkillTrigger
 	default:
 		return nil, nil
 	}
@@ -100,6 +102,25 @@ func claudeCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot 
 		})
 	}
 	if pluginDir := envValue(env, "TUTTI_CLAUDE_PLUGIN_DIR"); pluginDir != "" {
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(pluginDir, "skills"),
+			sourceKind: composerSkillSourcePlugin,
+			pluginName: claudePluginName(pluginDir),
+		})
+	}
+	return roots
+}
+
+func cursorComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
+	roots := make([]composerSkillRoot, 0)
+	roots = append(roots, ancestorSkillRoots(cwd, ".cursor", "skills", composerSkillSourceProject)...)
+	if userHome, err := os.UserHomeDir(); err == nil && strings.TrimSpace(userHome) != "" {
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(userHome, ".cursor", "skills"),
+			sourceKind: composerSkillSourcePersonal,
+		})
+	}
+	if pluginDir := envValue(env, "TUTTI_CURSOR_PLUGIN_DIR"); pluginDir != "" {
 		roots = append(roots, composerSkillRoot{
 			path:       filepath.Join(pluginDir, "skills"),
 			sourceKind: composerSkillSourcePlugin,
@@ -475,6 +496,10 @@ func readYAMLBlockScalar(lines []string, start int, scalar string) (string, int)
 }
 
 func codexSkillTrigger(_ composerSkillRoot, name string) string {
+	return "$" + strings.TrimSpace(name)
+}
+
+func cursorSkillTrigger(_ composerSkillRoot, name string) string {
 	return "$" + strings.TrimSpace(name)
 }
 
