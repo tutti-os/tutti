@@ -259,6 +259,11 @@ func seedStandardACPInitialCommands(state *acpLiveState, provider string) {
 	if strings.TrimSpace(provider) == ProviderClaudeCode {
 		state.availableCommands = claudeCodeACPCommands()
 		state.commandsKnown = true
+		return
+	}
+	if strings.TrimSpace(provider) == ProviderOpenCode {
+		state.availableCommands = opencodeACPCommands()
+		state.commandsKnown = true
 	}
 }
 

@@ -4280,6 +4280,43 @@ func TestGeminiAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 	}
 }
 
+func TestOpenCodeAdapterStartExposesReviewCommandBaseline(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-review")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want OpenCode review baseline")
+	}
+	names := agentSessionCommandNames(snapshot.Commands)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(names, want) {
+			t.Fatalf("commands = %#v, want %q", names, want)
+		}
+	}
+
+	state := adapter.SessionState(session)
+	commands, _ := state.RuntimeContext["commands"].([]string)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(commands, want) {
+			t.Fatalf("runtime context commands = %#v, want %q", commands, want)
+		}
+	}
+	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+	for _, want := range []string{CapabilityCompact, "review"} {
+		if !containsString(capabilities, want) {
+			t.Fatalf("runtime context capabilities = %#v, want %q", capabilities, want)
+		}
+	}
+}
+
 func TestControllerPublishesIdleStandardACPCommandUpdatesAfterStart(t *testing.T) {
 	t.Parallel()
 
@@ -5043,22 +5080,28 @@ func (c *standardACPConnection) sendJSON(value any) {
 }
 
 func (c *standardACPConnection) sendAvailableCommandsUpdate() {
+	c.sendAvailableCommandEntries([]map[string]any{{
+		"name":        "web",
+		"description": "Search the web",
+		"input": map[string]any{
+			"hint": "query",
+		},
+	}})
+}
+
+func (c *standardACPConnection) sendAvailableCommandEntries(commands []map[string]any) {
+	values := make([]any, 0, len(commands))
+	for _, command := range commands {
+		values = append(values, command)
+	}
 	c.sendJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  acpMethodUpdate,
 		"params": map[string]any{
 			"sessionId": c.sessionID,
 			"update": map[string]any{
-				"sessionUpdate": "available_commands_update",
-				"availableCommands": []any{
-					map[string]any{
-						"name":        "web",
-						"description": "Search the web",
-						"input": map[string]any{
-							"hint": "query",
-						},
-					},
-				},
+				"sessionUpdate":     "available_commands_update",
+				"availableCommands": values,
 			},
 		},
 	})

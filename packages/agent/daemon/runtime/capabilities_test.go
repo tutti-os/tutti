@@ -48,6 +48,15 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 			t.Fatalf("opencode capabilities = %v, missing %q", opencode, want)
 		}
 	}
+	if containsString(opencode, CapabilityCompact) || containsString(opencode, "review") {
+		t.Fatalf("opencode capabilities = %v, must not advertise command capabilities without provider commands", opencode)
+	}
+	opencodeWithReview := standardACPCapabilities(ProviderOpenCode, false, acpLiveStateSnapshot{
+		availableCommands: []AgentSessionCommand{{Name: "compact"}, {Name: "review"}},
+	})
+	if !containsString(opencodeWithReview, CapabilityCompact) || !containsString(opencodeWithReview, "review") {
+		t.Fatalf("opencode capabilities = %v, want compact+review from provider commands", opencodeWithReview)
+	}
 
 	cursor := standardACPCapabilities(ProviderCursor, true, acpLiveStateSnapshot{})
 	if !containsString(cursor, CapabilityImageInput) || !containsString(cursor, CapabilityInterrupt) {
