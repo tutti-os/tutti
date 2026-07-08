@@ -104,6 +104,7 @@ import type {
 } from "./model/agentGuiNodeTypes";
 import { AgentHomeSuggestions } from "./AgentHomeSuggestions";
 import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../workbench/contribution";
+import { resolveAgentGuiWorkbenchProviderLabel } from "../../workbench/providerCatalog";
 import { useProjectedAgentConversation } from "../../shared/agentConversation/projection/useProjectedAgentConversation";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../shared/workspaceAgentStatusNormalizer";
 import {
@@ -643,6 +644,11 @@ interface AgentGUINodeViewProps {
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  /**
+   * Renders the main-pane state for a selected host-disabled provider target.
+   * Other readiness gates keep the built-in AgentGUI flows.
+   */
+  renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
@@ -1122,10 +1128,28 @@ export type AgentGUISidebarFooterRenderer = (
  */
 export type AgentGUIProviderRailEmptyRenderer = () => ReactNode;
 
+export interface AgentGUIProviderUnavailableStateContext {
+  provider: AgentGUIProvider;
+  providerLabel: string;
+  target: AgentGUIProviderTarget;
+  iconUrl: string;
+  unavailableReason: string | null;
+}
+
+/**
+ * Renders the main-pane unavailable state for a selected provider target that
+ * the host explicitly marks as disabled. This does not replace install,
+ * login, checking, or retry readiness gates.
+ */
+export type AgentGUIProviderUnavailableStateRenderer = (
+  ctx: AgentGUIProviderUnavailableStateContext
+) => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  renderProviderUnavailableState,
   providerRailAllPresentation,
   onLinkAction,
   onHandoffConversation,
@@ -1917,6 +1941,7 @@ export function AgentGUINodeView({
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
+            renderProviderUnavailableState={renderProviderUnavailableState}
             previewMode={previewMode}
           />
         </section>
@@ -2122,6 +2147,7 @@ interface AgentGUIDetailPaneProps {
   onRequestComposerFocus: () => void;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
 }
 
 function mergeWorkspaceAppIconsFromCommands(input: {
@@ -2215,7 +2241,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestGitBranches,
   onRequestComposerFocus,
   contextMentionProviders,
-  workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
+  workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  renderProviderUnavailableState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -3126,6 +3153,13 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         : [agentGUIProviderIconPresentation(emptyHeroProvider)],
     [emptyHeroProvider, viewModel.conversationFilter]
   );
+  const disabledProviderTarget = selectedProviderTargetComingSoon
+    ? (viewModel.selectedProviderTarget ?? null)
+    : null;
+  const shouldRenderProviderUnavailableState =
+    !hasActiveConversation &&
+    disabledProviderTarget !== null &&
+    renderProviderUnavailableState !== undefined;
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
       // The lifted prompt is rendered from props on the pane; the store still
@@ -3542,7 +3576,26 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
       >
         {!hasActiveConversation ? (
-          emptyProviderReadinessGate ? (
+          shouldRenderProviderUnavailableState && disabledProviderTarget ? (
+            <>
+              {renderProviderUnavailableState?.({
+                provider: disabledProviderTarget.provider,
+                providerLabel:
+                  labels.emptyProviderForProvider?.(
+                    disabledProviderTarget.provider
+                  ) ??
+                  resolveAgentGuiWorkbenchProviderLabel(
+                    disabledProviderTarget.provider
+                  ),
+                target: disabledProviderTarget,
+                iconUrl: resolveAgentGUIHeroIconUrl(
+                  disabledProviderTarget.provider
+                ),
+                unavailableReason:
+                  disabledProviderTarget.unavailableReason ?? null
+              })}
+            </>
+          ) : emptyProviderReadinessGate ? (
             <AgentGUIProviderReadinessGatePane
               provider={emptyHeroProvider}
               gate={emptyProviderReadinessGate}

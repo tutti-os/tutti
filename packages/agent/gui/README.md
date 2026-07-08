@@ -102,3 +102,8 @@ or sent as session creation authority.
 Hosts that need to brand the aggregate provider rail entry may pass
 `providerRailAllPresentation.iconUrl`. This only changes the `All` filter icon;
 single agent or target icons continue to come from `providerTargets[].iconUrl`.
+
+Hosts that need custom main-pane presentation for a disabled selected target may
+pass `renderProviderUnavailableState`. AgentGUI calls this renderer only when
+the selected `providerTargets[]` entry has `disabled: true`; install, login,
+checking, and retry readiness gates keep the built-in AgentGUI flows.

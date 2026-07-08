@@ -4459,6 +4459,76 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(screen.queryByTestId("agent-composer")).toBeNull();
   });
 
+  it("lets the host render disabled provider target unavailable state", () => {
+    const disabledTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      disabled: true,
+      label: "Shared Codex",
+      unavailableReason: "disabled by workspace policy"
+    };
+    const renderProviderUnavailableState = vi.fn((ctx) => (
+      <div data-testid="custom-provider-unavailable">
+        {ctx.providerLabel} / {ctx.target.label} / {ctx.unavailableReason}
+      </div>
+    ));
+
+    renderAgentGUINodeView({
+      renderProviderUnavailableState,
+      viewModel: createViewModel({
+        data: {
+          provider: "codex",
+          agentTargetId: disabledTarget.agentTargetId,
+          lastActiveAgentSessionId: null,
+          conversationRailWidthPx: null
+        },
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: disabledTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: disabledTarget,
+        providerTargets: [disabledTarget]
+      })
+    });
+
+    expect(screen.getByTestId("custom-provider-unavailable")).toHaveTextContent(
+      "Codex / Shared Codex / disabled by workspace policy"
+    );
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(renderProviderUnavailableState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        providerLabel: "Codex",
+        target: disabledTarget,
+        unavailableReason: "disabled by workspace policy"
+      })
+    );
+  });
+
+  it("keeps the built-in retry gate for provider readiness unavailable", () => {
+    const renderProviderUnavailableState = vi.fn(() => (
+      <div data-testid="custom-provider-unavailable" />
+    ));
+
+    renderAgentGUINodeView({
+      renderProviderUnavailableState,
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "unavailable"
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateUnavailableTitle");
+    expect(
+      screen.queryByTestId("custom-provider-unavailable")
+    ).not.toBeInTheDocument();
+    expect(renderProviderUnavailableState).not.toHaveBeenCalled();
+  });
+
   it("renders the aggregate agents checking gate when the All tab is active", () => {
     renderAgentGUINodeView({
       viewModel: createViewModel({
@@ -4583,6 +4653,7 @@ interface RenderAgentGUINodeViewOptions {
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
+  renderProviderUnavailableState?: AgentGUINodeViewProps["renderProviderUnavailableState"];
   providerRailAllPresentation?: AgentGUINodeViewProps["providerRailAllPresentation"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
@@ -4602,6 +4673,7 @@ function buildAgentGUINodeViewElement({
   onOpenConversationWindow,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  renderProviderUnavailableState,
   providerRailAllPresentation,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
@@ -4611,6 +4683,7 @@ function buildAgentGUINodeViewElement({
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
         renderProviderRailEmpty={renderProviderRailEmpty}
+        renderProviderUnavailableState={renderProviderUnavailableState}
         providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
         isActive={isActive}
