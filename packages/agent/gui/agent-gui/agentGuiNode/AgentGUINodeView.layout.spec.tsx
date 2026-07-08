@@ -279,6 +279,40 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("keeps the conversation rail stable when the active conversation object refreshes", () => {
+    const actions = createActions();
+    const labels = createLabels();
+    const conversation = createConversationSummary("session-1", {
+      title: "Stable conversation"
+    });
+    const viewModel = createViewModel({
+      activeConversationId: "session-1",
+      activeConversation: conversation,
+      conversations: [conversation]
+    });
+    const { rerender } = renderAgentGUINodeView({
+      actions,
+      labels,
+      viewModel
+    });
+
+    expect(conversationMetaMock.calls).toContain("session-1");
+    conversationMetaMock.calls = [];
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        labels,
+        viewModel: {
+          ...viewModel,
+          activeConversation: { ...conversation }
+        }
+      })
+    );
+
+    expect(conversationMetaMock.calls).toEqual([]);
+  });
+
   it("renders an injected provider rail footer with neutral context", () => {
     const activeConversation = createConversationSummary("session-1", {
       title: "Active conversation"

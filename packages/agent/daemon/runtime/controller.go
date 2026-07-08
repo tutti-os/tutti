@@ -50,8 +50,10 @@ type sessionLifecycleLock struct {
 }
 
 type activeTurn struct {
-	turnID string
-	cancel context.CancelFunc
+	turnID                string
+	cancel                context.CancelFunc
+	openCallIDs           map[string]struct{}
+	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {
@@ -1245,6 +1247,10 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		events = c.asyncTurnEventsReadyForFold(session, turnID, events)
+		if len(events) == 0 {
+			return
+		}
 		session = c.foldTurnSessionEvents(session, events, turnID)
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
@@ -1280,6 +1286,91 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		}
 		emit(events)
 	}
+}
+
+func (c *Controller) asyncTurnEventsReadyForFold(session Session, turnID string, events []activityshared.Event) []activityshared.Event {
+	turnID = strings.TrimSpace(turnID)
+	if c == nil || turnID == "" || len(events) == 0 {
+		return events
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok || strings.TrimSpace(turn.turnID) != turnID {
+		return events
+	}
+	if turn.openCallIDs == nil {
+		turn.openCallIDs = make(map[string]struct{})
+	}
+	for _, event := range events {
+		trackAsyncTurnCallEvent(turn.openCallIDs, event, turnID)
+	}
+	var ready []activityshared.Event
+	var terminal []activityshared.Event
+	for _, event := range events {
+		if asyncEventCompletesTurnSuccessfully(event, turnID) {
+			terminal = append(terminal, event)
+			continue
+		}
+		ready = append(ready, event)
+	}
+	if len(terminal) > 0 && len(turn.openCallIDs) > 0 {
+		turn.pendingTerminalEvents = append(turn.pendingTerminalEvents, terminal...)
+	} else {
+		ready = events
+	}
+	if len(turn.openCallIDs) == 0 && len(turn.pendingTerminalEvents) > 0 {
+		ready = append(ready, turn.pendingTerminalEvents...)
+		turn.pendingTerminalEvents = nil
+	}
+	c.turns[key] = turn
+	return ready
+}
+
+func trackAsyncTurnCallEvent(openCallIDs map[string]struct{}, event activityshared.Event, turnID string) {
+	if len(openCallIDs) == 0 && event.Type != activityshared.EventCallStarted {
+		return
+	}
+	if strings.TrimSpace(event.Payload.TurnID) != turnID {
+		return
+	}
+	callID := asyncTurnCallTrackingID(event)
+	if callID == "" {
+		return
+	}
+	switch event.Type {
+	case activityshared.EventCallStarted:
+		openCallIDs[callID] = struct{}{}
+	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
+		delete(openCallIDs, callID)
+	}
+}
+
+func asyncTurnCallTrackingID(event activityshared.Event) string {
+	if callID := strings.TrimSpace(event.Payload.CallID); callID != "" {
+		return callID
+	}
+	return strings.TrimSpace(event.EventID)
+}
+
+func asyncEventCompletesTurnSuccessfully(event activityshared.Event, turnID string) bool {
+	if strings.TrimSpace(event.Payload.TurnID) == turnID {
+		if event.Type == activityshared.EventTurnCompleted {
+			outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+			return outcome == "" || outcome == string(activityshared.TurnOutcomeCompleted)
+		}
+	}
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+	if !ok || strings.TrimSpace(snapshot.Phase) != string(activityshared.TurnPhaseSettled) {
+		return false
+	}
+	outcome := strings.TrimSpace(snapshot.Outcome)
+	if outcome != "" && outcome != string(activityshared.TurnOutcomeCompleted) {
+		return false
+	}
+	return strings.TrimSpace(event.Payload.TurnID) == turnID ||
+		strings.TrimSpace(snapshot.ActiveTurnID) == turnID
 }
 
 func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {

@@ -6940,6 +6940,65 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("queues a follow-up prompt while the first conversation is still being created", async () => {
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
+      if (input.mode === "new") {
+        return new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep creation pending so the optimistic session is not durable yet.
+        });
+      }
+      return Promise.resolve({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      });
+    });
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("first prompt"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "new" })
+      );
+    });
+    const createdId = activate.mock.calls[0]![0].agentSessionId;
+    expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("second prompt"));
+      result.current.actions.submitPrompt(promptBlocks("second prompt"));
+    });
+
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["second prompt"]
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("restores the original home draft when first conversation activation fails after pending", async () => {
     let rejectActivation: ((error: unknown) => void) | undefined;
     const activate = vi.fn((input: AgentHostActivateAgentSessionInput) => {
@@ -17405,6 +17464,35 @@ describe("useAgentGUINodeController", () => {
       });
     });
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
+  it("keeps the empty queued prompts reference stable across active session rerenders", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { rerender, result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.queuedPrompts).toHaveLength(0);
+    const firstQueuedPrompts = result.current.viewModel.queuedPrompts;
+
+    rerender();
+
+    expect(result.current.viewModel.queuedPrompts).toBe(firstQueuedPrompts);
   });
 
   it("queues image prompts locally while busy without draining from the controller", async () => {

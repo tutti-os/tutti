@@ -97,6 +97,7 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX = 64;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX +
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
+const WORKSPACE_AGENT_ACTIVITY_LISTENER_MAX_DELAY_MS = 50;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
 const AGENT_STATUS_PET_SOURCES = {
   failed: new URL(
@@ -125,6 +126,55 @@ const AGENT_STATUS_PET_SOURCES = {
 
 type AgentStatusPetMood = WorkspaceAgentStatusPetMood &
   keyof typeof AGENT_STATUS_PET_SOURCES;
+
+function createCoalescedWorkspaceAgentActivityListener(listener: () => void): {
+  cancel(): void;
+  schedule(): void;
+} {
+  let frameId: number | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let canceled = false;
+
+  const clearScheduled = (): void => {
+    if (frameId !== null) {
+      cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  const flush = (): void => {
+    if (canceled) {
+      return;
+    }
+    clearScheduled();
+    listener();
+  };
+
+  return {
+    cancel() {
+      canceled = true;
+      clearScheduled();
+    },
+    schedule() {
+      if (frameId !== null || timeoutId !== null) {
+        return;
+      }
+      if (typeof requestAnimationFrame === "function") {
+        frameId = requestAnimationFrame(flush);
+        timeoutId = setTimeout(
+          flush,
+          WORKSPACE_AGENT_ACTIVITY_LISTENER_MAX_DELAY_MS
+        );
+        return;
+      }
+      timeoutId = setTimeout(flush, 0);
+    }
+  };
+}
 
 export function WorkspaceChrome({
   headerSlot,
@@ -314,15 +364,29 @@ function WorkspaceAgentMessageCenterAction({
     null
   );
   const messageCenterModelWorkspaceIdRef = useRef<string | null>(null);
+  const subscribeSnapshot = useCallback(
+    (listener: () => void) => {
+      const coalescedListener =
+        createCoalescedWorkspaceAgentActivityListener(listener);
+      const unsubscribe = workspaceAgentActivityService.subscribe(
+        workspace.id,
+        (nextSnapshot) => {
+          snapshotRef.current = {
+            snapshot: nextSnapshot,
+            workspaceId: workspace.id
+          };
+          coalescedListener.schedule();
+        }
+      );
+      return () => {
+        coalescedListener.cancel();
+        unsubscribe();
+      };
+    },
+    [workspace.id, workspaceAgentActivityService]
+  );
   const snapshot = useSyncExternalStore(
-    (listener) =>
-      workspaceAgentActivityService.subscribe(workspace.id, (nextSnapshot) => {
-        snapshotRef.current = {
-          snapshot: nextSnapshot,
-          workspaceId: workspace.id
-        };
-        listener();
-      }),
+    subscribeSnapshot,
     () => {
       if (snapshotRef.current?.workspaceId === workspace.id) {
         return snapshotRef.current.snapshot;

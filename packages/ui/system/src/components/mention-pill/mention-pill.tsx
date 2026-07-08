@@ -39,6 +39,7 @@ export interface MentionPillProps extends Omit<
   removable?: boolean;
   removeButtonProps?: React.ComponentProps<"button">;
   summary?: React.ReactNode;
+  withTooltipProvider?: boolean;
 }
 
 function MentionPill({
@@ -51,6 +52,7 @@ function MentionPill({
   removeButtonProps,
   style,
   summary,
+  withTooltipProvider = true,
   ...props
 }: MentionPillProps): React.JSX.Element {
   const isFile = kind === "file";
@@ -137,7 +139,10 @@ function MentionPill({
           </button>
         ) : null}
       </span>
-      <TruncatingPillLabel tooltip={tooltipText}>
+      <TruncatingPillLabel
+        tooltip={tooltipText}
+        withTooltipProvider={withTooltipProvider}
+      >
         <span>{label}</span>
         {summary ? <span className="text-current"> {summary}</span> : null}
       </TruncatingPillLabel>

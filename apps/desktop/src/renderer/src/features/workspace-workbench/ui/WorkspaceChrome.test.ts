@@ -47,6 +47,22 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   assert.match(source, /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/);
 });
 
+test("workspace chrome coalesces agent activity snapshot notifications before notifying React", () => {
+  assert.match(
+    source,
+    /function createCoalescedWorkspaceAgentActivityListener\(listener: \(\) => void\)/
+  );
+  assert.match(
+    source,
+    /frameId = requestAnimationFrame\(flush\);\s*timeoutId = setTimeout\(\s*flush,\s*WORKSPACE_AGENT_ACTIVITY_LISTENER_MAX_DELAY_MS\s*\);/
+  );
+  assert.match(source, /coalescedListener\.schedule\(\);/);
+  assert.doesNotMatch(
+    source,
+    /workspaceAgentActivityService\.subscribe\(\s*workspace\.id,\s*\(nextSnapshot\) => \{[\s\S]*?listener\(\);[\s\S]*?\}\s*\)/
+  );
+});
+
 test("workspace chrome gates the agent decision toast on window focus, message center visibility, and the session's own AgentGUI window", () => {
   // The decision toast must consult message-center visibility, window focus,
   // and whether the session's own AgentGUI window is already open (via

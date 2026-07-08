@@ -308,7 +308,7 @@ export interface AgentGUINodeViewModel {
   activeConversationBusy: boolean;
   canSubmit: boolean;
   composerSettings: AgentGUIComposerSettingsVM;
-  queuedPrompts: AgentGUIQueuedPromptVM[];
+  queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   canQueueWhileBusy: boolean;
   hasSentUserMessage: boolean;

@@ -679,12 +679,14 @@ composer submit with no activeConversationId
   -> projection + UI refresh
 ```
 
-For normal first-message creation, the UI stays on the home composer while
-activation is pending. The home composer uses its existing busy/send-button
-state; it does not show a separate "creating session" text and it does not enter
-conversation detail just to show "connecting conversation". After activation
-succeeds, the controller attaches the conversation and records the optimistic
-user message before loading runtime projection. For Claude Code,
+For normal first-message creation, the controller creates an optimistic
+conversation id and enters that conversation surface immediately while
+activation is pending. The optimistic session is not durable yet, so any
+ordinary follow-up submit targeting `startingConversationIdRef.current` must
+enter the local queued-prompt runtime instead of calling `sendInput` directly.
+After activation succeeds, the controller attaches the durable conversation and
+reconciles the optimistic user message before loading runtime projection. For
+Claude Code,
 `desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
 session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
 options must opt out of that promotion path because the hidden draft has already
@@ -1208,6 +1210,14 @@ never inferred from the cancel outcome.
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
 claim, drain, promote, edit, or delete queued prompts.
+
+Queued prompt previews must treat prompt image blocks as the same send contract
+used by the composer and runtime: an image may be inline `data` or a staged
+`path`. Do not cast queued images to data-only blocks or build thumbnail URLs
+from `image.data` without checking it. Path-backed queued prompt thumbnails
+should use the activity runtime prompt-asset reader when workspace/session
+context is available, and otherwise avoid rendering a broken image while
+keeping the queued content unchanged for sending.
 
 ### Approval And Ask-User Prompts
 

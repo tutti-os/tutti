@@ -8894,6 +8894,12 @@ export function useAgentGUINodeController({
       if (!normalizedAgentSessionId) {
         return false;
       }
+      if (
+        isCreatingConversationRef.current &&
+        startingConversationIdRef.current === normalizedAgentSessionId
+      ) {
+        return true;
+      }
       if (pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]) {
         return true;
       }
@@ -11184,7 +11190,9 @@ export function useAgentGUINodeController({
   const isCancelPending =
     activeConversationId !== null &&
     Boolean(pendingInterruptSessionIds[activeConversationId]);
-  const queuedPrompts = activeConversationId ? [...activeQueuedPrompts] : [];
+  const queuedPrompts = activeConversationId
+    ? activeQueuedPrompts
+    : EMPTY_QUEUED_PROMPTS;
   const drainingQueuedPromptId = activeQueuedPromptClaim?.promptId ?? null;
   const sessionSettings = useStableComposerSettings(
     cloneComposerSettings(activeSessionState?.settings ?? null)
@@ -11472,9 +11480,14 @@ export function useAgentGUINodeController({
     !isCreatingConversation &&
     !isSubmitting &&
     !isInterrupting;
+  const activeConversationCreatePending =
+    Boolean(activeConversationId) &&
+    isCreatingConversation &&
+    startingConversationIdRef.current === activeConversationId;
   const canQueueWhileBusy =
     Boolean(activeConversationId) &&
-    (activeConversationBusy ||
+    (activeConversationCreatePending ||
+      activeConversationBusy ||
       isSubmitting ||
       Boolean(activeSessionState?.pendingInteractive));
   useEffect(() => {

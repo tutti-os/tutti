@@ -193,6 +193,7 @@ import {
   createAgentSessionMentionHref,
   formatAgentMentionMarkdown
 } from "./agentRichText/agentFileMentionExtension";
+import { AgentMentionTooltipProviderScope } from "./agentRichText/AgentMentionNodeView";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
@@ -1675,7 +1676,7 @@ export function AgentGUINodeView({
   >(null);
   const [renameConversationDialogOpen, setRenameConversationDialogOpen] =
     useState(false);
-  const requestRenameConversation = useCallback(
+  const requestRenameConversation = useStableEventCallback(
     (agentSessionId: string) => {
       const target =
         viewModel.conversations.find(
@@ -1688,8 +1689,7 @@ export function AgentGUINodeView({
         setRenameConversationTarget(target);
         setRenameConversationDialogOpen(true);
       }
-    },
-    [viewModel.activeConversation, viewModel.conversations]
+    }
   );
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
@@ -2020,7 +2020,13 @@ export function AgentGUINodeView({
     </AgentTargetPresentationProvider>
   );
 
-  return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
+  return (
+    <TooltipProvider>
+      <AgentMentionTooltipProviderScope withTooltipProvider={false}>
+        {content}
+      </AgentMentionTooltipProviderScope>
+    </TooltipProvider>
+  );
 }
 
 interface AgentGUIRenameConversationDialogProps {
