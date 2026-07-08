@@ -3838,6 +3838,10 @@ describe("AgentComposer", () => {
         name: "screen.png"
       }
     ]);
+    rerender(renderComposer());
+    expect(
+      screen.queryByTestId("agent-gui-composer-image-drafts")
+    ).not.toBeInTheDocument();
   });
 
   it("uploads host-local references before inserting file mention anchors", async () => {

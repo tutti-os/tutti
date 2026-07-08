@@ -8370,6 +8370,23 @@ export function useAgentGUINodeController({
           occurredAtUnixMs: submittedAtUnixMs
         })
       ]);
+      setDraftBySessionId((current) => {
+        const currentDraft = current[agentSessionId];
+        if (
+          !shouldClearSubmittedDraft({
+            currentDraft,
+            submittedContent: normalizedContent
+          })
+        ) {
+          return current;
+        }
+        const next = {
+          ...current,
+          [agentSessionId]: emptyAgentComposerDraft()
+        };
+        draftBySessionIdRef.current = next;
+        return next;
+      });
       reportAgentSubmitTraceDiagnostic({
         event: "optimistic_user_message_recorded",
         runtime: agentActivityRuntime,
@@ -8500,6 +8517,22 @@ export function useAgentGUINodeController({
             fields: {
               errorCode: getAgentGUIErrorCode(error)
             }
+          });
+          setDraftBySessionId((current) => {
+            const currentDraft =
+              current[agentSessionId] ?? EMPTY_AGENT_COMPOSER_DRAFT;
+            if (agentComposerDraftHasContent(currentDraft)) {
+              return current;
+            }
+            const next = {
+              ...current,
+              [agentSessionId]: agentPromptContentToComposerDraft(
+                normalizedContent,
+                `failed-submit:${submitTrace.clientSubmitId}`
+              )
+            };
+            draftBySessionIdRef.current = next;
+            return next;
           });
           if (
             previousConversationStatus &&
