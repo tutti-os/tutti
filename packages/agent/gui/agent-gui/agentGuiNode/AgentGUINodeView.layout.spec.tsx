@@ -998,6 +998,21 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toBe(MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
   });
 
+  it("uses the configured All provider rail icon when provided", () => {
+    renderAgentGUINodeView({
+      providerRailAllPresentation: {
+        iconUrl: "app://workspace-agent/all.png"
+      }
+    });
+
+    expect(
+      screen
+        .getByRole("tab", { name: "All" })
+        .querySelector("img")
+        ?.getAttribute("src")
+    ).toBe("app://workspace-agent/all.png");
+  });
+
   it("shows provider names in tooltips for unlabeled provider rail icons", async () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -4530,6 +4545,7 @@ interface RenderAgentGUINodeViewOptions {
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
+  providerRailAllPresentation?: AgentGUINodeViewProps["providerRailAllPresentation"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
 
@@ -4548,6 +4564,7 @@ function buildAgentGUINodeViewElement({
   onOpenConversationWindow,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
   return (
@@ -4556,6 +4573,7 @@ function buildAgentGUINodeViewElement({
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
         renderProviderRailEmpty={renderProviderRailEmpty}
+        providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
@@ -4834,6 +4852,7 @@ function createViewModel(
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],

@@ -15,6 +15,7 @@ import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderReadinessGateAction,
@@ -118,6 +119,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
   providerRailMode?: AgentGUIProviderRailMode;
   /** Host-owned empty state for the provider rail in "exact" mode. */
@@ -204,6 +206,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.providerStatusBootstrapSnapshot &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailAllPresentation?.iconUrl ===
+      next.providerRailAllPresentation?.iconUrl &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
     previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
@@ -270,6 +274,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   providerStatusBootstrapSnapshot = null,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailAllPresentation = null,
   providerRailMode = "catalog",
   renderProviderRailEmpty,
   comingSoonAgentProviders,
@@ -1204,6 +1209,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}
+        providerRailAllPresentation={providerRailAllPresentation}
         providerRailMode={providerRailMode}
         renderProviderRailEmpty={renderProviderRailEmpty}
         comingSoonProviders={comingSoonAgentProviders}

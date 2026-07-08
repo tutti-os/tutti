@@ -2579,7 +2579,7 @@ func TestServiceGetsComposerOptionsFromCodexModelCatalog(t *testing.T) {
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("model options = %#v", configOptions[0]["options"])
 	}
@@ -2650,12 +2650,13 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
+	imageSupported := true
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "opencode",
 			Source:   "opencode-cli",
 			Models: []AgentModelOption{
-				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true},
+				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true, SupportsImageInput: &imageSupported},
 				{ID: "openai/gpt-5.3-codex", DisplayName: "GPT-5.3 Codex"},
 			},
 		},
@@ -2683,6 +2684,10 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "openai/gpt-5.3-codex-spark" {
 		t.Fatalf("model option = %#v", configOptions[0])
 	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(modelOptions) == 0 || modelOptions[0]["supportsImageInput"] != true {
+		t.Fatalf("model options = %#v, want supportsImageInput true", configOptions[0]["options"])
+	}
 	if configOptions[1]["id"] != "effort" || configOptions[1]["currentValue"] != "high" {
 		t.Fatalf("reasoning option = %#v", configOptions[1])
 	}
@@ -2697,6 +2702,10 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 	}
 	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
 		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
+	if !ok || !slices.Contains(capabilities, "imageInput") {
+		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
 	}
 	if len(runtime.sessions) != 0 {
 		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
@@ -2860,7 +2869,7 @@ func TestServiceGetsComposerOptionsUsesClaudeStaticModelsWithoutModelCatalog(t *
 	if configOptions[0]["id"] != "model" {
 		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
 	}
-	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok || len(modelOptions) != 4 {
 		t.Fatalf("model options = %#v, want Claude static aliases", configOptions[0]["options"])
 	}
@@ -3050,7 +3059,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 	if configOptions[0]["currentValue"] != "default" {
 		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
 	}
-	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
 	}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
@@ -286,8 +287,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		newAgentRuntimeAdapter(agentRuntime.Controller()),
 	)
 	agentSessionService.AnalyticsReporter = analyticsReporter
+	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
+	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentSessionService.ModelCatalog = agentModelCatalog
+	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.UserProjectReader = userProjectService
@@ -297,7 +301,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		StateDir: tuttitypes.DefaultStateDir(),
 	}
 	agentSessionService.PromptAttachmentStore = agentservice.PromptAttachmentStore{
-		RootDir: tuttitypes.DefaultStateDir(),
+		RootDir:       tuttitypes.DefaultStateDir(),
+		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
 	}
 	agentSessionService.RuntimePreparer = agentSidecarPreparer
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{

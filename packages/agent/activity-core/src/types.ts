@@ -107,6 +107,7 @@ export interface AgentActivityComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 }
 
 export interface AgentActivityComposerSkillOption {

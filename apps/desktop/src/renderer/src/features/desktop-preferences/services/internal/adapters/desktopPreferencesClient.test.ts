@@ -220,9 +220,12 @@ test("desktop preferences client coalesces concurrent identical writes", async (
     }
   );
 
-  const firstCompletion = client.updateDesktopPreferences(createUpdateRequest());
-  const secondCompletion =
-    client.updateDesktopPreferences(createUpdateRequest());
+  const firstCompletion = client.updateDesktopPreferences(
+    createUpdateRequest()
+  );
+  const secondCompletion = client.updateDesktopPreferences(
+    createUpdateRequest()
+  );
 
   assert.equal(eventStreamClient.publishedIntents.length, 1);
 

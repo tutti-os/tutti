@@ -45,6 +45,7 @@ test("desktop agent activity runtime hides prompt uploads without archive suppor
   );
 
   assert.equal(runtime.promptContentUploadSupport?.file, false);
+  assert.equal(runtime.promptContentUploadSupport?.image, false);
   assert.equal(runtime.uploadPromptContent, undefined);
 });
 
@@ -66,6 +67,7 @@ test("desktop agent activity runtime archives prompt file uploads", async () => 
     }
   );
 
+  assert.equal(runtime.promptContentUploadSupport?.image, true);
   const result = await runtime.uploadPromptContent?.({
     workspaceId: "workspace-1",
     content: [
@@ -150,6 +152,39 @@ test("desktop agent activity runtime archives prompt image uploads", async () =>
         uploadStatus: "uploaded"
       }
     ]
+  });
+});
+
+test("desktop agent activity runtime reads archived prompt assets", async () => {
+  const readInputs: string[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async readLocalPreviewFile(path) {
+          readInputs.push(path);
+          return new Uint8Array([105, 109, 97, 103, 101]);
+        }
+      }
+    }
+  );
+
+  const result = await runtime.readPromptAsset?.({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    mimeType: "image/png",
+    name: "image.png",
+    path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
+  });
+
+  assert.deepEqual(readInputs, [
+    "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
+  ]);
+  assert.deepEqual(result, {
+    data: "aW1hZ2U=",
+    mimeType: "image/png",
+    name: "image.png",
+    path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/image.png"
   });
 });
 

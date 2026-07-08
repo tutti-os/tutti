@@ -44,7 +44,9 @@ type AgentComposerSettingsChange = {
 interface CreateDesktopAgentActivityRuntimeOptions {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
-  hostFilesApi?: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
+  hostFilesApi?: Partial<
+    Pick<DesktopHostFilesApi, "archiveAgentPromptFile" | "readLocalPreviewFile">
+  >;
   runtimeApi?: Pick<
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
@@ -149,10 +151,11 @@ export function createDesktopAgentActivityRuntime(
     reporterService: options.reporterService
   });
   const archiveAgentPromptFile = options.hostFilesApi?.archiveAgentPromptFile;
+  const readLocalPreviewFile = options.hostFilesApi?.readLocalPreviewFile;
   return {
     promptContentUploadSupport: {
       file: Boolean(archiveAgentPromptFile),
-      image: false
+      image: Boolean(archiveAgentPromptFile)
     },
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic({
@@ -433,6 +436,27 @@ export function createDesktopAgentActivityRuntime(
       : {}),
     readSessionAttachment: (input) =>
       workspaceAgentActivityService.readSessionAttachment(input),
+    ...(readLocalPreviewFile
+      ? {
+          async readPromptAsset(
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["readPromptAsset"]>
+            >[0]
+          ) {
+            const path = input.path?.trim() ?? "";
+            if (!path) {
+              throw new Error("Prompt asset path is required.");
+            }
+            const bytes = await readLocalPreviewFile(path);
+            return {
+              data: uint8ArrayToBase64(bytes),
+              mimeType: input.mimeType,
+              name: input.name ?? undefined,
+              path
+            };
+          }
+        }
+      : {}),
     async setSessionPinned(input) {
       const session =
         await workspaceAgentActivityService.setSessionPinned(input);
@@ -944,6 +968,16 @@ function flattenAgentComposerSettingsChanges(
     details[`${change.field}To`] = change.to;
   }
   return details;
+}
+
+function uint8ArrayToBase64(value: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < value.length; index += chunkSize) {
+    const chunk = value.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return globalThis.btoa(binary);
 }
 
 function stringifyDiagnosticError(error: unknown): string {

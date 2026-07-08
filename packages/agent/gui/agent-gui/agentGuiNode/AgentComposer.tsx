@@ -248,6 +248,7 @@ export interface AgentComposerProps {
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   selectedProviderTarget?: AgentGUIProviderTarget | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
+  handoffProviderTargets?: readonly AgentGUIProviderTarget[];
   providerSelectReadonly?: boolean;
   onProviderSelect?: (input: {
     provider: AgentGUIProvider;
@@ -1033,6 +1034,7 @@ export function AgentComposer({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
   selectedProviderTarget = null,
   providerTargets = [],
+  handoffProviderTargets,
   providerSelectReadonly = false,
   onProviderSelect,
   onHandoffConversation,
@@ -2290,9 +2292,15 @@ export function AgentComposer({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
-            const uploadedPath = uploadedImage?.path?.trim() ?? "";
-            if (!uploadedPath) {
-              throw new Error("Prompt image upload completed without path.");
+            if (
+              !uploadedImage ||
+              (!uploadedImage.attachmentId &&
+                !uploadedImage.path &&
+                !uploadedImage.data)
+            ) {
+              throw new Error(
+                "Prompt image upload completed without usable image reference."
+              );
             }
             const uploadedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
@@ -2300,7 +2308,11 @@ export function AgentComposer({
                     id: image.id,
                     name: image.name,
                     mimeType: image.mimeType,
-                    path: uploadedPath,
+                    ...(uploadedImage.attachmentId
+                      ? { attachmentId: uploadedImage.attachmentId }
+                      : {}),
+                    ...(uploadedImage.data ? { data: uploadedImage.data } : {}),
+                    ...(uploadedImage.path ? { path: uploadedImage.path } : {}),
                     previewUrl: image.previewUrl,
                     uploading: false
                   }
@@ -2648,11 +2660,15 @@ export function AgentComposer({
     )
       ? [selectedProviderSwitchTarget, ...enabledProviderSwitchTargets]
       : enabledProviderSwitchTargets;
+  const enabledHandoffProviderTargets = useMemo(
+    () =>
+      (handoffProviderTargets ?? providerMenuTargets).filter(
+        (target) => target.disabled !== true
+      ),
+    [handoffProviderTargets, providerMenuTargets]
+  );
   const handoffMenuTargets = selectedProviderSwitchTarget
-    ? providerMenuTargets.filter((target) => {
-        if (target.disabled === true) {
-          return false;
-        }
+    ? enabledHandoffProviderTargets.filter((target) => {
         if (target.targetId === selectedProviderSwitchTarget.targetId) {
           return false;
         }
@@ -2662,7 +2678,7 @@ export function AgentComposer({
         const targetAgentTargetId = target.agentTargetId ?? target.targetId;
         return targetAgentTargetId !== selectedAgentTargetId;
       })
-    : providerMenuTargets;
+    : enabledHandoffProviderTargets;
   const selectedProviderLabel =
     selectedProviderSwitchTarget?.label ??
     selectedProviderTarget?.label ??

@@ -102,6 +102,10 @@ export interface AgentGUIProviderTarget {
   unavailableReason?: string;
 }
 
+export interface AgentGUIProviderRailAllPresentation {
+  iconUrl?: string | null;
+}
+
 /**
  * How the provider rail composes the target list.
  * - "catalog" (default): host-provided targets are augmented with the static

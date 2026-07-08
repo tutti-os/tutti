@@ -161,7 +161,7 @@ var composerProfiles = map[string]composerProfile{
 		UsesModelCatalog:       true,
 		ReasoningEffort:        true,
 		DefaultReasoningEffort: "high",
-		Capabilities:           []string{"interrupt"},
+		Capabilities:           []string{"imageInput", "interrupt"},
 	},
 }
 

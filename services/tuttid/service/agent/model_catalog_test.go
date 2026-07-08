@@ -77,6 +77,37 @@ func TestAgentModelCatalogInvalidateIgnoresOtherProviders(t *testing.T) {
 	}
 }
 
+func TestAgentModelCatalogEnrichesOpenCodeModelsWithImageCapability(t *testing.T) {
+	now := time.UnixMilli(1000)
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{{
+			ID:          "openai/gpt-5.2-pro",
+			DisplayName: "GPT-5.2 Pro",
+			IsDefault:   true,
+		}},
+	}
+	catalog := &CachedAgentModelCatalog{
+		OpenCode: lister,
+		ModelCapabilities: fakeModelCapabilitiesResolver{
+			"opencode:openai/gpt-5.2-pro": true,
+		},
+		Now: func() time.Time {
+			return now
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "opencode")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 1 {
+		t.Fatalf("models = %#v, want one OpenCode model", result.Models)
+	}
+	if result.Models[0].SupportsImageInput == nil || !*result.Models[0].SupportsImageInput {
+		t.Fatalf("supportsImageInput = %#v, want true", result.Models[0].SupportsImageInput)
+	}
+}
+
 func TestAgentModelCatalogCachesGeminiFallbackForShortTTL(t *testing.T) {
 	now := time.UnixMilli(1000)
 	lister := &fakeAgentModelLister{

@@ -22,10 +22,11 @@ const (
 )
 
 type AgentModelOption struct {
-	ID          string
-	DisplayName string
-	Description string
-	IsDefault   bool
+	ID                 string
+	DisplayName        string
+	Description        string
+	IsDefault          bool
+	SupportsImageInput *bool
 }
 
 type AgentModelCatalogResult struct {
@@ -129,11 +130,12 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 }
 
 type CachedAgentModelCatalog struct {
-	Codex      AgentModelLister
-	TuttiAgent AgentModelLister
-	Gemini     AgentModelLister
-	OpenCode   AgentModelLister
-	Now        func() time.Time
+	Codex             AgentModelLister
+	TuttiAgent        AgentModelLister
+	Gemini            AgentModelLister
+	OpenCode          AgentModelLister
+	ModelCapabilities ModelCapabilitiesResolver
+	Now               func() time.Time
 
 	mu    sync.Mutex
 	cache map[string]*agentModelCatalogCacheEntry
@@ -160,15 +162,17 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 		return cached.result, cached.err
 	}
 	listResult, err := spec.lister(c).ListModels(ctx)
+	models := applyConfiguredDefaultModel(
+		listResult.Models,
+		spec.configuredDefaultModel(),
+		spec.missingDefaultDescription,
+	)
+	models = enrichAgentModelOptions(ctx, provider, models, c.ModelCapabilities)
 	result := AgentModelCatalogResult{
 		Provider:  provider,
 		Source:    spec.source,
 		FetchedAt: now,
-		Models: applyConfiguredDefaultModel(
-			listResult.Models,
-			spec.configuredDefaultModel(),
-			spec.missingDefaultDescription,
-		),
+		Models:    models,
 	}
 	c.writeCache(provider, spec, now, result, listResult.IsFallback, err)
 	return cloneAgentModelCatalogResult(result), err

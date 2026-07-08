@@ -42,10 +42,11 @@ type ComposerConfigOption struct {
 }
 
 type ComposerConfigOptionValue struct {
-	Description string
-	ID          string
-	Label       string
-	Value       string
+	Description        string
+	ID                 string
+	Label              string
+	Value              string
+	SupportsImageInput *bool
 }
 
 type ComposerSettings struct {
@@ -145,9 +146,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	)
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
-	modelOptions := composerSelectedModelOptions(effectiveSettings.Model)
+	modelOptions := s.enrichModelCapabilityOptions(ctx, provider, composerSelectedModelOptions(effectiveSettings.Model))
 	if provider == agentprovider.ClaudeCode {
-		modelOptions = []map[string]string{}
+		modelOptions = []ComposerConfigOptionValue{}
 	}
 	runtimeContext := map[string]any{
 		"capabilities":     composerProviderCapabilities(provider),
@@ -173,8 +174,8 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	if composerOptionsProviderUsesModelCatalog(provider) {
 		if catalogOptions, source, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
-			modelOptions = catalogOptions
-			runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, catalogOptions)
+			modelOptions = s.enrichModelCapabilityOptions(ctx, provider, catalogOptions)
+			runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, modelOptions)
 			runtimeContext["modelCatalogSource"] = source
 		}
 	}
@@ -305,7 +306,7 @@ func composerDefaultModel(
 	}
 }
 
-func composerConfigOptions(provider string, settings ComposerSettings, modelOptions []map[string]string) []map[string]any {
+func composerConfigOptions(provider string, settings ComposerSettings, modelOptions []ComposerConfigOptionValue) []map[string]any {
 	profile := composerProfileFor(provider)
 	if !profile.ModelSelection && !profile.ReasoningEffort && !profile.Speed {
 		return []map[string]any{}
@@ -318,7 +319,7 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Model),
 			"id":           "model",
-			"options":      modelOptions,
+			"options":      composerConfigOptionValuesToRuntimeModelOptions(modelOptions),
 		})
 	}
 	if profile.ReasoningEffort {
@@ -508,24 +509,26 @@ func composerOptionsProviderUsesModelCatalog(provider string) bool {
 	return composerProfileFor(provider).UsesModelCatalog
 }
 
-func composerModelConfig(provider string, selected string, options []map[string]string) ComposerConfigOption {
+func composerModelConfig(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
 	if agentprovider.Normalize(provider) == agentprovider.ClaudeCode {
 		return ComposerConfigOption{}
 	}
 	values := make([]ComposerConfigOptionValue, 0, len(options))
 	for _, option := range options {
-		value := strings.TrimSpace(option["value"])
+		value := strings.TrimSpace(option.Value)
 		if value == "" {
 			continue
 		}
-		label := strings.TrimSpace(option["name"])
+		label := strings.TrimSpace(option.Label)
 		if label == "" {
 			label = value
 		}
 		values = append(values, ComposerConfigOptionValue{
-			ID:    value,
-			Label: label,
-			Value: value,
+			ID:                 value,
+			Label:              label,
+			Value:              value,
+			Description:        strings.TrimSpace(option.Description),
+			SupportsImageInput: option.SupportsImageInput,
 		})
 	}
 	selected = strings.TrimSpace(selected)
@@ -567,7 +570,7 @@ func composerReasoningConfig(provider string, selected string, locale string) Co
 	}
 }
 
-func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, selectedModel string) ([]map[string]string, string, bool) {
+func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCatalog, provider string, selectedModel string) ([]ComposerConfigOptionValue, string, bool) {
 	if catalog == nil {
 		return nil, "", false
 	}
@@ -582,7 +585,7 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 		)
 		return nil, "", false
 	}
-	options := make([]map[string]string, 0, len(result.Models)+1)
+	options := make([]ComposerConfigOptionValue, 0, len(result.Models)+1)
 	for _, model := range result.Models {
 		id := strings.TrimSpace(model.ID)
 		if id == "" {
@@ -595,33 +598,36 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 		if name == "" {
 			name = id
 		}
-		options = append(options, map[string]string{
-			"name":  name,
-			"value": id,
+		options = append(options, ComposerConfigOptionValue{
+			ID:                 id,
+			Label:              name,
+			Value:              id,
+			Description:        strings.TrimSpace(model.Description),
+			SupportsImageInput: model.SupportsImageInput,
 		})
 	}
 	selected := strings.TrimSpace(selectedModel)
 	if selected != "" && !containsModelOption(options, selected) {
-		options = append(options, map[string]string{"name": selected, "value": selected})
+		options = append(options, ComposerConfigOptionValue{ID: selected, Label: selected, Value: selected})
 	}
 	return options, strings.TrimSpace(result.Source), true
 }
 
-func containsModelOption(options []map[string]string, value string) bool {
+func containsModelOption(options []ComposerConfigOptionValue, value string) bool {
 	for _, option := range options {
-		if option["value"] == value {
+		if option.Value == value {
 			return true
 		}
 	}
 	return false
 }
 
-func composerSelectedModelOptions(model string) []map[string]string {
+func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return []map[string]string{}
+		return []ComposerConfigOptionValue{}
 	}
-	return []map[string]string{{"name": model, "value": model}}
+	return []ComposerConfigOptionValue{{ID: model, Label: model, Value: model}}
 }
 
 func reasoningConfigOptionID(provider string) string {

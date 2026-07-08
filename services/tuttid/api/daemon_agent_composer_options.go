@@ -124,6 +124,9 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 		if strings.TrimSpace(option.Description) != "" {
 			resultOption.Description = optionalStringPointer(option.Description)
 		}
+		if option.SupportsImageInput != nil {
+			resultOption.SupportsImageInput = option.SupportsImageInput
+		}
 		result.Options = append(result.Options, resultOption)
 	}
 	return result

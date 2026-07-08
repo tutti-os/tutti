@@ -22,6 +22,7 @@ import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
@@ -196,6 +197,7 @@ export interface AgentGUINodeProps {
   accountMenuState?: AgentGUIAccountMenuState | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /**
    * Controls how the provider rail composes its list. "catalog" (default) adds
    * the static local catalog + placeholders + coming-soon; "exact" renders only
@@ -586,6 +588,8 @@ function areAgentGUINodePropsEqual(
     previous.accountMenuState === next.accountMenuState &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailAllPresentation?.iconUrl ===
+      next.providerRailAllPresentation?.iconUrl &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
@@ -649,6 +653,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   accountMenuState = null,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailAllPresentation = null,
   providerRailMode = "catalog",
   renderProviderRailEmpty,
   renderSidebarFooter,
@@ -1792,6 +1797,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
             renderProviderRailEmpty={renderProviderRailEmpty}
+            providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}

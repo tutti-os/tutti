@@ -314,7 +314,7 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsModelDescriptionInRuntimeContext
 	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
 		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
 	}
-	options, ok := configOptions[0]["options"].([]map[string]string)
+	options, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok || len(options) != 2 {
 		t.Fatalf("model options = %#v, want 2 entries", configOptions[0]["options"])
 	}
@@ -358,7 +358,7 @@ func TestMergeLiveModelsIntoComposerOptionsDoesNotAppendUnsupportedSelectedModel
 	if configOptions[0]["currentValue"] != "default" {
 		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
 	}
-	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
 	}

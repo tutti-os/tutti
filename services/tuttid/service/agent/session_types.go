@@ -17,6 +17,7 @@ type Service struct {
 	AnalyticsReporter             reporterservice.Reporter
 	AvailabilityChecker           ProviderAvailabilityChecker
 	ModelCatalog                  AgentModelCatalog
+	ModelCapabilities             ModelCapabilitiesResolver
 	AgentTargetStore              AgentTargetStore
 	SessionReader                 SessionReader
 	UserProjectReader             UserProjectReader

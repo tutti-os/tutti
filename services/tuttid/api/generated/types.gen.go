@@ -2069,10 +2069,11 @@ type AgentProviderComposerConfig struct {
 
 // AgentProviderComposerConfigOptionValue defines model for AgentProviderComposerConfigOptionValue.
 type AgentProviderComposerConfigOptionValue struct {
-	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
-	Label       string  `json:"label"`
-	Value       string  `json:"value"`
+	Description        *string `json:"description,omitempty"`
+	Id                 string  `json:"id"`
+	Label              string  `json:"label"`
+	SupportsImageInput *bool   `json:"supportsImageInput,omitempty"`
+	Value              string  `json:"value"`
 }
 
 // AgentProviderComposerOptionsResponse defines model for AgentProviderComposerOptionsResponse.

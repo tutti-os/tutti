@@ -38,6 +38,9 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
+	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
+	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}

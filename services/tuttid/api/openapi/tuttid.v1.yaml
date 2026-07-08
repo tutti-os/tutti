@@ -5905,6 +5905,8 @@ components:
           minLength: 1
         description:
           type: string
+        supportsImageInput:
+          type: boolean
     AgentProviderComposerConfig:
       type: object
       additionalProperties: false

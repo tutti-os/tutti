@@ -1,6 +1,7 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderTarget
@@ -76,6 +77,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
   providerRailMode?: AgentGUIProviderRailMode;
   /** Host-owned empty state for the provider rail in "exact" mode. */
@@ -168,6 +170,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
       providerTargetsLoading: input.providerTargetsLoading,
+      providerRailAllPresentation: input.providerRailAllPresentation,
       providerRailMode: input.providerRailMode,
       renderProviderRailEmpty: input.renderProviderRailEmpty,
       comingSoonAgentProviders: input.comingSoonAgentProviders,

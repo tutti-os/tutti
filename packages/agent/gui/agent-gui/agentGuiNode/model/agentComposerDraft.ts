@@ -177,7 +177,11 @@ export function agentComposerDraftToPromptContent(input: {
       .map((image) => ({
         type: "image" as const,
         mimeType: image.mimeType,
-        ...(image.path ? { path: image.path } : { data: image.data }),
+        ...(image.attachmentId
+          ? { attachmentId: image.attachmentId }
+          : image.path
+            ? { path: image.path }
+            : { data: image.data }),
         name: image.name
       })),
     ...(input.draft.files ?? [])

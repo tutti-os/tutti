@@ -180,6 +180,10 @@ a Codex panel before the draft prefill effect runs. The prefilled handoff panel
 must also scope the conversation rail to the selected target instead of opening
 on `All`; the target-specific rail selection is part of the handoff activation
 state, not a later user filter choice.
+The handoff menu is a launch surface, so its options must come from the
+host-provided, enabled provider targets. It must not use the provider rail's
+static catalog fallback or coming-soon placeholders, which are display chrome
+rather than proof that the user has configured a runnable agent.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -757,7 +761,23 @@ Prompt image input is also part of the normalized runtime contract. Daemon
 adapters that advertise `imageInput` must forward the structured prompt content
 blocks to their runtime boundary; SDK sidecars may keep a text `prompt` fallback
 for short-term IPC compatibility, but image execution must use the structured
-`content` blocks instead of reconstructing input from display text.
+`content` blocks instead of reconstructing input from display text. AgentGUI
+enables prompt image drafts only when both the provider/session capability
+advertises `imageInput` and the selected model option carries
+`supportsImageInput: true`; unknown model image capability is treated as
+unsupported until the daemon resolves it from Models.dev or provider-specific
+rules. Desktop prompt images must remain structured image blocks and are not
+file mentions. Pasted images may start as base64 UI draft data, but the
+desktop runtime archives them through the host file capability before daemon
+submission, then sends the managed desktop-local `path` as the image source.
+Conversation previews for these path-backed images must use
+`AgentActivityRuntime.readPromptAsset` to read the managed local asset; do not
+keep base64 data in submitted prompt content just to render optimistic messages.
+The daemon copies that source into the session prompt attachment store and
+persists the normalized `attachmentId`. The managed source path must live under
+the daemon state root's `agent-prompt-assets` directory, and the daemon must
+re-check the resolved source path, symlink target, file type, and size before
+copying it into the session attachment store.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -1527,9 +1547,11 @@ and only inserts the returned agent-readable path as a normal markdown file
 mention. The original host path is an upload source, not prompt content.
 The desktop runtime implements this upload by asking the host file capability
 to archive the selected file under a Tutti-managed agent prompt assets
-directory, then returns that managed absolute path to AgentGUI. This capability
-is file-only in desktop today; image drafts keep the existing image input path
-unless a runtime explicitly advertises image prompt upload support.
+directory, then returns that managed absolute path to AgentGUI. Prompt images
+use the separate daemon prompt attachment path: AgentGUI keeps pasted image
+base64 data only as pre-upload draft state, desktop runtime archives the image
+to a managed desktop-local path before submission, and the daemon copies that
+path-backed source into the session attachment store before runtime execution.
 
 Agent launch mentions use the external rich-text `agent-target` provider. The
 `workspace-app` provider is reserved for real workspace apps and must not return

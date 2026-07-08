@@ -28,6 +28,7 @@ export {
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,

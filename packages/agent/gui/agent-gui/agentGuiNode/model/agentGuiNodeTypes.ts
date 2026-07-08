@@ -61,6 +61,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 }
 
 export interface AgentGUIProviderSkillOption {
@@ -84,6 +85,7 @@ export interface AgentComposerDraftImage {
   id: string;
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  attachmentId?: string;
   data?: string;
   path?: string;
   previewUrl: string;
@@ -184,6 +186,7 @@ export interface AgentGUINodeViewModel {
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
   providerTargets: readonly AgentGUIProviderTarget[];
+  handoffProviderTargets: readonly AgentGUIProviderTarget[];
   providerTargetsLoading: boolean;
   /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
   providerRailMode: AgentGUIProviderRailMode;

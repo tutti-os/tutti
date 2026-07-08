@@ -98,3 +98,7 @@ If `providerTargets` is omitted or empty, AgentGUI creates local targets such as
 `local:codex` and `local:claude-code` from the static provider catalog for
 display/backward compatibility. Those static catalog targets are not persisted
 or sent as session creation authority.
+
+Hosts that need to brand the aggregate provider rail entry may pass
+`providerRailAllPresentation.iconUrl`. This only changes the `All` filter icon;
+single agent or target icons continue to come from `providerTargets[].iconUrl`.
