@@ -206,6 +206,9 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     deleteSession: async () => {
       throw new Error("not implemented");
     },
+    renameSession: async () => {
+      throw new Error("not implemented");
+    },
     getSession: async () => {
       throw new Error("not implemented");
     },

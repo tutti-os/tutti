@@ -262,6 +262,14 @@ func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.
 	return a.runtimeSessionWithState(session), nil
 }
 
+func (a agentRuntimeAdapter) SetTitle(ctx context.Context, input agentservice.RuntimeSetTitleInput) (agentservice.RuntimeSession, error) {
+	session, err := a.controller.SetTitle(ctx, input.WorkspaceID, input.AgentSessionID, input.Title)
+	if err != nil {
+		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+	}
+	return a.runtimeSessionWithState(session), nil
+}
+
 func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.RuntimeSession {
 	sessions := a.controller.Sessions(workspaceID)
 	result := make([]agentservice.RuntimeSession, 0, len(sessions))

@@ -37,6 +37,7 @@ type AgentSessionService interface {
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
+	UpdateTitle(context.Context, string, string, string) (agentservice.Session, error)
 	UpdateVisible(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateSettings(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 	SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error)
@@ -342,81 +343,6 @@ func (api DaemonAPI) ListWorkspaceGitBranches(ctx context.Context, request tutti
 		response.CurrentBranch = &current
 	}
 	return response, nil
-}
-
-func (api DaemonAPI) UpdateWorkspaceAgentSessionSettings(ctx context.Context, request tuttigenerated.UpdateWorkspaceAgentSessionSettingsRequestObject) (tuttigenerated.UpdateWorkspaceAgentSessionSettingsResponseObject, error) {
-	if api.AgentSessionService == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionSettings503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
-		}, nil
-	}
-	if request.Body == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionSettings400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
-		}, nil
-	}
-	session, err := api.AgentSessionService.UpdateSettings(
-		ctx,
-		string(request.WorkspaceID),
-		string(request.AgentSessionID),
-		composerSettingsPatchFromGenerated(*request.Body),
-	)
-	if err != nil {
-		return writeUpdateWorkspaceAgentSessionSettingsError(err), nil
-	}
-	return tuttigenerated.UpdateWorkspaceAgentSessionSettings200JSONResponse{
-		Session: generatedAgentSession(session),
-	}, nil
-}
-
-func (api DaemonAPI) UpdateWorkspaceAgentSessionPin(ctx context.Context, request tuttigenerated.UpdateWorkspaceAgentSessionPinRequestObject) (tuttigenerated.UpdateWorkspaceAgentSessionPinResponseObject, error) {
-	if api.AgentSessionService == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionPin503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
-		}, nil
-	}
-	if request.Body == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionPin400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
-		}, nil
-	}
-	session, err := api.AgentSessionService.UpdatePin(
-		ctx,
-		string(request.WorkspaceID),
-		string(request.AgentSessionID),
-		request.Body.Pinned,
-	)
-	if err != nil {
-		return writeUpdateWorkspaceAgentSessionPinError(err), nil
-	}
-	return tuttigenerated.UpdateWorkspaceAgentSessionPin200JSONResponse{
-		Session: generatedAgentSession(session),
-	}, nil
-}
-
-func (api DaemonAPI) UpdateWorkspaceAgentSessionVisibility(ctx context.Context, request tuttigenerated.UpdateWorkspaceAgentSessionVisibilityRequestObject) (tuttigenerated.UpdateWorkspaceAgentSessionVisibilityResponseObject, error) {
-	if api.AgentSessionService == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
-		}, nil
-	}
-	if request.Body == nil {
-		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
-		}, nil
-	}
-	session, err := api.AgentSessionService.UpdateVisible(
-		ctx,
-		string(request.WorkspaceID),
-		string(request.AgentSessionID),
-		request.Body.Visible,
-	)
-	if err != nil {
-		return writeUpdateWorkspaceAgentSessionVisibilityError(err), nil
-	}
-	return tuttigenerated.UpdateWorkspaceAgentSessionVisibility200JSONResponse{
-		Session: generatedAgentSession(session),
-	}, nil
 }
 
 func (api DaemonAPI) SubmitWorkspaceAgentInteractive(ctx context.Context, request tuttigenerated.SubmitWorkspaceAgentInteractiveRequestObject) (tuttigenerated.SubmitWorkspaceAgentInteractiveResponseObject, error) {

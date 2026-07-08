@@ -973,6 +973,11 @@ User-visible rules:
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
+- User rename flows must mutate the persisted runtime session title through
+  `AgentActivityRuntime.renameSession` and then upsert the returned
+  authoritative session into the runtime snapshot. Do not update only the rail
+  list, otherwise the rail row, active detail header, workbench title, and dock
+  surfaces can diverge.
 - Title projection must normalize rich mention markdown, strip provider-only and
   untitled placeholders from workbench chrome, and use cached first-user-message
   content only when the session title is not displayable.

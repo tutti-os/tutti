@@ -738,6 +738,21 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     return result;
   }
 
+  async renameSession(
+    input: Parameters<AgentActivityAdapter["renameSession"]>[0]
+  ): Promise<AgentActivitySession> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const agentSessionId = input.agentSessionId.trim();
+    const entry = this.controllerEntry(workspaceId);
+    const session = await entry.adapter.renameSession({
+      ...input,
+      agentSessionId,
+      workspaceId
+    });
+    this.upsertAuthoritativeSession(session, "rename_session_result");
+    return session;
+  }
+
   async getSession(
     workspaceId: string,
     agentSessionId: string

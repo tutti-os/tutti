@@ -10,6 +10,7 @@ import type {
   AgentActivityLoadComposerOptionsInput,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
+  AgentActivityRenameSessionInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
@@ -65,4 +66,7 @@ export interface AgentActivityAdapter {
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
 }

@@ -457,6 +457,8 @@ export function createDesktopAgentActivityRuntime(
           }
         }
       : {}),
+    renameSession: (input) =>
+      workspaceAgentActivityService.renameSession(input),
     async setSessionPinned(input) {
       const session =
         await workspaceAgentActivityService.setSessionPinned(input);

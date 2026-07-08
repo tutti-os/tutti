@@ -57,6 +57,7 @@ type RuntimeController interface {
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
 	Resume(context.Context, RuntimeResumeInput) (RuntimeSession, error)
 	Session(workspaceID string, agentSessionID string) (RuntimeSession, bool)
+	SetTitle(context.Context, RuntimeSetTitleInput) (RuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (RuntimeSession, error)
 	Sessions(workspaceID string) []RuntimeSession
 	Start(context.Context, RuntimeStartInput) (RuntimeSession, error)
@@ -224,6 +225,10 @@ type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
 }
 
+type SessionTitleUpdater interface {
+	UpdateSessionTitle(context.Context, string, string, string) (PersistedSession, bool, error)
+}
+
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
@@ -384,6 +389,12 @@ type RuntimeSetVisibleInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Visible        bool
+}
+
+type RuntimeSetTitleInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Title          string
 }
 
 type ComposerSettingsPatch struct {

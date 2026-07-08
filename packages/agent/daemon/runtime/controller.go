@@ -412,6 +412,24 @@ func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID stri
 	return session, nil
 }
 
+func (c *Controller) SetTitle(ctx context.Context, roomID, agentSessionID string, title string) (Session, error) {
+	session, ok := c.get(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	if !ok {
+		return Session{}, ErrSessionNotFound
+	}
+	title = strings.TrimSpace(title)
+	if session.Title == title {
+		return session, nil
+	}
+	session.Title = title
+	session.UpdatedAtUnixMS = unixMS(now())
+	c.store(session)
+	events := []activityshared.Event{newSessionTitleActivityEvent(session, title)}
+	c.publish(session, events)
+	c.enqueueSessionReport(ctx, session, events)
+	return session, nil
+}
+
 func sessionVisible(visible *bool) bool {
 	return visible == nil || *visible
 }

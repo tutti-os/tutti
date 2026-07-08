@@ -1449,6 +1449,10 @@ export type UpdateWorkspaceAgentSessionPinRequest = {
   pinned: boolean;
 };
 
+export type UpdateWorkspaceAgentSessionTitleRequest = {
+  title: string;
+};
+
 export type UpdateWorkspaceAgentSessionVisibilityRequest = {
   visible: boolean;
 };
@@ -6154,6 +6158,56 @@ export type UpdateWorkspaceAgentSessionSettingsResponses = {
 
 export type UpdateWorkspaceAgentSessionSettingsResponse =
   UpdateWorkspaceAgentSessionSettingsResponses[keyof UpdateWorkspaceAgentSessionSettingsResponses];
+
+export type UpdateWorkspaceAgentSessionTitleData = {
+  body: UpdateWorkspaceAgentSessionTitleRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title";
+};
+
+export type UpdateWorkspaceAgentSessionTitleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTitleError =
+  UpdateWorkspaceAgentSessionTitleErrors[keyof UpdateWorkspaceAgentSessionTitleErrors];
+
+export type UpdateWorkspaceAgentSessionTitleResponses = {
+  /**
+   * Workspace agent session title updated
+   */
+  200: WorkspaceAgentSessionResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTitleResponse =
+  UpdateWorkspaceAgentSessionTitleResponses[keyof UpdateWorkspaceAgentSessionTitleResponses];
 
 export type UpdateWorkspaceAgentSessionVisibilityData = {
   body: UpdateWorkspaceAgentSessionVisibilityRequest;

@@ -16,6 +16,7 @@ import type {
   AgentActivityDeleteSessionResult,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
+  AgentActivityRenameSessionInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
@@ -358,6 +359,9 @@ export interface AgentActivityRuntime {
   readPromptAsset?(
     input: AgentActivityRuntimeReadPromptAssetInput
   ): Promise<AgentActivityRuntimePromptAsset>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
   setSessionPinned(
     input: AgentActivityRuntimeSetSessionPinnedInput
   ): Promise<AgentActivitySession>;

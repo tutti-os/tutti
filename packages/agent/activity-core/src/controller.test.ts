@@ -1655,6 +1655,14 @@ function fakeAdapter(
         status: "ready"
       }
     }),
+    renameSession: async (input) => ({
+      workspaceId: input.workspaceId,
+      agentSessionId: input.agentSessionId,
+      provider: "codex",
+      cwd: "",
+      title: input.title,
+      status: "ready"
+    }),
     deleteSession: async () => ({ removed: true })
   };
 }

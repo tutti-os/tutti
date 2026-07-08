@@ -822,6 +822,7 @@ function createDependenciesStub(): {
       createWorkspaceTerminal: fail,
       deleteWorkspace: fail,
       deleteWorkspaceAgentSession: fail,
+      updateWorkspaceAgentSessionTitle: fail,
       clearWorkspaceAgentSessions: fail,
       deleteWorkspaceApp: fail,
       deleteWorkspaceAppFactoryJob: fail,

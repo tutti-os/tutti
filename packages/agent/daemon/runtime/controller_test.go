@@ -136,6 +136,42 @@ func TestControllerStartPassesProviderTargetRefToAdapterSession(t *testing.T) {
 	}
 }
 
+func TestControllerSetTitleUpdatesLiveSession(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController(nil, nil)
+	controller.store(Session{
+		RoomID:          "room-1",
+		AgentSessionID:  "agent-session-1",
+		Provider:        ProviderCodex,
+		CWD:             "/workspace",
+		Status:          SessionStatusReady,
+		Title:           "Old title",
+		UpdatedAtUnixMS: 10,
+	})
+
+	session, err := controller.SetTitle(context.Background(), "room-1", "agent-session-1", "  New title  ")
+	if err != nil {
+		t.Fatalf("SetTitle: %v", err)
+	}
+	if session.Title != "New title" {
+		t.Fatalf("returned title = %q, want trimmed title", session.Title)
+	}
+	if session.UpdatedAtUnixMS <= 10 {
+		t.Fatalf("returned updatedAt = %d, want later than previous timestamp", session.UpdatedAtUnixMS)
+	}
+	stored, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("session missing after SetTitle")
+	}
+	if stored.Title != "New title" {
+		t.Fatalf("stored title = %q, want new title", stored.Title)
+	}
+	if _, err := controller.SetTitle(context.Background(), "room-1", "missing-session", "Title"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("missing session error = %v, want ErrSessionNotFound", err)
+	}
+}
+
 func TestControllerStartDoesNotReuseSessionWithDifferentProviderTargetRef(t *testing.T) {
 	t.Parallel()
 

@@ -75,6 +75,7 @@ export type {
   AgentActivityNeedsAttentionItem,
   AgentActivityNeedsAttentionKind,
   AgentActivityPresence,
+  AgentActivityRenameSessionInput,
   AgentPromptContentBlock,
   AgentActivitySendInput,
   AgentActivitySendInputResult,

@@ -2071,6 +2071,13 @@ function createWorkspaceAgentActivityService(
     async deleteSession() {
       return { removed: true };
     },
+    async renameSession(input) {
+      return {
+        ...emptySession(),
+        agentSessionId: input.agentSessionId,
+        title: input.title
+      };
+    },
     async getComposerOptions(input) {
       calls.push(
         `getComposerOptions:${input.workspaceId}:${input.provider ?? ""}:${input.agentTargetId ?? ""}`

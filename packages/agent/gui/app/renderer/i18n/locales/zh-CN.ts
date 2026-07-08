@@ -814,6 +814,11 @@ export const zhCN = {
       showLessConversations: "收起",
       deleteSession: "删除会话",
       pinSession: "置顶会话",
+      renameSession: "重命名会话",
+      renameSessionTitle: "重命名对话",
+      renameSessionDescription: "保持简短且易于识别。",
+      renameSessionPlaceholder: "对话标题",
+      renameSessionSave: "保存",
       unpinSession: "取消置顶",
       deleteSessionTitle: "删除会话？",
       deleteSessionBody:

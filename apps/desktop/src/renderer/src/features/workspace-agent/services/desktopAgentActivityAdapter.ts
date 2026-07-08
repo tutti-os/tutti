@@ -363,6 +363,14 @@ export function createDesktopAgentActivityAdapter({
         input.workspaceId,
         input.agentSessionId
       );
+    },
+    async renameSession(input) {
+      const session = await tuttidClient.updateWorkspaceAgentSessionTitle(
+        input.workspaceId,
+        input.agentSessionId,
+        { title: input.title }
+      );
+      return agentActivitySessionFromTuttidSession(input.workspaceId, session);
     }
   };
 }

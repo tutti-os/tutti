@@ -65,6 +65,75 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateTitleReturnsPersistedTitleForLiveRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace",
+		Status:          "ready",
+		Title:           "Old runtime title",
+		CreatedAtUnixMS: 1,
+		UpdatedAtUnixMS: 10,
+	}
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "codex",
+				Cwd:             "/workspace",
+				Status:          "ready",
+				Title:           "Old persisted title",
+				CreatedAtUnixMS: 1,
+				UpdatedAtUnixMS: 10,
+			},
+		},
+	}
+
+	session, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", " Renamed session ")
+	if err != nil {
+		t.Fatalf("UpdateTitle returned error: %v", err)
+	}
+	if value(session.Title) != "Renamed session" {
+		t.Fatalf("UpdateTitle title = %q, want persisted renamed title", value(session.Title))
+	}
+	if session.UpdatedAt == nil || session.UpdatedAt.UnixMilli() <= 10 {
+		t.Fatalf("UpdateTitle updatedAt = %v, want persisted update timestamp", session.UpdatedAt)
+	}
+	runtimeSession, ok := runtime.Session("ws-1", "session-1")
+	if !ok {
+		t.Fatal("runtime session missing after UpdateTitle")
+	}
+	if runtimeSession.Title != "Renamed session" {
+		t.Fatalf("runtime session title = %q, want renamed title", runtimeSession.Title)
+	}
+}
+
+func TestServiceUpdateTitleRejectsBlankTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{}
+
+	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", "   ")
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateTitle error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestServiceUpdateTitleRejectsOverlongTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{}
+
+	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", strings.Repeat("好", maxSessionTitleRunes+1))
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateTitle error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	runtime := newFakeRuntime()
 	// Service.Create validates the Claude composer model via a hidden live
@@ -5788,6 +5857,18 @@ func (f *fakeRuntime) SetVisible(_ context.Context, input RuntimeSetVisibleInput
 	return session, nil
 }
 
+func (f *fakeRuntime) SetTitle(_ context.Context, input RuntimeSetTitleInput) (RuntimeSession, error) {
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return RuntimeSession{}, ErrSessionNotFound
+	}
+	session.Title = strings.TrimSpace(input.Title)
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, nil
+}
+
 func (f *fakeRuntime) Sessions(workspaceID string) []RuntimeSession {
 	result := make([]RuntimeSession, 0)
 	for _, session := range f.sessions {
@@ -5811,6 +5892,18 @@ func (f fakeSessionReader) ListSessions(workspaceID string) ([]PersistedSession,
 		}
 	}
 	return result, len(result) > 0
+}
+
+func (f *fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID string, agentSessionID string, title string) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.Title = strings.TrimSpace(title)
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
 }
 
 func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -5951,6 +6044,10 @@ func (r *activityProjectionRepoStub) ReportSessionState(_ context.Context, input
 }
 
 func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, string, bool) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
+func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }
 

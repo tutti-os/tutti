@@ -1310,6 +1310,15 @@ export const AgentGUINode = memo(function AgentGUINode({
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
+      renameSession: t("agentHost.agentGui.renameSession"),
+      renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
+      renameSessionDescription: t(
+        "agentHost.agentGui.renameSessionDescription"
+      ),
+      renameSessionPlaceholder: t(
+        "agentHost.agentGui.renameSessionPlaceholder"
+      ),
+      renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),

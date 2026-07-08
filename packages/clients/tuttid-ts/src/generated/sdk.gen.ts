@@ -388,6 +388,9 @@ import type {
   UpdateWorkspaceAgentSessionSettingsData,
   UpdateWorkspaceAgentSessionSettingsErrors,
   UpdateWorkspaceAgentSessionSettingsResponses,
+  UpdateWorkspaceAgentSessionTitleData,
+  UpdateWorkspaceAgentSessionTitleErrors,
+  UpdateWorkspaceAgentSessionTitleResponses,
   UpdateWorkspaceAgentSessionVisibilityData,
   UpdateWorkspaceAgentSessionVisibilityErrors,
   UpdateWorkspaceAgentSessionVisibilityResponses,
@@ -1965,6 +1968,28 @@ export const updateWorkspaceAgentSessionSettings = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Update one workspace agent session title
+ */
+export const updateWorkspaceAgentSessionTitle = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<UpdateWorkspaceAgentSessionTitleData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UpdateWorkspaceAgentSessionTitleResponses,
+    UpdateWorkspaceAgentSessionTitleErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title",
     ...options,
     headers: {
       "Content-Type": "application/json",

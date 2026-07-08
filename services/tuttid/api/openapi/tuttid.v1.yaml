@@ -2515,6 +2515,40 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: updateWorkspaceAgentSessionTitle
+      tags:
+        - agent-session
+      summary: Update one workspace agent session title
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceAgentSessionTitleRequest"
+      responses:
+        "200":
+          description: Workspace agent session title updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -7048,6 +7082,16 @@ components:
       properties:
         pinned:
           type: boolean
+    UpdateWorkspaceAgentSessionTitleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
     UpdateWorkspaceAgentSessionVisibilityRequest:
       type: object
       additionalProperties: false

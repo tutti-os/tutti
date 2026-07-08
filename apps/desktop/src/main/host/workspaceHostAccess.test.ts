@@ -159,6 +159,9 @@ function createTransportClient(
     async deleteWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async updateWorkspaceAgentSessionTitle() {
+      throw new Error("not used");
+    },
     async clearWorkspaceAgentSessions() {
       throw new Error("not used");
     },
