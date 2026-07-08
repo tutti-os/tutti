@@ -87,6 +87,7 @@ type stubAgentSessionService struct {
 	resolveGitPatchSupportForPathFn func(context.Context, string, string) (agentservice.GitPatchSupport, error)
 	applyGitPatchForPathFn          func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	updatePinFn                     func(context.Context, string, string, bool) (agentservice.Session, error)
+	updateTitleFn                   func(context.Context, string, string, string) (agentservice.Session, error)
 	updateVisibleFn                 func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn                func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
@@ -347,6 +348,13 @@ func (s stubAgentSessionService) UpdatePin(ctx context.Context, workspaceID stri
 		return agentservice.Session{}, nil
 	}
 	return s.updatePinFn(ctx, workspaceID, agentSessionID, pinned)
+}
+
+func (s stubAgentSessionService) UpdateTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (agentservice.Session, error) {
+	if s.updateTitleFn == nil {
+		return agentservice.Session{}, nil
+	}
+	return s.updateTitleFn(ctx, workspaceID, agentSessionID, title)
 }
 
 func (s stubAgentSessionService) UpdateVisible(ctx context.Context, workspaceID string, agentSessionID string, visible bool) (agentservice.Session, error) {
@@ -1207,6 +1215,51 @@ func TestDaemonAPIGeneratedRoutesUpdateAgentSessionPin(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesUpdateAgentSessionTitle(t *testing.T) {
+	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+	title := "Renamed conversation"
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			updateTitleFn: func(_ context.Context, workspaceID string, agentSessionID string, nextTitle string) (agentservice.Session, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if agentSessionID != "session-1" {
+					t.Fatalf("agentSessionID = %q, want session-1", agentSessionID)
+				}
+				if nextTitle != title {
+					t.Fatalf("title = %q, want %q", nextTitle, title)
+				}
+				return agentservice.Session{
+					ID:        agentSessionID,
+					Provider:  "codex",
+					Status:    "created",
+					Title:     &nextTitle,
+					CreatedAt: createdAt,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/session-1/title",
+		map[string]any{"title": title},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentSessionResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Session.Title == nil || *response.Session.Title != title {
+		t.Fatalf("title = %#v, want %q", response.Session.Title, title)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesUpdateAgentSessionVisibility(t *testing.T) {
 	createdAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
 	mux := http.NewServeMux()
@@ -1841,8 +1894,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 4 {
-		t.Fatalf("targets len = %d, want 4", len(response.Targets))
+	if len(response.Targets) != 5 {
+		t.Fatalf("targets len = %d, want 5", len(response.Targets))
 	}
 	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex ||
 		response.Targets[0].Provider != tuttigenerated.AgentTargetProviderCodex ||
@@ -1867,6 +1920,12 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		response.Targets[3].LaunchRef.Type != tuttigenerated.LocalCli ||
 		response.Targets[3].LaunchRef.Provider != tuttigenerated.AgentTargetProviderCursor {
 		t.Fatalf("fourth target = %#v, want local cursor", response.Targets[3])
+	}
+	if response.Targets[4].Id != agenttargetbiz.IDLocalOpenCode ||
+		response.Targets[4].Provider != tuttigenerated.AgentTargetProviderOpencode ||
+		response.Targets[4].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[4].LaunchRef.Provider != tuttigenerated.AgentTargetProviderOpencode {
+		t.Fatalf("fifth target = %#v, want local opencode", response.Targets[4])
 	}
 }
 

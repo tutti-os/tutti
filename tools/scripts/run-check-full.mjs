@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import readline from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
-const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmCommand = resolvePnpmCommand();
 
 const phases = [
   {
@@ -70,7 +71,8 @@ function runTask(task) {
   console.log(`[${task.label}] starting`);
 
   return new Promise((resolve) => {
-    const child = spawn(pnpmCommand, ["run", task.script], {
+    const [command, ...prefixArgs] = pnpmCommand;
+    const child = spawn(command, [...prefixArgs, "run", task.script], {
       cwd: workspaceRoot,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -90,6 +92,25 @@ function runTask(task) {
       resolve({ task, exitCode });
     });
   });
+}
+
+function resolvePnpmCommand() {
+  const fallback = [process.platform === "win32" ? "pnpm.cmd" : "pnpm"];
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(join(workspaceRoot, "package.json"), "utf8")
+    );
+    const match = /^pnpm@(.+)$/u.exec(String(packageJson.packageManager ?? ""));
+    if (!match) {
+      return fallback;
+    }
+    return [
+      process.platform === "win32" ? "corepack.cmd" : "corepack",
+      `pnpm@${match[1]}`
+    ];
+  } catch {
+    return fallback;
+  }
 }
 
 function pipeWithPrefix(stream, label, output) {

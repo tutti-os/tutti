@@ -140,12 +140,16 @@ func permissionConfigValue(config agentservice.PermissionConfig) map[string]any 
 func composerConfigOptionValue(config agentservice.ComposerConfigOption) map[string]any {
 	options := make([]any, 0, len(config.Options))
 	for _, option := range config.Options {
-		options = append(options, map[string]any{
+		value := map[string]any{
 			"id":          option.ID,
 			"value":       option.Value,
 			"label":       option.Label,
 			"description": option.Description,
-		})
+		}
+		if option.SupportsImageInput != nil {
+			value["supportsImageInput"] = *option.SupportsImageInput
+		}
+		options = append(options, value)
 	}
 	return map[string]any{
 		"configurable": config.Configurable,

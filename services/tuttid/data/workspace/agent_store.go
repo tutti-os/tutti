@@ -119,6 +119,10 @@ func (s *SQLiteStore) UpdateSessionPinned(ctx context.Context, workspaceID strin
 	return s.agentStore().UpdateSessionPinned(ctx, workspaceID, agentSessionID, pinned)
 }
 
+func (s *SQLiteStore) UpdateSessionTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (agentactivitybiz.Session, bool, error) {
+	return s.agentStore().UpdateSessionTitle(ctx, workspaceID, agentSessionID, title)
+}
+
 func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
 	targets, err := s.agentStore().ListAgentTargets(ctx)
 	if err != nil {

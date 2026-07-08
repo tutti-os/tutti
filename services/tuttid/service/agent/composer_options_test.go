@@ -38,6 +38,9 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
+	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
+	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}
@@ -119,6 +122,13 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	})
 	if tuttiAgent.Model != "gpt-5.4" || tuttiAgent.ReasoningEffort != "high" {
 		t.Fatalf("tutti-agent settings clamped unexpectedly: %+v", tuttiAgent)
+	}
+	opencode := normalizeComposerSettingsForProvider("opencode", ComposerSettings{
+		Model:           "openai/gpt-5.3-codex-spark",
+		ReasoningEffort: "none",
+	})
+	if opencode.Model != "openai/gpt-5.3-codex-spark" || opencode.ReasoningEffort != "high" {
+		t.Fatalf("opencode settings normalized unexpectedly: %+v", opencode)
 	}
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
 		Model: "opus",

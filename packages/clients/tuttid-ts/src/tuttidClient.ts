@@ -89,6 +89,7 @@ import {
   trackEvents,
   updateWorkspaceAgentSessionPin,
   updateWorkspaceAgentSessionSettings,
+  updateWorkspaceAgentSessionTitle,
   updateWorkspaceAgentSessionVisibility,
   updateWorkspaceIssue,
   updateWorkspaceIssueTask,
@@ -948,6 +949,21 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Update workspace agent session pin failed.")
         .session;
+    },
+    async updateWorkspaceAgentSessionTitle(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      const response = await updateWorkspaceAgentSessionTitle({
+        client,
+        body: request,
+        path: { agentSessionID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Update workspace agent session title failed."
+      ).session;
     },
     async updateWorkspaceAgentSessionVisibility(
       workspaceID,

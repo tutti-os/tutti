@@ -295,8 +295,6 @@ func allocateSkillName(root string, baseName string) (string, error) {
 
 func providerSkillRoot(cwd string, provider string) string {
 	switch strings.TrimSpace(provider) {
-	case "cursor":
-		return filepath.Join(cwd, ".cursor", "skills")
 	case "gemini":
 		return filepath.Join(cwd, ".gemini", "skills")
 	case "openclaw":

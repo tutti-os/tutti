@@ -63,6 +63,10 @@ import {
   SelectTrigger,
   NewWorkspaceLinedIcon,
   ConfirmationDialog,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -104,6 +108,7 @@ import {
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import type {
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget
 } from "../../types";
@@ -498,6 +503,11 @@ export interface AgentGUIViewLabels {
   showLessConversations: string;
   deleteSession: string;
   pinSession: string;
+  renameSession: string;
+  renameSessionTitle: string;
+  renameSessionDescription: string;
+  renameSessionPlaceholder: string;
+  renameSessionSave: string;
   unpinSession: string;
   deleteSessionTitle: string;
   deleteSessionBody: string;
@@ -555,6 +565,7 @@ export interface AgentGUIViewLabels {
   slashStatusBaseUrl: string;
   slashStatusContext: string;
   slashStatusLimits: string;
+  slashStatusAccount: string;
   slashStatusClose: string;
   slashStatusContextValue: (input: {
     percentLeft: number;
@@ -586,12 +597,14 @@ export interface AgentGUIViewLabels {
   fileMentionEmpty: string;
   fileMentionError: string;
   fileMentionTabHint: string;
+  fileDropHint: string;
   mentionPalette: string;
   removeMention: string;
   addReference: string;
   addContent: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
+  handoffConversationTooltip: string;
   handoffConversationMenu: string;
   projectLocked: string;
   projectMissingDescription: string;
@@ -611,6 +624,7 @@ interface AgentGUINodeViewProps {
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
@@ -626,6 +640,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   /** Capture time of the usage/limits shown in the rail config menu (for the
@@ -658,7 +673,8 @@ interface AgentGUINodeViewProps {
     selectConversation: (agentSessionId: string) => void;
     submitPrompt: (
       content: AgentPromptContentBlock[],
-      displayPrompt?: string
+      displayPrompt?: string,
+      options?: Parameters<AgentComposerProps["onSubmit"]>[2]
     ) => void;
     goalControl: (
       action: AgentActivityGoalControlAction,
@@ -697,6 +713,10 @@ interface AgentGUINodeViewProps {
     continueInNewConversation: () => void;
     retryOpenclawGateway: () => void;
     toggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
+    renameConversation: (
+      agentSessionId: string,
+      title: string
+    ) => Promise<void>;
     removeProject: (path: string) => void;
     confirmDeleteProjectConversations: (path?: string) => void;
     confirmDeleteConversations: (agentSessionIds: string[]) => void;
@@ -1085,6 +1105,7 @@ export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -1095,6 +1116,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  providerAuthAccountLabels,
   railConfigProvider,
   railSlashStatusLimits,
   slashStatusUsageCapturedAtUnixMs = null,
@@ -1293,7 +1315,9 @@ export function AgentGUINodeView({
   const isOpenclawGatewayBlocking =
     openclawGateway !== null && openclawGateway.status !== "ready";
   const createConversationDisabled =
-    viewModel.isCreatingConversation || isOpenclawGatewayBlocking;
+    viewModel.isCreatingConversation ||
+    viewModel.selectedProviderTarget.disabled === true ||
+    isOpenclawGatewayBlocking;
   const createConversationAction = useStableEventCallback(
     actions.createConversation
   );
@@ -1536,9 +1560,25 @@ export function AgentGUINodeView({
       : railConfigProvider;
   const effectiveRailSlashStatusLimits =
     railSlashStatusLimits ?? slashStatusLimits;
-  const shouldShowProviderRailConfigMenu =
-    viewModel.conversationFilter.kind !== "all" &&
+  const shouldShowProviderRailConfigButton =
+    viewModel.conversationFilter.kind === "all" ||
     viewModel.selectedProviderTarget?.disabled !== true;
+  const shouldShowProviderRailConfigMenu =
+    shouldShowProviderRailConfigButton &&
+    viewModel.conversationFilter.kind !== "all";
+  const effectiveProviderAuthAccountLabel = useMemo(() => {
+    const provider =
+      (effectiveRailConfigProvider ?? viewModel.data.provider)?.trim() ?? "";
+    if (!provider) {
+      return null;
+    }
+    const label = providerAuthAccountLabels?.[provider]?.trim();
+    return label || null;
+  }, [
+    effectiveRailConfigProvider,
+    providerAuthAccountLabels,
+    viewModel.data.provider
+  ]);
   const enabledProviderTargets = viewModel.providerTargets.filter(
     (target) =>
       target.disabled !== true &&
@@ -1558,6 +1598,27 @@ export function AgentGUINodeView({
   const openAgentSettings = useCallback(() => {
     openWorkspaceSettingsPanel({ section: "agent" });
   }, []);
+  const [renameConversationTarget, setRenameConversationTarget] = useState<
+    AgentGUINodeViewModel["conversations"][number] | null
+  >(null);
+  const [renameConversationDialogOpen, setRenameConversationDialogOpen] =
+    useState(false);
+  const requestRenameConversation = useCallback(
+    (agentSessionId: string) => {
+      const target =
+        viewModel.conversations.find(
+          (conversation) => conversation.id === agentSessionId
+        ) ??
+        (viewModel.activeConversation?.id === agentSessionId
+          ? viewModel.activeConversation
+          : null);
+      if (target) {
+        setRenameConversationTarget(target);
+        setRenameConversationDialogOpen(true);
+      }
+    },
+    [viewModel.activeConversation, viewModel.conversations]
+  );
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
@@ -1590,6 +1651,7 @@ export function AgentGUINodeView({
         onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
         onConfirmDeleteConversations: confirmDeleteConversations,
         onRequestDeleteConversation: requestDeleteConversation,
+        onRequestRenameConversation: requestRenameConversation,
         onCancelDeleteConversation: cancelDeleteConversation,
         onConfirmDeleteConversation: confirmDeleteConversation,
         onOpenProjectFiles: openProjectFiles,
@@ -1612,6 +1674,7 @@ export function AgentGUINodeView({
         removeProject,
         requestCreateConversation,
         requestDeleteConversation,
+        requestRenameConversation,
         retryOpenclawGateway,
         selectConversation,
         selectProjectDirectory,
@@ -1689,6 +1752,7 @@ export function AgentGUINodeView({
               providerTargetsLoading={viewModel.providerTargetsLoading}
               providerRailMode={viewModel.providerRailMode}
               renderProviderRailEmpty={renderProviderRailEmpty}
+              providerRailAllPresentation={providerRailAllPresentation}
               comingSoonProviders={viewModel.comingSoonProviders}
               onSelectConversationFilterTarget={
                 actions.selectConversationFilterTarget
@@ -1696,26 +1760,44 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
-            {shouldShowProviderRailConfigMenu ? (
+            {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
                 data-testid="agent-gui-config-footer"
               >
-                <AgentGUIConfigMenu
-                  labels={labels}
-                  previewMode={previewMode}
-                  slashStatusLimits={effectiveRailSlashStatusLimits}
-                  slashStatusLimitsLoading={slashStatusLimitsLoading}
-                  slashStatusUsageCapturedAtUnixMs={
-                    slashStatusUsageCapturedAtUnixMs
-                  }
-                  slashStatusUsageDidFail={slashStatusUsageDidFail}
-                  slashStatusUsageAttempted={slashStatusUsageAttempted}
-                  onAgentConfigMenuOpen={onAgentConfigMenuOpen}
-                  onAgentUsageRefresh={onAgentUsageRefresh}
-                  onOpenAgentEnvSetup={openAgentEnvSetup}
-                  onOpenAgentSettings={openAgentSettings}
-                />
+                {shouldShowProviderRailConfigMenu ? (
+                  <AgentGUIConfigMenu
+                    labels={labels}
+                    previewMode={previewMode}
+                    slashStatusLimits={effectiveRailSlashStatusLimits}
+                    slashStatusLimitsLoading={slashStatusLimitsLoading}
+                    slashStatusUsageCapturedAtUnixMs={
+                      slashStatusUsageCapturedAtUnixMs
+                    }
+                    slashStatusUsageDidFail={slashStatusUsageDidFail}
+                    slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
+                    onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                    onAgentUsageRefresh={onAgentUsageRefresh}
+                    onOpenAgentEnvSetup={openAgentEnvSetup}
+                    onOpenAgentSettings={openAgentSettings}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={labels.agentSettingsMenu}
+                    className={`${styles.providerRailConfigButton} nodrag tsh-desktop-no-drag`}
+                    title={labels.agentSettingsMenu}
+                    disabled={previewMode}
+                    onClick={openAgentSettings}
+                  >
+                    <SettingsLinedIcon
+                      aria-hidden="true"
+                      width={18}
+                      height={18}
+                    />
+                  </button>
+                )}
               </div>
             ) : null}
             {renderSidebarFooter ? (
@@ -1808,6 +1890,7 @@ export function AgentGUINodeView({
             resolveDroppedFileReferences={resolveDroppedFileReferences}
             selectProjectDirectory={selectProjectDirectory}
             onRequestGitBranches={onRequestGitBranches}
+            onRequestComposerFocus={requestComposerFocus}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -1845,11 +1928,146 @@ export function AgentGUINodeView({
           onConfirm={confirmWorkspaceReferencePicker}
         />
       )}
+      <AgentGUIRenameConversationDialog
+        conversation={renameConversationTarget}
+        open={renameConversationDialogOpen && renameConversationTarget !== null}
+        labels={labels}
+        uiLanguage={uiLanguage}
+        onOpenChange={(open) => {
+          setRenameConversationDialogOpen(open);
+          if (!open) {
+            setRenameConversationTarget(null);
+          }
+        }}
+        onRename={actions.renameConversation}
+      />
     </AgentTargetPresentationProvider>
   );
 
   return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
 }
+
+interface AgentGUIRenameConversationDialogProps {
+  conversation: AgentGUINodeViewModel["conversations"][number] | null;
+  open: boolean;
+  labels: AgentGUIViewLabels;
+  uiLanguage: UiLanguage;
+  onOpenChange: (open: boolean) => void;
+  onRename: (agentSessionId: string, title: string) => Promise<void>;
+}
+
+const AgentGUIRenameConversationDialog = memo(
+  function AgentGUIRenameConversationDialog({
+    conversation,
+    open,
+    labels,
+    uiLanguage,
+    onOpenChange,
+    onRename
+  }: AgentGUIRenameConversationDialogProps): React.JSX.Element {
+    "use memo";
+    const [title, setTitle] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const trimmedTitle = title.trim();
+    useEffect(() => {
+      if (!open || !conversation) {
+        setTitle("");
+        setIsSaving(false);
+        return;
+      }
+      setTitle(conversationPlainTitle(conversation, labels, uiLanguage));
+    }, [conversation, labels, open, uiLanguage]);
+    useEffect(() => {
+      if (!open) {
+        return;
+      }
+      const timer = window.setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }, [open, conversation?.id]);
+    const closeRenameDialog = useCallback(() => {
+      if (!isSaving) {
+        onOpenChange(false);
+      }
+    }, [isSaving, onOpenChange]);
+    const confirmRename = useCallback(() => {
+      if (!conversation || isSaving || !trimmedTitle) {
+        return;
+      }
+      setIsSaving(true);
+      void onRename(conversation.id, trimmedTitle)
+        .then(() => {
+          onOpenChange(false);
+        })
+        .catch(() => {
+          inputRef.current?.focus();
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
+    }, [conversation, isSaving, onOpenChange, onRename, trimmedTitle]);
+    return (
+      <ConfirmationDialog
+        cancelLabel={labels.cancel}
+        className="sm:max-w-[480px]"
+        confirmBusy={isSaving}
+        confirmDisabled={!trimmedTitle}
+        confirmLabel={labels.renameSessionSave}
+        description={labels.renameSessionDescription}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              disabled={isSaving}
+              size="dialog"
+              type="button"
+              variant="ghost"
+              onClick={closeRenameDialog}
+              onPointerUp={(event) => {
+                if (event.button === 0) {
+                  closeRenameDialog();
+                }
+              }}
+            >
+              {labels.cancel}
+            </Button>
+            <Button
+              className="shadow-none"
+              disabled={isSaving || !trimmedTitle}
+              size="dialog"
+              type="button"
+              variant="default"
+              onClick={confirmRename}
+            >
+              {labels.renameSessionSave}
+            </Button>
+          </div>
+        }
+        open={open}
+        title={labels.renameSessionTitle}
+        onConfirm={confirmRename}
+        onOpenChange={onOpenChange}
+      >
+        <input
+          ref={inputRef}
+          aria-label={labels.renameSessionTitle}
+          className="h-10 w-full rounded-md border border-border bg-background px-3 text-[14px] font-medium leading-5 text-text-primary shadow-none outline-none transition-colors placeholder:text-text-tertiary focus:border-primary"
+          placeholder={labels.renameSessionPlaceholder}
+          value={title}
+          onChange={(event) => setTitle(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              confirmRename();
+            }
+          }}
+        />
+      </ConfirmationDialog>
+    );
+  }
+);
 
 interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
@@ -1878,6 +2096,7 @@ interface AgentGUIDetailPaneProps {
   resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
+  onRequestComposerFocus: () => void;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
 }
@@ -1971,6 +2190,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   resolveDroppedFileReferences = null,
   selectProjectDirectory,
   onRequestGitBranches,
+  onRequestComposerFocus,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -1987,6 +2207,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const pendingPrependScrollAnchorRef = useRef<{
     conversationId: string;
     scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+  // Remembers, per conversation, the last scroll position the user left off at
+  // so switching back to a conversation the user had manually scrolled away
+  // from restores that position instead of snapping to the bottom.
+  const timelineScrollPositionsRef = useRef<
+    Map<string, { scrollTop: number; atBottom: boolean }>
+  >(new Map());
+  // Deferred restore target used when a conversation is switched to while its
+  // content is still loading (skeleton) and scrollHeight is not yet final.
+  const pendingRestoreScrollRef = useRef<{
+    conversationId: string;
     scrollTop: number;
   } | null>(null);
   const [isTimelineScrolledToTop, setIsTimelineScrolledToTop] = useState(true);
@@ -2392,6 +2624,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
+      slashStatusAccount: labels.slashStatusAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
@@ -2408,12 +2641,14 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       fileMentionEmpty: labels.fileMentionEmpty,
       fileMentionError: labels.fileMentionError,
       fileMentionTabHint: labels.fileMentionTabHint,
+      fileDropHint: labels.fileDropHint,
       mentionPalette: labels.mentionPalette,
       removeMention: labels.removeMention,
       addReference: labels.addReference,
       addContent: labels.addContent,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
+      handoffConversationTooltip: labels.handoffConversationTooltip,
       handoffConversationMenu: labels.handoffConversationMenu,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
@@ -2434,7 +2669,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.fileMentionLoading,
       labels.fileMentionPalette,
       labels.fileMentionTabHint,
+      labels.fileDropHint,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.inheritedUnavailable,
       labels.loadingConversation,
@@ -2553,6 +2790,16 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const updateComposerSettings = useStableEventCallback(
     actions.updateComposerSettings
   );
+  const selectHomeComposerAgentTarget = useStableEventCallback(
+    actions.selectHomeComposerAgentTarget
+  );
+  const selectHomeComposerAgentTargetAndFocus = useCallback(
+    (input: Parameters<typeof selectHomeComposerAgentTarget>[0]) => {
+      selectHomeComposerAgentTarget(input);
+      onRequestComposerFocus();
+    },
+    [onRequestComposerFocus, selectHomeComposerAgentTarget]
+  );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
@@ -2627,6 +2874,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const canSwitchComposerProvider = true;
   const composerProviderTargets = viewModel.providerTargets;
+  const composerHandoffProviderTargets = viewModel.handoffProviderTargets;
   const composerProvider =
     viewModel.activeConversationId === null
       ? (viewModel.selectedProviderTarget?.provider ?? viewModel.data.provider)
@@ -2660,11 +2908,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       availableSkills: viewModel.availableSkills,
       selectedProviderTarget: composerSelectedProviderTarget,
       providerTargets: composerProviderTargets,
+      handoffProviderTargets: composerHandoffProviderTargets,
       providerSelectReadonly:
         !canSwitchComposerProvider || viewModel.activeConversationId !== null,
       onProviderSelect:
         canSwitchComposerProvider && viewModel.activeConversationId === null
-          ? actions.selectHomeComposerAgentTarget
+          ? selectHomeComposerAgentTargetAndFocus
           : undefined,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
@@ -2741,12 +2990,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [
       canQueueWhileBusy,
       backgroundAgentStatusText,
-      actions.selectHomeComposerAgentTarget,
       capabilityMenuState,
       canSwitchComposerProvider,
       composerDisabled,
       composerDisabledReason,
       composerFocusRequestSequence,
+      composerHandoffProviderTargets,
       composerLabels,
       composerProviderTargets,
       composerSelectedProviderTarget,
@@ -2755,6 +3004,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isComposerSending,
       labels.followupPlaceholder,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.initialPlaceholder,
       labels.promptTips,
@@ -2788,6 +3038,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.activeConversationId,
       viewModel.availableCommands,
       viewModel.availableSkills,
+      viewModel.activeConversationId,
       viewModel.compactSupported,
       viewModel.composerSettings,
       viewModel.currentUserId,
@@ -2806,7 +3057,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.workspaceId,
       viewModel.workspacePath,
       workspaceUserProjectI18n,
-      workspaceAppIcons
+      workspaceAppIcons,
+      selectHomeComposerAgentTargetAndFocus
     ]
   );
   const emptyHeroComposerProps = useMemo<AgentComposerProps>(
@@ -2898,16 +3150,58 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       submittedPromptScrollConversationRef.current === activeConversationId;
     let nextScrollTop = timeline.scrollTop;
 
+    const savedScrollPosition = shouldScrollSubmittedPromptToBottom
+      ? undefined
+      : timelineScrollPositionsRef.current.get(activeConversationId);
+
     if (
       !anchor ||
       anchor.conversationId !== activeConversationId ||
       shouldScrollSubmittedPromptToBottom
     ) {
-      setTimelineScrollTopInstantly(timeline, maxScrollTop);
-      nextScrollTop = maxScrollTop;
+      if (
+        savedScrollPosition &&
+        !savedScrollPosition.atBottom &&
+        !showTimelineSkeleton
+      ) {
+        // Returning to a conversation the user had manually scrolled away
+        // from: restore that position instead of snapping to the bottom.
+        nextScrollTop = Math.min(maxScrollTop, savedScrollPosition.scrollTop);
+        timeline.scrollTop = nextScrollTop;
+        pendingRestoreScrollRef.current = null;
+      } else if (savedScrollPosition && !savedScrollPosition.atBottom) {
+        // Content isn't rendered yet (skeleton) so scrollHeight is not final:
+        // defer the restore until the real messages have laid out.
+        pendingRestoreScrollRef.current = {
+          conversationId: activeConversationId,
+          scrollTop: savedScrollPosition.scrollTop
+        };
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+      } else {
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+        pendingRestoreScrollRef.current = null;
+      }
       submittedPromptScrollConversationRef.current = null;
       if (shouldScrollSubmittedPromptToBottom) {
         pendingPrependScrollAnchorRef.current = null;
+      }
+    } else if (
+      pendingRestoreScrollRef.current?.conversationId === activeConversationId
+    ) {
+      if (showTimelineSkeleton) {
+        // Still loading: keep pinned to the bottom until content is ready so
+        // the deferred restore can target the final scrollHeight.
+        setTimelineScrollTopInstantly(timeline, maxScrollTop);
+        nextScrollTop = maxScrollTop;
+      } else {
+        nextScrollTop = Math.min(
+          maxScrollTop,
+          pendingRestoreScrollRef.current.scrollTop
+        );
+        timeline.scrollTop = nextScrollTop;
+        pendingRestoreScrollRef.current = null;
       }
     } else if (prependAnchor?.conversationId === activeConversationId) {
       const nextScrollHeight = timeline.scrollHeight;
@@ -3075,13 +3369,24 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         scrollTop,
         clientHeight: timeline.clientHeight
       };
+      const atBottom =
+        timeline.scrollHeight - scrollTop - timeline.clientHeight <=
+        AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX;
       setIsTimelineScrolledToTop(
         scrollTop <= AGENT_GUI_TOP_MASK_SCROLL_EPSILON_PX
       );
-      setIsTimelineScrolledToBottom(
-        timeline.scrollHeight - scrollTop - timeline.clientHeight <=
-          AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX
-      );
+      setIsTimelineScrolledToBottom(atBottom);
+      // Remember where the user left off so returning to this conversation can
+      // restore the position. Skip while a deferred restore is pending so the
+      // synchronous jump-to-bottom (during skeleton) doesn't clobber it.
+      if (
+        pendingRestoreScrollRef.current?.conversationId !== activeConversationId
+      ) {
+        timelineScrollPositionsRef.current.set(activeConversationId, {
+          scrollTop,
+          atBottom
+        });
+      }
       if (
         viewModel.hasOlderMessages &&
         !viewModel.isLoadingOlderMessages &&
@@ -3216,7 +3521,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               onProviderSelect={
                 canSwitchComposerProvider &&
                 viewModel.activeConversationId === null
-                  ? actions.selectHomeComposerAgentTarget
+                  ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
               providerTargets={composerProviderTargets}
@@ -3475,21 +3780,23 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   return (
     <div className={styles.emptyHero}>
       <div className={styles.emptyHeroBody}>
-        {heroIconPresentations.length > 1 ? (
-          <AgentGUIAllProviderGridIcon
-            key={heroIconAnimationKey}
-            activeProvider={provider}
-            className={styles.emptyHeroLaunchpadIcon}
-            icons={heroIconPresentations}
-          />
-        ) : (
-          <AgentGUIProviderIconVisual
-            key={heroIconAnimationKey}
-            ariaHidden
-            imageClassName={styles.emptyHeroIconEffect}
-            icon={heroIconPresentations[0]!}
-          />
-        )}
+        <div className={styles.emptyHeroIconSlot}>
+          {heroIconPresentations.length > 1 ? (
+            <AgentGUIAllProviderGridIcon
+              key={heroIconAnimationKey}
+              activeProvider={provider}
+              className={styles.emptyHeroLaunchpadIcon}
+              icons={heroIconPresentations}
+            />
+          ) : (
+            <AgentGUIProviderIconVisual
+              key={heroIconAnimationKey}
+              ariaHidden
+              imageClassName={styles.emptyHeroIconEffect}
+              icon={heroIconPresentations[0]!}
+            />
+          )}
+        </div>
         <h2 className={styles.emptyHeroTitle}>
           <EmptyHeroTitle
             label={emptyLabel}
@@ -3600,7 +3907,7 @@ const AgentGUIProviderReadinessGatePane = memo(
           <p className={styles.emptyProviderGateDescription}>
             {content.description}
           </p>
-          {pendingLabel ? (
+          {pendingLabel && !action ? (
             <div
               className={styles.emptyProviderGateStatus}
               data-testid="agent-gui-provider-readiness-gate-pending"
@@ -3728,14 +4035,19 @@ function AgentGUIAllProviderGridIcon({
   );
 }
 
-function AgentGUIUnifiedProviderIcon(): React.JSX.Element {
+function AgentGUIUnifiedProviderIcon({
+  presentation
+}: {
+  presentation?: AgentGUIProviderRailAllPresentation | null;
+}): React.JSX.Element {
+  const iconUrl = presentation?.iconUrl?.trim() || agentColorfulUrl;
   return (
     <span aria-hidden="true" className={styles.providerRailAvatar}>
       <img
         alt=""
         className={styles.providerRailAvatarImage}
         draggable={false}
-        src={agentColorfulUrl}
+        src={iconUrl}
       />
     </span>
   );
@@ -4102,6 +4414,7 @@ interface AgentGUIConversationRailPaneProps {
   onConfirmDeleteProjectConversations: (path?: string) => void;
   onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (agentSessionId: string) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -4197,6 +4510,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.onConfirmDeleteProjectConversations ===
       next.onConfirmDeleteProjectConversations &&
     current.onRequestDeleteConversation === next.onRequestDeleteConversation &&
+    current.onRequestRenameConversation === next.onRequestRenameConversation &&
     current.onCancelDeleteConversation === next.onCancelDeleteConversation &&
     current.onConfirmDeleteConversation === next.onConfirmDeleteConversation
   );
@@ -4650,6 +4964,7 @@ const agentGUIProviderRailOrder: readonly AgentGUIProvider[] = [
   "claude-code",
   "cursor",
   "tutti-agent",
+  "opencode",
   "nexight",
   "hermes",
   "openclaw",
@@ -4708,6 +5023,17 @@ function agentGUIProviderRailLabel(
     return labels.conversationFilterClaudeCode;
   }
   return targetLabel;
+}
+
+function agentGUIProviderRailAriaLabel(
+  label: string,
+  badgeLabel: string | null | undefined
+): string {
+  const normalizedBadgeLabel = badgeLabel?.trim() ?? "";
+  if (!normalizedBadgeLabel || normalizedBadgeLabel === label) {
+    return label;
+  }
+  return `${label}, ${normalizedBadgeLabel}`;
 }
 
 function agentGUIProviderTargetMatchesConversationFilter(
@@ -4784,6 +5110,7 @@ interface AgentGUIProviderRailProps {
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
   providerRailMode: AgentGUINodeViewModel["providerRailMode"];
   renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
   onRequestComposerFocus: () => void;
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
@@ -4810,6 +5137,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   providerTargetsLoading,
   providerRailMode,
   renderProviderRailEmpty,
+  providerRailAllPresentation,
   comingSoonProviders,
   onRequestComposerFocus,
   onSelectConversationFilterTarget,
@@ -5197,7 +5525,9 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           disabled={previewMode}
           onClick={selectAllProviders}
         >
-          <AgentGUIUnifiedProviderIcon />
+          <AgentGUIUnifiedProviderIcon
+            presentation={providerRailAllPresentation}
+          />
           <span className={styles.providerRailTileLabel}>
             {labels.conversationFilterAll}
           </span>
@@ -5236,12 +5566,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
             target.label,
             labels
           );
+          const ariaLabel = agentGUIProviderRailAriaLabel(
+            label,
+            target.badge?.label
+          );
           const tile = (
             <button
               key={`${target.provider}:${target.targetId}`}
               type="button"
               role="tab"
-              aria-label={label}
+              aria-label={ariaLabel}
               aria-selected={providerSelected}
               className={styles.providerRailTile}
               data-disabled={target.disabled === true ? "true" : undefined}
@@ -5276,6 +5610,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                     target.iconUrl
                   )}
                 />
+                {target.badge?.iconUrl ? (
+                  <span aria-hidden="true" className={styles.providerRailBadge}>
+                    <img
+                      alt=""
+                      className={styles.providerRailBadgeImage}
+                      draggable={false}
+                      src={target.badge.iconUrl}
+                    />
+                  </span>
+                ) : null}
               </span>
             </button>
           );
@@ -5599,6 +5943,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
+  providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
@@ -5613,6 +5958,7 @@ function AgentGUIConfigMenu({
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
+  providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
   onOpenAgentEnvSetup,
@@ -5647,6 +5993,25 @@ function AgentGUIConfigMenu({
         data-testid="agent-gui-config-menu"
       >
         <div className="flex min-w-0 flex-col gap-3">
+          {providerAuthAccountLabel ? (
+            <>
+              <div className="flex min-w-0 flex-col gap-2 p-2">
+                <span className="text-[13px] font-semibold leading-4">
+                  {labels.slashStatusAccount}
+                </span>
+                <span className="text-[13px] leading-5 text-[var(--text-secondary)]">
+                  {providerAuthAccountLabel}
+                </span>
+              </div>
+              {slashStatusLimits.length > 0 ||
+              slashStatusUsageAttempted ||
+              slashStatusLimitsLoading ? (
+                <div className="px-2">
+                  <span className="block h-px bg-[var(--border-1)]" />
+                </div>
+              ) : null}
+            </>
+          ) : null}
           {slashStatusLimits.length > 0 ||
           slashStatusUsageAttempted ||
           slashStatusLimitsLoading ? (
@@ -6095,6 +6460,7 @@ const AgentGUIConversationRailPane = memo(
     onConfirmDeleteProjectConversations,
     onConfirmDeleteConversations,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailPaneProps): React.JSX.Element {
@@ -6312,17 +6678,7 @@ const AgentGUIConversationRailPane = memo(
             <span>{labels.newConversation}</span>
           </Button>
         </div>
-        {openclawGateway?.status === "starting" ? (
-          <div className={styles.gatewayStatus} data-state="starting">
-            <StatusDot
-              tone="blue"
-              pulse
-              size="sm"
-              ariaLabel={labels.openclawGatewayStarting}
-            />
-            <span>{labels.openclawGatewayStarting}</span>
-          </div>
-        ) : openclawGateway?.status === "failed" ? (
+        {openclawGateway?.status === "failed" ? (
           <div className={styles.gatewayStatus} data-state="failed">
             <span>{openclawGateway.error || labels.openclawGatewayFailed}</span>
             <button
@@ -6412,6 +6768,7 @@ const AgentGUIConversationRailPane = memo(
                     onCreateConversation={onCreateConversation}
                     onLoadMoreConversations={loadMoreSectionConversations}
                     onRequestDeleteConversation={onRequestDeleteConversation}
+                    onRequestRenameConversation={onRequestRenameConversation}
                     onSelectConversation={onSelectConversation}
                     setPendingProjectAction={setPendingProjectAction}
                     onToggleConversationPinned={onToggleConversationPinned}
@@ -6525,6 +6882,7 @@ interface AgentGUIConversationRailSectionProps {
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (agentSessionId: string) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -6556,6 +6914,7 @@ const AgentGUIConversationRailSection = memo(
     onOpenProjectFiles,
     onOpenConversationWindow,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
@@ -6907,6 +7266,7 @@ const AgentGUIConversationRailSection = memo(
                 onCancelDeleteConversation={onCancelDeleteConversation}
                 onConfirmDeleteConversation={onConfirmDeleteConversation}
                 onRequestDeleteConversation={onRequestDeleteConversation}
+                onRequestRenameConversation={onRequestRenameConversation}
                 onSelectConversation={onSelectConversation}
                 onToggleConversationPinned={onToggleConversationPinned}
                 onOpenConversationWindow={onOpenConversationWindow}
@@ -6956,6 +7316,7 @@ interface AgentGUIConversationRailItemProps {
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (agentSessionId: string) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -6975,6 +7336,7 @@ const AgentGUIConversationRailItem = memo(
     onToggleConversationPinned,
     onOpenConversationWindow,
     onRequestDeleteConversation,
+    onRequestRenameConversation,
     onCancelDeleteConversation,
     onConfirmDeleteConversation
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
@@ -7004,124 +7366,162 @@ const AgentGUIConversationRailItem = memo(
     const handleRequestDelete = useCallback(() => {
       onRequestDeleteConversation(item.id);
     }, [item.id, onRequestDeleteConversation]);
+    const handleRequestRename = useCallback(() => {
+      onRequestRenameConversation(item.id);
+    }, [item.id, onRequestRenameConversation]);
+    const handleContextMenuRename = useCallback(() => {
+      window.setTimeout(() => {
+        handleRequestRename();
+      }, 0);
+    }, [handleRequestRename]);
     return (
-      <div
-        ref={setItemElement}
-        className={styles.conversationItem}
-        data-active={active}
-        data-pinned={pinned}
-        data-pending-delete={isPendingDeleteConversation}
-        data-testid={`agent-gui-conversation-item-${item.id}`}
-        onMouseLeave={handleMouseLeave}
-      >
-        <button
-          type="button"
-          className={styles.conversationSelect}
-          onClick={handleSelect}
-        >
-          <span className={styles.conversationTitleRow}>
-            {providerIconUrl ? (
-              <span
-                aria-hidden="true"
-                className={styles.conversationProviderIcon}
-                style={
-                  {
-                    "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
-                  } as CSSProperties
-                }
-              />
-            ) : null}
-            <span className={styles.conversationTitle}>
-              {conversationPlainTitle(item, labels, uiLanguage)}
-            </span>
-          </span>
-          <ConversationMeta item={item} nowMs={currentTimeMs} labels={labels} />
-        </button>
-        {previewMode ? null : (
-          <div className={styles.conversationActions}>
-            {isPendingDeleteConversation ? (
-              <button
-                type="button"
-                className={styles.conversationDeleteButton}
-                aria-label={labels.deleteSessionConfirm}
-                title={labels.deleteSessionConfirm}
-                disabled={isDeletingConversation}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onConfirmDeleteConversation();
-                }}
-              >
-                <span className={styles.conversationDeleteConfirmText}>
-                  {labels.deleteSessionConfirm}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            ref={setItemElement}
+            className={styles.conversationItem}
+            data-active={active}
+            data-pinned={pinned}
+            data-pending-delete={isPendingDeleteConversation}
+            data-testid={`agent-gui-conversation-item-${item.id}`}
+            onMouseLeave={handleMouseLeave}
+          >
+            <button
+              type="button"
+              className={styles.conversationSelect}
+              onClick={handleSelect}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                handleRequestRename();
+              }}
+            >
+              <span className={styles.conversationTitleRow}>
+                {providerIconUrl ? (
+                  <span
+                    aria-hidden="true"
+                    className={styles.conversationProviderIcon}
+                    style={
+                      {
+                        "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
+                      } as CSSProperties
+                    }
+                  />
+                ) : null}
+                <span className={styles.conversationTitle}>
+                  {conversationPlainTitle(item, labels, uiLanguage)}
                 </span>
-              </button>
-            ) : (
-              <>
-                {onOpenConversationWindow ? (
-                  <BareIconButton
-                    className={styles.conversationOpenWindowButton}
-                    aria-label={labels.openConversationWindow}
-                    title={labels.openConversationWindow}
-                    size="md"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                    }}
-                    onMouseDown={(event) => {
-                      event.stopPropagation();
-                    }}
+              </span>
+              <ConversationMeta
+                item={item}
+                nowMs={currentTimeMs}
+                labels={labels}
+              />
+            </button>
+            {previewMode ? null : (
+              <div className={styles.conversationActions}>
+                {isPendingDeleteConversation ? (
+                  <button
+                    type="button"
+                    className={styles.conversationDeleteButton}
+                    aria-label={labels.deleteSessionConfirm}
+                    title={labels.deleteSessionConfirm}
+                    disabled={isDeletingConversation}
                     onClick={(event) => {
                       event.stopPropagation();
-                      handleOpenConversationWindow();
+                      onConfirmDeleteConversation();
                     }}
                   >
-                    <ExternalLink aria-hidden="true" />
-                  </BareIconButton>
-                ) : null}
-                <BareIconButton
-                  className={styles.conversationPinButton}
-                  aria-label={pinned ? labels.unpinSession : labels.pinSession}
-                  title={pinned ? labels.unpinSession : labels.pinSession}
-                  size="md"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onMouseDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleTogglePinned();
-                  }}
-                >
-                  {pinned ? (
-                    <PinFilledIcon aria-hidden="true" />
-                  ) : (
-                    <PinLinedIcon aria-hidden="true" />
-                  )}
-                </BareIconButton>
-                <BareIconButton
-                  className={styles.conversationDeleteButton}
-                  aria-label={labels.deleteSession}
-                  title={labels.deleteSession}
-                  size="md"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onMouseDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleRequestDelete();
-                  }}
-                >
-                  <CanvasNodeTrashLinedIcon aria-hidden="true" />
-                </BareIconButton>
-              </>
+                    <span className={styles.conversationDeleteConfirmText}>
+                      {labels.deleteSessionConfirm}
+                    </span>
+                  </button>
+                ) : (
+                  <>
+                    {onOpenConversationWindow ? (
+                      <BareIconButton
+                        className={styles.conversationOpenWindowButton}
+                        aria-label={labels.openConversationWindow}
+                        title={labels.openConversationWindow}
+                        size="md"
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onMouseDown={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenConversationWindow();
+                        }}
+                      >
+                        <ExternalLink aria-hidden="true" />
+                      </BareIconButton>
+                    ) : null}
+                    <BareIconButton
+                      className={styles.conversationPinButton}
+                      aria-label={
+                        pinned ? labels.unpinSession : labels.pinSession
+                      }
+                      title={pinned ? labels.unpinSession : labels.pinSession}
+                      size="md"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleTogglePinned();
+                      }}
+                    >
+                      {pinned ? (
+                        <PinFilledIcon aria-hidden="true" />
+                      ) : (
+                        <PinLinedIcon aria-hidden="true" />
+                      )}
+                    </BareIconButton>
+                    <BareIconButton
+                      className={styles.conversationDeleteButton}
+                      aria-label={labels.deleteSession}
+                      title={labels.deleteSession}
+                      size="md"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRequestDelete();
+                      }}
+                    >
+                      <CanvasNodeTrashLinedIcon aria-hidden="true" />
+                    </BareIconButton>
+                  </>
+                )}
+              </div>
             )}
           </div>
+        </ContextMenuTrigger>
+        {previewMode ? null : (
+          <ContextMenuContent className={styles.composerMenuContent}>
+            <ContextMenuItem
+              className={styles.composerMenuItem}
+              onClick={handleContextMenuRename}
+              onPointerUp={(event) => {
+                if (event.button === 0) {
+                  handleContextMenuRename();
+                }
+              }}
+              onSelect={handleContextMenuRename}
+            >
+              {labels.renameSession}
+            </ContextMenuItem>
+          </ContextMenuContent>
         )}
-      </div>
+      </ContextMenu>
     );
   }
 );

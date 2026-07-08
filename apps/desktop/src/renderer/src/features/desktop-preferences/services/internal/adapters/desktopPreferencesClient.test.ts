@@ -6,6 +6,7 @@ import type {
   TuttidClient,
   PutDesktopPreferencesRequest
 } from "@tutti-os/client-tuttid-ts";
+import { defaultDesktopWorkbenchShortcuts } from "../../../../../../../shared/preferences/index.ts";
 import { createDesktopPreferencesClient } from "./desktopPreferencesClient.ts";
 
 test("desktop preferences client resolves writes from the authoritative event", async () => {
@@ -15,105 +16,43 @@ test("desktop preferences client resolves writes from the authoritative event", 
     eventStreamClient
   );
 
-  const completion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const completion = client.updateDesktopPreferences(createUpdateRequest());
 
   assert.deepEqual(eventStreamClient.publishedIntents, [
     {
-      payload: {
-        preferences: {
-          agentComposerDefaultsByProvider: {},
-          agentGuiConversationRailCollapsedByProvider: {},
-          agentConversationDetailMode: "coding",
-          agentDockLayout: "legacySplit",
-          appCatalogChannel: "production",
-          browserUseConnectionMode: "isolated",
-          defaultAgentProvider: "codex",
-
-          dockIconStyle: "default",
-          dockPlacement: "bottom",
-          fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-          locale: "zh-CN",
-          minimizeAnimation: "scale",
-          sleepPreventionMode: "never",
-          showAppDeveloperSources: false,
-          enableCursorAgent: false,
-          themeSource: "dark",
-          updateChannel: "stable",
-          updatePolicy: "prompt"
-        }
-      },
+      payload: createUpdateRequest(),
       topic: "preferences.desktop.update.requested"
     }
   ]);
 
-  eventStreamClient.emitDesktopPreferencesUpdated({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+  eventStreamClient.emitDesktopPreferencesUpdated(createStateResponse());
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  assert.deepEqual(await completion, createPreferences());
 
-  assert.deepEqual(await completion, {
-    agentComposerDefaultsByProvider: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "legacySplit",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
+  client.dispose();
+});
 
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "zh-CN",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    enableCursorAgent: false,
-    themeSource: "dark",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
+test("desktop preferences client accepts legacy dock layout responses for unified writes", async () => {
+  const eventStreamClient = createFakeEventStreamClient();
+  const client = createDesktopPreferencesClient(
+    createFakeTuttidClient(),
+    eventStreamClient
+  );
+
+  const completion = client.updateDesktopPreferences(createUpdateRequest());
+
+  eventStreamClient.emitDesktopPreferencesUpdated(
+    createStateResponse({
+      agentDockLayout: "legacySplit"
+    })
+  );
+
+  assert.deepEqual(
+    await completion,
+    createPreferences({
+      agentDockLayout: "legacySplit"
+    })
+  );
 
   client.dispose();
 });
@@ -125,115 +64,44 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
     eventStreamClient
   );
 
-  const completion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
+  const completion = client.updateDesktopPreferences(
+    createUpdateRequest({
       agentGuiConversationRailCollapsedByProvider: {
         codex: true
-      },
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+      }
+    })
+  );
   let settled = false;
   void completion.then(() => {
     settled = true;
   });
 
-  eventStreamClient.emitDesktopPreferencesUpdated({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
+  eventStreamClient.emitDesktopPreferencesUpdated(
+    createStateResponse({
       agentGuiConversationRailCollapsedByProvider: {
         codex: false
-      },
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+      }
+    })
+  );
   await Promise.resolve();
   assert.equal(settled, false);
 
-  eventStreamClient.emitDesktopPreferencesUpdated({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
+  eventStreamClient.emitDesktopPreferencesUpdated(
+    createStateResponse({
       agentGuiConversationRailCollapsedByProvider: {
         codex: true
-      },
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+      }
+    })
+  );
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
-
-  assert.deepEqual(await completion, {
-    agentComposerDefaultsByProvider: {},
-    agentGuiConversationRailCollapsedByProvider: {
-      codex: true
-    },
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "legacySplit",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "zh-CN",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    enableCursorAgent: false,
-    themeSource: "dark",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
+  assert.deepEqual(
+    await completion,
+    createPreferences({
+      agentGuiConversationRailCollapsedByProvider: {
+        codex: true
+      }
+    })
+  );
 
   client.dispose();
 });
@@ -252,54 +120,9 @@ test("desktop preferences client fans out authoritative preference updates", asy
     }
   );
 
-  eventStreamClient.emitDesktopPreferencesUpdated({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+  eventStreamClient.emitDesktopPreferencesUpdated(createStateResponse());
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
-
-  assert.deepEqual(receivedUpdates, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  ]);
+  assert.deepEqual(receivedUpdates, [createPreferences()]);
 
   unsubscribe();
   client.dispose();
@@ -312,29 +135,7 @@ test("desktop preferences client rejects pending writes when disposed", async ()
     eventStreamClient
   );
 
-  const completion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const completion = client.updateDesktopPreferences(createUpdateRequest());
 
   client.dispose();
 
@@ -343,30 +144,7 @@ test("desktop preferences client rejects pending writes when disposed", async ()
 });
 
 test("desktop preferences client confirms writes from HTTP when the event does not arrive", async () => {
-  const tuttidClient = createFakeTuttidClient({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const tuttidClient = createFakeTuttidClient(createStateResponse());
   const eventStreamClient = createFakeEventStreamClient();
   const client = createDesktopPreferencesClient(
     tuttidClient,
@@ -376,81 +154,16 @@ test("desktop preferences client confirms writes from HTTP when the event does n
     }
   );
 
-  const completion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+  const completion = client.updateDesktopPreferences(createUpdateRequest());
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
-
-  assert.deepEqual(await completion, {
-    agentComposerDefaultsByProvider: {},
-    agentGuiConversationRailCollapsedByProvider: {},
-    agentConversationDetailMode: "coding",
-    agentDockLayout: "legacySplit",
-    appCatalogChannel: "production",
-    browserUseConnectionMode: "isolated",
-    defaultAgentProvider: "codex",
-
-    dockIconStyle: "default",
-    dockPlacement: "bottom",
-    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-    locale: "zh-CN",
-    minimizeAnimation: "scale",
-    sleepPreventionMode: "never",
-    showAppDeveloperSources: false,
-    enableCursorAgent: false,
-    themeSource: "dark",
-    updateChannel: "stable",
-    updatePolicy: "prompt"
-  });
+  assert.deepEqual(await completion, createPreferences());
   assert.equal(tuttidClient.getDesktopPreferencesCalls, 1);
 
   client.dispose();
 });
 
 test("desktop preferences client notifies subscribers when HTTP confirmation succeeds without an event", async () => {
-  const tuttidClient = createFakeTuttidClient({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const tuttidClient = createFakeTuttidClient(createStateResponse());
   const eventStreamClient = createFakeEventStreamClient();
   const client = createDesktopPreferencesClient(
     tuttidClient,
@@ -465,82 +178,20 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
     receivedUpdates.push(preferences);
   });
 
-  await client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+  await client.updateDesktopPreferences(createUpdateRequest());
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
-
-  assert.deepEqual(receivedUpdates, [
-    {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  ]);
+  assert.deepEqual(receivedUpdates, [createPreferences()]);
 
   client.dispose();
 });
 
 test("desktop preferences client rejects writes when the authoritative state cannot be confirmed", async () => {
-  const tuttidClient = createFakeTuttidClient({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+  const tuttidClient = createFakeTuttidClient(
+    createStateResponse({
       locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+      themeSource: "system"
+    })
+  );
   const eventStreamClient = createFakeEventStreamClient();
   const client = createDesktopPreferencesClient(
     tuttidClient,
@@ -550,29 +201,7 @@ test("desktop preferences client rejects writes when the authoritative state can
     }
   );
 
-  const completion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const completion = client.updateDesktopPreferences(createUpdateRequest());
 
   await assert.rejects(completion, /authoritative update did not arrive/);
   assert.equal(tuttidClient.getDesktopPreferencesCalls, 1);
@@ -591,79 +220,16 @@ test("desktop preferences client coalesces concurrent identical writes", async (
     }
   );
 
-  const firstCompletion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
-  const secondCompletion = client.updateDesktopPreferences({
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  const firstCompletion = client.updateDesktopPreferences(
+    createUpdateRequest()
+  );
+  const secondCompletion = client.updateDesktopPreferences(
+    createUpdateRequest()
+  );
 
   assert.equal(eventStreamClient.publishedIntents.length, 1);
 
-  eventStreamClient.emitDesktopPreferencesUpdated({
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
-
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "zh-CN",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "dark",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  });
+  eventStreamClient.emitDesktopPreferencesUpdated(createStateResponse());
 
   const [firstResult, secondResult] = await Promise.all([
     firstCompletion,
@@ -674,31 +240,57 @@ test("desktop preferences client coalesces concurrent identical writes", async (
   client.dispose();
 });
 
-function createFakeTuttidClient(
-  response: DesktopPreferencesStateResponse = {
-    initialized: true,
-    preferences: {
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider: {},
-      agentConversationDetailMode: "coding",
-      agentDockLayout: "legacySplit",
-      appCatalogChannel: "production",
-      browserUseConnectionMode: "isolated",
-      defaultAgentProvider: "codex",
+function createPreferences(
+  overrides: Partial<PutDesktopPreferencesRequest["preferences"]> = {}
+): PutDesktopPreferencesRequest["preferences"] {
+  return {
+    agentComposerDefaultsByProvider: {},
+    agentGuiConversationRailCollapsedByProvider: {},
+    agentConversationDetailMode: "coding",
+    agentDockLayout: "unified",
+    appCatalogChannel: "production",
+    browserUseConnectionMode: "isolated",
+    defaultAgentProvider: "codex",
+    dockIconStyle: "default",
+    dockPlacement: "bottom",
+    featureFlags: {},
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
+    locale: "zh-CN",
+    minimizeAnimation: "scale",
+    sleepPreventionMode: "never",
+    showAppDeveloperSources: false,
+    enableCursorAgent: false,
+    enableOpenCodeAgent: false,
+    themeSource: "dark",
+    updateChannel: "stable",
+    updatePolicy: "prompt",
+    workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+    ...overrides
+  };
+}
 
-      dockIconStyle: "default",
-      dockPlacement: "bottom",
-      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
-      locale: "en",
-      minimizeAnimation: "scale",
-      sleepPreventionMode: "never",
-      showAppDeveloperSources: false,
-      enableCursorAgent: false,
-      themeSource: "system",
-      updateChannel: "stable",
-      updatePolicy: "prompt"
-    }
-  }
+function createStateResponse(
+  overrides: Partial<PutDesktopPreferencesRequest["preferences"]> = {}
+): DesktopPreferencesStateResponse {
+  return {
+    initialized: true,
+    preferences: createPreferences(overrides)
+  };
+}
+
+function createUpdateRequest(
+  overrides: Partial<PutDesktopPreferencesRequest["preferences"]> = {}
+): PutDesktopPreferencesRequest {
+  return {
+    preferences: createPreferences(overrides)
+  };
+}
+
+function createFakeTuttidClient(
+  response: DesktopPreferencesStateResponse = createStateResponse({
+    locale: "en",
+    themeSource: "system"
+  })
 ): Pick<TuttidClient, "getDesktopPreferences"> & {
   getDesktopPreferencesCalls: number;
 } {

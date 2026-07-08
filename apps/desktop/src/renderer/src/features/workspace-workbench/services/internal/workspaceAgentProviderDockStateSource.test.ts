@@ -422,7 +422,7 @@ test("agent provider dock state source puts OpenClaw last when setup is required
   );
 
   assert.equal(claudeState?.order, 100);
-  assert.equal(openClawState?.order, 206);
+  assert.equal(openClawState?.order, 207);
   assert.equal(openClawState?.visibility, "never");
   assert.ok((openClawState?.order ?? 0) > (claudeState?.order ?? 0));
 });
@@ -446,7 +446,7 @@ test("agent provider dock state source keeps ready OpenClaw with installed provi
     workspaceAgentGuiDockEntryId("openclaw")
   );
 
-  assert.equal(openClawState?.order, 6);
+  assert.equal(openClawState?.order, 7);
   assert.equal(openClawState?.visibility, "always");
 });
 
@@ -618,6 +618,7 @@ function createAgentProviderStatusService(input: {
     }),
     getStatus: (provider) =>
       statuses.find((status) => status.provider === provider) ?? null,
+    hydrate: () => {},
     isActionPending: () => false,
     ensureLoaded: input.onEnsureLoaded ?? (async () => null),
     refresh: async () => {},

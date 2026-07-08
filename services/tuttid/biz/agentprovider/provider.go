@@ -10,6 +10,7 @@ const (
 	Hermes     = "hermes"
 	Nexight    = "nexight"
 	OpenClaw   = "openclaw"
+	OpenCode   = "opencode"
 	TuttiAgent = "tutti-agent"
 )
 
@@ -22,6 +23,7 @@ var allProviders = []string{
 	Gemini,
 	Hermes,
 	OpenClaw,
+	OpenCode,
 }
 
 func All() []string {
@@ -46,6 +48,8 @@ func Normalize(provider string) string {
 		return Nexight
 	case "open-claw", OpenClaw:
 		return OpenClaw
+	case "open-code", "opencode-ai", OpenCode:
+		return OpenCode
 	default:
 		return ""
 	}
@@ -53,13 +57,4 @@ func Normalize(provider string) string {
 
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
-}
-
-func SupportsComposerSettings(provider string) bool {
-	switch Normalize(provider) {
-	case ClaudeCode, Codex, Gemini, TuttiAgent:
-		return true
-	default:
-		return false
-	}
 }

@@ -36,7 +36,10 @@ export function isBuiltinGenerateRequired(changedFiles) {
   });
 }
 
-export function resolveGoValidationTargets(changedFiles) {
+export function resolveGoValidationTargets(
+  changedFiles,
+  { pathExists = existsSync } = {}
+) {
   const goFiles = changedFiles.filter(isGoValidationRelevant);
   if (goFiles.length === 0) {
     return null;
@@ -52,6 +55,9 @@ export function resolveGoValidationTargets(changedFiles) {
     }
 
     if (/(?:^|\/)go\.(?:mod|sum)$/u.test(file)) {
+      if (!pathExists(moduleRoot)) {
+        continue;
+      }
       addGoTarget(lintByModule, moduleRoot, "./...");
       addGoTarget(testByModule, moduleRoot, "./...");
       continue;
@@ -62,6 +68,9 @@ export function resolveGoValidationTargets(changedFiles) {
     }
 
     const packagePattern = goPackagePattern(moduleRoot, file);
+    if (!pathExists(join(moduleRoot, packagePattern.slice(2)))) {
+      continue;
+    }
     addGoTarget(lintByModule, moduleRoot, packagePattern);
     addGoTarget(testByModule, moduleRoot, `${packagePattern}/...`);
   }
@@ -137,7 +146,7 @@ export function buildPackageTestCommand({
   if (changedTests.length > 0) {
     if (vitestInvocation) {
       return [
-        pnpmCommand,
+        ...pnpmCommandPrefix(pnpmCommand),
         "--filter",
         packageInfo.name,
         "exec",
@@ -150,11 +159,16 @@ export function buildPackageTestCommand({
     }
 
     if (isVitestScript(testScript)) {
-      return [pnpmCommand, "--filter", packageInfo.name, "test"];
+      return [
+        ...pnpmCommandPrefix(pnpmCommand),
+        "--filter",
+        packageInfo.name,
+        "test"
+      ];
     }
 
     return [
-      pnpmCommand,
+      ...pnpmCommandPrefix(pnpmCommand),
       "--filter",
       packageInfo.name,
       "test",
@@ -168,7 +182,7 @@ export function buildPackageTestCommand({
   if (changedSource.length > 0) {
     if (vitestInvocation) {
       return [
-        pnpmCommand,
+        ...pnpmCommandPrefix(pnpmCommand),
         "--filter",
         packageInfo.name,
         "exec",
@@ -179,14 +193,28 @@ export function buildPackageTestCommand({
       ];
     }
 
-    return [pnpmCommand, "--filter", packageInfo.name, "test"];
+    return [
+      ...pnpmCommandPrefix(pnpmCommand),
+      "--filter",
+      packageInfo.name,
+      "test"
+    ];
   }
 
   if (packageFiles.some(isTestFile)) {
     return null;
   }
 
-  return [pnpmCommand, "--filter", packageInfo.name, "test"];
+  return [
+    ...pnpmCommandPrefix(pnpmCommand),
+    "--filter",
+    packageInfo.name,
+    "test"
+  ];
+}
+
+function pnpmCommandPrefix(pnpmCommand) {
+  return Array.isArray(pnpmCommand) ? pnpmCommand : [pnpmCommand];
 }
 
 function isVitestScript(testScript) {

@@ -65,6 +65,75 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateTitleReturnsPersistedTitleForLiveRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "codex",
+		Cwd:             "/workspace",
+		Status:          "ready",
+		Title:           "Old runtime title",
+		CreatedAtUnixMS: 1,
+		UpdatedAtUnixMS: 10,
+	}
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "codex",
+				Cwd:             "/workspace",
+				Status:          "ready",
+				Title:           "Old persisted title",
+				CreatedAtUnixMS: 1,
+				UpdatedAtUnixMS: 10,
+			},
+		},
+	}
+
+	session, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", " Renamed session ")
+	if err != nil {
+		t.Fatalf("UpdateTitle returned error: %v", err)
+	}
+	if value(session.Title) != "Renamed session" {
+		t.Fatalf("UpdateTitle title = %q, want persisted renamed title", value(session.Title))
+	}
+	if session.UpdatedAt == nil || session.UpdatedAt.UnixMilli() <= 10 {
+		t.Fatalf("UpdateTitle updatedAt = %v, want persisted update timestamp", session.UpdatedAt)
+	}
+	runtimeSession, ok := runtime.Session("ws-1", "session-1")
+	if !ok {
+		t.Fatal("runtime session missing after UpdateTitle")
+	}
+	if runtimeSession.Title != "Renamed session" {
+		t.Fatalf("runtime session title = %q, want renamed title", runtimeSession.Title)
+	}
+}
+
+func TestServiceUpdateTitleRejectsBlankTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{}
+
+	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", "   ")
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateTitle error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestServiceUpdateTitleRejectsOverlongTitle(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{}
+
+	_, err := service.UpdateTitle(context.Background(), "ws-1", "session-1", strings.Repeat("好", maxSessionTitleRunes+1))
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("UpdateTitle error = %v, want ErrInvalidArgument", err)
+	}
+}
+
 func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
 	runtime := newFakeRuntime()
 	// Service.Create validates the Claude composer model via a hidden live
@@ -2579,7 +2648,7 @@ func TestServiceGetsComposerOptionsFromCodexModelCatalog(t *testing.T) {
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("model options = %#v", configOptions[0]["options"])
 	}
@@ -2641,6 +2710,71 @@ func TestServiceGetsComposerOptionsFromTuttiAgentModelCatalog(t *testing.T) {
 	}
 	if options.RuntimeContext["modelCatalogSource"] != "tutti-agent-cli" {
 		t.Fatalf("modelCatalogSource = %#v, want tutti-agent-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	if len(runtime.sessions) != 0 {
+		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
+	}
+}
+
+func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	imageSupported := true
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{
+				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true, SupportsImageInput: &imageSupported},
+				{ID: "openai/gpt-5.3-codex", DisplayName: "GPT-5.3 Codex"},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "opencode",
+		Settings: ComposerSettings{
+			ReasoningEffort: "none",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("effectiveSettings.model = %q, want openai/gpt-5.3-codex-spark", options.EffectiveSettings.Model)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "high" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) < 2 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "openai/gpt-5.3-codex-spark" {
+		t.Fatalf("model option = %#v", configOptions[0])
+	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(modelOptions) == 0 || modelOptions[0]["supportsImageInput"] != true {
+		t.Fatalf("model options = %#v, want supportsImageInput true", configOptions[0]["options"])
+	}
+	if configOptions[1]["id"] != "effort" || configOptions[1]["currentValue"] != "high" {
+		t.Fatalf("reasoning option = %#v", configOptions[1])
+	}
+	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if !ok {
+		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+	}
+	for _, option := range reasoningOptions {
+		if option["value"] == "none" || option["value"] == "minimal" {
+			t.Fatalf("reasoning options = %#v, want only opencode-supported efforts", reasoningOptions)
+		}
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
+		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])
+	}
+	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
+	if !ok || !slices.Contains(capabilities, "imageInput") {
+		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
 	}
 	if len(runtime.sessions) != 0 {
 		t.Fatalf("runtime sessions = %d, want no started sessions", len(runtime.sessions))
@@ -2804,7 +2938,7 @@ func TestServiceGetsComposerOptionsUsesClaudeStaticModelsWithoutModelCatalog(t *
 	if configOptions[0]["id"] != "model" {
 		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
 	}
-	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	modelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok || len(modelOptions) != 4 {
 		t.Fatalf("model options = %#v, want Claude static aliases", configOptions[0]["options"])
 	}
@@ -2994,7 +3128,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 	if configOptions[0]["currentValue"] != "default" {
 		t.Fatalf("model runtime option = %#v, want default currentValue", configOptions[0])
 	}
-	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	runtimeModelOptions, ok := configOptions[0]["options"].([]map[string]any)
 	if !ok {
 		t.Fatalf("runtime model options = %#v", configOptions[0]["options"])
 	}
@@ -3952,6 +4086,100 @@ func TestServiceFallsBackToPersistedSessions(t *testing.T) {
 	}
 	if !got.Resumable {
 		t.Fatal("persisted session resumable = false, want true")
+	}
+}
+
+func TestServiceGetUsesNewerPersistedStateOverStaleRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                "session-1",
+		WorkspaceID:       "ws-1",
+		Provider:          "claude-code",
+		ProviderSessionID: "provider-session-1",
+		Status:            "working",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "running",
+		},
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+		UpdatedAtUnixMS:    1000,
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "claude-code",
+				ProviderSessionID: "provider-session-1",
+				Status:            "completed",
+				CurrentPhase:      "idle",
+				LastEventUnixMS:   2000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "completed" {
+		t.Fatalf("status = %q, want completed", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID != nil || got.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("turn lifecycle = %#v, want settled without active turn", got.TurnLifecycle)
+	}
+	if got.SubmitAvailability == nil || got.SubmitAvailability.State != "available" {
+		t.Fatalf("submit availability = %#v, want available", got.SubmitAvailability)
+	}
+
+	list, err := service.List(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 || list[0].Status != "completed" {
+		t.Fatalf("list = %#v, want completed persisted state", list)
+	}
+}
+
+func TestServiceGetKeepsRuntimeStateWhenPersistedStateIsNotNewer(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:                 "session-1",
+		WorkspaceID:        "ws-1",
+		Provider:           "claude-code",
+		Status:             "working",
+		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &activeTurnID, Phase: "running"},
+		UpdatedAtUnixMS:    2000,
+		SubmitAvailability: &SubmitAvailability{State: "blocked", Reason: "active_turn"},
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "claude-code",
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 1000,
+				UpdatedAtUnixMS: 1000,
+			},
+		},
+	}
+
+	got, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if got.Status != "running" {
+		t.Fatalf("status = %q, want runtime running", got.Status)
+	}
+	if got.TurnLifecycle == nil || got.TurnLifecycle.ActiveTurnID == nil || *got.TurnLifecycle.ActiveTurnID != activeTurnID {
+		t.Fatalf("turn lifecycle = %#v, want live runtime turn", got.TurnLifecycle)
 	}
 }
 
@@ -5629,6 +5857,18 @@ func (f *fakeRuntime) SetVisible(_ context.Context, input RuntimeSetVisibleInput
 	return session, nil
 }
 
+func (f *fakeRuntime) SetTitle(_ context.Context, input RuntimeSetTitleInput) (RuntimeSession, error) {
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return RuntimeSession{}, ErrSessionNotFound
+	}
+	session.Title = strings.TrimSpace(input.Title)
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, nil
+}
+
 func (f *fakeRuntime) Sessions(workspaceID string) []RuntimeSession {
 	result := make([]RuntimeSession, 0)
 	for _, session := range f.sessions {
@@ -5652,6 +5892,18 @@ func (f fakeSessionReader) ListSessions(workspaceID string) ([]PersistedSession,
 		}
 	}
 	return result, len(result) > 0
+}
+
+func (f *fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID string, agentSessionID string, title string) (PersistedSession, bool, error) {
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	session.Title = strings.TrimSpace(title)
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, true, nil
 }
 
 func (f fakeSessionReader) DeleteSession(_ context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -5792,6 +6044,10 @@ func (r *activityProjectionRepoStub) ReportSessionState(_ context.Context, input
 }
 
 func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, string, bool) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
+func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }
 

@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyDesktopWindowIntent,
+  createAgentWindowIntent,
   createWorkspaceWindowIntent,
-  encodeDesktopWindowIntent
+  encodeDesktopWindowIntent,
+  resolveDesktopWindowIntent
 } from "./windowIntent.ts";
 
 test("encodeDesktopWindowIntent includes locale and theme bootstrap parameters", () => {
@@ -41,6 +43,96 @@ test("applyDesktopWindowIntent preserves theme bootstrap parameters in developme
     url,
     "http://localhost:5173/?lang=en&themeSource=system&theme=light&view=workspace&workspaceId=workspace-1"
   );
+});
+
+test("encodeDesktopWindowIntent includes agent window route parameters", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      agentSessionID: " session-1 ",
+      agentTargetID: " target-1 ",
+      provider: " codex ",
+      workspaceID: "workspace-1"
+    })
+  );
+
+  const params = new URLSearchParams(search);
+  assert.equal(params.get("view"), "agent");
+  assert.equal(params.get("workspaceId"), "workspace-1");
+  assert.equal(params.get("agentSessionId"), "session-1");
+  assert.equal(params.get("agentTargetId"), "target-1");
+  assert.equal(params.get("provider"), "codex");
+  assert.deepEqual(resolveDesktopWindowIntent(search), {
+    agentSessionID: "session-1",
+    agentTargetID: "target-1",
+    kind: "agent",
+    provider: "codex",
+    workspaceID: "workspace-1"
+  });
+});
+
+test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      agentSessionID: "session-1",
+      provider: "codex",
+      providerStatusSnapshot: {
+        capturedAt: "2026-07-07T00:00:00.000Z",
+        defaultProvider: "codex",
+        error: null,
+        isLoading: false,
+        pendingActions: [],
+        statuses: []
+      },
+      providerTargets: [
+        {
+          agentTargetId: "target-1",
+          disabled: false,
+          iconUrl: "tutti-asset://agent/codex.png",
+          label: "Codex",
+          provider: "codex",
+          ref: {
+            kind: "local",
+            provider: "codex"
+          },
+          targetId: "target-1"
+        }
+      ],
+      workspaceID: "workspace-1"
+    })
+  );
+
+  const params = new URLSearchParams(search);
+  assert.ok(params.get("agentProviderTargets"));
+  assert.ok(params.get("agentProviderStatusSnapshot"));
+  assert.deepEqual(resolveDesktopWindowIntent(search), {
+    agentSessionID: "session-1",
+    agentTargetID: null,
+    kind: "agent",
+    provider: "codex",
+    providerStatusSnapshot: {
+      capturedAt: "2026-07-07T00:00:00.000Z",
+      defaultProvider: "codex",
+      error: null,
+      isLoading: false,
+      pendingActions: [],
+      statuses: []
+    },
+    providerTargets: [
+      {
+        agentTargetId: "target-1",
+        disabled: false,
+        iconUrl: "tutti-asset://agent/codex.png",
+        label: "Codex",
+        provider: "codex",
+        ref: {
+          kind: "local",
+          provider: "codex"
+        },
+        targetId: "target-1"
+      }
+    ],
+    workspaceID: "workspace-1"
+  });
 });
 
 test("readInitialDockPlacementFromLocation resolves dock placement from search params", async () => {

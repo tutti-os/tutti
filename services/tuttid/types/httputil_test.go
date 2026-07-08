@@ -8,7 +8,7 @@ import (
 
 func TestWithBearerTokenAuthRejectsEmptyExpectedToken(t *testing.T) {
 	called := false
-	handler := WithBearerTokenAuth("", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithBearerTokenAuthFunc("", nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -29,7 +29,7 @@ func TestWithBearerTokenAuthRejectsEmptyExpectedToken(t *testing.T) {
 
 func TestWithBearerTokenAuthAllowsMatchingToken(t *testing.T) {
 	called := false
-	handler := WithBearerTokenAuth("desktop-session-token", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithBearerTokenAuthFunc("desktop-session-token", nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -50,7 +50,7 @@ func TestWithBearerTokenAuthAllowsMatchingToken(t *testing.T) {
 
 func TestWithBearerTokenAuthAllowsWebSocketQueryToken(t *testing.T) {
 	called := false
-	handler := WithBearerTokenAuth("desktop-session-token", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithBearerTokenAuthFunc("desktop-session-token", nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusSwitchingProtocols)
 	}))
@@ -72,7 +72,7 @@ func TestWithBearerTokenAuthAllowsWebSocketQueryToken(t *testing.T) {
 
 func TestWithBearerTokenAuthRejectsQueryTokenWithoutWebSocketUpgrade(t *testing.T) {
 	called := false
-	handler := WithBearerTokenAuth("desktop-session-token", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := WithBearerTokenAuthFunc("desktop-session-token", nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	}))

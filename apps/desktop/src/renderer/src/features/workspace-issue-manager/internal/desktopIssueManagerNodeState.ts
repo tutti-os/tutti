@@ -23,7 +23,6 @@ type DesktopIssueManagerLiveNodeState = DesktopIssueManagerRestorableNodeState &
   Pick<IssueManagerNodeState, "selectedTaskId">;
 
 export function createDesktopIssueManagerNodeStateSource(input: {
-  defaultAgentProvider?: string | null;
   workspaceId: string;
 }): {
   externalStateSource: WorkbenchHostExternalStateSource<
@@ -56,9 +55,7 @@ export function createDesktopIssueManagerNodeStateSource(input: {
           return null;
         }
         const state = nodeStateByInstanceId.get(request.instanceId);
-        return state
-          ? { ...state }
-          : defaultIssueManagerNodeState(input.defaultAgentProvider);
+        return state ? { ...state } : null;
       },
       getSnapshotNodeState(request) {
         if (request.typeId !== "issue-manager") {
@@ -92,13 +89,6 @@ export function createDesktopIssueManagerNodeStateSource(input: {
       notify();
     }
   };
-}
-
-function defaultIssueManagerNodeState(
-  defaultAgentProvider: string | null | undefined
-): Partial<IssueManagerNodeState> | null {
-  const provider = defaultAgentProvider?.trim() ?? "";
-  return provider ? { selectedAgentTargetId: `local:${provider}` } : null;
 }
 
 function liveIssueManagerNodeState(

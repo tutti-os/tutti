@@ -16,6 +16,7 @@ const (
 	IDLocalClaudeCode = "local:claude-code"
 	IDLocalTuttiAgent = "local:tutti-agent"
 	IDLocalCursor     = "local:cursor"
+	IDLocalOpenCode   = "local:opencode"
 
 	LaunchRefTypeLocalCLI = "local_cli"
 
@@ -90,6 +91,18 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Cursor),
 			Name:            "Cursor",
 			IconKey:         "cursor",
+			Enabled:         true,
+			Source:          SourceSystem,
+			SortOrder:       40,
+			CreatedAtUnixMS: nowUnixMS,
+			UpdatedAtUnixMS: nowUnixMS,
+		},
+		{
+			ID:              IDLocalOpenCode,
+			Provider:        agentproviderbiz.OpenCode,
+			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.OpenCode),
+			Name:            "OpenCode",
+			IconKey:         "opencode",
 			Enabled:         true,
 			Source:          SourceSystem,
 			SortOrder:       40,
@@ -224,6 +237,8 @@ func normalizeFirstIterationProvider(value string) string {
 		return agentproviderbiz.TuttiAgent
 	case agentproviderbiz.Cursor:
 		return agentproviderbiz.Cursor
+	case agentproviderbiz.OpenCode:
+		return agentproviderbiz.OpenCode
 	default:
 		return ""
 	}

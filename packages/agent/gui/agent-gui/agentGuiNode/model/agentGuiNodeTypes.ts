@@ -61,6 +61,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 }
 
 export interface AgentGUIProviderSkillOption {
@@ -84,6 +85,7 @@ export interface AgentComposerDraftImage {
   id: string;
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  attachmentId?: string;
   data?: string;
   path?: string;
   previewUrl: string;
@@ -103,10 +105,18 @@ export interface AgentComposerDraftFile {
   uploadError?: string;
 }
 
+export interface AgentComposerDraftLargeText {
+  id: string;
+  name: string;
+  text: string;
+  sizeBytes?: number;
+}
+
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];
   files?: AgentComposerDraftFile[];
+  largeTexts?: AgentComposerDraftLargeText[];
 }
 
 export interface AgentGUIComposerSettingsVM {
@@ -146,6 +156,11 @@ export interface AgentGUIComposerSettingsVM {
   permissionConfig?: AgentSessionPermissionConfig | null;
   selectedProjectPath?: string | null;
   projectLocked?: boolean;
+  // Mirrors the injected runtime's `projectPathIsRemote`. When true the session
+  // cwd is not on the local filesystem (e.g. a shared/cloud sandbox), so the
+  // local "working directory missing" existence check is skipped. Project
+  // selection/listing stays available. Absent/false => local (legacy behaviour).
+  projectPathIsRemote?: boolean;
   // Collapse the model list to the latest version per model family (providers
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.
@@ -171,6 +186,7 @@ export interface AgentGUINodeViewModel {
   data: AgentGUINodeData;
   selectedProviderTarget: AgentGUIProviderTarget;
   providerTargets: readonly AgentGUIProviderTarget[];
+  handoffProviderTargets: readonly AgentGUIProviderTarget[];
   providerTargetsLoading: boolean;
   /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
   providerRailMode: AgentGUIProviderRailMode;

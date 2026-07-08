@@ -9,11 +9,13 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFeatureFlags,
   DesktopFileDefaultOpenersByExtension,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
+  DesktopWorkbenchShortcuts,
   DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeState } from "@shared/theme";
@@ -30,15 +32,18 @@ export function createDesktopPreferencesStore(input: {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  featureFlags: DesktopFeatureFlags;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
   enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
   workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }): DesktopPreferencesStoreState {
   return proxy({
@@ -49,10 +54,12 @@ export function createDesktopPreferencesStore(input: {
     changingDockIconStyle: null,
     changingDockPlacement: null,
     changingLocale: null,
+    changingFeatureFlags: null,
     changingMinimizeAnimation: null,
     changingSleepPreventionMode: null,
     changingShowAppDeveloperSources: null,
     changingEnableCursorAgent: null,
+    changingEnableOpenCodeAgent: null,
     changingThemeSource: null,
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
@@ -69,15 +76,18 @@ export function createDesktopPreferencesStore(input: {
     defaultAgentProvider: input.defaultAgentProvider,
     dockIconStyle: input.dockIconStyle,
     dockPlacement: input.dockPlacement,
+    featureFlags: input.featureFlags,
     fileDefaultOpenersByExtension: input.fileDefaultOpenersByExtension,
     locale: input.locale,
     minimizeAnimation: input.minimizeAnimation,
     sleepPreventionMode: input.sleepPreventionMode,
     showAppDeveloperSources: input.showAppDeveloperSources,
     enableCursorAgent: input.enableCursorAgent,
+    enableOpenCodeAgent: input.enableOpenCodeAgent,
     theme: input.theme,
     updateChannel: input.updateChannel,
     updatePolicy: input.updatePolicy,
+    workbenchShortcuts: input.workbenchShortcuts,
     workbenchWindowSnapping: input.workbenchWindowSnapping
   });
 }

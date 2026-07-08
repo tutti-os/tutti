@@ -21,6 +21,7 @@ type Repository interface {
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
 	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
+	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 
 type ClearSessionsResult struct {

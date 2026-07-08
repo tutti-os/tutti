@@ -11,10 +11,18 @@ import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceCont
 export function WorkspaceWindow() {
   const {
     container,
+    agentProviderStatusService,
+    desktopApi,
     environmentMode,
     hostWindowApi,
+    reporterService,
+    richTextAtService,
     startupWorkspaceID,
-    workspaceAppExternalApi
+    tuttidClient,
+    workspaceAgentActivityService,
+    workspaceAppCenterService,
+    workspaceAppExternalApi,
+    workspaceUserProjectService
   } = useMemo(() => createWorkspaceWindowContainer(), []);
   const containerDispose = useMemo(
     () => createDeferredWorkspaceContainerDispose(() => container.dispose()),
@@ -43,6 +51,17 @@ export function WorkspaceWindow() {
   return (
     <InstantiationContext instantiationService={container}>
       <WorkspaceWorkbench
+        agentWindowInput={{
+          agentProviderStatusService,
+          desktopApi,
+          hostWindowApi,
+          reporterService,
+          richTextAtService,
+          tuttidClient,
+          workspaceAgentActivityService,
+          workspaceAppCenterService,
+          workspaceUserProjectService
+        }}
         enableWindowCloseGuard={environmentMode === "desktop"}
         headerSlot={<AppUpdateStatus />}
         routeView={routeView}

@@ -14,11 +14,14 @@
     "dockIconStyle",
     "dockPlacement",
     "fileDefaultOpenersByExtension",
+    "featureFlags",
+    "workbenchShortcuts",
     "locale",
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
     "enableCursorAgent",
+    "enableOpenCodeAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -35,7 +38,8 @@
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
         "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
-        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
+        "openclaw": { "$ref": "#/$defs/agentComposerDefaults" },
+        "opencode": { "$ref": "#/$defs/agentComposerDefaults" }
       }
     },
     "agentComposerDefaultsByAgentTarget": {
@@ -53,7 +57,8 @@
         "nexight": { "type": "boolean" },
         "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
-        "openclaw": { "type": "boolean" }
+        "openclaw": { "type": "boolean" },
+        "opencode": { "type": "boolean" }
       }
     },
     "agentConversationDetailMode": {
@@ -91,6 +96,26 @@
         "enum": ["appBrowser", "defaultBrowser", "fileViewer", "system"]
       }
     },
+    "featureFlags": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "maxProperties": 64
+    },
+    "workbenchShortcuts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["newAgentConversation", "newSameTypeWindow"],
+      "properties": {
+        "newAgentConversation": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "newSameTypeWindow": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        }
+      }
+    },
     "locale": {
       "type": "string",
       "enum": ["en", "zh-CN"]
@@ -107,6 +132,9 @@
       "type": "boolean"
     },
     "enableCursorAgent": {
+      "type": "boolean"
+    },
+    "enableOpenCodeAgent": {
       "type": "boolean"
     },
     "themeSource": {

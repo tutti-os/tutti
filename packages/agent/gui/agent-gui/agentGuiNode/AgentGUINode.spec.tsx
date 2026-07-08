@@ -23,6 +23,7 @@ import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
 import { getAgentEnvPanelStore } from "../../shared/agentEnv/agentEnvPanelStore";
+import { getWorkspaceSettingsPanelStore } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
@@ -58,6 +59,7 @@ const mockContinueInNewConversation = vi.fn();
 const mockRetryOpenclawGateway = vi.fn();
 const mockCancelDeleteConversation = vi.fn();
 const mockConfirmDeleteConversation = vi.fn();
+const mockRenameConversation = vi.fn<() => Promise<void>>();
 const mockSearchWorkspaceFileManagerEntries = vi.fn();
 const mockListWorkspaceIssues = vi.fn();
 const mockListWorkspaceApps = vi.fn();
@@ -715,7 +717,8 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       continueInNewConversation: mockContinueInNewConversation,
       retryOpenclawGateway: mockRetryOpenclawGateway,
       cancelDeleteConversation: mockCancelDeleteConversation,
-      confirmDeleteConversation: mockConfirmDeleteConversation
+      confirmDeleteConversation: mockConfirmDeleteConversation,
+      renameConversation: mockRenameConversation
     }
   })
 }));
@@ -731,6 +734,9 @@ describe("AgentGUINode", () => {
     agentEnvPanelStore.open = false;
     agentEnvPanelStore.provider = null;
     agentEnvPanelStore.focus = null;
+    const workspaceSettingsPanelStore = getWorkspaceSettingsPanelStore();
+    workspaceSettingsPanelStore.section = null;
+    workspaceSettingsPanelStore.requestSequence = 0;
     mockCreateConversation.mockClear();
     mockSelectConversation.mockClear();
     mockSubmitPrompt.mockClear();
@@ -751,6 +757,7 @@ describe("AgentGUINode", () => {
     mockRetryOpenclawGateway.mockClear();
     mockCancelDeleteConversation.mockClear();
     mockConfirmDeleteConversation.mockClear();
+    mockRenameConversation.mockClear();
     mockSearchWorkspaceFileManagerEntries.mockReset();
     mockListWorkspaceIssues.mockReset();
     mockListWorkspaceApps.mockReset();
@@ -954,7 +961,7 @@ describe("AgentGUINode", () => {
     expect(screen.getByText("暂未接入用量")).toBeInTheDocument();
   });
 
-  it("hides the rail config entry for the unified All provider filter", () => {
+  it("opens Agent settings directly for the unified All provider filter", () => {
     mockViewModel = createViewModel({
       conversationFilter: { kind: "all" },
       providerTargets: [
@@ -965,7 +972,13 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
-    expect(screen.queryByTitle("agentHost.agentGui.agentConfig")).toBeNull();
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentSettingsMenu"));
+
+    expect(screen.queryByTestId("agent-gui-config-menu")).toBeNull();
+    expect(getWorkspaceSettingsPanelStore()).toMatchObject({
+      section: "agent",
+      requestSequence: 1
+    });
   });
 
   it("renders rail config usage from the unified provider filter target", async () => {
@@ -1778,7 +1791,7 @@ describe("AgentGUINode", () => {
     expect(getComposerEditor()).toBeTruthy();
   });
 
-  it("shows OpenClaw gateway startup and disables new sessions while starting", () => {
+  it("hides OpenClaw gateway startup while disabling new sessions until ready", () => {
     mockViewModel = createViewModel({
       data: {
         provider: "openclaw",
@@ -1791,8 +1804,8 @@ describe("AgentGUINode", () => {
     renderAgentGUINode({ workbenchWindowZIndex: 41 });
 
     expect(
-      screen.getByText("agentHost.agentGui.openclawGatewayStarting")
-    ).toBeTruthy();
+      screen.queryByText("agentHost.agentGui.openclawGatewayStarting")
+    ).toBeNull();
     const newConversationButton = getChromeNewConversationButton();
     fireEvent.click(newConversationButton);
 
@@ -2005,11 +2018,14 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
+    const emptyHeading = screen.getByRole("heading", {
+      name: "What can help you with?"
+    });
     expect(
-      screen.getByRole("heading", {
-        name: "What can Claude Code help you with?"
+      within(emptyHeading).getByRole("combobox", {
+        name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toBeTruthy();
+    ).toHaveTextContent("Claude Code");
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
@@ -2416,6 +2432,137 @@ describe("AgentGUINode", () => {
 
     expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1");
     expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("opens rename dialog from rail double-click and saves through controller action", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "Renamed session" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(mockRenameConversation).toHaveBeenCalledWith(
+        "session-1",
+        "Renamed session"
+      );
+    });
+  });
+
+  it("does not submit a blank rename title", async () => {
+    mockRenameConversation.mockResolvedValue(undefined);
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    const input = screen.getByRole("textbox", {
+      name: "agentHost.agentGui.renameSessionTitle"
+    });
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.renameSessionSave"
+      })
+    ).toBeDisabled();
+    expect(mockRenameConversation).not.toHaveBeenCalled();
+  });
+
+  it("closes the rename dialog from cancel", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Session 1/ }));
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.pointerUp(screen.getByRole("button", { name: "common.cancel" }), {
+      button: 0
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", {
+          name: "agentHost.agentGui.renameSessionTitle"
+        })
+      ).toBeNull();
+    });
+  });
+
+  it("opens rename dialog from the rail context menu", async () => {
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode();
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const renameMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.renameSession"
+    });
+    fireEvent.pointerUp(renameMenuItem, { button: 0 });
+
+    expect(
+      await screen.findByRole("textbox", {
+        name: "agentHost.agentGui.renameSessionTitle"
+      })
+    ).toHaveValue("Session 1");
   });
 
   it("renders inline delete confirmation and dispatches confirm without a dialog", () => {
@@ -7150,6 +7297,13 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     async setSessionPinned(input) {
       return createSession(input.workspaceId, input.agentSessionId);
     },
+    async renameSession(input) {
+      return {
+        ...createSession(input.workspaceId, input.agentSessionId),
+        title: input.title,
+        updatedAtUnixMs: 2
+      };
+    },
     async trackSettingsProjectChange() {},
     async trackDraftComposerSettingsChange() {},
     reportDiagnostic() {},
@@ -7259,6 +7413,7 @@ function createViewModel(
     },
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],

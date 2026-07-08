@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@tiptap/pm/view";
 import {
   AgentRichTextEditor,
+  isAgentRichTextLargeTextPaste,
   type AgentRichTextEditorHandle
 } from "./AgentRichTextEditor";
 import { AgentGuiI18nProvider } from "../../../i18n/index";
@@ -340,6 +341,62 @@ describe("AgentRichTextEditor", () => {
         "[@package-lock.json](/workspace/package-lock.json) 继续输入"
       )
     );
+  });
+
+  it("detects long pasted text without inserting it inline", async () => {
+    const onChange = vi.fn();
+    const onPasteLargeText = vi.fn();
+    const pastedText = Array.from({ length: 14 }, (_, index) => {
+      return `line ${index + 1}`;
+    }).join("\n");
+    render(
+      <AgentRichTextEditor
+        value="before "
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onPasteLargeText={onPasteLargeText}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard(pastedText)
+    });
+
+    expect(onPasteLargeText).toHaveBeenCalledWith(pastedText);
+    expect(onChange).not.toHaveBeenCalledWith(
+      expect.stringContaining("line 1")
+    );
+  });
+
+  it("keeps short pasted text inline when large text handling is available", async () => {
+    const onChange = vi.fn();
+    const onPasteLargeText = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value="before "
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onPasteLargeText={onPasteLargeText}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard("short paste")
+    });
+
+    expect(onPasteLargeText).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith("before short paste")
+    );
+  });
+
+  it("treats very long single-line paste as large text", () => {
+    expect(isAgentRichTextLargeTextPaste("x".repeat(2_000))).toBe(true);
+    expect(isAgentRichTextLargeTextPaste("x".repeat(1_999))).toBe(false);
   });
 
   it("copies selected reference mentions as prompt markdown", async () => {

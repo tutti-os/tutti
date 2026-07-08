@@ -162,6 +162,26 @@ Codex app-server adapter must pass the active preset instructions in
 mode matches Codex App behavior. Plan Mode and explicit planning-only flows
 remain higher priority than conversation detail mode prompt guidance.
 
+## Desktop Lab Preferences
+
+`lab` is a top-level desktop preference group and must stay on both the
+`DesktopPreferences` OpenAPI schema and the matching desktop preferences event
+payload. It is not renderer-local state and it is not part of provider-specific
+composer defaults.
+
+The group owns:
+
+- `enabled`: whether the hidden Lab settings tab is exposed after the developer
+  panel is visible.
+- `features`: per-experiment toggles such as AgentGUI composer worktree launch
+  and workbench lab shortcuts.
+- `shortcuts`: user-configured workbench shortcut bindings. Missing, empty, or
+  over-length bindings normalize to unbound/null before publishing.
+
+Renderer settings may optimistically update Lab preferences, but the daemon
+desktop preferences store and `preferences.desktop.updated` event remain the
+authoritative durability and broadcast path.
+
 ## Runtime Validation
 
 OpenAPI and generated files define the transport interface, but generated Go

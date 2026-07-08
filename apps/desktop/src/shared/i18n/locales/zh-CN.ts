@@ -140,6 +140,7 @@ export const zhCN = {
       expandConversationRail: "展开会话列表",
       fallbackAgentLabel: "Agent",
       newConversation: "新建会话",
+      openDetachedWindow: "在独立窗口打开",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用"
     },
@@ -147,7 +148,7 @@ export const zhCN = {
       title: "Tutti Agent",
       member: "管理订阅",
       creditsBalance: "积分余额",
-      accountCenter: "账号中心",
+      accountCenter: "账户设置",
       free: "Free",
       signIn: "登录",
       signOut: "退出登录",
@@ -617,7 +618,8 @@ export const zhCN = {
         appearance: "外观",
         agent: "Agent",
         developer: "开发者",
-        general: "通用"
+        general: "通用",
+        lab: "实验室"
       },
       about: {
         appName: "Tutti",
@@ -720,6 +722,10 @@ export const zhCN = {
           "在应用内展示 Cursor Agent。Cursor 支持处于预览阶段，默认关闭。",
         enableCursorAgentLabel: "启用 Cursor Agent",
         enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置。",
+        enableOpenCodeAgentDescription:
+          "在应用内展示 OpenCode Agent。OpenCode 支持处于预览阶段，默认关闭。",
+        enableOpenCodeAgentLabel: "启用 OpenCode Agent",
+        enableOpenCodeAgentSaveFailed: "暂时无法更新 OpenCode Agent 设置。",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
@@ -737,6 +743,8 @@ export const zhCN = {
         fileDefaultOpenersDescription:
           "按文件后缀选择工作区文件激活时优先使用的打开方式。",
         fileDefaultOpenersLabel: "默认文件打开方式",
+        labVisibilityDescription: "在独立设置页中显示实验性控制项。",
+        labVisibilityLabel: "显示实验室页",
         logMissing: "暂无文件",
         logOpenFailed: "暂时无法打开这个日志路径。",
         logsCleared: "已清理 {{count}} 个日志文件（{{size}}）。",
@@ -769,6 +777,15 @@ export const zhCN = {
         visibilityDescription:
           "在设置中隐藏此面板。在「关于」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"
+      },
+      lab: {
+        clearShortcutLabel: "清除 {{label}}",
+        newAgentConversationShortcutLabel: "新建 Agent 对话",
+        newSameTypeWindowShortcutLabel: "新建同类型窗口",
+        preferencesSaveFailed: "暂时无法更新实验室设置。",
+        shortcutUnbound: "未绑定",
+        workbenchShortcutsDescription: "启用可配置的工作台快捷键操作。",
+        workbenchShortcutsLabel: "工作台快捷键"
       },
       title: "设置",
       trigger: "设置"
@@ -850,6 +867,8 @@ export const zhCN = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
+        manageProviderOpenCode: "OpenCode",
+        manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",

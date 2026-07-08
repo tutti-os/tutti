@@ -22,6 +22,7 @@ import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderTarget,
@@ -196,6 +197,7 @@ export interface AgentGUINodeProps {
   accountMenuState?: AgentGUIAccountMenuState | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /**
    * Controls how the provider rail composes its list. "catalog" (default) adds
    * the static local catalog + placeholders + coming-soon; "exact" renders only
@@ -239,6 +241,7 @@ export interface AgentGUINodeProps {
   workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
   onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
   onAgentProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -585,6 +588,8 @@ function areAgentGUINodePropsEqual(
     previous.accountMenuState === next.accountMenuState &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.providerRailAllPresentation?.iconUrl ===
+      next.providerRailAllPresentation?.iconUrl &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
@@ -604,6 +609,7 @@ function areAgentGUINodePropsEqual(
     previous.workspaceAgentProbes === next.workspaceAgentProbes &&
     previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
     previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
+    previous.providerAuthAccountLabels === next.providerAuthAccountLabels &&
     previous.managedAgentsState === next.managedAgentsState &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.workspaceAppIcons === next.workspaceAppIcons &&
@@ -647,6 +653,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   accountMenuState = null,
   providerTargets,
   providerTargetsLoading = false,
+  providerRailAllPresentation = null,
   providerRailMode = "catalog",
   renderProviderRailEmpty,
   renderSidebarFooter,
@@ -672,6 +679,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   workspaceAgentProbes,
   onAgentProbeDemandChange,
   onAgentProbeRefreshRequest,
+  providerAuthAccountLabels,
   managedAgentsState,
   contextMentionProviders,
   workspaceAppIcons,
@@ -1059,6 +1067,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       slashStatusBaseUrl: t("agentHost.agentGui.slashStatusBaseUrl"),
       slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
       slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
+      slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
       slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
       slashStatusContextValue: (input: {
         percentLeft: number;
@@ -1301,6 +1310,15 @@ export const AgentGUINode = memo(function AgentGUINode({
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
+      renameSession: t("agentHost.agentGui.renameSession"),
+      renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
+      renameSessionDescription: t(
+        "agentHost.agentGui.renameSessionDescription"
+      ),
+      renameSessionPlaceholder: t(
+        "agentHost.agentGui.renameSessionPlaceholder"
+      ),
+      renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
       deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
       deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
@@ -1494,12 +1512,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
       fileMentionError: t("agentHost.agentGui.fileMentionError"),
       fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
+      fileDropHint: t("agentHost.agentGui.fileDropHint"),
       mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
+      handoffConversationTooltip: t(
+        "agentHost.agentGui.handoffConversationTooltip"
+      ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]
@@ -1783,6 +1805,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
             renderProviderRailEmpty={renderProviderRailEmpty}
+            providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}
@@ -1797,6 +1820,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
             slashStatusUsageDidFail={slashStatusUsageDidFail}
             slashStatusUsageAttempted={slashStatusUsageAttempted}
+            providerAuthAccountLabels={providerAuthAccountLabels}
             onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
             onAgentUsageRefresh={handleAgentUsageRefresh}
             previewMode={previewMode}

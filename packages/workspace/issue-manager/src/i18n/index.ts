@@ -1,4 +1,5 @@
 export {
+  createIssueManagerAgentLaunchMessages,
   createIssueManagerI18nRuntime,
   issueManagerI18nModule,
   issueManagerI18nNamespace,

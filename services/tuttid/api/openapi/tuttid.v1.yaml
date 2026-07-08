@@ -2515,6 +2515,40 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: updateWorkspaceAgentSessionTitle
+      tags:
+        - agent-session
+      summary: Update one workspace agent session title
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceAgentSessionTitleRequest"
+      responses:
+        "200":
+          description: Workspace agent session title updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -4316,11 +4350,14 @@ components:
         - dockIconStyle
         - dockPlacement
         - fileDefaultOpenersByExtension
+        - featureFlags
+        - workbenchShortcuts
         - locale
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
         - enableCursorAgent
+        - enableOpenCodeAgent
         - themeSource
         - updateChannel
         - updatePolicy
@@ -4347,8 +4384,14 @@ components:
           $ref: "#/components/schemas/DesktopDockPlacement"
         enableCursorAgent:
           type: boolean
+        enableOpenCodeAgent:
+          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
+        featureFlags:
+          $ref: "#/components/schemas/DesktopFeatureFlags"
+        workbenchShortcuts:
+          $ref: "#/components/schemas/DesktopWorkbenchShortcuts"
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         minimizeAnimation:
@@ -4365,6 +4408,27 @@ components:
           $ref: "#/components/schemas/DesktopUpdatePolicy"
         workbenchWindowSnapping:
           $ref: "#/components/schemas/DesktopWorkbenchWindowSnapping"
+    DesktopFeatureFlags:
+      type: object
+      additionalProperties:
+        type: boolean
+    DesktopWorkbenchShortcuts:
+      type: object
+      additionalProperties: false
+      required:
+        - newAgentConversation
+        - newSameTypeWindow
+      properties:
+        newAgentConversation:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
+        newSameTypeWindow:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
     DesktopWorkbenchWindowSnapping:
       type: object
       additionalProperties: false
@@ -4428,6 +4492,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         openclaw:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        opencode:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
     DesktopAgentComposerDefaultsByAgentTarget:
       type: object
       additionalProperties:
@@ -4451,6 +4517,8 @@ components:
         hermes:
           type: boolean
         openclaw:
+          type: boolean
+        opencode:
           type: boolean
     DesktopFileDefaultOpener:
       type: string
@@ -4495,6 +4563,7 @@ components:
         - claude-code
         - tutti-agent
         - cursor
+        - opencode
     AgentTargetSource:
       type: string
       enum:
@@ -5777,6 +5846,7 @@ components:
         - gemini
         - hermes
         - openclaw
+        - opencode
     WorkspaceAgentSessionStatus:
       type: string
       enum:
@@ -5869,6 +5939,8 @@ components:
           minLength: 1
         description:
           type: string
+        supportsImageInput:
+          type: boolean
     AgentProviderComposerConfig:
       type: object
       additionalProperties: false
@@ -7010,6 +7082,16 @@ components:
       properties:
         pinned:
           type: boolean
+    UpdateWorkspaceAgentSessionTitleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
     UpdateWorkspaceAgentSessionVisibilityRequest:
       type: object
       additionalProperties: false

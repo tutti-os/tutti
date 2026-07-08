@@ -25,6 +25,10 @@ export function createIssueManagerRunTaskPlan(input: {
       provider: string;
       shouldUpdateSelectedAgentTargetId: boolean;
     }
+  | {
+      kind: "blocked";
+      notificationKey: "messages.agentTargetRequired";
+    }
   | { kind: "skip" } {
   if (!input.issueDetail) {
     return { kind: "skip" };
@@ -33,13 +37,27 @@ export function createIssueManagerRunTaskPlan(input: {
   const agentTargetId =
     input.agentTargetIdOverride?.trim() || input.selectedAgentTargetId.trim();
   if (!agentTargetId) {
-    return { kind: "skip" };
+    return {
+      kind: "blocked",
+      notificationKey: "messages.agentTargetRequired"
+    };
   }
   const option = input.agentTargetOptions?.find(
     (candidate) => candidate.agentTargetId?.trim() === agentTargetId
   );
-  const provider =
-    option?.provider.trim() || legacyProviderFromTargetId(agentTargetId);
+  if (!option) {
+    return {
+      kind: "blocked",
+      notificationKey: "messages.agentTargetRequired"
+    };
+  }
+  const provider = option.provider.trim();
+  if (!provider) {
+    return {
+      kind: "blocked",
+      notificationKey: "messages.agentTargetRequired"
+    };
+  }
 
   return {
     agentTargetId,
@@ -48,14 +66,6 @@ export function createIssueManagerRunTaskPlan(input: {
     shouldUpdateSelectedAgentTargetId:
       agentTargetId !== input.selectedAgentTargetId
   };
-}
-
-function legacyProviderFromTargetId(agentTargetId: string): string {
-  const targetId = agentTargetId.trim();
-  if (targetId.startsWith("local:")) {
-    return targetId.slice("local:".length);
-  }
-  return targetId.includes(":") ? "" : targetId;
 }
 
 export function createIssueManagerSaveIssuePlan(input: {

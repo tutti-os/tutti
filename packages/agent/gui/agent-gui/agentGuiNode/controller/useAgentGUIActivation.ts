@@ -7,7 +7,6 @@ import {
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import { getAppErrorCode } from "../../../shared/errors/appError";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
-import type { AgentGUIProviderTargetRef } from "../../../types";
 
 type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
 interface AgentGUIActivateInput {
@@ -19,8 +18,6 @@ interface AgentGUIActivateInput {
   metadata?: Record<string, unknown>;
   mode: "existing" | "new";
   openclawGatewayReady?: boolean;
-  provider?: string;
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
   settings?: AgentSessionComposerSettings;
   title?: string;
   visible?: boolean;
@@ -65,20 +62,22 @@ export function useAgentGUIActivation({
         [agentSessionId]: null
       }));
       try {
+        const agentTargetId = input.agentTargetId?.trim() ?? "";
+        if (input.mode === "new" && !agentTargetId) {
+          throw new Error("agent_target_required");
+        }
         const request =
           input.mode === "new"
             ? {
                 mode: input.mode,
                 workspaceId,
                 agentSessionId,
-                agentTargetId: input.agentTargetId,
-                provider: input.provider,
+                agentTargetId,
                 cwd: input.cwd,
                 initialContent: input.initialContent,
                 initialDisplayPrompt: input.initialDisplayPrompt,
                 metadata: input.metadata,
                 title: input.title,
-                providerTargetRef: input.providerTargetRef,
                 settings: input.settings,
                 visible: input.visible,
                 openclawGatewayReady: input.openclawGatewayReady
@@ -122,7 +121,7 @@ export function useAgentGUIActivation({
         throw error;
       }
     },
-    [agentActivityRuntime, getErrorMessage, workspaceId]
+    [agentActivityRuntime, getErrorCode, getErrorMessage, workspaceId]
   );
 
   const unactivate = useCallback(

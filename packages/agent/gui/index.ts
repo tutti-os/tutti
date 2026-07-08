@@ -28,11 +28,13 @@ export {
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
+  AgentGUIProviderTargetBadge,
   AgentGUIProviderTargetRef
 } from "./types";
 export {

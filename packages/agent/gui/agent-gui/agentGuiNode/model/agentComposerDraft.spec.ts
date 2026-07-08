@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentComposerDraftDisplayPrompt,
   agentComposerDraftHasContent,
+  agentComposerDraftSubmittedText,
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
@@ -29,6 +31,42 @@ describe("agentComposerDraft", () => {
         skills: []
       })
     ).toEqual([{ type: "text", text: "run tests" }]);
+  });
+
+  it("converts pasted large text drafts into compact display and submitted text", () => {
+    const draft = {
+      prompt: "Summarize this",
+      images: [],
+      largeTexts: [
+        {
+          id: "pasted-text-1",
+          name: "pasted-text-1.txt",
+          text: "first line\nsecond line",
+          sizeBytes: 22
+        }
+      ]
+    };
+
+    expect(agentComposerDraftHasContent(draft)).toBe(true);
+    expect(agentComposerDraftDisplayPrompt(draft)).toBe(
+      "Summarize this\n[pasted-text-1.txt · 22 B]"
+    );
+    expect(
+      agentComposerDraftToPromptContent({
+        draft,
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([
+      { type: "text", text: "Summarize this" },
+      {
+        type: "text",
+        text: "Pasted text attachment: pasted-text-1.txt\n\nfirst line\nsecond line"
+      }
+    ]);
+    expect(agentComposerDraftSubmittedText(draft)).toBe(
+      "Summarize this\nPasted text attachment: pasted-text-1.txt\n\nfirst line\nsecond line"
+    );
   });
 
   it("adds codex app-server prompt items for referenced skills and connectors", () => {

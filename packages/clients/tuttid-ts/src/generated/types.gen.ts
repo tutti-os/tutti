@@ -331,7 +331,10 @@ export type DesktopPreferences = {
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
   enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
+  featureFlags: DesktopFeatureFlags;
+  workbenchShortcuts: DesktopWorkbenchShortcuts;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
@@ -340,6 +343,21 @@ export type DesktopPreferences = {
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
   workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
+};
+
+export type DesktopFeatureFlags = {
+  [key: string]: boolean;
+};
+
+export type DesktopWorkbenchShortcuts = {
+  /**
+   * Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
+   */
+  newAgentConversation: string | null;
+  /**
+   * Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
+   */
+  newSameTypeWindow: string | null;
 };
 
 export type DesktopWorkbenchWindowSnapping = {
@@ -373,6 +391,7 @@ export type DesktopAgentComposerDefaultsByProvider = {
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
+  opencode?: DesktopAgentComposerDefaults;
 };
 
 export type DesktopAgentComposerDefaultsByAgentTarget = {
@@ -388,6 +407,7 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   gemini?: boolean;
   hermes?: boolean;
   openclaw?: boolean;
+  opencode?: boolean;
 };
 
 export type DesktopFileDefaultOpener =
@@ -415,7 +435,8 @@ export type AgentTargetProvider =
   | "codex"
   | "claude-code"
   | "tutti-agent"
-  | "cursor";
+  | "cursor"
+  | "opencode";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -918,7 +939,8 @@ export type WorkspaceAgentProvider =
   | "nexight"
   | "gemini"
   | "hermes"
-  | "openclaw";
+  | "openclaw"
+  | "opencode";
 
 export type WorkspaceAgentSessionStatus =
   | "created"
@@ -963,6 +985,7 @@ export type AgentProviderComposerConfigOptionValue = {
   value: string;
   label: string;
   description?: string;
+  supportsImageInput?: boolean;
 };
 
 export type AgentProviderComposerConfig = {
@@ -1424,6 +1447,10 @@ export type ClearWorkspaceAgentSessionsResponse = {
 
 export type UpdateWorkspaceAgentSessionPinRequest = {
   pinned: boolean;
+};
+
+export type UpdateWorkspaceAgentSessionTitleRequest = {
+  title: string;
 };
 
 export type UpdateWorkspaceAgentSessionVisibilityRequest = {
@@ -6131,6 +6158,56 @@ export type UpdateWorkspaceAgentSessionSettingsResponses = {
 
 export type UpdateWorkspaceAgentSessionSettingsResponse =
   UpdateWorkspaceAgentSessionSettingsResponses[keyof UpdateWorkspaceAgentSessionSettingsResponses];
+
+export type UpdateWorkspaceAgentSessionTitleData = {
+  body: UpdateWorkspaceAgentSessionTitleRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title";
+};
+
+export type UpdateWorkspaceAgentSessionTitleErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTitleError =
+  UpdateWorkspaceAgentSessionTitleErrors[keyof UpdateWorkspaceAgentSessionTitleErrors];
+
+export type UpdateWorkspaceAgentSessionTitleResponses = {
+  /**
+   * Workspace agent session title updated
+   */
+  200: WorkspaceAgentSessionResponse;
+};
+
+export type UpdateWorkspaceAgentSessionTitleResponse =
+  UpdateWorkspaceAgentSessionTitleResponses[keyof UpdateWorkspaceAgentSessionTitleResponses];
 
 export type UpdateWorkspaceAgentSessionVisibilityData = {
   body: UpdateWorkspaceAgentSessionVisibilityRequest;

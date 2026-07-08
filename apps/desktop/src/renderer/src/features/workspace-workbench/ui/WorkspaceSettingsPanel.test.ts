@@ -27,6 +27,11 @@ test("workspace settings panel lists appearance below general", () => {
   );
 });
 
+test("workspace settings panel uses a large desktop frame", () => {
+  assert.match(source, /h-\[min\(640px,calc\(100vh-40px\)\)\]/);
+  assert.match(source, /w-\[min\(960px,calc\(100vw-40px\)\)\]/);
+});
+
 test("workspace settings gates account behind Tutti Agent Switch", () => {
   assert.match(source, /settingsState\.tuttiAgentSwitchEnabled/);
   assert.match(source, /workspace\.settings\.developer\.tuttiAgentSwitchLabel/);

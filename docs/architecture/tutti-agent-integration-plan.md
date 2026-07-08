@@ -143,7 +143,7 @@ Install:            InstallerKindCodexCLILatest（npm @openai/codex + optional-d
 
 - `services/tuttid/service/agent/codex_model_catalog.go`：`CodexCLIModelLister.ListModels` 真实 spawn `codex app-server` → `initialize`（clientInfo `{name:"tuttid", version:"0.1.0"}`）→ `model/list`（limit 200）→ 归一化。
 - `model_catalog.go`：`CachedAgentModelCatalog` 按 provider switch 缓存（codex TTL 30s / error 5s），目前只有 codex/gemini 有 lister。
-- `composer_options.go`：大量 provider switch；composer 设置支持由 `agentprovider.SupportsComposerSettings`（目前 claude-code/codex/gemini）决定。**注意约 line 662、777 存在裸字符串 `provider == "codex"` 比较**，参数化时需一并梳理。
+- `composer_options.go`：大量 provider switch；composer 设置支持目前直接编码在 provider 分支里（claude-code/codex/gemini）。**注意约 line 662、777 存在裸字符串 `provider == "codex"` 比较**，参数化时需一并梳理。
 
 ### 2.9 契约与偏好模型
 
@@ -316,7 +316,7 @@ tutti-agent: command ["tutti-agent","app-server"]  source "tutti-agent-cli"
 
 - `model_catalog.go` 的 `CachedAgentModelCatalog` 加 tutti-agent lister 与缓存分支。
 - **不设静态兜底模型列表**：网关策略当前只放行 `gpt-5.4`，composer 选项必须反映 `model/list` 实时鉴权结果。
-- `agentprovider.SupportsComposerSettings` 加入 `tutti-agent`；`composer_options.go` 各 provider switch（含 line 662/777 的裸 `provider == "codex"` 比较）逐一决策：reasoning effort、plan/permission mode、speed/service-tier 是否对 fork 生效——建议 Phase 0 冒烟后按 fork 实际能力定。
+- `composer_options.go` 各 provider switch 需要加入 `tutti-agent` 决策（含 line 662/777 的裸 `provider == "codex"` 比较）：reasoning effort、plan/permission mode、speed/service-tier 是否对 fork 生效——建议 Phase 0 冒烟后按 fork 实际能力定。
 
 ### 4.6 契约决策：defaultAgentProvider 枚举拆分
 
@@ -456,7 +456,7 @@ daemon 获取宿主登录态 -> account llm-token 签发（legacy account app id
 
 ### WP6 模型目录与 composer
 
-- `services/tuttid/service/agent/`：model lister 泛化、catalog 缓存分支、`SupportsComposerSettings`、`composer_options.go` 各 switch（含裸字符串比较清理）。
+- `services/tuttid/service/agent/`：model lister 泛化、catalog 缓存分支、`composer_options.go` 各 switch（含裸字符串比较清理）。
 
 ### WP7 桌面 workbench 与 AgentGUI
 

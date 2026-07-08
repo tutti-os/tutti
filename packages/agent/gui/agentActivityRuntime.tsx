@@ -16,6 +16,7 @@ import type {
   AgentActivityDeleteSessionResult,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
+  AgentActivityRenameSessionInput,
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
@@ -31,7 +32,6 @@ import type {
   AgentHostUnactivateAgentSessionResult,
   AgentHostAgentSessionState
 } from "./shared/contracts/dto";
-import type { AgentGUIProviderTargetRef } from "./types";
 import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "./shared/workspaceAgentActivityTypes";
 
 export interface AgentActivityRuntimeListSessionMessagesInput {
@@ -179,27 +179,29 @@ export interface AgentActivityRuntimeDiagnosticInput {
   workspaceId?: string | null;
 }
 
-export interface AgentActivityRuntimeActivateSessionInput {
+interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
-  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
   metadata?: Record<string, unknown>;
-  mode: "existing" | "new";
   openclawGatewayReady?: boolean;
-  provider?: string;
-  /**
-   * Opaque host-owned target reference. AgentGUI passes this through only; hosts
-   * must not treat it as authority and must re-authenticate before launch.
-   */
-  providerTargetRef?: AgentGUIProviderTargetRef | null;
   settings?: AgentHostAgentSessionComposerSettings;
   title?: string;
   visible?: boolean;
   workspaceId: string;
 }
+
+export type AgentActivityRuntimeActivateSessionInput =
+  | (AgentActivityRuntimeActivateSessionInputBase & {
+      agentTargetId: string;
+      mode: "new";
+    })
+  | (AgentActivityRuntimeActivateSessionInputBase & {
+      agentTargetId?: string | null;
+      mode: "existing";
+    });
 
 export interface AgentActivityRuntimeUnactivateSessionInput {
   agentSessionId: string;
@@ -275,6 +277,14 @@ export interface AgentActivityRuntime {
    * behaviour resolved via the module-global.
    */
   origin?: string;
+  /**
+   * The session cwd is not resolvable on the local filesystem (e.g. a
+   * shared/cloud sandbox not mounted locally), so AgentGUI must not run its
+   * local stat-based "working directory missing" existence check — it would
+   * always false-positive. Absent/false (default) => local, legacy behaviour.
+   * Only that one guard is gated; project selection/listing is unaffected.
+   */
+  projectPathIsRemote?: boolean;
   promptContentUploadSupport?: {
     file?: boolean;
     image?: boolean;
@@ -349,6 +359,9 @@ export interface AgentActivityRuntime {
   readPromptAsset?(
     input: AgentActivityRuntimeReadPromptAssetInput
   ): Promise<AgentActivityRuntimePromptAsset>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
   setSessionPinned(
     input: AgentActivityRuntimeSetSessionPinnedInput
   ): Promise<AgentActivitySession>;

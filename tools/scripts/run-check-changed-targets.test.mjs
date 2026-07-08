@@ -46,6 +46,33 @@ describe("resolveGoValidationTargets", () => {
       "./..."
     ]);
   });
+
+  it("skips deleted Go packages when the path no longer exists", () => {
+    const targets = resolveGoValidationTargets(
+      [
+        "packages/agent/daemon/activity/hostquery/service.go",
+        "packages/agent/daemon/activity/ingress/service.go",
+        "packages/agent/daemon/internal/guestdesktoprelay/v1/types.go"
+      ],
+      { pathExists: () => false }
+    );
+
+    assert.equal(targets, null);
+  });
+
+  it("keeps Go lanes for deleted files inside existing packages", () => {
+    const targets = resolveGoValidationTargets(
+      ["services/tuttid/service/workspace/deleted_file.go"],
+      { pathExists: () => true }
+    );
+
+    assert.deepEqual(Array.from(targets.lintByModule.get("services/tuttid")), [
+      "./service/workspace"
+    ]);
+    assert.deepEqual(Array.from(targets.testByModule.get("services/tuttid")), [
+      "./service/workspace/..."
+    ]);
+  });
 });
 
 describe("buildPackageTestCommand", () => {

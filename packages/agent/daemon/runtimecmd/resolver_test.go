@@ -129,6 +129,36 @@ func TestResolverFindsTuttiBinFallback(t *testing.T) {
 	}
 }
 
+func TestResolverFindsOpenCodeBinFallback(t *testing.T) {
+	home := t.TempDir()
+	opencodeBinDir := filepath.Join(home, ".opencode", "bin")
+	if err := os.MkdirAll(opencodeBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir opencode bin dir: %v", err)
+	}
+	opencodePath := filepath.Join(opencodeBinDir, "opencode")
+	writeExecutable(t, opencodePath)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	if got := resolver.Resolve("opencode", env); got != opencodePath {
+		t.Fatalf("Resolve() = %q, want %q", got, opencodePath)
+	}
+	if got := resolver.ResolveBinary([]string{"opencode"}, nil); got != opencodePath {
+		t.Fatalf("ResolveBinary() = %q, want %q", got, opencodePath)
+	}
+}
+
 func TestResolverFindsFnmNodeBin(t *testing.T) {
 	home := t.TempDir()
 	fnmDir := filepath.Join(home, "custom-fnm")

@@ -116,6 +116,46 @@ description: Internal Tutti CLI.
 	}
 }
 
+func TestDiscoverComposerSkillOptionsCursorUsesPluginDir(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	repoDir := filepath.Join(tempDir, "repo")
+	cwd := filepath.Join(repoDir, "apps", "desktop")
+	pluginDir := filepath.Join(tempDir, "plugins", "tutti-cli")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	writeSkill(t, filepath.Join(repoDir, ".cursor", "skills", "project-skill", "SKILL.md"), `---
+description: Project Cursor skill.
+---
+`)
+	writeSkill(t, filepath.Join(homeDir, ".cursor", "skills", "personal-skill", "SKILL.md"), `---
+description: Personal Cursor skill.
+---
+`)
+	writeSkill(t, filepath.Join(pluginDir, "skills", "workflow-check", "SKILL.md"), `---
+description: Runtime Cursor plugin skill.
+---
+`)
+	writeSkill(t, filepath.Join(pluginDir, "skills", "tutti-cli", "SKILL.md"), `---
+description: Internal Tutti CLI.
+---
+`)
+
+	options := discoverComposerSkillOptions("cursor", cwd, []string{
+		"TUTTI_CURSOR_PLUGIN_DIR=" + pluginDir,
+	})
+
+	triggers := composerSkillOptionTriggers(options)
+	want := []string{"$project-skill", "$personal-skill", "$workflow-check"}
+	if !equalStringSlices(triggers, want) {
+		t.Fatalf("triggers = %#v, want %#v", triggers, want)
+	}
+	if options[2].PluginName != "tutti-cli" || options[2].SourceKind != "plugin" {
+		t.Fatalf("plugin option = %#v", options[2])
+	}
+}
+
 func TestDiscoverComposerSkillOptionsWarnsOnceForUnchangedInvalidSkill(t *testing.T) {
 	tempDir := t.TempDir()
 	homeDir := filepath.Join(tempDir, "home")

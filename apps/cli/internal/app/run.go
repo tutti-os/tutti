@@ -20,10 +20,6 @@ type options struct {
 	json bool
 }
 
-func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
-	return RunWithProgram(ctx, "tutti", args, stdout, stderr)
-}
-
 func RunWithProgram(ctx context.Context, program string, args []string, stdout io.Writer, stderr io.Writer) int {
 	commandName := displayCommandName(program)
 	opts, rest, err := parseOptions(args)

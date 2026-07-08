@@ -74,12 +74,18 @@ export type AgentGUIProvider = Extract<
   | "gemini"
   | "hermes"
   | "openclaw"
+  | "opencode"
 >;
 
 export interface AgentGUIProviderTargetRef {
   kind: string;
   provider: AgentGUIProvider;
   [key: string]: unknown;
+}
+
+export interface AgentGUIProviderTargetBadge {
+  iconUrl: string;
+  label?: string;
 }
 
 export interface AgentGUIProviderTarget {
@@ -90,9 +96,14 @@ export interface AgentGUIProviderTarget {
   label: string;
   description?: string;
   iconUrl?: string | null;
+  badge?: AgentGUIProviderTargetBadge | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;
+}
+
+export interface AgentGUIProviderRailAllPresentation {
+  iconUrl?: string | null;
 }
 
 /**
@@ -229,6 +240,7 @@ export interface RoomIssueNodeData {
     | "nexight"
     | "gemini"
     | "openclaw"
+    | "opencode"
     | "hermes";
   taskEditing: boolean;
   issueEditing: boolean;

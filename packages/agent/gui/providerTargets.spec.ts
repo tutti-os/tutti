@@ -27,6 +27,7 @@ describe("agent gui provider targets", () => {
       "local:claude-code",
       "local:cursor",
       "local:tutti-agent",
+      "local:opencode",
       "local:hermes",
       "local:openclaw"
     ]);
@@ -138,6 +139,10 @@ describe("agent gui provider targets", () => {
         sharedAgentId: " agent-1 ",
         agentTargetId: " cp-target-1 ",
         label: "Alice's Codex",
+        badge: {
+          iconUrl: " app://alice-avatar.png ",
+          label: " Alice avatar "
+        },
         ownerLabel: " Alice ",
         iconUrl: " app://alice.png ",
         unavailableReason: " owner_offline ",
@@ -157,6 +162,10 @@ describe("agent gui provider targets", () => {
         ownerUserId: "user-1"
       },
       label: "Alice's Codex",
+      badge: {
+        iconUrl: "app://alice-avatar.png",
+        label: "Alice avatar"
+      },
       ownerLabel: "Alice",
       iconUrl: "app://alice.png",
       unavailableReason: "owner_offline",
@@ -176,6 +185,10 @@ describe("agent gui provider targets", () => {
             sharedAgentId: "agent-1"
           },
           label: " Alice's Codex ",
+          badge: {
+            iconUrl: " ",
+            label: " "
+          },
           description: " ",
           ownerLabel: " ",
           iconUrl: " ",
@@ -243,6 +256,7 @@ describe("agent gui provider targets", () => {
       { disabled: false, provider: "claude-code" },
       { disabled: false, provider: "cursor" },
       { disabled: false, provider: "tutti-agent" },
+      { disabled: false, provider: "opencode" },
       { disabled: true, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);

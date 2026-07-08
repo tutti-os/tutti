@@ -710,7 +710,6 @@ function installAgentHostClipboard(
       agentHostApi?: unknown;
     }
   ).agentHostApi = {
-    agentGuiBatch: {},
     clipboard: { writeText },
     filesystem: {},
     workspace: {}

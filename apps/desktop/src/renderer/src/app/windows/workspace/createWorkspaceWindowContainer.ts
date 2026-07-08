@@ -14,7 +14,11 @@ import {
   createDesktopAgentSessionStatusViewResolver,
   registerRichTextAtServices
 } from "@renderer/features/rich-text-at";
-import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent";
+import {
+  registerWorkspaceAgentServices,
+  type AgentProviderStatusService,
+  type WorkspaceAgentActivityService
+} from "@renderer/features/workspace-agent";
 import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center";
 import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog";
 import { registerWorkspaceFileManagerServices } from "@renderer/features/workspace-file-manager";
@@ -52,13 +56,26 @@ import type {
   DesktopHostWindowApi,
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
+import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { IReporterService } from "@renderer/features/analytics";
+import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
+import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 
 export interface WorkspaceWindowContainerResult {
+  agentProviderStatusService: AgentProviderStatusService;
   container: InstantiationService;
+  desktopApi: ReturnType<typeof resolveDesktopEnvironment>["desktopApi"];
   environmentMode: "desktop" | "web";
   hostWindowApi: DesktopHostWindowApi;
+  reporterService: Pick<IReporterService, "trackEvents">;
+  richTextAtService: IDesktopRichTextAtService;
   startupWorkspaceID: string | null;
+  tuttidClient: TuttidClient;
+  workspaceAgentActivityService: WorkspaceAgentActivityService;
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
+  workspaceAppCenterService: IWorkspaceAppCenterService;
+  workspaceUserProjectService: IWorkspaceUserProjectService;
 }
 
 export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
@@ -114,11 +131,14 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     tuttidEventStreamClient
   );
-  // Cursor is feature-gated behind the Developer-panel "Enable Cursor agent"
+  // Preview agents are feature-gated behind Developer-panel preferences
   // preference: gated providers render as coming-soon placeholders in the
   // AgentGUI rail (like hermes) and stay hidden from dock/mention/manage.
   const isAgentProviderGated = (provider: string): boolean =>
-    provider === "cursor" && !desktopPreferencesService.store.enableCursorAgent;
+    (provider === "cursor" &&
+      !desktopPreferencesService.store.enableCursorAgent) ||
+    (provider === "opencode" &&
+      !desktopPreferencesService.store.enableOpenCodeAgent);
   const subscribeAgentProviderVisibility = (
     listener: () => void
   ): (() => void) => subscribe(desktopPreferencesService.store, listener);
@@ -151,14 +171,17 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     reporterService
   });
-  registerWorkspaceAppCenterServices(registry, {
-    eventStreamClient: tuttidEventStreamClient,
-    hostFilesApi: desktopApi.host.files,
-    hostWorkspaceApi: desktopApi.host.workspace,
-    tuttidClient,
-    reporterService,
-    runtimeApi: desktopApi.runtime
-  });
+  const workspaceAppCenterService = registerWorkspaceAppCenterServices(
+    registry,
+    {
+      eventStreamClient: tuttidEventStreamClient,
+      hostFilesApi: desktopApi.host.files,
+      hostWorkspaceApi: desktopApi.host.workspace,
+      tuttidClient,
+      reporterService,
+      runtimeApi: desktopApi.runtime
+    }
+  );
   const workspaceUserProjectService = registerWorkspaceUserProjectServices(
     registry,
     {
@@ -166,7 +189,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       tuttidClient,
       notifications: notificationService,
       platformApi: desktopApi.platform,
-      workspaceId: environment.startupWorkspaceID ?? "__default__"
+      workspaceId: activeWorkspaceID
     }
   );
   registerWorkspaceFileManagerServices(registry, {
@@ -203,7 +226,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   disposeAgentOutcomeNotificationController = () => {
     agentOutcomeNotificationController.dispose();
   };
-  registerRichTextAtServices(registry, {
+  const richTextAtService = registerRichTextAtServices(registry, {
     agentsService: workspaceAgentServices.agentsService,
     tuttidClient,
     getLocale: getActiveLocale,
@@ -239,11 +262,21 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     wallpaperApi: desktopApi.wallpaper
   });
   return {
+    agentProviderStatusService:
+      workspaceAgentServices.agentProviderStatusService,
     container: new InstantiationService(registry.makeCollection()),
+    desktopApi,
     environmentMode: environment.mode,
     hostWindowApi: desktopApi.host.window,
+    reporterService,
+    richTextAtService,
     startupWorkspaceID: environment.startupWorkspaceID,
-    workspaceAppExternalApi: desktopApi.workspaceAppExternal
+    tuttidClient,
+    workspaceAgentActivityService:
+      workspaceAgentServices.workspaceAgentActivityService,
+    workspaceAppCenterService,
+    workspaceAppExternalApi: desktopApi.workspaceAppExternal,
+    workspaceUserProjectService
   };
 }
 

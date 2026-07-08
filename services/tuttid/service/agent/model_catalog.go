@@ -17,13 +17,16 @@ const (
 	codexModelErrorCacheTTL = 5 * time.Second
 	geminiModelCacheTTL     = 6 * time.Hour
 	geminiModelFallbackTTL  = 5 * time.Minute
+	opencodeModelCacheTTL   = 6 * time.Hour
+	opencodeModelErrorTTL   = 5 * time.Minute
 )
 
 type AgentModelOption struct {
-	ID          string
-	DisplayName string
-	Description string
-	IsDefault   bool
+	ID                 string
+	DisplayName        string
+	Description        string
+	IsDefault          bool
+	SupportsImageInput *bool
 }
 
 type AgentModelCatalogResult struct {
@@ -111,13 +114,28 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 		configuredDefaultModel:    readGeminiConfiguredDefaultModel,
 		missingDefaultDescription: "Gemini configured custom model",
 	},
+	agentprovider.OpenCode: {
+		source: "opencode-cli",
+		ttl:    opencodeModelCacheTTL,
+		errTTL: opencodeModelErrorTTL,
+		lister: func(c *CachedAgentModelCatalog) AgentModelLister {
+			if c.OpenCode != nil {
+				return c.OpenCode
+			}
+			return OpenCodeCLIModelLister{}
+		},
+		configuredDefaultModel:    readOpenCodeConfiguredDefaultModel,
+		missingDefaultDescription: "OpenCode configured custom model",
+	},
 }
 
 type CachedAgentModelCatalog struct {
-	Codex      AgentModelLister
-	TuttiAgent AgentModelLister
-	Gemini     AgentModelLister
-	Now        func() time.Time
+	Codex             AgentModelLister
+	TuttiAgent        AgentModelLister
+	Gemini            AgentModelLister
+	OpenCode          AgentModelLister
+	ModelCapabilities ModelCapabilitiesResolver
+	Now               func() time.Time
 
 	mu    sync.Mutex
 	cache map[string]*agentModelCatalogCacheEntry
@@ -144,15 +162,17 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 		return cached.result, cached.err
 	}
 	listResult, err := spec.lister(c).ListModels(ctx)
+	models := applyConfiguredDefaultModel(
+		listResult.Models,
+		spec.configuredDefaultModel(),
+		spec.missingDefaultDescription,
+	)
+	models = enrichAgentModelOptions(ctx, provider, models, c.ModelCapabilities)
 	result := AgentModelCatalogResult{
 		Provider:  provider,
 		Source:    spec.source,
 		FetchedAt: now,
-		Models: applyConfiguredDefaultModel(
-			listResult.Models,
-			spec.configuredDefaultModel(),
-			spec.missingDefaultDescription,
-		),
+		Models:    models,
 	}
 	c.writeCache(provider, spec, now, result, listResult.IsFallback, err)
 	return cloneAgentModelCatalogResult(result), err

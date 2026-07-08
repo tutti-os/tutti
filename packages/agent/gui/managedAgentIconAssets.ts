@@ -6,10 +6,12 @@ import geminiRoundedAssetUrl from "./app/renderer/assets/icons/agents/gemini-rou
 import hermesRoundedAssetUrl from "./app/renderer/assets/icons/agents/hermes-rounded.png";
 import agentColorfulAssetUrl from "./app/renderer/assets/icons/agents/agent-colorful.png";
 import manageAgentTuttiAssetUrl from "./app/renderer/assets/icons/agents/manage-agent-tutti.png";
+import opencodeRoundedAssetUrl from "./app/renderer/assets/icons/agents/opencode-rounded.png";
 import openclawRoundedAssetUrl from "./app/renderer/assets/icons/agents/openclaw-rounded.png";
 import providerRailClaudeCodeColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-claude-code-colorful.png";
 import providerRailCodexColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-codex-colorful.png";
 import providerRailHermesColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-hermes-colorful.png";
+import providerRailOpenCodeColorfulAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-opencode-colorful.png";
 import providerRailTuttiAssetUrl from "./app/renderer/assets/icons/agents/provider-rail-tutti.png";
 
 export const manageAgentClaudeCodeUrl = claudeRoundedAssetUrl;
@@ -19,6 +21,7 @@ export const manageAgentGeminiUrl = geminiRoundedAssetUrl;
 export const manageAgentHermesUrl = hermesRoundedAssetUrl;
 export const manageAgentTuttiUrl = manageAgentTuttiAssetUrl;
 export const manageAgentTuttiAgentUrl = manageAgentTuttiAssetUrl;
+export const manageAgentOpenCodeUrl = opencodeRoundedAssetUrl;
 export const manageAgentOpenclawUrl = openclawRoundedAssetUrl;
 export const agentColorfulUrl = agentColorfulAssetUrl;
 export const claudeRoundedUrl = claudeRoundedAssetUrl;
@@ -29,9 +32,12 @@ export const geminiRoundedUrl = geminiRoundedAssetUrl;
 export const hermesRoundedUrl = hermesRoundedAssetUrl;
 export const tuttiDocRoundedUrl = manageAgentTuttiAssetUrl;
 export const tuttiAgentRoundedUrl = manageAgentTuttiAssetUrl;
+export const opencodeRoundedUrl = opencodeRoundedAssetUrl;
 export const openclawRoundedUrl = openclawRoundedAssetUrl;
 export const providerRailClaudeCodeColorfulUrl =
   providerRailClaudeCodeColorfulAssetUrl;
 export const providerRailCodexColorfulUrl = providerRailCodexColorfulAssetUrl;
 export const providerRailHermesColorfulUrl = providerRailHermesColorfulAssetUrl;
+export const providerRailOpenCodeColorfulUrl =
+  providerRailOpenCodeColorfulAssetUrl;
 export const providerRailTuttiUrl = providerRailTuttiAssetUrl;

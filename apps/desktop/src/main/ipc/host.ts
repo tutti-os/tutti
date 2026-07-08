@@ -20,11 +20,16 @@ export interface HostIpcDependencies {
     payload: DesktopWorkspaceAppPayload
   ) => Promise<void>;
   workspaceFileIconCache?: WorkspaceFileIconCacheStore;
-  workspaceLaunch: Pick<WorkspaceLaunch, "openStartupWindow" | "showWorkspace">;
+  workspaceLaunch: Pick<
+    WorkspaceLaunch,
+    "openStartupWindow" | "showAgentWindow" | "showWorkspace"
+  >;
 }
 
 export function registerHostIpc(deps: HostIpcDependencies): void {
-  registerHostWindowIpc();
+  registerHostWindowIpc({
+    workspaceLaunch: deps.workspaceLaunch
+  });
   registerHostNotificationsIpc({
     workspaceLaunch: deps.workspaceLaunch
   });

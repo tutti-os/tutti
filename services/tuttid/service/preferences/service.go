@@ -34,7 +34,10 @@ type PutInput struct {
 	DockIconStyle                               string
 	DockPlacement                               string
 	EnableCursorAgent                           bool
+	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
+	FeatureFlags                                map[string]bool
+	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
@@ -81,8 +84,9 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
-		// is only kept for downgrade compatibility.
-		AgentComposerDefaultsByProvider:             normalizeAgentComposerDefaultsByProvider(stored.AgentComposerDefaultsByProvider),
+		// is only kept for downgrade compatibility and should pass through
+		// unchanged.
+		AgentComposerDefaultsByProvider:             stored.AgentComposerDefaultsByProvider,
 		AgentComposerDefaultsByAgentTarget:          normalizeAgentComposerDefaultsByAgentTarget(agentComposerDefaultsByAgentTarget),
 		AgentGUIConversationRailCollapsedByProvider: normalizeAgentGUIConversationRailCollapsedByProvider(input.AgentGUIConversationRailCollapsedByProvider),
 		AgentConversationDetailMode:                 preferencesbiz.NormalizeDesktopAgentConversationDetailMode(input.AgentConversationDetailMode),
@@ -93,8 +97,11 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
 		EnableCursorAgent:                           input.EnableCursorAgent,
+		EnableOpenCodeAgent:                         input.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
+		FeatureFlags:                                preferencesbiz.NormalizeDesktopFeatureFlags(input.FeatureFlags),
+		WorkbenchShortcuts:                          preferencesbiz.NormalizeDesktopWorkbenchShortcuts(input.WorkbenchShortcuts),
 		Locale:                                      strings.TrimSpace(input.Locale),
 		MinimizeAnimation:                           normalizeMinimizeAnimation(input.MinimizeAnimation),
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),
@@ -203,22 +210,6 @@ func normalizeAgentGUIConversationRailCollapsedByProvider(input map[string]bool)
 			continue
 		}
 		result[normalizedProvider] = collapsed
-	}
-	return result
-}
-
-func normalizeAgentComposerDefaultsByProvider(input map[string]preferencesbiz.AgentComposerDefaults) map[string]preferencesbiz.AgentComposerDefaults {
-	result := map[string]preferencesbiz.AgentComposerDefaults{}
-	for provider, defaults := range input {
-		normalizedProvider := agentproviderbiz.Normalize(provider)
-		if normalizedProvider == "" {
-			continue
-		}
-		normalizedDefaults := normalizeAgentComposerDefaults(defaults)
-		if normalizedDefaults.IsZero() {
-			continue
-		}
-		result[normalizedProvider] = normalizedDefaults
 	}
 	return result
 }

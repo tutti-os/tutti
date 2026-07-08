@@ -12,23 +12,29 @@ import {
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDesktopFeatureFlags,
   defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopEnableCursorAgent,
+  defaultDesktopEnableOpenCodeAgent,
   defaultDesktopMinimizeAnimation,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
+  defaultDesktopWorkbenchShortcuts,
   defaultDesktopWorkbenchWindowSnapping,
+  desktopFeatureFlagsEqual,
   mergeDesktopAgentComposerDefaultsByAgentTarget,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaultsByAgentTarget,
-  normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopAgentConversationDetailMode,
+  normalizeDesktopFeatureFlags,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
+  normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping,
   desktopFileDefaultOpenersByExtensionEqual,
+  desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual,
   type DesktopAgentComposerDefaultsPatch,
   type DesktopAgentComposerDefaultsByAgentTarget,
@@ -41,11 +47,13 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DesktopFeatureFlags,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy,
+  type DesktopWorkbenchShortcuts,
   type DesktopWorkbenchWindowSnapping
 } from "../../../../../../shared/preferences/index.ts";
 
@@ -80,6 +88,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement:
         this.dependencies.initialDockPlacement ?? defaultDesktopDockPlacement,
+      featureFlags: defaultDesktopFeatureFlags,
       fileDefaultOpenersByExtension:
         defaultDesktopFileDefaultOpenersByExtension,
       locale: this.dependencies.initialLocale,
@@ -87,9 +96,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       showAppDeveloperSources: defaultDesktopShowAppDeveloperSources,
       enableCursorAgent: defaultDesktopEnableCursorAgent,
+      enableOpenCodeAgent: defaultDesktopEnableOpenCodeAgent,
       theme: this.dependencies.initialTheme,
       updateChannel: defaultDesktopUpdateChannel,
       updatePolicy: defaultDesktopUpdatePolicy,
+      workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
       workbenchWindowSnapping: defaultDesktopWorkbenchWindowSnapping
     });
     this.unsubscribePreferencesUpdates =
@@ -337,6 +348,75 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async setFeatureFlags(
+    flags: DesktopFeatureFlags
+  ): Promise<DesktopFeatureFlags> {
+    const nextFlags = normalizeDesktopFeatureFlags(flags);
+    if (
+      this.store.changingFeatureFlags &&
+      desktopFeatureFlagsEqual(this.store.changingFeatureFlags, nextFlags)
+    ) {
+      return nextFlags;
+    }
+    if (desktopFeatureFlagsEqual(this.store.featureFlags, nextFlags)) {
+      return this.store.featureFlags;
+    }
+
+    const previousFlags = this.store.featureFlags;
+    this.store.changingFeatureFlags = nextFlags;
+    this.store.featureFlags = nextFlags;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({ featureFlags: nextFlags })
+        });
+      return normalizeDesktopFeatureFlags(
+        authoritativePreferences.featureFlags
+      );
+    } catch (error) {
+      this.store.featureFlags = previousFlags;
+      throw error;
+    } finally {
+      if (
+        this.store.changingFeatureFlags &&
+        desktopFeatureFlagsEqual(this.store.changingFeatureFlags, nextFlags)
+      ) {
+        this.store.changingFeatureFlags = null;
+      }
+    }
+  }
+
+  async setWorkbenchShortcuts(
+    shortcuts: DesktopWorkbenchShortcuts
+  ): Promise<DesktopWorkbenchShortcuts> {
+    const nextShortcuts = normalizeDesktopWorkbenchShortcuts(shortcuts);
+    if (
+      desktopWorkbenchShortcutsEqual(
+        this.store.workbenchShortcuts,
+        nextShortcuts
+      )
+    ) {
+      return this.store.workbenchShortcuts;
+    }
+
+    const previousShortcuts = this.store.workbenchShortcuts;
+    this.store.workbenchShortcuts = nextShortcuts;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            workbenchShortcuts: nextShortcuts
+          })
+        });
+      return normalizeDesktopWorkbenchShortcuts(
+        authoritativePreferences.workbenchShortcuts
+      );
+    } catch (error) {
+      this.store.workbenchShortcuts = previousShortcuts;
+      throw error;
+    }
+  }
+
   async setMinimizeAnimation(
     animation: DesktopMinimizeAnimation
   ): Promise<DesktopMinimizeAnimation> {
@@ -518,6 +598,32 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async setEnableOpenCodeAgent(enable: boolean): Promise<boolean> {
+    if (this.store.changingEnableOpenCodeAgent === enable) {
+      return enable;
+    }
+
+    const previousEnable = this.store.enableOpenCodeAgent;
+    this.store.changingEnableOpenCodeAgent = enable;
+    this.store.enableOpenCodeAgent = enable;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            enableOpenCodeAgent: enable
+          })
+        });
+      return authoritativePreferences.enableOpenCodeAgent ?? false;
+    } catch (error) {
+      this.store.enableOpenCodeAgent = previousEnable;
+      throw error;
+    } finally {
+      if (this.store.changingEnableOpenCodeAgent === enable) {
+        this.store.changingEnableOpenCodeAgent = null;
+      }
+    }
+  }
+
   async setUpdatePolicy(
     policy: DesktopUpdatePolicy
   ): Promise<DesktopUpdatePolicy> {
@@ -688,7 +794,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   private applyPreferences(preferences: {
-    agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
     agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
     agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
     agentConversationDetailMode?: DesktopAgentConversationDetailMode;
@@ -697,21 +802,20 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    featureFlags?: DesktopFeatureFlags;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     minimizeAnimation?: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources?: boolean;
     enableCursorAgent?: boolean;
+    enableOpenCodeAgent?: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
+    workbenchShortcuts?: DesktopWorkbenchShortcuts;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
-    this.store.agentComposerDefaultsByProvider =
-      normalizeDesktopAgentComposerDefaultsByProvider(
-        preferences.agentComposerDefaultsByProvider
-      );
     this.store.agentComposerDefaultsByAgentTarget =
       normalizeDesktopAgentComposerDefaultsByAgentTarget(
         preferences.agentComposerDefaultsByAgentTarget
@@ -736,6 +840,12 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       normalizeDesktopFileDefaultOpenersByExtension(
         preferences.fileDefaultOpenersByExtension
       );
+    const nextFeatureFlags = normalizeDesktopFeatureFlags(
+      preferences.featureFlags
+    );
+    if (!desktopFeatureFlagsEqual(this.store.featureFlags, nextFeatureFlags)) {
+      this.store.featureFlags = nextFeatureFlags;
+    }
     this.applyLocale(preferences.locale);
     this.store.minimizeAnimation =
       preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation;
@@ -745,9 +855,22 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       defaultDesktopShowAppDeveloperSources;
     this.store.enableCursorAgent =
       preferences.enableCursorAgent ?? defaultDesktopEnableCursorAgent;
+    this.store.enableOpenCodeAgent =
+      preferences.enableOpenCodeAgent ?? defaultDesktopEnableOpenCodeAgent;
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
     this.store.updateChannel = preferences.updateChannel;
     this.store.updatePolicy = preferences.updatePolicy;
+    const nextWorkbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
+      preferences.workbenchShortcuts
+    );
+    if (
+      !desktopWorkbenchShortcutsEqual(
+        this.store.workbenchShortcuts,
+        nextWorkbenchShortcuts
+      )
+    ) {
+      this.store.workbenchShortcuts = nextWorkbenchShortcuts;
+    }
     this.store.workbenchWindowSnapping =
       normalizeDesktopWorkbenchWindowSnapping(
         preferences.workbenchWindowSnapping
@@ -756,7 +879,6 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
   private currentPreferences(
     overrides: Partial<{
-      agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
       agentComposerDefaultsByAgentTarget: DesktopAgentComposerDefaultsByAgentTarget;
       agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
       agentConversationDetailMode: DesktopAgentConversationDetailMode;
@@ -765,15 +887,18 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       defaultAgentProvider: DesktopDefaultAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
+      featureFlags: DesktopFeatureFlags;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
       minimizeAnimation: DesktopMinimizeAnimation;
       sleepPreventionMode: DesktopSleepPreventionMode;
       showAppDeveloperSources: boolean;
       enableCursorAgent: boolean;
+      enableOpenCodeAgent: boolean;
       themeSource: DesktopThemeSource;
       updateChannel: DesktopUpdateChannel;
       updatePolicy: DesktopUpdatePolicy;
+      workbenchShortcuts: DesktopWorkbenchShortcuts;
       workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
     }> = {}
   ): {
@@ -787,15 +912,18 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    featureFlags: DesktopFeatureFlags;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     minimizeAnimation: DesktopMinimizeAnimation;
     sleepPreventionMode: DesktopSleepPreventionMode;
     showAppDeveloperSources: boolean;
     enableCursorAgent: boolean;
+    enableOpenCodeAgent: boolean;
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
+    workbenchShortcuts: DesktopWorkbenchShortcuts;
     workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   } {
     const hasWorkbenchWindowSnappingOverride =
@@ -804,11 +932,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
     );
     return {
-      agentComposerDefaultsByProvider:
-        normalizeDesktopAgentComposerDefaultsByProvider(
-          overrides.agentComposerDefaultsByProvider ??
-            this.store.agentComposerDefaultsByProvider
-        ),
+      // Keep the required wire-contract field, but stop round-tripping the
+      // frozen legacy provider-keyed defaults through renderer state.
+      agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget:
         normalizeDesktopAgentComposerDefaultsByAgentTarget(
           overrides.agentComposerDefaultsByAgentTarget ??
@@ -835,6 +961,9 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
       dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,
       dockPlacement: overrides.dockPlacement ?? this.store.dockPlacement,
+      featureFlags: normalizeDesktopFeatureFlags(
+        overrides.featureFlags ?? this.store.featureFlags
+      ),
       fileDefaultOpenersByExtension:
         normalizeDesktopFileDefaultOpenersByExtension(
           overrides.fileDefaultOpenersByExtension ??
@@ -849,9 +978,14 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.showAppDeveloperSources ?? this.store.showAppDeveloperSources,
       enableCursorAgent:
         overrides.enableCursorAgent ?? this.store.enableCursorAgent,
+      enableOpenCodeAgent:
+        overrides.enableOpenCodeAgent ?? this.store.enableOpenCodeAgent,
       themeSource: overrides.themeSource ?? this.store.theme.source,
       updateChannel: overrides.updateChannel ?? this.store.updateChannel,
       updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy,
+      workbenchShortcuts: normalizeDesktopWorkbenchShortcuts(
+        overrides.workbenchShortcuts ?? this.store.workbenchShortcuts
+      ),
       ...(hasWorkbenchWindowSnappingOverride ||
       !desktopWorkbenchWindowSnappingEqual(
         workbenchWindowSnapping,

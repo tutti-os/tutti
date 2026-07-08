@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -26,6 +27,7 @@ type startInput struct {
 	Provider        string   `cli:"provider" validate:"required"`
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
+	Hidden          bool     `cli:"hidden"`
 	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
@@ -34,12 +36,12 @@ type startInput struct {
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
 	Title           string   `cli:"title"`
-	Visible         bool     `cli:"visible"`
 }
 
 type providerStartInput struct {
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
+	Hidden          bool     `cli:"hidden"`
 	Images          []string `cli:"image" description:"Image file to attach to the initial prompt. May be passed multiple times."`
 	Model           string   `cli:"model"`
 	PermissionMode  string   `cli:"permission-mode"`
@@ -48,7 +50,6 @@ type providerStartInput struct {
 	Show            bool     `cli:"show"`
 	Speed           string   `cli:"speed"`
 	Title           string   `cli:"title"`
-	Visible         bool     `cli:"visible"`
 }
 
 type sessionIDInput struct {
@@ -63,8 +64,9 @@ type sendInput struct {
 }
 
 type sessionActionResult struct {
-	Session         agentservice.Session
-	LaunchRequested bool
+	Session          agentservice.Session
+	LaunchRequested  bool
+	WaitAfterVersion uint64
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
@@ -82,6 +84,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 			return p.runStart(ctx, invoke, input.Provider, "", startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
+				Hidden:          input.Hidden,
 				Images:          input.Images,
 				Model:           input.Model,
 				PermissionMode:  input.PermissionMode,
@@ -90,7 +93,6 @@ func (p Provider) newStartCommand() cliservice.Command {
 				Show:            input.Show,
 				Speed:           input.Speed,
 				Title:           input.Title,
-				Visible:         input.Visible,
 			})
 		},
 	})
@@ -133,6 +135,7 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 type startFields struct {
 	Cwd             string
 	DisplayPrompt   string
+	Hidden          bool
 	Images          []string
 	Model           string
 	PermissionMode  string
@@ -141,7 +144,6 @@ type startFields struct {
 	Show            bool
 	Speed           string
 	Title           string
-	Visible         bool
 }
 
 func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, provider string, agentTargetID string, input startFields) (any, error) {
@@ -152,7 +154,6 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	if agentTargetID == "" {
 		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...` or `tutti claude start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
 	}
-	visible := input.Visible || input.Show
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
 		return nil, err
@@ -185,7 +186,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		ReasoningEffort:        optionalStringPointer(reasoningEffort),
 		Speed:                  optionalStringPointer(input.Speed),
 		Title:                  optionalStringPointer(input.Title),
-		Visible:                boolPointer(visible),
+		Visible:                hiddenVisibleOverride(input.Hidden),
 		ConversationDetailMode: defaults.ConversationDetailMode,
 	})
 	if err != nil {
@@ -199,6 +200,14 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		launchRequested = true
 	}
 	return sessionActionResult{Session: session, LaunchRequested: launchRequested}, nil
+}
+
+func hiddenVisibleOverride(hidden bool) *bool {
+	if !hidden {
+		return nil
+	}
+	visible := false
+	return &visible
 }
 
 func (p Provider) resolveStartCwd(
@@ -306,6 +315,10 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
+	waitAfterVersion, err := p.currentLatestVersion(ctx, invoke.WorkspaceID, input.SessionID)
+	if err != nil {
+		return nil, err
+	}
 	content, err := promptContentFromCLIInput(input.Prompt, input.Images)
 	if err != nil {
 		return nil, err
@@ -318,7 +331,18 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	session := result.Session
-	return sessionActionResult{Session: session}, nil
+	return sessionActionResult{Session: session, WaitAfterVersion: waitAfterVersion}, nil
+}
+
+func (p Provider) currentLatestVersion(ctx context.Context, workspaceID string, sessionID string) (uint64, error) {
+	page, err := p.sessions.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
+		Limit: 1,
+		Order: agentactivitybiz.MessageOrderDesc,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return page.LatestVersion, nil
 }
 
 func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {
@@ -419,10 +443,14 @@ func sessionActionOutputSpec() framework.OutputSpec {
 		JSONViews: map[framework.OutputView]func(any) map[string]any{
 			framework.ViewSummary: func(result any) map[string]any {
 				action := result.(sessionActionResult)
-				return map[string]any{
+				value := map[string]any{
 					"launchRequested": action.LaunchRequested,
 					"session":         sessionActionValue(action.Session),
 				}
+				if action.WaitAfterVersion > 0 {
+					value["waitAfterVersion"] = action.WaitAfterVersion
+				}
+				return value
 			},
 		},
 	}
@@ -452,9 +480,5 @@ func optionalStringPointer(value string) *string {
 	if value == "" {
 		return nil
 	}
-	return &value
-}
-
-func boolPointer(value bool) *bool {
 	return &value
 }

@@ -89,16 +89,6 @@ type DynamicCommandRegistry interface {
 	Invoke(context.Context, InvokeRequest) (CommandOutput, error)
 }
 
-func NewRegistry(commands ...Command) (*Registry, error) {
-	registry := newRegistry()
-	for _, command := range commands {
-		if err := registry.Register(command); err != nil {
-			return nil, err
-		}
-	}
-	return registry, nil
-}
-
 func NewRegistryFromProviders(providers ...Provider) (*Registry, error) {
 	registry := newRegistry()
 	for _, provider := range providers {

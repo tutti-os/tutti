@@ -42,9 +42,15 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			DockIconStyle:               preferences.DockIconStyle,
 			DockPlacement:               preferences.DockPlacement,
 			EnableCursorAgent:           preferences.EnableCursorAgent,
+			EnableOpenCodeAgent:         preferences.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
+			FeatureFlags: preferences.FeatureFlags,
+			WorkbenchShortcuts: desktopWorkbenchShortcutsPayload{
+				NewAgentConversation: shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewAgentConversation),
+				NewSameTypeWindow:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			},
 			Locale:                  preferences.Locale,
 			MinimizeAnimation:       preferences.MinimizeAnimation,
 			SleepPreventionMode:     preferences.SleepPreventionMode,
@@ -87,7 +93,10 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
 			EnableCursorAgent:                           decoded.EnableCursorAgent,
+			EnableOpenCodeAgent:                         decoded.EnableOpenCodeAgent,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
+			FeatureFlags:                                decoded.FeatureFlags,
+			WorkbenchShortcuts:                          decoded.WorkbenchShortcuts,
 			Locale:                                      decoded.Locale,
 			MinimizeAnimation:                           decoded.MinimizeAnimation,
 			SleepPreventionMode:                         decoded.SleepPreventionMode,
@@ -116,7 +125,10 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DockIconStyle                               string
 	DockPlacement                               string
 	EnableCursorAgent                           bool
+	EnableOpenCodeAgent                         bool
 	FileDefaultOpenersByExtension               map[string]string
+	FeatureFlags                                map[string]bool
+	WorkbenchShortcuts                          preferencesbiz.DesktopWorkbenchShortcuts
 	Locale                                      string
 	MinimizeAnimation                           string
 	SleepPreventionMode                         string
@@ -158,9 +170,15 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		DockIconStyle:               decoded.Preferences.DockIconStyle,
 		DockPlacement:               decoded.Preferences.DockPlacement,
 		EnableCursorAgent:           decoded.Preferences.EnableCursorAgent,
+		EnableOpenCodeAgent:         decoded.Preferences.EnableOpenCodeAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),
+		FeatureFlags: preferencesbiz.NormalizeDesktopFeatureFlags(decoded.Preferences.FeatureFlags),
+		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
+			NewAgentConversation: shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewAgentConversation),
+			NewSameTypeWindow:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+		},
 		Locale:                  decoded.Preferences.Locale,
 		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,
 		SleepPreventionMode:     decoded.Preferences.SleepPreventionMode,
@@ -201,6 +219,21 @@ func fileDefaultOpenersByExtensionFromPayload(
 		openersByExtension[normalizedExtension] = opener
 	}
 	return openersByExtension
+}
+
+func shortcutPointerFromBiz(value string) *string {
+	normalized := preferencesbiz.NormalizeDesktopShortcutBinding(value)
+	if normalized == "" {
+		return nil
+	}
+	return &normalized
+}
+
+func shortcutStringFromPayload(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return preferencesbiz.NormalizeDesktopShortcutBinding(*value)
 }
 
 func agentGUIConversationRailCollapsedByProviderPayloadFromBiz(

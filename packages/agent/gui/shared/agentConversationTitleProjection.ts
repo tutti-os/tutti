@@ -56,6 +56,10 @@ export function normalizeAgentGUIProviderIdentity(
       return "hermes";
     case "openclaw":
       return "openclaw";
+    case "opencode":
+    case "open-code":
+    case "opencode-ai":
+      return "opencode";
     default:
       return "unknown";
   }

@@ -86,6 +86,9 @@ export function resolveIssueManagerErrorMessage(
   if (raw === "issue_manager.workspace_path_unavailable") {
     return copy.t("messages.workspacePathUnavailable");
   }
+  if (raw === "issue_manager.agent_gui_launch_unavailable") {
+    return copy.t("messages.agentGuiLaunchUnavailable");
+  }
   if (raw === "issue_manager.run_status_missing") {
     return copy.t("messages.runStatusMissing");
   }

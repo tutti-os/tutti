@@ -6,12 +6,19 @@ import (
 	"testing"
 )
 
-func TestRegistryListsCapabilities(t *testing.T) {
-	registry, err := NewRegistry(testCommand("doctor.ping"))
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
+func newTestRegistry(t *testing.T, commands ...Command) *Registry {
+	t.Helper()
+	registry := newRegistry()
+	for _, command := range commands {
+		if err := registry.Register(command); err != nil {
+			t.Fatalf("Register: %v", err)
+		}
 	}
+	return registry
+}
 
+func TestRegistryListsCapabilities(t *testing.T) {
+	registry := newTestRegistry(t, testCommand("doctor.ping"))
 	capabilities := registry.Capabilities(context.Background(), InvokeContext{Source: "cli"})
 	if len(capabilities) != 1 {
 		t.Fatalf("len(capabilities) = %d, want 1", len(capabilities))
@@ -22,11 +29,7 @@ func TestRegistryListsCapabilities(t *testing.T) {
 }
 
 func TestRegistryInvokesCommand(t *testing.T) {
-	registry, err := NewRegistry(testCommand("doctor.ping"))
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-
+	registry := newTestRegistry(t, testCommand("doctor.ping"))
 	output, err := registry.Invoke(context.Background(), InvokeRequest{
 		CommandID: "doctor.ping",
 		Context:   InvokeContext{Source: "cli"},
@@ -40,19 +43,17 @@ func TestRegistryInvokesCommand(t *testing.T) {
 }
 
 func TestRegistryReturnsCommandNotFound(t *testing.T) {
-	registry, err := NewRegistry(testCommand("doctor.ping"))
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-
-	_, err = registry.Invoke(context.Background(), InvokeRequest{CommandID: "missing"})
+	registry := newTestRegistry(t, testCommand("doctor.ping"))
+	_, err := registry.Invoke(context.Background(), InvokeRequest{CommandID: "missing"})
 	if !errors.Is(err, ErrCommandNotFound) {
 		t.Fatalf("err = %v, want ErrCommandNotFound", err)
 	}
 }
 
 func TestRegistryRejectsDuplicateCommandID(t *testing.T) {
-	_, err := NewRegistry(testCommand("doctor.ping"), testCommand("doctor.ping"))
+	registry := newRegistry()
+	_ = registry.Register(testCommand("doctor.ping"))
+	err := registry.Register(testCommand("doctor.ping"))
 	if !errors.Is(err, ErrInvalidCommand) {
 		t.Fatalf("err = %v, want ErrInvalidCommand", err)
 	}
@@ -86,14 +87,11 @@ func TestRegistryFromProviders(t *testing.T) {
 }
 
 func TestRegistryCapabilitiesKeepRegistrationOrder(t *testing.T) {
-	registry, err := NewRegistry(
+	registry := newTestRegistry(
+		t,
 		testCommandWithPath("diagnostics.second", []string{"second"}),
 		testCommandWithPath("diagnostics.first", []string{"first"}),
 	)
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-
 	capabilities := registry.Capabilities(context.Background(), InvokeContext{Source: "cli"})
 	if len(capabilities) != 2 {
 		t.Fatalf("len(capabilities) = %d, want 2", len(capabilities))
@@ -180,7 +178,8 @@ func TestRegistryCapabilitiesCanSkipProviderFilters(t *testing.T) {
 }
 
 func TestRegistryHidesIntegrationCapabilitiesFromDefaultList(t *testing.T) {
-	registry, err := NewRegistry(
+	registry := newTestRegistry(
+		t,
 		testCommandWithPath("diagnostics.visible", []string{"visible"}),
 		Command{
 			Capability: Capability{
@@ -201,10 +200,6 @@ func TestRegistryHidesIntegrationCapabilitiesFromDefaultList(t *testing.T) {
 			},
 		},
 	)
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-
 	capabilities := registry.Capabilities(context.Background(), InvokeContext{Source: "cli"})
 	if got, want := capabilityIDs(capabilities), []string{"diagnostics.visible"}; !stringSlicesEqual(got, want) {
 		t.Fatalf("capability ids = %#v, want %#v", got, want)

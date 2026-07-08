@@ -501,7 +501,9 @@ func TestServicePutFreezesLegacyComposerDefaultsByProvider(t *testing.T) {
 	store := &preferencesStoreStub{
 		getResult: preferencesbiz.DesktopPreferences{
 			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
-				"codex": {Model: "gpt-5"},
+				"codex":             {Model: "gpt-5"},
+				"legacy-unknown":    {Model: "legacy-model"},
+				" spaced-provider ": {Model: " legacy-whitespace "},
 			},
 			Initialized: true,
 		},
@@ -529,8 +531,11 @@ func TestServicePutFreezesLegacyComposerDefaultsByProvider(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 	stored := store.putInput.AgentComposerDefaultsByProvider
-	if len(stored) != 1 || stored["codex"].Model != "gpt-5" {
-		t.Fatalf("stored provider defaults = %#v, want frozen stored value", stored)
+	if len(stored) != 3 ||
+		stored["codex"].Model != "gpt-5" ||
+		stored["legacy-unknown"].Model != "legacy-model" ||
+		stored[" spaced-provider "].Model != " legacy-whitespace " {
+		t.Fatalf("stored provider defaults = %#v, want frozen stored value passed through verbatim", stored)
 	}
 }
 

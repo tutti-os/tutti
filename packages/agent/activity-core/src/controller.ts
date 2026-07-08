@@ -125,39 +125,39 @@ export function createAgentActivityController({
       const nextSessions = response.sessions;
       const nextPresences = response.presences ?? [];
       const nextSnapshot = updateSnapshot((current) => {
-        let mergedSessions = nextSessions;
         const sessionDataUnchanged =
           areShallowObjectArraysEqual(current.sessions, nextSessions) &&
           areShallowObjectArraysEqual(current.presences, nextPresences);
+        let reconciledSessions = nextSessions;
         if (!sessionDataUnchanged) {
-          mergedSessions = nextSessions.map((nextSession) => {
+          reconciledSessions = nextSessions.map((nextSession) => {
             const existing = current.sessions.find(
               (item) => item.agentSessionId === nextSession.agentSessionId
             );
-            if (!existing) {
-              return nextSession;
+            if (
+              existing &&
+              isSessionVersionRegression("load", existing, nextSession)
+            ) {
+              return existing;
             }
-            reportSessionVersionRegression("load", existing, nextSession);
-            // A load response is a point-in-time snapshot; if a fresher pushed
-            // state already landed for this session, keep it (same guard as
-            // upsertSnapshotSession).
-            return sessionVersionRegressed(existing, nextSession)
-              ? existing
-              : nextSession;
+            return nextSession;
           });
         }
-        const source = sessionDataUnchanged
+        const reconciledDataUnchanged =
+          areShallowObjectArraysEqual(current.sessions, reconciledSessions) &&
+          areShallowObjectArraysEqual(current.presences, nextPresences);
+        const source = reconciledDataUnchanged
           ? current
           : {
               ...current,
               presences: nextPresences,
-              sessions: mergedSessions
+              sessions: reconciledSessions
             };
         const canonical = canonicalizeSnapshotMessageBuckets(source);
         if (canonical !== source) {
           return canonical;
         }
-        return sessionDataUnchanged ? current : source;
+        return reconciledDataUnchanged ? current : source;
       });
       if (autoRetainSessionEvents) {
         reconcileAutoRetainedSessionStreams(nextSnapshot.sessions, signal);
@@ -1006,24 +1006,15 @@ function sessionVersionKey(session: AgentActivitySession): number | null {
   return session.lastEventUnixMs ?? session.updatedAtUnixMs ?? null;
 }
 
-function sessionVersionRegressed(
+function isSessionVersionRegression(
+  source: string,
   existing: AgentActivitySession,
   incoming: AgentActivitySession
 ): boolean {
   const previousKey = sessionVersionKey(existing);
   const nextKey = sessionVersionKey(incoming);
-  return previousKey !== null && nextKey !== null && nextKey < previousKey;
-}
-
-function reportSessionVersionRegression(
-  source: string,
-  existing: AgentActivitySession,
-  incoming: AgentActivitySession
-): void {
-  const previousKey = sessionVersionKey(existing);
-  const nextKey = sessionVersionKey(incoming);
   if (previousKey === null || nextKey === null || nextKey >= previousKey) {
-    return;
+    return false;
   }
   reportAgentActivityStoreDiagnostic("session_version_regression", {
     agentSessionId: incoming.agentSessionId,
@@ -1036,6 +1027,7 @@ function reportSessionVersionRegression(
     previousSubmitAvailability: existing.submitAvailability ?? null,
     nextSubmitAvailability: incoming.submitAvailability ?? null
   });
+  return true;
 }
 
 function upsertSnapshotSession(
@@ -1053,15 +1045,11 @@ function upsertSnapshotSession(
     });
   }
   const existingSession = snapshot.sessions[index];
-  if (existingSession) {
-    reportSessionVersionRegression(source, existingSession, session);
-    // A slow fetch can resolve after a fresher pushed state landed (e.g. a
-    // reconcile snapshot requested mid-turn arriving after the settle patch).
-    // Overwriting would freeze the session on a stale running/blocked view
-    // with no later event to correct it, so drop the stale upsert instead.
-    if (sessionVersionRegressed(existingSession, session)) {
-      return snapshot;
-    }
+  if (
+    existingSession &&
+    isSessionVersionRegression(source, existingSession, session)
+  ) {
+    return snapshot;
   }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;

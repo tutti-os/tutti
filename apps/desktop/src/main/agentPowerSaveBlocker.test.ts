@@ -6,7 +6,10 @@ import type {
   TuttidClient,
   WorkspaceAgentSession
 } from "@tutti-os/client-tuttid-ts";
-import type { DesktopSleepPreventionMode } from "../shared/preferences/index.ts";
+import {
+  defaultDesktopWorkbenchShortcuts,
+  type DesktopSleepPreventionMode
+} from "../shared/preferences/index.ts";
 import {
   connectAgentPowerSaveBlocker,
   isAgentSessionRunningTask,
@@ -281,6 +284,9 @@ function createFakePreferences(
     getDefaultAgentProvider() {
       return "codex";
     },
+    getFeatureFlags() {
+      return {};
+    },
     getBrowserUseConnectionMode() {
       return "isolated";
     },
@@ -310,6 +316,9 @@ function createFakePreferences(
     },
     getUpdatePolicy() {
       return "prompt";
+    },
+    getWorkbenchShortcuts() {
+      return defaultDesktopWorkbenchShortcuts;
     },
     getWorkbenchWindowSnapping() {
       return {

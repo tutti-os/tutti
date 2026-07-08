@@ -19,7 +19,6 @@ func TestAgentNPMRegistriesDefaultsToOfficialFirstThenMirrors(t *testing.T) {
 	got := service.agentNPMRegistries()
 	want := []string{
 		"https://registry.npmjs.org",
-		"https://registry.npmmirror.com",
 		"https://repo.huaweicloud.com/repository/npm/",
 		"https://mirrors.cloud.tencent.com/npm/",
 	}
@@ -80,7 +79,7 @@ func TestRunExternalAgentRegistryNPMInstallerFallsBackToMirror(t *testing.T) {
 	if _, err := service.runExternalAgentRegistryNPMInstaller(context.Background(), "claude-code", npmInstallerSpec(t)); err != nil {
 		t.Fatalf("runExternalAgentRegistryNPMInstaller() error = %v", err)
 	}
-	want := []string{"https://registry.npmjs.org", "https://registry.npmmirror.com"}
+	want := []string{"https://registry.npmjs.org", "https://repo.huaweicloud.com/repository/npm/"}
 	if !slices.Equal(registriesTried, want) {
 		t.Fatalf("registries tried = %#v, want official then first mirror %#v", registriesTried, want)
 	}
@@ -123,7 +122,7 @@ func TestRunExternalAgentRegistryNPMInstallerPurgesDirtyTreeBeforeRetry(t *testi
 	if result.ExitCode != 0 {
 		t.Fatalf("install exit code = %d (stderr=%q), want a clean retry to succeed after purge", result.ExitCode, result.Stderr)
 	}
-	want := []string{"https://registry.npmjs.org", "https://registry.npmmirror.com"}
+	want := []string{"https://registry.npmjs.org", "https://repo.huaweicloud.com/repository/npm/"}
 	if !slices.Equal(registriesTried, want) {
 		t.Fatalf("registries tried = %#v, want official then mirror after purge %#v", registriesTried, want)
 	}
@@ -175,7 +174,7 @@ func TestResolveExternalRegistryNPMSpecExecEnvUsesRankedRegistry(t *testing.T) {
 	if !slices.Contains(result.Command, "exec") || !slices.Contains(result.Command, prefixDir) {
 		t.Fatalf("Command = %#v, want npm exec fallback under %q", result.Command, prefixDir)
 	}
-	if !slices.Contains(result.Env, "npm_config_registry=https://registry.npmmirror.com") {
+	if !slices.Contains(result.Env, "npm_config_registry=https://repo.huaweicloud.com/repository/npm/") {
 		t.Fatalf("adapter env = %#v, want ranked mirror registry", result.Env)
 	}
 }
@@ -303,7 +302,7 @@ func TestRankedAgentNPMRegistriesMovesUnreachableOfficialBehindReachableMirror(t
 	}
 
 	got := service.rankedAgentNPMRegistries(context.Background(), "@openai/codex")
-	if len(got) == 0 || got[0] != "https://registry.npmmirror.com" {
+	if len(got) == 0 || got[0] != "https://repo.huaweicloud.com/repository/npm/" {
 		t.Fatalf("rankedAgentNPMRegistries()[0] = %q, want first reachable mirror; full order=%#v", got[0], got)
 	}
 }
@@ -325,7 +324,7 @@ func TestRankedAgentNPMRegistriesMovesHTTPErrorBehindSuccessfulMirror(t *testing
 	}
 
 	got := service.rankedAgentNPMRegistries(context.Background(), "@openai/codex")
-	if len(got) == 0 || got[0] != "https://registry.npmmirror.com" {
+	if len(got) == 0 || got[0] != "https://repo.huaweicloud.com/repository/npm/" {
 		t.Fatalf("rankedAgentNPMRegistries()[0] = %q, want first successful mirror; full order=%#v", got[0], got)
 	}
 }

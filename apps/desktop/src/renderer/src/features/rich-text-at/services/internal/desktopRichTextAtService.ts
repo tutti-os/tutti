@@ -1233,6 +1233,8 @@ function resolveAgentSessionProviderLabel(provider?: string | null): string {
       return "Nexight";
     case "openclaw":
       return "OpenClaw";
+    case "opencode":
+      return "OpenCode";
     default:
       return provider?.trim() || "";
   }

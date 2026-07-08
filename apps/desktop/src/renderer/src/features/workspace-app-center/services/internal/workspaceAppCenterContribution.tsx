@@ -440,6 +440,7 @@ function WorkspaceAppWebviewBody({
       <BrowserNode
         defaultUrl={defaultUrl}
         feature={browserFeature}
+        hidden={context.node.isMinimized}
         navigationPolicy={navigationPolicy}
         nodeId={context.node.id}
         onFocusRequest={context.isFocused ? undefined : () => context.focus()}

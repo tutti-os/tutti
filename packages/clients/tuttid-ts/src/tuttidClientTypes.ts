@@ -85,6 +85,7 @@ import type {
   TrackEvent,
   TrackEventsRequest,
   UpdateWorkspaceAgentSessionPinRequest,
+  UpdateWorkspaceAgentSessionTitleRequest,
   UpdateWorkspaceAgentSessionVisibilityRequest,
   WorkspaceGitPatchRequest,
   WorkspaceGitPatchResponse,
@@ -657,6 +658,11 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string,
     request: UpdateWorkspaceAgentSessionPinRequest
+  ): Promise<WorkspaceAgentSession>;
+  updateWorkspaceAgentSessionTitle(
+    workspaceID: string,
+    agentSessionID: string,
+    request: UpdateWorkspaceAgentSessionTitleRequest
   ): Promise<WorkspaceAgentSession>;
   updateWorkspaceAgentSessionVisibility(
     workspaceID: string,

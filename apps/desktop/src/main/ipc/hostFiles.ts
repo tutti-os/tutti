@@ -22,6 +22,7 @@ import { createWorkspaceFileHostAccess } from "../host/workspaceFileHostAccess.t
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
+import { resolveDesktopDefaultsFromEnv } from "../defaults";
 
 export interface HostFilesIpcDependencies {
   fileDialogs: Pick<
@@ -211,7 +212,7 @@ async function archiveAgentPromptFile(
     safeAgentPromptAssetExtension(input.mimeType ?? "") ??
     "";
   const archiveDir = path.join(
-    app.getPath("userData"),
+    resolveDesktopDefaultsFromEnv().state.rootDir,
     "agent-prompt-assets",
     workspaceID,
     sha256.slice(0, 2)

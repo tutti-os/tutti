@@ -30,6 +30,11 @@ Repository entrypoints:
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
+Validation runners that spawn nested pnpm commands should read the root
+`packageManager` field and invoke that pinned version through Corepack. Do not
+let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
+package-manager shims can differ from the repository pin.
+
 ## TypeScript Baseline
 
 TypeScript linting uses Oxlint.

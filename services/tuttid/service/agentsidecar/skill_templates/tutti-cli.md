@@ -13,7 +13,7 @@ Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, or `claude` workflow implied by the user's prompt; do not assume launch-only behavior.
+3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` for blocking progress checks and recent execution output. After `agent send`, prefer `agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` using the `waitAfterVersion` returned by `agent send`. Use `agent session-summary --session-id <session-id> --json` only when you need the full compact context helper. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, or `claude` workflow implied by the user's prompt; do not assume launch-only behavior.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
 6. If none match, read `command-guide.md` before guessing.
@@ -26,11 +26,13 @@ Tutti mention links are internal handoffs. Parse them as data; do not open them 
 
 - `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
-- `mention://agent-session/<sessionId>?workspaceId=...`: use this skill and run `agent session-summary --session-id <session-id> --json`.
+- `mention://agent-session/<sessionId>?workspaceId=...`: use this skill and prefer `agent wait --session-id <session-id> --json` for recent execution progress; use `agent session-summary --session-id <session-id> --json` only for full context recovery.
 - `mention://agent-target/<targetId>?workspaceId=...`: use this skill and choose the `agent`, `codex`, or `claude` CLI workflow from the user's prompt. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
 Agent session summary JSON is compact and includes session context plus recent messages.
+
+When you need to wait for a launched or continued session to reach its next stop point, use `agent wait --session-id <session-id> --json`. After `agent send`, pass `--after-version <waitAfterVersion>` from the send result so `agent wait` does not immediately replay the previous stop point. `agent wait` is the blocking helper for progress checks and returns only the most recent execution messages. Use `agent session-summary --session-id <session-id> --json` only when you need the full compact context helper.
 
 ## Call Protocol
 

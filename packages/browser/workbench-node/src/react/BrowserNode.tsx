@@ -24,6 +24,7 @@ import type {
 } from "../core/types.ts";
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 import { useBrowserNodeWebview } from "./useBrowserNodeWebview.ts";
+import { shouldHideBrowserNodeWebview } from "./webviewVisibility.ts";
 
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
@@ -59,6 +60,7 @@ function useHostWindowMinimizing(): boolean {
 export interface BrowserNodeProps {
   defaultUrl: string;
   feature: BrowserNodeFeature;
+  hidden?: boolean;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   nodeId: string;
   onFocusRequest?: () => void;
@@ -73,6 +75,7 @@ export interface BrowserNodeProps {
 export function BrowserNode({
   defaultUrl,
   feature,
+  hidden = false,
   navigationPolicy = null,
   nodeId,
   onFocusRequest,
@@ -191,7 +194,8 @@ export function BrowserNode({
             className={cn(
               "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
               isShowingLoadError ? "hidden pointer-events-none" : "visible",
-              isHostMinimizing && "invisible"
+              shouldHideBrowserNodeWebview({ hidden, isHostMinimizing }) &&
+                "invisible"
             )}
             data-browser-node-webview="true"
             partition={webviewPartition}

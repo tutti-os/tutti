@@ -30,6 +30,7 @@ import type {
   ConfigureAppUpdatesInput,
   DesktopWorkspaceAppFolderKind,
   DesktopHostWindowCapturePreviewInput,
+  DesktopHostOpenAgentWindowInput,
   DesktopHostWindowCloseRequestPayload,
   DesktopHostWindowCloseRequestResolutionPayload,
   DesktopRendererDiagnosticPayload,
@@ -112,6 +113,8 @@ export interface DesktopHostWindowApi {
   capturePreview(
     input: DesktopHostWindowCapturePreviewInput
   ): Promise<string | null>;
+  minimize(): Promise<void>;
+  openAgentWindow(input: DesktopHostOpenAgentWindowInput): Promise<void>;
   onCloseRequest(
     listener: (payload: DesktopHostWindowCloseRequestPayload) => void
   ): () => void;
@@ -119,6 +122,7 @@ export interface DesktopHostWindowApi {
   resolveCloseRequest(
     payload: DesktopHostWindowCloseRequestResolutionPayload
   ): void;
+  toggleMaximize(): Promise<void>;
 }
 
 export type DesktopWorkspaceAppExternalHostRequestResult =

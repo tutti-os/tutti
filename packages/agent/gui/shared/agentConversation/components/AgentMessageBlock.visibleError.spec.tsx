@@ -98,7 +98,7 @@ describe("AgentVisibleErrorMessage", () => {
     expect(() => getByText("codex exited: spawn codex ENOENT")).toThrow();
 
     const action = getAllByRole("button").find(
-      (button) => button.textContent === "Set up"
+      (button) => button.textContent === "Connect"
     );
     expect(action).toBeTruthy();
 

@@ -516,21 +516,19 @@ func composerConfigOptionValuesFromAny(input any) []ComposerConfigOptionValue {
 		if id == "" {
 			id = value
 		}
+		var supportsImageInput *bool
+		if value, ok := boolFromAny(optionMap["supportsImageInput"]); ok {
+			supportsImageInput = &value
+		}
 		options = append(options, ComposerConfigOptionValue{
-			ID:          id,
-			Label:       label,
-			Value:       value,
-			Description: strings.TrimSpace(stringFromAny(optionMap["description"])),
+			ID:                 id,
+			Label:              label,
+			Value:              value,
+			Description:        strings.TrimSpace(stringFromAny(optionMap["description"])),
+			SupportsImageInput: supportsImageInput,
 		})
 	}
 	return options
-}
-
-func stringFromAny(input any) string {
-	if value, ok := input.(string); ok {
-		return value
-	}
-	return ""
 }
 
 func (s *Service) mergeLiveComposerModelsForComposerOptions(
@@ -615,6 +613,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 		}
 	}
 	if len(liveModels) > 0 {
+		liveModels = s.enrichModelCapabilityOptions(ctx, provider, liveModels)
 		logClaudeModelCatalogInvalidationDebug("composer_options_model_source_selected", map[string]any{
 			"workspaceId":       input.WorkspaceID,
 			"cwd":               input.Cwd,
@@ -631,6 +630,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	}
 	staticModels := staticClaudeComposerModelOptions(effectiveSettings.Model)
 	if len(staticModels) > 0 {
+		staticModels = s.enrichModelCapabilityOptions(ctx, provider, staticModels)
 		logClaudeModelCatalogInvalidationDebug("composer_options_model_source_selected", map[string]any{
 			"workspaceId":       input.WorkspaceID,
 			"cwd":               input.Cwd,
@@ -783,54 +783,6 @@ func mergeLiveModelsIntoRuntimeContext(
 	runtimeContext["model"] = nullableString(selectedModel)
 	runtimeContext["modelCatalogSource"] = strings.TrimSpace(modelSource)
 	return runtimeContext
-}
-
-func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOptionValue) []map[string]string {
-	if len(options) == 0 {
-		return []map[string]string{}
-	}
-	result := make([]map[string]string, 0, len(options))
-	for _, option := range options {
-		value := strings.TrimSpace(option.Value)
-		if value == "" {
-			continue
-		}
-		label := strings.TrimSpace(option.Label)
-		if label == "" {
-			label = value
-		}
-		entry := map[string]string{
-			"name":  label,
-			"value": value,
-		}
-		// Carry the per-model description through to RuntimeContext. The desktop
-		// composer projection prefers this live model list over ModelConfig.Options,
-		// so dropping the description here removes the model hover detail.
-		if description := strings.TrimSpace(option.Description); description != "" {
-			entry["description"] = description
-		}
-		result = append(result, entry)
-	}
-	return result
-}
-
-func runtimeConfigOptionsAsMapSlice(input any) []map[string]any {
-	switch typed := input.(type) {
-	case []map[string]any:
-		return append([]map[string]any(nil), typed...)
-	case []any:
-		result := make([]map[string]any, 0, len(typed))
-		for _, item := range typed {
-			entry, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			result = append(result, entry)
-		}
-		return result
-	default:
-		return nil
-	}
 }
 
 func nullableString(value string) any {
