@@ -2293,7 +2293,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       : viewModel.providerReadinessGate
     : null;
   const activePrompt =
-    viewModel.pendingInteractivePrompt ?? viewModel.pendingApproval;
+    (viewModel.canSubmitInteractive
+      ? viewModel.pendingInteractivePrompt
+      : null) ?? viewModel.pendingApproval;
   const activePromptRequestId = activePrompt?.requestId ?? null;
   const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.sessionChrome, approval: null }),
@@ -2443,6 +2445,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewModel.isInterrupting ||
         viewModel.isCreatingConversation));
   const showStopButton =
+    viewModel.canCancel &&
     !viewModel.isSubmitting &&
     viewModel.activeLiveState !== "failed" &&
     sessionChrome.auth === null &&
@@ -3009,7 +3012,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       promptTips: labels.promptTips,
       composerFocusRequestSequence,
       isActive,
-      promptImagesSupported: viewModel.promptImagesSupported,
+      promptImagesSupported:
+        viewModel.promptImagesSupported && viewModel.canUploadAttachment,
+      canUploadAttachment: viewModel.canUploadAttachment,
+      goalControlSupported: viewModel.canGoalControl,
       providerSelectLabel: labels.providerSwitchLabel,
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
@@ -3122,6 +3128,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.hasSentUserMessage,
       viewModel.isInterrupting,
       viewModel.isRespondingApproval,
+      viewModel.canUploadAttachment,
+      viewModel.canGoalControl,
       viewModel.promptImagesSupported,
       viewModel.queuedPrompts,
       viewModel.usage,
@@ -3670,6 +3678,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             submitBottomDockInteractivePrompt
           }
           onGoalControl={goalControl}
+          canGoalControl={viewModel.canGoalControl}
           goalPauseSupported={viewModel.goalPauseSupported}
         />
       ) : null}
@@ -4350,6 +4359,7 @@ interface AgentGUIBottomDockPaneProps {
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
   onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
+  canGoalControl: boolean;
   goalPauseSupported: boolean;
 }
 
@@ -4372,6 +4382,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onContinueInNewConversation,
   onSubmitBottomDockInteractivePrompt,
   onGoalControl,
+  canGoalControl,
   goalPauseSupported
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
@@ -4392,7 +4403,8 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
   const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
   const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
-  const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
+  const showGoalBanner =
+    canGoalControl && isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
     <div

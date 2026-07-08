@@ -3973,6 +3973,29 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("hides the stop affordance when cancel is not supported", () => {
+    const activeConversation = {
+      ...createConversationSummary("session-1"),
+      status: "working" as const
+    };
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail(),
+        canCancel: false,
+        isSubmitting: false
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      isSendingTurn: true,
+      showStopButton: false
+    });
+  });
+
   it("derives the visible busy state from active detail when the summary is stale", () => {
     const activeConversation = createConversationSummary("session-1");
 
@@ -5117,6 +5140,10 @@ function createViewModel(
     isInterrupting: false,
     isCancelPending: false,
     isRespondingApproval: false,
+    canCancel: true,
+    canSubmitInteractive: true,
+    canGoalControl: true,
+    canUploadAttachment: true,
     promptImagesSupported: true,
     compactSupported: null,
     goalPauseSupported: true,

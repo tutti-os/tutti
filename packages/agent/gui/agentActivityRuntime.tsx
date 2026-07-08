@@ -282,6 +282,23 @@ export interface AgentActivityRuntimePromptAsset {
   data: string;
 }
 
+export interface AgentActivityRuntimeCapabilities {
+  canCancel?: boolean;
+  canSubmitInteractive?: boolean;
+  canGoalControl?: boolean;
+  canUploadAttachment?: boolean;
+}
+
+export type AgentActivityRuntimeCapabilityKey =
+  keyof AgentActivityRuntimeCapabilities;
+
+export function resolveAgentActivityRuntimeCapability(
+  capabilities: AgentActivityRuntimeCapabilities | null | undefined,
+  key: AgentActivityRuntimeCapabilityKey
+): boolean {
+  return capabilities?.[key] !== false;
+}
+
 export interface AgentActivityRuntime {
   /**
    * Stable identity of this runtime instance (e.g. a local origin vs a
@@ -300,6 +317,7 @@ export interface AgentActivityRuntime {
    * Only that one guard is gated; project selection/listing is unaffected.
    */
   projectPathIsRemote?: boolean;
+  capabilities?: AgentActivityRuntimeCapabilities;
   promptContentUploadSupport?: {
     file?: boolean;
     image?: boolean;

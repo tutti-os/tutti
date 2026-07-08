@@ -25,6 +25,7 @@ import type {
 } from "../../../shared/contracts/dto";
 import type {
   AgentActivityRuntime,
+  AgentActivityRuntimeCapabilities,
   AgentActivityRuntimeRetainSessionEventsInput
 } from "../../../agentActivityRuntime";
 import {
@@ -158,6 +159,60 @@ describe("useAgentGUINodeController", () => {
     delete (window as { agentHostApi?: unknown }).agentHostApi;
     installNoopAgentActivityRuntimeForTests();
     void setAgentGuiI18nTestLocale("en");
+  });
+
+  it("defaults undeclared runtime capabilities to enabled", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.canCancel).toBe(true);
+    expect(result.current.viewModel.canSubmitInteractive).toBe(true);
+    expect(result.current.viewModel.canGoalControl).toBe(true);
+    expect(result.current.viewModel.canUploadAttachment).toBe(true);
+  });
+
+  it("projects explicit false runtime capabilities into the view model", () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      capabilities: {
+        canCancel: false,
+        canSubmitInteractive: false,
+        canGoalControl: false,
+        canUploadAttachment: false
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    expect(result.current.viewModel.canCancel).toBe(false);
+    expect(result.current.viewModel.canSubmitInteractive).toBe(false);
+    expect(result.current.viewModel.canGoalControl).toBe(false);
+    expect(result.current.viewModel.canUploadAttachment).toBe(false);
   });
 
   it("does not reload conversations after persisting the active conversation hint", async () => {
@@ -18473,6 +18528,7 @@ function installAgentHostApi({
   toastApi,
   userProjects,
   trackSettingsProjectChange,
+  capabilities,
   autoLoadRuntime = false
 }: {
   list: ReturnType<typeof vi.fn>;
@@ -18504,6 +18560,7 @@ function installAgentHostApi({
   };
   userProjects?: unknown;
   trackSettingsProjectChange?: ReturnType<typeof vi.fn> | undefined;
+  capabilities?: AgentActivityRuntimeCapabilities;
 }): void {
   const sessionEventListeners = new Set<
     (event: AgentHostAgentActivityStreamEvent) => void
@@ -18611,6 +18668,7 @@ function installAgentHostApi({
     updateSettings: updateSettings as CallableMock,
     warmupOpenclawGateway: warmupOpenclawGateway as CallableMock,
     unactivate: unactivate as CallableMock,
+    capabilities,
     autoLoadRuntime
   });
 }
@@ -18635,6 +18693,7 @@ function installAgentActivityRuntimeForHostMocks({
   updateSettings,
   warmupOpenclawGateway,
   unactivate,
+  capabilities,
   autoLoadRuntime
 }: {
   activate: CallableMock;
@@ -18657,6 +18716,7 @@ function installAgentActivityRuntimeForHostMocks({
   updateSettings: CallableMock;
   warmupOpenclawGateway: CallableMock;
   unactivate: CallableMock;
+  capabilities?: AgentActivityRuntimeCapabilities;
 }): void {
   const snapshotsByWorkspaceId = new Map<string, AgentActivitySnapshot>();
   const listenersByWorkspaceId = new Map<
@@ -18784,6 +18844,7 @@ function installAgentActivityRuntimeForHostMocks({
   };
 
   const runtime: AgentActivityRuntime = {
+    ...(capabilities ? { capabilities } : {}),
     async activateSession(input) {
       const result = await activate({
         mode: input.mode,
