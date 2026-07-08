@@ -936,9 +936,7 @@ export const AgentRichTextEditor = forwardRef<
           if (!hasWorkspaceFileDropData(dataTransfer)) {
             return false;
           }
-          const entries = readWorkspaceFileDropEntries(dataTransfer, {
-            includeLegacyPaths: false
-          });
+          const entries = readWorkspaceFileDropEntries(dataTransfer);
           if (entries.length === 0) {
             return false;
           }
@@ -1010,9 +1008,7 @@ export const AgentRichTextEditor = forwardRef<
           if (!currentEditor || currentEditor.isDestroyed) {
             return true;
           }
-          const entries = readWorkspaceFileDropEntries(dataTransfer, {
-            includeLegacyPaths: false
-          });
+          const entries = readWorkspaceFileDropEntries(dataTransfer);
           if (entries.length === 0) {
             return true;
           }
