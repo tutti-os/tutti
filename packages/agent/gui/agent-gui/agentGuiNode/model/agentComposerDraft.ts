@@ -12,7 +12,24 @@ import {
   AGENT_PASTED_TEXT_MENTION_KIND
 } from "./agentGuiNodeTypes";
 
-const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 48;
+const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 10;
+
+/**
+ * First {@link PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS} characters of the pasted
+ * body (collapsed to a single line), used as the chip label everywhere. Markdown
+ * link-label metacharacters are stripped so it round-trips through the
+ * `[preview](path)` reference the persisted content carries.
+ */
+export function pastedTextPreview(text: string): string {
+  const collapsed = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[[\]()]/g, "");
+  if (collapsed.length <= PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS)}…`;
+}
 
 /**
  * First non-empty line of the pasted body, trimmed and length-capped, used as
@@ -23,15 +40,11 @@ function pastedTextPreviewLabel(
   item: AgentComposerDraftLargeText,
   index: number
 ): string {
-  const firstLine =
-    item.text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find((line) => line !== "") ?? "";
-  const base = firstLine || pastedTextDraftDisplayName(index);
-  return base.length > PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS
-    ? `${base.slice(0, PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS)}…`
-    : base;
+  return (
+    pastedTextPreview(item.text) ||
+    item.name.trim() ||
+    pastedTextDraftDisplayName(index)
+  );
 }
 
 /**
@@ -373,6 +386,97 @@ export function pastedTextDraftDisplayName(index: number): string {
   return `pasted-text-${index + 1}.txt`;
 }
 
+// Matches a landed pasted-text archive path (content-addressed .txt under the
+// host's agent-prompt-assets dir). The path may contain spaces (e.g. macOS
+// "Application Support"), so match from the leading "/" or drive letter up to
+// the first ".txt" after "agent-prompt-assets", staying on one line.
+const PASTED_TEXT_ARCHIVE_PATH_RE =
+  /(?:\/|[A-Za-z]:\\)[^\n]*?agent-prompt-assets[^\n]*?\.txt/;
+
+function firstPastedTextArchivePath(line: string): string | null {
+  return line.match(PASTED_TEXT_ARCHIVE_PATH_RE)?.[0].trim() ?? null;
+}
+
+/**
+ * Extracts landed pasted-text archive paths from a persisted content text block
+ * (the codex-style "Referenced pasted text files:" instruction the agent
+ * receives). This is the reload-safe source of truth for the chip — see
+ * {@link linkifyPastedTextReferences}.
+ */
+export function extractPastedTextArchivePaths(text: string): string[] {
+  const paths: string[] = [];
+  for (const line of text.split("\n")) {
+    const path = firstPastedTextArchivePath(line);
+    if (path && !paths.includes(path)) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function pastedTextReferenceMentionMarkdown(
+  preview: string,
+  path: string,
+  index: number
+): string {
+  return createRichTextMentionMarkdown({
+    providerId: AGENT_PASTED_TEXT_MENTION_KIND,
+    entityId: `ref-${index}`,
+    label: preview.trim() || pastedTextDraftDisplayName(index),
+    scope: { path }
+  });
+}
+
+// The persisted instruction line embeds the preview quoted: `… "<preview>": …`.
+function firstQuotedPreview(line: string): string {
+  return line.match(/"([^"]*)"/)?.[1]?.trim() ?? "";
+}
+
+/**
+ * Rewrites a persisted content text block that carries pasted-text references
+ * into the same pasted-text mention chips the composer/display prompt produce,
+ * so a reloaded message renders identical chips instead of the raw
+ * "Referenced pasted text files: - pasted text file: <path>. Read this…" text.
+ *
+ * Mirrors the Codex approach (parse the agent-facing text back into attachment
+ * chips): the pasted-text instruction is appended as its own content block, so a
+ * block containing archive paths is entirely that section and is replaced by the
+ * clean chip list (dropping the localized header/instruction wording). Blocks
+ * without a pasted-text path are returned unchanged.
+ */
+export function linkifyPastedTextReferences(text: string): string {
+  if (!PASTED_TEXT_ARCHIVE_PATH_RE.test(text)) {
+    return text;
+  }
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let refIndex = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const path = firstPastedTextArchivePath(line);
+    if (path) {
+      out.push(
+        pastedTextReferenceMentionMarkdown(
+          firstQuotedPreview(line),
+          path,
+          refIndex
+        )
+      );
+      refIndex += 1;
+      continue;
+    }
+    // Drop the localized header line that directly precedes a reference line;
+    // the pasted-text instruction always emits "<header>\n<refs>" as its own
+    // block, so this only removes the header, never user text.
+    const next = lines[i + 1];
+    if (next != null && firstPastedTextArchivePath(next)) {
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
 /**
  * Pasted long text submits as a structured `file` block (content-addressed
  * archive path) tagged with {@link AGENT_PASTED_TEXT_BLOCK_KIND}. Only landed
@@ -395,7 +499,9 @@ function largeTextPromptContent(
       type: "file" as const,
       kind: AGENT_PASTED_TEXT_BLOCK_KIND,
       path: item.path,
-      name: pastedTextDraftDisplayName(index),
+      // The preview (first chars of the pasted body) is the chip label; carry it
+      // as the block name so the send-time instruction persists it in content.
+      name: pastedTextPreviewLabel(item, index),
       ...(typeof item.sizeBytes === "number"
         ? { sizeBytes: item.sizeBytes }
         : {})
@@ -427,14 +533,17 @@ export function materializePastedTextInstructions(
   content: readonly AgentPromptContentBlock[],
   format: {
     header: () => string;
-    line: (path: string) => string;
+    line: (preview: string, path: string) => string;
   }
 ): AgentPromptContentBlock[] {
-  const pastedPaths = content
+  const pastedRefs = content
     .filter(isPastedTextPromptBlock)
-    .map((block) => block.path?.trim() ?? "")
-    .filter(Boolean);
-  if (pastedPaths.length === 0) {
+    .map((block) => ({
+      preview: sanitizePastedTextPreviewForContent(block.name),
+      path: block.path?.trim() ?? ""
+    }))
+    .filter((ref) => ref.path !== "");
+  if (pastedRefs.length === 0) {
     return [...content];
   }
   const withoutPastedText = content.filter(
@@ -442,9 +551,16 @@ export function materializePastedTextInstructions(
   );
   const instruction = [
     format.header(),
-    ...pastedPaths.map((path) => format.line(path))
+    ...pastedRefs.map((ref) => format.line(ref.preview, ref.path))
   ].join("\n");
   return [...withoutPastedText, { type: "text", text: instruction }];
+}
+
+// The preview is embedded quoted in the persisted instruction line
+// (`… "<preview>": <path> …`), so strip the quote/newline delimiters that would
+// break the parse-back in {@link linkifyPastedTextReferences}.
+function sanitizePastedTextPreviewForContent(name: string | undefined): string {
+  return (name ?? "").replace(/["\n\r]/g, " ").trim();
 }
 
 export function formatAgentComposerDraftBytes(sizeBytes: number): string {

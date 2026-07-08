@@ -1025,7 +1025,8 @@ function toRuntimeSendContent(
 ): AgentPromptContentBlock[] {
   return materializePastedTextInstructions(content, {
     header: () => translate("agentHost.agentGui.pastedTextFilesHeader"),
-    line: (path) => translate("agentHost.agentGui.pastedTextFileLine", { path })
+    line: (preview, path) =>
+      translate("agentHost.agentGui.pastedTextFileLine", { preview, path })
   });
 }
 

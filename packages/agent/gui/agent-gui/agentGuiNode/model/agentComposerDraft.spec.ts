@@ -6,7 +6,9 @@ import {
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
-  emptyAgentComposerDraft
+  emptyAgentComposerDraft,
+  extractPastedTextArchivePaths,
+  linkifyPastedTextReferences
 } from "./agentComposerDraft";
 
 describe("agentComposerDraft", () => {
@@ -53,7 +55,7 @@ describe("agentComposerDraft", () => {
     // pasted-text mention link (path + size in the href) so the host can render
     // a clickable chip; the raw text body never enters it.
     expect(agentComposerDraftDisplayPrompt(draft)).toBe(
-      "Summarize this\n[@first line](mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=22)"
+      "Summarize this\n[@first line…](mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=22)"
     );
     expect(
       agentComposerDraftToPromptContent({
@@ -67,7 +69,9 @@ describe("agentComposerDraft", () => {
         type: "file",
         kind: "pasted-text",
         path: "/archive/aa/deadbeef.txt",
-        name: "pasted-text-1.txt",
+        // Block name carries the preview (first chars + ellipsis) so the
+        // send-time instruction can persist it in content.
+        name: "first line…",
         sizeBytes: 22
       }
     ]);
@@ -155,23 +159,23 @@ describe("agentComposerDraft", () => {
         type: "file" as const,
         kind: "pasted-text",
         path: "/archive/aa/deadbeef.txt",
-        name: "pasted-text-1.txt"
+        name: "first line"
       }
     ];
 
     // The pasted-text file block is stripped and replaced by the instruction
-    // text (path embedded); no file block survives into the sent content.
+    // text (preview quoted + path embedded); no file block survives.
     expect(
       materializePastedTextInstructions(content, {
         header: () => "Referenced pasted text files:",
-        line: (path) =>
-          `- pasted text file: ${path}. Read this file before continuing.`
+        line: (preview, path) =>
+          `- pasted text file "${preview}": ${path}. Read this file before continuing.`
       })
     ).toEqual([
       { type: "text", text: "Summarize this" },
       {
         type: "text",
-        text: "Referenced pasted text files:\n- pasted text file: /archive/aa/deadbeef.txt. Read this file before continuing."
+        text: 'Referenced pasted text files:\n- pasted text file "first line": /archive/aa/deadbeef.txt. Read this file before continuing.'
       }
     ]);
 
@@ -179,7 +183,7 @@ describe("agentComposerDraft", () => {
     expect(
       materializePastedTextInstructions([{ type: "text", text: "hi" }], {
         header: () => "H",
-        line: (p) => p
+        line: (_preview, path) => path
       })
     ).toEqual([{ type: "text", text: "hi" }]);
   });
@@ -398,5 +402,32 @@ describe("agentComposerDraft", () => {
         { type: "text", text: "second" }
       ])
     ).toBe("first\nsecond");
+  });
+
+  it("extracts landed pasted-text archive paths from persisted instruction text (paths may contain spaces)", () => {
+    const text =
+      "Referenced pasted text files:\n" +
+      '- pasted text file "first line": /Users/z/Library/Application Support/Tutti-dev/agent-prompt-assets/room-1/ab/deadbeef.txt. Read this file before continuing.';
+    expect(extractPastedTextArchivePaths(text)).toEqual([
+      "/Users/z/Library/Application Support/Tutti-dev/agent-prompt-assets/room-1/ab/deadbeef.txt"
+    ]);
+  });
+
+  it("rewrites persisted pasted-text instruction text into mention chips (reload-safe, preview label persists)", () => {
+    const text =
+      "Referenced pasted text files:\n" +
+      '- pasted text file "first line": /home/u/agent-prompt-assets/r/ab/deadbeef.txt. Read this file before continuing.';
+    // The localized header/instruction wording is dropped; the chip mention
+    // keeps the quoted preview as its label and the path in the href — matching
+    // the optimistic display.
+    expect(linkifyPastedTextReferences(text)).toBe(
+      "[@first line](mention://pasted-text/ref-0?path=%2Fhome%2Fu%2Fagent-prompt-assets%2Fr%2Fab%2Fdeadbeef.txt)"
+    );
+  });
+
+  it("leaves text without pasted-text references unchanged", () => {
+    expect(linkifyPastedTextReferences("just a normal message")).toBe(
+      "just a normal message"
+    );
   });
 });

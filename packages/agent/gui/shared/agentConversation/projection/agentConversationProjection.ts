@@ -19,6 +19,7 @@ import {
 } from "./agentToolGroupingProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
+import { linkifyPastedTextReferences } from "../../../agent-gui/agentGuiNode/model/agentComposerDraft";
 import {
   projectAgentTurnSummaryRowForTurn,
   projectAgentTurnSummaryRows
@@ -766,7 +767,11 @@ function userPromptContentBlocks(
       if (displayPrompt) {
         return [];
       }
-      return [{ type: "text", text: block.text }];
+      // Reload-safe pasted-text chips: the persisted content carries the
+      // codex-style "Referenced pasted text files: - pasted text file: <path>"
+      // instruction; rewrite it back into the same mention chips the optimistic
+      // display prompt renders, so a refreshed message stays consistent.
+      return [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
     }
     if (block.type !== "image") {
       return [];

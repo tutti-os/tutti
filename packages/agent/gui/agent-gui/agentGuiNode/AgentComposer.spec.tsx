@@ -3989,11 +3989,11 @@ describe("AgentComposer", () => {
     expect(
       screen.getByTestId("agent-gui-composer-large-text-upload-spinner")
     ).toBeInTheDocument();
-    // Codex-style chip: first line preview + "pasted text" subtitle.
+    // Codex-style chip: first-chars preview + "pasted text" subtitle.
     const largeTextChip = screen.getByTestId(
       "agent-gui-composer-large-text-draft"
     );
-    expect(largeTextChip).toHaveTextContent("first pasted line");
+    expect(largeTextChip).toHaveTextContent("first past…");
     expect(largeTextChip).toHaveTextContent("Pasted text");
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
 
@@ -4030,7 +4030,7 @@ describe("AgentComposer", () => {
           type: "file",
           kind: "pasted-text",
           path: "/archive/aa/deadbeef.txt",
-          name: "pasted-text-1.txt",
+          name: "first past…",
           sizeBytes: 36
         }
       ],

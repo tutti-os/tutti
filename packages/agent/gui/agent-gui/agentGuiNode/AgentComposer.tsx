@@ -74,6 +74,7 @@ import {
   agentComposerDraftToPromptContent,
   emptyAgentComposerDraft,
   MAX_AGENT_COMPOSER_DRAFT_IMAGES,
+  pastedTextPreview,
   textPromptContent
 } from "./model/agentComposerDraft";
 import {
@@ -213,15 +214,6 @@ function agentComposerTextByteLength(text: string): number {
  * First non-empty line of a pasted-text draft, used as the chip preview title
  * (Codex-style: the first line above the "Pasted text" subtitle).
  */
-function agentComposerPastedTextPreview(text: string): string {
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-  return "";
-}
 
 /**
  * Base64-encode UTF-8 text for upload. A bare `btoa(text)` throws on any
@@ -3540,8 +3532,7 @@ export function AgentComposer({
                     {visibleDraftLargeTexts.map((item, index) => {
                       const displayName = `${AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX}-${index + 1}.txt`;
                       const preview =
-                        agentComposerPastedTextPreview(item.text) ||
-                        displayName;
+                        pastedTextPreview(item.text) || displayName;
                       const attachmentTitle = translate(
                         "agentHost.agentGui.pastedTextAttachmentTitle"
                       );
