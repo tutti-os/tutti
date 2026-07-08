@@ -193,7 +193,7 @@ export interface AgentActivityAdapter {
     signal?: AbortSignal;
   }): Promise<AgentActivityMessagePage>;
 
-  subscribeSessionEvents(input: {
+  subscribeSessionEvents?(input: {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;
@@ -217,6 +217,13 @@ export interface AgentActivityAdapter {
   ): Promise<AgentActivityDeleteSessionResult>;
 }
 ```
+
+`subscribeSessionEvents` is optional. Hosts that deliver live activity through a
+service/runtime layer instead of the adapter should create controllers with
+`autoRetainSessionEvents: false`; in that mode `load()` must not call the
+adapter subscription. If a caller still manually retains a session and the
+adapter omits `subscribeSessionEvents`, the controller returns a no-op release
+function instead of forcing hosts to provide throwing stubs.
 
 `AgentActivityRuntime.activateSession` requires `agentTargetId` for
 `mode: "new"`. Shared UI passes it through unchanged; trusted host or daemon code
@@ -391,6 +398,12 @@ the shared controller or snapshot source.
 AgentGUI now requires `agentActivityRuntime: AgentActivityRuntime` in
 production. Desktop passes a runtime wrapper over
 `WorkspaceAgentActivityService` together with `agentHostApi`.
+`AgentActivityRuntime.capabilities` is an optional runtime-level UI capability
+declaration for operations that may be unavailable for shared or remote session
+sources: `canCancel`, `canSubmitInteractive`, `canGoalControl`, and
+`canUploadAttachment`. Missing capability fields default to enabled so older
+hosts preserve legacy behavior; explicit `false` lets AgentGUI hide or disable
+the corresponding affordance.
 
 AgentGUI production code should call the runtime hook directly and keep
 UI-local state limited to selection, drafts, scroll/loading/error state,

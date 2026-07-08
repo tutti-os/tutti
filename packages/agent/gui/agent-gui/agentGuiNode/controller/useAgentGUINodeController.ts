@@ -10,6 +10,7 @@ import { debounce } from "lodash";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
+  resolveAgentActivityRuntimeCapability,
   useAgentActivityRuntime,
   useAgentActivitySnapshot,
   type AgentActivityRuntime
@@ -3903,6 +3904,22 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
+  const canCancel = resolveAgentActivityRuntimeCapability(
+    agentActivityRuntime.capabilities,
+    "canCancel"
+  );
+  const canSubmitInteractive = resolveAgentActivityRuntimeCapability(
+    agentActivityRuntime.capabilities,
+    "canSubmitInteractive"
+  );
+  const canGoalControl = resolveAgentActivityRuntimeCapability(
+    agentActivityRuntime.capabilities,
+    "canGoalControl"
+  );
+  const canUploadAttachment = resolveAgentActivityRuntimeCapability(
+    agentActivityRuntime.capabilities,
+    "canUploadAttachment"
+  );
   // Stable identity of the injected runtime; drives the conversation-list query
   // key and every session-view ref so local/shared runtimes stay isolated.
   const agentActivityRuntimeOrigin =
@@ -8980,7 +8997,7 @@ export function useAgentGUINodeController({
   // goal bar.
   const goalControl = useCallback(
     (action: AgentActivityGoalControlAction, objective?: string) => {
-      if (previewMode) {
+      if (previewMode || !canGoalControl) {
         return;
       }
       const agentSessionId = activeConversationIdRef.current;
@@ -9012,6 +9029,7 @@ export function useAgentGUINodeController({
     },
     [
       agentActivityRuntime,
+      canGoalControl,
       executePrompt,
       isCurrentConversation,
       previewMode,
@@ -9244,6 +9262,9 @@ export function useAgentGUINodeController({
 
   const interruptCurrentTurn = useCallback(
     (noRunningResponseMessage: string) => {
+      if (!canCancel) {
+        return;
+      }
       const agentSessionId = activeConversationIdRef.current;
       if (!agentSessionId || interruptingSessionIds[agentSessionId]) {
         return;
@@ -9368,7 +9389,8 @@ export function useAgentGUINodeController({
       runtimeSessionsBySessionId,
       activeSessionState,
       workspaceId,
-      agentActivityRuntime
+      agentActivityRuntime,
+      canCancel
     ]
   );
 
@@ -12247,6 +12269,10 @@ export function useAgentGUINodeController({
         isInterrupting,
         isCancelPending,
         isRespondingApproval,
+        canCancel,
+        canSubmitInteractive,
+        canGoalControl,
+        canUploadAttachment,
         promptImagesSupported,
         compactSupported,
         goalPauseSupported,
@@ -12293,7 +12319,11 @@ export function useAgentGUINodeController({
       avoidGroupingEdits,
       availableCommands,
       availableSkills,
+      canCancel,
+      canGoalControl,
+      canSubmitInteractive,
       canSubmit,
+      canUploadAttachment,
       canQueueWhileBusy,
       conversation,
       conversationFilter,

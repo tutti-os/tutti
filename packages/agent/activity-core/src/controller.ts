@@ -403,6 +403,10 @@ export function createAgentActivityController({
     const streamAfterVersion =
       afterVersion ?? latestAgentActivityMessageVersion(cachedMessages);
 
+    if (!adapter.subscribeSessionEvents) {
+      return createRetainedStreamRelease(normalizedAgentSessionId);
+    }
+
     void adapter
       .subscribeSessionEvents({
         workspaceId,

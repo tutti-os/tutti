@@ -173,7 +173,8 @@ export function resolveSlashCommandsForProvider({
   compactSupported,
   planSupported = false,
   browserSupported = false,
-  computerSupported = false
+  computerSupported = false,
+  goalSupported = true
 }: {
   provider: AgentSlashCommandProvider;
   commands: readonly AgentSessionCommand[];
@@ -187,6 +188,7 @@ export function resolveSlashCommandsForProvider({
   planSupported?: boolean;
   browserSupported?: boolean;
   computerSupported?: boolean;
+  goalSupported?: boolean;
 }): AgentSlashCommand[] {
   const mergedEntries = mergeSlashCommands(
     filterUnavailableSlashCommands(commands, {
@@ -204,6 +206,7 @@ export function resolveSlashCommandsForProvider({
     const commandName = normalizedCommandName(entry);
     return (
       commandName !== "plan" &&
+      (goalSupported || commandName !== "goal") &&
       isSlashPaletteCommandVisible(provider, commandName)
     );
   });

@@ -315,6 +315,40 @@ test("controller retains one stream for multiple consumers", async () => {
   assert.equal(unsubscribeCount, 1);
 });
 
+test("controller does not subscribe during load when auto retain is disabled", async () => {
+  let subscribeCount = 0;
+  const adapter = fakeAdapter({
+    subscribe() {
+      subscribeCount += 1;
+      return Promise.resolve(() => {});
+    }
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    autoRetainSessionEvents: false,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+
+  assert.equal(subscribeCount, 0);
+});
+
+test("controller retain is a no-op when adapter omits subscribeSessionEvents", () => {
+  const adapter = fakeAdapter();
+  delete adapter.subscribeSessionEvents;
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  const release = controller.retainSessionEvents({
+    agentSessionId: "session-1"
+  });
+
+  release();
+});
+
 test("controller preserves cached messages when loading sessions", async () => {
   const adapter = fakeAdapter({
     listSessions: () =>

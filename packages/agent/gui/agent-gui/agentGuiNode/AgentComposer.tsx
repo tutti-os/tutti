@@ -293,6 +293,8 @@ export interface AgentComposerProps {
   previewMode?: boolean;
   workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
+  canUploadAttachment?: boolean;
+  goalControlSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
   providerSelectLabel?: string;
@@ -1082,6 +1084,8 @@ export function AgentComposer({
   previewMode = false,
   workspaceReferencePickerOpen = false,
   promptImagesSupported = true,
+  canUploadAttachment = true,
+  goalControlSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
   providerSelectLabel = "",
@@ -1111,7 +1115,9 @@ export function AgentComposer({
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
   const draftPrompt = draftContent.prompt;
-  const goalDraftObjective = goalDraftObjectiveFromPrompt(draftPrompt);
+  const goalDraftObjective = goalControlSupported
+    ? goalDraftObjectiveFromPrompt(draftPrompt)
+    : null;
   const isGoalModeActive = goalDraftObjective !== null;
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
@@ -1120,6 +1126,7 @@ export function AgentComposer({
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
   const promptFileUploadSupported = Boolean(
+    canUploadAttachment &&
     agentActivityRuntime?.uploadPromptContent &&
     (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
   );
@@ -1209,7 +1216,8 @@ export function AgentComposer({
         compactSupported,
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
-        computerSupported: Boolean(composerSettings.supportsComputerUse)
+        computerSupported: Boolean(composerSettings.supportsComputerUse),
+        goalSupported: goalControlSupported
       }),
     [
       availableCommands,
@@ -1217,6 +1225,7 @@ export function AgentComposer({
       composerSettings.supportsPlanMode,
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
+      goalControlSupported,
       hasCompactableContext,
       provider
     ]
@@ -1584,7 +1593,7 @@ export function AgentComposer({
         setIsReviewPickerOpen(true);
         return;
       }
-      if (effect.kind === "activateGoalMode") {
+      if (effect.kind === "activateGoalMode" && goalControlSupported) {
         draftPromptRef.current = GOAL_MODE_SLASH_COMMAND;
         setPaletteDraftPrompt("");
         setIsSlashStatusPanelOpen(false);
@@ -1594,6 +1603,10 @@ export function AgentComposer({
           ...draftContent,
           prompt: GOAL_MODE_SLASH_COMMAND
         });
+        return;
+      }
+      if (effect.kind === "activateGoalMode") {
+        clearSlashCommandDraft();
         return;
       }
       if (effect.kind === "togglePlanMode") {
@@ -1651,6 +1664,7 @@ export function AgentComposer({
       composerSettings.selectedSpeedValue,
       composerSettings.supportsSpeed,
       draftContent,
+      goalControlSupported,
       onDraftContentChange,
       onSettingsChange,
       onSubmit,
@@ -2273,7 +2287,7 @@ export function AgentComposer({
       if (images.length === 0) {
         return;
       }
-      if (!promptImagesSupported) {
+      if (!promptImagesSupported || !canUploadAttachment) {
         onPromptImagesUnsupported?.();
         return;
       }
@@ -2286,6 +2300,7 @@ export function AgentComposer({
         return;
       }
       const uploadPromptContent =
+        canUploadAttachment &&
         agentActivityRuntime?.uploadPromptContent &&
         (agentActivityRuntime.promptContentUploadSupport?.image ?? true)
           ? agentActivityRuntime.uploadPromptContent
@@ -2383,6 +2398,7 @@ export function AgentComposer({
     },
     [
       agentActivityRuntime,
+      canUploadAttachment,
       onDraftContentChange,
       onPromptImagesUnsupported,
       promptImagesSupported,
@@ -2481,6 +2497,7 @@ export function AgentComposer({
       // always routes large pastes here, so a runtime that becomes ready a tick
       // after mount still lands the very first paste as a chip.
       const uploadPromptContent =
+        canUploadAttachment &&
         agentActivityRuntime?.uploadPromptContent &&
         (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
           ? agentActivityRuntime.uploadPromptContent
@@ -2581,7 +2598,12 @@ export function AgentComposer({
           });
         });
     },
-    [agentActivityRuntime, onDraftContentChange, workspaceId]
+    [
+      agentActivityRuntime,
+      canUploadAttachment,
+      onDraftContentChange,
+      workspaceId
+    ]
   );
 
   const applyReferencePickResult = useCallback(

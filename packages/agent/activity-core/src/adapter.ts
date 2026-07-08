@@ -39,7 +39,11 @@ export interface AgentActivityAdapter {
     input: AgentActivityLoadComposerOptionsInput
   ): Promise<AgentActivityComposerOptions>;
 
-  subscribeSessionEvents(input: {
+  /**
+   * @deprecated Hosts may deliver live events outside this adapter. When this
+   * method is omitted, retained session streams become a no-op.
+   */
+  subscribeSessionEvents?(input: {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;

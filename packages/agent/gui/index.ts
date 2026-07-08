@@ -79,6 +79,8 @@ export {
 } from "./agentActivityRuntime";
 export type {
   AgentActivityRuntime,
+  AgentActivityRuntimeCapabilities,
+  AgentActivityRuntimeCapabilityKey,
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
   AgentActivityRuntimePromptContentBlock,
@@ -89,6 +91,7 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeWarmupOpenclawGatewayInput
 } from "./agentActivityRuntime";
+export { resolveAgentActivityRuntimeCapability } from "./agentActivityRuntime";
 export {
   AgentQueuedPromptRuntimeProvider,
   createAgentQueuedPromptRuntime,
