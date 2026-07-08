@@ -1242,16 +1242,24 @@ describe("AgentGUINodeView layout persistence", () => {
       ) ?? []
     );
     expect(items.length).toBeGreaterThan(1);
-    // The launchpad splits its icons around the selected agent so it stays
-    // centered; exactly one icon is active and it renders first (leading rail
-    // empty for the codex selection here).
+    // The launchpad keeps all provider icons in one continuous row so the
+    // group, not a synthetic selected-agent center point, stays horizontally
+    // centered in the empty hero.
     expect(
       items.filter(
         (item) => item.getAttribute("data-provider-active") === "true"
       )
     ).toHaveLength(1);
-    expect(items[0]?.getAttribute("data-provider-active")).toBe("true");
-    expect(items[0]?.querySelector("img")?.getAttribute("src")).toBe(
+    expect(heroIconGrid?.children).toHaveLength(items.length);
+    expect(
+      heroIconGrid?.querySelector(
+        ".agent-gui-node__provider-rail-launchpad-side"
+      )
+    ).toBeNull();
+    const activeItem = items.find(
+      (item) => item.getAttribute("data-provider-active") === "true"
+    );
+    expect(activeItem?.querySelector("img")?.getAttribute("src")).toBe(
       MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
     );
   });

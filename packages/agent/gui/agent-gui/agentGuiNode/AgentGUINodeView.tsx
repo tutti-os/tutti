@@ -4357,22 +4357,11 @@ function AgentGUILaunchpadIconGrid({
       </span>
     );
   }
-  // Keep the icons left-to-right, but split them around the selected agent so
-  // the active icon always stays dead-center. The leading/trailing rails share
-  // equal flex width, so the center never drifts with uneven side counts.
   return (
     <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
-      <span className={styles.providerRailLaunchpadSide} data-side="leading">
-        {icons
-          .slice(0, activeIndex)
-          .map((icon, index) => renderItem(icon, activeIndex - index, false))}
-      </span>
-      {renderItem(icons[activeIndex]!, 0, true)}
-      <span className={styles.providerRailLaunchpadSide} data-side="trailing">
-        {icons
-          .slice(activeIndex + 1)
-          .map((icon, index) => renderItem(icon, index + 1, false))}
-      </span>
+      {icons.map((icon, index) =>
+        renderItem(icon, Math.abs(index - activeIndex), index === activeIndex)
+      )}
     </span>
   );
 }

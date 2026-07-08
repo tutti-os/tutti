@@ -8917,14 +8917,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     both;
 }
 
-/* Hero launchpad: agents laid out left-to-right, split into equal-width rails
-   around the selected agent so it stays dead-center while neighbours fade to
-   both edges. Scoped to the hero so the left rail "All" tile (a single composed
-   image) is unaffected. */
+/* Hero launchpad: agents laid out as one centered horizontal group while
+   neighbours fade away from the selected agent. Scoped to the hero so the left
+   rail "All" tile (a single composed image) is unaffected. */
 .agent-gui-node__empty-hero-launchpad-icon
   .agent-gui-node__provider-rail-launchpad-icon {
   display: flex;
-  width: 100%;
+  width: max-content;
+  max-width: 100%;
   height: 48px;
   align-items: center;
   justify-content: center;
@@ -8933,26 +8933,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   border-radius: 0;
   background: transparent;
   overflow: visible;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-side {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-  overflow: visible;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-side[data-side="leading"] {
-  justify-content: flex-end;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-side[data-side="trailing"] {
-  justify-content: flex-start;
 }
 
 .agent-gui-node__empty-hero-launchpad-icon
