@@ -1,6 +1,6 @@
 # Agent ACP Kit Integration
 
-Use this reference only when the app needs local Codex/Claude execution or a local agent runtime.
+Use this reference only when the app needs local Tutti agent execution or a local agent runtime.
 
 ## Rule
 
@@ -20,7 +20,9 @@ Application use-case
         -> run-scoped MCP/tool gateway
 ```
 
-Use provider IDs from the kit or an explicit allowlist such as `codex` and `claude`. Detect providers before showing them as available. The app's primary agent flow must support both Claude Code and Codex as provider choices when available, hide or disable unavailable providers, and choose a usable default from the detected providers.
+Use provider IDs from kit detection. Do not maintain a static allowlist such as `codex` and `claude` only. Read `references/dynamic-agent-providers.md` for the full discovery, normalization, UI, and optional Tutti daemon enrichment rules.
+
+Detect providers before showing them as available. The app's primary agent flow must expose every detected kit provider, hide or disable unavailable ones, and choose a usable default from available detection results.
 
 ## Provider Detection
 
@@ -45,7 +47,7 @@ export async function detectLocalAgents(
 }
 ```
 
-Map detected provider models to app model IDs with a provider prefix, such as `codex:gpt-5.1` or `claude:sonnet`.
+Map detected provider models to app model IDs with a provider prefix, such as `cursor:default` or `codex:gpt-5.1`. Build prefixes from the detected `provider` value; do not assume only Codex/Claude models exist.
 
 Do not call a browser JSB API to fetch credentials for detection. Do not accept a credential field in the request body. If no managed credential header is present, the helper returns a local-compatible context and detection continues through the normal local path.
 
@@ -183,6 +185,7 @@ Package builders should bundle the MCP entrypoint and expose its path through an
 
 Add tests for:
 
+- dynamic provider catalog exposure and default selection (see `references/dynamic-agent-providers.md`)
 - provider filtering and model mapping
 - SSR/server provider detection using `createManagedAgentDetectContextFromHeaders(...)`
 - model-list detection using request-header managed context

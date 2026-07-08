@@ -347,9 +347,12 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if !ok {
 		t.Fatalf("agent workspace app skill missing agent-acp-kit reference: %#v", agentWorkspaceAppSkill.Files)
 	}
+	if _, ok := agentWorkspaceAppSkill.Files["references/dynamic-agent-providers.md"]; !ok {
+		t.Fatalf("agent workspace app skill missing dynamic-agent-providers reference: %#v", agentWorkspaceAppSkill.Files)
+	}
 	for _, want := range []string{
 		"Do not hand-roll provider detection",
-		"Claude Code and Codex",
+		"dynamic-agent-providers.md",
 		"localAgentRuntime.detect",
 	} {
 		if !strings.Contains(agentACPReference, want) {
@@ -476,7 +479,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"Default new apps to a Node server",
 		"@tutti-os/agent-acp-kit",
 		"TUTTI_CLI agent/codex/session polling",
-		"Claude Code and Codex provider options",
+		"dynamic-agent-providers.md",
 	} {
 		if !strings.Contains(constraints, want) {
 			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)

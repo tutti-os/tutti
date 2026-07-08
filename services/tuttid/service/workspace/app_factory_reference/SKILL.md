@@ -12,9 +12,9 @@ Use this skill to create, convert, or repair one Tutti workspace app. Choose one
 
 When the user selected a directory in App Center and Tutti reports that it cannot be loaded, treat the task as local debug repair. Adapt the selected project by creating or fixing `.tutti/dev-app/`; do not create a zip wrapper or copy the repository into `package/` unless the user explicitly asks for release packaging.
 
-For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, local Codex/Claude runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation. Do not invent managed-agent credential, cwd, JSB fallback, request-body credential, or `CODEX_HOME` behavior in this factory skill; the agent app skill owns that migration checklist and should keep those concerns in server-side kit calls.
+For a full agent-enabled Tutti app repository with `apps/web`, `apps/server`, `packages/shared`, `@tutti-os/agent-acp-kit`, dynamic local agent runtimes, MCP tool gateways, and an app-owned package builder, use `$tutti-agent-workspace-app` first. Return to this skill for the final package contract and validation. Do not invent managed-agent credential, cwd, JSB fallback, request-body credential, or `CODEX_HOME` behavior in this factory skill; the agent app skill owns that migration checklist and should keep those concerns in server-side kit calls.
 
-If the user request needs local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling, treat `$tutti-agent-workspace-app` and its `references/agent-acp-kit.md` as mandatory architecture guidance. Agent-enabled apps must use a Node server and `@tutti-os/agent-acp-kit`; do not implement app-owned local agent execution by shelling out to `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or session polling.
+If the user request needs local agent or local LLM execution, Tutti agent providers, or app-owned MCP/tooling, treat `$tutti-agent-workspace-app`, `references/dynamic-agent-providers.md`, and `references/agent-acp-kit.md` as mandatory architecture guidance. Agent-enabled apps must use a Node server and `@tutti-os/agent-acp-kit`; do not implement app-owned local agent execution by shelling out to `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or session polling.
 
 ## Version Check And Update Reminder
 
@@ -136,13 +136,13 @@ For a full agent-enabled app repository, prefer `$tutti-agent-workspace-app` fir
 
 - Keep the generic `@tutti-os/agent-acp-kit` runtime path product-neutral. Tutti-specific behavior should stay behind the explicit `@tutti-os/agent-acp-kit/tutti` subpath and app-owned policy.
 - Use a Node server for the app host process. Do not start with a Python server and plan to migrate later.
-- To give the app's local Codex or Claude run access to Tutti's dynamic CLI skills, prefer the `@tutti-os/agent-acp-kit/tutti` helper instead of hand-writing `$TUTTI_CLI agent tutti-cli-skill-bundle` execution and response parsing in each app.
+- To give the app's local agent runs access to Tutti's dynamic CLI skills, prefer the `@tutti-os/agent-acp-kit/tutti` helper instead of hand-writing `$TUTTI_CLI agent tutti-cli-skill-bundle` execution and response parsing in each app.
 - Use `loadTuttiAgentSkillContext(...)` from the app host process. Pass the selected provider, run id, workspace cwd, and optional Tutti CLI command configuration such as `commandEnvNames`.
 - Pass `tuttiContext.skillManifest` into `runtime.run({ ..., skillManifest })`, merging it with app-owned skills when needed.
 - Treat `tuttiContext.recommendedSystemPrompt?.content` as advisory raw prompt content. The app may merge it into its own `systemPrompt`, edit it, place it elsewhere, or ignore it. Do not inject it silently, and do not reintroduce duplicated CLI parsing unless the installed kit lacks the helper.
 - Keep run-scoped app tools and MCP credentials app-owned. Do not pass broad Tutti daemon credentials or app secrets directly to the agent process.
 
-Agent app main flows should expose provider choices for at least Claude Code and Codex. Detect available providers through `@tutti-os/agent-acp-kit`, show only available choices as selectable, and choose a usable default when at least one provider is available.
+Agent app main flows must discover providers dynamically through `@tutti-os/agent-acp-kit` and `references/dynamic-agent-providers.md`. Show every detected provider, disable unavailable ones, and choose a usable default when at least one provider is available. Do not hard-code Codex/Claude-only provider catalogs.
 
 Do not assume a Tutti API token, browser extension, daemon internals, or broad desktop APIs. The only browser-side host surface a generated app may optionally consume is the app context described in `references/runtime-env.md`.
 

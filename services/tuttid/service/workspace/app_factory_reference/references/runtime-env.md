@@ -56,7 +56,7 @@ function subscribeHostLocale(listener) {
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint backed by `@tutti-os/agent-acp-kit` detection for those choices; use `TUTTI_CLI` only for non-agent Tutti platform or app-to-app capabilities. The context is optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint backed by `@tutti-os/agent-acp-kit` detection and `references/dynamic-agent-providers.md`; use `TUTTI_CLI` only for non-agent Tutti platform or app-to-app capabilities. The context is optional so generated apps continue to run in a normal browser during development.
 
 For theme, use CSS media queries and `matchMedia`:
 

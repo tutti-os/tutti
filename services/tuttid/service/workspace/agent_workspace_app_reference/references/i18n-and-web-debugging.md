@@ -58,5 +58,5 @@ When local agents are involved:
 
 1. Run provider detection.
 2. Verify the web settings/runtime panel or equivalent status UI.
-3. Run isolated smoke tests for real Codex/Claude turns.
+3. Run isolated smoke tests for one available detected provider turn.
 4. Inspect run events, tool calls, generated files, and package-local data writes.

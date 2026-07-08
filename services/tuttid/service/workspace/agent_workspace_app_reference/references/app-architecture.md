@@ -47,7 +47,7 @@ Use `pnpm` workspaces by default. Common choices:
 
 - Server: Node built-ins for tiny apps; Fastify, `@fastify/static`, `@fastify/websocket`, zod or ajv for larger API servers. Express is acceptable when the existing project already uses it.
 - Web: React with Vite, Next, or TanStack Start, matching the repo's current stack. For React/Tailwind apps, use shadcn/ui components and Tailwind CSS utilities as the default UI/component styling system.
-- Agent runtime: `@tutti-os/agent-acp-kit` when local Codex/Claude execution is required.
+- Agent runtime: `@tutti-os/agent-acp-kit` when local Tutti agent execution is required. Discover providers dynamically; do not hard-code Codex/Claude-only catalogs.
 - I18n: `i18next`, `react-i18next`, and `i18next-cli` for larger web apps.
 - Tests: Vitest or Node test runner for packages, Playwright only for cross-boundary UI flows.
 

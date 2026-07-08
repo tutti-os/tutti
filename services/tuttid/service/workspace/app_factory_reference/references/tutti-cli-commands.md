@@ -4,7 +4,7 @@ This reference is for code inside a generated workspace app at runtime. It is no
 
 Workspace apps may call local Tutti capabilities through the bundled Tutti CLI.
 
-Do not use `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or agent session polling to implement app-owned local agent execution. Apps that need local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling must load and follow `$tutti-agent-workspace-app`, read its `references/agent-acp-kit.md`, and use `@tutti-os/agent-acp-kit` from a Node server:
+Do not use `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or agent session polling to implement app-owned local agent execution. Apps that need local agent or local LLM execution, Tutti agent providers, or app-owned MCP/tooling must load and follow `$tutti-agent-workspace-app`, read its `references/dynamic-agent-providers.md` and `references/agent-acp-kit.md`, and use `@tutti-os/agent-acp-kit` from a Node server:
 
 ```ts
 import {
@@ -18,6 +18,8 @@ const localAgentRuntime = createLocalAgentRuntime({
 
 const detectedProviders = await localAgentRuntime.detect();
 ```
+
+Return the full detected catalog to the app UI. Do not filter it down to Codex/Claude in application code.
 
 For non-agent app-to-app capability calls, always use the command path from `TUTTI_CLI`. `TUTTI_CLI` is the stable app-runtime contract across development and packaged production.
 
