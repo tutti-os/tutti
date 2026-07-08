@@ -44,8 +44,8 @@ type MembershipSummary struct {
 }
 
 type CreditsSummary struct {
-	AvailableCredits         *int64
-	ExpiringCreditsWithin24h *int64
+	AvailableCredits         *string
+	ExpiringCreditsWithin24h *string
 	NextExpireAt             string
 	RefreshedAt              string
 }
@@ -368,16 +368,16 @@ func creditsSummary(overview map[string]any, fallback map[string]any) *CreditsSu
 	if len(overview) == 0 && len(fallback) == 0 {
 		return nil
 	}
-	available := int64FieldPointer(overview, "available_credits", "availableCredits", "totalAvailable", "balance")
+	available := creditsStringFieldPointer(overview, "available_credits", "availableCredits", "totalAvailable", "balance")
 	if available == nil {
-		available = int64FieldPointer(fallback, "available_credits", "availableCredits", "credits")
+		available = creditsStringFieldPointer(fallback, "available_credits", "availableCredits", "credits")
 	}
 	if available == nil {
 		return nil
 	}
 	return &CreditsSummary{
 		AvailableCredits:         available,
-		ExpiringCreditsWithin24h: int64FieldPointer(overview, "expiring_credits_within_24h", "expiringCreditsWithin24h"),
+		ExpiringCreditsWithin24h: creditsStringFieldPointer(overview, "expiring_credits_within_24h", "expiringCreditsWithin24h"),
 		NextExpireAt:             stringField(overview, "next_expire_at", "nextExpireAt"),
 		RefreshedAt:              time.Now().UTC().Format(time.RFC3339),
 	}
@@ -425,27 +425,29 @@ func stringField(data map[string]any, keys ...string) string {
 	return ""
 }
 
-func int64FieldPointer(data map[string]any, keys ...string) *int64 {
+func creditsStringFieldPointer(data map[string]any, keys ...string) *string {
 	for _, key := range keys {
 		switch value := data[key].(type) {
 		case float64:
-			result := int64(value)
+			result := strconv.FormatFloat(value, 'f', -1, 64)
 			return &result
 		case int64:
-			return &value
+			result := strconv.FormatInt(value, 10)
+			return &result
+		case int:
+			result := strconv.Itoa(value)
+			return &result
 		case json.Number:
-			if result, err := value.Int64(); err == nil {
+			result := strings.TrimSpace(value.String())
+			if result != "" {
 				return &result
 			}
 		case string:
-			if result, err := parseInt64(value); err == nil {
+			result := strings.TrimSpace(value)
+			if result != "" {
 				return &result
 			}
 		}
 	}
 	return nil
-}
-
-func parseInt64(raw string) (int64, error) {
-	return strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 }

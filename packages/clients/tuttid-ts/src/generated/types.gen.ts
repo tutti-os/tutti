@@ -43,8 +43,8 @@ export type AccountMembershipSummary = {
 };
 
 export type AccountCreditsSummary = {
-  available_credits: number | null;
-  expiring_credits_within_24h?: number | null;
+  available_credits: string | null;
+  expiring_credits_within_24h?: string | null;
   next_expire_at?: string | null;
   refreshed_at?: string | null;
 };

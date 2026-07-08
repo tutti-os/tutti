@@ -3879,12 +3879,10 @@ components:
         - available_credits
       properties:
         available_credits:
-          type: integer
-          format: int64
+          type: string
           nullable: true
         expiring_credits_within_24h:
-          type: integer
-          format: int64
+          type: string
           nullable: true
         next_expire_at:
           type: string

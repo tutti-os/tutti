@@ -88,11 +88,10 @@ function useWorkspaceAccountMenuState(): WorkspaceAccountMenuState {
     const membershipTierKey = summary?.membership?.tier_key?.trim() || null;
     const membershipLabel =
       summary?.membership?.display_name?.trim() || membershipTierKey || "";
-    const availableCredits = summary?.credits?.available_credits;
-    const creditsLabel =
-      typeof availableCredits === "number" && Number.isFinite(availableCredits)
-        ? new Intl.NumberFormat(locale).format(availableCredits)
-        : null;
+    const creditsLabel = formatCreditsLabel(
+      summary?.credits?.available_credits,
+      locale
+    );
     const debugRegistrationCreditsReward =
       user && debugRegistrationCreditsToastEnabled
         ? {
@@ -565,6 +564,28 @@ function workspaceAccountUserLabel(
     user?.userId?.trim() ||
     labels.title
   );
+}
+
+function formatCreditsLabel(
+  value: number | string | null | undefined,
+  locale: string
+): string | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? new Intl.NumberFormat(locale).format(value)
+      : null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat(locale).format(numeric)
+    : trimmed;
 }
 
 function workspaceAccountInitials(label: string): string {

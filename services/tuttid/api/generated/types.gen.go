@@ -1782,8 +1782,8 @@ func (e ListWorkspaceAgentSessionMessagesParamsOrder) Valid() bool {
 
 // AccountCreditsSummary defines model for AccountCreditsSummary.
 type AccountCreditsSummary struct {
-	AvailableCredits         *int64  `json:"available_credits"`
-	ExpiringCreditsWithin24h *int64  `json:"expiring_credits_within_24h,omitempty"`
+	AvailableCredits         *string `json:"available_credits"`
+	ExpiringCreditsWithin24h *string `json:"expiring_credits_within_24h,omitempty"`
 	NextExpireAt             *string `json:"next_expire_at,omitempty"`
 	RefreshedAt              *string `json:"refreshed_at,omitempty"`
 }
