@@ -369,7 +369,6 @@ test("keeps the workspace agent provider set explicit", () => {
     "cursor",
     "nexight",
     "hermes",
-    "gemini",
     "openclaw"
   ]);
 });

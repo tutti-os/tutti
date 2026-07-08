@@ -477,12 +477,6 @@ export const zhCN = {
               "尽量不做权限拦截，适合需要连续执行且你完全信任的任务。"
           }
         },
-        gemini: {
-          yolo: {
-            label: "固定模式",
-            description: "当前 provider 不支持在这里调整权限模式。"
-          }
-        },
         hermes: {
           yolo: {
             label: "固定模式",
@@ -1728,7 +1722,6 @@ export const zhCN = {
       agentClaudeCode: "Claude Code",
       agentTutti: "Tutti",
       agentHermes: "Hermes",
-      agentGemini: "Gemini",
       agentOpenClaw: "OpenClaw",
       statusNotStarted: "待执行",
       statusRunning: "执行中",

@@ -13,11 +13,9 @@ const SESSION_MENTION_DISPLAY_PREFIX_BY_LANGUAGE: Record<UiLanguage, string> = {
 };
 const PLAIN_SESSION_AGENT_LABELS = [
   "Claude Code",
-  "Gemini CLI",
   "Hermes Agent",
   "OpenClaw",
   "Nexight",
-  "Gemini",
   "Hermes",
   "Codex"
 ] as const;

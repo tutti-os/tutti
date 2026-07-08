@@ -6,6 +6,7 @@ import type {
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   workspaceWorkbenchDesktopI18nKeys,
+  type DesktopLocale,
   type WorkspaceWorkbenchDesktopI18nRuntime
 } from "@shared/i18n";
 import type { DesktopDockIconStyle } from "@shared/preferences";
@@ -746,6 +747,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   createHostInput(input: {
     appI18n: I18nRuntime<string>;
+    appLocale: DesktopLocale;
     confirmCloseGuard: (
       request: WorkbenchHostCloseDialogRequest
     ) => Promise<boolean> | boolean;
@@ -770,6 +772,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     if (
       cached &&
       cached.appI18n === input.appI18n &&
+      cached.appLocale === input.appLocale &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
       cached.defaultProviderTargetId === input.defaultProviderTargetId &&
       cached.dockIconStyle === input.dockIconStyle &&
@@ -813,6 +816,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       createWorkspaceWorkbenchContributionRegistryResult({
         context: {
           appI18n: input.appI18n,
+          appLocale: input.appLocale,
           appCenterService: this.dependencies.appCenterService,
           browserApi: this.dependencies.browserApi,
           browserService: this.dependencies.browserService,
@@ -914,6 +918,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     };
     const cachedHostInput: CachedWorkspaceWorkbenchHostInput = {
       appI18n: input.appI18n,
+      appLocale: input.appLocale,
       baseHostInput,
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
@@ -1311,6 +1316,7 @@ function cloneWorkspaceUserProjectServiceSnapshot(
 
 interface CachedWorkspaceWorkbenchHostInput {
   appI18n: I18nRuntime<string>;
+  appLocale: DesktopLocale;
   baseHostInput: WorkspaceWorkbenchHostInput;
   capabilitySettingsRequestRef: {
     current:

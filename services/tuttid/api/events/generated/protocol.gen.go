@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:e36ea08ddf0695d3"
+	BusinessEventCatalogRevision = "sha256:e0445b74790a4185"
 )
 
 type Topic string
@@ -91,12 +91,6 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"nexight,omitempty"`
-		Gemini *struct {
-			Model            *string `json:"model,omitempty"`
-			PermissionModeId *string `json:"permissionModeId,omitempty"`
-			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-			Speed            *string `json:"speed,omitempty"`
-		} `json:"gemini,omitempty"`
 		Hermes *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
@@ -128,7 +122,6 @@ type PreferencesDesktopPreferences struct {
 		TuttiAgent *bool `json:"tutti-agent,omitempty"`
 		Cursor     *bool `json:"cursor,omitempty"`
 		Nexight    *bool `json:"nexight,omitempty"`
-		Gemini     *bool `json:"gemini,omitempty"`
 		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
 		Opencode   *bool `json:"opencode,omitempty"`

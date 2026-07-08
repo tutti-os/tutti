@@ -70,12 +70,6 @@ describe("composerSettingsSupportFromOptions", () => {
         "interrupt"
       ]
     },
-    gemini: {
-      model: true,
-      reasoning: true,
-      permission: false,
-      capabilities: ["interrupt"]
-    },
     opencode: {
       model: true,
       reasoning: false,
@@ -107,7 +101,6 @@ describe("composerSettingsSupportFromOptions", () => {
   > = {
     "claude-code": { model: true, reasoning: true, permission: true },
     codex: { model: true, reasoning: true, permission: true },
-    gemini: { model: true, reasoning: true, permission: false },
     opencode: { model: true, reasoning: false, permission: false },
     hermes: { model: false, reasoning: false, permission: false },
     nexight: { model: false, reasoning: false, permission: true },

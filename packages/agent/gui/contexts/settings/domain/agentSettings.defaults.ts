@@ -18,7 +18,6 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: false,
     nexight: false,
     opencode: false,
-    gemini: false,
     openclaw: false,
     hermes: false
   },
@@ -29,7 +28,6 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: "",
     nexight: "",
     opencode: "",
-    gemini: "",
     openclaw: "",
     hermes: ""
   },
@@ -40,7 +38,6 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
     cursor: [],
     nexight: [],
     opencode: [],
-    gemini: [],
     openclaw: [],
     hermes: []
   },

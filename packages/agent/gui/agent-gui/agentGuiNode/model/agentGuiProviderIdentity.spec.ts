@@ -74,8 +74,8 @@ describe("agentGuiProviderIdentity", () => {
       title: "Claude Code",
       titleFallback: null
     });
-    expect(resolveAgentGUIConversationTitle("", "gemini")).toEqual({
-      title: "Gemini CLI",
+    expect(resolveAgentGUIConversationTitle("", "hermes")).toEqual({
+      title: "Hermes Agent",
       titleFallback: null
     });
     expect(resolveAgentGUIConversationTitle("", "nexight")).toEqual({
@@ -194,7 +194,7 @@ describe("agentGuiProviderIdentity", () => {
     ).toBeNull();
     expect(
       resolveAgentGUIDockConversationTitle({
-        provider: "gemini",
+        provider: "hermes",
         title: "Ship the import flow.",
         titleFallback: null
       })

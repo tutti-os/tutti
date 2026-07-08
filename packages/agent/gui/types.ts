@@ -71,7 +71,6 @@ export type AgentGUIProvider = Extract<
   | "tutti-agent"
   | "cursor"
   | "nexight"
-  | "gemini"
   | "hermes"
   | "openclaw"
   | "opencode"
@@ -238,7 +237,6 @@ export interface RoomIssueNodeData {
     | "tutti-agent"
     | "cursor"
     | "nexight"
-    | "gemini"
     | "openclaw"
     | "opencode"
     | "hermes";

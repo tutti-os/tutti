@@ -47,8 +47,8 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	if _, hasClaude := service.liveModelOptionsFromRunningSession("ws-1", "claude-code"); !hasClaude {
 		t.Fatal("claude session must be detected")
 	}
-	if _, hasGemini := service.liveModelOptionsFromRunningSession("ws-1", "gemini"); hasGemini {
-		t.Fatal("gemini must not match cursor/claude sessions")
+	if _, hasUnknown := service.liveModelOptionsFromRunningSession("ws-1", "unknown-provider"); hasUnknown {
+		t.Fatal("unknown provider must not match cursor/claude sessions")
 	}
 }
 

@@ -31,7 +31,6 @@ func NewDefaultPreparer(stateDir string) *DefaultPreparer {
 	preparer.RegisterProvider(TuttiAgentPreparer{})
 	preparer.RegisterProvider(ClaudeCodePreparer{})
 	preparer.RegisterProvider(CursorPreparer{})
-	preparer.RegisterProvider(GeminiPreparer{})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "nexight", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "hermes", FileName: "AGENTS.md"})
 	preparer.RegisterProvider(InstructionFilePreparer{ProviderID: "openclaw", FileName: "AGENTS.md"})

@@ -279,7 +279,7 @@ Use this shape for new entries:
   `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
   app-server adapter consumes that provider command resolution; otherwise status
   probes can pass while session startup still fails with `env: node: No such
-  file or directory`. If the CLI path exists but `codex app-server` cannot
+file or directory`. If the CLI path exists but `codex app-server` cannot
   launch, treat the failed probe as a repair trigger so the install action does
   not clear immediately without running an installer.
 - Validation:

@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	codexConfigFileName    = "config.toml"
-	geminiSettingsFileName = "settings.json"
+	codexConfigFileName = "config.toml"
 )
 
 func readCodexConfiguredDefaultModel() string {
@@ -37,15 +36,6 @@ func readClaudeCodeConfiguredDefaultModel() string {
 	// Keep whatever model the user configured, including a concrete id
 	// (e.g. claude-opus-4-6) that is not one of the static aliases. Dropping it
 	// here is what hid the user's chosen model from the composer catalog.
-	return normalizeModelID(settings["model"])
-}
-
-func readGeminiConfiguredDefaultModel() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	settings := readJSONRecord(filepath.Join(home, ".gemini", geminiSettingsFileName))
 	return normalizeModelID(settings["model"])
 }
 

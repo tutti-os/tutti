@@ -314,6 +314,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       workspaceId: "workspace-1"
     }),
     listSessionSections: async () => ({
+      pinned: { hasMore: false, sessions: [] },
       sections: [],
       workspaceId: "workspace-1"
     }),
@@ -322,6 +323,10 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       sectionKey: input.sectionKey,
       sessions: [],
       hasMore: false
+    }),
+    listPinnedSessionsPage: async () => ({
+      hasMore: false,
+      sessions: []
     }),
     scanExternalSessionImports: async () => {
       throw new Error("not implemented");

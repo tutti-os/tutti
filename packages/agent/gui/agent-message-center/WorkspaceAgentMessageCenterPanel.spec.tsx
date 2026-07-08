@@ -964,9 +964,9 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
             status: "working"
           }),
           createMessageCenterItem({
-            agentSessionId: "gemini-session",
-            provider: "gemini",
-            title: "Gemini task",
+            agentSessionId: "openclaw-session",
+            provider: "openclaw",
+            title: "OpenClaw task",
             status: "working"
           })
         ])}
@@ -980,7 +980,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Codex 1" }));
 
     expect(screen.queryByText("Codex task")).toBeNull();
-    expect(screen.getByText("Gemini task")).toBeTruthy();
+    expect(screen.getByText("OpenClaw task")).toBeTruthy();
   });
 
   it("groups the agent view by agent and user identity", () => {
@@ -1151,17 +1151,17 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
             status: "working"
           }),
           createMessageCenterItem({
-            agentSessionId: "gemini-session-1",
-            provider: "gemini",
+            agentSessionId: "openclaw-session-1",
+            provider: "openclaw",
             userId: "user-a",
-            title: "Gemini task 1",
+            title: "OpenClaw task 1",
             status: "working"
           }),
           createMessageCenterItem({
-            agentSessionId: "gemini-session-2",
-            provider: "gemini",
+            agentSessionId: "openclaw-session-2",
+            provider: "openclaw",
             userId: "user-a",
-            title: "Gemini task 2",
+            title: "OpenClaw task 2",
             status: "working"
           }),
           createMessageCenterItem({
@@ -1181,10 +1181,10 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
       "workspace-agent-message-stack-working:agent-user:codex:user-a"
     );
     expect(codexStack).toHaveAttribute("data-stack-count", "2");
-    const geminiStack = screen.getByTestId(
-      "workspace-agent-message-stack-working:agent-user:gemini:user-a"
+    const openclawStack = screen.getByTestId(
+      "workspace-agent-message-stack-working:agent-user:openclaw:user-a"
     );
-    expect(geminiStack).toHaveAttribute("data-stack-count", "2");
+    expect(openclawStack).toHaveAttribute("data-stack-count", "2");
     expect(
       screen.getByTestId(
         "workspace-agent-message-stack-summary-working:agent-user:codex:user-a"
@@ -1197,7 +1197,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     ).toHaveAttribute("data-stack-user-id", "user-a");
     expect(
       screen.getByTestId(
-        "workspace-agent-message-stack-summary-working:agent-user:gemini:user-a"
+        "workspace-agent-message-stack-summary-working:agent-user:openclaw:user-a"
       )
     ).toHaveTextContent("2 messages");
     expect(

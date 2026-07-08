@@ -50,8 +50,6 @@ export function normalizeAgentGUIProviderIdentity(
     case "nexight":
     case "tutti":
       return "nexight";
-    case "gemini":
-      return "gemini";
     case "hermes":
       return "hermes";
     case "openclaw":

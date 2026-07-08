@@ -1122,18 +1122,17 @@ func TestServiceListTreatsTemporarilyUnsupportedProvidersAsUnsupported(t *testin
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{
-		"/home/test/.gemini/settings.json":      true,
 		"/home/test/.nexight/auth.json":         true,
 		"/home/test/.hermes/auth.json":          true,
 		"/home/test/.config/openclaw/auth.json": true,
 	})
 
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"gemini", "nexight", "hermes", "openclaw"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"nexight", "hermes", "openclaw"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(snapshot.Providers) != 4 {
-		t.Fatalf("len(providers) = %d, want 4", len(snapshot.Providers))
+	if len(snapshot.Providers) != 3 {
+		t.Fatalf("len(providers) = %d, want 3", len(snapshot.Providers))
 	}
 	for _, status := range snapshot.Providers {
 		if status.Availability.Status != AvailabilityUnsupported {
@@ -1278,9 +1277,9 @@ func TestServiceProbeReportsFailureWhenAdapterCommandCannotStart(t *testing.T) {
 func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.gemini/settings.json": true})
+	}, map[string]bool{"/home/test/.hermes/auth.json": true})
 
-	result, err := service.Probe(context.Background(), ProbeInput{Provider: "gemini"})
+	result, err := service.Probe(context.Background(), ProbeInput{Provider: "hermes"})
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
@@ -2168,7 +2167,7 @@ func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
 func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{"/home/test/.gemini/settings.json": true})
+	}, map[string]bool{"/home/test/.hermes/auth.json": true})
 	installCalled := false
 	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
 		installCalled = true
@@ -2176,7 +2175,7 @@ func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing
 	}
 
 	result, err := service.RunAction(context.Background(), RunActionInput{
-		Provider: "gemini",
+		Provider: "hermes",
 		ActionID: ActionInstall,
 	})
 	if err != nil {
@@ -3083,7 +3082,7 @@ func TestParseClaudeAuthMarkerContentUsesUserIDFallback(t *testing.T) {
 }
 
 func TestRegistrySelectNormalizesAndDeduplicatesProviders(t *testing.T) {
-	specs, err := DefaultRegistry().Select([]string{"claude", "claude-code", "gemini-cli"})
+	specs, err := DefaultRegistry().Select([]string{"claude", "claude-code", "cursor-agent"})
 	if err != nil {
 		t.Fatalf("Select() error = %v", err)
 	}
@@ -3093,8 +3092,8 @@ func TestRegistrySelectNormalizesAndDeduplicatesProviders(t *testing.T) {
 	if specs[0].Provider != "claude-code" {
 		t.Fatalf("specs[0].Provider = %q, want claude-code", specs[0].Provider)
 	}
-	if specs[1].Provider != "gemini" {
-		t.Fatalf("specs[1].Provider = %q, want gemini", specs[1].Provider)
+	if specs[1].Provider != "cursor" {
+		t.Fatalf("specs[1].Provider = %q, want cursor", specs[1].Provider)
 	}
 }
 

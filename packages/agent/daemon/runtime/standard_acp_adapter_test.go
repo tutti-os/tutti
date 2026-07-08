@@ -19,69 +19,30 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func TestGeminiAdapterStartCreatesStandardACPSession(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "full-access"
-
-	events, err := adapter.Start(context.Background(), session)
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if len(transport.specs) != 1 {
-		t.Fatalf("process starts = %d, want 1", len(transport.specs))
-	}
-	spec := transport.specs[0]
-	if got := strings.Join(spec.Command, " "); got != "gemini --acp" {
-		t.Fatalf("command = %q, want %q", got, "gemini --acp")
-	}
-	if !containsString(spec.Env, codexAgentRoutingEnv) || !containsString(spec.Env, codexRoutingPreload) {
-		t.Fatalf("env = %#v, want standard ACP routing env with preload", spec.Env)
-	}
-	if len(events) != 1 || events[0].Type != activityshared.EventSessionStarted {
-		t.Fatalf("events = %#v, want session.started", events)
-	}
-	if events[0].ProviderSessionID != "gemini-session-1" {
-		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-	if _, has := transport.conn.lastNewSessionParams["_meta"]; has {
-		t.Fatalf("Gemini session/new must not send OpenClaw-only _meta.sessionKey")
-	}
-	if got := transport.conn.authenticatedMethodID(); got != "gemini-api-key" {
-		t.Fatalf("authenticated method id = %q, want gemini-api-key", got)
-	}
-}
-
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
 	cleanupCalls := 0
 	adapter.SetProviderLaunchPreparer(func(_ context.Context, input ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
-		if input.Provider != ProviderGemini {
-			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderGemini)
+		if input.Provider != ProviderHermes {
+			t.Fatalf("Provider = %q, want %q", input.Provider, ProviderHermes)
 		}
 		if input.DirectStart {
-			t.Fatal("DirectStart = true, want false for Gemini")
+			t.Fatal("DirectStart = true, want false for Hermes")
 		}
 		return ProviderLaunchPrepareResult{
-			Command: []string{"prepared-gemini", "--acp"},
+			Command: []string{"prepared-hermes", "acp"},
 			Env:     append(append([]string(nil), input.Env...), "HOOK_ENV=1"),
-			CWD:     "/prepared/gemini",
+			CWD:     "/prepared/hermes",
 			Cleanup: func(context.Context) error {
 				cleanupCalls++
 				return nil
 			},
 		}, nil
 	})
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	session.Env = []string{"SESSION_ENV=1"}
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -97,10 +58,10 @@ func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t 
 		t.Fatalf("transport starts = %d, want 1", len(specs))
 	}
 	spec := specs[0]
-	if !reflect.DeepEqual(spec.Command, []string{"prepared-gemini", "--acp"}) {
+	if !reflect.DeepEqual(spec.Command, []string{"prepared-hermes", "acp"}) {
 		t.Fatalf("Command = %#v", spec.Command)
 	}
-	if spec.CWD != "/prepared/gemini" {
+	if spec.CWD != "/prepared/hermes" {
 		t.Fatalf("CWD = %q", spec.CWD)
 	}
 	if !reflect.DeepEqual(spec.Env[len(spec.Env)-2:], []string{"SESSION_ENV=1", "HOOK_ENV=1"}) {
@@ -119,11 +80,11 @@ func TestStandardACPAdapterConcurrentStartsLeaveSingleLiveProcess(t *testing.T) 
 	t.Parallel()
 
 	transport := &multiProcStandardACPTransport{
-		agentTitle: "Gemini CLI",
-		sessionID:  "gemini-session-1",
+		agentTitle: "Hermes Agent",
+		sessionID:  "hermes-session-1",
 	}
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
@@ -186,46 +147,14 @@ func TestClaudeCodeAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	}
 }
 
-func TestGeminiAdapterStartCoercesReadOnlyModeToYolo(t *testing.T) {
+func TestHermesAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-plan")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "read-only"
-
-	if _, err := adapter.Start(context.Background(), session); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-}
-
-func TestGeminiAdapterStartCoercesAutoModeToYolo(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-auto")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
-	session.PermissionModeID = "auto"
-
-	if _, err := adapter.Start(context.Background(), session); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if transport.conn.lastModeID() != "yolo" {
-		t.Fatalf("mode id = %q, want yolo", transport.conn.lastModeID())
-	}
-}
-
-func TestGeminiAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
-	t.Parallel()
-
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	session.Settings = &SessionSettings{
-		Model:           "gemini-2.5-pro",
+		Model:           "hermes-pro",
 		ReasoningEffort: "high",
 	}
 
@@ -240,8 +169,8 @@ func TestGeminiAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	if got, _ := calls[0]["configId"].(string); got != "model" {
 		t.Fatalf("first config id = %q, want model", got)
 	}
-	if got, _ := calls[0]["value"].(string); got != "gemini-2.5-pro" {
-		t.Fatalf("first config value = %q, want gemini-2.5-pro", got)
+	if got, _ := calls[0]["value"].(string); got != "hermes-pro" {
+		t.Fatalf("first config value = %q, want hermes-pro", got)
 	}
 	if got, _ := calls[1]["configId"].(string); got != "effort" {
 		t.Fatalf("second config id = %q, want effort", got)
@@ -819,12 +748,12 @@ func TestStandardACPProvidersResumeClassifyMissingProviderSession(t *testing.T) 
 		session  func() Session
 	}{
 		{
-			name:     "gemini",
-			provider: ProviderGemini,
-			build:    NewGeminiAdapter,
+			name:     "hermes",
+			provider: ProviderHermes,
+			build:    NewHermesAdapter,
 			session: func() Session {
-				session := standardTestSession(ProviderGemini)
-				session.ProviderSessionID = "persisted-gemini-session-id"
+				session := standardTestSession(ProviderHermes)
+				session.ProviderSessionID = "persisted-hermes-session-id"
 				return session
 			},
 		},
@@ -1160,13 +1089,13 @@ func TestCursorAdapterAllowsImagePromptWithoutInitializeCapability(t *testing.T)
 func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-1")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-1")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-1"
+	session.ProviderSessionID = "hermes-session-1"
 
 	content := []PromptContentBlock{{
 		Type:     "image",
@@ -1376,7 +1305,7 @@ func TestClaudeCodeStandardACPUpdatePreservesAskUserQuestionToolEvents(t *testin
 func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	completed, ok := standardACPToolCallEventWithID(session, "event-complete-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_completed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred complete) returned !ok")
@@ -1393,7 +1322,7 @@ func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T
 func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	failed, ok := standardACPToolCallEventWithID(session, "event-failed-inferred", "turn-1", "tool_call_update", readSessionTestdataJSON(t, "standard_acp_tool_call_update_failed_without_status.json"))
 	if !ok {
 		t.Fatal("standardACPToolCallEventWithID(inferred failed) returned !ok")
@@ -1548,7 +1477,7 @@ func TestClaudeCodeStandardACPImageGenerationInfersCompletedStatusFromContent(t 
 func TestStandardACPNonClaudeToolCallSanitizesImageBytes(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
+	session := standardTestSession(ProviderHermes)
 	completed, ok := standardACPToolCallEventWithID(session, "event-image-standard", "turn-1", "tool_call_update", map[string]any{
 		"sessionUpdate": "tool_call_update",
 		"toolCallId":    "image-tool-1",
@@ -2047,14 +1976,14 @@ func TestClaudeCodeStandardACPToolCallEventPreservesParentToolUseID(t *testing.T
 func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-interactive-1")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-interactive-1")
 	transport.conn.promptKind = "ask-user"
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-interactive-1"
+	session.ProviderSessionID = "hermes-session-interactive-1"
 
 	execDone := make(chan error, 1)
 	go func() {
@@ -2111,14 +2040,14 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-plan-1")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-plan-1")
 	transport.conn.promptKind = "exit-plan"
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	session.ProviderSessionID = "gemini-session-plan-1"
+	session.ProviderSessionID = "hermes-session-plan-1"
 
 	execDone := make(chan error, 1)
 	go func() {
@@ -2166,9 +2095,9 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 		config   standardACPConfig
 	}{
 		{
-			name:     "gemini",
-			provider: ProviderGemini,
-			config:   standardACPConfig{provider: ProviderGemini},
+			name:     "hermes default config",
+			provider: ProviderHermes,
+			config:   standardACPConfig{provider: ProviderHermes},
 		},
 		{
 			name:     "hermes",
@@ -2236,14 +2165,14 @@ func TestStandardACPToolCallLifecycleReusesStableEventID(t *testing.T) {
 func TestStandardACPNormalizerSegmentsAssistantAndThinkingAroundToolCalls(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-segment-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-segment-1"
 	normalizer := newACPTurnNormalizer()
 
 	var events []activityshared.Event
 	events = append(events, normalizer.AppendThinkingChunk(session, "turn-1", "Thinking before tool. ")...)
 	events = append(events, normalizer.AppendAssistantChunk(session, "turn-1", "Before tool. ")...)
-	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events = append(events, standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "tool_call",
 			"toolCallId": "tool-segment-1",
@@ -2359,9 +2288,9 @@ func TestClaudeCodeStandardACPUpdateDoesNotProjectSyntheticInterruptTitleAsSessi
 func TestStandardACPUpdateDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "session_info_update",
 			"title": "`+tuttiMentionRoutingReminder+`"
@@ -2445,10 +2374,10 @@ func TestClaudeCodeStandardACPUpdateMarksSyntheticInterruptChunkAsInterrupted(t 
 func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -2673,10 +2602,10 @@ func TestNexightACPSystemNoticeMessageFromStderr(t *testing.T) {
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 
-	session := standardTestSession(ProviderGemini)
-	session.ProviderSessionID = "gemini-session-1"
+	session := standardTestSession(ProviderHermes)
+	session.ProviderSessionID = "hermes-session-1"
 
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderGemini}, session, "turn-1", json.RawMessage(`{
+	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderHermes}, session, "turn-1", json.RawMessage(`{
 		"update": {
 			"sessionUpdate": "agent_message_chunk",
 			"content": {
@@ -3331,7 +3260,7 @@ func TestClaudeCodeAdapterExecAddsInternalMentionRoutingPromptForMarkdownMention
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal Claude mention routing", texts[len(texts)-1])
 	}
 	userContent := firstUserMessageContent(t, events)
@@ -3392,7 +3321,7 @@ func TestClaudeCodeAdapterExecRoutesAgentTargetMention(t *testing.T) {
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want agent target routing", texts[len(texts)-1])
 	}
 }
@@ -3450,9 +3379,9 @@ func TestClaudeCodeAdapterExecDoesNotRouteBareMentionURI(t *testing.T) {
 func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-mention-routing")
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-mention-routing")
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 	session.PermissionModeID = "full-access"
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -3470,7 +3399,7 @@ func TestStandardACPAdapterExecAddsInternalMentionRoutingPromptForGemini(t *test
 	if texts[0] != prompt {
 		t.Fatalf("user prompt text = %q, want unmodified prompt %q", texts[0], prompt)
 	}
-	if texts[len(texts)-1] != tuttiMentionRoutingReminder {
+	if texts[len(texts)-1] != tuttiAgentMentionRoutingReminder {
 		t.Fatalf("routing prompt = %q, want internal mention routing", texts[len(texts)-1])
 	}
 }
@@ -4701,13 +4630,13 @@ func TestClaudeCodeAdapterSessionStateIncludesLiveConfigUpdates(t *testing.T) {
 	}
 }
 
-func TestGeminiAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testing.T) {
+func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-commands")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-commands")
 	transport.conn.commandUpdateOnNewSession = true
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -5099,47 +5028,14 @@ func TestStandardACPAdapterResumePreservesCommandsAdvertisedDuringLoadSession(t 
 	}
 }
 
-func TestSelectGeminiACPAuthMethodPrefersAPIKey(t *testing.T) {
-	t.Parallel()
-
-	raw, err := json.Marshal(map[string]any{
-		"authMethods": []map[string]any{
-			{"id": "gemini-api-key"},
-			{"id": "oauth-personal"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if got := selectGeminiACPAuthMethod(raw); got != "gemini-api-key" {
-		t.Fatalf("method id = %q, want gemini-api-key", got)
-	}
-}
-
-func TestSelectGeminiACPAuthMethodFallsBackToAPIKey(t *testing.T) {
-	t.Parallel()
-
-	raw, err := json.Marshal(map[string]any{
-		"authMethods": []map[string]any{
-			{"id": "gemini-api-key"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if got := selectGeminiACPAuthMethod(raw); got != "gemini-api-key" {
-		t.Fatalf("method id = %q, want gemini-api-key", got)
-	}
-}
-
 func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionExits = true
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -5149,7 +5045,7 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 	}
 
 	params := transport.conn.closeSessionParams()
-	if got := asString(params["sessionId"]); got != "gemini-session-close" {
+	if got := asString(params["sessionId"]); got != "hermes-session-close" {
 		t.Fatalf("session/close sessionId = %q, want provider session id", got)
 	}
 	if !transport.conn.closed() {
@@ -5160,11 +5056,11 @@ func TestStandardACPAdapterCloseSendsProtocolSessionCloseBeforeTransportClose(t 
 func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testing.T) {
 	t.Parallel()
 
-	transport := newStandardACPTransport("Gemini CLI", "gemini-session-close-failure")
+	transport := newStandardACPTransport("Hermes Agent", "hermes-session-close-failure")
 	transport.conn.supportsCloseSession = true
 	transport.conn.closeSessionError = &acpError{Code: -32601, Message: "session close unavailable"}
-	adapter := NewGeminiAdapter(transport)
-	session := standardTestSession(ProviderGemini)
+	adapter := NewHermesAdapter(transport)
+	session := standardTestSession(ProviderHermes)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -5173,7 +5069,7 @@ func TestStandardACPAdapterCloseFallsBackWhenProtocolSessionCloseFails(t *testin
 		t.Fatalf("Close: %v", err)
 	}
 
-	if got := asString(transport.conn.closeSessionParams()["sessionId"]); got != "gemini-session-close-failure" {
+	if got := asString(transport.conn.closeSessionParams()["sessionId"]); got != "hermes-session-close-failure" {
 		t.Fatalf("session/close sessionId = %q, want provider session id", got)
 	}
 	if !transport.conn.closed() {
@@ -5322,13 +5218,6 @@ func (c *standardACPConnection) Send(data []byte) error {
 				},
 			}
 			sessionCapabilities := map[string]any{}
-			if strings.EqualFold(c.agentTitle, "Gemini CLI") {
-				result["authMethods"] = []map[string]any{
-					{"id": "oauth-personal", "name": "Login with Google"},
-					{"id": "gemini-api-key", "name": "Gemini API Key"},
-				}
-				sessionCapabilities["load"] = true
-			}
 			if strings.EqualFold(c.agentTitle, "Claude Agent") {
 				sessionCapabilities["resume"] = true
 			}
@@ -5757,7 +5646,7 @@ func (c *standardACPConnection) defaultConfigOptions() []map[string]any {
 		return out
 	}
 	title := strings.TrimSpace(c.agentTitle)
-	if strings.EqualFold(title, "Claude Agent") || strings.EqualFold(title, "Gemini CLI") {
+	if strings.EqualFold(title, "Claude Agent") || strings.EqualFold(title, "Hermes Agent") {
 		return []map[string]any{
 			{"id": "model"},
 			{"id": "effort"},

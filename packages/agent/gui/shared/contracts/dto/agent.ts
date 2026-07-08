@@ -5,7 +5,6 @@ export type AgentProviderId =
   | "cursor"
   | "nexight"
   | "opencode"
-  | "gemini"
   | "openclaw"
   | "hermes";
 
@@ -14,7 +13,6 @@ export type AgentModelCatalogSource =
   | "tutti-agent-cli"
   | "nexight-cli"
   | "opencode-cli"
-  | "gemini-cli"
   | "openclaw-cli"
   | "hermes-cli";
 import type { AppErrorDescriptor } from "./error";

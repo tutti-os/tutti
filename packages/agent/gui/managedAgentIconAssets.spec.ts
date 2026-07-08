@@ -4,11 +4,9 @@ import {
   claudeRoundedUrl,
   codexRoundedUrl,
   cursorColorfulUrl,
-  geminiRoundedUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentCodexUrl,
-  manageAgentGeminiUrl,
   manageAgentHermesUrl,
   manageAgentOpenCodeUrl,
   manageAgentTuttiUrl,
@@ -46,7 +44,6 @@ describe("managed agent icon assets", () => {
   it("reuses identical provider artwork across manage, rounded, and dock maps", () => {
     expect(manageAgentClaudeCodeUrl).toBe(claudeRoundedUrl);
     expect(manageAgentCodexUrl).toBe(codexRoundedUrl);
-    expect(manageAgentGeminiUrl).toBe(geminiRoundedUrl);
     expect(manageAgentHermesUrl).toBe(hermesRoundedUrl);
     expect(manageAgentTuttiUrl).toBe(tuttiDocRoundedUrl);
     expect(manageAgentOpenclawUrl).toBe(openclawRoundedUrl);
@@ -54,7 +51,6 @@ describe("managed agent icon assets", () => {
 
     expect(agentGuiDockIconUrls["claude-code"]).toBe(claudeRoundedUrl);
     expect(agentGuiDockIconUrls.codex).toBe(codexRoundedUrl);
-    expect(agentGuiDockIconUrls.gemini).toBe(geminiRoundedUrl);
     expect(agentGuiDockIconUrls.hermes).toBe(hermesRoundedUrl);
     expect(agentGuiDockIconUrls.nexight).toBe(tuttiDocRoundedUrl);
     expect(agentGuiDockIconUrls.openclaw).toBe(openclawRoundedUrl);

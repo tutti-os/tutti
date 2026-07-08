@@ -628,7 +628,7 @@ export interface AgentHostRoomIssueRun {
   requesterUserId: string;
   agentUserId: string;
   agentSessionId?: string;
-  agentProvider?: "codex" | "claude-code" | "nexight" | "gemini" | string;
+  agentProvider?: "codex" | "claude-code" | "nexight" | string;
   status: "running" | "completed" | "failed" | "canceled" | string;
   summary?: string;
   errorMessage?: string;
@@ -723,7 +723,7 @@ export interface AgentHostCreateIssueRunInput {
   taskId?: string;
   issueId: string;
   runId: string;
-  agentProvider: "codex" | "claude-code" | "nexight" | "gemini" | string;
+  agentProvider: "codex" | "claude-code" | "nexight" | string;
   agentUserId?: string;
   agentSessionId?: string;
 }

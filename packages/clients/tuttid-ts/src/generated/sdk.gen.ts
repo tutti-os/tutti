@@ -211,6 +211,9 @@ import type {
   ListWorkspaceAgentGeneratedFilesData,
   ListWorkspaceAgentGeneratedFilesErrors,
   ListWorkspaceAgentGeneratedFilesResponses,
+  ListWorkspaceAgentPinnedSessionPageData,
+  ListWorkspaceAgentPinnedSessionPageErrors,
+  ListWorkspaceAgentPinnedSessionPageResponses,
   ListWorkspaceAgentSessionGitBranchesData,
   ListWorkspaceAgentSessionGitBranchesErrors,
   ListWorkspaceAgentSessionGitBranchesResponses,
@@ -1762,6 +1765,24 @@ export const getWorkspaceAgentSession = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}",
+    ...options
+  });
+
+/**
+ * List pinned agent session page for one workspace
+ */
+export const listWorkspaceAgentPinnedSessionPage = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentPinnedSessionPageData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentPinnedSessionPageResponses,
+    ListWorkspaceAgentPinnedSessionPageErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page",
     ...options
   });
 

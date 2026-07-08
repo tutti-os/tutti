@@ -77,6 +77,7 @@ type stubAgentSessionService struct {
 	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	listSessionSectionsFn           func(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
 	listSessionSectionPageFn        func(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	listPinnedSessionPageFn         func(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
 	listGeneratedFilesFn            func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	listMessagesFn                  func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	readAttachmentFn                func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
@@ -221,6 +222,13 @@ func (s stubAgentSessionService) ListSessionSectionPage(ctx context.Context, wor
 		return agentservice.SessionSection{}, nil
 	}
 	return s.listSessionSectionPageFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) ListPinnedSessionPage(ctx context.Context, workspaceID string, input agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error) {
+	if s.listPinnedSessionPageFn == nil {
+		return agentservice.SessionPage{}, nil
+	}
+	return s.listPinnedSessionPageFn(ctx, workspaceID, input)
 }
 
 func (s stubAgentSessionService) Clear(ctx context.Context, workspaceID string) (agentservice.ClearSessionsResult, error) {
@@ -746,6 +754,7 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testin
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
 			listSessionSectionsFn: func(_ context.Context, workspaceID string, input agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error) {
+				updatedAt := time.UnixMilli(1000)
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
@@ -754,6 +763,16 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testin
 				}
 				return agentservice.SessionSectionsPage{
 					WorkspaceID: workspaceID,
+					Pinned: agentservice.SessionPage{
+						Sessions: []agentservice.Session{{
+							ID:        "pinned-session",
+							Provider:  "codex",
+							Status:    "completed",
+							Visible:   true,
+							CreatedAt: time.UnixMilli(1000),
+							UpdatedAt: &updatedAt,
+						}},
+					},
 					Sections: []agentservice.SessionSection{{
 						Kind:       "conversations",
 						SectionKey: "conversations",
@@ -773,6 +792,13 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testin
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.WorkspaceAgentSessionSectionsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response error = %v", err)
+	}
+	if got, want := len(response.Pinned.Sessions), 1; got != want {
+		t.Fatalf("pinned sessions len = %d, want %d", got, want)
 	}
 }
 
@@ -801,6 +827,34 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionPageForwardsCursor(t *te
 		mux,
 		http.MethodGet,
 		"/v1/workspaces/ws-1/agent-session-sections/page?sectionKey=project:%2Fworkspace%2Fproject&cursor=1000%7Csession-1&limit=5&agentTargetId=claude-target",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesListAgentPinnedSessionPageForwardsCursor(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listPinnedSessionPageFn: func(_ context.Context, workspaceID string, input agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.Cursor != "1000|session-1" || input.Limit != 5 || input.AgentTargetID != "claude-target" {
+					t.Fatalf("pinned page input = %#v, want cursor limit agentTargetID", input)
+				}
+				return agentservice.SessionPage{HasMore: false}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-session-sections/pinned-page?cursor=1000%7Csession-1&limit=5&agentTargetId=claude-target",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {

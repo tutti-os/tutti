@@ -10,7 +10,6 @@ const (
 	ProviderCursor     Provider = "cursor"
 	ProviderNexight    Provider = "nexight"
 	ProviderClaudeCode Provider = "claude-code"
-	ProviderGemini     Provider = "gemini"
 	ProviderOpenClaw   Provider = "openclaw"
 	ProviderOpenCode   Provider = "opencode"
 	ProviderHermes     Provider = "hermes"
@@ -164,8 +163,6 @@ func NormalizeProvider(value string) (Provider, bool) {
 		return ProviderCursor, true
 	case string(ProviderNexight):
 		return ProviderNexight, true
-	case string(ProviderGemini), "gemini-cli", "gemini_cli":
-		return ProviderGemini, true
 	case "claude", string(ProviderClaudeCode), "claude_code":
 		return ProviderClaudeCode, true
 	case string(ProviderOpenClaw), "open_claw":

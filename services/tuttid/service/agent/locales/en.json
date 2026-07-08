@@ -46,12 +46,6 @@
         "description": "Runs commands without asking, unless explicitly denied by your Cursor permission rules."
       }
     },
-    "gemini": {
-      "yolo": {
-        "description": "This provider does not support changing permission mode here.",
-        "label": "Fixed mode"
-      }
-    },
     "hermes": {
       "yolo": {
         "description": "This provider does not support changing permission mode here.",

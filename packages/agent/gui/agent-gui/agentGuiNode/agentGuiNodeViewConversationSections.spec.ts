@@ -218,4 +218,89 @@ describe("updateConversationSectionsFromSummaries", () => {
 
     expect(result).toEqual([]);
   });
+
+  it("creates a pinned section from summaries when the caller supplies a pinned label", () => {
+    const previous: ConversationSection[] = [
+      {
+        id: "conversations",
+        kind: "conversations",
+        label: sectionConversationsLabel,
+        project: null,
+        items: []
+      }
+    ];
+    const pinnedConversation = conversation("pinned-convo", 1000, {
+      pinnedAtUnixMs: 500
+    });
+
+    const result = updateConversationSectionsFromSummaries(
+      previous,
+      [pinnedConversation],
+      {
+        sectionConversationsLabel,
+        sectionPinnedLabel: "Pinned"
+      }
+    );
+
+    expect(result?.[0]).toMatchObject({
+      id: "pinned",
+      kind: "pinned",
+      label: "Pinned"
+    });
+    expect(result?.[0]?.items.map((item) => item.id)).toEqual(["pinned-convo"]);
+  });
+
+  it("keeps and patches conversations already present in the pinned section", () => {
+    const previousPinned = conversation("pinned-convo", 1000, {
+      pinnedAtUnixMs: 500,
+      status: "ready"
+    });
+    const previous: ConversationSection[] = [
+      {
+        id: "pinned",
+        kind: "pinned",
+        label: "Pinned",
+        project: null,
+        items: [previousPinned]
+      }
+    ];
+    const updatedPinned = conversation("pinned-convo", 2000, {
+      pinnedAtUnixMs: 600,
+      status: "working"
+    });
+
+    const result = updateConversationSectionsFromSummaries(
+      previous,
+      [updatedPinned],
+      { sectionConversationsLabel }
+    );
+
+    expect(result?.[0]?.items).toEqual([updatedPinned]);
+  });
+
+  it("removes a pinned section item when summaries report it as unpinned", () => {
+    const previousPinned = conversation("pinned-convo", 1000, {
+      pinnedAtUnixMs: 500
+    });
+    const previous: ConversationSection[] = [
+      {
+        id: "pinned",
+        kind: "pinned",
+        label: "Pinned",
+        project: null,
+        items: [previousPinned]
+      }
+    ];
+    const unpinned = conversation("pinned-convo", 2000, {
+      pinnedAtUnixMs: null
+    });
+
+    const result = updateConversationSectionsFromSummaries(
+      previous,
+      [unpinned],
+      { sectionConversationsLabel }
+    );
+
+    expect(result?.[0]?.items).toEqual([]);
+  });
 });

@@ -1765,7 +1765,7 @@ describe("AgentGUINode", () => {
       activeConversationId: "session-1",
       activeConversation: {
         id: "session-1",
-        provider: "gemini",
+        provider: "hermes",
         title: "Session 1",
         status: "ready",
         cwd: "/workspace",
@@ -1783,7 +1783,7 @@ describe("AgentGUINode", () => {
     });
 
     expect(onAgentProbeDemandChange).toHaveBeenCalledWith(
-      "gemini",
+      "hermes",
       "agent-gui:agent-gui-1"
     );
   });
@@ -7562,7 +7562,7 @@ function createManagedAgentsState(
     readyAgentIds: [
       "codex",
       "claude-code",
-      "gemini",
+      "hermes",
       "hermes",
       "openclaw",
       "nexight"

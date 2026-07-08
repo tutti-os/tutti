@@ -1396,11 +1396,11 @@ test("controller actions open agent task breakdown with a provider override", as
     }
   });
 
-  await harness.actions.startTaskBreakdown("local:gemini");
+  await harness.actions.startTaskBreakdown("local:openclaw");
 
   assert.deepEqual(breakdownCalls, [
     {
-      agentTargetId: "local:gemini",
+      agentTargetId: "local:openclaw",
       executionDirectory: "/Users/example/project/tutti",
       issueDetail: {
         contextRefs: [createIssueContextRef({ path: "/workspace/spec.md" })],
@@ -1409,7 +1409,7 @@ test("controller actions open agent task breakdown with a provider override", as
         recentRuns: [],
         tasks: [task]
       },
-      provider: "gemini",
+      provider: "openclaw",
       workspaceId: "workspace-1"
     }
   ]);
@@ -1418,11 +1418,14 @@ test("controller actions open agent task breakdown with a provider override", as
       name: "issue_manager.issue_breakdown_initiated",
       params: {
         issueId: "issue-1",
-        provider: "gemini"
+        provider: "openclaw"
       }
     }
   ]);
-  assert.equal(harness.nodeState.current.selectedAgentTargetId, "local:gemini");
+  assert.equal(
+    harness.nodeState.current.selectedAgentTargetId,
+    "local:openclaw"
+  );
   assert.deepEqual(harness.isRunningTaskState.history, [true, false]);
   assert.deepEqual(harness.notificationState.history, []);
 });

@@ -218,7 +218,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(
       entry?.matchNode?.({
         data: {
-          instanceId: "agent-gui:gemini:panel:test-1",
+          instanceId: "agent-gui:removed-provider:panel:test-1",
           typeId: agentGuiWorkbenchTypeId
         }
       } as never)

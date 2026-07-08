@@ -13402,7 +13402,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     await Promise.all(
-      (["codex", "claude-code", "gemini"] as const).map(async (provider) => {
+      (["codex", "claude-code", "hermes"] as const).map(async (provider) => {
         const { result, unmount } = renderHook(() =>
           useAgentGUINodeController({
             workspaceId: "room-1",
@@ -14002,7 +14002,7 @@ describe("useAgentGUINodeController", () => {
       emitDesktopEvent?.({
         scope: "global",
         type: "agent-model-catalog-invalidated",
-        providers: ["gemini"],
+        providers: ["hermes"],
         occurredAtUnixMs: 1
       });
       emitDesktopEvent?.({
@@ -14189,7 +14189,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        data: agentGuiData(null, "gemini", {
+        data: agentGuiData(null, "opencode", {
           composerOverrides: { model: "default" }
         }),
         onDataChange: vi.fn()
@@ -14215,7 +14215,7 @@ describe("useAgentGUINodeController", () => {
   it.each([
     ["claude-code", true],
     ["codex", false],
-    ["gemini", false]
+    ["hermes", false]
   ] as const)(
     "shows composer model and reasoning controls for %s",
     async (provider, expectedPlanSupport) => {
@@ -14271,7 +14271,7 @@ describe("useAgentGUINodeController", () => {
   it.each([
     ["claude-code", true],
     ["codex", true],
-    ["gemini", false]
+    ["hermes", false]
   ] as const)(
     "sets composer permission mode support for %s",
     async (provider, expectedPermissionSupport) => {
@@ -14344,7 +14344,7 @@ describe("useAgentGUINodeController", () => {
 
   it.each([
     ["claude-code", true, true],
-    ["gemini", false, false],
+    ["hermes", false, false],
     ["codex", null, true]
   ] as const)(
     "uses backend prompt image capability for %s",

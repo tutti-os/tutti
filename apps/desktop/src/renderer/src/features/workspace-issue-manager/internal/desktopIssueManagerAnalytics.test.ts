@@ -55,7 +55,7 @@ test("desktop issue-manager analytics reports issue breakdown initiated events",
     name: "issue_manager.issue_breakdown_initiated",
     params: {
       issueId: "issue-1",
-      provider: "gemini"
+      provider: "openclaw"
     }
   });
 
@@ -66,7 +66,7 @@ test("desktop issue-manager analytics reports issue breakdown initiated events",
         name: "issue_manager.issue_breakdown_initiated",
         params: {
           issue_id: "issue-1",
-          provider: "gemini"
+          provider: "openclaw"
         }
       }
     ]

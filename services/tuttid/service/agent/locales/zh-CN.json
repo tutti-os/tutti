@@ -46,12 +46,6 @@
         "description": "无需询问直接运行命令，除非被你的 Cursor 权限规则明确拒绝。"
       }
     },
-    "gemini": {
-      "yolo": {
-        "description": "当前 provider 不支持在这里调整权限模式。",
-        "label": "固定模式"
-      }
-    },
     "hermes": {
       "yolo": {
         "description": "当前 provider 不支持在这里调整权限模式。",

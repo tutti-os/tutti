@@ -675,7 +675,7 @@ func TestReportActivityInputCanonicalizesToolNamesAcrossAgents(t *testing.T) {
 			wantName:    "Bash",
 		},
 		{
-			name:        "gemini shell command becomes bash",
+			name:        "hermes shell command becomes bash",
 			payloadName: "run_shell_command",
 			metadata:    map[string]any{"toolName": "run_shell_command"},
 			wantTool:    "Bash",
@@ -821,7 +821,7 @@ func TestReporterProjectsStandardACPToolLifecycleToStableMessageUpdates(t *testi
 	t.Parallel()
 
 	session := reportTestSession()
-	session.Provider = ProviderGemini
+	session.Provider = ProviderHermes
 	updates := reportActivityInput(session, []activityshared.Event{
 		newTurnActivityEventWithID(session, "stable-tool-item", EventCallStarted, "turn-std", messageStreamStateStreaming, "", "Bash", map[string]any{
 			"callId":   "tool-std-1",

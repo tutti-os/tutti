@@ -145,8 +145,6 @@ func providerAPIEndpoints(provider string) []string {
 		}
 	case agentprovider.ClaudeCode:
 		return []string{"https://api.anthropic.com/v1/messages"}
-	case agentprovider.Gemini:
-		return []string{"https://generativelanguage.googleapis.com/v1beta/models"}
 	default:
 		return nil
 	}

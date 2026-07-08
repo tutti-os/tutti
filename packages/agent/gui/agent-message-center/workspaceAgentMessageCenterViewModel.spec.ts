@@ -26,8 +26,8 @@ describe("partitionMessageCenterItemsByAgentUser", () => {
         userId: "user-b"
       }),
       item({
-        agentSessionId: "gemini-user-a",
-        provider: "gemini",
+        agentSessionId: "openclaw-user-a",
+        provider: "openclaw",
         userId: "user-a"
       })
     ]);
@@ -53,10 +53,10 @@ describe("partitionMessageCenterItemsByAgentUser", () => {
         sessionIds: ["codex-user-b"]
       },
       {
-        id: "agent-user:gemini:user-a",
-        provider: "gemini",
+        id: "agent-user:openclaw:user-a",
+        provider: "openclaw",
         userId: "user-a",
-        sessionIds: ["gemini-user-a"]
+        sessionIds: ["openclaw-user-a"]
       }
     ]);
   });

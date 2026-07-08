@@ -303,9 +303,9 @@ const defaultAgentTargetOptions: readonly IssueManagerAgentTargetOption[] = [
     provider: "claude-code"
   },
   {
-    agentTargetId: "local:gemini",
-    label: "Gemini",
-    provider: "gemini"
+    agentTargetId: "local:openclaw",
+    label: "OpenClaw",
+    provider: "openclaw"
   }
 ];
 

@@ -128,9 +128,9 @@ describe("agentGuiConversationListStore", () => {
           provider: "claude-code",
           title: "Old Claude Code"
         }),
-        runtimeSession("gemini-session", 1_000, {
-          provider: "gemini",
-          title: "Gemini"
+        runtimeSession("openclaw-session", 1_000, {
+          provider: "openclaw",
+          title: "OpenClaw"
         })
       ]
     };
@@ -152,7 +152,7 @@ describe("agentGuiConversationListStore", () => {
         getAgentGUIConversationListQuerySnapshot(allQuery)?.conversations.map(
           (item) => item.id
         )
-      ).toEqual(["codex-local", "claude-local", "gemini-session"]);
+      ).toEqual(["codex-local", "claude-local", "openclaw-session"]);
       expect(
         getAgentGUIConversationListQuerySnapshot(codexQuery)?.conversations.map(
           (item) => item.id

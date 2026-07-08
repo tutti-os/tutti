@@ -89,7 +89,7 @@ In the agent chat box, click "+" to reference local files or outputs generated b
 
 #### Task orchestration and multi-project work
 
-With shared visibility into each other's work, agents can avoid or resolve conflicts and decide whether work should run in parallel or in sequence. Agents from different providers, such as Claude and Codex, or Gemini and OpenClaw (DeepSeek), can work together without getting in each other's way.
+With shared visibility into each other's work, agents can avoid or resolve conflicts and decide whether work should run in parallel or in sequence. Agents from different providers, such as Claude and Codex, or OpenClaw (DeepSeek) and Hermes, can work together without getting in each other's way.
 
 **In Tutti · VM:**
 
@@ -144,18 +144,18 @@ No command line. Open Tutti and start using agents, apps, tasks, and files right
 
 ## Reuse your existing subscriptions
 
-Connect the agent subscriptions you already have. Every app and agent runs on top of them, at zero extra cost. (Currently Claude Code and Codex; Gemini, OpenClaw, and Hermes are coming soon.)
+Connect the agent subscriptions you already have. Every app and agent runs on top of them, at zero extra cost. (Currently Claude Code and Codex; OpenClaw and Hermes are in development.)
 
 <img src="docs/assets/en/subscriptions-1.png" width="49%" /> <img src="docs/assets/en/subscriptions-2.png" width="49%" />
 
 ## Tutti vs Tutti · VM
 
-|                   | Tutti (open source)                                                                                                                    | Tutti · VM (coming soon)                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Best for**      | One person, multiple agents                                                                                                            | One person, multiple agents<br>One person, multiple devices<br>Two or more people, each with their own agents                                                                                                                                                                                                                                                                       |
-| **Runs on**       | Agents run locally, and the working state stays local                                                                                  | Multi-layer virtualization virtualizes your local agent into a real-time shared cloud workspace.<br><br>The agent still runs locally while its working state lives in the cloud in real time: what's being discussed, what's running, and what's already been created. This enables cross-device, multi-user collaboration among agents, with no context loss, like a shared brain. |
-| **Shares**        | Context, apps, outputs, tasks, and running state across multiple agents                                                                | Everything in the local version, plus sharing across multiple people and devices                                                                                                                                                                                                                                                                                                    |
-| **Subscriptions** | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw, Gemini, and Hermes are in development.) | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw, Gemini, and Hermes are in development.)                                                                                                                                                                                                                                              |
+|                   | Tutti (open source)                                                                                                           | Tutti · VM (coming soon)                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Best for**      | One person, multiple agents                                                                                                   | One person, multiple agents<br>One person, multiple devices<br>Two or more people, each with their own agents                                                                                                                                                                                                                                                                       |
+| **Runs on**       | Agents run locally, and the working state stays local                                                                         | Multi-layer virtualization virtualizes your local agent into a real-time shared cloud workspace.<br><br>The agent still runs locally while its working state lives in the cloud in real time: what's being discussed, what's running, and what's already been created. This enables cross-device, multi-user collaboration among agents, with no context loss, like a shared brain. |
+| **Shares**        | Context, apps, outputs, tasks, and running state across multiple agents                                                       | Everything in the local version, plus sharing across multiple people and devices                                                                                                                                                                                                                                                                                                    |
+| **Subscriptions** | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw and Hermes are in development.) | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code and Codex; OpenClaw and Hermes are in development.)                                                                                                                                                                                                                                                       |
 
 ### What can you do with Tutti?
 
@@ -205,7 +205,7 @@ You and your friends join the same room. You can @ a task someone started last n
 
 ### Do I need to buy a separate agent subscription?
 
-No. Tutti works with your existing Claude, Codex, Gemini, and other agent subscriptions.
+No. Tutti works with your existing Claude, Codex, and other supported agent subscriptions.
 
 ### What if I don't have an agent subscription?
 
@@ -221,7 +221,7 @@ If you create a room in Tutti · VM and invite teammates or friends, they can se
 
 ### Does Tutti replace my coding agent?
 
-No. Tutti is the workspace around your agents. You can keep using Claude Code, Codex, Gemini, and other agents you already trust.
+No. Tutti is the workspace around your agents. You can keep using Claude Code, Codex, and other supported agents you already trust.
 
 ### Is Tutti only for coding?
 

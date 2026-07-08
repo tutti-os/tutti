@@ -218,7 +218,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 
 	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "  Renamed session  ")
-	if err != nil || !ok || renamed.Title != "Renamed session" || renamed.UpdatedAtUnixMS <= pinned.UpdatedAtUnixMS {
+	if err != nil || !ok || renamed.Title != "Renamed session" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
 		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
 	}
 
@@ -483,6 +483,87 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+}
+
+func TestStoreListPinnedSessionPageOrdersByPinnedTime(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	for _, input := range []SessionStateReport{
+		{
+			WorkspaceID:      "ws-pinned-page",
+			AgentSessionID:   "newer-pinned",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-pinned-page",
+			AgentSessionID:   "older-pinned",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-pinned-page",
+			AgentSessionID:   "unpinned",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+	} {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+	}
+	for sessionID, pinnedAt := range map[string]int64{
+		"newer-pinned": 2000,
+		"older-pinned": 1000,
+	} {
+		if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET pinned_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ?`, pinnedAt, "ws-pinned-page", sessionID); err != nil {
+			t.Fatalf("set pinned_at_unix_ms(%s) error = %v", sessionID, err)
+		}
+	}
+
+	page, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID: "ws-pinned-page",
+		SectionKey:  PinnedSessionPageKey,
+		Limit:       1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(pinned first) ok=%v error=%v", ok, err)
+	}
+	if len(page.Sessions) != 1 || page.Sessions[0].ID != "newer-pinned" {
+		t.Fatalf("pinned first sessions = %#v, want newer-pinned", page.Sessions)
+	}
+	if !page.HasMore || page.NextCursor != "2000|newer-pinned" {
+		t.Fatalf("pinned first page state = hasMore %v cursor %q", page.HasMore, page.NextCursor)
+	}
+
+	next, ok, err := store.ListSessionSection(ctx, ListSessionSectionInput{
+		WorkspaceID:       "ws-pinned-page",
+		SectionKey:        PinnedSessionPageKey,
+		CursorUpdatedAtMS: page.Sessions[0].PinnedAtUnixMS,
+		CursorSessionID:   page.Sessions[0].ID,
+		Limit:             2,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(pinned next) ok=%v error=%v", ok, err)
+	}
+	if len(next.Sessions) != 1 || next.Sessions[0].ID != "older-pinned" {
+		t.Fatalf("pinned next sessions = %#v, want older-pinned", next.Sessions)
+	}
+	if next.HasMore || next.NextCursor != "" {
+		t.Fatalf("pinned next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
 	}
 }
 

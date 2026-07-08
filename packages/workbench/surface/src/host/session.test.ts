@@ -2246,7 +2246,7 @@ test("launchNode offsets later same-type-centered cascade windows by same type",
     onLaunchRequest() {
       return {
         defaultFrame: agentGuiNodeDefinition.frame,
-        instanceId: "agent-gui:gemini",
+        instanceId: "agent-gui:openclaw",
         framePolicy: "cascade-same-type-centered",
         typeId: "agent-gui"
       };

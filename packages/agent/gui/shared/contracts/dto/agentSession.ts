@@ -6,7 +6,6 @@ export type AgentHostAgentSessionProvider =
   | "tutti-agent"
   | "cursor"
   | "nexight"
-  | "gemini"
   | "hermes"
   | "opencode"
   | "openclaw";

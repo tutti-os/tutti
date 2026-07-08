@@ -72,12 +72,6 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
       speed?: string;
     };
-    gemini?: {
-      model?: string;
-      permissionModeId?: string;
-      reasoningEffort?: string;
-      speed?: string;
-    };
     hermes?: {
       model?: string;
       permissionModeId?: string;
@@ -112,7 +106,6 @@ export interface PreferencesDesktopPreferencesV1 {
     "tutti-agent"?: boolean;
     cursor?: boolean;
     nexight?: boolean;
-    gemini?: boolean;
     hermes?: boolean;
     openclaw?: boolean;
     opencode?: boolean;

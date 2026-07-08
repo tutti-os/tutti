@@ -76,7 +76,7 @@ func (s *Service) availableComposerModelsForValidation(
 			return nil, false, nil
 		}
 		return composerConfigOptionModelValues(models), true, nil
-	case agentprovider.Codex, agentprovider.Gemini, agentprovider.OpenCode:
+	case agentprovider.Codex, agentprovider.OpenCode:
 		if s.ModelCatalog == nil {
 			return nil, false, nil
 		}

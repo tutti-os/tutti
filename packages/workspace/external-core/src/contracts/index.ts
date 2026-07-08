@@ -169,7 +169,6 @@ export const tuttiExternalWorkspaceAgentProviders = [
   "cursor",
   "nexight",
   "hermes",
-  "gemini",
   "openclaw"
 ] as const;
 

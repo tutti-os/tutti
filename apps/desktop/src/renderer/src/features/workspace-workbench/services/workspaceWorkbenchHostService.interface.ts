@@ -26,7 +26,10 @@ import type {
   WorkbenchHostNodeDefinition,
   WorkbenchHostSnapshotRepository
 } from "@tutti-os/workbench-surface";
-import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
+import type {
+  DesktopLocale,
+  WorkspaceWorkbenchDesktopI18nRuntime
+} from "@shared/i18n";
 import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type {
@@ -114,6 +117,7 @@ export interface IWorkspaceWorkbenchHostService {
   approveWindowClose(): Promise<void>;
   createHostInput(input: {
     appI18n: I18nRuntime<string>;
+    appLocale: DesktopLocale;
     appCenterRevision?: number;
     confirmCloseGuard: (
       request: WorkbenchHostCloseDialogRequest

@@ -15,8 +15,6 @@ import (
 const (
 	codexModelCacheTTL      = 30 * time.Second
 	codexModelErrorCacheTTL = 5 * time.Second
-	geminiModelCacheTTL     = 6 * time.Hour
-	geminiModelFallbackTTL  = 5 * time.Minute
 	opencodeModelCacheTTL   = 6 * time.Hour
 	opencodeModelErrorTTL   = 5 * time.Minute
 )
@@ -100,20 +98,6 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 		},
 		configuredDefaultModel: func() string { return "" },
 	},
-	agentprovider.Gemini: {
-		source:      "gemini-cli",
-		ttl:         geminiModelCacheTTL,
-		errTTL:      geminiModelFallbackTTL,
-		fallbackTTL: geminiModelFallbackTTL,
-		lister: func(c *CachedAgentModelCatalog) AgentModelLister {
-			if c.Gemini != nil {
-				return c.Gemini
-			}
-			return GeminiCLIModelLister{}
-		},
-		configuredDefaultModel:    readGeminiConfiguredDefaultModel,
-		missingDefaultDescription: "Gemini configured custom model",
-	},
 	agentprovider.OpenCode: {
 		source: "opencode-cli",
 		ttl:    opencodeModelCacheTTL,
@@ -132,7 +116,6 @@ var agentModelCatalogSpecs = map[string]agentModelCatalogSpec{
 type CachedAgentModelCatalog struct {
 	Codex             AgentModelLister
 	TuttiAgent        AgentModelLister
-	Gemini            AgentModelLister
 	OpenCode          AgentModelLister
 	ModelCapabilities ModelCapabilitiesResolver
 	Now               func() time.Time

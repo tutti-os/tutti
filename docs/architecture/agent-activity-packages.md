@@ -98,6 +98,11 @@ Hosts must pass those calls through to the daemon section endpoints so project
 sections come from current user projects and session membership comes from
 persisted `rail_section_key`, not frontend cwd grouping or project-root
 filters.
+The `listSessionSections` bootstrap also carries the first pinned session page,
+and pinned Show more uses the dedicated pinned page endpoint/runtime method.
+Pinned is not a section kind; it is a session/rail-record projection derived
+from `pinnedAtUnixMs` so pinned conversations can render on first load even
+when they are older than the first ordinary project or Chats page.
 When AgentGUI's provider rail is narrowed to one target, the runtime request
 must include `agentTargetId`; hosts and the daemon apply it before section
 pagination so `hasMore` describes the target-filtered rail, not the unfiltered

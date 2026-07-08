@@ -2137,7 +2137,12 @@ func logClaudeSDKSidecarDebugStderr(content []byte) {
 		if payloadJSON == "" {
 			payloadJSON = "{}"
 		}
-		slog.Debug(claudeSDKAuthRefreshLogPrefix,
+		// Info (not Debug) so the per-start credential timeline is captured in
+		// production: this is the decisive trail for the shared-OAuth-store
+		// logout, and Debug is off in prod. Volume is tiny — the sidecar
+		// TTL-throttles the snapshot and only emits it at session-start/refresh
+		// stages, not on any hot path.
+		slog.Info(claudeSDKAuthRefreshLogPrefix,
 			"event", "agent_session.claude_sdk.auth_refresh_debug",
 			"payload_json", payloadJSON,
 		)

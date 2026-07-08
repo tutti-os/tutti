@@ -8,7 +8,6 @@ package agentruntime
 //
 //	acp_provider_claude.go    claude-agent-acp bridge (non-default runtime)
 //	acp_provider_cursor.go    cursor-agent acp
-//	acp_provider_gemini.go    gemini --acp
 //	acp_provider_hermes.go    hermes acp
 //	acp_provider_nexight.go   nexight-acp (codex-acp derived)
 //	acp_provider_openclaw.go  openclaw acp -v
@@ -41,7 +40,7 @@ package agentruntime
 //     permissionModeIDAllowedForProvider there.
 //  4. Add the provider to activity/events NormalizeProvider — without it
 //     every activity event for the provider is silently dropped.
-//  5. Mirror the Gemini/Hermes/Cursor tests in standard_acp_adapter_test.go
+//  5. Mirror the Hermes/Cursor tests in standard_acp_adapter_test.go
 //     using the scripted transport (newStandardACPTransport) so the adapter
 //     is exercised without a real binary.
 //

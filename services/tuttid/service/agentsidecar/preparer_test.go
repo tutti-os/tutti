@@ -206,7 +206,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(skill), "mention://agent-target") ||
-		!strings.Contains(string(skill), "not launch-only") {
+		!strings.Contains(string(skill), "handed off, not absorbed") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
@@ -878,7 +878,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
 		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
 		!strings.Contains(string(systemPrompt), "agent session-summary --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "this is not launch-only") {
+		!strings.Contains(string(systemPrompt), "hand off, do not do it yourself") {
 		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
@@ -939,7 +939,7 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(pluginSkill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
 		!strings.Contains(string(pluginSkill), "mention://agent-target") ||
-		!strings.Contains(string(pluginSkill), "not launch-only") ||
+		!strings.Contains(string(pluginSkill), "handed off, not absorbed") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
 		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
@@ -1172,96 +1172,6 @@ func TestDefaultPreparerCleanupRemovesClaudeSystemPromptRuntimeRoot(t *testing.T
 	}
 	if _, err := os.Stat(filepath.Join(cwd, "CLAUDE.md")); !os.IsNotExist(err) {
 		t.Fatalf("cwd CLAUDE.md exists after cleanup, err = %v", err)
-	}
-}
-
-func TestDefaultPreparerGeminiUsesSessionScopedHome(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	userGeminiDir := filepath.Join(home, ".gemini")
-	if err := os.MkdirAll(userGeminiDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(userGeminiDir, "settings.json"), []byte(`{"model":{"name":"gemini-test"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	stateDir := t.TempDir()
-	cwd := t.TempDir()
-	geminiPath := filepath.Join(cwd, "GEMINI.md")
-	if err := os.WriteFile(geminiPath, []byte("user gemini guidance\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
-		WorkspaceID:    "workspace-1",
-		AgentSessionID: "session-1",
-		Provider:       "gemini",
-		Cwd:            cwd,
-	})
-	if err != nil {
-		t.Fatalf("Prepare() error = %v", err)
-	}
-	content, err := os.ReadFile(geminiPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "user gemini guidance\n" {
-		t.Fatalf("cwd GEMINI.md content = %q, want user guidance unchanged", string(content))
-	}
-	if _, err := os.Stat(filepath.Join(cwd, ".gemini")); !os.IsNotExist(err) {
-		t.Fatalf("cwd .gemini exists after prepare, err = %v", err)
-	}
-	geminiHome := envValue(prepared.Env, "HOME")
-	if geminiHome == "" {
-		t.Fatalf("prepared env = %#v, want HOME", prepared.Env)
-	}
-	if rel, err := filepath.Rel(cwd, geminiHome); err == nil && !strings.HasPrefix(rel, "..") {
-		t.Fatalf("gemini home = %q, want outside cwd %q", geminiHome, cwd)
-	}
-	sessionGemini, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "GEMINI.md"))
-	if err != nil {
-		t.Fatalf("session GEMINI.md missing: %v", err)
-	}
-	if !strings.Contains(string(sessionGemini), "`tutti <scope> --help`") ||
-		!strings.Contains(string(sessionGemini), "App id mapping") {
-		t.Fatalf("session GEMINI.md content = %q", string(sessionGemini))
-	}
-	settings, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "settings.json"))
-	if err != nil {
-		t.Fatalf("session gemini settings missing: %v", err)
-	}
-	if !strings.Contains(string(settings), "gemini-test") {
-		t.Fatalf("session gemini settings = %q", string(settings))
-	}
-	skill, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "tutti-cli", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("session gemini skill missing: %v", err)
-	}
-	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
-		!strings.Contains(string(skill), "this skill's `command-guide.md`") {
-		t.Fatalf("session gemini skill = %q", string(skill))
-	}
-	geminiReference, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "tutti-cli", commandGuideReferencePath))
-	if err != nil {
-		t.Fatalf("session gemini command guide reference missing: %v", err)
-	}
-	if !strings.Contains(string(geminiReference), "tutti agent sessions") {
-		t.Fatalf("session gemini command guide reference = %q", string(geminiReference))
-	}
-	issueSkill, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "issue-manager", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("session gemini issue-manager skill missing: %v", err)
-	}
-	if !strings.Contains(string(issueSkill), "mention://workspace-issue") {
-		t.Fatalf("session gemini issue-manager skill = %q", string(issueSkill))
-	}
-	workspaceAppSkill, err := os.ReadFile(filepath.Join(geminiHome, ".gemini", "skills", "workspace-app", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("session gemini workspace-app skill missing: %v", err)
-	}
-	if !strings.Contains(string(workspaceAppSkill), "mention://workspace-app") {
-		t.Fatalf("session gemini workspace-app skill = %q", string(workspaceAppSkill))
 	}
 }
 

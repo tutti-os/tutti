@@ -289,7 +289,7 @@ func TestSQLiteStoreMigrationBackfillsAgentComposerDefaultsByAgentTarget(t *test
 	legacy := preferencesbiz.DefaultDesktopPreferences()
 	legacy.AgentComposerDefaultsByProvider = map[string]preferencesbiz.AgentComposerDefaults{
 		"codex":  {Model: "gpt-5", PermissionModeID: "full-access"},
-		"gemini": {Model: "gemini-pro"},
+		"gemini": {Model: "legacy-gemini-pro"},
 	}
 	if _, err := store.PutDesktopPreferences(context.Background(), legacy); err != nil {
 		t.Fatalf("PutDesktopPreferences() error = %v", err)
@@ -312,9 +312,8 @@ DELETE FROM tuttid_schema_migrations WHERE id = ?
 	if codexDefaults.Model != "gpt-5" || codexDefaults.PermissionModeID != "full-access" {
 		t.Fatalf("backfilled codex defaults = %#v, want legacy values", codexDefaults)
 	}
-	geminiDefaults := preferences.AgentComposerDefaultsByAgentTarget["local:gemini"]
-	if geminiDefaults.Model != "gemini-pro" {
-		t.Fatalf("backfilled gemini defaults = %#v, want legacy values", geminiDefaults)
+	if _, ok := preferences.AgentComposerDefaultsByAgentTarget["local:gemini"]; ok {
+		t.Fatalf("local:gemini defaults were backfilled: %#v", preferences.AgentComposerDefaultsByAgentTarget)
 	}
 
 	// Re-running the backfill must not clobber newer agent-target data.

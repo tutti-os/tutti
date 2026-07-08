@@ -35,9 +35,9 @@ describe("agent gui workbench launch contract", () => {
     expect(
       createAgentGuiWorkbenchInstanceId({
         agentSessionId: "session:1",
-        provider: "gemini"
+        provider: "hermes"
       })
-    ).toBe("agent-gui:gemini:session:session%3A1");
+    ).toBe("agent-gui:hermes:session:session%3A1");
   });
 
   it("prefers payload providers before dock identifiers", () => {

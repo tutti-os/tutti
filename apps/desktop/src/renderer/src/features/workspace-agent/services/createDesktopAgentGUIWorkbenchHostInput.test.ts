@@ -2128,7 +2128,11 @@ function createWorkspaceAgentActivityService(
       return { hasMore: false, sessions: [], workspaceId: input.workspaceId };
     },
     async listSessionSections(input) {
-      return { sections: [], workspaceId: input.workspaceId };
+      return {
+        pinned: { hasMore: false, sessions: [] },
+        sections: [],
+        workspaceId: input.workspaceId
+      };
     },
     async listSessionSectionPage(input) {
       return {
@@ -2136,6 +2140,12 @@ function createWorkspaceAgentActivityService(
         sectionKey: input.sectionKey,
         sessions: [],
         hasMore: false
+      };
+    },
+    async listPinnedSessionsPage() {
+      return {
+        hasMore: false,
+        sessions: []
       };
     },
     async scanExternalSessionImports() {

@@ -44,7 +44,7 @@ test("workspace agent GUI identifiers keep codex as the legacy default entry", (
     "agent-gui:claude-code"
   );
   assert.equal(workspaceAgentGuiInstanceId("codex"), "agent-gui:codex");
-  assert.equal(workspaceAgentGuiInstanceId("gemini"), "agent-gui:gemini");
+  assert.equal(workspaceAgentGuiInstanceId("hermes"), "agent-gui:hermes");
   assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), "codex");
   assert.equal(
     workspaceAgentGuiProviderFromIdentifier("agent-gui:codex:panel:1"),
@@ -70,9 +70,9 @@ test("workspace agent GUI creates multi-open panel instance ids", () => {
   assert.equal(
     createWorkspaceAgentGuiInstanceId({
       agentSessionId: "session:1",
-      provider: "gemini"
+      provider: "hermes"
     }),
-    "agent-gui:gemini:session:session%3A1"
+    "agent-gui:hermes:session:session%3A1"
   );
 });
 

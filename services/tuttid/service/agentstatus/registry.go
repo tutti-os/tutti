@@ -149,20 +149,6 @@ func DefaultRegistry() Registry {
 			AuthMarkerPaths:    []string{"~/.nexight/auth.json", "~/.tutti/nexight/auth.json"},
 			LoginArgs:          []string{"login"},
 		},
-		agentprovider.Gemini: {
-			Provider:           agentprovider.Gemini,
-			SupportStatus:      ProviderSupportStatusUnsupported,
-			DisabledReasonCode: DisabledReasonProviderTemporarilyUnsupported,
-			BinaryNames:        []string{"gemini"},
-			AdapterCommand:     []string{"gemini", "--acp"},
-			AuthMarkerPaths:    []string{"~/.gemini/settings.json", "~/.gemini/oauth_creds.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindShellCommand,
-				DisplayCommand: "npm install -g @google/gemini-cli",
-				ShellCommand:   "npm install -g @google/gemini-cli",
-			},
-			LoginArgs: []string{"auth", "login"},
-		},
 		agentprovider.Hermes: {
 			Provider:           agentprovider.Hermes,
 			SupportStatus:      ProviderSupportStatusUnsupported,

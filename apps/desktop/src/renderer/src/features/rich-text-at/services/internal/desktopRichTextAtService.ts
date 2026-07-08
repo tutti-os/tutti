@@ -1225,8 +1225,6 @@ function resolveAgentSessionProviderLabel(provider?: string | null): string {
       return "Codex";
     case "cursor":
       return "Cursor";
-    case "gemini":
-      return "Gemini CLI";
     case "hermes":
       return "Hermes Agent";
     case "nexight":

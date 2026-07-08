@@ -48,6 +48,7 @@ import {
   listCliCapabilities,
   listWorkspaceAppMentionCandidates,
   listWorkspaceAgentGeneratedFiles,
+  listWorkspaceAgentPinnedSessionPage,
   listUserProjects,
   listWorkspaceAgentSessionSectionPage,
   listWorkspaceAgentSessionSections,
@@ -641,6 +642,22 @@ export function createTuttidClient(
       return unwrapData(
         response,
         "Workspace agent session section page request failed."
+      );
+    },
+    async listWorkspaceAgentPinnedSessionPage(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await listWorkspaceAgentPinnedSessionPage({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace pinned agent session page request failed."
       );
     },
     async listWorkspaceAgentGeneratedFiles(workspaceID, request) {

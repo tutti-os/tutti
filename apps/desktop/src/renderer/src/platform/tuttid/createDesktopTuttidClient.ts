@@ -562,6 +562,17 @@ export function createDesktopTuttidClient(
         requestOptions
       );
     },
+    async listWorkspaceAgentPinnedSessionPage(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return (await resolveClient()).listWorkspaceAgentPinnedSessionPage(
+        workspaceID,
+        request,
+        requestOptions
+      );
+    },
     async scanWorkspaceExternalAgentSessionImports(workspaceID, request) {
       return (await resolveClient()).scanWorkspaceExternalAgentSessionImports(
         workspaceID,

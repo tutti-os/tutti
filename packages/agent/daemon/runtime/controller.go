@@ -157,7 +157,6 @@ func NewDefaultControllerWithOptions(
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
-		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
 		NewOpenCodeAdapterWithHostMetadata(transport, host),
@@ -454,7 +453,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 		return "auto"
 	case ProviderCursor:
 		return "agent"
-	case ProviderGemini, ProviderHermes:
+	case ProviderHermes:
 		return "yolo"
 	default:
 		return ""
@@ -495,7 +494,7 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		}
 	case ProviderCursor:
 		return cursorACPModeID(mode) != ""
-	case ProviderGemini, ProviderHermes:
+	case ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
 	case ProviderOpenCode, ProviderOpenClaw:
 		return strings.TrimSpace(mode) == ""

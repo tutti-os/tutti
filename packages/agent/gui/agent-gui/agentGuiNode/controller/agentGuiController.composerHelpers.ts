@@ -474,7 +474,6 @@ export function composerSupportForProvider(
   if (
     provider === "claude-code" ||
     provider === "codex" ||
-    provider === "gemini" ||
     provider === "opencode"
   ) {
     return {
