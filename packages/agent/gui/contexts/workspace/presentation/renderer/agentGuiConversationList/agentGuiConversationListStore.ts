@@ -7,7 +7,7 @@ import {
   getAgentHostApiByOrigin,
   getOptionalAgentHostApi
 } from "../../../../../agentActivityHost";
-import type { AgentGUIProvider } from "../types";
+import type { AgentGUIProvider } from "../../../../../types";
 import { getAgentSessionViewStoreSnapshot } from "../agentSessions/agentSessionViewStore";
 import {
   buildAgentGUIConversationSummaries,

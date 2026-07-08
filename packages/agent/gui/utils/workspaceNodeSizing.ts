@@ -1,7 +1,6 @@
-import type { WorkspaceNode } from "../contexts/workspace/presentation/renderer/types";
 import type { StandardWindowSizeBucket } from "../contexts/settings/domain/agentSettings";
 import type { WindowDisplayInfo } from "../shared/contracts/dto";
-import type { Size, TerminalNodeData } from "../types";
+import type { Size, TerminalNodeData, WorkspaceNode } from "../types";
 
 export type WorkspaceCanonicalSizeBucket = StandardWindowSizeBucket;
 
