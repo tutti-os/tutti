@@ -103,6 +103,84 @@ test("desktop agent activity runtime archives prompt file uploads", async () => 
   });
 });
 
+test("desktop agent activity runtime archives inline file data (pasted text)", async () => {
+  const archiveInputs: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile(input) {
+          archiveInputs.push(input);
+          return {
+            name: input.displayName ?? "pasted-text.txt",
+            path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/aa/deadbeef.txt",
+            sizeBytes: 36
+          };
+        }
+      }
+    }
+  );
+
+  const result = await runtime.uploadPromptContent?.({
+    workspaceId: "workspace-1",
+    content: [
+      {
+        type: "file",
+        data: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+        mimeType: "text/plain",
+        name: "pasted-text.txt"
+      }
+    ]
+  });
+
+  // Inline bytes are archived via dataBase64 (no hostPath).
+  assert.deepEqual(archiveInputs, [
+    {
+      workspaceID: "workspace-1",
+      dataBase64: "Zmlyc3QgcGFzdGVkIGxpbmUKc2Vjb25kIHBhc3RlZCBsaW5l",
+      displayName: "pasted-text.txt",
+      mimeType: "text/plain"
+    }
+  ]);
+  // The base64 payload is dropped from the returned block; path/size are filled.
+  assert.deepEqual(result, {
+    content: [
+      {
+        type: "file",
+        mimeType: "text/plain",
+        name: "pasted-text.txt",
+        path: "/Users/local/Library/Application Support/Tutti/agent-prompt-assets/ws/aa/deadbeef.txt",
+        sizeBytes: 36,
+        uploadStatus: "uploaded"
+      }
+    ]
+  });
+});
+
+test("desktop agent activity runtime rejects file uploads without hostPath or data", async () => {
+  const runtime = createDesktopAgentActivityRuntime(
+    createWorkspaceAgentActivityService(),
+    {
+      hostFilesApi: {
+        async archiveAgentPromptFile() {
+          throw new Error("should not archive");
+        }
+      }
+    }
+  );
+
+  const uploadPromptContent = runtime.uploadPromptContent;
+  assert.ok(uploadPromptContent);
+  await assert.rejects(
+    () =>
+      uploadPromptContent({
+        workspaceId: "workspace-1",
+        content: [{ type: "file", name: "empty.txt" }]
+      }),
+    /requires hostPath or data/
+  );
+});
+
 test("desktop agent activity runtime archives prompt image uploads", async () => {
   const archiveInputs: unknown[] = [];
   const runtime = createDesktopAgentActivityRuntime(

@@ -144,7 +144,7 @@ test("desktop agent gui link actions launch agent sessions in the same workspace
   const handled = await runDesktopAgentGUILinkAction(
     {
       agentSessionId: "session-1",
-      provider: "claude-code",
+      agentTargetId: "local:claude-code",
       source: "agent-markdown",
       type: "open-agent-session",
       workspaceId: "workspace-1"
@@ -165,7 +165,7 @@ test("desktop agent gui link actions launch agent sessions in the same workspace
   assert.deepEqual(launchedSessions, [
     {
       agentSessionId: "session-1",
-      provider: "claude-code",
+      agentTargetId: "local:claude-code",
       workspaceId: "workspace-1"
     }
   ]);

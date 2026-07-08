@@ -5,6 +5,8 @@ import Suggestion, { exitSuggestion } from "@tiptap/suggestion";
 import { isRichTextTriggerPrefixBoundary } from "@tutti-os/ui-rich-text/editor";
 import {
   createRichTextLinkMarkdown,
+  createRichTextMarkdownLink,
+  createRichTextMentionHref,
   createRichTextMentionMarkdown,
   isRichTextMentionHref,
   parseRichTextMentionHref
@@ -53,6 +55,7 @@ export interface AgentMentionSessionItem {
   href: string;
   workspaceId: string;
   targetId: string;
+  agentTargetId?: string;
   name: string;
   title: string;
   scope: AgentMentionScope;
@@ -296,6 +299,7 @@ export function createAgentFileMentionExtension(
         directoryPath: { default: "" },
         workspaceId: { default: "" },
         targetId: { default: "" },
+        agentTargetId: { default: "" },
         scope: { default: "" },
         title: { default: "" },
         initiatorName: { default: "" },
@@ -602,6 +606,45 @@ export function formatAgentFileMentionMarkdown(
   });
 }
 
+export function createAgentSessionMentionHref(input: {
+  agentSessionId: string;
+  agentTargetId?: string | null;
+  label: string;
+  workspaceId: string;
+}): string {
+  const label = normalizeAgentSessionMarkdownLabel(input.label);
+  const agentTargetId = input.agentTargetId?.trim() ?? "";
+  return createRichTextMentionHref({
+    providerId: "agent-session",
+    entityId: input.agentSessionId,
+    label,
+    scope: {
+      ...(agentTargetId ? { agentTargetId } : {}),
+      workspaceId: input.workspaceId
+    }
+  });
+}
+
+export function createAgentSessionMarkdownLink(input: {
+  agentSessionId: string;
+  agentTargetId?: string | null;
+  label: string;
+  workspaceId: string;
+  withAtPrefix: boolean;
+}): string {
+  const label = normalizeAgentSessionMarkdownLabel(input.label);
+  const href = createAgentSessionMentionHref({
+    agentSessionId: input.agentSessionId,
+    agentTargetId: input.agentTargetId,
+    label,
+    workspaceId: input.workspaceId
+  });
+  return createRichTextMarkdownLink({
+    href,
+    label: input.withAtPrefix ? `@${label}` : label
+  });
+}
+
 export function formatAgentMentionMarkdown(
   item: AgentContextMentionItem
 ): string {
@@ -630,6 +673,16 @@ export function formatAgentMentionMarkdown(
       }
     });
   }
+  if (item.kind === "session") {
+    return createAgentSessionMarkdownLink({
+      agentSessionId: item.targetId,
+      agentTargetId:
+        item.agentTargetId ?? agentSessionTargetIdFromHref(item.href),
+      label: item.name,
+      workspaceId: item.workspaceId,
+      withAtPrefix: true
+    });
+  }
   if (item.kind === "agent-target") {
     return createRichTextMentionMarkdown({
       providerId: "agent-target",
@@ -640,6 +693,16 @@ export function formatAgentMentionMarkdown(
   }
   const identity = parseRichTextMentionHref(item.href, item.name);
   return identity ? createRichTextMentionMarkdown(identity) : "";
+}
+
+function normalizeAgentSessionMarkdownLabel(value: string): string {
+  return value.trim().replace(/^@+/, "").trim();
+}
+
+function agentSessionTargetIdFromHref(href: string): string | undefined {
+  const mention = parseRichTextMentionHref(href, "");
+  const agentTargetId = mention?.scope?.agentTargetId?.trim() ?? "";
+  return agentTargetId || undefined;
 }
 
 function parseMentionFileCount(value: unknown): number {
@@ -765,6 +828,7 @@ export function parseMentionItemFromHref(input: {
       href,
       workspaceId,
       targetId,
+      agentTargetId: mention.scope?.agentTargetId?.trim() || undefined,
       name,
       title: name,
       scope: "collab_sessions",
@@ -890,6 +954,9 @@ export function mentionItemToAttrs(
       href: item.href,
       ...workspaceMentionAttrs(item.workspaceId),
       targetId: item.targetId,
+      ...(item.agentTargetId?.trim()
+        ? { agentTargetId: item.agentTargetId.trim() }
+        : {}),
       scope: item.scope,
       title: item.title,
       initiatorName: item.initiatorName,
@@ -997,6 +1064,10 @@ export function attrsToMentionItem(
       href,
       workspaceId,
       targetId,
+      agentTargetId:
+        typeof attrs.agentTargetId === "string" && attrs.agentTargetId.trim()
+          ? attrs.agentTargetId.trim()
+          : agentSessionTargetIdFromHref(href),
       name,
       title:
         typeof attrs.title === "string" && attrs.title.trim()

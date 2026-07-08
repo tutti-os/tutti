@@ -66,8 +66,21 @@ function queuedPromptImages(
   ) as QueuedPromptImageBlock[];
 }
 
-function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
+/**
+ * Text shown for a queued prompt. Falls back to the display prompt so a
+ * pasted-text-only queue entry (whose content is a structured pasted-text file
+ * block with no text) still renders its reference instead of appearing blank.
+ */
+function queuedPromptDisplayText(queuedPrompt: AgentGUIQueuedPromptVM): string {
   const prompt = agentPromptContentDisplayText(queuedPrompt.content);
+  if (prompt) {
+    return prompt;
+  }
+  return queuedPrompt.displayPrompt?.trim() ?? "";
+}
+
+function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
+  const prompt = queuedPromptDisplayText(queuedPrompt);
   if (prompt) {
     return prompt;
   }
@@ -240,9 +253,7 @@ export function AgentQueuedPromptPanel({
         {queuedPrompts.map((queuedPrompt) => {
           const isDraining = queuedPrompt.id === drainingQueuedPromptId;
           const images = queuedPromptImages(queuedPrompt);
-          const displayText = agentPromptContentDisplayText(
-            queuedPrompt.content
-          );
+          const displayText = queuedPromptDisplayText(queuedPrompt);
           const title = queuedPromptTitle(queuedPrompt);
           return (
             <div

@@ -1,6 +1,7 @@
 export {
   createRichTextMentionHref,
   createRichTextMentionMarkdown,
+  createRichTextMarkdownLink,
   extractPlainTextFromContent,
   extractPlainTextWithoutFilesFromContent,
   extractRichTextMentionsFromContent,

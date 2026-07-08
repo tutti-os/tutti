@@ -393,17 +393,22 @@ export function createDesktopAgentActivityRuntime(
               input.content.map(async (block) => {
                 if (block.type === "file") {
                   const hostPath = block.hostPath?.trim() ?? "";
-                  if (!hostPath) {
-                    throw new Error("Prompt file upload requires hostPath.");
+                  const inlineData = block.data?.trim() ?? "";
+                  if (!hostPath && !inlineData) {
+                    throw new Error(
+                      "Prompt file upload requires hostPath or data."
+                    );
                   }
                   const archived = await archiveAgentPromptFile({
                     workspaceID: input.workspaceId,
-                    hostPath,
+                    ...(hostPath ? { hostPath } : { dataBase64: inlineData }),
                     displayName: block.name ?? null,
                     mimeType: block.mimeType ?? null
                   });
+                  const blockWithoutData = { ...block };
+                  delete blockWithoutData.data;
                   return {
-                    ...block,
+                    ...blockWithoutData,
                     name: archived.name,
                     path: archived.path,
                     sizeBytes: archived.sizeBytes,

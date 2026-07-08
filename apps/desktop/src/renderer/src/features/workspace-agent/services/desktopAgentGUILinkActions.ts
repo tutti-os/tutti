@@ -1,12 +1,19 @@
+import { parseRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type { WorkspaceLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
-import { normalizeDesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
 import type { DesktopAgentGUIProvider } from "../desktopAgentGUINodeState.ts";
+
+// Value mirror of AGENT_PASTED_TEXT_MENTION_KIND from @tutti-os/agent-gui.
+// Kept as a local literal so this module (loaded by the node --test runner)
+// does not pull the whole agent-gui barrel, whose extensionless internal
+// imports the test runner cannot resolve.
+const AGENT_PASTED_TEXT_MENTION_KIND = "pasted-text";
 
 export interface DesktopAgentGUILinkActionDependencies {
   homeDirectory?: string | null;
   launchAgentGui(input: {
     agentSessionId: string;
-    provider: DesktopAgentGUIProvider;
+    agentTargetId?: string | null;
+    provider?: DesktopAgentGUIProvider | null;
     workspaceId: string;
   }): Promise<boolean> | boolean;
   launchWorkspaceIssueManager(input: {
@@ -82,7 +89,9 @@ export async function runDesktopAgentGUILinkAction(
       }
       return dependencies.launchAgentGui({
         agentSessionId: action.agentSessionId,
-        provider: normalizeDesktopAgentGUIProvider(action.provider),
+        ...(action.agentTargetId
+          ? { agentTargetId: action.agentTargetId }
+          : {}),
         workspaceId: dependencies.workspaceId
       });
     case "open-workspace-issue": {
@@ -140,10 +149,24 @@ export async function runDesktopAgentGUILinkAction(
         workspaceId: dependencies.workspaceId
       });
     }
-    case "open-custom-mention":
-      // 宿主注册的自定义 mention 的点击动作:desktop 宿主目前未注册任何自定义 kind,
-      // 统一不处理(具体 kind 的注册与落地都由各宿主自行实现)。
-      return false;
+    case "open-custom-mention": {
+      // Pasted-text chips (registered in registerDesktopPastedTextMention) carry
+      // the landed archive path in the mention href scope; clicking opens a local
+      // preview of the file so the user can read the full pasted content.
+      if (action.kind !== AGENT_PASTED_TEXT_MENTION_KIND) {
+        return false;
+      }
+      const path = parseRichTextMentionHref(action.href)?.scope?.path?.trim();
+      if (!path) {
+        return false;
+      }
+      return dependencies.launchWorkspaceFiles({
+        homeDirectory: dependencies.homeDirectory,
+        path,
+        source: "agent_command",
+        workspaceId: dependencies.workspaceId
+      });
+    }
   }
 }
 

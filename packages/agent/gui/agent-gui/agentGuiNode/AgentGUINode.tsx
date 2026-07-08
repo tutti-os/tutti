@@ -772,13 +772,16 @@ export const AgentGUINode = memo(function AgentGUINode({
   );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
+      const agentTargetId = state.agentTargetId?.trim() || null;
       onLinkAction?.(
-        action.type === "open-agent-session" && !action.provider
-          ? { ...action, provider: state.provider }
+        action.type === "open-agent-session" &&
+          !action.agentTargetId &&
+          agentTargetId
+          ? { ...action, agentTargetId }
           : action
       );
     },
-    [onLinkAction, state.provider]
+    [onLinkAction, state.agentTargetId]
   );
   const handleAgentProviderLogin = useCallback(
     (provider?: string | null) => {
@@ -1387,6 +1390,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       showLessConversations: t("agentHost.agentGui.showLessConversations"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
+      copySessionLink: t("agentHost.agentGui.copySessionLink"),
       renameSession: t("agentHost.agentGui.renameSession"),
       renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
       renameSessionDescription: t(

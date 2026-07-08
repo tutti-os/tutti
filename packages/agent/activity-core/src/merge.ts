@@ -124,7 +124,7 @@ function shouldReplaceAgentActivityMessage(
   return (incoming.id ?? 0) >= (existing.id ?? 0);
 }
 
-function areJsonLikeValuesEqual(left: unknown, right: unknown): boolean {
+export function areJsonLikeValuesEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) {
     return true;
   }

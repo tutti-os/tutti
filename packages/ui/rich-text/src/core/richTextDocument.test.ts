@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendRichTextLinksToContent,
+  createRichTextMarkdownLink,
   createRichTextMentionHref,
   createRichTextMentionMarkdown,
   extractRichTextLinksFromContent,
@@ -54,6 +55,16 @@ test("serializes mention markdown with a normalized @ label", () => {
       })
     ),
     "[@Prototype Design](mention://workspace-app/vibe-design?workspaceId=ws_1)"
+  );
+});
+
+test("serializes generic markdown links with escaped label and href", () => {
+  assert.equal(
+    createRichTextMarkdownLink({
+      label: "Session [draft] \\ one",
+      href: "mention://agent-session/session-1?workspaceId=room-(1)"
+    }),
+    "[Session \\[draft\\] \\\\ one](mention://agent-session/session-1?workspaceId=room-\\(1\\))"
   );
 });
 

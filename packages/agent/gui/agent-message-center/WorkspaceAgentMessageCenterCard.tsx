@@ -823,13 +823,16 @@ export function MessageCenterSummary({
   );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction): void => {
+      const agentTargetId = item.agentTargetId?.trim() || null;
       onLinkAction?.(
-        action.type === "open-agent-session" && !action.provider
-          ? { ...action, provider: item.provider }
+        action.type === "open-agent-session" &&
+          !action.agentTargetId &&
+          agentTargetId
+          ? { ...action, agentTargetId }
           : action
       );
     },
-    [item.provider, onLinkAction]
+    [item.agentTargetId, onLinkAction]
   );
 
   useEffect(() => {

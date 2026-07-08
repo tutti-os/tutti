@@ -687,7 +687,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	}
 	if spec.Provider == agentprovider.Codex {
 		status.CLI.MinVersion = MinSupportedCodexVersion
-		status.Checks = codexProviderChecks(status, codexPlatformOK)
+		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
 		slog.Info(
 			"codex agent provider status checked",

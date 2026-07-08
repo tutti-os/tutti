@@ -296,7 +296,7 @@ export function createRichTextMentionMarkdown(
   if (!label || !href) {
     return "";
   }
-  return `[${escapeMarkdownLinkLabel(`@${label}`)}](${escapeMarkdownLinkHref(href)})`;
+  return createRichTextMarkdownLink({ href, label: `@${label}` });
 }
 
 export function parseRichTextMentionHref(
@@ -371,7 +371,19 @@ export function createRichTextLinkMarkdown(input: RichTextLinkInput): string {
   if (!href || !displayName) {
     return "";
   }
-  return `[${escapeMarkdownLinkLabel(displayName)}](${escapeMarkdownLinkHref(href)})`;
+  return createRichTextMarkdownLink({ href, label: displayName });
+}
+
+export function createRichTextMarkdownLink(input: {
+  href: string;
+  label: string;
+}): string {
+  const href = input.href.trim();
+  const label = input.label.trim();
+  if (!href || !label) {
+    return "";
+  }
+  return `[${escapeMarkdownLinkLabel(label)}](${escapeMarkdownLinkHref(href)})`;
 }
 
 export function appendRichTextLinksToContent(

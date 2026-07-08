@@ -157,7 +157,10 @@ import {
 } from "../../shared/AgentTargetPresentationContext";
 import { AgentInteractivePromptSurface } from "./AgentInteractivePromptSurface";
 import { AgentConversationListSkeleton } from "./AgentConversationListSkeleton";
-import { useAgentHostApi } from "../../agentActivityHost";
+import {
+  useAgentHostApi,
+  useOptionalAgentHostApi
+} from "../../agentActivityHost";
 import {
   useAgentActivityRuntime,
   type AgentActivityRuntimeSessionSection
@@ -183,7 +186,11 @@ import type {
   AgentContextMentionItem,
   AgentMentionWorkspaceReferenceItem
 } from "./agentRichText/agentFileMentionExtension";
-import { formatAgentMentionMarkdown } from "./agentRichText/agentFileMentionExtension";
+import {
+  createAgentSessionMarkdownLink,
+  createAgentSessionMentionHref,
+  formatAgentMentionMarkdown
+} from "./agentRichText/agentFileMentionExtension";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
@@ -513,6 +520,7 @@ export interface AgentGUIViewLabels {
   showLessConversations: string;
   deleteSession: string;
   pinSession: string;
+  copySessionLink: string;
   renameSession: string;
   renameSessionTitle: string;
   renameSessionDescription: string;
@@ -1067,17 +1075,18 @@ function buildAgentConversationHandoffPrompt(input: {
     input.uiLanguage
   );
   const mentionLabel = `${sourceAgentLabel}${title ? ` ${title}` : ""}`.trim();
-  const href = createRichTextMentionHref({
-    providerId: "agent-session",
-    entityId: conversation.id,
+  const href = createAgentSessionMentionHref({
+    agentTargetId: conversation.agentTargetId,
+    agentSessionId: conversation.id,
     label: mentionLabel,
-    scope: { workspaceId: input.workspaceId }
+    workspaceId: input.workspaceId
   });
   return `${formatAgentMentionMarkdown({
     kind: "session",
     href,
     workspaceId: input.workspaceId,
     targetId: conversation.id,
+    agentTargetId: conversation.agentTargetId ?? undefined,
     name: mentionLabel,
     title: title || sourceAgentLabel,
     scope: "my_sessions",
@@ -4961,6 +4970,7 @@ function conversationSummariesRenderEqual(
 ): boolean {
   return (
     left.id === right.id &&
+    left.agentTargetId === right.agentTargetId &&
     left.provider === right.provider &&
     left.title === right.title &&
     left.titleFallback === right.titleFallback &&
@@ -6821,6 +6831,7 @@ const AgentGUIConversationRailPane = memo(
                     section={section}
                     sectionHasMore={sectionHasMore}
                     uiLanguage={uiLanguage}
+                    workspaceId={workspaceId}
                     onCancelDeleteConversation={onCancelDeleteConversation}
                     onConfirmDeleteConversation={onConfirmDeleteConversation}
                     onCreateConversation={onCreateConversation}
@@ -6928,6 +6939,7 @@ interface AgentGUIConversationRailSectionProps {
   currentTimeMs: number;
   labels: AgentGUIViewLabels;
   uiLanguage: UiLanguage;
+  workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
   onCreateConversation: (options?: {
     projectPath?: string | null;
@@ -6964,6 +6976,7 @@ const AgentGUIConversationRailSection = memo(
     currentTimeMs,
     labels,
     uiLanguage,
+    workspaceId,
     registerItemElement,
     onCreateConversation,
     onToggleProjectSectionCollapsed,
@@ -7324,6 +7337,7 @@ const AgentGUIConversationRailSection = memo(
                 previewMode={previewMode}
                 registerItemElement={registerItemElement}
                 uiLanguage={uiLanguage}
+                workspaceId={workspaceId}
                 onCancelDeleteConversation={onCancelDeleteConversation}
                 onConfirmDeleteConversation={onConfirmDeleteConversation}
                 onRequestDeleteConversation={onRequestDeleteConversation}
@@ -7373,6 +7387,7 @@ interface AgentGUIConversationRailItemProps {
   labels: AgentGUIViewLabels;
   previewMode: boolean;
   uiLanguage: UiLanguage;
+  workspaceId: string;
   registerItemElement: (itemId: string, element: HTMLDivElement | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
@@ -7394,6 +7409,7 @@ const AgentGUIConversationRailItem = memo(
     labels,
     previewMode,
     uiLanguage,
+    workspaceId,
     registerItemElement,
     onSelectConversation,
     onToggleConversationPinned,
@@ -7416,6 +7432,8 @@ const AgentGUIConversationRailItem = memo(
     const [contextMenuResetKey, setContextMenuResetKey] = useState(0);
     const contextMenuRenameRequestedRef = useRef(false);
     const contextMenuOpenConversationWindowRequestedRef = useRef(false);
+    const contextMenuCopySessionLinkRequestedRef = useRef(false);
+    const agentHostApi = useOptionalAgentHostApi();
     const handleMouseLeave = useCallback(() => {
       if (isPendingDeleteConversation) {
         onCancelDeleteConversation();
@@ -7472,6 +7490,33 @@ const AgentGUIConversationRailItem = memo(
         contextMenuOpenConversationWindowRequestedRef.current = false;
       }, 0);
     }, [handleOpenConversationWindow]);
+    const handleContextMenuCopySessionLink = useCallback(() => {
+      if (contextMenuCopySessionLinkRequestedRef.current) {
+        return;
+      }
+      contextMenuCopySessionLinkRequestedRef.current = true;
+      setContextMenuResetKey((key) => key + 1);
+      window.setTimeout(() => {
+        if (!agentHostApi?.clipboard?.writeText) {
+          contextMenuCopySessionLinkRequestedRef.current = false;
+          return;
+        }
+        const title = conversationPlainTitle(item, labels, uiLanguage);
+        const markdown = createAgentSessionMarkdownLink({
+          agentSessionId: item.id,
+          agentTargetId: item.agentTargetId,
+          label: title,
+          workspaceId,
+          withAtPrefix: false
+        });
+        void agentHostApi.clipboard
+          .writeText(markdown)
+          .catch(() => undefined)
+          .finally(() => {
+            contextMenuCopySessionLinkRequestedRef.current = false;
+          });
+      }, 0);
+    }, [agentHostApi, item, labels, uiLanguage, workspaceId]);
     const row = (
       <div
         ref={setItemElement}
@@ -7630,6 +7675,18 @@ const AgentGUIConversationRailItem = memo(
               <span>{labels.openConversationWindow}</span>
             </ContextMenuItem>
           ) : null}
+          <ContextMenuItem
+            className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+            onClick={handleContextMenuCopySessionLink}
+            onPointerUp={(event) => {
+              if (event.button === 0) {
+                handleContextMenuCopySessionLink();
+              }
+            }}
+            onSelect={handleContextMenuCopySessionLink}
+          >
+            <span>{labels.copySessionLink}</span>
+          </ContextMenuItem>
           <ContextMenuItem
             className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
             disabled={!canMarkUnread}

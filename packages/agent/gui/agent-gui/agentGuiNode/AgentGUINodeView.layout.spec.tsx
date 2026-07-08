@@ -5262,6 +5262,7 @@ function createLabels(): AgentGUIViewLabels {
     showMoreConversations: "showMoreConversations",
     showLessConversations: "showLessConversations",
     deleteSession: "deleteSession",
+    copySessionLink: "copySessionLink",
     renameSession: "renameSession",
     renameSessionTitle: "renameSessionTitle",
     renameSessionDescription: "renameSessionDescription",

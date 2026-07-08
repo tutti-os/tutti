@@ -103,16 +103,12 @@ interface AgentRichTextContextMenuState {
   y: number;
 }
 
-const AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS = 2_000;
-const AGENT_RICH_TEXT_LARGE_PASTE_MIN_LINES = 12;
+// Aligns with the Codex desktop composer: a paste is treated as a large-text
+// attachment purely by character count (no line-count heuristic).
+const AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS = 5_000;
 
 export function isAgentRichTextLargeTextPaste(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.length < AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS) {
-    const lineCount = trimmed ? trimmed.split(/\r\n|\r|\n/).length : 0;
-    return lineCount >= AGENT_RICH_TEXT_LARGE_PASTE_MIN_LINES;
-  }
-  return true;
+  return text.trim().length >= AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS;
 }
 
 function buildWorkspaceFileMentionDropContent(

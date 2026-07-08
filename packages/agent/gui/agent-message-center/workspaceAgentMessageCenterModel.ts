@@ -44,6 +44,7 @@ export interface WorkspaceAgentMessageCenterCounts {
 export interface WorkspaceAgentMessageCenterItem {
   id: string;
   agentSessionId: string;
+  agentTargetId?: string | null;
   provider: string;
   userId: string | null;
   title: string;
@@ -146,6 +147,7 @@ export function buildWorkspaceAgentMessageCenterModel(
       return {
         id: `message-center-${session.agentSessionId}`,
         agentSessionId: session.agentSessionId,
+        agentTargetId: session.agentTargetId?.trim() || null,
         provider: session.provider,
         userId: session.userId?.trim() || null,
         title,

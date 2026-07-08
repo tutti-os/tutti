@@ -13,6 +13,10 @@ export {
   type AgentCustomMentionKindDefinition,
   type AgentCustomMentionPresentation
 } from "./shared/agentCustomMentionKinds";
+export {
+  AGENT_PASTED_TEXT_BLOCK_KIND,
+  AGENT_PASTED_TEXT_MENTION_KIND
+} from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";

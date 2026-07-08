@@ -117,6 +117,40 @@ describe("AgentQueuedPromptPanel", () => {
     expect(screen.queryByText(/mention:\/\/session/)).toBeNull();
   });
 
+  it("renders a pasted-text-only queued prompt as a pasted-text chip", () => {
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          {
+            id: "queued-pasted",
+            content: [
+              {
+                type: "file" as const,
+                kind: "pasted-text",
+                path: "/archive/aa/deadbeef.txt",
+                name: "pasted-text-1.txt"
+              }
+            ],
+            displayPrompt:
+              "[@first pasted line](mention://pasted-text/id-1?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=42)",
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "pasted-text");
+    expect(mention).toHaveClass("tsh-agent-object-token");
+    expect(mention).toHaveTextContent("first pasted line");
+    expect(screen.queryByText(/mention:\/\/pasted-text/)).toBeNull();
+  });
+
   it("renders queued workspace app mentions when query params follow the markdown link", () => {
     const iconUrl = "tutti://workspace-apps/ai-media-canvas/icon.png";
     const { container } = render(

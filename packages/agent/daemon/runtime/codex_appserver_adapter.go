@@ -147,15 +147,16 @@ const startupModelSteadyRetryCount = 36
 const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 
 type CodexAppServerAdapter struct {
-	transport   ProcessTransport
-	host        HostMetadata
-	config      appServerAdapterConfig
-	preparer    ProviderLaunchPreparer
-	mu          sync.Mutex
-	sessions    map[string]*codexAppServerSession
-	commandSink CommandSnapshotSink
-	eventSink   SessionEventSink
-	configSink  ConfigOptionsUpdateSink
+	transport       ProcessTransport
+	host            HostMetadata
+	config          appServerAdapterConfig
+	preparer        ProviderLaunchPreparer
+	commandResolver ProviderCommandResolver
+	mu              sync.Mutex
+	sessions        map[string]*codexAppServerSession
+	commandSink     CommandSnapshotSink
+	eventSink       SessionEventSink
+	configSink      ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize
 	// Start/Resume/Close/ReleaseLiveSession per agent session so concurrent
 	// lifecycle calls can never leave two live app-server processes for the
@@ -287,21 +288,35 @@ func NewCodexAppServerAdapter(transport ProcessTransport) *CodexAppServerAdapter
 }
 
 func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
-	return newAppServerAdapter(transport, host, codexAppServerAdapterConfig())
+	return NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
+}
+
+func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) *CodexAppServerAdapter {
+	return newAppServerAdapter(transport, host, codexAppServerAdapterConfig(), commandResolver)
 }
 
 // NewTuttiAgentAppServerAdapterWithHostMetadata serves the tutti-agent
 // provider through the shared app-server adapter with Tutti-branded command,
 // client identity, and auth messaging.
 func NewTuttiAgentAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
-	return newAppServerAdapter(transport, host, tuttiAgentAppServerAdapterConfig())
+	return newAppServerAdapter(transport, host, tuttiAgentAppServerAdapterConfig(), nil)
 }
 
-func newAppServerAdapter(transport ProcessTransport, host HostMetadata, config appServerAdapterConfig) *CodexAppServerAdapter {
+func newAppServerAdapter(
+	transport ProcessTransport,
+	host HostMetadata,
+	config appServerAdapterConfig,
+	commandResolver ProviderCommandResolver,
+) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
 		transport:         transport,
 		host:              host,
 		config:            config,
+		commandResolver:   commandResolver,
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
@@ -741,13 +756,24 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
+	command := append([]string(nil), a.config.command...)
 	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
+	if a.commandResolver != nil {
+		resolved, err := a.commandResolver(ctx, a.config.provider)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		spawnEnv = append(spawnEnv, resolved.Env...)
+	}
 	spec, cleanup, err := prepareProviderLaunch(ctx, a.preparer, session, ProcessSpec{
 		Provider:       a.config.provider,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            a.sessionCWD(session),
-		Command:        append([]string(nil), a.config.command...),
+		Command:        command,
 		Env:            spawnEnv,
 	})
 	if err != nil {

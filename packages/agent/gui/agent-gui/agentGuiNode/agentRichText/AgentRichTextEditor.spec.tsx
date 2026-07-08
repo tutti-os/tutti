@@ -346,9 +346,7 @@ describe("AgentRichTextEditor", () => {
   it("detects long pasted text without inserting it inline", async () => {
     const onChange = vi.fn();
     const onPasteLargeText = vi.fn();
-    const pastedText = Array.from({ length: 14 }, (_, index) => {
-      return `line ${index + 1}`;
-    }).join("\n");
+    const pastedText = "line one\n" + "x".repeat(5_000);
     render(
       <AgentRichTextEditor
         value="before "
@@ -394,9 +392,16 @@ describe("AgentRichTextEditor", () => {
     );
   });
 
-  it("treats very long single-line paste as large text", () => {
-    expect(isAgentRichTextLargeTextPaste("x".repeat(2_000))).toBe(true);
-    expect(isAgentRichTextLargeTextPaste("x".repeat(1_999))).toBe(false);
+  it("treats paste as large text purely by character count", () => {
+    expect(isAgentRichTextLargeTextPaste("x".repeat(5_000))).toBe(true);
+    expect(isAgentRichTextLargeTextPaste("x".repeat(4_999))).toBe(false);
+    // No line-count heuristic: many short lines below the char threshold stay
+    // inline.
+    expect(
+      isAgentRichTextLargeTextPaste(
+        Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n")
+      )
+    ).toBe(false);
   });
 
   it("copies selected reference mentions as prompt markdown", async () => {

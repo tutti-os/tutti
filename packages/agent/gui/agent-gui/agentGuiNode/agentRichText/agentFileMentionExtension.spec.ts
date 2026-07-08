@@ -3,6 +3,8 @@ import type { Editor, Range } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
 import {
   attrsToMentionItem,
+  createAgentSessionMarkdownLink,
+  createAgentSessionMentionHref,
   expandRangeOverMentionPlaceholder,
   formatAgentMentionMarkdown,
   mentionItemToAttrs,
@@ -93,13 +95,14 @@ describe("parseAgentMentionMarkdown", () => {
   it("accepts generic session mention hrefs", () => {
     expect(
       parseAgentMentionMarkdown(
-        "[@Session](mention://agent-session/session-1?workspaceId=workspace-1)"
+        "[@Session](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1)"
       )
     ).toMatchObject({
       item: {
         kind: "session",
         workspaceId: "workspace-1",
         targetId: "session-1",
+        agentTargetId: "local:claude-code",
         name: "Session"
       }
     });
@@ -271,7 +274,7 @@ describe("attrsToMentionItem", () => {
     expect(
       attrsToMentionItem({
         kind: "session",
-        href: "mention://agent-session/session-1?workspaceId=workspace-1",
+        href: "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=workspace-1",
         workspaceId: "workspace-1",
         targetId: "session-1",
         name: "Session"
@@ -279,7 +282,8 @@ describe("attrsToMentionItem", () => {
     ).toMatchObject({
       kind: "session",
       workspaceId: "workspace-1",
-      targetId: "session-1"
+      targetId: "session-1",
+      agentTargetId: "local:claude-code"
     });
   });
 
@@ -392,6 +396,85 @@ describe("attrsToMentionItem", () => {
       agentProviderId: "claude-code",
       iconUrl: "tutti://agent/claude-code.svg"
     });
+  });
+});
+
+describe("agent session mention links", () => {
+  it("builds the stable agent-session mention href", () => {
+    expect(
+      createAgentSessionMentionHref({
+        agentSessionId: "session-1",
+        agentTargetId: "local:claude-code",
+        label: "Session 1",
+        workspaceId: "room-1"
+      })
+    ).toBe(
+      "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1"
+    );
+  });
+
+  it("formats composer session mentions with the mention prefix", () => {
+    expect(
+      createAgentSessionMarkdownLink({
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        label: "Session 1",
+        workspaceId: "room-1",
+        withAtPrefix: true
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Acodex&workspaceId=room-1)"
+    );
+  });
+
+  it("formats copied session links without the mention prefix", () => {
+    expect(
+      createAgentSessionMarkdownLink({
+        agentSessionId: "session-1",
+        label: "Session [draft] \\ one",
+        workspaceId: "room-1",
+        withAtPrefix: false
+      })
+    ).toBe(
+      "[Session \\[draft\\] \\\\ one](mention://agent-session/session-1?workspaceId=room-1)"
+    );
+  });
+
+  it("preserves the agent target when formatting a session mention item", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        kind: "session",
+        href: "mention://agent-session/session-1?workspaceId=room-1",
+        workspaceId: "room-1",
+        targetId: "session-1",
+        agentTargetId: "local:claude-code",
+        name: "Session 1",
+        title: "Session 1",
+        scope: "my_sessions",
+        initiatorName: "Taylor",
+        agentName: "Claude Code"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1)"
+    );
+  });
+
+  it("preserves the agent target from an existing session href", () => {
+    expect(
+      formatAgentMentionMarkdown({
+        kind: "session",
+        href: "mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1",
+        workspaceId: "room-1",
+        targetId: "session-1",
+        name: "Session 1",
+        title: "Session 1",
+        scope: "my_sessions",
+        initiatorName: "Taylor",
+        agentName: "Claude Code"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1)"
+    );
   });
 });
 

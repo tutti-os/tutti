@@ -6,7 +6,9 @@ import {
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
-  emptyAgentComposerDraft
+  emptyAgentComposerDraft,
+  extractPastedTextArchivePaths,
+  linkifyPastedTextReferences
 } from "./agentComposerDraft";
 
 describe("agentComposerDraft", () => {
@@ -33,23 +35,27 @@ describe("agentComposerDraft", () => {
     ).toEqual([{ type: "text", text: "run tests" }]);
   });
 
-  it("converts pasted large text drafts into compact display and submitted text", () => {
+  it("submits a landed pasted-text draft as a structured file block", () => {
     const draft = {
       prompt: "Summarize this",
       images: [],
       largeTexts: [
         {
-          id: "pasted-text-1",
-          name: "pasted-text-1.txt",
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "pasted-text.txt",
           text: "first line\nsecond line",
-          sizeBytes: 22
+          sizeBytes: 22,
+          path: "/archive/aa/deadbeef.txt"
         }
       ]
     };
 
     expect(agentComposerDraftHasContent(draft)).toBe(true);
+    // The conversation-flow display prompt encodes the landed pasted text as a
+    // pasted-text mention link (path + size in the href) so the host can render
+    // a clickable chip; the raw text body never enters it.
     expect(agentComposerDraftDisplayPrompt(draft)).toBe(
-      "Summarize this\n[pasted-text-1.txt · 22 B]"
+      "Summarize this\n[@first line…](mention://pasted-text/11111111-1111-4111-8111-111111111111?path=%2Farchive%2Faa%2Fdeadbeef.txt&size=22)"
     );
     expect(
       agentComposerDraftToPromptContent({
@@ -60,13 +66,126 @@ describe("agentComposerDraft", () => {
     ).toEqual([
       { type: "text", text: "Summarize this" },
       {
-        type: "text",
-        text: "Pasted text attachment: pasted-text-1.txt\n\nfirst line\nsecond line"
+        type: "file",
+        kind: "pasted-text",
+        path: "/archive/aa/deadbeef.txt",
+        // Block name carries the preview (first chars + ellipsis) so the
+        // send-time instruction can persist it in content.
+        name: "first line…",
+        sizeBytes: 22
       }
     ]);
-    expect(agentComposerDraftSubmittedText(draft)).toBe(
-      "Summarize this\nPasted text attachment: pasted-text-1.txt\n\nfirst line\nsecond line"
+    // No translated instruction and no inlined body enter the submitted text.
+    expect(agentComposerDraftSubmittedText(draft)).toBe("Summarize this");
+  });
+
+  it("keeps an uploading or errored pasted-text draft out of submit content", () => {
+    const uploading = {
+      prompt: "",
+      images: [],
+      largeTexts: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "pasted-text.txt",
+          text: "still uploading",
+          uploading: true
+        }
+      ]
+    };
+    const errored = {
+      prompt: "",
+      images: [],
+      largeTexts: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "pasted-text.txt",
+          text: "failed",
+          uploadError: "disk full"
+        }
+      ]
+    };
+
+    // A pending/errored chip still counts as content (so the composer is not
+    // treated as empty) but never lands in the submitted prompt content.
+    expect(agentComposerDraftHasContent(uploading)).toBe(true);
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: uploading,
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([]);
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: errored,
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([]);
+  });
+
+  it("restores a pasted-text file block back into a large-text chip", () => {
+    const draft = agentPromptContentToComposerDraft(
+      [
+        { type: "text", text: "Summarize this" },
+        {
+          type: "file",
+          kind: "pasted-text",
+          path: "/archive/aa/deadbeef.txt",
+          name: "pasted-text.txt",
+          sizeBytes: 22
+        }
+      ],
+      "restore-1"
     );
+
+    expect(draft.prompt).toBe("Summarize this");
+    expect(draft.files ?? []).toEqual([]);
+    expect(draft.largeTexts).toHaveLength(1);
+    expect(draft.largeTexts?.[0]).toMatchObject({
+      name: "pasted-text.txt",
+      path: "/archive/aa/deadbeef.txt",
+      sizeBytes: 22,
+      text: ""
+    });
+  });
+
+  it("materializes the codex-style instruction only at send time", async () => {
+    const { materializePastedTextInstructions } =
+      await import("./agentComposerDraft");
+    const content = [
+      { type: "text" as const, text: "Summarize this" },
+      {
+        type: "file" as const,
+        kind: "pasted-text",
+        path: "/archive/aa/deadbeef.txt",
+        name: "first line"
+      }
+    ];
+
+    // The pasted-text file block is stripped and replaced by the instruction
+    // text (preview quoted + path embedded); no file block survives.
+    expect(
+      materializePastedTextInstructions(content, {
+        header: () => "Referenced pasted text files:",
+        line: (preview, path) =>
+          `- pasted text file "${preview}": ${path}. Read this file before continuing.`
+      })
+    ).toEqual([
+      { type: "text", text: "Summarize this" },
+      {
+        type: "text",
+        text: 'Referenced pasted text files:\n- pasted text file "first line": /archive/aa/deadbeef.txt. Read this file before continuing.'
+      }
+    ]);
+
+    // No pasted-text blocks → content returned unchanged.
+    expect(
+      materializePastedTextInstructions([{ type: "text", text: "hi" }], {
+        header: () => "H",
+        line: (_preview, path) => path
+      })
+    ).toEqual([{ type: "text", text: "hi" }]);
   });
 
   it("adds codex app-server prompt items for referenced skills and connectors", () => {
@@ -283,5 +402,32 @@ describe("agentComposerDraft", () => {
         { type: "text", text: "second" }
       ])
     ).toBe("first\nsecond");
+  });
+
+  it("extracts landed pasted-text archive paths from persisted instruction text (paths may contain spaces)", () => {
+    const text =
+      "Referenced pasted text files:\n" +
+      '- pasted text file "first line": /Users/z/Library/Application Support/Tutti-dev/agent-prompt-assets/room-1/ab/deadbeef.txt. Read this file before continuing.';
+    expect(extractPastedTextArchivePaths(text)).toEqual([
+      "/Users/z/Library/Application Support/Tutti-dev/agent-prompt-assets/room-1/ab/deadbeef.txt"
+    ]);
+  });
+
+  it("rewrites persisted pasted-text instruction text into mention chips (reload-safe, preview label persists)", () => {
+    const text =
+      "Referenced pasted text files:\n" +
+      '- pasted text file "first line": /home/u/agent-prompt-assets/r/ab/deadbeef.txt. Read this file before continuing.';
+    // The localized header/instruction wording is dropped; the chip mention
+    // keeps the quoted preview as its label and the path in the href — matching
+    // the optimistic display.
+    expect(linkifyPastedTextReferences(text)).toBe(
+      "[@first line](mention://pasted-text/ref-0?path=%2Fhome%2Fu%2Fagent-prompt-assets%2Fr%2Fab%2Fdeadbeef.txt)"
+    );
+  });
+
+  it("leaves text without pasted-text references unchanged", () => {
+    expect(linkifyPastedTextReferences("just a normal message")).toBe(
+      "just a normal message"
+    );
   });
 });

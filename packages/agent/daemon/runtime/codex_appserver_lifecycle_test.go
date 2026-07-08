@@ -142,6 +142,41 @@ func TestCodexAppServerAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose
 	}
 }
 
+func TestCodexAppServerAdapterStartUsesInjectedProviderCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
+		transport,
+		LegacyHostMetadata(),
+		func(_ context.Context, provider string) (ProviderCommand, error) {
+			if provider != ProviderCodex {
+				t.Fatalf("provider = %q, want %q", provider, ProviderCodex)
+			}
+			return ProviderCommand{
+				Command: []string{"/user/bin/codex", "app-server"},
+				Env:     []string{"PATH=/managed/node/bin:/user/bin", "TUTTI_APP_NODE=/managed/node/bin/node"},
+			}, nil
+		},
+	)
+	session := testAppServerSession()
+	session.Env = []string{"SESSION_ENV=1"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	spec := transport.specs[0]
+	if !reflect.DeepEqual(spec.Command, []string{"/user/bin/codex", "app-server"}) {
+		t.Fatalf("Command = %#v", spec.Command)
+	}
+	if !containsString(spec.Env, "SESSION_ENV=1") || !containsString(spec.Env, "TUTTI_APP_NODE=/managed/node/bin/node") {
+		t.Fatalf("Env = %#v, want session and managed runtime env", spec.Env)
+	}
+}
+
 func TestCodexAppServerAdapterProviderLaunchPrepareFailureDoesNotSpawn(t *testing.T) {
 	t.Parallel()
 

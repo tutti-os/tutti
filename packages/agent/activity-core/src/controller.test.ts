@@ -230,6 +230,59 @@ test("controller does not notify subscribers when loaded sessions are unchanged"
   assert.equal(controller.getSnapshot().sessions[0]?.title, "Renamed session");
 });
 
+test("controller does not notify subscribers when upserted sessions are unchanged", () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter(),
+    workspaceId: "workspace-1"
+  });
+  let notificationCount = 0;
+  controller.subscribe(() => {
+    notificationCount += 1;
+  });
+
+  const session = createSession({
+    currentPhase: "working",
+    lastEventUnixMs: 2000,
+    submitAvailability: { state: "blocked", reason: "active_turn" },
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "running",
+      outcome: null
+    },
+    updatedAtUnixMs: 2000
+  });
+  controller.upsertSession(session);
+  const snapshotAfterFirstUpsert = controller.getSnapshot();
+  assert.equal(notificationCount, 2);
+
+  controller.upsertSession({
+    ...session,
+    submitAvailability: { state: "blocked", reason: "active_turn" },
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "running",
+      outcome: null
+    }
+  });
+  assert.equal(controller.getSnapshot(), snapshotAfterFirstUpsert);
+  assert.equal(notificationCount, 2);
+
+  controller.upsertSession({
+    ...session,
+    lastEventUnixMs: 3000,
+    status: "completed",
+    submitAvailability: { state: "available" },
+    turnLifecycle: {
+      activeTurnId: null,
+      phase: "settled",
+      outcome: "completed"
+    },
+    updatedAtUnixMs: 3000
+  });
+  assert.equal(notificationCount, 3);
+  assert.equal(controller.getSnapshot().sessions[0]?.status, "completed");
+});
+
 test("controller retains one stream for multiple consumers", async () => {
   let subscribeCount = 0;
   let unsubscribeCount = 0;
