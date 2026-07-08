@@ -12,6 +12,7 @@ function openGatesInput(
   return {
     hasActiveConversation: true,
     liveState: "active",
+    activeConversationCreatePending: false,
     isCreatingConversation: false,
     resumeUnavailable: false,
     occupancy: {
@@ -173,15 +174,29 @@ describe("resolveComposerSubmitPolicy", () => {
     expect(policy.canSubmit).toBe(true);
   });
 
-  it("documents today's gap: the pre-activation create window is fully blocked", () => {
-    // First-message create: the conversation is entered optimistically but
-    // no backend session exists yet, so no occupancy signal fires and the
-    // queue path stays closed — the composer is disabled with no hint.
+  it("queues during the pre-activation create window instead of blocking", () => {
+    // First-message create: the conversation is entered optimistically and
+    // no backend session exists yet, so no occupancy signal fires. The
+    // create-pending marker keeps the queue path open — the send is held
+    // locally and drained once the session activates and its first turn
+    // settles.
     const policy = resolveComposerSubmitPolicy(
       openGatesInput({
         liveState: "activating",
+        activeConversationCreatePending: true,
         isCreatingConversation: true
       })
+    );
+    expect(policy.canSubmit).toBe(false);
+    expect(policy.canQueueWhileBusy).toBe(true);
+    expect(policy.disposition).toBe("queue");
+  });
+
+  it("keeps a resume activation (no create pending) blocked", () => {
+    // Reconnecting to an existing session shows the recovery banner and
+    // stays blocked; only the first-message create window queues.
+    const policy = resolveComposerSubmitPolicy(
+      openGatesInput({ liveState: "activating" })
     );
     expect(policy.canSubmit).toBe(false);
     expect(policy.canQueueWhileBusy).toBe(false);
@@ -196,7 +211,8 @@ describe("shouldHoldPromptInLocalQueue", () => {
         commandInFlight: false,
         hasPendingSubmittedTurn: false,
         pendingInteractive: false,
-        displayStatusBusy: false
+        displayStatusBusy: false,
+        sessionCreatePending: false
       })
     ).toBe(false);
   });
@@ -205,7 +221,8 @@ describe("shouldHoldPromptInLocalQueue", () => {
     ["commandInFlight", { commandInFlight: true }],
     ["hasPendingSubmittedTurn", { hasPendingSubmittedTurn: true }],
     ["pendingInteractive", { pendingInteractive: true }],
-    ["displayStatusBusy", { displayStatusBusy: true }]
+    ["displayStatusBusy", { displayStatusBusy: true }],
+    ["sessionCreatePending", { sessionCreatePending: true }]
   ])("holds the prompt when %s", (_label, overrides) => {
     expect(
       shouldHoldPromptInLocalQueue({
@@ -213,6 +230,7 @@ describe("shouldHoldPromptInLocalQueue", () => {
         hasPendingSubmittedTurn: false,
         pendingInteractive: false,
         displayStatusBusy: false,
+        sessionCreatePending: false,
         ...overrides
       })
     ).toBe(true);

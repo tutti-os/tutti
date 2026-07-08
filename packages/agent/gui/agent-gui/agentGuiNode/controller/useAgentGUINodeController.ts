@@ -107,6 +107,7 @@ import {
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
+  appendQueuedPromptsToComposerDraft,
   emptyAgentComposerDraft,
   isPastedTextPromptBlock,
   materializePastedTextInstructions,
@@ -7602,6 +7603,31 @@ export function useAgentGUINodeController({
       const submittedHomeDraft =
         draftBySessionIdRef.current[submittedHomeDraftKey] ??
         EMPTY_AGENT_COMPOSER_DRAFT;
+      // Prompts queued against this create while activation was in flight
+      // target a session that will never exist; pull them back into the home
+      // draft so the user's follow-ups survive the failed activation.
+      const recoverQueuedPromptsFromFailedCreate = (
+        agentSessionId: string
+      ): void => {
+        const strandedPrompts = agentQueuedPromptRuntime.getSessionSnapshot({
+          workspaceId,
+          agentSessionId
+        }).prompts;
+        agentQueuedPromptRuntime.cleanupSession({
+          workspaceId,
+          agentSessionId
+        });
+        if (strandedPrompts.length === 0) {
+          return;
+        }
+        setDraftBySessionId((current) => ({
+          ...current,
+          [submittedHomeDraftKey]: appendQueuedPromptsToComposerDraft(
+            current[submittedHomeDraftKey] ?? emptyAgentComposerDraft(),
+            strandedPrompts
+          )
+        }));
+      };
       isCreatingConversationRef.current = true;
       setLocalIsCreatingConversation(true);
       setDetailError(null);
@@ -7874,6 +7900,7 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
+            recoverQueuedPromptsFromFailedCreate(agentSessionId);
             const shouldRevertToHome =
               isMountedRef.current &&
               (isCurrentConversation(agentSessionId) ||
@@ -8125,6 +8152,7 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
+            recoverQueuedPromptsFromFailedCreate(agentSessionId);
             if (transientConversationRef.current?.id === agentSessionId) {
               setTransientConversation(null);
             }
@@ -8148,6 +8176,7 @@ export function useAgentGUINodeController({
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
           }
+          recoverQueuedPromptsFromFailedCreate(agentSessionId);
           if (isCurrentConversation(agentSessionId)) {
             // Stash the error so the activeConversationId-null effect
             // surfaces it on the home composer instead of clearing it.
@@ -8179,6 +8208,7 @@ export function useAgentGUINodeController({
     },
     [
       activeSessionState,
+      agentQueuedPromptRuntime,
       currentUserId,
       data,
       defaultReasoningEffort,
@@ -8894,7 +8924,9 @@ export function useAgentGUINodeController({
         pendingInteractive: Boolean(sessionState?.pendingInteractive),
         displayStatusBusy: agentActivityDisplayStatusBusy(
           agentActivityDisplayStatuses.get(normalizedAgentSessionId)
-        )
+        ),
+        sessionCreatePending:
+          startingConversationIdRef.current === normalizedAgentSessionId
       });
     },
     [
@@ -11412,6 +11444,9 @@ export function useAgentGUINodeController({
   const composerSubmitPolicy = resolveComposerSubmitPolicy({
     hasActiveConversation: activeConversationId !== null,
     liveState: activeLiveState,
+    activeConversationCreatePending:
+      activeConversationId !== null &&
+      startingConversationIdRef.current === activeConversationId,
     isCreatingConversation,
     resumeUnavailable: activeConversationResumeUnavailable,
     occupancy: activeSessionOccupancy,

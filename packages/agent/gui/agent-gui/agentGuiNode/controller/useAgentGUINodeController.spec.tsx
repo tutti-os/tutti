@@ -10527,6 +10527,162 @@ describe("useAgentGUINodeController", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("queues a follow-up sent during the pre-activation create window", async () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    let resolveActivate:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivate = resolve;
+        })
+    );
+    const exec = vi.fn();
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("create one"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalled();
+    });
+    const createdId = activate.mock.calls.at(-1)?.[0]?.agentSessionId as string;
+    expect(createdId).toBeTruthy();
+
+    // The composer stays send-capable during the pre-activation window: the
+    // follow-up joins the local queue instead of hitting a session that does
+    // not exist yet.
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+    act(() => {
+      result.current.actions.submitPrompt(
+        promptBlocks("follow-up while creating")
+      );
+    });
+    expect(
+      queuedPromptTexts(
+        runtime.getSessionSnapshot({
+          workspaceId: "room-1",
+          agentSessionId: createdId
+        }).prompts
+      )
+    ).toEqual(["follow-up while creating"]);
+    expect(exec).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveActivate?.({
+        session: agentSession(createdId),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The queued follow-up survives activation for the workspace drain
+    // coordinator to dispatch once the session's first turn settles.
+    expect(
+      queuedPromptTexts(
+        runtime.getSessionSnapshot({
+          workspaceId: "room-1",
+          agentSessionId: createdId
+        }).prompts
+      )
+    ).toEqual(["follow-up while creating"]);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("restores queued follow-ups into the home draft when the create fails", async () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    let rejectActivate: ((error: Error) => void) | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((_resolve, reject) => {
+          rejectActivate = reject;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("create one"));
+      result.current.actions.submitPrompt(promptBlocks("create one"));
+    });
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalled();
+    });
+    const createdId = activate.mock.calls.at(-1)?.[0]?.agentSessionId as string;
+
+    act(() => {
+      result.current.actions.submitPrompt(
+        promptBlocks("follow-up while creating")
+      );
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: createdId
+      }).prompts
+    ).toHaveLength(1);
+
+    await act(async () => {
+      rejectActivate?.(new Error("runtime not connected"));
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    // The queue for the never-created session is cleaned up and the
+    // follow-up text survives in the home draft below the original message.
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: createdId
+      }).prompts
+    ).toEqual([]);
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.draftPrompt).toBe(
+      "create one\n\nfollow-up while creating"
+    );
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
+  });
+
   it("clears the per-session messages-loading flag when a new conversation activation fails", async () => {
     const activate = vi.fn(
       async (_input: AgentHostActivateAgentSessionInput) => {

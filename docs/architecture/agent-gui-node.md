@@ -1026,15 +1026,31 @@ User-visible rules:
 composer draft + activeConversationId
   -> provider/composer settings/options
   -> prompt content normalization and upload state
-  -> can submit / disabled reason / sending state
-  -> startConversation or executePrompt
+  -> composerSubmitPolicy (submit | queue | blocked)
+  -> startConversation, executePrompt, or local queue
 ```
+
+The answer to "what happens when the user presses send" is one business
+decision with three outcomes and it lives in one place:
+`agentGuiNode/model/composerSubmitPolicy.ts`. The controller feeds it named
+inputs and consumes `canSubmit` / `canQueueWhileBusy` / the dispatch-time
+`shouldHoldPromptInLocalQueue`; no caller may re-derive pieces of that truth
+table locally. Historic drift between scattered copies of this decision
+(controller gates, dispatch checks, view recombinations) is exactly how
+send-availability bugs hid — extend the policy module instead of adding a new
+boolean expression next to a consumer.
 
 User-visible rules:
 
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation keeps the user on the home composer until activation succeeds.
+- The optimistic pre-activation create window stays send-capable: sends made
+  while the first-message activation is in flight are captured as local queued
+  prompts against the client-allocated session id and drain after the session
+  activates and its first turn settles. If the activation fails, the queue for
+  the never-created session is cleaned up and the queued texts are restored
+  into the home draft below the original message.
 - Treat active-session refs as controller caches, not the source of truth for
   whether a submit is new or existing. React effect cleanup, projection reloads,
   and conversation-list refreshes may temporarily disturb UI-local refs; they

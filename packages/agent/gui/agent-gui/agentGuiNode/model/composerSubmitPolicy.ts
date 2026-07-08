@@ -66,6 +66,13 @@ export interface ComposerSubmitPolicyInput {
   hasActiveConversation: boolean;
   /** Activation state of the active conversation's live session. */
   liveState: "inactive" | "activating" | "active" | "failed";
+  /**
+   * The active conversation is an optimistic first-message create whose
+   * backend session does not exist yet (pre-activation window). Sends stay
+   * possible here — they queue and drain once the session activates. If the
+   * activation fails, the queued prompts are restored into the home draft.
+   */
+  activeConversationCreatePending: boolean;
   /** A conversation create is in flight anywhere on this node. */
   isCreatingConversation: boolean;
   /** The conversation needs a resume but the session is not resumable here. */
@@ -128,7 +135,10 @@ export function resolveComposerSubmitPolicy(
     !input.occupancy.submitBlocked;
   const canQueueWhileBusy =
     input.hasActiveConversation &&
-    (sessionOccupied || input.isSubmitting || input.pendingInteractive);
+    (sessionOccupied ||
+      input.isSubmitting ||
+      input.pendingInteractive ||
+      input.activeConversationCreatePending);
   return {
     sessionOccupied,
     canSubmit,
@@ -157,6 +167,12 @@ export interface HoldPromptInLocalQueueInput {
   pendingInteractive: boolean;
   /** See {@link ComposerSessionOccupancy.displayStatusBusy}. */
   displayStatusBusy: boolean;
+  /**
+   * The target session is an optimistic create whose activation is still in
+   * flight — there is no daemon session to send to yet, so the prompt must
+   * wait in the queue for the drain coordinator.
+   */
+  sessionCreatePending: boolean;
 }
 
 export function shouldHoldPromptInLocalQueue(
@@ -166,6 +182,7 @@ export function shouldHoldPromptInLocalQueue(
     input.commandInFlight ||
     input.hasPendingSubmittedTurn ||
     input.pendingInteractive ||
-    input.displayStatusBusy
+    input.displayStatusBusy ||
+    input.sessionCreatePending
   );
 }
