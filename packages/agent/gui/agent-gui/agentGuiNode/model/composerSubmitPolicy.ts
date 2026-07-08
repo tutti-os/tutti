@@ -186,3 +186,37 @@ export function shouldHoldPromptInLocalQueue(
     input.sessionCreatePending
   );
 }
+
+/**
+ * Composer send while a local queue already exists. Two outcomes, driven by
+ * whether the session can take a turn *right now*:
+ *
+ * - `"direct_then_resume"`: session is free (typically after a user stop left
+ *   the queue suspended). Send the composer prompt immediately so it claims
+ *   the free turn. Resume the suspended queue only after that send is in
+ *   flight, so the drain cannot steal the slot and demote the fresh prompt.
+ * - `"enqueue"`: session is occupied, or the queue is already free to drain.
+ *   Join behind the existing queue so a direct send cannot race the drain
+ *   for the daemon's single-active-turn slot.
+ */
+export type ComposerQueuedSendDisposition = "direct_then_resume" | "enqueue";
+
+export function resolveComposerQueuedSendDisposition(input: {
+  shouldHoldInLocalQueue: boolean;
+  hasQueuedPrompts: boolean;
+  queueSuspended: boolean;
+}): ComposerQueuedSendDisposition | null {
+  if (!input.hasQueuedPrompts && !input.shouldHoldInLocalQueue) {
+    return null;
+  }
+  if (input.shouldHoldInLocalQueue) {
+    return "enqueue";
+  }
+  if (input.hasQueuedPrompts && input.queueSuspended) {
+    return "direct_then_resume";
+  }
+  if (input.hasQueuedPrompts) {
+    return "enqueue";
+  }
+  return null;
+}

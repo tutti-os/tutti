@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveComposerQueuedSendDisposition,
   resolveComposerSubmitPolicy,
   sessionIsOccupied,
   shouldHoldPromptInLocalQueue,
@@ -234,5 +235,54 @@ describe("shouldHoldPromptInLocalQueue", () => {
         ...overrides
       })
     ).toBe(true);
+  });
+});
+
+describe("resolveComposerQueuedSendDisposition", () => {
+  it("sends directly then resumes when a stop left the queue suspended and the session is free", () => {
+    expect(
+      resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: false,
+        hasQueuedPrompts: true,
+        queueSuspended: true
+      })
+    ).toBe("direct_then_resume");
+  });
+
+  it("enqueues behind an actively drainable queue so the send cannot race drain", () => {
+    expect(
+      resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: false,
+        hasQueuedPrompts: true,
+        queueSuspended: false
+      })
+    ).toBe("enqueue");
+  });
+
+  it("enqueues while the session is still occupied", () => {
+    expect(
+      resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: true,
+        hasQueuedPrompts: true,
+        queueSuspended: true
+      })
+    ).toBe("enqueue");
+    expect(
+      resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: true,
+        hasQueuedPrompts: false,
+        queueSuspended: false
+      })
+    ).toBe("enqueue");
+  });
+
+  it("returns null when neither hold nor queue applies", () => {
+    expect(
+      resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: false,
+        hasQueuedPrompts: false,
+        queueSuspended: false
+      })
+    ).toBeNull();
   });
 });

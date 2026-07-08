@@ -1184,10 +1184,17 @@ A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before
 issuing the cancel, so the drainer must not fire the next queued prompt the
 moment the session becomes available. Only an explicit user send lifts the
-hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
-on a queued item) clears the suspension in the queue core. The drainer's own
-send-next interrupt path never suspends: intent is captured at its source,
-never inferred from the cancel outcome.
+hold — composer submit and `promotePrompt` ("send now" on a queued item).
+When the composer sends while that stop still holds a non-empty queue and
+the session is free, the fresh prompt must claim the free turn first
+(`executePrompt`); resume the suspended queue only after `sendInput`
+returns so activity projection is already busy. Do not resume then
+enqueue: that demotes the user's explicit follow-up behind the old queue
+head. When the session is still occupied, or the queue is already
+drainable, join behind as before so a direct send cannot race drain for
+the daemon's single-active-turn slot.
+The drainer's own send-next interrupt path never suspends: intent is
+captured at its source, never inferred from the cancel outcome.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

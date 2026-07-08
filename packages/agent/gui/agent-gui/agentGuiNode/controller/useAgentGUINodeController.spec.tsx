@@ -17089,6 +17089,133 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.queuedPrompts).toEqual([]);
   });
 
+  it("sends an idle composer prompt ahead of a suspended queue after stop", async () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    setAgentQueuedPromptRuntimeForTests(runtime);
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-immediate",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    const cancel = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      canceled: true,
+      reason: "user_interrupt",
+      session: agentSession("session-1", { status: "ready" })
+    }));
+    let emitEvent:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        emitEvent = listener;
+        return vi.fn();
+      }),
+      exec,
+      cancel
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("继续"));
+    });
+    await waitFor(() => {
+      expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual(
+        ["继续"]
+      );
+    });
+
+    act(() => {
+      result.current.actions.interruptCurrentTurn("No running response");
+    });
+    await waitFor(() => {
+      expect(cancel).toHaveBeenCalled();
+    });
+
+    // Session settles after stop — the queue is still held, but sending is
+    // free again (composer shows Send rather than Stop / Queue).
+    act(() => {
+      emitEvent?.({
+        eventType: "state_patch",
+        data: {
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          turn: {
+            turnId: "turn-stop",
+            phase: "idle",
+            outcome: "canceled"
+          },
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBe("user_stop");
+    expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual([
+      "继续"
+    ]);
+
+    act(() => {
+      result.current.actions.submitPrompt(
+        promptBlocks("要求 Codex 继续后续变更")
+      );
+    });
+
+    // The fresh composer send must claim the free turn immediately. Joining
+    // the suspended queue instead would let "继续" drain first and demote the
+    // user's explicit follow-up — the bug pictured in the queue panel.
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("要求 Codex 继续后续变更")
+      });
+    });
+    expect(queuedPromptTexts(result.current.viewModel.queuedPrompts)).toEqual([
+      "继续"
+    ]);
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "room-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBeNull();
+  });
+
   it("reflects pending interactive prompts from state patch events", async () => {
     let emitEvent:
       | ((event: AgentHostAgentActivityStreamEvent) => void)

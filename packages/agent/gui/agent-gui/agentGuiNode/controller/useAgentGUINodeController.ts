@@ -189,6 +189,7 @@ import {
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import {
+  resolveComposerQueuedSendDisposition,
   resolveComposerSubmitPolicy,
   sessionIsOccupied,
   shouldHoldPromptInLocalQueue
@@ -8562,7 +8563,7 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean }
+      options?: { guidance?: boolean; resumeQueueAfterOptimisticSend?: boolean }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -8701,6 +8702,15 @@ export function useAgentGUINodeController({
           });
         })
         .then((result) => {
+          // Lift a stop-held queue only after sendInput has claimed the
+          // session (activity projection now busy). Resuming earlier lets
+          // drain steal the free turn from this composer prompt.
+          if (options?.resumeQueueAfterOptimisticSend === true) {
+            agentQueuedPromptRuntime.resumeQueue({
+              workspaceId,
+              agentSessionId
+            });
+          }
           if (!result) {
             return;
           }
@@ -8856,6 +8866,7 @@ export function useAgentGUINodeController({
     [
       currentUserId,
       isCurrentConversation,
+      agentQueuedPromptRuntime,
       applyStatePatch,
       conversationListQuery,
       syncConversationListProjection,
@@ -8965,23 +8976,28 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      // Read the queue before resuming: resumeQueue wakes the drain
-      // coordinator, which immediately races to send the queued head. A
-      // direct send issued alongside that drain loses the daemon's
-      // single-active-turn slot and the prompt is dropped, so when prompts
-      // are already queued the explicit send must join the queue behind them
-      // instead of racing the drain.
-      const hasQueuedPrompts =
-        agentQueuedPromptRuntime.getSessionSnapshot({
-          workspaceId,
-          agentSessionId
-        }).prompts.length > 0;
-      // Any explicit user send lifts a user-stop hold on the queue.
-      agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
+      // A stop leaves the local queue suspended so drain cannot fire the
+      // moment the session frees. An explicit composer send must still lift
+      // that hold, but the fresh prompt has priority over the old queue head:
+      // when the session is free, claim the turn first and only then resume
+      // drain; when the session is still occupied (or the queue is already
+      // drainable), join behind so a direct send cannot race drain for the
+      // single-active-turn slot.
+      const queueSnapshot = agentQueuedPromptRuntime.getSessionSnapshot({
+        workspaceId,
+        agentSessionId
+      });
+      const hasQueuedPrompts = queueSnapshot.prompts.length > 0;
+      const queuedSendDisposition = resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: shouldQueuePromptLocally(agentSessionId),
+        hasQueuedPrompts,
+        queueSuspended: queueSnapshot.suspendReason !== null
+      });
       if (
-        (hasQueuedPrompts || shouldQueuePromptLocally(agentSessionId)) &&
+        queuedSendDisposition === "enqueue" &&
         options?.bypassLocalQueue !== true
       ) {
+        agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
         queuePromptLocally(
           agentSessionId,
           normalizedContent,
@@ -8990,7 +9006,9 @@ export function useAgentGUINodeController({
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
-        guidance: options?.guidance === true
+        guidance: options?.guidance === true,
+        resumeQueueAfterOptimisticSend:
+          queuedSendDisposition === "direct_then_resume"
       });
     },
     [
