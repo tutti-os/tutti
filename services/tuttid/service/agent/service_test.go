@@ -4304,6 +4304,20 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 					UpdatedAtUnixMS: 4000,
 				}},
 			},
+			agentactivitybiz.PinnedSessionPageKey: {
+				SectionKey: agentactivitybiz.PinnedSessionPageKey,
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "pinned-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Status:          "completed",
+					PinnedAtUnixMS:  6000,
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 3000,
+				}},
+				HasMore:    true,
+				NextCursor: "6000|pinned-session",
+			},
 		},
 	}
 	service := NewService(newFakeRuntime())
@@ -4323,6 +4337,12 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	}
 	if len(page.Sections) != 2 {
 		t.Fatalf("sections = %d, want 2", len(page.Sections))
+	}
+	if got, want := sessionIDs(page.Pinned.Sessions), []string{"pinned-session"}; !slices.Equal(got, want) {
+		t.Fatalf("pinned sessions = %#v, want %#v", got, want)
+	}
+	if !page.Pinned.HasMore || page.Pinned.NextCursor != "6000|pinned-session" {
+		t.Fatalf("pinned page state = hasMore %v cursor %q", page.Pinned.HasMore, page.Pinned.NextCursor)
 	}
 	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
 		t.Fatalf("project section = %#v", page.Sections[0])
@@ -4367,6 +4387,31 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 	if reader.lastInput.SectionKey != "project:/workspace/project" ||
 		reader.lastInput.CursorUpdatedAtMS != 4000 ||
 		reader.lastInput.CursorSessionID != "middle" ||
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func TestServiceListPinnedSessionPageForwardsStableCursor(t *testing.T) {
+	reader := &fakeSectionReader{}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	page, err := service.ListPinnedSessionPage(context.Background(), "ws-1", ListPinnedSessionPageInput{
+		Cursor:        "6000|pinned-session",
+		Limit:         2,
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListPinnedSessionPage returned error: %v", err)
+	}
+	if page.HasMore {
+		t.Fatalf("page = %#v, want empty page without hasMore", page)
+	}
+	if reader.lastInput.SectionKey != agentactivitybiz.PinnedSessionPageKey ||
+		reader.lastInput.CursorUpdatedAtMS != 6000 ||
+		reader.lastInput.CursorSessionID != "pinned-session" ||
 		reader.lastInput.Limit != 2 ||
 		reader.lastInput.AgentTargetID != "claude-target" {
 		t.Fatalf("reader input = %#v", reader.lastInput)

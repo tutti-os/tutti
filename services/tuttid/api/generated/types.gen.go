@@ -3605,6 +3605,21 @@ type WorkspaceAgentSessionMessagesResponse struct {
 	Messages       []WorkspaceAgentSessionMessage `json:"messages"`
 }
 
+// WorkspaceAgentSessionPage defines model for WorkspaceAgentSessionPage.
+type WorkspaceAgentSessionPage struct {
+	HasMore bool `json:"hasMore"`
+
+	// NextCursor Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
+	NextCursor *string                 `json:"nextCursor,omitempty"`
+	Sessions   []WorkspaceAgentSession `json:"sessions"`
+}
+
+// WorkspaceAgentSessionPageResponse defines model for WorkspaceAgentSessionPageResponse.
+type WorkspaceAgentSessionPageResponse struct {
+	Page        WorkspaceAgentSessionPage `json:"page"`
+	WorkspaceId string                    `json:"workspaceId"`
+}
+
 // WorkspaceAgentSessionResponse defines model for WorkspaceAgentSessionResponse.
 type WorkspaceAgentSessionResponse struct {
 	Session WorkspaceAgentSession `json:"session"`
@@ -3633,6 +3648,7 @@ type WorkspaceAgentSessionSectionPageResponse struct {
 
 // WorkspaceAgentSessionSectionsResponse defines model for WorkspaceAgentSessionSectionsResponse.
 type WorkspaceAgentSessionSectionsResponse struct {
+	Pinned      WorkspaceAgentSessionPage      `json:"pinned"`
 	Sections    []WorkspaceAgentSessionSection `json:"sections"`
 	WorkspaceId string                         `json:"workspaceId"`
 }
@@ -4268,6 +4284,16 @@ type ListWorkspaceAgentSessionSectionPageParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// ListWorkspaceAgentPinnedSessionPageParams defines parameters for ListWorkspaceAgentPinnedSessionPage.
+type ListWorkspaceAgentPinnedSessionPageParams struct {
+	// Cursor Cursor for the next older pinned page, encoded as pinnedAtUnixMs|agentSessionId.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before pinned pagination and hasMore calculation.
 	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
 }
 

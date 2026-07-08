@@ -139,9 +139,22 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
+type ListPinnedSessionPageInput struct {
+	Cursor        string
+	Limit         int
+	AgentTargetID string
+}
+
 type SessionSectionsPage struct {
 	WorkspaceID string
+	Pinned      SessionPage
 	Sections    []SessionSection
+}
+
+type SessionPage struct {
+	Sessions   []Session
+	HasMore    bool
+	NextCursor string
 }
 
 type SessionSection struct {

@@ -204,7 +204,10 @@ needs to show the provider in a disabled state. Filter the target out only for
 surfaces that should completely hide it. All empty-home new-conversation
 affordances, including rail toolbar and section actions, must read the selected
 provider target's disabled state so coming-soon targets remain inspectable but
-cannot start sessions.
+cannot start sessions. Hosts that need product-specific temporarily-unavailable
+presentation for the selected disabled target may use AgentGUI's
+`renderProviderUnavailableState`; that renderer is not a replacement for the
+install, login, checking, or retry readiness gates.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -556,6 +559,12 @@ rather than cwd grouping, root filters, excluded project paths, or local
 Show more heuristics. Removing a project removes that rail section from the
 section list; re-adding the same path reveals historical sessions with the same
 section key.
+Pinned conversations are returned beside those sections as a separate pinned
+page on the `listSessionSections` bootstrap response. AgentGUI may render that
+page as a local `pinned` group, but pinned is not a daemon section kind and
+must continue to be derived from session `pinnedAtUnixMs`. Pinned Show more
+uses the dedicated pinned page runtime method instead of the section page
+endpoint, because pinned has no daemon `sectionKey`.
 When the provider rail is scoped to a specific agent target, AgentGUI must pass
 that `agentTargetId` to both section endpoints. The daemon applies that filter
 before `LIMIT` and `hasMore` calculation; frontend filtering after an unscoped

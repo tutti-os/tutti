@@ -306,6 +306,9 @@ function createTransportClient(
     async listWorkspaceAgentSessionSectionPage() {
       throw new Error("not used");
     },
+    async listWorkspaceAgentPinnedSessionPage() {
+      throw new Error("not used");
+    },
     async scanWorkspaceExternalAgentSessionImports() {
       throw new Error("not used");
     },

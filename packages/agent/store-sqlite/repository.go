@@ -73,6 +73,8 @@ type ListSessionSectionInput struct {
 	Limit             int
 }
 
+const PinnedSessionPageKey = "pinned"
+
 type SessionSectionPage struct {
 	WorkspaceID   string
 	SectionKey    string

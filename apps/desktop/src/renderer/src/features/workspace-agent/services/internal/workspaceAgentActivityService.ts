@@ -259,7 +259,15 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
           signal: input.signal
         }
       );
+    const pinned = response.pinned ?? { hasMore: false, sessions: [] };
     return {
+      pinned: {
+        hasMore: pinned.hasMore,
+        nextCursor: pinned.nextCursor,
+        sessions: pinned.sessions.map((session) =>
+          agentActivitySessionFromTuttidSession(workspaceId, session)
+        )
+      },
       sections: response.sections.map((section) => ({
         hasMore: section.hasMore,
         kind: section.kind,
@@ -271,6 +279,33 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         userProject: section.userProject
       })),
       workspaceId: response.workspaceId
+    };
+  }
+
+  async listPinnedSessionsPage(
+    input: Parameters<
+      IWorkspaceAgentActivityService["listPinnedSessionsPage"]
+    >[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listPinnedSessionsPage"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentPinnedSessionPage(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          cursor: input.cursor?.trim() || undefined,
+          limit: input.limit
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      hasMore: response.page.hasMore,
+      nextCursor: response.page.nextCursor,
+      sessions: response.page.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      )
     };
   }
 

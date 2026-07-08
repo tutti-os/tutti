@@ -522,6 +522,19 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
       ) => {
         listCalls.push({ options, request, workspaceId });
         return {
+          pinned: {
+            hasMore: false,
+            sessions: [
+              {
+                ...workspaceAgentSession({
+                  status: "completed",
+                  updatedAt: "2026-06-16T00:00:01.000Z"
+                }),
+                id: "pinned-session",
+                pinnedAtUnixMs: 2000
+              }
+            ]
+          },
           sections: [],
           workspaceId
         };
@@ -532,7 +545,7 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
     }
   });
 
-  await service.listSessionSections({
+  const result = await service.listSessionSections({
     workspaceId: "ws-1",
     agentTargetId: "claude-target",
     limitPerSection: 5,
@@ -549,6 +562,97 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
       options: { signal: abortController.signal }
     }
   ]);
+  assert.equal(result.pinned?.sessions[0]?.agentSessionId, "pinned-session");
+  assert.equal(result.pinned?.sessions[0]?.pinnedAtUnixMs, 2000);
+});
+
+test("WorkspaceAgentActivityService.listSessionSections tolerates missing pinned page", async () => {
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSections: async (workspaceId: string) =>
+        ({
+          sections: [],
+          workspaceId
+        }) as unknown as Awaited<
+          ReturnType<TuttidClient["listWorkspaceAgentSessionSections"]>
+        >
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const result = await service.listSessionSections({
+    workspaceId: "ws-1",
+    limitPerSection: 5
+  });
+
+  assert.deepEqual(result.pinned, {
+    hasMore: false,
+    nextCursor: undefined,
+    sessions: []
+  });
+});
+
+test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tuttid", async () => {
+  const abortController = new AbortController();
+  const pageCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentPinnedSessionPage: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentPinnedSessionPage"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentPinnedSessionPage"]
+        >[2]
+      ) => {
+        pageCalls.push({ options, request, workspaceId });
+        return {
+          page: {
+            hasMore: false,
+            sessions: [
+              {
+                ...workspaceAgentSession({
+                  status: "completed",
+                  updatedAt: "2026-06-16T00:00:01.000Z"
+                }),
+                id: "pinned-session",
+                pinnedAtUnixMs: 2000
+              }
+            ]
+          },
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const result = await service.listPinnedSessionsPage({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    cursor: "2000|pinned-session",
+    limit: 5,
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(pageCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        cursor: "2000|pinned-session",
+        limit: 5
+      },
+      options: { signal: abortController.signal }
+    }
+  ]);
+  assert.equal(result.sessions[0]?.agentSessionId, "pinned-session");
+  assert.equal(result.sessions[0]?.pinnedAtUnixMs, 2000);
 });
 
 test("WorkspaceAgentActivityService treats missing reconcile sessions as tombstones", async () => {

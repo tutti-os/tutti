@@ -14,8 +14,9 @@ type ClearSessionsResult = agentstore.ClearSessionsResult
 type MessageOrder = agentstore.MessageOrder
 
 const (
-	MessageOrderAsc  = agentstore.MessageOrderAsc
-	MessageOrderDesc = agentstore.MessageOrderDesc
+	MessageOrderAsc      = agentstore.MessageOrderAsc
+	MessageOrderDesc     = agentstore.MessageOrderDesc
+	PinnedSessionPageKey = agentstore.PinnedSessionPageKey
 )
 
 type ListSessionMessagesInput = agentstore.ListSessionMessagesInput

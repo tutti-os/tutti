@@ -115,6 +115,9 @@ type ServerInterface interface {
 	// List one agent session rail section page for one workspace
 	// (GET /v1/workspaces/{workspaceID}/agent-session-sections/page)
 	ListWorkspaceAgentSessionSectionPage(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceAgentSessionSectionPageParams)
+	// List pinned agent session page for one workspace
+	// (GET /v1/workspaces/{workspaceID}/agent-session-sections/pinned-page)
+	ListWorkspaceAgentPinnedSessionPage(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceAgentPinnedSessionPageParams)
 	// Hard-delete all agent sessions for one workspace
 	// (DELETE /v1/workspaces/{workspaceID}/agent-sessions)
 	ClearWorkspaceAgentSessions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -1435,6 +1438,80 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessionSectionPage(w http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWorkspaceAgentSessionSectionPage(w, r, workspaceID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkspaceAgentPinnedSessionPage operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceAgentPinnedSessionPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorkspaceAgentPinnedSessionPageParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentTargetId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentTargetId", r.URL.Query(), &params.AgentTargetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentTargetId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceAgentPinnedSessionPage(w, r, workspaceID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6173,6 +6250,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-generated-files", wrapper.ListWorkspaceAgentGeneratedFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections", wrapper.ListWorkspaceAgentSessionSections)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections/page", wrapper.ListWorkspaceAgentSessionSectionPage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page", wrapper.ListWorkspaceAgentPinnedSessionPage)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions", wrapper.ClearWorkspaceAgentSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions", wrapper.ListWorkspaceAgentSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions", wrapper.CreateWorkspaceAgentSession)
@@ -9219,6 +9297,123 @@ type ListWorkspaceAgentSessionSectionPage503JSONResponse struct {
 }
 
 func (response ListWorkspaceAgentSessionSectionPage503JSONResponse) VisitListWorkspaceAgentSessionSectionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPageRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	Params      ListWorkspaceAgentPinnedSessionPageParams
+}
+
+type ListWorkspaceAgentPinnedSessionPageResponseObject interface {
+	VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceAgentPinnedSessionPage200JSONResponse WorkspaceAgentSessionPageResponse
+
+func (response ListWorkspaceAgentPinnedSessionPage200JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListWorkspaceAgentPinnedSessionPage400JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListWorkspaceAgentPinnedSessionPage401JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response ListWorkspaceAgentPinnedSessionPage404JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListWorkspaceAgentPinnedSessionPage405JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListWorkspaceAgentPinnedSessionPage502JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceAgentPinnedSessionPage503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListWorkspaceAgentPinnedSessionPage503JSONResponse) VisitListWorkspaceAgentPinnedSessionPageResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -21782,6 +21977,9 @@ type StrictServerInterface interface {
 	// List one agent session rail section page for one workspace
 	// (GET /v1/workspaces/{workspaceID}/agent-session-sections/page)
 	ListWorkspaceAgentSessionSectionPage(ctx context.Context, request ListWorkspaceAgentSessionSectionPageRequestObject) (ListWorkspaceAgentSessionSectionPageResponseObject, error)
+	// List pinned agent session page for one workspace
+	// (GET /v1/workspaces/{workspaceID}/agent-session-sections/pinned-page)
+	ListWorkspaceAgentPinnedSessionPage(ctx context.Context, request ListWorkspaceAgentPinnedSessionPageRequestObject) (ListWorkspaceAgentPinnedSessionPageResponseObject, error)
 	// Hard-delete all agent sessions for one workspace
 	// (DELETE /v1/workspaces/{workspaceID}/agent-sessions)
 	ClearWorkspaceAgentSessions(ctx context.Context, request ClearWorkspaceAgentSessionsRequestObject) (ClearWorkspaceAgentSessionsResponseObject, error)
@@ -23014,6 +23212,33 @@ func (sh *strictHandler) ListWorkspaceAgentSessionSectionPage(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListWorkspaceAgentSessionSectionPageResponseObject); ok {
 		if err := validResponse.VisitListWorkspaceAgentSessionSectionPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceAgentPinnedSessionPage operation middleware
+func (sh *strictHandler) ListWorkspaceAgentPinnedSessionPage(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, params ListWorkspaceAgentPinnedSessionPageParams) {
+	var request ListWorkspaceAgentPinnedSessionPageRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceAgentPinnedSessionPage(ctx, request.(ListWorkspaceAgentPinnedSessionPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceAgentPinnedSessionPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceAgentPinnedSessionPageResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceAgentPinnedSessionPageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

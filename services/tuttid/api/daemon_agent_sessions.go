@@ -18,6 +18,7 @@ type AgentSessionService interface {
 	ListFiltered(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	ListSessionSections(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
 	ListSessionSectionPage(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	ListPinnedSessionPage(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
@@ -375,6 +376,17 @@ func generatedAgentSessions(sessions []agentservice.Session) []tuttigenerated.Wo
 		result = append(result, generatedAgentSession(session))
 	}
 	return result
+}
+
+func generatedAgentSessionPage(page agentservice.SessionPage) tuttigenerated.WorkspaceAgentSessionPage {
+	response := tuttigenerated.WorkspaceAgentSessionPage{
+		HasMore:  page.HasMore,
+		Sessions: generatedAgentSessions(page.Sessions),
+	}
+	if strings.TrimSpace(page.NextCursor) != "" {
+		response.NextCursor = &page.NextCursor
+	}
+	return response
 }
 
 func generatedAgentSessionSections(sections []agentservice.SessionSection) []tuttigenerated.WorkspaceAgentSessionSection {

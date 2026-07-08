@@ -1340,6 +1340,15 @@ export type WorkspaceAgentSessionListResponse = {
   sessions: Array<WorkspaceAgentSession>;
 };
 
+export type WorkspaceAgentSessionPage = {
+  sessions: Array<WorkspaceAgentSession>;
+  hasMore: boolean;
+  /**
+   * Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
+   */
+  nextCursor?: string;
+};
+
 export type WorkspaceAgentSessionSectionKind = "conversations" | "project";
 
 export type WorkspaceAgentSessionSection = {
@@ -1356,12 +1365,18 @@ export type WorkspaceAgentSessionSection = {
 
 export type WorkspaceAgentSessionSectionsResponse = {
   workspaceId: string;
+  pinned: WorkspaceAgentSessionPage;
   sections: Array<WorkspaceAgentSessionSection>;
 };
 
 export type WorkspaceAgentSessionSectionPageResponse = {
   workspaceId: string;
   section: WorkspaceAgentSessionSection;
+};
+
+export type WorkspaceAgentSessionPageResponse = {
+  workspaceId: string;
+  page: WorkspaceAgentSessionPage;
 };
 
 export type ExternalAgentImportScanRequest = {
@@ -5598,6 +5613,65 @@ export type GetWorkspaceAgentSessionResponses = {
 
 export type GetWorkspaceAgentSessionResponse =
   GetWorkspaceAgentSessionResponses[keyof GetWorkspaceAgentSessionResponses];
+
+export type ListWorkspaceAgentPinnedSessionPageData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    /**
+     * Cursor for the next older pinned page, encoded as pinnedAtUnixMs|agentSessionId.
+     */
+    cursor?: string;
+    limit?: number;
+    /**
+     * Optional agent target filter applied before pinned pagination and hasMore calculation.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page";
+};
+
+export type ListWorkspaceAgentPinnedSessionPageErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentPinnedSessionPageError =
+  ListWorkspaceAgentPinnedSessionPageErrors[keyof ListWorkspaceAgentPinnedSessionPageErrors];
+
+export type ListWorkspaceAgentPinnedSessionPageResponses = {
+  /**
+   * Workspace pinned agent session page
+   */
+  200: WorkspaceAgentSessionPageResponse;
+};
+
+export type ListWorkspaceAgentPinnedSessionPageResponse =
+  ListWorkspaceAgentPinnedSessionPageResponses[keyof ListWorkspaceAgentPinnedSessionPageResponses];
 
 export type ListWorkspaceAgentGeneratedFilesData = {
   body?: never;

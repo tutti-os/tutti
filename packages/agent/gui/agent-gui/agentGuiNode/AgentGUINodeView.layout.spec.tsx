@@ -2425,6 +2425,134 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders pinned conversations from the runtime pinned page", async () => {
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      pinned: {
+        hasMore: false,
+        sessions: [
+          {
+            ...createRuntimeSession(input.workspaceId, "old-pinned-session"),
+            pinnedAtUnixMs: 2000,
+            updatedAtUnixMs: 10
+          }
+        ]
+      },
+      sections: [
+        {
+          kind: "conversations",
+          sectionKey: "conversations",
+          sessions: [],
+          hasMore: false
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: []
+      }
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("agent-gui-conversation-item-old-pinned-session")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("loads additional pinned conversations from the runtime pinned page endpoint", async () => {
+    const listPinnedSessionsPage = vi.fn<
+      NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>
+    >(async (input) => ({
+      hasMore: false,
+      sessions: [
+        {
+          ...createRuntimeSession(input.workspaceId, "older-pinned-session"),
+          pinnedAtUnixMs: 1000,
+          updatedAtUnixMs: 5
+        }
+      ]
+    }));
+    const listSessionSections = vi.fn<
+      NonNullable<AgentActivityRuntime["listSessionSections"]>
+    >(async (input) => ({
+      workspaceId: input.workspaceId,
+      pinned: {
+        hasMore: true,
+        nextCursor: "2000|newer-pinned-session",
+        sessions: [
+          {
+            ...createRuntimeSession(input.workspaceId, "newer-pinned-session"),
+            pinnedAtUnixMs: 2000,
+            updatedAtUnixMs: 10
+          }
+        ]
+      },
+      sections: [
+        {
+          kind: "conversations",
+          sectionKey: "conversations",
+          sessions: [],
+          hasMore: false
+        }
+      ]
+    }));
+
+    renderAgentGUINodeView({
+      activityRuntime: {
+        ...createNoopAgentActivityRuntime(),
+        listPinnedSessionsPage,
+        listSessionSections,
+        listSessionSectionPage: async (input) => ({
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          hasMore: false
+        })
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: []
+      }
+    });
+
+    await screen.findByTestId(
+      "agent-gui-conversation-item-newer-pinned-session"
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: createLabels().showMoreConversations })
+    );
+
+    await waitFor(() => {
+      expect(listPinnedSessionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cursor: "2000|newer-pinned-session",
+          limit: 5,
+          workspaceId: "room-1"
+        })
+      );
+    });
+    expect(
+      await screen.findByTestId(
+        "agent-gui-conversation-item-older-pinned-session"
+      )
+    ).toBeInTheDocument();
+  });
+
   it("opens a conversation from the rail with the external-link action", () => {
     const actions = createActions();
     const onOpenConversationWindow = vi.fn();
@@ -4459,6 +4587,76 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(screen.queryByTestId("agent-composer")).toBeNull();
   });
 
+  it("lets the host render disabled provider target unavailable state", () => {
+    const disabledTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      disabled: true,
+      label: "Shared Codex",
+      unavailableReason: "disabled by workspace policy"
+    };
+    const renderProviderUnavailableState = vi.fn((ctx) => (
+      <div data-testid="custom-provider-unavailable">
+        {ctx.providerLabel} / {ctx.target.label} / {ctx.unavailableReason}
+      </div>
+    ));
+
+    renderAgentGUINodeView({
+      renderProviderUnavailableState,
+      viewModel: createViewModel({
+        data: {
+          provider: "codex",
+          agentTargetId: disabledTarget.agentTargetId,
+          lastActiveAgentSessionId: null,
+          conversationRailWidthPx: null
+        },
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: disabledTarget.agentTargetId ?? ""
+        },
+        selectedProviderTarget: disabledTarget,
+        providerTargets: [disabledTarget]
+      })
+    });
+
+    expect(screen.getByTestId("custom-provider-unavailable")).toHaveTextContent(
+      "Codex / Shared Codex / disabled by workspace policy"
+    );
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).toBeNull();
+    expect(renderProviderUnavailableState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        providerLabel: "Codex",
+        target: disabledTarget,
+        unavailableReason: "disabled by workspace policy"
+      })
+    );
+  });
+
+  it("keeps the built-in retry gate for provider readiness unavailable", () => {
+    const renderProviderUnavailableState = vi.fn(() => (
+      <div data-testid="custom-provider-unavailable" />
+    ));
+
+    renderAgentGUINodeView({
+      renderProviderUnavailableState,
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "unavailable"
+        }
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateUnavailableTitle");
+    expect(
+      screen.queryByTestId("custom-provider-unavailable")
+    ).not.toBeInTheDocument();
+    expect(renderProviderUnavailableState).not.toHaveBeenCalled();
+  });
+
   it("renders the aggregate agents checking gate when the All tab is active", () => {
     renderAgentGUINodeView({
       viewModel: createViewModel({
@@ -4583,6 +4781,7 @@ interface RenderAgentGUINodeViewOptions {
   onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
+  renderProviderUnavailableState?: AgentGUINodeViewProps["renderProviderUnavailableState"];
   providerRailAllPresentation?: AgentGUINodeViewProps["providerRailAllPresentation"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
@@ -4602,6 +4801,7 @@ function buildAgentGUINodeViewElement({
   onOpenConversationWindow,
   renderSidebarFooter,
   renderProviderRailEmpty,
+  renderProviderUnavailableState,
   providerRailAllPresentation,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
@@ -4611,6 +4811,7 @@ function buildAgentGUINodeViewElement({
         viewModel={viewModel}
         renderSidebarFooter={renderSidebarFooter}
         renderProviderRailEmpty={renderProviderRailEmpty}
+        renderProviderUnavailableState={renderProviderUnavailableState}
         providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
         isActive={isActive}

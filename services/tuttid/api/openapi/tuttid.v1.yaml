@@ -2124,6 +2124,55 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections/pinned-page:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceAgentPinnedSessionPage
+      tags:
+        - agent-session
+      summary: List pinned agent session page for one workspace
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor for the next older pinned page, encoded as pinnedAtUnixMs|agentSessionId.
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before pinned pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace pinned agent session page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-generated-files:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -6781,6 +6830,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+    WorkspaceAgentSessionPage:
+      type: object
+      additionalProperties: false
+      required:
+        - sessions
+        - hasMore
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          description: Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
+          minLength: 1
     WorkspaceAgentSessionSectionKind:
       type: string
       enum:
@@ -6817,11 +6883,14 @@ components:
       additionalProperties: false
       required:
         - workspaceId
+        - pinned
         - sections
       properties:
         workspaceId:
           type: string
           minLength: 1
+        pinned:
+          $ref: "#/components/schemas/WorkspaceAgentSessionPage"
         sections:
           type: array
           items:
@@ -6838,6 +6907,18 @@ components:
           minLength: 1
         section:
           $ref: "#/components/schemas/WorkspaceAgentSessionSection"
+    WorkspaceAgentSessionPageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - page
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        page:
+          $ref: "#/components/schemas/WorkspaceAgentSessionPage"
     ExternalAgentImportScanRequest:
       type: object
       additionalProperties: false

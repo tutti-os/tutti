@@ -301,6 +301,8 @@ export function createDesktopAgentActivityRuntime(
       workspaceAgentActivityService.listSessionSections(input),
     listSessionSectionPage: (input) =>
       workspaceAgentActivityService.listSessionSectionPage(input),
+    listPinnedSessionsPage: (input) =>
+      workspaceAgentActivityService.listPinnedSessionsPage(input),
     async load(workspaceId, signal) {
       const snapshot = await workspaceAgentActivityService.load(
         workspaceId,
