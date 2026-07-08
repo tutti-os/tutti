@@ -70,7 +70,7 @@ jobs:
           ref: ${{ steps.target.outputs.release_target }}
           fetch-depth: 0
 
-      - name: Validate stable release branch
+      - name: Validate release dispatch branch
         shell: bash
         env:
           RELEASE_EVENT_NAME: ${{ github.event_name }}
@@ -83,7 +83,7 @@ jobs:
           fi
 
           case "${RELEASE_MODE:-}" in
-            patch_release|minor_release|major_release)
+            patch_rc_release|patch_release|minor_release|major_release)
               ;;
             *)
               exit 0
@@ -91,7 +91,7 @@ jobs:
           esac
 
           if [[ "${RELEASE_REF_TYPE}" != "branch" ]]; then
-            echo "Stable desktop release modes must be run from main or a release/* branch." >&2
+            echo "Manual desktop release mode ${RELEASE_MODE} must be run from main or a release/* branch." >&2
             exit 1
           fi
 
@@ -99,8 +99,16 @@ jobs:
             main|release/*)
               ;;
             *)
-              echo "Stable desktop release modes must be run from main or a release/* branch, not ${RELEASE_REF_NAME}." >&2
+              echo "Manual desktop release mode ${RELEASE_MODE} must be run from main or a release/* branch, not ${RELEASE_REF_NAME}." >&2
               exit 1
+              ;;
+          esac
+
+          case "${RELEASE_MODE:-}" in
+            patch_release|minor_release|major_release)
+              ;;
+            *)
+              exit 0
               ;;
           esac
 

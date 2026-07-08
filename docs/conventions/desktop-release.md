@@ -58,7 +58,7 @@ Supported manual modes:
 - `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
-Manual stable release modes (`patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
+Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 
 - the workflow dispatch branch must be `main` or `release/*`
 - if any remote `release/*` branch exists, stable releases must be dispatched from a `release/*` branch instead of `main`

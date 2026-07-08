@@ -85,10 +85,10 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
   assert.match(workflow, /patch_beta_release\)\s*\n\s*strategy=patch_beta/);
 });
 
-test("desktop release workflow gates manual stable modes by release branch", async () => {
+test("desktop release workflow gates manual rc and stable modes by release branch", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /name:\s+Validate stable release branch/);
+  assert.match(workflow, /name:\s+Validate release dispatch branch/);
   assert.match(
     workflow,
     /RELEASE_EVENT_NAME:\s+\${{\s*github\.event_name\s*}}/
@@ -98,6 +98,10 @@ test("desktop release workflow gates manual stable modes by release branch", asy
   assert.match(
     workflow,
     /if \[\[ "\$\{RELEASE_EVENT_NAME\}" != "workflow_dispatch" \]\]; then/
+  );
+  assert.match(
+    workflow,
+    /patch_rc_release\|patch_release\|minor_release\|major_release\)/
   );
   assert.match(workflow, /patch_release\|minor_release\|major_release\)/);
   assert.match(workflow, /main\|release\/\*/);
