@@ -1752,6 +1752,26 @@ pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/controller/useA
 pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts
 ```
 
+### Mixed AgentGUI Language Or Date Labels
+
+Quick checks:
+
+- Check whether the surface is wrapped in `AgentGuiI18nProvider` through
+  `AgentGUI`, `WorkspaceAgentMessageCenterPanel`, or a host-owned card wrapper.
+- If a desktop surface passes a host `i18n` runtime into
+  `AgentGuiI18nProvider`, pass the matching `locale` too. `t()` reads the
+  runtime, while formatting helpers such as `formatAgentMessageTimestamp` read
+  the AgentGUI locale bridge through `getActiveUiLanguage()`.
+- Inspect workbench contribution plumbing when a card is rendered outside the
+  main AgentGUI tree; `DesktopWorkbenchContributionContext` should carry both
+  `appI18n` and `appLocale`.
+
+Likely fix area:
+
+- desktop contribution context / shell runtime locale propagation
+- host-owned message center card wrappers
+- direct `AgentGuiI18nProvider` call sites
+
 ### Approval Or Question Remains After Answering
 
 Quick checks:

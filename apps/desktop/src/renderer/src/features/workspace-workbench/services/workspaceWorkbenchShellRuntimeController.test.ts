@@ -375,6 +375,7 @@ function createShellHostInput(input: {
 }) {
   return {
     appI18n: {} as I18nRuntime<string>,
+    appLocale: "en" as const,
     createHostInput: () => input.hostInput,
     dockIconStyle: "default" as const,
     i18n: {} as WorkspaceWorkbenchDesktopI18nRuntime,

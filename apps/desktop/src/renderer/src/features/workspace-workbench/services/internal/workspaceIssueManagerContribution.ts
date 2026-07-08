@@ -11,6 +11,7 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import type { DesktopLocale } from "@shared/i18n";
 import issueManagerDockIconUrl from "@tutti-os/workspace-issue-manager/assets/workspace-dock-task.png";
 import {
   createIssueManagerDockIconImage,
@@ -57,6 +58,7 @@ export function createWorkspaceIssueManagerContribution(input: {
   dockIconUrl?: string;
   hostFilesApi: DesktopHostFilesApi;
   i18n: I18nRuntime<string>;
+  locale: DesktopLocale;
   eventStreamClient?: TuttidEventStreamClient;
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -191,6 +193,7 @@ export function createWorkspaceIssueManagerContribution(input: {
       renderLatestRunStatus: (renderInput) =>
         renderIssueManagerLatestRunMessageCenterCard(renderInput, {
           i18n: input.i18n,
+          locale: input.locale,
           onLinkAction: (action) => {
             void runDesktopAgentGUILinkAction(action, {
               homeDirectory: input.platformApi.homeDirectory,
