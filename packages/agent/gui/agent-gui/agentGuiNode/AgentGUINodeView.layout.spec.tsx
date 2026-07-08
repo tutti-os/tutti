@@ -2458,6 +2458,44 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectConversation).not.toHaveBeenCalled();
   });
 
+  it("opens a conversation from the rail context menu without selecting", async () => {
+    const actions = createActions();
+    const onOpenConversationWindow = vi.fn();
+
+    renderAgentGUINodeView({
+      actions,
+      onOpenConversationWindow,
+      viewModel: {
+        ...createViewModel(),
+        activeConversationId: "session-1",
+        conversations: [
+          createConversationSummary("session-1"),
+          createConversationSummary("session-2")
+        ]
+      }
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-2")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "openConversationWindow" })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledTimes(1)
+    );
+    expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
+    expect(actions.selectConversation).not.toHaveBeenCalled();
+  });
+
   it("pages each conversation rail section five sessions at a time", () => {
     renderAgentGUINodeView({
       labels: {

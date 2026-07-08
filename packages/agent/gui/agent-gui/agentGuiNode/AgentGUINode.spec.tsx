@@ -2434,6 +2434,50 @@ describe("AgentGUINode", () => {
     expect(mockSelectConversation).not.toHaveBeenCalled();
   });
 
+  it("opens a conversation in a new window from the rail context menu without selecting", async () => {
+    const onOpenConversationWindow =
+      vi.fn<
+        NonNullable<
+          React.ComponentProps<typeof AgentGUINode>["onOpenConversationWindow"]
+        >
+      >();
+    mockViewModel = createViewModel({
+      conversations: [
+        {
+          id: "session-1",
+          provider: "codex",
+          title: "Session 1",
+          status: "ready",
+          cwd: "/workspace",
+          updatedAtUnixMs: 1
+        }
+      ],
+      activeConversationId: "session-1"
+    });
+    renderAgentGUINode({ onOpenConversationWindow });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const openWindowMenuItem = await screen.findByRole("menuitem", {
+      name: "agentHost.agentGui.openConversationWindow"
+    });
+    fireEvent.pointerUp(openWindowMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.openConversationWindow"
+        })
+      ).not.toBeInTheDocument()
+    );
+
+    await waitFor(() =>
+      expect(onOpenConversationWindow).toHaveBeenCalledWith("session-1")
+    );
+    expect(mockSelectConversation).not.toHaveBeenCalled();
+  });
+
   it("opens rename dialog from rail double-click and saves through controller action", async () => {
     mockRenameConversation.mockResolvedValue(undefined);
     mockViewModel = createViewModel({
@@ -2557,6 +2601,14 @@ describe("AgentGUINode", () => {
       name: "agentHost.agentGui.renameSession"
     });
     fireEvent.pointerUp(renameMenuItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "agentHost.agentGui.renameSession"
+        })
+      ).not.toBeInTheDocument()
+    );
 
     expect(
       await screen.findByRole("textbox", {

@@ -7349,6 +7349,9 @@ const AgentGUIConversationRailItem = memo(
       },
       [item.id, registerItemElement]
     );
+    const [contextMenuResetKey, setContextMenuResetKey] = useState(0);
+    const contextMenuRenameRequestedRef = useRef(false);
+    const contextMenuOpenConversationWindowRequestedRef = useRef(false);
     const handleMouseLeave = useCallback(() => {
       if (isPendingDeleteConversation) {
         onCancelDeleteConversation();
@@ -7370,12 +7373,29 @@ const AgentGUIConversationRailItem = memo(
       onRequestRenameConversation(item.id);
     }, [item.id, onRequestRenameConversation]);
     const handleContextMenuRename = useCallback(() => {
+      if (contextMenuRenameRequestedRef.current) {
+        return;
+      }
+      contextMenuRenameRequestedRef.current = true;
+      setContextMenuResetKey((key) => key + 1);
       window.setTimeout(() => {
         handleRequestRename();
+        contextMenuRenameRequestedRef.current = false;
       }, 0);
     }, [handleRequestRename]);
+    const handleContextMenuOpenConversationWindow = useCallback(() => {
+      if (contextMenuOpenConversationWindowRequestedRef.current) {
+        return;
+      }
+      contextMenuOpenConversationWindowRequestedRef.current = true;
+      setContextMenuResetKey((key) => key + 1);
+      window.setTimeout(() => {
+        handleOpenConversationWindow();
+        contextMenuOpenConversationWindowRequestedRef.current = false;
+      }, 0);
+    }, [handleOpenConversationWindow]);
     return (
-      <ContextMenu>
+      <ContextMenu key={contextMenuResetKey}>
         <ContextMenuTrigger asChild>
           <div
             ref={setItemElement}
@@ -7519,6 +7539,20 @@ const AgentGUIConversationRailItem = memo(
             >
               {labels.renameSession}
             </ContextMenuItem>
+            {onOpenConversationWindow ? (
+              <ContextMenuItem
+                className={styles.composerMenuItem}
+                onClick={handleContextMenuOpenConversationWindow}
+                onPointerUp={(event) => {
+                  if (event.button === 0) {
+                    handleContextMenuOpenConversationWindow();
+                  }
+                }}
+                onSelect={handleContextMenuOpenConversationWindow}
+              >
+                {labels.openConversationWindow}
+              </ContextMenuItem>
+            ) : null}
           </ContextMenuContent>
         )}
       </ContextMenu>
