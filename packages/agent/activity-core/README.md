@@ -88,6 +88,9 @@ stream.
 `getSnapshot()` and subscription callbacks return cloned snapshots so UI callers
 cannot mutate controller state by accident.
 
+When loaded or upserted session data is unchanged, the controller preserves the
+current snapshot reference and does not notify subscribers.
+
 ## Event Shape
 
 Live streams emit `AgentActivitySessionEventEnvelope`:

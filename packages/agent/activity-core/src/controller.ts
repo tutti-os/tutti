@@ -1,6 +1,7 @@
 import type { AgentActivityAdapter } from "./adapter.ts";
 import {
   areAgentActivityMessageArraysEqual,
+  areJsonLikeValuesEqual,
   cloneAgentActivityMessage,
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
@@ -1051,12 +1052,36 @@ function upsertSnapshotSession(
   ) {
     return snapshot;
   }
+  if (
+    existingSession &&
+    areAgentActivitySessionsEqual(existingSession, session)
+  ) {
+    return snapshot;
+  }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;
   return canonicalizeSnapshotMessageBuckets({
     ...snapshot,
     sessions
   });
+}
+
+function areAgentActivitySessionsEqual(
+  left: AgentActivitySession,
+  right: AgentActivitySession
+): boolean {
+  const leftRecord = left as unknown as Record<string, unknown>;
+  const rightRecord = right as unknown as Record<string, unknown>;
+  const keys = new Set([
+    ...Object.keys(leftRecord),
+    ...Object.keys(rightRecord)
+  ]);
+  for (const key of keys) {
+    if (!areJsonLikeValuesEqual(leftRecord[key], rightRecord[key])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function removeSnapshotSession(
