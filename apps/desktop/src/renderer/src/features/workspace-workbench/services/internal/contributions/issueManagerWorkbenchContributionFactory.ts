@@ -13,6 +13,7 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
         dockIconUrl: context.dockIcons.issue,
         hostFilesApi: context.hostFilesApi,
         i18n: context.appI18n,
+        locale: context.appLocale,
         eventStreamClient: context.eventStreamClient,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,

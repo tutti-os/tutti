@@ -11,7 +11,10 @@ import type {
   WorkbenchMissionControlMode
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
+import type {
+  DesktopLocale,
+  WorkspaceWorkbenchDesktopI18nRuntime
+} from "@shared/i18n";
 import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
@@ -124,6 +127,7 @@ export interface WorkspaceWorkbenchShellRuntimeController {
 
 export interface WorkspaceWorkbenchShellHostInput {
   appI18n: I18nRuntime<string>;
+  appLocale: DesktopLocale;
   appCenterRevision?: number;
   createHostInput: IWorkspaceWorkbenchHostService["createHostInput"];
   defaultAgentProvider?: string | null;
@@ -279,6 +283,7 @@ function createHostInput(input: {
 }): WorkspaceWorkbenchHostInput {
   return input.input.createHostInput({
     appI18n: input.input.appI18n,
+    appLocale: input.input.appLocale,
     appCenterRevision: input.input.appCenterRevision,
     confirmCloseGuard: input.closeDialog.requestConfirmation,
     defaultAgentProvider: input.input.defaultAgentProvider,
