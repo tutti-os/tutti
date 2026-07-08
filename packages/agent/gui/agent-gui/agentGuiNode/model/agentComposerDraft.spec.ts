@@ -6,6 +6,7 @@ import {
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
+  appendQueuedPromptsToComposerDraft,
   emptyAgentComposerDraft,
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences
@@ -485,5 +486,62 @@ describe("agentComposerDraft", () => {
     expect(linkifyPastedTextReferences("just a normal message")).toBe(
       "just a normal message"
     );
+  });
+
+  it("appends queued prompts below the preserved draft after a failed create", () => {
+    const restored = appendQueuedPromptsToComposerDraft(
+      { prompt: "first message", images: [] },
+      [
+        { id: "q1", content: [{ type: "text", text: "follow-up one" }] },
+        {
+          id: "q2",
+          content: [
+            { type: "text", text: "follow-up two" },
+            { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }
+          ]
+        }
+      ]
+    );
+
+    expect(restored.prompt).toBe(
+      "first message\n\nfollow-up one\n\nfollow-up two"
+    );
+    expect(restored.images).toHaveLength(1);
+    expect(restored.images[0]?.id).toBe("restore-q2:image:0");
+  });
+
+  it("returns the draft unchanged when no queued prompts are stranded", () => {
+    const draft = { prompt: "first message", images: [] };
+
+    expect(appendQueuedPromptsToComposerDraft(draft, [])).toBe(draft);
+  });
+
+  it("restores pasted large texts from stranded queued prompts", () => {
+    const restored = appendQueuedPromptsToComposerDraft(
+      { prompt: "first message", images: [] },
+      [
+        {
+          id: "q1",
+          content: [
+            {
+              type: "file",
+              kind: "pasted-text",
+              path: "/tmp/notes.txt",
+              name: "notes",
+              sizeBytes: 4096
+            }
+          ]
+        }
+      ]
+    );
+
+    expect(restored.largeTexts).toEqual([
+      expect.objectContaining({
+        name: "notes",
+        path: "/tmp/notes.txt",
+        sizeBytes: 4096,
+        text: ""
+      })
+    ]);
   });
 });

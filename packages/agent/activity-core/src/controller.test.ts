@@ -162,6 +162,39 @@ test("controller rejects stale session upserts after newer activity state", () =
   }
 });
 
+test("controller accepts session upsert when version keys are equal", () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter(),
+    workspaceId: "workspace-1"
+  });
+  controller.upsertSession(
+    createSession({
+      status: "completed",
+      lastEventUnixMs: 1500,
+      updatedAtUnixMs: 1000,
+      turnLifecycle: {
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed"
+      },
+      submitAvailability: { state: "available" }
+    })
+  );
+  controller.upsertSession(
+    createSession({
+      status: "working",
+      lastEventUnixMs: 1500,
+      updatedAtUnixMs: 2000,
+      turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+      submitAvailability: { state: "blocked", reason: "active_turn" }
+    })
+  );
+
+  const session = controller.getSnapshot().sessions[0];
+  assert.equal(session?.status, "working");
+  assert.equal(session?.turnLifecycle?.phase, "running");
+});
+
 test("controller can list session messages without caching them", async () => {
   const adapter = fakeAdapter({
     listSessionMessages: () =>

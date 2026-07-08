@@ -964,29 +964,6 @@ func TestStoreAppliesRuntimeStatusEventsImmediately(t *testing.T) {
 	}
 }
 
-func TestStatePatchFromActivityEventIgnoresCompletedTurnLastError(t *testing.T) {
-	event := activityshared.NewTurnCompleted(activityshared.EventContext{
-		EventID:           "turn-completed",
-		Provider:          activityshared.ProviderClaudeCode,
-		ProviderSessionID: "provider-session",
-		AgentSessionID:    "agent-session",
-		CWD:               "/workspace/room-1",
-		OccurredAtUnixMS:  1710000000200,
-	}, "turn-1", activityshared.TurnOutcomeCompleted)
-	event.Payload.Metadata = map[string]any{
-		"lastError":  "end_turn",
-		"stopReason": "end_turn",
-	}
-
-	patch, ok := statePatchFromActivityEvent(EventSource{}, event, "agent-session", event.OccurredAtUnixMS)
-	if !ok {
-		t.Fatal("statePatchFromActivityEvent ok = false, want true")
-	}
-	if patch.LastError != "" {
-		t.Fatalf("last error = %q, want empty for completed turn", patch.LastError)
-	}
-}
-
 func TestStoreDoesNotAdvanceUpdatedAtForPassiveSessionUpdateEvent(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
@@ -2650,35 +2627,4 @@ func (f *fakeInterruptReporter) ReportSessionState(_ context.Context, input Repo
 func (f *fakeInterruptReporter) ReportSessionMessages(_ context.Context, input ReportSessionMessagesInput) (ReportSessionMessagesReply, error) {
 	f.workspaceID = input.WorkspaceID
 	return ReportSessionMessagesReply{AcceptedCount: len(input.Updates)}, nil
-}
-
-// Every live turn-lifecycle phase must map to blocked(active_turn), not nil.
-// Returning nil for a live phase drops SubmitAvailability from the pushed state
-// patch, so the GUI keeps a stale "available" and lets the user submit into an
-// active turn (which the daemon then rejects with "already has an active turn").
-func TestSubmitAvailabilityForTurnLifecyclePhaseCoversLivePhases(t *testing.T) {
-	blockedActive := &WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
-	blockedWaiting := &WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
-	available := &WorkspaceAgentSubmitAvailability{State: "available"}
-
-	cases := []struct {
-		phase string
-		want  *WorkspaceAgentSubmitAvailability
-	}{
-		{"settled", available},
-		{"submitted", blockedActive},
-		{"running", blockedActive},
-		{"working", blockedActive},   // regression: used to fall through to nil
-		{"streaming", blockedActive}, // regression: used to fall through to nil
-		{string(activityshared.TurnPhaseWaitingApproval), blockedWaiting},
-		{string(activityshared.TurnPhaseWaitingInput), blockedWaiting},
-		{"idle", nil},
-		{"", nil},
-	}
-	for _, tc := range cases {
-		got := submitAvailabilityForTurnLifecyclePhase(tc.phase)
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Fatalf("phase %q: got %#v, want %#v", tc.phase, got, tc.want)
-		}
-	}
 }

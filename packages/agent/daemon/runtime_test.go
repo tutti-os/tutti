@@ -203,7 +203,7 @@ func (testAdapter) Exec(
 func (testAdapter) Cancel(
 	context.Context,
 	agentruntime.Session,
-	string,
+	agentruntime.CancelRequest,
 ) ([]activityshared.Event, error) {
 	return nil, nil
 }
@@ -254,7 +254,7 @@ func (*liveSessionTestAdapter) Exec(
 func (*liveSessionTestAdapter) Cancel(
 	context.Context,
 	agentruntime.Session,
-	string,
+	agentruntime.CancelRequest,
 ) ([]activityshared.Event, error) {
 	return nil, nil
 }

@@ -55,7 +55,10 @@ type Adapter interface {
 	Resume(context.Context, Session) error
 	Close(context.Context, Session) error
 	Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
-	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
+	// Cancel interrupts the live provider work for the session. The request
+	// carries the cancel reason (for example "user"), not a turnID. Adapters
+	// must derive live turns from their own registry.
+	Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error)
 }
 
 type AsyncExecAdapter interface {

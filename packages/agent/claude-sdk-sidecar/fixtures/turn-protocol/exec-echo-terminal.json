@@ -1,0 +1,13 @@
+{
+  "description": "Controller exec turn terminal echoed under the same turnId settles its own tracked waiter",
+  "trackedTurnId": "turn-controller-1",
+  "terminalEvent": {
+    "type": "turn_completed",
+    "payload": {
+      "turnId": "turn-controller-1",
+      "turnOrigin": "exec_echo",
+      "stopReason": "end_turn"
+    }
+  },
+  "expectDispatch": "complete_waiter"
+}

@@ -636,9 +636,7 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
       label: "Codex",
       presentation: {
         agentProviderId: "codex",
-        description: "Codex",
-        iconUrl: tuttiAgentAssetUrls.codex,
-        subtitle: "Codex"
+        iconUrl: tuttiAgentAssetUrls.codex
       },
       scope: {
         workspaceId: "workspace-1"

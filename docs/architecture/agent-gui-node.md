@@ -1082,15 +1082,31 @@ User-visible rules:
 composer draft + activeConversationId
   -> provider/composer settings/options
   -> prompt content normalization and upload state
-  -> can submit / disabled reason / sending state
-  -> startConversation or executePrompt
+  -> composerSubmitPolicy (submit | queue | blocked)
+  -> startConversation, executePrompt, or local queue
 ```
+
+The answer to "what happens when the user presses send" is one business
+decision with three outcomes and it lives in one place:
+`agentGuiNode/model/composerSubmitPolicy.ts`. The controller feeds it named
+inputs and consumes `canSubmit` / `canQueueWhileBusy` / the dispatch-time
+`shouldHoldPromptInLocalQueue`; no caller may re-derive pieces of that truth
+table locally. Historic drift between scattered copies of this decision
+(controller gates, dispatch checks, view recombinations) is exactly how
+send-availability bugs hid — extend the policy module instead of adding a new
+boolean expression next to a consumer.
 
 User-visible rules:
 
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation keeps the user on the home composer until activation succeeds.
+- The optimistic pre-activation create window stays send-capable: sends made
+  while the first-message activation is in flight are captured as local queued
+  prompts against the client-allocated session id and drain after the session
+  activates and its first turn settles. If the activation fails, the queue for
+  the never-created session is cleaned up and the queued texts are restored
+  into the home draft below the original message.
 - Treat active-session refs as controller caches, not the source of truth for
   whether a submit is new or existing. React effect cleanup, projection reloads,
   and conversation-list refreshes may temporarily disturb UI-local refs; they
@@ -1224,10 +1240,17 @@ A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before
 issuing the cancel, so the drainer must not fire the next queued prompt the
 moment the session becomes available. Only an explicit user send lifts the
-hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
-on a queued item) clears the suspension in the queue core. The drainer's own
-send-next interrupt path never suspends: intent is captured at its source,
-never inferred from the cancel outcome.
+hold — composer submit and `promotePrompt` ("send now" on a queued item).
+When the composer sends while that stop still holds a non-empty queue and
+the session is free, the fresh prompt must claim the free turn first
+(`executePrompt`); resume the suspended queue only after `sendInput`
+returns so activity projection is already busy. Do not resume then
+enqueue: that demotes the user's explicit follow-up behind the old queue
+head. When the session is still occupied, or the queue is already
+drainable, join behind as before so a direct send cannot race drain for
+the daemon's single-active-turn slot.
+The drainer's own send-next interrupt path never suspends: intent is
+captured at its source, never inferred from the cancel outcome.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,

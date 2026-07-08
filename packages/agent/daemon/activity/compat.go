@@ -294,21 +294,6 @@ func deriveCurrentPhaseFromEntityPatches(entities []WorkspaceAgentEntityPatch) s
 	return ""
 }
 
-func stringValueFromPayloadMap(payload map[string]any, key string) string {
-	if len(payload) == 0 {
-		return ""
-	}
-	value, ok := payload[key]
-	if !ok {
-		return ""
-	}
-	text, ok := value.(string)
-	if !ok {
-		return ""
-	}
-	return text
-}
-
 func cloneConnector(connector *ConnectorInfo) *ConnectorInfo {
 	if connector == nil {
 		return nil

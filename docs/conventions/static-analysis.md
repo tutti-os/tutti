@@ -209,6 +209,11 @@ In golangci-lint v2, `staticcheck` also covers checks that were previously expos
 
 `nolintlint` keeps lint suppressions explicit and valid when an exception is necessary.
 
+When fixing daemon turn-lifecycle or submit-availability bugs, verify the
+production call chain with `git grep` after edits. The `unused` linter is part
+of the baseline specifically to catch duplicate helpers that compile but never
+ship on the live reporter path.
+
 ## Business File Size Limit
 
 Business-code files must stay at or below `800` lines.

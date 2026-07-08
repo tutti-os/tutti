@@ -123,7 +123,7 @@ func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
 	// an unrelated reason to prove the terminal is stamped for the real turnID.
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
-	events, err := adapter.Cancel(context.Background(), session, "user")
+	events, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
 	// Reason is the free-form stop reason the controller passes, not a turnID.
-	events, err := adapter.Cancel(context.Background(), session, "user")
+	events, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestClaudeSDKCancelAfterSettleIsIdempotent(t *testing.T) {
 		Payload: map[string]any{"turnId": "turn-1"},
 	})
 
-	events, err := adapter.Cancel(context.Background(), session, "turn-1")
+	events, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "turn-1"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}

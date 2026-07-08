@@ -244,6 +244,37 @@ Use this shape for new entries:
   [service.go](../../services/tuttid/service/agent/service.go)
   [service_session_list.go](../../services/tuttid/service/agent/service_session_list.go)
 
+### Agent turn fix landed on dead code (tests green, behavior unchanged)
+
+- Symptom:
+  A daemon or activity fix for submit availability, turn lifecycle, or cancel
+  behavior merges with green unit tests, but users still see stale
+  `submitAvailability`, `already active turn`, or infinite loading in AgentGUI.
+- Quick checks:
+  After changing mapper or patch-shaping code, trace the production call chain
+  with `git grep` instead of trusting the edited function name alone. The live
+  daemon path is `packages/agent/daemon/runtime/reporter.go`
+  `statePatchFromSessionEvent` → tuttid `activityStatePatchEventPayload`. The
+  duplicate helpers in `packages/agent/daemon/activity/service.go` are not on
+  that path unless a caller imports them.
+- Root cause:
+  Near-duplicate state-patch mappers drifted. A fix can land on an unused copy
+  while the live reporter fallback still omits `submitAvailability` for live
+  phases such as `working` or `streaming`.
+- Fix:
+  Consolidate phase → submit-availability mapping in
+  `packages/agent/daemon/activity/events` (`SubmitAvailabilityForPhase`) and
+  delete unused duplicate chains. Add a live-path regression test that walks
+  `statePatchFromSessionEvent` through the publish payload builder.
+- Validation:
+  Run `go test ./packages/agent/daemon/runtime -run SubmitAvailability` and
+  `go test ./packages/agent/daemon/activity/events -run SubmitAvailability`.
+  Confirm golangci `unused` stays enabled for daemon packages.
+- References:
+  [turn_lifecycle_snapshot.go](../../packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go)
+  [reporter.go](../../packages/agent/daemon/runtime/reporter.go)
+  [reporter_submit_availability_live_path_test.go](../../packages/agent/daemon/runtime/reporter_submit_availability_live_path_test.go)
+
 ### Claude composer model list stays stale after credential switch
 
 - Symptom:

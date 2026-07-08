@@ -410,7 +410,7 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	return events, nil
 }
 
-func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
+func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, _ CancelRequest) ([]activityshared.Event, error) {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
 		return nil, nil
@@ -837,11 +837,11 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 	if len(next) > 0 {
 		a.updateClaudeSDKSessionSnapshot(adapterSession, next)
 	}
-	if waiter != nil {
+	switch decideClaudeSDKDispatch(waiter, terminal) {
+	case ClaudeSDKDispatchCompleteWaiter:
 		a.completeClaudeSDKWaiterEvent(adapterSession, waiter, turnID, next, terminal, err)
 		return
-	}
-	if terminal {
+	case ClaudeSDKDispatchDropTerminal:
 		// No daemon-registered Exec()/ExecAsync() waiter is tracking this
 		// turnID's outcome: either its terminal event was already delivered
 		// once (the waiter already completed and was unregistered) or this
@@ -852,6 +852,24 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 		// stray, possibly contradictory outcome notification for the session:
 		// a phantom completed/failed toast landing alongside the real turn's
 		// own outcome toast for the same agent session. Drop it instead.
+		//
+		// turnOrigin (stamped by the sidecar: exec_echo/synthetic/queued/
+		// delegated) is logged for diagnosis only. Remapping a dropped
+		// terminal onto an unrelated live waiter is deliberately NOT done
+		// here: without a confirmed repro correlating a specific dropped id
+		// to a specific live turn, a remap risks completing the wrong Exec
+		// call early (the Rkyo8B double-toast class in reverse). See
+		// docs/architecture/agent-turn-lifecycle-ledger.md.
+		if liveWaiterIDs := a.liveClaudeSDKTurnIDs(adapterSession); len(liveWaiterIDs) > 0 {
+			slog.Warn("agent session claude sdk terminal dropped while live waiters remain",
+				"event", "agent_session.claude_sdk.terminal_dropped_with_live_waiters",
+				"agent_session_id", agentSessionID,
+				"dropped_turn_id", turnID,
+				"dropped_turn_origin", payloadString(event.Payload, "turnOrigin"),
+				"live_waiter_turn_ids", liveWaiterIDs,
+				"sidecar_event_type", event.Type,
+			)
+		}
 		return
 	}
 	if err != nil {

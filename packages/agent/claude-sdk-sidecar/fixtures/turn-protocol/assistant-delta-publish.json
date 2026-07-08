@@ -1,0 +1,12 @@
+{
+  "description": "A non-terminal streaming event with no tracked waiter publishes as a session event instead of completing or dropping",
+  "trackedTurnId": "",
+  "terminalEvent": {
+    "type": "assistant_delta",
+    "payload": {
+      "turnId": "turn-live-3",
+      "snapshot": "hello"
+    }
+  },
+  "expectDispatch": "publish"
+}

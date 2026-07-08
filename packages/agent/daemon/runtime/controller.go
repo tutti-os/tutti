@@ -52,6 +52,7 @@ type sessionLifecycleLock struct {
 type activeTurn struct {
 	turnID                string
 	cancel                context.CancelFunc
+	renewedAtUnixMS       int64
 	openCallIDs           map[string]struct{}
 	pendingTerminalEvents []activityshared.Event
 }
@@ -1158,7 +1159,8 @@ func (c *Controller) beginTurn(session Session, turnID string, cancel context.Ca
 		return Session{}, ErrSessionActiveTurn
 	}
 	c.sessions[key] = session
-	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel}
+	nowMS := unixMS(now())
+	c.turns[key] = activeTurn{turnID: turnID, cancel: cancel, renewedAtUnixMS: nowMS}
 	return session, nil
 }
 
@@ -1183,6 +1185,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		emitted = append(emitted, events...)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
+		c.touchActiveTurn(session.RoomID, session.AgentSessionID)
 		logAgentSubmitTrace("runtime.events_emitted", session, turnID, metadata, map[string]any{
 			"activity_event_count": len(events),
 			"session_status":       session.Status,
@@ -1259,6 +1262,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		c.store(session)
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
+		c.touchActiveTurn(session.RoomID, session.AgentSessionID)
 		logAgentSubmitTrace("runtime.async_events_emitted", session, turnID, metadata, map[string]any{
 			"activity_event_count": len(events),
 			"session_status":       session.Status,
@@ -2005,6 +2009,76 @@ func activityEventIdentity(event activityshared.Event) string {
 	)
 }
 
+func (c *Controller) touchActiveTurn(roomID, agentSessionID string) {
+	if c == nil {
+		return
+	}
+	key := sessionKey(roomID, agentSessionID)
+	nowMS := unixMS(now())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	active, ok := c.turns[key]
+	if !ok {
+		return
+	}
+	active.renewedAtUnixMS = nowMS
+	c.turns[key] = active
+}
+
+// StaleActiveTurn describes an active-turn record that has not been renewed
+// (see touchActiveTurn) for at least the staleness threshold passed to
+// DetectStaleActiveTurns.
+type StaleActiveTurn struct {
+	RoomID         string
+	AgentSessionID string
+	TurnID         string
+	StaleForMS     int64
+}
+
+// DetectStaleActiveTurns reports active-turn records with no observed
+// progress for at least staleAfter. This is deliberately observation-only: it
+// never cancels or clears a turn record. A turn can legitimately sit active
+// for a long time (a slow tool call, a human reviewing an approval prompt),
+// and canceling one automatically on a guessed threshold would trade a
+// cosmetic "already active turn" symptom for a real, silent turn loss. Wire
+// this into a periodic reconcile job (see ReleaseIdleLiveSessions for the
+// existing periodic-sweep pattern) once there is a safe, reviewed action to
+// take on a stale record.
+func (c *Controller) DetectStaleActiveTurns(staleAfter time.Duration) []StaleActiveTurn {
+	if c == nil || staleAfter <= 0 {
+		return nil
+	}
+	nowMS := unixMS(now())
+	thresholdMS := staleAfter.Milliseconds()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var stale []StaleActiveTurn
+	for key, active := range c.turns {
+		if active.renewedAtUnixMS <= 0 {
+			continue
+		}
+		staleForMS := nowMS - active.renewedAtUnixMS
+		if staleForMS < thresholdMS {
+			continue
+		}
+		session := c.sessions[key]
+		stale = append(stale, StaleActiveTurn{
+			RoomID:         session.RoomID,
+			AgentSessionID: session.AgentSessionID,
+			TurnID:         active.turnID,
+			StaleForMS:     staleForMS,
+		})
+		slog.Warn("agent session active turn record has not renewed recently",
+			"event", "agent_session.turn.stale_detected",
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"turn_id", active.turnID,
+			"stale_for_ms", staleForMS,
+		)
+	}
+	return stale
+}
+
 func (c *Controller) finishTurn(session Session, turnID string) {
 	if c == nil {
 		return
@@ -2153,7 +2227,7 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 		// with the adapter instead of skipping: the turn machine answers
 		// no-op cancels safely, and anything it actually stopped surfaces
 		// as events.
-		events, err := adapter.Cancel(ctx, session, reason)
+		events, err := adapter.Cancel(ctx, session, CancelRequest{Reason: reason})
 		if err != nil && errors.Is(err, ErrSessionNoActiveTurn) {
 			// The adapter's way of answering "nothing was running" - the
 			// reconcile found no runtime work either.
@@ -2206,7 +2280,7 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 	if active.cancel != nil {
 		active.cancel()
 	}
-	events, err := adapter.Cancel(ctx, session, reason)
+	events, err := adapter.Cancel(ctx, session, CancelRequest{Reason: reason})
 	if err != nil {
 		if errors.Is(err, ErrSessionNoActiveTurn) {
 			c.clearActiveTurnIfMatches(session.RoomID, session.AgentSessionID, active.turnID)

@@ -1111,7 +1111,7 @@ func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
 	}
 }
 
-func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {
+func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ CancelRequest) ([]activityshared.Event, error) {
 	acpSession := a.getSession(session.AgentSessionID)
 	if acpSession != nil && acpSession.client != nil {
 		_ = acpSession.client.Notify(ctx, acpMethodCancel, map[string]any{

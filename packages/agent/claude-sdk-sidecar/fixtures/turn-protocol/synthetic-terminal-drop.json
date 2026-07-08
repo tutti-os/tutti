@@ -1,0 +1,13 @@
+{
+  "description": "An untracked synthetic turn's terminal must be dropped, not stolen by an unrelated live waiter (Rkyo8B protection)",
+  "trackedTurnId": "turn-controller-2",
+  "terminalEvent": {
+    "type": "turn_completed",
+    "payload": {
+      "turnId": "synthetic-abc",
+      "turnOrigin": "synthetic",
+      "stopReason": "background_agent"
+    }
+  },
+  "expectDispatch": "drop_terminal"
+}

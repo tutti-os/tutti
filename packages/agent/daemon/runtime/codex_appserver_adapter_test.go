@@ -1533,7 +1533,7 @@ func TestCodexAppServerAdapterCancelInterruptsActiveTurn(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
-	if _, err := adapter.Cancel(context.Background(), session, "user requested"); err != nil {
+	if _, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"}); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 	interrupt := appServerRequestParams(t, transport.conn, appServerMethodTurnInterrupt)
@@ -1825,7 +1825,7 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 	waitForCondition(t, func() bool {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
-	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	cancelEvents, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -1892,7 +1892,7 @@ func TestCodexAppServerAdapterCancelAfterTurnCompletedStillMarksChildrenCanceled
 		t.Fatalf("active turn id after completion = %q, want empty", got)
 	}
 
-	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	cancelEvents, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -1933,7 +1933,7 @@ func TestCodexAppServerAdapterCancelForceClosesWedgedTurn(t *testing.T) {
 	// honored the interrupt.
 	cancelReturned := make(chan error, 1)
 	go func() {
-		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		_, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 		cancelReturned <- err
 	}()
 	select {
@@ -1985,7 +1985,7 @@ func TestCodexAppServerAdapterCancelForceCloseIsBoundedByGrace(t *testing.T) {
 
 	cancelReturned := make(chan error, 1)
 	go func() {
-		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		_, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 		cancelReturned <- err
 	}()
 	// Time-to-force must be bounded by the grace window, not by the hung
@@ -2042,7 +2042,7 @@ func TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID(t *testing.T) 
 
 	cancelReturned := make(chan error, 1)
 	go func() {
-		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		_, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 		cancelReturned <- err
 	}()
 	select {
@@ -2103,7 +2103,7 @@ func TestCodexAppServerAdapterCancelQueuesInterruptUntilTurnIDArrives(t *testing
 		return adapter.sessionActiveTurn(session.AgentSessionID) != nil &&
 			adapter.sessionActiveTurnID(session.AgentSessionID) == ""
 	})
-	if _, err := adapter.Cancel(context.Background(), session, "user requested"); err != nil {
+	if _, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"}); err != nil {
 		t.Fatalf("Cancel before provider turn id: %v", err)
 	}
 
@@ -2130,7 +2130,7 @@ func TestCodexAppServerAdapterCancelWithoutActiveTurnFails(t *testing.T) {
 	t.Parallel()
 
 	adapter, _, session := startedAppServerAdapter(t)
-	if _, err := adapter.Cancel(context.Background(), session, "user requested"); err == nil {
+	if _, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"}); err == nil {
 		t.Fatalf("Cancel without active turn returned nil error")
 	}
 }
@@ -3196,7 +3196,7 @@ func TestCodexAppServerAdapterCancelPausesActiveGoal(t *testing.T) {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
 
-	events, err := adapter.Cancel(context.Background(), session, "user requested")
+	events, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user requested"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}

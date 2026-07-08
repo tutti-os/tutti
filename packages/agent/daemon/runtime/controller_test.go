@@ -1941,7 +1941,7 @@ func (emittingErrorAdapter) Exec(_ context.Context, session Session, _ []PromptC
 	return nil, context.Canceled
 }
 
-func (emittingErrorAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (emittingErrorAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -1968,7 +1968,7 @@ func (streamingMessageOnlyAdapter) Exec(_ context.Context, session Session, _ []
 	return nil, nil
 }
 
-func (streamingMessageOnlyAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (streamingMessageOnlyAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -1998,7 +1998,7 @@ func (*recordingStartAdapter) Exec(context.Context, Session, []PromptContentBloc
 	return nil, nil
 }
 
-func (*recordingStartAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*recordingStartAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2022,7 +2022,7 @@ func (failingStartAdapter) Exec(context.Context, Session, []PromptContentBlock, 
 	return nil, nil
 }
 
-func (failingStartAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (failingStartAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2064,7 +2064,7 @@ func (a *reconnectableAdapter) Exec(_ context.Context, session Session, _ []Prom
 	}, nil
 }
 
-func (*reconnectableAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*reconnectableAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2177,7 +2177,7 @@ func (a *releasableAdapter) Exec(_ context.Context, session Session, content []P
 	}, nil
 }
 
-func (*releasableAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*releasableAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2298,7 +2298,7 @@ func (a *recreatableResumeAdapter) Exec(_ context.Context, session Session, _ []
 	}, nil
 }
 
-func (*recreatableResumeAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*recreatableResumeAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2344,7 +2344,7 @@ func (*statefulInteractiveAdapter) Exec(context.Context, Session, []PromptConten
 	return nil, nil
 }
 
-func (*statefulInteractiveAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*statefulInteractiveAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2459,7 +2459,7 @@ func (returnOnlyFinalAdapter) Exec(_ context.Context, session Session, _ []Promp
 	}, nil
 }
 
-func (returnOnlyFinalAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (returnOnlyFinalAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2502,7 +2502,7 @@ func (a *blockingSessionUpdateAdapter) Exec(ctx context.Context, session Session
 	}
 }
 
-func (a *blockingSessionUpdateAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (a *blockingSessionUpdateAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	a.cancelOnce.Do(func() {
 		close(a.canceled)
 	})
@@ -2532,7 +2532,7 @@ func (workingOnlyAdapter) Exec(_ context.Context, session Session, _ []PromptCon
 	return nil, nil
 }
 
-func (workingOnlyAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (workingOnlyAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2589,7 +2589,7 @@ func (a *asyncExecTestAdapter) ExecAsync(_ context.Context, session Session, _ [
 	return nil
 }
 
-func (*asyncExecTestAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*asyncExecTestAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2635,7 +2635,7 @@ func (a *lifecycleSnapshotAsyncExecAdapter) ExecAsync(_ context.Context, session
 	return nil
 }
 
-func (*lifecycleSnapshotAsyncExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*lifecycleSnapshotAsyncExecAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2695,7 +2695,7 @@ func (a *terminalBeforeCallCompleteAsyncAdapter) ExecAsync(_ context.Context, se
 	return nil
 }
 
-func (*terminalBeforeCallCompleteAsyncAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*terminalBeforeCallCompleteAsyncAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2790,7 +2790,7 @@ func (*cancelReconcileAdapter) Exec(context.Context, Session, []PromptContentBlo
 	return nil, nil
 }
 
-func (a *cancelReconcileAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
+func (a *cancelReconcileAdapter) Cancel(_ context.Context, session Session, _ CancelRequest) ([]activityshared.Event, error) {
 	a.cancelCalls.Add(1)
 	if a.empty {
 		return nil, nil
@@ -2832,7 +2832,7 @@ func (a *steeringAsyncExecAdapter) ExecAsync(_ context.Context, session Session,
 	return nil
 }
 
-func (*steeringAsyncExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*steeringAsyncExecAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -2910,7 +2910,7 @@ func (a *blockingExecAdapter) Exec(ctx context.Context, session Session, content
 	}
 }
 
-func (*blockingExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (*blockingExecAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -3003,7 +3003,7 @@ func (a *deferredRemoteCancelAdapter) Exec(_ context.Context, session Session, _
 	}
 }
 
-func (a *deferredRemoteCancelAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (a *deferredRemoteCancelAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	a.cancelRequestMux.Do(func() {
 		close(a.cancelRequested)
 	})
@@ -3028,7 +3028,7 @@ func (*noActiveTurnCancelAdapter) Exec(context.Context, Session, []PromptContent
 	return nil, nil
 }
 
-func (a *noActiveTurnCancelAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (a *noActiveTurnCancelAdapter) Cancel(context.Context, Session, CancelRequest) ([]activityshared.Event, error) {
 	a.cancelCalls.Add(1)
 	return nil, ErrSessionNoActiveTurn
 }

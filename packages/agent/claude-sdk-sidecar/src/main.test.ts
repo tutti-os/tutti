@@ -749,6 +749,10 @@ test("delegated task continuation emits synthetic turn started", async () => {
     const started = events.find((event) => event.type === "turn_started");
     assert.equal(started?.payload?.synthetic, true);
     assert.match(String(started?.payload?.turnId ?? ""), /^synthetic-/);
+    // The daemon's dispatch drop/remap decision (see the shared
+    // turn-protocol fixtures) keys off this field, so a self-activated turn
+    // must be tagged distinctly from a controller-echoed exec turn.
+    assert.equal(started?.payload?.turnOrigin, "synthetic");
 
     const continuation = events.find(
       (event) =>

@@ -163,21 +163,21 @@ func (a *ClaudeCodeSDKAdapter) interruptLiveTurnsForGoalClear(
 	session Session,
 	adapterSession *claudeSDKAdapterSession,
 ) []activityshared.Event {
-	var events []activityshared.Event
-	for _, turnID := range a.liveClaudeSDKTurnIDs(adapterSession) {
-		cancelEvents, err := a.Cancel(ctx, session, turnID)
-		if err != nil {
-			slog.Warn("agent session claude sdk goal clear interrupt failed",
-				"event", "agent_session.claude_sdk.goal.clear_interrupt_failed",
-				"agent_session_id", session.AgentSessionID,
-				"turn_id", turnID,
-				"error", err.Error(),
-			)
-			continue
-		}
-		events = append(events, cancelEvents...)
+	if len(a.liveClaudeSDKTurnIDs(adapterSession)) == 0 {
+		return nil
 	}
-	return events
+	// Cancel ignores its reason argument and interrupts every live waiter in
+	// the adapter registry once (see Cancel implementation).
+	cancelEvents, err := a.Cancel(ctx, session, CancelRequest{Reason: "goal_clear"})
+	if err != nil {
+		slog.Warn("agent session claude sdk goal clear interrupt failed",
+			"event", "agent_session.claude_sdk.goal.clear_interrupt_failed",
+			"agent_session_id", session.AgentSessionID,
+			"error", err.Error(),
+		)
+		return nil
+	}
+	return cancelEvents
 }
 
 // liveClaudeSDKTurnIDs returns the turns with a registered waiter whose

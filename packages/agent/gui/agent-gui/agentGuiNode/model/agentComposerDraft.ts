@@ -253,6 +253,48 @@ function agentPromptPastedTextBlockToDraftLargeText(
   };
 }
 
+/**
+ * Restores prompts that were queued against a session that will never exist
+ * (a failed first-message activation) back into a composer draft, so the
+ * user's typed follow-ups are not lost with the session. Texts are appended
+ * in queue order below the draft's existing prompt.
+ */
+export function appendQueuedPromptsToComposerDraft(
+  draft: AgentComposerDraft,
+  prompts: ReadonlyArray<{
+    id: string;
+    content: readonly AgentPromptContentBlock[];
+  }>
+): AgentComposerDraft {
+  if (prompts.length === 0) {
+    return draft;
+  }
+  const restored = prompts.map((prompt) =>
+    agentPromptContentToComposerDraft(prompt.content, `restore-${prompt.id}`)
+  );
+  return {
+    ...draft,
+    prompt: [draft.prompt, ...restored.map((item) => item.prompt)]
+      .filter((text) => text.trim() !== "")
+      .join("\n\n"),
+    images: [...draft.images, ...restored.flatMap((item) => item.images)].slice(
+      0,
+      MAX_AGENT_COMPOSER_DRAFT_IMAGES
+    ),
+    files: [
+      ...(draft.files ?? []),
+      ...restored.flatMap((item) => item.files ?? [])
+    ],
+    ...(() => {
+      const largeTexts = [
+        ...(draft.largeTexts ?? []),
+        ...restored.flatMap((item) => item.largeTexts ?? [])
+      ];
+      return largeTexts.length > 0 ? { largeTexts } : {};
+    })()
+  };
+}
+
 export function agentComposerDraftToPromptContent(input: {
   draft: AgentComposerDraft;
   provider: string;

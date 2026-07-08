@@ -76,6 +76,33 @@ func TurnLifecyclePhaseIsLive(phase string) bool {
 	}
 }
 
+// SubmitAvailability is the daemon/GUI wire shape for whether a session can
+// accept a new user submit right now.
+type SubmitAvailability struct {
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// SubmitAvailabilityForPhase maps a turn-lifecycle phase token to the
+// submit-availability view that must ride every state patch. Returning nil
+// means "no opinion" for incremental patches — consumers keep their previous
+// value, which is how stale available/blocked bugs appear when a mapper omits
+// a live phase. This function is the single source of truth; Go reporters and
+// the TypeScript mirror (activity-core deriveSubmitAvailability) must stay
+// aligned.
+func SubmitAvailabilityForPhase(phase string) *SubmitAvailability {
+	switch {
+	case phase == "settled":
+		return &SubmitAvailability{State: "available"}
+	case TurnLifecyclePhaseIsWaiting(phase):
+		return &SubmitAvailability{State: "blocked", Reason: "waiting"}
+	case TurnLifecyclePhaseIsLive(phase):
+		return &SubmitAvailability{State: "blocked", Reason: "active_turn"}
+	default:
+		return nil
+	}
+}
+
 // TurnLifecyclePhaseIsWaiting reports whether the phase is a waiting variant
 // (approval or user input), including the legacy collapsed "waiting" token.
 func TurnLifecyclePhaseIsWaiting(phase string) bool {

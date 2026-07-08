@@ -753,7 +753,7 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 		t.Fatal("pending prompt missing before cancel")
 	}
 
-	events, err := adapter.Cancel(context.Background(), session, "user")
+	events, err := adapter.Cancel(context.Background(), session, CancelRequest{Reason: "user"})
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}

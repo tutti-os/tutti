@@ -837,15 +837,16 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 }
 
 func submitAvailabilityPatchForSnapshotPhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
-	switch {
-	case phase == "settled":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
-	case activityshared.TurnLifecyclePhaseIsWaiting(phase):
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
-	case activityshared.TurnLifecyclePhaseIsLive(phase):
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
-	default:
+	return submitAvailabilityFromShared(activityshared.SubmitAvailabilityForPhase(phase))
+}
+
+func submitAvailabilityFromShared(value *activityshared.SubmitAvailability) *agentsessionstore.WorkspaceAgentSubmitAvailability {
+	if value == nil {
 		return nil
+	}
+	return &agentsessionstore.WorkspaceAgentSubmitAvailability{
+		State:  value.State,
+		Reason: value.Reason,
 	}
 }
 
@@ -870,6 +871,10 @@ func currentPhaseForSnapshotPhase(phase string, outcome string) string {
 }
 
 func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
+	// Legacy fallback for events without an adapter-origin snapshot (ADR 0008).
+	// Snapshot-authority sessions must use applyLifecycleSnapshotToPatch
+	// instead; delete this path once every provider stamps snapshots on all
+	// turn.* events.
 	if patch == nil || !providerUsesExplicitTurnLifecyclePatch(patch.Provider) {
 		return
 	}
@@ -948,7 +953,7 @@ func codexLifecyclePhaseFromActivityEvent(event activityshared.Event) string {
 			return "submitted"
 		case string(activityshared.TurnPhaseWaiting), string(activityshared.TurnPhaseWaitingApproval), string(activityshared.TurnPhaseWaitingInput):
 			return "waiting"
-		case string(activityshared.TurnPhaseRunning), string(activityshared.TurnPhaseWorking):
+		case string(activityshared.TurnPhaseRunning), string(activityshared.TurnPhaseWorking), "streaming":
 			return "running"
 		}
 	case activityshared.EventTurnCompleted, activityshared.EventTurnFailed:
@@ -972,16 +977,7 @@ func codexLifecycleOutcomeFromActivityEvent(event activityshared.Event) string {
 }
 
 func codexSubmitAvailabilityForLifecyclePhase(phase string) *agentsessionstore.WorkspaceAgentSubmitAvailability {
-	switch phase {
-	case "settled":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "available"}
-	case "waiting":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "waiting"}
-	case "submitted", "running":
-		return &agentsessionstore.WorkspaceAgentSubmitAvailability{State: "blocked", Reason: "active_turn"}
-	default:
-		return nil
-	}
+	return submitAvailabilityFromShared(activityshared.SubmitAvailabilityForPhase(phase))
 }
 
 func statePatchLastError(event activityshared.Event) string {

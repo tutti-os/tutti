@@ -109,6 +109,7 @@ import {
   agentPromptContentDisplayText,
   agentPromptContentHasImage,
   agentPromptContentToComposerDraft,
+  appendQueuedPromptsToComposerDraft,
   emptyAgentComposerDraft,
   isPastedTextPromptBlock,
   materializePastedTextInstructions,
@@ -189,6 +190,12 @@ import {
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
+import {
+  resolveComposerQueuedSendDisposition,
+  resolveComposerSubmitPolicy,
+  sessionIsOccupied,
+  shouldHoldPromptInLocalQueue
+} from "../model/composerSubmitPolicy";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   buildNodeDefaultComposerSettings,
@@ -7622,6 +7629,31 @@ export function useAgentGUINodeController({
       const submittedHomeDraft =
         draftBySessionIdRef.current[submittedHomeDraftKey] ??
         EMPTY_AGENT_COMPOSER_DRAFT;
+      // Prompts queued against this create while activation was in flight
+      // target a session that will never exist; pull them back into the home
+      // draft so the user's follow-ups survive the failed activation.
+      const recoverQueuedPromptsFromFailedCreate = (
+        agentSessionId: string
+      ): void => {
+        const strandedPrompts = agentQueuedPromptRuntime.getSessionSnapshot({
+          workspaceId,
+          agentSessionId
+        }).prompts;
+        agentQueuedPromptRuntime.cleanupSession({
+          workspaceId,
+          agentSessionId
+        });
+        if (strandedPrompts.length === 0) {
+          return;
+        }
+        setDraftBySessionId((current) => ({
+          ...current,
+          [submittedHomeDraftKey]: appendQueuedPromptsToComposerDraft(
+            current[submittedHomeDraftKey] ?? emptyAgentComposerDraft(),
+            strandedPrompts
+          )
+        }));
+      };
       isCreatingConversationRef.current = true;
       setLocalIsCreatingConversation(true);
       setDetailError(null);
@@ -7894,6 +7926,7 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
+            recoverQueuedPromptsFromFailedCreate(agentSessionId);
             const shouldRevertToHome =
               isMountedRef.current &&
               (isCurrentConversation(agentSessionId) ||
@@ -8145,6 +8178,7 @@ export function useAgentGUINodeController({
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
+            recoverQueuedPromptsFromFailedCreate(agentSessionId);
             if (transientConversationRef.current?.id === agentSessionId) {
               setTransientConversation(null);
             }
@@ -8168,6 +8202,7 @@ export function useAgentGUINodeController({
           if (startingConversationIdRef.current === agentSessionId) {
             startingConversationIdRef.current = null;
           }
+          recoverQueuedPromptsFromFailedCreate(agentSessionId);
           if (isCurrentConversation(agentSessionId)) {
             // Stash the error so the activeConversationId-null effect
             // surfaces it on the home composer instead of clearing it.
@@ -8199,6 +8234,7 @@ export function useAgentGUINodeController({
     },
     [
       activeSessionState,
+      agentQueuedPromptRuntime,
       currentUserId,
       data,
       defaultReasoningEffort,
@@ -8552,7 +8588,7 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean }
+      options?: { guidance?: boolean; resumeQueueAfterOptimisticSend?: boolean }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -8691,6 +8727,15 @@ export function useAgentGUINodeController({
           });
         })
         .then((result) => {
+          // Lift a stop-held queue only after sendInput has claimed the
+          // session (activity projection now busy). Resuming earlier lets
+          // drain steal the free turn from this composer prompt.
+          if (options?.resumeQueueAfterOptimisticSend === true) {
+            agentQueuedPromptRuntime.resumeQueue({
+              workspaceId,
+              agentSessionId
+            });
+          }
           if (!result) {
             return;
           }
@@ -8846,6 +8891,7 @@ export function useAgentGUINodeController({
     [
       currentUserId,
       isCurrentConversation,
+      agentQueuedPromptRuntime,
       applyStatePatch,
       conversationListQuery,
       syncConversationListProjection,
@@ -8898,46 +8944,40 @@ export function useAgentGUINodeController({
 
   const shouldQueuePromptLocally = useCallback(
     (agentSessionId: string): boolean => {
-      if (isSubmitting || isRespondingApproval) {
-        return true;
-      }
+      const commandInFlight = isSubmitting || isRespondingApproval;
       const normalizedAgentSessionId = agentSessionId.trim();
       if (!normalizedAgentSessionId) {
-        return false;
-      }
-      if (
-        isCreatingConversationRef.current &&
-        startingConversationIdRef.current === normalizedAgentSessionId
-      ) {
-        return true;
-      }
-      if (pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]) {
-        return true;
+        return commandInFlight;
       }
       const sessionState =
         getAgentSessionView(sessionViewRef(normalizedAgentSessionId))
           ?.controlState ?? null;
-      if (sessionState?.pendingInteractive) {
-        return true;
-      }
       const runtimeSession =
         runtimeSessionsBySessionId.get(normalizedAgentSessionId) ?? null;
-      if (
-        runtimeSession &&
-        resolveSubmitAvailability(runtimeSession).state === "blocked"
-      ) {
-        return true;
-      }
       const conversationStatus =
         conversations.find(
           (conversation) => conversation.id === normalizedAgentSessionId
         )?.status ?? null;
-      if (conversationBusyStatus(conversationStatus)) {
-        return true;
-      }
-      return agentActivityDisplayStatusBusy(
-        agentActivityDisplayStatuses.get(normalizedAgentSessionId)
-      );
+      const sessionStateSubmitBlocked = sessionState
+        ? resolveSubmitAvailability(sessionState).state === "blocked"
+        : false;
+      const runtimeSubmitBlocked = runtimeSession
+        ? resolveSubmitAvailability(runtimeSession).state === "blocked"
+        : false;
+      return shouldHoldPromptInLocalQueue({
+        commandInFlight,
+        hasPendingSubmittedTurn: Boolean(
+          pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]
+        ),
+        pendingInteractive: Boolean(sessionState?.pendingInteractive),
+        displayStatusBusy: agentActivityDisplayStatusBusy(
+          agentActivityDisplayStatuses.get(normalizedAgentSessionId)
+        ),
+        sessionCreatePending:
+          startingConversationIdRef.current === normalizedAgentSessionId,
+        submitBlocked: sessionStateSubmitBlocked || runtimeSubmitBlocked,
+        conversationStatusBusy: conversationBusyStatus(conversationStatus)
+      });
     },
     [
       agentActivityDisplayStatuses,
@@ -8977,23 +9017,28 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      // Read the queue before resuming: resumeQueue wakes the drain
-      // coordinator, which immediately races to send the queued head. A
-      // direct send issued alongside that drain loses the daemon's
-      // single-active-turn slot and the prompt is dropped, so when prompts
-      // are already queued the explicit send must join the queue behind them
-      // instead of racing the drain.
-      const hasQueuedPrompts =
-        agentQueuedPromptRuntime.getSessionSnapshot({
-          workspaceId,
-          agentSessionId
-        }).prompts.length > 0;
-      // Any explicit user send lifts a user-stop hold on the queue.
-      agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
+      // A stop leaves the local queue suspended so drain cannot fire the
+      // moment the session frees. An explicit composer send must still lift
+      // that hold, but the fresh prompt has priority over the old queue head:
+      // when the session is free, claim the turn first and only then resume
+      // drain; when the session is still occupied (or the queue is already
+      // drainable), join behind so a direct send cannot race drain for the
+      // single-active-turn slot.
+      const queueSnapshot = agentQueuedPromptRuntime.getSessionSnapshot({
+        workspaceId,
+        agentSessionId
+      });
+      const hasQueuedPrompts = queueSnapshot.prompts.length > 0;
+      const queuedSendDisposition = resolveComposerQueuedSendDisposition({
+        shouldHoldInLocalQueue: shouldQueuePromptLocally(agentSessionId),
+        hasQueuedPrompts,
+        queueSuspended: queueSnapshot.suspendReason !== null
+      });
       if (
-        (hasQueuedPrompts || shouldQueuePromptLocally(agentSessionId)) &&
+        queuedSendDisposition === "enqueue" &&
         options?.bypassLocalQueue !== true
       ) {
+        agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
         queuePromptLocally(
           agentSessionId,
           normalizedContent,
@@ -9002,7 +9047,9 @@ export function useAgentGUINodeController({
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
-        guidance: options?.guidance === true
+        guidance: options?.guidance === true,
+        resumeQueueAfterOptimisticSend:
+          queuedSendDisposition === "direct_then_resume"
       });
     },
     [
@@ -11531,11 +11578,17 @@ export function useAgentGUINodeController({
     : false;
   const activeSubmitBlocked =
     activeSessionStateSubmitBlocked || activeRuntimeSubmitBlocked;
-  const activeConversationBusy =
-    agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
-    conversationBusyStatus(activeConversation?.status ?? null) ||
-    activeHasPendingSubmittedTurn ||
-    activeSubmitBlocked;
+  const activeSessionOccupancy = {
+    displayStatusBusy: agentActivityDisplayStatusBusy(
+      activeActivityDisplayStatus
+    ),
+    hasPendingSubmittedTurn: activeHasPendingSubmittedTurn,
+    submitBlocked: activeSubmitBlocked,
+    conversationStatusBusy: conversationBusyStatus(
+      activeConversation?.status ?? null
+    )
+  };
+  const activeConversationBusy = sessionIsOccupied(activeSessionOccupancy);
   const activeSessionResumable =
     activeRuntimeSession?.resumable ??
     activeConversation?.resumable ??
@@ -11621,32 +11674,30 @@ export function useAgentGUINodeController({
     hasProviderSessionNotFoundError,
     pendingApproval
   ]);
-  const canSubmit =
-    !providerTargetsLoading &&
-    activeLiveState !== "activating" &&
-    activeLiveState !== "failed" &&
-    !activeConversationResumeUnavailable &&
-    (activeConversationId !== null ||
-      effectiveSelectedProviderTarget.disabled !== true) &&
-    (composerTargetData.provider !== "openclaw" ||
-      openclawGateway?.status === "ready") &&
-    pendingApproval === null &&
-    pendingInteractivePrompt === null &&
-    sessionChrome.auth === null &&
-    !activeConversationBusy &&
-    !isCreatingConversation &&
-    !isSubmitting &&
-    !isInterrupting;
-  const activeConversationCreatePending =
-    Boolean(activeConversationId) &&
-    isCreatingConversation &&
-    startingConversationIdRef.current === activeConversationId;
-  const canQueueWhileBusy =
-    Boolean(activeConversationId) &&
-    (activeConversationCreatePending ||
-      activeConversationBusy ||
-      isSubmitting ||
-      Boolean(activeSessionState?.pendingInteractive));
+  const composerSubmitPolicy = resolveComposerSubmitPolicy({
+    hasActiveConversation: activeConversationId !== null,
+    liveState: activeLiveState,
+    activeConversationCreatePending:
+      activeConversationId !== null &&
+      startingConversationIdRef.current === activeConversationId,
+    isCreatingConversation,
+    resumeUnavailable: activeConversationResumeUnavailable,
+    occupancy: activeSessionOccupancy,
+    pendingInteractive: Boolean(activeSessionState?.pendingInteractive),
+    isSubmitting,
+    isInterrupting,
+    approvalPending: pendingApproval !== null,
+    interactivePromptPending: pendingInteractivePrompt !== null,
+    authRequired: sessionChrome.auth !== null,
+    providerTargetsLoading,
+    selectedProviderTargetDisabled:
+      effectiveSelectedProviderTarget.disabled === true,
+    gatewayNotReady:
+      composerTargetData.provider === "openclaw" &&
+      openclawGateway?.status !== "ready"
+  });
+  const canSubmit = composerSubmitPolicy.canSubmit;
+  const canQueueWhileBusy = composerSubmitPolicy.canQueueWhileBusy;
   useEffect(() => {
     const firstVersion = minFiniteMessageVersion(activeMessages);
     const lastVersion = maxFiniteMessageVersion(activeMessages);

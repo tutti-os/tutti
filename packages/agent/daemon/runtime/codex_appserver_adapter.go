@@ -2341,8 +2341,8 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 	}()
 }
 
-func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, reason string) ([]activityshared.Event, error) {
-	reason = strings.TrimSpace(reason)
+func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, request CancelRequest) ([]activityshared.Event, error) {
+	reason := strings.TrimSpace(request.Reason)
 	appSession := a.getSession(session.AgentSessionID)
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected

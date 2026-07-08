@@ -128,6 +128,7 @@ type RuntimeTurn = {
   readonly turnId: string;
   readonly promptUuid: string;
   readonly synthetic?: boolean;
+  readonly origin?: "exec_echo" | "synthetic" | "queued" | "delegated";
   settled: boolean;
 };
 
@@ -421,6 +422,7 @@ export class SessionRuntime {
         type: "turn_completed",
         payload: {
           turnId,
+          turnOrigin: "exec_echo",
           stopReason: "end_turn"
         }
       });
@@ -440,6 +442,7 @@ export class SessionRuntime {
     const turn: RuntimeTurn = {
       turnId,
       promptUuid: crypto.randomUUID(),
+      origin: "exec_echo",
       settled: false
     };
     if (isCompactCommandPrompt(prompt)) {
@@ -1428,6 +1431,7 @@ export class SessionRuntime {
       turnId: `synthetic-${crypto.randomUUID()}`,
       promptUuid: "",
       synthetic: true,
+      origin: "synthetic",
       settled: false
     };
     this.turnQueue.push(turn);
@@ -1456,6 +1460,7 @@ export class SessionRuntime {
         type: "turn_started",
         payload: {
           turnId: turn.turnId,
+          turnOrigin: turn.origin ?? "synthetic",
           synthetic: true
         }
       });
@@ -1487,7 +1492,8 @@ export class SessionRuntime {
       type,
       payload: {
         ...payload,
-        turnId: turn.turnId
+        turnId: turn.turnId,
+        turnOrigin: turn.origin ?? (turn.synthetic ? "synthetic" : "queued")
       }
     });
     this.clearForceCancelTimer();
@@ -1510,7 +1516,8 @@ export class SessionRuntime {
       type,
       payload: {
         ...payload,
-        turnId: turn.turnId
+        turnId: turn.turnId,
+        turnOrigin: turn.origin ?? (turn.synthetic ? "synthetic" : "queued")
       }
     });
   }

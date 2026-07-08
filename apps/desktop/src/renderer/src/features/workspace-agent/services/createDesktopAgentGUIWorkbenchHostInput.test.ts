@@ -1362,6 +1362,24 @@ test("desktop agent GUI workbench host input tracks runtime session settings cha
         reasoningEffortTo: "high",
         source: "session"
       },
+      event: "agent.gui.composer_settings.update_requested",
+      level: "info",
+      sessionId: "session-runtime-settings-1",
+      workspaceId
+    },
+    {
+      details: {
+        agentSessionId: "session-runtime-settings-1",
+        changedFields: "model,permissionModeId,reasoningEffort",
+        modelFrom: "gpt-5",
+        modelTo: "custom:local-model",
+        permissionModeIdFrom: "auto",
+        permissionModeIdTo: "full-access",
+        provider: "codex",
+        reasoningEffortFrom: "medium",
+        reasoningEffortTo: "high",
+        source: "session"
+      },
       event: "agent.gui.composer_settings.changed",
       level: "info",
       sessionId: "session-runtime-settings-1",
