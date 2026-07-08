@@ -15,6 +15,7 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 func (s Service) probeCommandWithReadyAfter(
@@ -377,7 +378,7 @@ func (s Service) codexPlatformBinaryOK(binaryPath string) bool {
 	return ok
 }
 
-func codexProviderChecks(status ProviderStatus, platformBinaryOK bool) []ProviderCheck {
+func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRuntime ProviderCheck) []ProviderCheck {
 	return []ProviderCheck{
 		{
 			Name:   "cli_present",
@@ -394,11 +395,34 @@ func codexProviderChecks(status ProviderStatus, platformBinaryOK bool) []Provide
 			Passed: codexVersionMeetsMinimum(status.CLI.Version),
 			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
 		},
+		nodeRuntime,
 		{
 			Name:   "auth",
 			Passed: status.Auth.Status == AuthAuthenticated,
 			Detail: providerAvailabilityAuthDetailForStatus(status.Auth),
 		},
+	}
+}
+
+func (s Service) codexNodeRuntimeCheck(spec ProviderSpec) ProviderCheck {
+	if nodePath := strings.TrimSpace(managedruntime.EnvValue(spec.AdapterEnv, "TUTTI_APP_NODE")); nodePath != "" {
+		return ProviderCheck{
+			Name:   "node_runtime",
+			Passed: true,
+			Detail: "Using Tutti managed Node fallback: " + nodePath,
+		}
+	}
+	if resolved := s.userNodeRuntimePath(spec.AdapterEnv); resolved != "" {
+		return ProviderCheck{
+			Name:   "node_runtime",
+			Passed: true,
+			Detail: "Using user Node from PATH: " + resolved,
+		}
+	}
+	return ProviderCheck{
+		Name:   "node_runtime",
+		Passed: false,
+		Detail: "Node runtime not found",
 	}
 }
 

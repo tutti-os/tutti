@@ -1988,6 +1988,57 @@ func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *tes
 	}
 }
 
+func TestServiceResolveProviderCommandPrefersUserNodeForCodex(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/usr/bin/env node\n")
+	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
+		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, must not inject managed node when user node is available", result.Env)
+	}
+}
+
+func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	writeExecutable(t, filepath.Join(binDir, "codex"), "#!/usr/bin/env node\n")
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+
+	result, err := service.ResolveProviderCommand(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !slices.Equal(result.Command, []string{"codex", "app-server"}) {
+		t.Fatalf("Command = %#v, want codex app-server", result.Command)
+	}
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	if !slices.Contains(result.Env, "TUTTI_APP_NODE="+managedNode) {
+		t.Fatalf("Env = %#v, want managed node fallback", result.Env)
+	}
+}
+
 func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.T) {
 	t.Setenv(claudeCodeRuntimeEnv, "")
 
