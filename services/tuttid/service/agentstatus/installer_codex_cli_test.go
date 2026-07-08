@@ -261,6 +261,64 @@ func TestRunManagedNPMPackageInstallerInstallsTuttiAgentWithManagedRuntime(t *te
 	}
 }
 
+func TestRunManagedNPMPackageInstallerRepairsManagedBinEEXIST(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+	conflictPath := filepath.Join(home, ".local", "bin", "tutti-agent")
+	writeExecutable(t, conflictPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.1'; exit 0; fi\nexit 0\n")
+
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+
+	var commands []InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		commands = append(commands, input)
+		if len(commands) == 1 {
+			return InstallCommandResult{
+				ExitCode: 1,
+				Stderr:   "npm error code EEXIST\nnpm error path " + conflictPath + "\nnpm error File exists: " + conflictPath,
+			}, nil
+		}
+		if _, err := os.Stat(conflictPath); !os.IsNotExist(err) {
+			t.Fatalf("conflict path still exists before retry: %v", err)
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	if _, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
+		PackageName:     "@tutti-os/tutti-agent",
+		PackageVersion:  "0.0.2",
+		BinaryName:      "tutti-agent",
+		IncludeOptional: true,
+	}, conflictPath); err != nil {
+		t.Fatalf("runManagedNPMPackageInstaller() error = %v", err)
+	}
+	if len(commands) != 2 {
+		t.Fatalf("install command calls = %d, want EEXIST retry", len(commands))
+	}
+}
+
 type staticManagedRuntimeResolver struct {
 	runtime managedruntime.ResolvedRuntime
 }

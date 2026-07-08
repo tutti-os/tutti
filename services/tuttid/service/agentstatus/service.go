@@ -159,7 +159,7 @@ type CLIStatus struct {
 	Version    string
 	// MinVersion is the lowest CLI version this provider supports, when it
 	// enforces a floor (codex). Empty for providers with no version gate. Lets
-	// the UI surface "current X, requires Y" from the same constant the gate uses.
+	// the UI surface "current X, requires >= Y" from the same constant the gate uses.
 	MinVersion string
 }
 
@@ -168,9 +168,10 @@ type AdapterStatus struct {
 	BinaryPath string
 	Command    []string
 	// Version is the installed adapter package version (when resolvable);
-	// RequiredVersion is the version this provider requires. Exposed so the UI
-	// can show "current X, requires Y" on an adapter version mismatch and so
-	// telemetry can surface the drift — the same data the readiness gate uses.
+	// RequiredVersion is the minimum adapter package version this provider
+	// accepts. Exposed so the UI can show "current X, requires >= Y" on an
+	// adapter version mismatch and so telemetry can surface the drift — the same
+	// data the readiness gate uses.
 	Version         string
 	RequiredVersion string
 }

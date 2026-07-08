@@ -75,6 +75,8 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     installFailed: "agentProviders.installFailed",
     installFailedDescription: "agentProviders.installFailedDescription",
     installFailedMissingRuntime: "agentProviders.installFailedMissingRuntime",
+    installFailedOutdatedLocalAgent:
+      "agentProviders.installFailedOutdatedLocalAgent",
     installFailedTimedOut: "agentProviders.installFailedTimedOut",
     installUnavailableInRegion: "agentProviders.installUnavailableInRegion",
     installRequired: "agentProviders.installRequired",

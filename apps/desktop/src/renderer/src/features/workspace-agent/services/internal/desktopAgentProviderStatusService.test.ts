@@ -765,6 +765,62 @@ test("runAction summarizes technical install probe failures for toast copy", asy
   ]);
 });
 
+test("runAction summarizes managed npm bin conflicts as outdated local agent", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new DesktopAgentProviderStatusService(
+    {
+      tuttidClient: createTuttidClient({
+        actionRuns: [
+          {
+            actionID: "install",
+            completedAt: "2026-06-02T08:00:00.000Z",
+            message:
+              "npm error code EEXIST\nnpm error path /Users/example/.local/bin/tutti-agent\nnpm error File exists: /Users/example/.local/bin/tutti-agent",
+            provider: "tutti-agent",
+            reasonCode: "install_command_failed",
+            status: "failed"
+          }
+        ],
+        snapshots: [
+          createStatusResponse([
+            createProviderStatus({
+              actions: [
+                {
+                  command: {
+                    cwd: "/workspace",
+                    input:
+                      "npm install -g @tutti-os/tutti-agent@0.0.2 --include=optional\n"
+                  },
+                  id: "install",
+                  kind: "terminal_command"
+                }
+              ],
+              availability: "not_installed",
+              provider: "tutti-agent"
+            })
+          ])
+        ]
+      }),
+      terminalCommandRunner: {
+        async runTerminalCommand() {}
+      }
+    },
+    notifications.service
+  );
+
+  await service.refresh();
+  await assert.rejects(() => service.runAction("tutti-agent", "install"));
+
+  assert.deepEqual(notifications.items, [
+    {
+      description:
+        "An older local Agent was detected, but automatic upgrade failed.",
+      tone: "error",
+      title: "Connection failed"
+    }
+  ]);
+});
+
 test("runAction reports install failures and clears pending state", async () => {
   const notifications = createNotificationRecorder();
   const service = new DesktopAgentProviderStatusService(

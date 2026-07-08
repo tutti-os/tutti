@@ -15,7 +15,7 @@ const (
 
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
 const codexServiceTierOverride = `service_tier="fast"`
-const tuttiAgentRequiredVersion = "0.0.2"
+const minTuttiAgentVersion = "0.0.2"
 
 type ProviderSpec struct {
 	Provider                     string
@@ -121,7 +121,7 @@ func DefaultRegistry() Registry {
 			AdapterCommand:     []string{"tutti-agent", "app-server"},
 			AdapterPackage: AdapterPackageRequirement{
 				Name:    "@tutti-os/tutti-agent",
-				Version: tuttiAgentRequiredVersion,
+				Version: minTuttiAgentVersion,
 			},
 			AuthStatusCommand: []string{"login", "status"},
 			AuthMarkerPaths:   []string{"~/.tutti-agent/auth.json"},
@@ -230,10 +230,10 @@ func codexCLIInstallerSpec() InstallerSpec {
 func tuttiAgentInstallerSpec() InstallerSpec {
 	return InstallerSpec{
 		Kind:           InstallerKindManagedNPMPackage,
-		DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + tuttiAgentRequiredVersion + " --include=optional",
+		DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + minTuttiAgentVersion + " --include=optional",
 		ManagedNPM: &ManagedNPMPackageInstallerSpec{
 			PackageName:     "@tutti-os/tutti-agent",
-			PackageVersion:  tuttiAgentRequiredVersion,
+			PackageVersion:  minTuttiAgentVersion,
 			BinaryName:      "tutti-agent",
 			IncludeOptional: true,
 		},
