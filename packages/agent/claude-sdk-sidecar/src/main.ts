@@ -3632,11 +3632,20 @@ function credentialContentSnapshot(content: string): Record<string, unknown> {
     const parsed = JSON.parse(content) as Record<string, unknown>;
     const oauth = recordValue(parsed.claudeAiOauth) ?? {};
     const expiresAt = numberValue(oauth.expiresAt);
+    const accessToken = stringValue(oauth.accessToken);
+    const refreshToken = stringValue(oauth.refreshToken);
     return {
       topLevelKeys: Object.keys(parsed),
       oauthKeys: Object.keys(oauth),
-      hasAccessToken: Boolean(stringValue(oauth.accessToken)),
-      hasRefreshToken: Boolean(stringValue(oauth.refreshToken)),
+      hasAccessToken: Boolean(accessToken),
+      hasRefreshToken: Boolean(refreshToken),
+      // Short one-way fingerprints (never the tokens themselves) so a rotation
+      // is visible across process boundaries: when a second Claude process
+      // refreshes, refreshTokenFp changes; a still-running process that later
+      // reads the pre-rotation fingerprint is the one that will hit
+      // invalid_grant and wipe the shared store. Empty string == token absent.
+      accessTokenFp: accessToken ? credentialFingerprint(accessToken) : "",
+      refreshTokenFp: refreshToken ? credentialFingerprint(refreshToken) : "",
       expiresAt,
       expiresAtISO: expiresAt > 0 ? new Date(expiresAt).toISOString() : null,
       expired: expiresAt > 0 ? expiresAt <= Date.now() : null
@@ -3646,6 +3655,13 @@ function credentialContentSnapshot(content: string): Record<string, unknown> {
       parseError: credentialProbeErrorPayload(error)
     };
   }
+}
+
+// credentialFingerprint reduces a secret to a short, non-reversible marker
+// (first 8 hex of its SHA-256) used only to detect whether two reads saw the
+// same token. It never leaves the raw token in a log line.
+function credentialFingerprint(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex").slice(0, 8);
 }
 
 function credentialProbeErrorPayload(error: unknown): Record<string, unknown> {
