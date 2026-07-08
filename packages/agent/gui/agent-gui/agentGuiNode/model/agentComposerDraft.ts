@@ -84,6 +84,7 @@ export const MAX_AGENT_COMPOSER_DRAFT_IMAGES = 8;
 type AgentPromptImageContentBlock = AgentPromptContentBlock & {
   type: "image";
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  attachmentId?: string;
   data?: string;
   path?: string;
 };
@@ -120,10 +121,11 @@ export function normalizeAgentPromptContentBlocks(
     }
     if (block.type === "image") {
       const mimeType = block.mimeType?.trim();
+      const attachmentId = block.attachmentId?.trim();
       const data = block.data?.trim();
       const imagePath = block.path?.trim();
       if (
-        (!data && !imagePath) ||
+        (!attachmentId && !data && !imagePath) ||
         (mimeType !== "image/png" &&
           mimeType !== "image/jpeg" &&
           mimeType !== "image/webp")
@@ -133,7 +135,11 @@ export function normalizeAgentPromptContentBlocks(
       result.push({
         type: "image",
         mimeType,
-        ...(imagePath ? { path: imagePath } : { data }),
+        ...(attachmentId
+          ? { attachmentId }
+          : imagePath
+            ? { path: imagePath }
+            : { data }),
         ...(block.name?.trim() ? { name: block.name.trim() } : {})
       });
       continue;
@@ -204,7 +210,9 @@ export function agentPromptContentImageBlocks(
   return normalizeAgentPromptContentBlocks(content).filter(
     (block): block is AgentPromptImageContentBlock =>
       block.type === "image" &&
-      (typeof block.data === "string" || typeof block.path === "string") &&
+      (typeof block.attachmentId === "string" ||
+        typeof block.data === "string" ||
+        typeof block.path === "string") &&
       typeof block.mimeType === "string"
   );
 }
@@ -588,6 +596,7 @@ function agentPromptImageBlockToDraftImage(
     id: `${idPrefix}:image:${index}`,
     name: image.name?.trim() || `image-${index + 1}`,
     mimeType: image.mimeType,
+    ...(image.attachmentId ? { attachmentId: image.attachmentId } : {}),
     ...(image.data ? { data: image.data } : {}),
     ...(image.path ? { path: image.path } : {}),
     previewUrl:

@@ -24,6 +24,7 @@ type acpTurnNormalizer struct {
 	toolCallsSeen              map[string]bool
 	pendingToolCalls           map[string]pendingToolCallSnapshot
 	pendingCompactionMessageID string
+	suppressAssistantOutput    bool
 }
 
 // TrackCompactionNotice remembers the in-flight compaction banner so a turn
@@ -71,6 +72,13 @@ func (n *acpTurnNormalizer) SetThinkingPresentation(messageKind string) {
 	n.thinkingMessageKind = strings.TrimSpace(messageKind)
 }
 
+func (n *acpTurnNormalizer) SuppressAssistantOutput() {
+	if n == nil {
+		return
+	}
+	n.suppressAssistantOutput = true
+}
+
 func newACPTurnNormalizer() *acpTurnNormalizer {
 	return &acpTurnNormalizer{
 		toolItemIDs:      make(map[string]string),
@@ -81,6 +89,9 @@ func newACPTurnNormalizer() *acpTurnNormalizer {
 
 func (n *acpTurnNormalizer) AppendAssistantChunk(session Session, turnID string, chunk string) []activityshared.Event {
 	if n == nil || chunk == "" {
+		return nil
+	}
+	if n.suppressAssistantOutput {
 		return nil
 	}
 	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
@@ -128,6 +139,9 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if n == nil {
 		return
 	}
+	if n.suppressAssistantOutput {
+		return
+	}
 	finalText = strings.TrimSpace(finalText)
 	if finalText == "" {
 		return
@@ -147,6 +161,9 @@ func (n *acpTurnNormalizer) AppendAssistantSnapshot(
 	messageID string,
 ) []activityshared.Event {
 	if n == nil {
+		return nil
+	}
+	if n.suppressAssistantOutput {
 		return nil
 	}
 	text = strings.TrimSpace(text)
@@ -306,6 +323,7 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	if callID != "" {
 		n.toolCallsSeen[callID] = true
 	}
+	n.mergePendingToolCallSnapshot(&event)
 	n.trackToolCallEvent(event)
 	return event, true
 }
@@ -316,7 +334,7 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 		if !ok {
 			return nil, false
 		}
-		return []activityshared.Event{event}, true
+		return appendTurnFileChangesEvent(session, turnID, []activityshared.Event{event}, event), true
 	}
 	event, ok := n.StandardToolCallEvent(session, turnID, updateType, update)
 	if !ok {
@@ -324,7 +342,26 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 	}
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
+	events = appendTurnFileChangesEvent(session, turnID, events, event)
 	return events, true
+}
+
+func appendTurnFileChangesEvent(
+	session Session,
+	turnID string,
+	events []activityshared.Event,
+	event activityshared.Event,
+) []activityshared.Event {
+	if event.Type != activityshared.EventCallCompleted {
+		return events
+	}
+	fileChanges := fileChangesFromActivityEvent(event)
+	if fileChanges == nil {
+		return events
+	}
+	return append(events, newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWorking, "", "", map[string]any{
+		"fileChanges": fileChanges,
+	}))
 }
 
 func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
@@ -358,6 +395,75 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 		}
 	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
 		delete(n.pendingToolCalls, event.EventID)
+	}
+}
+
+func (n *acpTurnNormalizer) mergePendingToolCallSnapshot(event *activityshared.Event) {
+	if n == nil || event == nil || event.Type != activityshared.EventCallCompleted {
+		return
+	}
+	snapshot, ok := n.pendingToolCalls[event.EventID]
+	if !ok || len(snapshot.payload) == 0 {
+		return
+	}
+	merged := mergePendingToolCallPayload(snapshot.payload, event.Payload.Metadata)
+	if len(merged) == 0 {
+		return
+	}
+	normalizeMergedACPToolPayload(merged)
+	event.Payload.Metadata = merged
+	event.Payload.Input = payloadMap(merged, "input")
+	event.Payload.Output = payloadMap(merged, "output")
+	if name := strings.TrimSpace(asString(merged["name"])); name != "" {
+		event.Payload.Name = name
+	}
+}
+
+func mergePendingToolCallPayload(started map[string]any, completed map[string]any) map[string]any {
+	merged := clonePayload(started)
+	if merged == nil {
+		merged = map[string]any{}
+	}
+	for key, value := range completed {
+		if key == "input" {
+			if len(payloadMap(merged, "input")) == 0 {
+				merged[key] = clonePayloadValue(value)
+			}
+			continue
+		}
+		merged[key] = clonePayloadValue(value)
+	}
+	return merged
+}
+
+func normalizeMergedACPToolPayload(payload map[string]any) {
+	if len(payload) == 0 {
+		return
+	}
+	input := payloadMap(payload, "input")
+	kind := firstNonEmpty(
+		asString(payload["kind"]),
+		asString(input["kind"]),
+		asString(payloadMap(payload, "acp")["kind"]),
+	)
+	name := firstNonEmpty(
+		asString(input["title"]),
+		asString(payload["name"]),
+		asString(payload["toolName"]),
+		asString(payload["callId"]),
+	)
+	if toolName := acpToolName(asString(payload["callId"]), name, kind, input); toolName != "" {
+		payload["toolName"] = toolName
+		payload["name"] = toolName
+	}
+	if strings.TrimSpace(asString(payload["kind"])) == "" && strings.TrimSpace(kind) != "" {
+		payload["kind"] = kind
+	}
+	if strings.TrimSpace(asString(payload["callType"])) == "" && strings.TrimSpace(kind) != "" {
+		payload["callType"] = kind
+	}
+	if fileChanges := fileChangesFromACPToolPayload(payload); fileChanges != nil {
+		payload["fileChanges"] = fileChanges
 	}
 }
 

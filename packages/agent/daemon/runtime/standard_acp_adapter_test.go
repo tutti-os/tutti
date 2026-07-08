@@ -1511,6 +1511,388 @@ func TestStandardACPNonClaudeToolCallSanitizesImageBytes(t *testing.T) {
 	}
 }
 
+func TestStandardACPOpenCodeEditToolCarriesFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	completed, ok := standardACPToolCallEventWithID(session, "event-opencode-edit", "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-edit-1",
+		"title":         "edit_file",
+		"kind":          "edit",
+		"status":        "completed",
+		"content": []any{
+			map[string]any{
+				"type":    "diff",
+				"path":    "/workspace/src/app.ts",
+				"oldText": "const ready = false\n",
+				"newText": "const ready = true\n",
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("standardACPToolCallEventWithID(opencode edit) returned !ok")
+	}
+	if completed.Type != activityshared.EventCallCompleted {
+		t.Fatalf("completed event type = %s, want call.completed", completed.Type)
+	}
+	if got := completed.Payload.Metadata["toolName"]; got != "Edit" {
+		t.Fatalf("metadata toolName = %#v, want Edit", completed.Payload.Metadata)
+	}
+	if got := completed.Payload.Output["filePath"]; got != "/workspace/src/app.ts" {
+		t.Fatalf("output filePath = %#v, want path from diff content", completed.Payload.Output)
+	}
+	fileChanges := payloadMap(completed.Payload.Metadata, "fileChanges")
+	files := payloadArray(fileChanges["files"])
+	if len(files) != 1 {
+		t.Fatalf("fileChanges = %#v, want one file", fileChanges)
+	}
+	if files[0]["path"] != "/workspace/src/app.ts" ||
+		files[0]["oldString"] != "const ready = false\n" ||
+		files[0]["newString"] != "const ready = true\n" ||
+		files[0]["change"] != "modified" {
+		t.Fatalf("fileChanges files = %#v, want modified edit diff", files)
+	}
+}
+
+func TestStandardACPOpenCodeWriteToolReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-write-1",
+		"title":         "write_file",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"file_path": "/workspace/notes/today.md",
+			"content":   "# Today\n",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode write) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 1 ||
+				files[0]["path"] != "/workspace/notes/today.md" ||
+				files[0]["newString"] != "# Today\n" ||
+				files[0]["change"] != "added" {
+				t.Fatalf("turn fileChanges = %#v, want added write file", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+
+	report := reportActivityInput(session, events)
+	var messageWithFileChanges *agentsessionstore.WorkspaceAgentMessageUpdate
+	for index := range report.MessageUpdates {
+		update := &report.MessageUpdates[index]
+		if update.Kind == "tool_call" && update.Status == "completed" {
+			fileChanges := payloadMap(update.Payload, "fileChanges")
+			if len(payloadArray(fileChanges["files"])) > 0 {
+				messageWithFileChanges = update
+				break
+			}
+		}
+	}
+	if messageWithFileChanges == nil {
+		t.Fatalf("message updates = %#v, want completed tool_call fileChanges", report.MessageUpdates)
+	}
+	if got := messageWithFileChanges.Payload["toolName"]; got != "Write" && got != "Edit" {
+		t.Fatalf("message update toolName = %#v, want write/edit", got)
+	}
+	var patchWithFileChanges *agentsessionstore.WorkspaceAgentStatePatch
+	for index := range report.StatePatches {
+		patch := &report.StatePatches[index]
+		if patch.Turn != nil && len(patch.Turn.FileChanges) > 0 {
+			patchWithFileChanges = patch
+			break
+		}
+	}
+	if patchWithFileChanges == nil {
+		t.Fatalf("state patches = %#v, want turn fileChanges", report.StatePatches)
+	}
+	files := payloadArray(patchWithFileChanges.Turn.FileChanges["files"])
+	if len(files) != 1 || files[0]["path"] != "/workspace/notes/today.md" {
+		t.Fatalf("state patch fileChanges = %#v, want opencode write path", patchWithFileChanges.Turn.FileChanges)
+	}
+}
+
+func TestStandardACPOpenCodeApplyPatchReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	patchText := `*** Begin Patch
+*** Add File: package.json
++{
++  "scripts": {
++    "dev": "vite"
++  }
++}
+*** Add File: src/App.jsx
++export default function App() {
++  return <main>Ready</main>
++}
+*** End Patch`
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-patch-1",
+		"title":         "apply_patch",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"patchText": patchText,
+		},
+		"rawOutput": "Success. Updated the following files:\nA /workspace/package.json\nA /workspace/src/App.jsx",
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode apply_patch) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["newString"]), `"dev": "vite"`) ||
+				files[1]["path"] != "src/App.jsx" ||
+				!strings.Contains(asString(files[1]["newString"]), "return <main>Ready</main>") {
+				t.Fatalf("call fileChanges = %#v, want added files from patchText", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "package.json" || files[1]["path"] != "src/App.jsx" {
+				t.Fatalf("turn fileChanges = %#v, want patchText files", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+
+	report := reportActivityInput(session, events)
+	var messageWithFileChanges *agentsessionstore.WorkspaceAgentMessageUpdate
+	for index := range report.MessageUpdates {
+		update := &report.MessageUpdates[index]
+		if update.Kind == "tool_call" && update.Status == "completed" {
+			fileChanges := payloadMap(update.Payload, "fileChanges")
+			if len(payloadArray(fileChanges["files"])) > 0 {
+				messageWithFileChanges = update
+				break
+			}
+		}
+	}
+	if messageWithFileChanges == nil {
+		t.Fatalf("message updates = %#v, want completed tool_call fileChanges", report.MessageUpdates)
+	}
+	if got := messageWithFileChanges.Payload["toolName"]; got != "Edit" {
+		t.Fatalf("message update toolName = %#v, want Edit", got)
+	}
+	var patchWithFileChanges *agentsessionstore.WorkspaceAgentStatePatch
+	for index := range report.StatePatches {
+		patch := &report.StatePatches[index]
+		if patch.Turn != nil && len(patch.Turn.FileChanges) > 0 {
+			patchWithFileChanges = patch
+			break
+		}
+	}
+	if patchWithFileChanges == nil {
+		t.Fatalf("state patches = %#v, want turn fileChanges", report.StatePatches)
+	}
+	files := payloadArray(patchWithFileChanges.Turn.FileChanges["files"])
+	if len(files) != 2 || files[0]["path"] != "package.json" || files[1]["path"] != "src/App.jsx" {
+		t.Fatalf("state patch fileChanges = %#v, want apply_patch files", patchWithFileChanges.Turn.FileChanges)
+	}
+}
+
+func TestStandardACPOpenCodeCompletedEditMetadataFilesReportsTurnFileChanges(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	events, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "opencode-patch-2",
+		"title":         "Success. Updated the following files:\nA Users/vector/Documents/tutti/session-1/package.json\nA Users/vector/Documents/tutti/session-1/src/App.jsx",
+		"kind":          "edit",
+		"status":        "completed",
+		"rawInput": map[string]any{
+			"patchText": "*** Begin Patch\n*** Add File: package.json\n+{}\n*** End Patch",
+		},
+		"rawOutput": map[string]any{
+			"metadata": map[string]any{
+				"files": []any{
+					map[string]any{
+						"filePath":     "/Users/vector/Documents/tutti/session-1/package.json",
+						"relativePath": "Users/vector/Documents/tutti/session-1/package.json",
+						"type":         "add",
+						"patch":        "Index: /Users/vector/Documents/tutti/session-1/package.json\n@@ -0,0 +1 @@\n+{}",
+					},
+					map[string]any{
+						"filePath":     "/Users/vector/Documents/tutti/session-1/src/App.jsx",
+						"relativePath": "Users/vector/Documents/tutti/session-1/src/App.jsx",
+						"type":         "add",
+						"patch":        "Index: /Users/vector/Documents/tutti/session-1/src/App.jsx\n@@ -0,0 +1 @@\n+export default function App() {}",
+					},
+				},
+			},
+			"output": "Success. Updated the following files:\nA Users/vector/Documents/tutti/session-1/package.json\nA Users/vector/Documents/tutti/session-1/src/App.jsx",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode completed edit metadata files) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range events {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "/Users/vector/Documents/tutti/session-1/package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["unifiedDiff"]), "@@ -0,0 +1 @@") ||
+				files[1]["path"] != "/Users/vector/Documents/tutti/session-1/src/App.jsx" {
+				t.Fatalf("call fileChanges = %#v, want metadata files diffs", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "/Users/vector/Documents/tutti/session-1/package.json" {
+				t.Fatalf("turn fileChanges = %#v, want metadata files diffs", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", events)
+	}
+}
+
+func TestStandardACPOpenCodeCompletedEditMergesStartedPatchInput(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	patchText := `*** Begin Patch
+*** Add File: package.json
++{"scripts":{"dev":"vite"}}
+*** Add File: src/App.jsx
++export default function App() {
++  return <main>Ready</main>
++}
+*** End Patch`
+	startedEvents, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "call-real-opencode",
+		"title":         "apply_patch",
+		"kind":          "edit",
+		"status":        "in_progress",
+		"rawInput": map[string]any{
+			"kind":      "edit",
+			"patchText": patchText,
+			"title":     "apply_patch",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode started apply_patch) returned !ok")
+	}
+	if len(startedEvents) == 0 {
+		t.Fatal("started events empty")
+	}
+
+	completedEvents, ok := normalizer.StandardToolCallEvents(session, "turn-1", "tool_call_update", map[string]any{
+		"sessionUpdate": "tool_call_update",
+		"toolCallId":    "call-real-opencode",
+		"title":         "Success. Updated the following files: A /workspace/package.json A /workspace/src/App.jsx",
+		"status":        "completed",
+		"rawOutput": map[string]any{
+			"files": []any{
+				map[string]any{
+					"filePath": "/workspace/package.json",
+					"type":     "add",
+					"patch":    "Index: /workspace/package.json\n@@ -0,0 +1 @@\n+{\"scripts\":{\"dev\":\"vite\"}}",
+				},
+				map[string]any{
+					"filePath": "/workspace/src/App.jsx",
+					"type":     "add",
+					"patch":    "Index: /workspace/src/App.jsx\n@@ -0,0 +1,3 @@\n+export default function App() {\n+  return <main>Ready</main>\n+}",
+				},
+			},
+			"output": "Success. Updated the following files: A /workspace/package.json A /workspace/src/App.jsx",
+		},
+	})
+	if !ok {
+		t.Fatal("StandardToolCallEvents(opencode completed apply_patch) returned !ok")
+	}
+	var sawCallCompleted bool
+	var sawTurnUpdated bool
+	for _, event := range completedEvents {
+		switch event.Type {
+		case activityshared.EventCallCompleted:
+			sawCallCompleted = true
+			if got := event.Payload.Metadata["toolName"]; got != "Edit" {
+				t.Fatalf("metadata toolName = %#v, want Edit", event.Payload.Metadata)
+			}
+			if got := event.Payload.Name; got != "Edit" {
+				t.Fatalf("payload name = %#v, want Edit", got)
+			}
+			input := payloadMap(event.Payload.Metadata, "input")
+			if strings.TrimSpace(asString(input["patchText"])) == "" {
+				t.Fatalf("completed input = %#v, want started patchText merged", input)
+			}
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 ||
+				files[0]["path"] != "/workspace/package.json" ||
+				files[0]["change"] != "added" ||
+				!strings.Contains(asString(files[0]["unifiedDiff"]), "@@ -0,0 +1 @@") ||
+				files[1]["path"] != "/workspace/src/App.jsx" {
+				t.Fatalf("call fileChanges = %#v, want output.files diffs", fileChanges)
+			}
+		case activityshared.EventTurnUpdated:
+			sawTurnUpdated = true
+			fileChanges := payloadMap(event.Payload.Metadata, "fileChanges")
+			files := payloadArray(fileChanges["files"])
+			if len(files) != 2 || files[0]["path"] != "/workspace/package.json" {
+				t.Fatalf("turn fileChanges = %#v, want output.files diffs", fileChanges)
+			}
+		}
+	}
+	if !sawCallCompleted || !sawTurnUpdated {
+		t.Fatalf("events = %#v, want call.completed and turn.updated", completedEvents)
+	}
+}
+
 func TestClaudeCodeStandardACPToolCallEventCanonicalizesSkillPayload(t *testing.T) {
 	t.Parallel()
 
@@ -4269,6 +4651,148 @@ func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 	}
 }
 
+func TestOpenCodeAdapterStartExposesReviewCommandBaseline(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-review")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	snapshot, ok := adapter.SessionCommandSnapshot(session)
+	if !ok {
+		t.Fatal("SessionCommandSnapshot ok=false, want OpenCode review baseline")
+	}
+	names := agentSessionCommandNames(snapshot.Commands)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(names, want) {
+			t.Fatalf("commands = %#v, want %q", names, want)
+		}
+	}
+
+	state := adapter.SessionState(session)
+	commands, _ := state.RuntimeContext["commands"].([]string)
+	for _, want := range []string{"compact", "review"} {
+		if !containsString(commands, want) {
+			t.Fatalf("runtime context commands = %#v, want %q", commands, want)
+		}
+	}
+	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+	for _, want := range []string{CapabilityCompact, "review"} {
+		if !containsString(capabilities, want) {
+			t.Fatalf("runtime context capabilities = %#v, want %q", capabilities, want)
+		}
+	}
+}
+
+func TestOpenCodeCommandUpdatePreservesAdapterOwnedCompactCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-commands")
+	adapter := NewOpenCodeAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	session := standardTestSession(ProviderOpenCode)
+
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:           session.RoomID,
+		AgentSessionID:   session.AgentSessionID,
+		Provider:         session.Provider,
+		CWD:              session.CWD,
+		PermissionModeID: session.PermissionModeID,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	stream, unsubscribe, ok := controller.Subscribe(started.Session.RoomID, started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe ok=false, want live session stream")
+	}
+	defer unsubscribe()
+
+	transport.conn.sendAvailableCommandEntries([]map[string]any{{
+		"name":        "review",
+		"description": "Review from OpenCode",
+	}})
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-stream:
+			if event.EventType != StreamEventAvailableCommands {
+				continue
+			}
+			snapshot, ok := event.Data.(AgentSessionCommandSnapshot)
+			if !ok {
+				t.Fatalf("event data = %#v, want AgentSessionCommandSnapshot", event.Data)
+			}
+			names := agentSessionCommandNames(snapshot.Commands)
+			for _, want := range []string{"compact", "review"} {
+				if !containsString(names, want) {
+					t.Fatalf("commands = %#v, want %q", names, want)
+				}
+			}
+
+			state := adapter.SessionState(started.Session)
+			capabilities, _ := state.RuntimeContext["capabilities"].([]string)
+			if !containsString(capabilities, CapabilityCompact) || !containsString(capabilities, "review") {
+				t.Fatalf("capabilities = %#v, want compact+review", capabilities)
+			}
+			return
+		case <-deadline:
+			t.Fatal("OpenCode available_commands_update was not published")
+		}
+	}
+}
+
+func TestOpenCodeSlashCompactEmitsCompactionNotice(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-compact")
+	adapter := NewOpenCodeAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-compact"
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "/compact",
+	}}, "", "turn-opencode-compact", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var progressCount, completedCount int
+	var progressMessageID, completedMessageID string
+	for _, event := range events {
+		if event.Payload.Content == "Inspecting files." {
+			t.Fatalf("compact assistant summary leaked into transcript: %#v", events)
+		}
+		switch event.Payload.Content {
+		case "Compacting context.":
+			progressCount++
+			progressMessageID = asString(event.Payload.Metadata["messageId"])
+		case "Context compacted.":
+			completedCount++
+			completedMessageID = asString(event.Payload.Metadata["messageId"])
+		}
+	}
+	if progressCount != 1 {
+		t.Fatalf("progress banners = %d, want exactly 1; events = %#v", progressCount, events)
+	}
+	if completedCount != 1 {
+		t.Fatalf("completed banners = %d, want exactly 1; events = %#v", completedCount, events)
+	}
+	if progressMessageID == "" || progressMessageID != completedMessageID {
+		t.Fatalf("messageId mismatch: progress %q, completed %q", progressMessageID, completedMessageID)
+	}
+}
+
 func TestControllerPublishesIdleStandardACPCommandUpdatesAfterStart(t *testing.T) {
 	t.Parallel()
 
@@ -5062,22 +5586,28 @@ func (c *standardACPConnection) sendJSON(value any) {
 }
 
 func (c *standardACPConnection) sendAvailableCommandsUpdate() {
+	c.sendAvailableCommandEntries([]map[string]any{{
+		"name":        "web",
+		"description": "Search the web",
+		"input": map[string]any{
+			"hint": "query",
+		},
+	}})
+}
+
+func (c *standardACPConnection) sendAvailableCommandEntries(commands []map[string]any) {
+	values := make([]any, 0, len(commands))
+	for _, command := range commands {
+		values = append(values, command)
+	}
 	c.sendJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  acpMethodUpdate,
 		"params": map[string]any{
 			"sessionId": c.sessionID,
 			"update": map[string]any{
-				"sessionUpdate": "available_commands_update",
-				"availableCommands": []any{
-					map[string]any{
-						"name":        "web",
-						"description": "Search the web",
-						"input": map[string]any{
-							"hint": "query",
-						},
-					},
-				},
+				"sessionUpdate":     "available_commands_update",
+				"availableCommands": values,
 			},
 		},
 	})

@@ -634,11 +634,11 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
     mention: {
       entityId: "local:codex",
       label: "Codex",
+      // description/subtitle are blanked when identical to the label (avoids
+      // rendering "Codex Codex"), so the compact presentation omits them.
       presentation: {
         agentProviderId: "codex",
-        description: "Codex",
-        iconUrl: tuttiAgentAssetUrls.codex,
-        subtitle: "Codex"
+        iconUrl: tuttiAgentAssetUrls.codex
       },
       scope: {
         workspaceId: "workspace-1"

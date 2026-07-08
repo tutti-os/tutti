@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -139,6 +140,32 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
+type CountSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type SessionSectionCount struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+	Count         int
+}
+
+type DeleteSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type DeleteSessionSectionResult struct {
+	WorkspaceID       string
+	SectionKey        string
+	AgentTargetID     string
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
 type ListPinnedSessionPageInput struct {
 	Cursor        string
 	Limit         int
@@ -212,8 +239,23 @@ type SessionReader interface {
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
 }
 
+type SessionStateReporter interface {
+	ReportSessionState(
+		context.Context,
+		agentsessionstore.ReportSessionStateInput,
+	) (agentsessionstore.ReportSessionStateReply, error)
+}
+
 type SessionSectionReader interface {
 	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+}
+
+type SessionSectionCounter interface {
+	CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool)
+}
+
+type SessionSectionDeleter interface {
+	DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool)
 }
 
 type UserProjectReader interface {

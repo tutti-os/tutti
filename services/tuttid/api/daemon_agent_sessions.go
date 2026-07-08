@@ -18,6 +18,8 @@ type AgentSessionService interface {
 	ListFiltered(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	ListSessionSections(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
 	ListSessionSectionPage(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	CountSessionSection(context.Context, string, agentservice.CountSessionSectionInput) (agentservice.SessionSectionCount, error)
+	DeleteSessionSection(context.Context, string, agentservice.DeleteSessionSectionInput) (agentservice.DeleteSessionSectionResult, error)
 	ListPinnedSessionPage(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)

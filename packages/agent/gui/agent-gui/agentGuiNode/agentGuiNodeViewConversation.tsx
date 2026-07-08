@@ -224,6 +224,23 @@ export function groupConversations(
   return groups;
 }
 
+export function filterConversationSectionsBySearchMatches(
+  sections: readonly ConversationSection[],
+  matchingConversations: AgentGUINodeViewModel["conversations"]
+): ConversationSection[] {
+  const matchingConversationIds = new Set(
+    matchingConversations.map((conversation) => conversation.id)
+  );
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        matchingConversationIds.has(item.id)
+      )
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 type ConversationSectionWithSort = ConversationSection & {
   projectOrder: number;
   sectionOrder: number;

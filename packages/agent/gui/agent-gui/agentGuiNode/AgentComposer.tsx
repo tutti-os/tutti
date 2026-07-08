@@ -3595,7 +3595,9 @@ export function AgentComposer({
             onSendQueuedPromptNext={onSendQueuedPromptNext}
             onRemoveQueuedPrompt={onRemoveQueuedPrompt}
             onEditQueuedPrompt={onEditQueuedPrompt}
+            agentSessionId={slashStatusAgentSessionId}
             onLinkClick={handleLinkClick}
+            workspaceId={workspaceId}
             workspaceAppIcons={workspaceAppIcons}
           />
         </div>

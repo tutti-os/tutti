@@ -59,6 +59,42 @@ func writeListWorkspaceAgentSessionSectionPageError(err error) tuttigenerated.Li
 	}
 }
 
+func writeCountWorkspaceAgentSessionSectionError(err error) tuttigenerated.CountWorkspaceAgentSessionSectionResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.CountWorkspaceAgentSessionSection404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.CountWorkspaceAgentSessionSection400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.CountWorkspaceAgentSessionSection502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
+func writeDeleteWorkspaceAgentSessionSectionError(err error) tuttigenerated.DeleteWorkspaceAgentSessionSectionResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.DeleteWorkspaceAgentSessionSection404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.DeleteWorkspaceAgentSessionSection400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.DeleteWorkspaceAgentSessionSection502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeListWorkspaceAgentPinnedSessionPageError(err error) tuttigenerated.ListWorkspaceAgentPinnedSessionPageResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

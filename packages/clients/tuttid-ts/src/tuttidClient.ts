@@ -19,8 +19,10 @@ import {
   createWorkspaceFile,
   createWorkspaceFileDirectory,
   createWorkspaceTerminal,
+  countWorkspaceAgentSessionSection,
   deleteUserProject,
   deleteWorkspaceAgentSession,
+  deleteWorkspaceAgentSessionSection,
   deleteWorkspaceIssue,
   deleteWorkspaceIssueTask,
   deleteWorkspaceIssueTopic,
@@ -422,6 +424,22 @@ export function createTuttidClient(
         "Delete workspace agent session request failed."
       );
     },
+    async deleteWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await deleteWorkspaceAgentSessionSection({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Delete workspace agent session section request failed."
+      );
+    },
     async clearWorkspaceAgentSessions(workspaceID) {
       const response = await clearWorkspaceAgentSessions({
         client,
@@ -642,6 +660,22 @@ export function createTuttidClient(
       return unwrapData(
         response,
         "Workspace agent session section page request failed."
+      );
+    },
+    async countWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      const response = await countWorkspaceAgentSessionSection({
+        client,
+        path: { workspaceID },
+        query: request,
+        ...requestOptions
+      });
+      return unwrapData(
+        response,
+        "Workspace agent session section count request failed."
       );
     },
     async listWorkspaceAgentPinnedSessionPage(

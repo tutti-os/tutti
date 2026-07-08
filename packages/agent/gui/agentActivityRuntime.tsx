@@ -83,6 +83,29 @@ export interface AgentActivityRuntimeListSessionSectionPageInput {
   workspaceId: string;
 }
 
+export interface AgentActivityRuntimeSessionSectionScopeInput {
+  agentTargetId?: string | null;
+  sectionKey: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionSectionCount {
+  agentTargetId?: string | null;
+  count: number;
+  sectionKey: string;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeDeleteSessionSectionResult {
+  agentTargetId?: string | null;
+  removedMessages: number;
+  removedSessionIds: string[];
+  removedSessions: number;
+  sectionKey: string;
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeListPinnedSessionsPageInput {
   agentTargetId?: string | null;
   cursor?: string;
@@ -369,6 +392,12 @@ export interface AgentActivityRuntime {
   listSessionSectionPage?(
     input: AgentActivityRuntimeListSessionSectionPageInput
   ): Promise<AgentActivityRuntimeSessionSection>;
+  countSessionSection?(
+    input: AgentActivityRuntimeSessionSectionScopeInput
+  ): Promise<AgentActivityRuntimeSessionSectionCount>;
+  deleteSessionSection?(
+    input: AgentActivityRuntimeSessionSectionScopeInput
+  ): Promise<AgentActivityRuntimeDeleteSessionSectionResult>;
   listPinnedSessionsPage?(
     input: AgentActivityRuntimeListPinnedSessionsPageInput
   ): Promise<AgentActivityRuntimeSessionPage>;

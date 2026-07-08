@@ -99,6 +99,10 @@ func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivit
 	return s.agentStore().ListSessionSection(ctx, input)
 }
 
+func (s *SQLiteStore) CountSessionSection(ctx context.Context, input agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool, error) {
+	return s.agentStore().CountSessionSection(ctx, input)
+}
+
 func (s *SQLiteStore) ListSessionMessages(ctx context.Context, input agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {
 	return s.agentStore().ListSessionMessages(ctx, input)
 }
@@ -109,6 +113,10 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFiles(ctx context.Context, input age
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) DeleteSessionSection(ctx context.Context, input agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool, error) {
+	return s.agentStore().DeleteSessionSection(ctx, input)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {

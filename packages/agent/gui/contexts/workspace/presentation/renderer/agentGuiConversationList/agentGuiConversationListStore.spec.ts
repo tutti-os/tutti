@@ -166,7 +166,7 @@ describe("agentGuiConversationListStore", () => {
     });
   });
 
-  it("does not retain other-provider legacy sessions under a cursor agent target filter", async () => {
+  it("does not retain provider-only sessions under an agent target filter", async () => {
     const cursorQuery: AgentGUIConversationListQuery = {
       conversationFilter: {
         kind: "agentTarget",
@@ -185,13 +185,13 @@ describe("agentGuiConversationListStore", () => {
           provider: "cursor",
           title: "Cursor tagged"
         }),
-        runtimeSession("cursor-legacy", 2_500, {
+        runtimeSession("cursor-provider-only", 2_500, {
           provider: "cursor",
-          title: "Cursor legacy"
+          title: "Cursor provider only"
         }),
-        runtimeSession("codex-legacy", 2_000, {
+        runtimeSession("codex-provider-only", 2_000, {
           provider: "codex",
-          title: "Codex legacy"
+          title: "Codex provider only"
         })
       ]
     };
@@ -209,7 +209,7 @@ describe("agentGuiConversationListStore", () => {
         getAgentGUIConversationListQuerySnapshot(
           cursorQuery
         )?.conversations.map((item) => item.id)
-      ).toEqual(["cursor-tagged", "cursor-legacy"]);
+      ).toEqual(["cursor-tagged"]);
     });
   });
 
@@ -350,21 +350,23 @@ describe("agentGuiConversationListStore", () => {
         agentTargetId: "local:codex"
       }
     });
-    const legacyQuery: AgentGUIConversationListQuery = {
+    const defaultFilterQuery: AgentGUIConversationListQuery = {
       workspaceId: "workspace-1",
       userId: "user-1",
       provider: "codex",
       sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
     };
-    const legacyCodexKey = createAgentGUIConversationListQueryKey(legacyQuery);
-    const legacyClaudeKey = createAgentGUIConversationListQueryKey({
-      ...legacyQuery,
+    const defaultFilterCodexKey =
+      createAgentGUIConversationListQueryKey(defaultFilterQuery);
+    const defaultFilterClaudeKey = createAgentGUIConversationListQueryKey({
+      ...defaultFilterQuery,
       provider: "claude-code"
     });
 
     expect(allCodexKey).toBe(allClaudeKey);
     expect(targetCodexKey).toBe(targetClaudeKey);
-    expect(legacyCodexKey).not.toBe(legacyClaudeKey);
+    expect(defaultFilterCodexKey).toBe(allCodexKey);
+    expect(defaultFilterClaudeKey).toBe(allCodexKey);
   });
 
   it("splits query keys by sessionOrigin so local and shared runtimes stay isolated", () => {
@@ -429,19 +431,19 @@ describe("agentGuiConversationListStore", () => {
     ensureAgentGUIConversationListQuery(allQuery);
     scheduleAgentGUIConversationListProjection(allQuery, "projection-sync");
     await waitFor(() => {
-      expect(loadCount).toBe(1);
+      expect(loadCount).toBe(0);
       expect(
         getAgentGUIConversationListQuerySnapshot(allQuery)?.conversations.map(
           (item) => item.id
         )
-      ).toEqual(["codex-local"]);
+      ).toEqual(["codex-local", "claude-local"]);
     });
 
     ensureAgentGUIConversationListQuery(codexQuery);
     scheduleAgentGUIConversationListProjection(codexQuery, "projection-sync");
 
     await waitFor(() => {
-      expect(loadCount).toBe(1);
+      expect(loadCount).toBe(0);
       expect(
         getAgentGUIConversationListQuerySnapshot(codexQuery)?.conversations.map(
           (item) => item.id
@@ -496,7 +498,7 @@ describe("agentGuiConversationListStore", () => {
     runtimeListener?.();
 
     await waitFor(() => {
-      expect(loadCount).toBe(1);
+      expect(loadCount).toBe(0);
       expect(
         getAgentGUIConversationListQuerySnapshot(query)?.conversations.map(
           (item) => item.id
@@ -506,7 +508,7 @@ describe("agentGuiConversationListStore", () => {
 
     scheduleAgentGUIConversationListProjection(query, "projection-sync");
     await waitFor(() => {
-      expect(loadCount).toBe(2);
+      expect(loadCount).toBe(0);
       expect(
         getAgentGUIConversationListQuerySnapshot(query)?.conversations.map(
           (item) => item.id
@@ -574,7 +576,7 @@ describe("agentGuiConversationListStore", () => {
     await waitFor(() => {
       const conversations =
         getAgentGUIConversationListQuerySnapshot(query)?.conversations ?? [];
-      expect(loadCount).toBe(1);
+      expect(loadCount).toBe(0);
       expect(conversations).toHaveLength(2);
       expect(conversations[0]).toBe(previousSessionA);
       expect(conversations[1]).not.toBe(previousSessionB);

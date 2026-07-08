@@ -94,6 +94,7 @@ export function createWorkspaceIssueManagerContribution(input: {
         agentSessionId: request.agentSessionId,
         draftPrompt: request.draftPrompt,
         agentTargetId: request.agentTargetId,
+        openInNewWindow: request.openInNewWindow,
         provider: normalizeDesktopAgentGUIProvider(request.provider),
         userProjectPath: request.userProjectPath,
         workspaceId: request.workspaceId

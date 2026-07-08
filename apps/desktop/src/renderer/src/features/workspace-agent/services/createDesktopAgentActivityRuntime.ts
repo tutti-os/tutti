@@ -80,6 +80,21 @@ export function createDesktopAgentActivityRuntime(
           workspaceId: input.workspaceId ?? undefined
         })
         .catch(() => {});
+      if (input.event.startsWith("agent.gui.composer_settings.")) {
+        const details = input.details ?? {};
+        void options.runtimeApi
+          ?.logTerminalDiagnostic({
+            details: flattenTerminalDiagnosticDetails(details),
+            event: input.event,
+            level: input.level ?? "info",
+            sessionId:
+              typeof details.agentSessionId === "string"
+                ? details.agentSessionId
+                : undefined,
+            workspaceId: input.workspaceId ?? undefined
+          })
+          .catch(() => {});
+      }
     } catch {
       // Diagnostic logging must never affect the render tree.
     }
@@ -301,6 +316,10 @@ export function createDesktopAgentActivityRuntime(
       workspaceAgentActivityService.listSessionSections(input),
     listSessionSectionPage: (input) =>
       workspaceAgentActivityService.listSessionSectionPage(input),
+    countSessionSection: (input) =>
+      workspaceAgentActivityService.countSessionSection(input),
+    deleteSessionSection: (input) =>
+      workspaceAgentActivityService.deleteSessionSection(input),
     listPinnedSessionsPage: (input) =>
       workspaceAgentActivityService.listPinnedSessionsPage(input),
     async load(workspaceId, signal) {
@@ -324,7 +343,7 @@ export function createDesktopAgentActivityRuntime(
       return workspaceAgentActivityService.ensureSessionSynchronized(input);
     },
     retainSessionEvents: (input) =>
-      workspaceAgentActivityService.retainSessionEvents(input),
+      workspaceAgentActivityService.ensureSessionSynchronized(input),
     async sendInput(input) {
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: input.agentSessionId,
@@ -492,6 +511,16 @@ export function createDesktopAgentActivityRuntime(
           workspaceId: input.workspaceId,
           agentSessionId: input.agentSessionId
         });
+      logAgentComposerSettingsDiagnostic({
+        agentSessionId: input.agentSessionId,
+        event: "agent.gui.composer_settings.update_requested",
+        nextSettings: input.settings,
+        previousSettings: previousState.settings,
+        provider: previousState.provider,
+        runtimeApi: options.runtimeApi,
+        source: "session",
+        workspaceId: input.workspaceId
+      });
       let result: Awaited<
         ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]>
       >;
@@ -856,6 +885,22 @@ function numberMetadata(
   return 0;
 }
 
+function flattenTerminalDiagnosticDetails(
+  details: Record<string, unknown>
+): Record<string, string | number | boolean | null> {
+  const flatDetails: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(details)) {
+    flatDetails[key] =
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+        ? value
+        : JSON.stringify(value);
+  }
+  return flatDetails;
+}
+
 function promptContentDisplayText(
   content: readonly { type: string; text?: string }[]
 ): string {
@@ -871,6 +916,7 @@ function logAgentComposerSettingsDiagnostic(input: {
   error?: unknown;
   event:
     | "agent.gui.composer_settings.changed"
+    | "agent.gui.composer_settings.update_requested"
     | "agent.gui.composer_settings.update_failed";
   nextSettings: AgentHostAgentSessionComposerSettings;
   previousSettings: AgentHostAgentSessionComposerSettings | undefined;

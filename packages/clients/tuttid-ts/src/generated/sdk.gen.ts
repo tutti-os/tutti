@@ -49,6 +49,9 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CountWorkspaceAgentSessionSectionData,
+  CountWorkspaceAgentSessionSectionErrors,
+  CountWorkspaceAgentSessionSectionResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -91,6 +94,9 @@ import type {
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
+  DeleteWorkspaceAgentSessionSectionData,
+  DeleteWorkspaceAgentSessionSectionErrors,
+  DeleteWorkspaceAgentSessionSectionResponses,
   DeleteWorkspaceAppData,
   DeleteWorkspaceAppErrors,
   DeleteWorkspaceAppFactoryJobData,
@@ -1585,6 +1591,24 @@ export const createWorkspaceAgentSession = <
   });
 
 /**
+ * Delete all agent sessions in one rail section for one workspace
+ */
+export const deleteWorkspaceAgentSessionSection = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DeleteWorkspaceAgentSessionSectionData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceAgentSessionSectionResponses,
+    DeleteWorkspaceAgentSessionSectionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
+    ...options
+  });
+
+/**
  * List agent session rail sections for one workspace
  */
 export const listWorkspaceAgentSessionSections = <
@@ -1617,6 +1641,24 @@ export const listWorkspaceAgentSessionSectionPage = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-session-sections/page",
+    ...options
+  });
+
+/**
+ * Count agent sessions in one rail section for one workspace
+ */
+export const countWorkspaceAgentSessionSection = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CountWorkspaceAgentSessionSectionData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    CountWorkspaceAgentSessionSectionResponses,
+    CountWorkspaceAgentSessionSectionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/count",
     ...options
   });
 

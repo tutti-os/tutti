@@ -10,6 +10,9 @@ import (
 type Repository = agentstore.Repository
 
 type ClearSessionsResult = agentstore.ClearSessionsResult
+type CountSessionSectionInput = agentstore.CountSessionSectionInput
+type DeleteSessionSectionInput = agentstore.DeleteSessionSectionInput
+type DeleteSessionSectionResult = agentstore.DeleteSessionSectionResult
 
 type MessageOrder = agentstore.MessageOrder
 
@@ -28,6 +31,7 @@ type GeneratedFile = agentstore.GeneratedFile
 type GeneratedFileList = agentstore.GeneratedFileList
 
 type ListSessionSectionInput = agentstore.ListSessionSectionInput
+type SessionSectionCount = agentstore.SessionSectionCount
 
 type SessionSectionPage = agentstore.SessionSectionPage
 

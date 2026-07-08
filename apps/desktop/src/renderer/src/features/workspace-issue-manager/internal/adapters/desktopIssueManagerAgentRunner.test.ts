@@ -28,6 +28,7 @@ test("desktop issue-manager agent runner opens execute prompt as an agent draft"
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
   assert.equal(capturedLaunch?.agentTargetId, "local:codex");
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.equal(capturedLaunch?.provider, "codex");
   assert.equal(capturedLaunch?.userProjectPath, undefined);
   assert.equal(capturedLaunch?.workspaceId, "workspace-1");
@@ -118,6 +119,7 @@ test("desktop issue-manager agent runner passes selected execution directory to 
   const prompt = capturedLaunch?.draftPrompt ?? "";
 
   assert.equal(capturedCreate, undefined);
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.equal(capturedLaunch?.userProjectPath, "/Users/example/project/tutti");
   assert.doesNotMatch(prompt, /\/Users\/example\/project\/tutti/);
   assert.match(prompt, /mention:\/\/workspace-issue/);
@@ -171,6 +173,7 @@ test("desktop issue-manager agent breakdown launcher opens breakdown prompt as a
   assert.equal(capturedCreate, undefined);
   assert.equal(capturedLaunch?.agentSessionId, undefined);
   assert.equal(capturedLaunch?.agentTargetId, "remote:openclaw");
+  assert.equal(capturedLaunch?.openInNewWindow, true);
   assert.match(
     capturedLaunch?.draftPrompt ?? "",
     /Break this task reference down into executable tasks/

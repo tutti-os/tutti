@@ -200,6 +200,7 @@ func normalizeRuntimeContextForProvider(
 	if normalizedReasoning != "" {
 		cloned["reasoningEffort"] = normalizedReasoning
 	}
+	cloned = runtimeContextWithSettingsModel(cloned, settings.Model)
 	normalizeClaudeSDKRuntimeCapabilities(normalizedProvider, cloned)
 	rawConfigOptions, ok := cloned["configOptions"]
 	if !ok {
@@ -214,6 +215,51 @@ func normalizeRuntimeContextForProvider(
 		cloned["configOptions"] = normalizedConfigOptions
 	}
 	return cloned
+}
+
+func runtimeContextWithSettingsModel(runtimeContext map[string]any, model string) map[string]any {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return runtimeContext
+	}
+	runtimeContext["model"] = model
+	if config, ok := runtimeContext["config"].(map[string]any); ok {
+		nextConfig := clonePayload(config)
+		nextConfig["model"] = model
+		runtimeContext["config"] = nextConfig
+	}
+	switch options := runtimeContext["configOptions"].(type) {
+	case []any:
+		nextOptions := make([]any, 0, len(options))
+		for _, option := range options {
+			record, ok := option.(map[string]any)
+			if !ok {
+				nextOptions = append(nextOptions, option)
+				continue
+			}
+			nextOptions = append(nextOptions, runtimeConfigOptionWithSettingsModel(record, model))
+		}
+		runtimeContext["configOptions"] = nextOptions
+	case []map[string]any:
+		nextOptions := make([]map[string]any, 0, len(options))
+		for _, option := range options {
+			nextOptions = append(nextOptions, runtimeConfigOptionWithSettingsModel(option, model))
+		}
+		runtimeContext["configOptions"] = nextOptions
+	}
+	return runtimeContext
+}
+
+func runtimeConfigOptionWithSettingsModel(record map[string]any, model string) map[string]any {
+	nextRecord := clonePayload(record)
+	if strings.TrimSpace(stringFromAny(nextRecord["id"])) != "model" {
+		return nextRecord
+	}
+	nextRecord["currentValue"] = model
+	if _, ok := nextRecord["current_value"]; ok {
+		nextRecord["current_value"] = model
+	}
+	return nextRecord
 }
 
 func normalizeClaudeSDKRuntimeCapabilities(provider string, runtimeContext map[string]any) {

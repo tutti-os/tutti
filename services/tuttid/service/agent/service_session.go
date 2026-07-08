@@ -228,7 +228,20 @@ func serviceSessionWithPersistedFreshness(session RuntimeSession, persisted Pers
 	if strings.TrimSpace(service.ProviderSessionID) == "" {
 		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	}
-	if service.Settings == nil {
+	if liveSettings := normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings); liveSettings != nil {
+		runtimeContext := clonePayload(session.RuntimeContext)
+		if len(runtimeContext) == 0 {
+			runtimeContext = clonePayload(service.RuntimeContext)
+		} else {
+			runtimeContext = mergeImportRuntimeContextFields(runtimeContext, service.RuntimeContext)
+		}
+		service.Settings = liveSettings
+		service.RuntimeContext = normalizeRuntimeContextForProvider(
+			service.Provider,
+			*liveSettings,
+			runtimeContext,
+		)
+	} else if service.Settings == nil {
 		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
 	}
 	if len(service.RuntimeContext) == 0 {

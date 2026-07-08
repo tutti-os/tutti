@@ -45,6 +45,15 @@ func composerSettingsToPayload(settings ComposerSettings) map[string]any {
 	return payload
 }
 
+func composerSettingsToStatePayload(settings ComposerSettings) map[string]any {
+	payload := composerSettingsToPayload(settings)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["planMode"] = settings.PlanMode
+	return payload
+}
+
 func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
 	settings := ComposerSettings{
 		Model:            payloadString(payload, "model"),

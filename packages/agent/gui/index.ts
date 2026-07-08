@@ -54,6 +54,8 @@ export {
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type {
   AgentGUIProviderRailEmptyRenderer,
+  AgentGUIProviderReadinessGateStateContext,
+  AgentGUIProviderReadinessGateStateRenderer,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,

@@ -1452,6 +1452,22 @@ export type DeleteWorkspaceAgentSessionResponse = {
   removed: boolean;
 };
 
+export type WorkspaceAgentSessionSectionCountResponse = {
+  workspaceId: string;
+  sectionKey: string;
+  agentTargetId?: string;
+  count: number;
+};
+
+export type DeleteWorkspaceAgentSessionSectionResponse = {
+  workspaceId: string;
+  sectionKey: string;
+  agentTargetId?: string;
+  removedMessages: number;
+  removedSessions: number;
+  removedSessionIds: Array<string>;
+};
+
 export type ClearWorkspaceAgentSessionsResponse = {
   removedMessages: number;
   removedSessions: number;
@@ -5113,6 +5129,61 @@ export type CreateWorkspaceAgentSessionResponses = {
 export type CreateWorkspaceAgentSessionResponse =
   CreateWorkspaceAgentSessionResponses[keyof CreateWorkspaceAgentSessionResponses];
 
+export type DeleteWorkspaceAgentSessionSectionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sectionKey: string;
+    /**
+     * Optional agent target filter applied before deletion.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections";
+};
+
+export type DeleteWorkspaceAgentSessionSectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceAgentSessionSectionError =
+  DeleteWorkspaceAgentSessionSectionErrors[keyof DeleteWorkspaceAgentSessionSectionErrors];
+
+export type DeleteWorkspaceAgentSessionSectionResponses = {
+  /**
+   * Workspace agent session section deleted
+   */
+  200: DeleteWorkspaceAgentSessionSectionResponse;
+};
+
+export type DeleteWorkspaceAgentSessionSectionResponse2 =
+  DeleteWorkspaceAgentSessionSectionResponses[keyof DeleteWorkspaceAgentSessionSectionResponses];
+
 export type ListWorkspaceAgentSessionSectionsData = {
   body?: never;
   path: {
@@ -5227,6 +5298,61 @@ export type ListWorkspaceAgentSessionSectionPageResponses = {
 
 export type ListWorkspaceAgentSessionSectionPageResponse =
   ListWorkspaceAgentSessionSectionPageResponses[keyof ListWorkspaceAgentSessionSectionPageResponses];
+
+export type CountWorkspaceAgentSessionSectionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sectionKey: string;
+    /**
+     * Optional agent target filter applied before counting.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections/count";
+};
+
+export type CountWorkspaceAgentSessionSectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CountWorkspaceAgentSessionSectionError =
+  CountWorkspaceAgentSessionSectionErrors[keyof CountWorkspaceAgentSessionSectionErrors];
+
+export type CountWorkspaceAgentSessionSectionResponses = {
+  /**
+   * Workspace agent session section count
+   */
+  200: WorkspaceAgentSessionSectionCountResponse;
+};
+
+export type CountWorkspaceAgentSessionSectionResponse =
+  CountWorkspaceAgentSessionSectionResponses[keyof CountWorkspaceAgentSessionSectionResponses];
 
 export type ScanWorkspaceExternalAgentSessionImportsData = {
   body?: ExternalAgentImportScanRequest;

@@ -161,8 +161,7 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		case "find", "fd":
 			return "Glob"
 		}
-	case "edit":
-	case "move":
+	case "edit", "move":
 		return "Edit"
 	case "delete":
 		return "Write"
@@ -192,7 +191,7 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		return "Glob"
 	case "create_file", "create_new_file", "write_file", "write_to_file":
 		return "Write"
-	case "insert_text", "replace_in_file", "edit_file":
+	case "insert_text", "replace_in_file", "edit_file", "apply_patch":
 		return "Edit"
 	case "read_file", "list_dir":
 		return "Read"
@@ -524,10 +523,10 @@ func acpApplyDiffContent(body map[string]any, value any) {
 		if path := strings.TrimSpace(asString(diff["path"])); path != "" {
 			body["filePath"] = path
 		}
-		if oldText := asString(diff["oldText"]); oldText != "" {
+		if oldText, ok := diff["oldText"].(string); ok && oldText != "" {
 			body["oldString"] = oldText
 		}
-		if newText := asString(diff["newText"]); newText != "" {
+		if newText, ok := diff["newText"].(string); ok && newText != "" {
 			body["newString"] = newText
 		}
 		return

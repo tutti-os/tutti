@@ -3461,6 +3461,138 @@ func TestServiceUpdateSettingsNormalizesClaudeMinimalReasoningEffort(t *testing.
 	}
 }
 
+func TestServiceUpdateSettingsPersistsRuntimeComposerSettings(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		Provider:        "opencode",
+		WorkspaceID:     "ws-1",
+		Status:          "working",
+		UpdatedAtUnixMS: 1000,
+		Settings:        &ComposerSettings{PlanMode: true},
+	}
+	persisted := &fakeSessionStateReporter{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "opencode",
+				Settings:        ComposerSettings{PlanMode: true},
+				Status:          "completed",
+				CurrentPhase:    "idle",
+				LastEventUnixMS: 2000,
+				UpdatedAtUnixMS: 2000,
+			},
+		},
+	}
+	service := NewService(runtime)
+	service.SessionReader = persisted
+	planMode := false
+
+	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		PlanMode: &planMode,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.PlanMode {
+		t.Fatalf("returned settings = %#v, want persisted planMode false", session.Settings)
+	}
+	stored, ok := persisted.GetSession("ws-1", "session-1")
+	if !ok {
+		t.Fatal("persisted session missing after settings update")
+	}
+	if stored.Settings.PlanMode {
+		t.Fatalf("persisted settings = %#v, want planMode false", stored.Settings)
+	}
+	if len(persisted.reports) != 1 {
+		t.Fatalf("reports = %#v, want one persisted settings report", persisted.reports)
+	}
+	if persisted.reports[0].State.Settings["planMode"] != false {
+		t.Fatalf("reported settings = %#v, want planMode false", persisted.reports[0].State.Settings)
+	}
+}
+
+func TestServiceUpdateSettingsKeepsLiveModelWhenPersistedSessionIsNewer(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		Provider:    "tutti-agent",
+		WorkspaceID: "ws-1",
+		Status:      "working",
+		Settings: &ComposerSettings{
+			Model: "minimax-m3",
+		},
+		RuntimeContext: map[string]any{
+			"model": "minimax-m3",
+			"config": map[string]any{
+				"model": "minimax-m3",
+			},
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "minimax-m3",
+				},
+			},
+		},
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"ws-1:session-1": {
+			ID:          "session-1",
+			Provider:    "tutti-agent",
+			WorkspaceID: "ws-1",
+			Status:      "completed",
+			Settings: ComposerSettings{
+				Model: "minimax-m3",
+			},
+			RuntimeContext: map[string]any{
+				"model": "minimax-m3",
+				"config": map[string]any{
+					"model": "minimax-m3",
+				},
+				"configOptions": []any{
+					map[string]any{
+						"id":           "model",
+						"currentValue": "minimax-m3",
+					},
+				},
+			},
+			CreatedAtUnixMS: 100,
+			UpdatedAtUnixMS: time.Now().Add(time.Hour).UnixMilli(),
+			LastEventUnixMS: time.Now().Add(time.Hour).UnixMilli(),
+		},
+	}}
+	model := "glm-5.1"
+
+	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		Model: &model,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.Model != "glm-5.1" {
+		t.Fatalf("session settings = %#v, want model glm-5.1", session.Settings)
+	}
+	if session.RuntimeContext["model"] != "glm-5.1" {
+		t.Fatalf("runtime model = %#v, want glm-5.1", session.RuntimeContext["model"])
+	}
+	config, ok := session.RuntimeContext["config"].(map[string]any)
+	if !ok || config["model"] != "glm-5.1" {
+		t.Fatalf("runtime config = %#v, want model glm-5.1", session.RuntimeContext["config"])
+	}
+	configOptions, ok := session.RuntimeContext["configOptions"].([]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("runtime configOptions = %#v, want model option", session.RuntimeContext["configOptions"])
+	}
+	modelOption, ok := configOptions[0].(map[string]any)
+	if !ok || modelOption["currentValue"] != "glm-5.1" {
+		t.Fatalf("runtime model option = %#v, want currentValue glm-5.1", configOptions[0])
+	}
+}
+
 func TestServiceMapsRuntimeSessionLastError(t *testing.T) {
 	now := time.Now().UnixMilli()
 	session := serviceSession(RuntimeSession{
@@ -4390,6 +4522,127 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 		reader.lastInput.Limit != 2 ||
 		reader.lastInput.AgentTargetID != "claude-target" {
 		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func TestServiceCountSessionSectionForwardsSectionScope(t *testing.T) {
+	reader := &fakeSectionReader{
+		counts: map[string]agentactivitybiz.SessionSectionCount{
+			"project:/workspace/project": {Count: 7},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	count, err := service.CountSessionSection(context.Background(), "ws-1", CountSessionSectionInput{
+		SectionKey:    "project:/workspace/project",
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("CountSessionSection returned error: %v", err)
+	}
+	if count.Count != 7 || count.SectionKey != "project:/workspace/project" || count.AgentTargetID != "claude-target" {
+		t.Fatalf("count = %#v", count)
+	}
+}
+
+func TestServiceDeleteSessionSectionClosesRuntimeSessions(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+	}
+	reader := &fakeSectionReader{
+		fakeSessionReader: fakeSessionReader{
+			sessions: map[string]PersistedSession{
+				"ws-1:session-1": {ID: "session-1", WorkspaceID: "ws-1"},
+				"ws-1:session-2": {ID: "session-2", WorkspaceID: "ws-1"},
+			},
+		},
+		pages: map[string]agentactivitybiz.SessionSectionPage{
+			"project:/workspace/project": {
+				Sessions: []agentactivitybiz.Session{
+					{ID: "session-1", WorkspaceID: "ws-1"},
+					{ID: "session-2", WorkspaceID: "ws-1"},
+				},
+			},
+		},
+	}
+	service := NewService(runtime)
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	result, err := service.DeleteSessionSection(context.Background(), "ws-1", DeleteSessionSectionInput{
+		SectionKey: "project:/workspace/project",
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessionSection returned error: %v", err)
+	}
+	if result.RemovedSessions != 2 || !slices.Equal(result.RemovedSessionIDs, []string{"session-1", "session-2"}) {
+		t.Fatalf("delete result = %#v", result)
+	}
+	if len(runtime.closeCalls) != 1 || runtime.closeCalls[0].AgentSessionID != "session-1" {
+		t.Fatalf("close calls = %#v", runtime.closeCalls)
+	}
+	if _, ok := runtime.Session("ws-1", "session-1"); ok {
+		t.Fatal("runtime session still exists after section delete")
+	}
+}
+
+func TestServiceDeleteSessionSectionDoesNotDeleteWhenRuntimeCloseFails(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+	}
+	runtime.closeErr = errors.New("close failed")
+	reader := &fakeSectionReader{
+		fakeSessionReader: fakeSessionReader{
+			sessions: map[string]PersistedSession{
+				"ws-1:session-1": {ID: "session-1", WorkspaceID: "ws-1"},
+			},
+		},
+		pages: map[string]agentactivitybiz.SessionSectionPage{
+			"project:/workspace/project": {
+				Sessions: []agentactivitybiz.Session{
+					{ID: "session-1", WorkspaceID: "ws-1"},
+				},
+			},
+		},
+	}
+	service := NewService(runtime)
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	_, err := service.DeleteSessionSection(context.Background(), "ws-1", DeleteSessionSectionInput{
+		SectionKey: "project:/workspace/project",
+	})
+	if err == nil {
+		t.Fatal("DeleteSessionSection returned nil error, want close error")
+	}
+	if len(reader.deleteCalls) != 0 {
+		t.Fatalf("delete calls = %#v, want none before runtime close succeeds", reader.deleteCalls)
+	}
+	if _, ok := runtime.Session("ws-1", "session-1"); !ok {
+		t.Fatal("runtime session removed after failed close")
 	}
 }
 
@@ -5721,8 +5974,10 @@ type fakeSessionReader struct {
 
 type fakeSectionReader struct {
 	fakeSessionReader
-	lastInput agentactivitybiz.ListSessionSectionInput
-	pages     map[string]agentactivitybiz.SessionSectionPage
+	lastInput   agentactivitybiz.ListSessionSectionInput
+	deleteCalls []agentactivitybiz.DeleteSessionSectionInput
+	pages       map[string]agentactivitybiz.SessionSectionPage
+	counts      map[string]agentactivitybiz.SessionSectionCount
 }
 
 func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
@@ -5743,6 +5998,60 @@ func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentact
 	page.WorkspaceID = input.WorkspaceID
 	page.SectionKey = input.SectionKey
 	return page, true
+}
+
+func (f *fakeSectionReader) CountSessionSection(_ context.Context, input agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool) {
+	if f.counts != nil {
+		count, ok := f.counts[input.SectionKey]
+		if ok {
+			count.WorkspaceID = input.WorkspaceID
+			count.SectionKey = input.SectionKey
+			count.AgentTargetID = input.AgentTargetID
+			return count, true
+		}
+	}
+	page, ok := f.ListSessionSection(context.Background(), agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:   input.WorkspaceID,
+		SectionKey:    input.SectionKey,
+		AgentTargetID: input.AgentTargetID,
+	})
+	if !ok {
+		return agentactivitybiz.SessionSectionCount{}, false
+	}
+	return agentactivitybiz.SessionSectionCount{
+		WorkspaceID:   input.WorkspaceID,
+		SectionKey:    input.SectionKey,
+		AgentTargetID: input.AgentTargetID,
+		Count:         len(page.Sessions),
+	}, true
+}
+
+func (f *fakeSectionReader) DeleteSessionSection(_ context.Context, input agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool) {
+	f.deleteCalls = append(f.deleteCalls, input)
+	page, ok := f.ListSessionSection(context.Background(), agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:   input.WorkspaceID,
+		SectionKey:    input.SectionKey,
+		AgentTargetID: input.AgentTargetID,
+	})
+	if !ok {
+		return agentactivitybiz.DeleteSessionSectionResult{}, false
+	}
+	removedIDs := make([]string, 0, len(page.Sessions))
+	for _, session := range page.Sessions {
+		sessionID := strings.TrimSpace(session.ID)
+		if sessionID == "" {
+			continue
+		}
+		delete(f.sessions, input.WorkspaceID+":"+sessionID)
+		removedIDs = append(removedIDs, sessionID)
+	}
+	return agentactivitybiz.DeleteSessionSectionResult{
+		WorkspaceID:       input.WorkspaceID,
+		SectionKey:        input.SectionKey,
+		AgentTargetID:     input.AgentTargetID,
+		RemovedSessions:   len(removedIDs),
+		RemovedSessionIDs: removedIDs,
+	}, true
 }
 
 type fakeUserProjectReader struct {
@@ -6042,6 +6351,53 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 	return target, nil
 }
 
+type fakeSessionStateReporter struct {
+	reports  []agentsessionstore.ReportSessionStateInput
+	sessions map[string]PersistedSession
+}
+
+func (f *fakeSessionStateReporter) GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool) {
+	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	return session, ok
+}
+
+func (f *fakeSessionStateReporter) ListSessions(workspaceID string) ([]PersistedSession, bool) {
+	result := make([]PersistedSession, 0)
+	for _, session := range f.sessions {
+		if session.WorkspaceID == workspaceID {
+			result = append(result, session)
+		}
+	}
+	return result, len(result) > 0
+}
+
+func (f *fakeSessionStateReporter) ReportSessionState(_ context.Context, input agentsessionstore.ReportSessionStateInput) (agentsessionstore.ReportSessionStateReply, error) {
+	f.reports = append(f.reports, input)
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		session = PersistedSession{
+			ID:          input.AgentSessionID,
+			WorkspaceID: input.WorkspaceID,
+		}
+	}
+	if len(input.State.Settings) > 0 {
+		session.Settings = composerSettingsFromPayload(input.State.Settings)
+	}
+	if strings.TrimSpace(input.State.Provider) != "" {
+		session.Provider = strings.TrimSpace(input.State.Provider)
+	}
+	if strings.TrimSpace(input.State.ProviderSessionID) != "" {
+		session.ProviderSessionID = strings.TrimSpace(input.State.ProviderSessionID)
+	}
+	if input.State.OccurredAtUnixMS > 0 {
+		session.LastEventUnixMS = input.State.OccurredAtUnixMS
+		session.UpdatedAtUnixMS = input.State.OccurredAtUnixMS
+	}
+	f.sessions[key] = session
+	return agentsessionstore.ReportSessionStateReply{Accepted: true, StateApplied: true}, nil
+}
+
 type activityProjectionRepoStub struct {
 	clearResult   agentactivitybiz.ClearSessionsResult
 	stateResult   agentactivitybiz.StateReportResult
@@ -6054,8 +6410,16 @@ func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (age
 	return r.clearResult, nil
 }
 
+func (*activityProjectionRepoStub) CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool, error) {
+	return agentactivitybiz.SessionSectionCount{}, false, nil
+}
+
 func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {
 	return false, nil
+}
+
+func (*activityProjectionRepoStub) DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool, error) {
+	return agentactivitybiz.DeleteSessionSectionResult{}, false, nil
 }
 
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {

@@ -106,6 +106,84 @@ Use this shape for new entries:
   [controller.go](../../packages/agent/daemon/runtime/controller.go)
   [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
 
+### AgentGUI send blocked by active_turn after settled snapshot
+
+- Symptom:
+  AgentGUI shows `turnPhase = settled` and no `activeTurnId`, but a follow-up
+  prompt fails with `agent session already has an active turn`, or the runtime
+  snapshot still reports `submitAvailabilityState = blocked` with
+  `reason = active_turn`.
+- Quick checks:
+  Compare renderer state with `tuttid.log` submit traces. If `api.send.failed`
+  reports `agent session already has an active turn` after a settled/available
+  state patch, inspect whether the controller still has an in-memory `c.turns`
+  entry while the adapter lifecycle snapshot has already settled.
+- Root cause:
+  The controller's async turn registry is separate from adapter lifecycle
+  projection. Async execution must clear `c.turns` when the owning adapter
+  publishes a non-live `TurnLifecycleSnapshot`, even if the event type is not a
+  terminal `turn.completed`/`turn.failed` event.
+- Fix:
+  Treat same-turn non-live lifecycle snapshots as async turn completion, in
+  addition to terminal event types and steered prompt messages.
+- Validation:
+  Add controller coverage where an async adapter emits only a settled lifecycle
+  snapshot for the turn and no terminal event, then verify a follow-up `Exec`
+  no longer returns `ErrSessionActiveTurn`. Run
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [controller.go](../../packages/agent/daemon/runtime/controller.go)
+  [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
+
+### AgentGUI loading disappears before active turn settles
+
+- Symptom:
+  AgentGUI loses the in-progress/loading affordance while the app-server turn is
+  still active, normal composer sends hit the active-turn guard instead of
+  queueing, or a later terminal event arrives for a turn that the runtime
+  already cleared.
+- Quick checks:
+  First compare the renderer `runtimeSession` and `sessionState` diagnostics.
+  If `runtimeSession.turnLifecycle.activeTurnId` is non-empty with a live phase
+  but `sessionState.turnLifecycle.phase = settled` and
+  `submitAvailabilityState = available`, the bug is in AgentGUI derived state:
+  the active composer/projection is trusting stale selected-session control
+  state over the runtime snapshot. Separately inspect app-server terminal
+  payloads. A `turn/completed` or `turn/failed` notification with an empty
+  provider turn id must not settle a bound active turn unless that turn was
+  explicitly adopted from a preceding goal-continuation `turn/started`.
+- Root cause:
+  There are two distinct failure modes. In AgentGUI, the runtime activity
+  snapshot can be live while the selected session view/control state is stale;
+  composer loading, projection turn lifecycle, `canSubmit`, and local queue
+  decisions must prefer the runtime live lifecycle. In the Codex app-server
+  adapter, `settleActiveTurn` is allowed to adopt a mismatched provider turn id
+  only for the steer case where `turn/start` returned an unconfirmed stub id and
+  codex later completes the running turn with a non-empty provider id. Treating
+  an empty terminal id as a wildcard clears active turn state too early and
+  removes loading.
+- Fix:
+  In AgentGUI, drive active projection, active live state, submit blocking, and
+  queue decisions from a live `AgentActivityRuntime` lifecycle before falling
+  back to `activeSessionState`. Keep guidance/steer as the explicit queue
+  bypass path; ordinary composer sends while busy should queue. In the daemon,
+  keep the steer exception, but require the terminal provider id to be non-empty
+  and drop empty-id terminal notifications for bound active turns. Keep the
+  narrow exception for goal-adopted turns whose ownership came from
+  `turn/started`.
+- Validation:
+  Keep tests for both sides: a stale settled `sessionState` plus live runtime
+  lifecycle should still render processing/loading, set `canSubmit = false`,
+  allow local queueing, and avoid direct `exec`; steered stub turns must settle
+  on the running turn's non-empty completion id; empty-id terminal notifications
+  must not settle confirmed or unconfirmed active turns; goal continuation must
+  still complete its adopted turn.
+- References:
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [useAgentGUINodeController.spec.tsx](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx)
+  [codex_appserver_turn_machine.go](../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
+  [codex_appserver_adapter_test.go](../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
 ### Renderer tile memory warnings from hidden autoplay animation
 
 - Symptom:
@@ -196,6 +274,56 @@ Use this shape for new entries:
 - References:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../services/tuttid/service/agent/composer_live_model_cache.go)
+
+### AgentGUI model switch changes defaults but not the active session
+
+- Symptom:
+  A user selects a different AgentGUI model, but the next provider call still
+  uses the previous model. Logs may show
+  `agent.gui.composer_defaults.remembered` for the new model while
+  `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
+  app-server `turn/start` still show the old model.
+- Quick checks:
+  Search desktop and daemon logs for the full settings chain:
+  `agent.gui.composer_settings.default_only`,
+  `agent.gui.composer_settings.update_requested`,
+  `workspace.agent_session.settings.update_requested`,
+  `agent_session.settings.update.requested`,
+  `agent_session.app_server.settings.applied`, and
+  `agent_session.app_server.turn_start.params`. If only the defaults event is
+  present, the UI changed the target default draft, not the active session. If
+  daemon settings update completed but `turn_start.params.model` is old or
+  empty, inspect the app-server adapter path.
+- Root cause:
+  AgentGUI has two distinct composer surfaces. The target home composer writes
+  remembered defaults and node drafts. An active conversation composer must
+  additionally call `updateSessionSettings`; Codex app-server providers then
+  apply model changes as per-turn overrides on the next `turn/start`, not to an
+  already-running turn. If the daemon applies the settings but the update
+  response still reports the old model, check the service merge path:
+  `serviceSessionWithPersistedFreshness` must not let a newer activity
+  projection snapshot overwrite live runtime settings after an explicit
+  settings update.
+- Fix:
+  Preserve the default-draft path, but make active-session model changes
+  observable at every layer. Do not conclude that a provider ignored the model
+  until the logs show the active session settings update reached the daemon and
+  the following `turn/start` carried the requested model.
+- Validation:
+  Reproduce by switching a model in a running session and sending a follow-up.
+  Confirm the logs include the update chain above and that
+  `workspace.agent_session.settings.update_completed` reports the requested
+  model and the next `turn/start` carries it. If the persisted
+  `workspace_agent_sessions.settings_json.model` is older while the runtime is
+  live, `Get` responses should still expose live runtime settings instead of
+  the stale projection value.
+- References:
+  [useAgentGUINodeController.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
+  [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+  [workspaceAgentActivityService.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts)
+  [service_session.go](../../services/tuttid/service/agent/service_session.go)
+  [controller.go](../../packages/agent/daemon/runtime/controller.go)
+  [codex_appserver_adapter.go](../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
 
 ### Claude SDK context window shows 200k for 1M models
 
@@ -2086,7 +2214,8 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   line switches.
 - Fix:
   Prefer CDP `Tracing.start` with `transferMode: "ReturnAsStream"` for large
-  captures instead of DevTools UI export. Record only the smallest repro window.
+  captures instead of DevTools UI export. The repository helper uses that path:
+  `pnpm trace:desktop -- --duration 15`. Record only the smallest repro window.
 - Validation:
   Restart the desktop app, confirm the remote debugging endpoint responds, record
   a short trace, and verify the trace JSON is written without opening the

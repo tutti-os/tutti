@@ -105,5 +105,9 @@ single agent or target icons continue to come from `providerTargets[].iconUrl`.
 
 Hosts that need custom main-pane presentation for a disabled selected target may
 pass `renderProviderUnavailableState`. AgentGUI calls this renderer only when
-the selected `providerTargets[]` entry has `disabled: true`; install, login,
-checking, and retry readiness gates keep the built-in AgentGUI flows.
+the selected `providerTargets[]` entry has `disabled: true`.
+
+Hosts that need custom main-pane presentation for provider readiness gates may
+pass `renderProviderReadinessGateState`. AgentGUI calls this renderer for
+host-projected gates such as checking, install, login, coming-soon, and
+unavailable; when it is omitted, AgentGUI uses the built-in readiness pane.

@@ -866,7 +866,7 @@ export const zhCN = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderOpenCode: "OpenCode",
+        manageProviderOpenCode: "Open Code",
         manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",

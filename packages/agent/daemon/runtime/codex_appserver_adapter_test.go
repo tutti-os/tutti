@@ -1683,6 +1683,71 @@ func TestCodexAppServerAdapterExecSteeredTurnSettlesOnRunningTurnCompletion(t *t
 	}
 }
 
+func TestCodexAppServerAdapterDropsEmptyTerminalIDForBoundActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	appTurn := &codexAppServerActiveTurn{
+		turnID:     "turn-local-1",
+		session:    session,
+		normalizer: newACPTurnNormalizer(),
+		phase:      codexAppServerTurnPhaseRunning,
+		terminal:   make(chan codexAppServerTurnTerminal, 1),
+		terminated: make(chan struct{}),
+	}
+	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
+		t.Fatal("beginActiveTurn failed")
+	}
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-real")
+	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-real")
+
+	adapter.completeActiveTurn(session.AgentSessionID, map[string]any{"status": "completed"})
+
+	if got := adapter.sessionActiveTurnID(session.AgentSessionID); got != "turn-real" {
+		t.Fatalf("active turn id = %q, want turn-real after empty terminal id", got)
+	}
+	if active := adapter.sessionActiveTurn(session.AgentSessionID); active != appTurn {
+		t.Fatalf("active turn = %#v, want original appTurn", active)
+	}
+	select {
+	case terminal := <-appTurn.terminal:
+		t.Fatalf("empty terminal id delivered terminal %#v, want drop", terminal)
+	default:
+	}
+}
+
+func TestCodexAppServerAdapterDropsEmptyTerminalIDForUnconfirmedActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	appTurn := &codexAppServerActiveTurn{
+		turnID:     "turn-local-1",
+		session:    session,
+		normalizer: newACPTurnNormalizer(),
+		phase:      codexAppServerTurnPhaseRunning,
+		terminal:   make(chan codexAppServerTurnTerminal, 1),
+		terminated: make(chan struct{}),
+	}
+	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
+		t.Fatal("beginActiveTurn failed")
+	}
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-steer-stub")
+
+	adapter.completeActiveTurn(session.AgentSessionID, map[string]any{"status": "completed"})
+
+	if got := adapter.sessionActiveTurnID(session.AgentSessionID); got != "turn-steer-stub" {
+		t.Fatalf("active turn id = %q, want turn-steer-stub after empty terminal id", got)
+	}
+	if active := adapter.sessionActiveTurn(session.AgentSessionID); active != appTurn {
+		t.Fatalf("active turn = %#v, want original appTurn", active)
+	}
+	select {
+	case terminal := <-appTurn.terminal:
+		t.Fatalf("empty terminal id delivered terminal %#v, want drop", terminal)
+	default:
+	}
+}
+
 func TestCodexAppServerAdapterConfirmActiveTurnStartedScopedToBoundID(t *testing.T) {
 	t.Parallel()
 

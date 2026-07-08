@@ -645,17 +645,36 @@ function collectMetadataFiles(
     if (!path) {
       return [];
     }
+    const fileUnifiedDiff =
+      firstNonEmptyString(
+        stringValue(file?.diff),
+        stringValue(file?.patch),
+        stringValue(file?.unifiedDiff),
+        stringValue(file?.unified_diff)
+      ) ?? patch;
+    const fileOldString =
+      firstPresentString(
+        literalStringValue(file?.oldString),
+        literalStringValue(file?.old_string)
+      ) ?? oldString;
+    const fileNewString =
+      firstPresentString(
+        literalStringValue(file?.newString),
+        literalStringValue(file?.new_string)
+      ) ?? newString;
+    const fileContent =
+      firstPresentString(literalStringValue(file?.content)) ?? content;
     const change = normalizeChangeType(stringValue(file?.change));
     return [
       buildFileChange({
         id: `${messageId}:${index + 1}`,
         toolName,
         path,
-        changeType: change ?? inferAgentPatchChangeType(patch),
-        unifiedDiff: patch,
-        oldString,
-        newString,
-        content,
+        changeType: change ?? inferAgentPatchChangeType(fileUnifiedDiff),
+        unifiedDiff: fileUnifiedDiff,
+        oldString: fileOldString,
+        newString: fileNewString,
+        content: fileContent,
         occurredAtUnixMs
       })
     ];

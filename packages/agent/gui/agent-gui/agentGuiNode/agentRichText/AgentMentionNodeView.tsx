@@ -1,4 +1,12 @@
-import { useEffect, useState, type JSX, type MouseEvent } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type JSX,
+  type MouseEvent,
+  type ReactNode
+} from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   MentionPill,
@@ -44,6 +52,22 @@ interface AgentMentionNodeViewModel {
   thumbnailUrl?: string;
   /** 引用文件数量(workspace-reference 专用)。 */
   fileCount?: number;
+}
+
+const AgentMentionTooltipProviderContext = createContext(true);
+
+export function AgentMentionTooltipProviderScope({
+  children,
+  withTooltipProvider
+}: {
+  children: ReactNode;
+  withTooltipProvider: boolean;
+}): JSX.Element {
+  return (
+    <AgentMentionTooltipProviderContext value={withTooltipProvider}>
+      {children}
+    </AgentMentionTooltipProviderContext>
+  );
 }
 
 function attrString(attrs: Record<string, unknown>, key: string): string {
@@ -418,6 +442,7 @@ function AgentMentionLegacyFileNodeView({
 export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
   const { deleteNode, editor, extension, node, selected } = props;
   const { t } = useTranslation();
+  const withTooltipProvider = useContext(AgentMentionTooltipProviderContext);
   const mention = mentionViewModel(node.attrs ?? {}, t);
   const [isEditable, setIsEditable] = useState(editor.isEditable);
   const extensionOptions = extension.options as {
@@ -520,7 +545,10 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
               </button>
             ) : null}
           </span>
-          <TruncatingPillLabel tooltip={mention.label}>
+          <TruncatingPillLabel
+            tooltip={mention.label}
+            withTooltipProvider={withTooltipProvider}
+          >
             {mention.label}
           </TruncatingPillLabel>
         </span>
@@ -627,6 +655,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             : undefined
         }
         summary={mention.summary}
+        withTooltipProvider={withTooltipProvider}
       />
     </NodeViewWrapper>
   );

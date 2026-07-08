@@ -250,6 +250,123 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return removed, nil
 }
 
+func (s *Store) CountSessionSection(
+	ctx context.Context,
+	input CountSessionSectionInput,
+) (SessionSectionCount, bool, error) {
+	if s == nil || s.db == nil {
+		return SessionSectionCount{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	sectionKey := strings.TrimSpace(input.SectionKey)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
+		return SessionSectionCount{}, false, nil
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(1)
+FROM workspace_agent_sessions
+WHERE workspace_id = ?
+  AND rail_section_key = ?
+  AND (? = '' OR agent_target_id = ?)
+  AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+`, workspaceID, sectionKey, agentTargetID, agentTargetID).Scan(&count); err != nil {
+		return SessionSectionCount{}, false, fmt.Errorf("count workspace agent session section: %w", err)
+	}
+	return SessionSectionCount{
+		WorkspaceID:   workspaceID,
+		SectionKey:    sectionKey,
+		AgentTargetID: agentTargetID,
+		Count:         count,
+	}, true, nil
+}
+
+func (s *Store) DeleteSessionSection(
+	ctx context.Context,
+	input DeleteSessionSectionInput,
+) (DeleteSessionSectionResult, bool, error) {
+	if s == nil || s.db == nil {
+		return DeleteSessionSectionResult{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	sectionKey := strings.TrimSpace(input.SectionKey)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
+		return DeleteSessionSectionResult{}, false, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("begin delete workspace agent session section: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	removedSessionIDs, err := listAgentSessionSectionIDsTx(ctx, tx, workspaceID, sectionKey, agentTargetID)
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, err
+	}
+	now := unixMs(time.Now().UTC())
+	messageResult, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_messages
+SET deleted_at_unix_ms = ?,
+    updated_at_unix_ms = ?
+WHERE workspace_id = ?
+  AND deleted_at_unix_ms = 0
+  AND agent_session_id IN (
+    SELECT agent_session_id
+    FROM workspace_agent_sessions
+    WHERE workspace_id = ?
+      AND rail_section_key = ?
+      AND (? = '' OR agent_target_id = ?)
+      AND deleted_at_unix_ms = 0
+      AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+  )
+`, now, now, workspaceID, workspaceID, sectionKey, agentTargetID, agentTargetID)
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("delete workspace agent session section messages: %w", err)
+	}
+	sessionResult, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET deleted_at_unix_ms = ?,
+    updated_at_unix_ms = ?
+WHERE workspace_id = ?
+  AND rail_section_key = ?
+  AND (? = '' OR agent_target_id = ?)
+  AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+`, now, now, workspaceID, sectionKey, agentTargetID, agentTargetID)
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("delete workspace agent session section: %w", err)
+	}
+	removedMessages, err := messageResult.RowsAffected()
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("delete workspace agent session section messages rows affected: %w", err)
+	}
+	removedSessions, err := sessionResult.RowsAffected()
+	if err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("delete workspace agent session section rows affected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return DeleteSessionSectionResult{}, false, fmt.Errorf("commit delete workspace agent session section: %w", err)
+	}
+	committed = true
+	return DeleteSessionSectionResult{
+		WorkspaceID:       workspaceID,
+		SectionKey:        sectionKey,
+		AgentTargetID:     agentTargetID,
+		RemovedMessages:   int(removedMessages),
+		RemovedSessions:   int(removedSessions),
+		RemovedSessionIDs: removedSessionIDs,
+	}, true, nil
+}
+
 func (s *Store) ClearSessions(
 	ctx context.Context,
 	workspaceID string,
@@ -360,6 +477,39 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate workspace agent session ids for clear: %w", err)
+	}
+	return sessionIDs, nil
+}
+
+func listAgentSessionSectionIDsTx(ctx context.Context, tx *sql.Tx, workspaceID string, sectionKey string, agentTargetID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT agent_session_id
+FROM workspace_agent_sessions
+WHERE workspace_id = ?
+  AND rail_section_key = ?
+  AND (? = '' OR agent_target_id = ?)
+  AND deleted_at_unix_ms = 0
+  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
+`, workspaceID, sectionKey, agentTargetID, agentTargetID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace agent session section ids for delete: %w", err)
+	}
+	defer rows.Close()
+
+	sessionIDs := make([]string, 0)
+	for rows.Next() {
+		var sessionID string
+		if err := rows.Scan(&sessionID); err != nil {
+			return nil, fmt.Errorf("scan workspace agent session section id for delete: %w", err)
+		}
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID != "" {
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace agent session section ids for delete: %w", err)
 	}
 	return sessionIDs, nil
 }

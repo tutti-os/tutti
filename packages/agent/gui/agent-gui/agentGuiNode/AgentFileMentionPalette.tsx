@@ -476,7 +476,8 @@ function agentMentionItemToRowItem(
       kind: "app",
       name: item.name,
       description: item.description ?? null,
-      iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId)
+      iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId),
+      statusTag: agentTargetAvailableStatusTag()
     };
   }
 
@@ -564,6 +565,19 @@ function agentSessionStatusTag(
     pulse: activityStatus === "working" || activityStatus === "waiting",
     variant: "activity",
     dataStatus: activityStatus
+  };
+}
+
+/**
+ * Agent targets are only surfaced when the provider is ready/available, so the
+ * `@` row always shows a green "Available" badge at its trailing edge.
+ */
+function agentTargetAvailableStatusTag(): MentionRowStatusTag {
+  return {
+    label: translate("agentHost.agentGui.mentionAgentTargetAvailable"),
+    tone: "green",
+    variant: "activity",
+    dataStatus: "available"
   };
 }
 

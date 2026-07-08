@@ -23,14 +23,16 @@ func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContent
 			out = append(out, PromptContentBlock{Type: "text", Text: text})
 		case "image":
 			mimeType := strings.TrimSpace(block.MimeType)
-			if !runtimePromptImageMimeTypeSupported(mimeType) || strings.TrimSpace(block.Data) == "" {
+			data := strings.TrimSpace(block.Data)
+			attachmentID := strings.TrimSpace(block.AttachmentID)
+			if !runtimePromptImageMimeTypeSupported(mimeType) || (data == "" && attachmentID == "") {
 				continue
 			}
 			out = append(out, PromptContentBlock{
 				Type:         "image",
 				MimeType:     mimeType,
-				Data:         strings.TrimSpace(block.Data),
-				AttachmentID: strings.TrimSpace(block.AttachmentID),
+				Data:         data,
+				AttachmentID: attachmentID,
 				Name:         strings.TrimSpace(block.Name),
 			})
 		case "skill", "mention":

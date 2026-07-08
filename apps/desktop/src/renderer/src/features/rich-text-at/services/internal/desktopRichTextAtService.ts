@@ -1003,7 +1003,10 @@ function agentTargetAtItemsFromTargets(input: {
       const label =
         normalizeText(target.name) ??
         resolveAgentSessionProviderLabel(provider);
-      const description = normalizeText(target.name) ?? label;
+      const rawDescription = normalizeText(target.name) ?? label;
+      // Avoid rendering the provider name twice (e.g. "Codex Codex") when the
+      // description is identical to the label.
+      const description = rawDescription === label ? "" : rawDescription;
       return {
         description,
         displayName: label,
@@ -1232,7 +1235,7 @@ function resolveAgentSessionProviderLabel(provider?: string | null): string {
     case "openclaw":
       return "OpenClaw";
     case "opencode":
-      return "OpenCode";
+      return "Open Code";
     default:
       return provider?.trim() || "";
   }

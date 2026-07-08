@@ -1362,6 +1362,24 @@ test("desktop agent GUI workbench host input tracks runtime session settings cha
         reasoningEffortTo: "high",
         source: "session"
       },
+      event: "agent.gui.composer_settings.update_requested",
+      level: "info",
+      sessionId: "session-runtime-settings-1",
+      workspaceId
+    },
+    {
+      details: {
+        agentSessionId: "session-runtime-settings-1",
+        changedFields: "model,permissionModeId,reasoningEffort",
+        modelFrom: "gpt-5",
+        modelTo: "custom:local-model",
+        permissionModeIdFrom: "auto",
+        permissionModeIdTo: "full-access",
+        provider: "codex",
+        reasoningEffortFrom: "medium",
+        reasoningEffortTo: "high",
+        source: "session"
+      },
       event: "agent.gui.composer_settings.changed",
       level: "info",
       sessionId: "session-runtime-settings-1",
@@ -2142,6 +2160,22 @@ function createWorkspaceAgentActivityService(
         hasMore: false
       };
     },
+    async countSessionSection(input) {
+      return {
+        count: 0,
+        sectionKey: input.sectionKey,
+        workspaceId: input.workspaceId
+      };
+    },
+    async deleteSessionSection(input) {
+      return {
+        removedMessages: 0,
+        removedSessionIds: [],
+        removedSessions: 0,
+        sectionKey: input.sectionKey,
+        workspaceId: input.workspaceId
+      };
+    },
     async listPinnedSessionsPage() {
       return {
         hasMore: false,
@@ -2164,9 +2198,6 @@ function createWorkspaceAgentActivityService(
       return () => {};
     },
     ensureSessionSynchronized() {
-      return () => {};
-    },
-    retainSessionEvents() {
       return () => {};
     },
     async sendInput(input) {

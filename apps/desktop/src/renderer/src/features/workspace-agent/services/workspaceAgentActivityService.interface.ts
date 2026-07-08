@@ -80,6 +80,18 @@ export type WorkspaceAgentActivitySessionSectionResult = Awaited<
   ReturnType<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>
 >;
 
+export type WorkspaceAgentActivitySessionSectionScopeInput = Parameters<
+  NonNullable<AgentActivityRuntime["countSessionSection"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionCount = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["countSessionSection"]>>
+>;
+
+export type WorkspaceAgentActivityDeleteSessionSectionResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionSection"]>>
+>;
+
 export type WorkspaceAgentActivityListPinnedSessionsPageInput = Parameters<
   NonNullable<AgentActivityRuntime["listPinnedSessionsPage"]>
 >[0];
@@ -94,9 +106,6 @@ export interface WorkspaceAgentActivityEnsureSessionSynchronizedInput {
   onError?: (error: unknown) => void;
   workspaceId: string;
 }
-
-export type WorkspaceAgentActivityRetainSessionInput =
-  WorkspaceAgentActivityEnsureSessionSynchronizedInput;
 
 export interface WorkspaceAgentActivityAttachment {
   attachmentId: string;
@@ -164,6 +173,12 @@ export interface IWorkspaceAgentActivityService {
   listSessionSectionPage(
     input: WorkspaceAgentActivityListSessionSectionPageInput
   ): Promise<WorkspaceAgentActivitySessionSectionResult>;
+  countSessionSection(
+    input: WorkspaceAgentActivitySessionSectionScopeInput
+  ): Promise<WorkspaceAgentActivitySessionSectionCount>;
+  deleteSessionSection(
+    input: WorkspaceAgentActivitySessionSectionScopeInput
+  ): Promise<WorkspaceAgentActivityDeleteSessionSectionResult>;
   listPinnedSessionsPage(
     input: WorkspaceAgentActivityListPinnedSessionsPageInput
   ): Promise<WorkspaceAgentActivityPinnedSessionsPageResult>;
@@ -200,10 +215,6 @@ export interface IWorkspaceAgentActivityService {
   }): Promise<void>;
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
-  ): () => void;
-  /** @deprecated Use ensureSessionSynchronized. */
-  retainSessionEvents(
-    input: WorkspaceAgentActivityRetainSessionInput
   ): () => void;
   sendInput(
     input: AgentActivitySendInput

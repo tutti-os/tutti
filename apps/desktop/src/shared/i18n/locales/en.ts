@@ -912,7 +912,7 @@ export const en = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderOpenCode: "OpenCode",
+        manageProviderOpenCode: "Open Code",
         manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "Sign-in required",

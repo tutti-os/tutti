@@ -380,7 +380,7 @@ func callMessageUpdateFromSessionEvent(
 	if callType := firstNonEmptyString(event.Payload.CallType, stringFromPayload(event.Payload.Metadata, "callType")); callType != "" {
 		payload["callType"] = callType
 	}
-	for _, key := range []string{"toolName", "activityKind", "command", "status", "exitCode", "exit_code", "sessionID", "paths", "requestId"} {
+	for _, key := range []string{"toolName", "activityKind", "command", "status", "exitCode", "exit_code", "sessionID", "paths", "requestId", "fileChanges"} {
 		if value, ok := event.Payload.Metadata[key]; ok && !payloadValueIsEmpty(value) {
 			if key == "toolName" {
 				continue
@@ -680,6 +680,9 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 			TurnID:  turnID,
 			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
 			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+		}
+		if fileChanges := payloadMap(event.Payload.Metadata, "fileChanges"); len(fileChanges) > 0 {
+			patch.Turn.FileChanges = clonePayload(fileChanges)
 		}
 	}
 	if !applyLifecycleSnapshotToPatch(&patch, event) {

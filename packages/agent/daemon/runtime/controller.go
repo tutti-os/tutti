@@ -50,8 +50,10 @@ type sessionLifecycleLock struct {
 }
 
 type activeTurn struct {
-	turnID string
-	cancel context.CancelFunc
+	turnID                string
+	cancel                context.CancelFunc
+	openCallIDs           map[string]struct{}
+	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {
@@ -1245,6 +1247,10 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		events = c.asyncTurnEventsReadyForFold(session, turnID, events)
+		if len(events) == 0 {
+			return
+		}
 		session = c.foldTurnSessionEvents(session, events, turnID)
 		if shouldAdvanceSessionUpdatedAtFromEvents(events) {
 			session.UpdatedAtUnixMS = unixMS(now())
@@ -1258,7 +1264,9 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
+		if turnHasTerminalEvent(events, turnID) ||
+			turnLifecycleSnapshotSettledTurn(events, turnID) ||
+			turnSteeredIntoActiveTurn(events, turnID) {
 			finish(session)
 		}
 	}
@@ -1280,6 +1288,91 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 	}
 }
 
+func (c *Controller) asyncTurnEventsReadyForFold(session Session, turnID string, events []activityshared.Event) []activityshared.Event {
+	turnID = strings.TrimSpace(turnID)
+	if c == nil || turnID == "" || len(events) == 0 {
+		return events
+	}
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	turn, ok := c.turns[key]
+	if !ok || strings.TrimSpace(turn.turnID) != turnID {
+		return events
+	}
+	if turn.openCallIDs == nil {
+		turn.openCallIDs = make(map[string]struct{})
+	}
+	for _, event := range events {
+		trackAsyncTurnCallEvent(turn.openCallIDs, event, turnID)
+	}
+	var ready []activityshared.Event
+	var terminal []activityshared.Event
+	for _, event := range events {
+		if asyncEventCompletesTurnSuccessfully(event, turnID) {
+			terminal = append(terminal, event)
+			continue
+		}
+		ready = append(ready, event)
+	}
+	if len(terminal) > 0 && len(turn.openCallIDs) > 0 {
+		turn.pendingTerminalEvents = append(turn.pendingTerminalEvents, terminal...)
+	} else {
+		ready = events
+	}
+	if len(turn.openCallIDs) == 0 && len(turn.pendingTerminalEvents) > 0 {
+		ready = append(ready, turn.pendingTerminalEvents...)
+		turn.pendingTerminalEvents = nil
+	}
+	c.turns[key] = turn
+	return ready
+}
+
+func trackAsyncTurnCallEvent(openCallIDs map[string]struct{}, event activityshared.Event, turnID string) {
+	if len(openCallIDs) == 0 && event.Type != activityshared.EventCallStarted {
+		return
+	}
+	if strings.TrimSpace(event.Payload.TurnID) != turnID {
+		return
+	}
+	callID := asyncTurnCallTrackingID(event)
+	if callID == "" {
+		return
+	}
+	switch event.Type {
+	case activityshared.EventCallStarted:
+		openCallIDs[callID] = struct{}{}
+	case activityshared.EventCallCompleted, activityshared.EventCallFailed:
+		delete(openCallIDs, callID)
+	}
+}
+
+func asyncTurnCallTrackingID(event activityshared.Event) string {
+	if callID := strings.TrimSpace(event.Payload.CallID); callID != "" {
+		return callID
+	}
+	return strings.TrimSpace(event.EventID)
+}
+
+func asyncEventCompletesTurnSuccessfully(event activityshared.Event, turnID string) bool {
+	if strings.TrimSpace(event.Payload.TurnID) == turnID {
+		if event.Type == activityshared.EventTurnCompleted {
+			outcome := strings.TrimSpace(event.Payload.TurnOutcome)
+			return outcome == "" || outcome == string(activityshared.TurnOutcomeCompleted)
+		}
+	}
+	snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+	if !ok || strings.TrimSpace(snapshot.Phase) != string(activityshared.TurnPhaseSettled) {
+		return false
+	}
+	outcome := strings.TrimSpace(snapshot.Outcome)
+	if outcome != "" && outcome != string(activityshared.TurnOutcomeCompleted) {
+		return false
+	}
+	return strings.TrimSpace(event.Payload.TurnID) == turnID ||
+		strings.TrimSpace(snapshot.ActiveTurnID) == turnID
+}
+
 func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
 	turnID = strings.TrimSpace(turnID)
 	for _, event := range events {
@@ -1293,6 +1386,24 @@ func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
 			if string(event.Type) == EventTurnCanceled {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func turnLifecycleSnapshotSettledTurn(events []activityshared.Event, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	for _, event := range events {
+		snapshot, ok := activityshared.TurnLifecycleSnapshotFromEvent(event)
+		if !ok || strings.TrimSpace(snapshot.Phase) != string(activityshared.TurnPhaseSettled) {
+			continue
+		}
+		if strings.TrimSpace(event.Payload.TurnID) == turnID ||
+			strings.TrimSpace(snapshot.ActiveTurnID) == turnID {
+			return true
 		}
 	}
 	return false
@@ -2246,6 +2357,7 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 	if err != nil {
 		return UpdateSettingsResult{}, err
 	}
+	previousSettings := session.SettingsValue()
 	nextSession := session
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
 	if input.Settings.Model != nil {
@@ -2280,22 +2392,71 @@ func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInp
 		nextSession.PermissionModeID = normalized
 	}
 	nextSession.Settings = cloneSessionSettings(settings)
+	slog.Info("agent session settings update requested",
+		"event", "agent_session.settings.update.requested",
+		"provider", session.Provider,
+		"room_id", input.RoomID,
+		"agent_session_id", input.AgentSessionID,
+		"previous_model", previousSettings.Model,
+		"next_model", settings.Model,
+		"patch_has_model", input.Settings.Model != nil,
+		"patch_has_reasoning_effort", input.Settings.ReasoningEffort != nil,
+		"patch_has_speed", input.Settings.Speed != nil,
+		"patch_has_plan_mode", input.Settings.PlanMode != nil,
+		"patch_has_permission_mode", input.Settings.PermissionModeID != nil,
+		"previous_permission_mode_id", previousSettings.PermissionModeID,
+		"next_permission_mode_id", settings.PermissionModeID,
+	)
 	if newSessionAdapter, ok := adapter.(NewSessionSettingsAdapter); ok && newSessionAdapter.RequiresNewSessionForSettings(session, input.Settings) {
+		slog.Warn("agent session settings update requires new session",
+			"event", "agent_session.settings.update.requires_new_session",
+			"provider", session.Provider,
+			"room_id", input.RoomID,
+			"agent_session_id", input.AgentSessionID,
+			"previous_model", previousSettings.Model,
+			"next_model", settings.Model,
+		)
 		return UpdateSettingsResult{}, ErrSessionSettingsRequireNewSession
 	}
 	if permissionChanged {
 		if permissionAdapter, ok := adapter.(PermissionModeAdapter); ok {
 			if err := permissionAdapter.ApplyPermissionMode(ctx, nextSession); err != nil {
+				slog.Warn("agent session permission mode apply failed",
+					"event", "agent_session.settings.update.permission_apply_failed",
+					"provider", session.Provider,
+					"room_id", input.RoomID,
+					"agent_session_id", input.AgentSessionID,
+					"permission_mode_id", nextSession.PermissionModeID,
+					"error", err.Error(),
+				)
 				return UpdateSettingsResult{}, err
 			}
 		}
 	}
 	if liveSettingsAdapter, ok := adapter.(LiveSettingsAdapter); ok {
 		if err := liveSettingsAdapter.ApplySessionSettings(ctx, nextSession, input.Settings); err != nil {
+			slog.Warn("agent session live settings apply failed",
+				"event", "agent_session.settings.update.live_apply_failed",
+				"provider", session.Provider,
+				"room_id", input.RoomID,
+				"agent_session_id", input.AgentSessionID,
+				"previous_model", previousSettings.Model,
+				"next_model", settings.Model,
+				"error", err.Error(),
+			)
 			return UpdateSettingsResult{}, err
 		}
 	}
 	c.store(nextSession)
+	slog.Info("agent session settings update completed",
+		"event", "agent_session.settings.update.completed",
+		"provider", session.Provider,
+		"room_id", input.RoomID,
+		"agent_session_id", input.AgentSessionID,
+		"previous_model", previousSettings.Model,
+		"next_model", settings.Model,
+		"permission_mode_id", nextSession.PermissionModeID,
+	)
 	return UpdateSettingsResult{
 		AgentSessionID: nextSession.AgentSessionID,
 		Settings:       settings,

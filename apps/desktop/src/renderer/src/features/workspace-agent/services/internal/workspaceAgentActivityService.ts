@@ -40,7 +40,6 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentActivityRetainSessionInput,
   WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
@@ -340,6 +339,73 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     };
   }
 
+  async countSessionSection(
+    input: Parameters<IWorkspaceAgentActivityService["countSessionSection"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["countSessionSection"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.countWorkspaceAgentSessionSection(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          sectionKey: input.sectionKey
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      agentTargetId: response.agentTargetId,
+      count: response.count,
+      sectionKey: response.sectionKey,
+      workspaceId: response.workspaceId
+    };
+  }
+
+  async deleteSessionSection(
+    input: Parameters<IWorkspaceAgentActivityService["deleteSessionSection"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["deleteSessionSection"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.deleteWorkspaceAgentSessionSection(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          sectionKey: input.sectionKey
+        },
+        {
+          signal: input.signal
+        }
+      );
+    const entry = this.controllerEntry(workspaceId);
+    const removedSessionIds = response.removedSessionIds
+      .map((id) => id.trim())
+      .filter(Boolean);
+    for (const agentSessionId of removedSessionIds) {
+      this.markSessionDeleted({
+        agentSessionId,
+        data: { deletedAtUnixMs: Date.now() },
+        workspaceId
+      });
+    }
+    if (removedSessionIds.length > 0) {
+      await entry.controller.load(input.signal);
+      for (const agentSessionId of removedSessionIds) {
+        if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
+          entry.controller.removeSession(agentSessionId);
+        }
+      }
+    }
+    return {
+      agentTargetId: response.agentTargetId,
+      removedMessages: response.removedMessages,
+      removedSessionIds,
+      removedSessions: response.removedSessions,
+      sectionKey: response.sectionKey,
+      workspaceId: response.workspaceId
+    };
+  }
+
   async scanExternalSessionImports(
     workspaceId: string,
     request?: Parameters<
@@ -404,12 +470,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       }).catch(input.onError ?? (() => {}));
     }
     return () => {};
-  }
-
-  retainSessionEvents(
-    input: WorkspaceAgentActivityRetainSessionInput
-  ): () => void {
-    return this.ensureSessionSynchronized(input);
   }
 
   onSessionEvent(
@@ -829,15 +889,45 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     workspaceId: string;
   }): ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]> {
     const workspaceState = desktopAgentHostWorkspaceState(input.workspaceId);
+    const requestedSettings = normalizeComposerSettings(input.settings);
+    void this.dependencies.runtimeApi.logTerminalDiagnostic({
+      details: {
+        agentSessionId: input.agentSessionId,
+        model: requestedSettings.model ?? null,
+        permissionModeId: requestedSettings.permissionModeId ?? null,
+        planMode: requestedSettings.planMode ?? null,
+        reasoningEffort: requestedSettings.reasoningEffort ?? null,
+        speed: requestedSettings.speed ?? null
+      },
+      event: "workspace.agent_session.settings.update_requested",
+      level: "info",
+      sessionId: input.agentSessionId,
+      workspaceId: input.workspaceId
+    });
     const session =
       await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
         input.workspaceId,
         input.agentSessionId,
-        normalizeComposerSettings(input.settings)
+        requestedSettings
       );
     const settings = session.settings
       ? normalizeComposerSettings(session.settings)
-      : normalizeComposerSettings(input.settings);
+      : requestedSettings;
+    void this.dependencies.runtimeApi.logTerminalDiagnostic({
+      details: {
+        agentSessionId: input.agentSessionId,
+        model: settings.model ?? null,
+        permissionModeId: settings.permissionModeId ?? null,
+        planMode: settings.planMode ?? null,
+        provider: session.provider,
+        reasoningEffort: settings.reasoningEffort ?? null,
+        speed: settings.speed ?? null
+      },
+      event: "workspace.agent_session.settings.update_completed",
+      level: "info",
+      sessionId: input.agentSessionId,
+      workspaceId: input.workspaceId
+    });
     rememberAgentSessionStateDefaults(workspaceState, session.id, settings);
     return {
       agentSessionId: input.agentSessionId,

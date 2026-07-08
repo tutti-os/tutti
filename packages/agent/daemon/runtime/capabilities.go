@@ -46,6 +46,12 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 		if promptImage {
 			capabilities = append([]string{CapabilityImageInput}, capabilities...)
 		}
+		if acpLiveStateHasCommand(state, "compact") {
+			capabilities = append(capabilities, CapabilityCompact)
+		}
+		if acpLiveStateHasCommand(state, "review") {
+			capabilities = append(capabilities, "review")
+		}
 		return capabilities
 	}
 	capabilities := []string{CapabilityInterrupt}
@@ -66,4 +72,17 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 		}
 	}
 	return capabilities
+}
+
+func acpLiveStateHasCommand(state acpLiveStateSnapshot, name string) bool {
+	normalizedName := strings.TrimSpace(name)
+	if normalizedName == "" {
+		return false
+	}
+	for _, command := range state.availableCommands {
+		if strings.EqualFold(strings.TrimSpace(command.Name), normalizedName) {
+			return true
+		}
+	}
+	return false
 }

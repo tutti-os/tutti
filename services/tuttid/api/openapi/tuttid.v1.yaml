@@ -1810,6 +1810,44 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteWorkspaceAgentSessionSection
+      tags:
+        - agent-session
+      summary: Delete all agent sessions in one rail section for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before deletion.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionSectionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections/page:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1853,6 +1891,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionSectionPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections/count:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: countWorkspaceAgentSessionSection
+      tags:
+        - agent-session
+      summary: Count agent sessions in one rail section for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before counting.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionCountResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -7137,6 +7216,56 @@ components:
       properties:
         removed:
           type: boolean
+    WorkspaceAgentSessionSectionCountResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sectionKey
+        - count
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        count:
+          type: integer
+          minimum: 0
+    DeleteWorkspaceAgentSessionSectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sectionKey
+        - removedMessages
+        - removedSessions
+        - removedSessionIds
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        removedMessages:
+          type: integer
+          minimum: 0
+        removedSessions:
+          type: integer
+          minimum: 0
+        removedSessionIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     ClearWorkspaceAgentSessionsResponse:
       type: object
       additionalProperties: false

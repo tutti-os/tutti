@@ -12,7 +12,9 @@ import "context"
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
+	CountSessionSection(context.Context, CountSessionSectionInput) (SessionSectionCount, bool, error)
 	DeleteSession(context.Context, string, string) (bool, error)
+	DeleteSessionSection(context.Context, DeleteSessionSectionInput) (DeleteSessionSectionResult, bool, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
@@ -71,6 +73,34 @@ type ListSessionSectionInput struct {
 	CursorUpdatedAtMS int64
 	CursorSessionID   string
 	Limit             int
+}
+
+type CountSessionSectionInput struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+}
+
+type SessionSectionCount struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+	Count         int
+}
+
+type DeleteSessionSectionInput struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+}
+
+type DeleteSessionSectionResult struct {
+	WorkspaceID       string
+	SectionKey        string
+	AgentTargetID     string
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
 }
 
 const PinnedSessionPageKey = "pinned"

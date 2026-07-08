@@ -214,11 +214,12 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   });
   const handleLocateUserMessage = useCallback(
     (item: AgentMessageLocatorItem) => {
-      const scrollParent = virtualizerHostRef.current?.parentElement ?? null;
+      // The virtualizer host's parent is the ScrollArea content wrapper, not the
+      // scrolling viewport, so resolve the real scroll parent from the row itself.
+      const queryRoot: ParentNode =
+        virtualizerHostRef.current?.parentElement ?? document;
       const scrollToRenderedRow = (): boolean => {
-        const renderedRow = (
-          scrollParent ?? document
-        ).querySelector<HTMLElement>(
+        const renderedRow = queryRoot.querySelector<HTMLElement>(
           `[data-agent-transcript-row="${escapeCssString(item.rowKey)}"]`
         );
         if (!renderedRow) {
@@ -226,7 +227,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         }
         scrollTranscriptRowIntoView(
           renderedRow,
-          scrollParent ?? findMessageLocatorScrollParent(renderedRow)
+          findMessageLocatorScrollParent(renderedRow)
         );
         return true;
       };
@@ -249,7 +250,10 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
       setVirtualScrollElement(null);
       return;
     }
-    setVirtualScrollElement(virtualizerHostRef.current?.parentElement ?? null);
+    // Bind the virtualizer to the actual scrolling viewport rather than the
+    // ScrollArea content wrapper that directly parents the host element.
+    const host = virtualizerHostRef.current;
+    setVirtualScrollElement(host ? findMessageLocatorScrollParent(host) : null);
   }, [shouldVirtualize]);
 
   const renderRow = (
@@ -395,6 +399,11 @@ function AgentMessageLocatorRail({
   const locatorRef = useRef<HTMLElement | null>(null);
   const locatorViewportRef = useRef<HTMLDivElement | null>(null);
   const closePanelTimeoutRef = useRef<number | null>(null);
+  // While a click-initiated scroll animation runs, hold the clicked selection
+  // instead of recomputing it from the viewport center on every scroll frame,
+  // so the selected dot doesn't flicker across the dots it passes.
+  const suppressScrollSelectionRef = useRef(false);
+  const suppressScrollSelectionTimeoutRef = useRef<number | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -423,6 +432,9 @@ function AgentMessageLocatorRail({
     () => () => {
       if (closePanelTimeoutRef.current !== null) {
         window.clearTimeout(closePanelTimeoutRef.current);
+      }
+      if (suppressScrollSelectionTimeoutRef.current !== null) {
+        window.clearTimeout(suppressScrollSelectionTimeoutRef.current);
       }
     },
     []
@@ -540,6 +552,9 @@ function AgentMessageLocatorRail({
     let animationFrame: number | null = null;
     const updateSelectedFromScroll = (): void => {
       animationFrame = null;
+      if (suppressScrollSelectionRef.current) {
+        return;
+      }
       const nextSelectedKey = selectMessageLocatorItemAtViewportCenter(
         scrollParent,
         items
@@ -612,6 +627,16 @@ function AgentMessageLocatorRail({
     setSelectedKey(item.key);
     setActiveKey(item.key);
     markItemRead(item.key);
+    // Freeze scroll-driven selection for the length of the locate animation so
+    // the clicked dot stays selected while the viewport scrolls to it.
+    suppressScrollSelectionRef.current = true;
+    if (suppressScrollSelectionTimeoutRef.current !== null) {
+      window.clearTimeout(suppressScrollSelectionTimeoutRef.current);
+    }
+    suppressScrollSelectionTimeoutRef.current = window.setTimeout(() => {
+      suppressScrollSelectionRef.current = false;
+      suppressScrollSelectionTimeoutRef.current = null;
+    }, AGENT_MESSAGE_LOCATOR_SCROLL_DURATION_MS + 120);
     onLocate(item);
   };
   const itemFromPointerEvent = (
@@ -724,9 +749,12 @@ function AgentMessageLocatorRail({
               className="agent-gui-message-locator__track-segment"
               style={
                 {
+                  // Center each segment at the midpoint between the two dots it
+                  // connects so the gap above and below the line stays equal.
                   "--agent-message-locator-segment-position": `${
                     index * AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX +
-                    AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX
+                    AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX / 2 +
+                    AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX / 2
                   }px`
                 } as CSSProperties
               }

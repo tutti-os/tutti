@@ -40,6 +40,8 @@ export interface MentionRowAppItem {
   name: string;
   description?: string | null;
   iconUrl?: string | null;
+  /** Optional availability badge rendered at the row's trailing edge. */
+  statusTag?: MentionRowStatusTag | null;
 }
 
 export interface MentionRowAppFactoryItem {

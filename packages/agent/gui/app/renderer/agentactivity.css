@@ -5885,20 +5885,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   justify-content: flex-end;
   min-width: 28px;
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-meta[data-kind="loading"],
 .agent-gui-node__conversation-meta[data-kind="waiting"],
-.agent-gui-node__conversation-meta[data-kind="failed"] {
+.agent-gui-node__conversation-meta[data-kind="failed"],
+.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
   width: 28px;
   min-width: 28px;
-  justify-content: center;
-}
-
-.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
-  width: 10px;
-  min-width: 10px;
   justify-content: center;
 }
 
@@ -5922,7 +5916,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-delete-button,
@@ -5943,6 +5936,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-actions,
 .agent-gui-node__conversation-actions:focus-within {
   opacity: 1;
+  /* Only in the visible state: fading in on hover stays smooth while
+     leaving the row swaps back to the meta icon instantly, with no
+     lingering cross-fade overlapping the two. */
+  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-item[data-pinned="true"]
@@ -6318,12 +6315,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   left: 50%;
   width: 1px;
   height: 8px;
-  transform: translateX(-50%);
-  background: color-mix(
-    in srgb,
-    var(--line-2, var(--tutti-line-2)) 82%,
-    transparent
-  );
+  transform: translate(-50%, -50%);
+  background: var(--line-1, var(--nexight-line-1));
 }
 
 .agent-gui-message-locator__tick {
@@ -8908,33 +8901,76 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-hero-launchpad-icon {
-  width: 54px;
-  height: 54px;
-  border-color: var(--tutti-purple);
-  border-radius: 8px;
-  background: var(--transparency-block);
+  /* Size to the strip's actual content and stay centered. A fixed width narrower
+     than the icons left-anchors the overflow, dragging the "centered" selected
+     agent off to one side. */
+  width: fit-content;
+  max-width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
   color: var(--tutti-purple);
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
     both;
 }
 
+/* Hero launchpad: agents laid out left-to-right, split into equal-width rails
+   around the selected agent so it stays dead-center while neighbours fade to
+   both edges. Scoped to the hero so the left rail "All" tile (a single composed
+   image) is unaffected. */
 .agent-gui-node__empty-hero-launchpad-icon
   .agent-gui-node__provider-rail-launchpad-icon {
-  width: 48px;
+  display: flex;
+  width: 100%;
   height: 48px;
-  gap: 3px;
-  padding: 1px;
-  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.agent-gui-node__empty-hero-launchpad-icon
+  .agent-gui-node__provider-rail-launchpad-side {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  overflow: visible;
+}
+
+.agent-gui-node__empty-hero-launchpad-icon
+  .agent-gui-node__provider-rail-launchpad-side[data-side="leading"] {
+  justify-content: flex-end;
+}
+
+.agent-gui-node__empty-hero-launchpad-icon
+  .agent-gui-node__provider-rail-launchpad-side[data-side="trailing"] {
+  justify-content: flex-start;
 }
 
 .agent-gui-node__empty-hero-launchpad-icon
   .agent-gui-node__provider-rail-launchpad-item {
-  border-radius: 6px;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  transition:
+    opacity 220ms ease,
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 220ms ease;
 }
 
 .agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-item[data-provider-active="false"] {
-  opacity: 0.5;
+  .agent-gui-node__provider-rail-launchpad-item[data-provider-active="true"] {
+  transform: scale(1.14);
+  box-shadow: 0 0 0 1.5px var(--tutti-purple);
 }
 
 .agent-gui-node__provider-rail-tile[data-loading="true"]
@@ -8982,6 +9018,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   width: 54px;
   height: 54px;
   place-items: center;
+}
+
+/* The horizontal launchpad strip is wider than the single-icon slot; let the
+   slot grow to the strip's width so the selected agent stays centered. */
+.agent-gui-node__empty-hero-icon-slot:has(
+  > .agent-gui-node__empty-hero-launchpad-icon
+) {
+  width: auto;
 }
 
 .agent-gui-node__empty-hero-icon-effect {
@@ -9072,12 +9116,11 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   gap: 8px;
 }
 
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect {
-  margin-bottom: 10px;
-}
-
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-title {
-  font-size: 24px;
+/* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect,
+.agent-gui-node__empty-provider-gate
+  > .agent-gui-node__empty-hero-launchpad-icon {
+  margin-bottom: 16px;
 }
 
 .agent-gui-node__empty-provider-gate-description {
@@ -9101,6 +9144,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-provider-gate-action {
+  /* Container gap is 8px; add 16px so the description-to-button spacing is 24px. */
+  margin-top: 16px;
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
     190ms both;
 }

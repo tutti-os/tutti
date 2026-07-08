@@ -254,6 +254,36 @@ describe("agentToolRenderData", () => {
     ]);
   });
 
+  it("extracts unifiedDiff from payload fileChanges metadata", () => {
+    const changes = getFileChangeRenderData(
+      makeCall({
+        payload: {
+          fileChanges: {
+            files: [
+              {
+                path: "src/a.ts",
+                change: "modified",
+                unifiedDiff:
+                  "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n"
+              }
+            ]
+          }
+        }
+      })
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        path: "src/a.ts",
+        unifiedDiff: expect.stringContaining(
+          "diff --git a/src/a.ts b/src/a.ts"
+        ),
+        added: 1,
+        removed: 1
+      })
+    ]);
+  });
+
   it("extracts file changes from structured patch output", () => {
     const changes = getFileChangeRenderData(
       makeCall({

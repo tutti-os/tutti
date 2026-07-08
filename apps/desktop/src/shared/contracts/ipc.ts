@@ -215,6 +215,7 @@ export const desktopIpcChannels = {
 
 export interface DesktopHostWindowLayoutPayload {
   compactTitlebar: boolean;
+  maximized: boolean;
 }
 
 export interface DesktopHostWindowMinimizeStatePayload {

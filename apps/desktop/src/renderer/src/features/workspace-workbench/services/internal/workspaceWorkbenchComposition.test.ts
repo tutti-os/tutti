@@ -3,6 +3,8 @@ import test from "node:test";
 import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
 import {
   createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
@@ -168,6 +170,32 @@ test("workspace agent GUI draft launches prefill prompts without binding session
     },
     type: "agent-gui:prefill-prompt"
   });
+});
+
+test("workspace agent GUI unified launch requests keep All-launched nodes on the unified dock entry", () => {
+  const sessionRequest = createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+    agentSessionId: "session-2",
+    provider: "claude-code"
+  });
+  const draftRequest = createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+    draftPrompt: "Review this issue",
+    provider: "codex"
+  });
+
+  assert.equal(sessionRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(draftRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(draftRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).provider,
+    "claude-code"
+  );
 });
 
 test("toWorkspaceFilesActivation accepts reveal-file payloads and rejects others", () => {

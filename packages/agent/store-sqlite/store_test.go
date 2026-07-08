@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,6 +128,60 @@ func TestStoreFreshMigrateCreatesTablesWithoutHostForeignKeys(t *testing.T) {
 	}
 	if len(targets) != 2 || targets[0].ID != testTargetIDCodex || targets[1].ID != testTargetIDClaude {
 		t.Fatalf("seeded targets = %#v, want codex and claude-code system targets", targets)
+	}
+}
+
+func TestStoreMigrateCreatesPinnedPaginationIndex(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	rows, err := store.db.QueryContext(ctx, `PRAGMA index_xinfo(idx_workspace_agent_sessions_pinned_page)`)
+	if err != nil {
+		t.Fatalf("index_xinfo error = %v", err)
+	}
+	defer rows.Close()
+
+	type indexedColumn struct {
+		name string
+		desc int
+	}
+	var columns []indexedColumn
+	for rows.Next() {
+		var (
+			seqno int
+			cid   int
+			name  sql.NullString
+			desc  int
+			coll  sql.NullString
+			key   int
+		)
+		if err := rows.Scan(&seqno, &cid, &name, &desc, &coll, &key); err != nil {
+			t.Fatalf("scan index_xinfo: %v", err)
+		}
+		if key == 0 {
+			continue
+		}
+		columns = append(columns, indexedColumn{name: name.String, desc: desc})
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate index_xinfo: %v", err)
+	}
+
+	want := []indexedColumn{
+		{name: "workspace_id", desc: 0},
+		{name: "deleted_at_unix_ms", desc: 0},
+		{name: "pinned_at_unix_ms", desc: 1},
+		{name: "agent_session_id", desc: 0},
+	}
+	if len(columns) != len(want) {
+		t.Fatalf("pinned pagination index columns = %+v, want %+v", columns, want)
+	}
+	for i := range want {
+		if columns[i] != want[i] {
+			t.Fatalf("pinned pagination index column[%d] = %+v, want %+v", i, columns[i], want[i])
+		}
 	}
 }
 
@@ -483,6 +538,125 @@ WHERE workspace_id = ?`, "ws-rail-visible"); err != nil {
 	}
 	if next.HasMore || next.NextCursor != "" {
 		t.Fatalf("next page state = hasMore %v cursor %q, want exhausted", next.HasMore, next.NextCursor)
+	}
+}
+
+func TestStoreCountAndDeleteSessionSection(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{paths: []string{"/workspace/app"}}))
+	ctx := context.Background()
+
+	for _, input := range []SessionStateReport{
+		{
+			WorkspaceID:       "ws-section-delete",
+			AgentSessionID:    "session-codex-1",
+			AgentTargetID:     "local:codex",
+			Origin:            "runtime",
+			UserID:            "user-1",
+			Provider:          "codex",
+			ProviderSessionID: "provider-codex-1",
+			Cwd:               "/workspace/app",
+			Status:            "running",
+			OccurredAtUnixMS:  100,
+		},
+		{
+			WorkspaceID:       "ws-section-delete",
+			AgentSessionID:    "session-codex-2",
+			AgentTargetID:     "local:codex",
+			Origin:            "runtime",
+			UserID:            "user-1",
+			Provider:          "codex",
+			ProviderSessionID: "provider-codex-2",
+			Cwd:               "/workspace/app/pkg",
+			Status:            "running",
+			OccurredAtUnixMS:  100,
+		},
+		{
+			WorkspaceID:      "ws-section-delete",
+			AgentSessionID:   "session-claude",
+			AgentTargetID:    "local:claude-code",
+			Origin:           "runtime",
+			Provider:         "claude-code",
+			Cwd:              "/workspace/app",
+			Status:           "completed",
+			OccurredAtUnixMS: 100,
+		},
+		{
+			WorkspaceID:      "ws-section-delete",
+			AgentSessionID:   "session-hidden",
+			AgentTargetID:    "local:codex",
+			Origin:           "runtime",
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Status:           "completed",
+			RuntimeContext:   map[string]any{"visible": false},
+			OccurredAtUnixMS: 100,
+		},
+	} {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+		if strings.Contains(input.AgentSessionID, "codex") {
+			messageResult, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+				WorkspaceID:    input.WorkspaceID,
+				AgentSessionID: input.AgentSessionID,
+				Origin:         input.Origin,
+				Messages: []MessageUpdate{{
+					MessageID:        "message-" + input.AgentSessionID,
+					TurnID:           "turn-" + input.AgentSessionID,
+					Role:             "assistant",
+					Kind:             "text",
+					Status:           "running",
+					Payload:          map[string]any{"text": input.AgentSessionID},
+					OccurredAtUnixMS: 110,
+				}},
+			})
+			if err != nil {
+				t.Fatalf("ReportSessionMessages(%s) error = %v", input.AgentSessionID, err)
+			}
+			if messageResult.AcceptedCount != 1 {
+				t.Fatalf("ReportSessionMessages(%s) accepted = %d, want 1", input.AgentSessionID, messageResult.AcceptedCount)
+			}
+		}
+	}
+
+	sectionKey := RailSectionKeyForProject("/workspace/app")
+	count, ok, err := store.CountSessionSection(ctx, CountSessionSectionInput{
+		WorkspaceID:   "ws-section-delete",
+		SectionKey:    sectionKey,
+		AgentTargetID: "local:codex",
+	})
+	if err != nil || !ok {
+		t.Fatalf("CountSessionSection() ok=%v error=%v", ok, err)
+	}
+	if count.Count != 2 {
+		t.Fatalf("CountSessionSection() count = %d, want 2", count.Count)
+	}
+
+	result, ok, err := store.DeleteSessionSection(ctx, DeleteSessionSectionInput{
+		WorkspaceID:   "ws-section-delete",
+		SectionKey:    sectionKey,
+		AgentTargetID: "local:codex",
+	})
+	if err != nil || !ok {
+		t.Fatalf("DeleteSessionSection() ok=%v error=%v", ok, err)
+	}
+	if result.RemovedSessions != 2 || result.RemovedMessages != 2 {
+		t.Fatalf("DeleteSessionSection() = %#v, want 2 sessions and 2 messages", result)
+	}
+	slices.Sort(result.RemovedSessionIDs)
+	if !slices.Equal(result.RemovedSessionIDs, []string{"session-codex-1", "session-codex-2"}) {
+		t.Fatalf("removed session ids = %#v", result.RemovedSessionIDs)
+	}
+	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-codex-1"); err != nil || ok {
+		t.Fatalf("GetSession(deleted codex) ok=%v error=%v, want false", ok, err)
+	}
+	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-claude"); err != nil || !ok {
+		t.Fatalf("GetSession(other target) ok=%v error=%v, want true", ok, err)
+	}
+	if _, ok, err := store.GetSession(ctx, "ws-section-delete", "session-hidden"); err != nil || !ok {
+		t.Fatalf("GetSession(hidden) ok=%v error=%v, want true", ok, err)
 	}
 }
 

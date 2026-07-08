@@ -170,17 +170,10 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         return;
       }
 
-      if (ownerWindow.isFullScreen()) {
-        ownerWindow.setFullScreen(false);
-        return;
-      }
-
-      if (ownerWindow.isMaximized()) {
-        ownerWindow.unmaximize();
-        return;
-      }
-
-      ownerWindow.maximize();
+      // The standalone agent window's green control is a real (native)
+      // fullscreen toggle. Native maximize/zoom is disabled for this window
+      // (maximizable: false), so fullscreen is the only fill state to track.
+      ownerWindow.setFullScreen(!ownerWindow.isFullScreen());
     }
   );
 }

@@ -50,8 +50,8 @@ import { translate } from "@renderer/i18n/appRuntime";
 import { cn } from "@renderer/lib/format";
 import { Toast } from "@renderer/lib/toast";
 import {
-  createWorkspaceAgentGuiDraftLaunchRequest,
-  createWorkspaceAgentGuiSessionLaunchRequest
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
 import {
   resolveWorkspaceAgentChatProvider,
@@ -362,7 +362,7 @@ function ReadyWorkspaceWorkbench({
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
               normalizedDraftPrompt
-                ? createWorkspaceAgentGuiDraftLaunchRequest({
+                ? createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
@@ -370,7 +370,7 @@ function ReadyWorkspaceWorkbench({
                     provider,
                     userProjectPath
                   })
-                : createWorkspaceAgentGuiSessionLaunchRequest({
+                : createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
                     agentTargetId,
                     agentSessionId,
                     openInNewWindow,

@@ -326,6 +326,62 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("clears the active session when prefill launches reuse an agent node", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      dockEntryId: "agent-gui",
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      reason: "host" as const,
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    };
+
+    const sessionLaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-codex-1",
+        agentTargetId: "local:codex",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    const prefillLaunch = contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentTargetId: "local:codex",
+        draftPrompt: "Handle this issue",
+        provider: "codex"
+      }
+    }) as
+      | {
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    expect(prefillLaunch?.instanceId).toBe(sessionLaunch?.instanceId);
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: prefillLaunch?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toEqual({
+      agentTargetId: "local:codex",
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: null
+    });
+  });
+
   it("resolves unified empty dock launches lazily from current provider availability", () => {
     const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
     const contribution = createTestAgentGuiWorkbenchContribution({
@@ -367,6 +423,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(launchResult).toMatchObject({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: true,
       title: "Agent"
     });
     expect(launchResult?.instanceId).toBe(
@@ -412,6 +469,7 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(launchResult).toMatchObject({
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: true,
       title: "Agent"
     });
     expect(launchResult?.instanceId).toBe(
@@ -427,6 +485,92 @@ describe("agent GUI workbench contribution copy", () => {
       conversationRailWidthPx: null,
       lastActiveAgentSessionId: null,
       agentTargetId: "local:claude-code"
+    });
+  });
+
+  it("opens a fresh cascading window for the dock 'New window' payload", () => {
+    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      defaultProviderTargetId: claudeTarget.targetId,
+      providerTargets: [
+        createLocalAgentGUIProviderTarget("codex"),
+        claudeTarget
+      ],
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    // The regular launch reuses the target-keyed instance...
+    expect(dockEntry?.launchPayload).not.toHaveProperty("openInNewWindow");
+    // ...while the "New window" payload forces a fresh window.
+    expect(dockEntry?.newWindowLaunchPayload).toMatchObject({
+      openInNewWindow: true
+    });
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.newWindowLaunchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          cascadeOffset?: { x: number; y: number };
+          instanceId: string;
+        }
+      | null
+      | undefined;
+
+    // A unique per-launch panel instance (not the shared target-keyed id) so
+    // the workbench opens a new node instead of re-focusing the existing one.
+    expect(launchResult?.instanceId).toMatch(/^agent-gui:claude-code:panel:/);
+    expect(launchResult?.instanceId).not.toBe(
+      "agent-gui:claude-code:target:local%3Aclaude-code"
+    );
+    expect(launchResult?.cascadeOffset).toBeDefined();
+    // The new window still commits to the resolved target/provider.
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: launchResult?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toMatchObject({
+      agentTargetId: "local:claude-code"
+    });
+  });
+
+  it("opens a fresh unified Agent node from the dock popup new-window action", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+    const [dockEntry] = contribution.dockEntries ?? [];
+
+    const launchResult = contribution.onLaunchRequest?.({
+      dockEntryId: dockEntry?.id,
+      launchSource: "dock-popup-new-window",
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      payload: dockEntry?.launchPayload,
+      reason: "dock",
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    }) as
+      | {
+          cascadeOffset?: { x: number; y: number };
+          dockEntryId?: string;
+          reuseDockEntryNode?: boolean;
+        }
+      | null
+      | undefined;
+
+    expect(launchResult).toMatchObject({
+      cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
+      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+      reuseDockEntryNode: false
     });
   });
 

@@ -8,7 +8,7 @@ export function workspaceAgentProviderLabel(provider: string): string {
     case "openclaw":
       return "OpenClaw";
     case "opencode":
-      return "OpenCode";
+      return "Open Code";
     case "hermes":
       return "Hermes";
     case "nexight":

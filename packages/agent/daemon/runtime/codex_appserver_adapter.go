@@ -498,6 +498,15 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)
 
 	threadParams := appServerThreadStartParams(session, a.sessionCWD(session))
+	slog.Info("agent session app-server thread start params",
+		"event", "agent_session.app_server.thread_start.params",
+		"provider", a.config.provider,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"model", asString(threadParams["model"]),
+		"settings_model", session.SettingsValue().Model,
+		"permission_mode_id", session.PermissionModeID,
+	)
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, threadParams, false))
 	threadResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodThreadStart, func() (json.RawMessage, error) {
 		return client.ThreadStart(ctx, acpStartCallTimeout, threadParams,
@@ -1659,6 +1668,18 @@ func (a *CodexAppServerAdapter) execBlocking(
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadataFromContext(ctx))
 	turnParams := appServerTurnStartParams(session, appSession.threadID, providerContent, visibleText, appSession.planModeMask, appSession.defaultModeMask, appSession.defaultModel)
+	slog.Info("agent session app-server turn start params",
+		"event", "agent_session.app_server.turn_start.params",
+		"provider", a.config.provider,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"turn_id", turnID,
+		"provider_session_id", appSession.threadID,
+		"model", asString(turnParams["model"]),
+		"settings_model", session.SettingsValue().Model,
+		"default_model", appSession.defaultModel,
+		"permission_mode_id", session.PermissionModeID,
+	)
 	trace.Log("turn.start.params", codexAppServerTraceTurnStartParams(session, turnParams, providerContent))
 	turnStartedAt := time.Now()
 	result, err := appSession.client.TurnStart(ctx, turnParams,
@@ -2132,10 +2153,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 					terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)))
 					emitTerminal(terminalEvents)
 				}
+				a.scheduleGoalContinuationNudge(session)
 				return true, nil
 			}
 			normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
 			emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
+			a.scheduleGoalContinuationNudge(session)
 			return true, nil
 		}
 		terminalEvents := []activityshared.Event{}
@@ -2763,6 +2786,14 @@ func (a *CodexAppServerAdapter) ApplySessionSettings(
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
 	if appSession == nil {
+		slog.Warn("agent session app-server settings apply skipped without live session",
+			"event", "agent_session.app_server.settings.apply_skipped",
+			"provider", a.config.provider,
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"session_model", session.SettingsValue().Model,
+			"patch_has_model", patch.Model != nil,
+		)
 		return nil
 	}
 	appSession.ensureInitialized()
@@ -2787,7 +2818,24 @@ func (a *CodexAppServerAdapter) ApplySessionSettings(
 			updateConfigOptionDescriptorValue(appSession.configOptionDescriptors, "service_tier", speed)
 		}
 	}
+	slog.Info("agent session app-server settings applied",
+		"event", "agent_session.app_server.settings.applied",
+		"provider", a.config.provider,
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"session_model", session.SettingsValue().Model,
+		"patch_has_model", patch.Model != nil,
+		"patch_model", stringPtrLogValue(patch.Model),
+		"config_option_model", asString(appSession.configOptions["model"]),
+	)
 	return nil
+}
+
+func stringPtrLogValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func (*CodexAppServerAdapter) RequiresNewSessionForSettings(Session, SessionSettingsPatch) bool {

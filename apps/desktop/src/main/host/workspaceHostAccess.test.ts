@@ -159,6 +159,9 @@ function createTransportClient(
     async deleteWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async deleteWorkspaceAgentSessionSection() {
+      throw new Error("not used");
+    },
     async updateWorkspaceAgentSessionTitle() {
       throw new Error("not used");
     },
@@ -304,6 +307,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async listWorkspaceAgentSessionSectionPage() {
+      throw new Error("not used");
+    },
+    async countWorkspaceAgentSessionSection() {
       throw new Error("not used");
     },
     async listWorkspaceAgentPinnedSessionPage() {

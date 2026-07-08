@@ -138,6 +138,9 @@ export function StandaloneAgentWindow({
     }
   }
   const [frame, setFrame] = useState(() => readWindowFrameRect());
+  const [isWindowMaximized, setIsWindowMaximized] = useState(
+    readWindowMaximizedState
+  );
   const [providerTargets, setProviderTargets] = useState<
     Awaited<ReturnType<typeof agentsService.load>>["providerTargets"] | null
   >(() => bootstrapProviderTargets);
@@ -281,6 +284,19 @@ export function StandaloneAgentWindow({
   }, []);
 
   useEffect(() => {
+    // The main process pushes maximize/fullscreen transitions through the host
+    // window layout event; keep the traffic-light icon in sync with it.
+    const handleLayout = (event: Event) => {
+      const detail = (event as CustomEvent<{ maximized?: boolean }>).detail;
+      setIsWindowMaximized(detail?.maximized === true);
+    };
+    window.addEventListener("tutti-host-window-layout", handleLayout);
+    return () => {
+      window.removeEventListener("tutti-host-window-layout", handleLayout);
+    };
+  }, []);
+
+  useEffect(() => {
     let disposed = false;
     void agentsService.load().then((snapshot) => {
       if (!disposed) {
@@ -378,7 +394,7 @@ export function StandaloneAgentWindow({
           conversationIconUrl={headerConversationIconUrl}
           conversationIconFallbackUrl={headerConversationIconFallbackUrl}
           conversationTitle={headerConversationTitle}
-          displayMode="floating"
+          displayMode={isWindowMaximized ? "fullscreen" : "floating"}
           data-agent-gui-standalone-window-header="true"
           data-workbench-drag-handle="true"
           isConversationRailAutoCollapsed={false}
@@ -655,6 +671,13 @@ function readWindowFrameRect(): WorkbenchFrame {
     x: 0,
     y: 0
   };
+}
+
+function readWindowMaximizedState(): boolean {
+  return (
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.tuttiWindowMaximized === "true"
+  );
 }
 
 function createDockPreviewCache(

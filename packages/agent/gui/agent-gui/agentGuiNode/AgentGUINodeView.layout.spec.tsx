@@ -279,6 +279,40 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
+  it("keeps the conversation rail stable when the active conversation object refreshes", () => {
+    const actions = createActions();
+    const labels = createLabels();
+    const conversation = createConversationSummary("session-1", {
+      title: "Stable conversation"
+    });
+    const viewModel = createViewModel({
+      activeConversationId: "session-1",
+      activeConversation: conversation,
+      conversations: [conversation]
+    });
+    const { rerender } = renderAgentGUINodeView({
+      actions,
+      labels,
+      viewModel
+    });
+
+    expect(conversationMetaMock.calls).toContain("session-1");
+    conversationMetaMock.calls = [];
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        labels,
+        viewModel: {
+          ...viewModel,
+          activeConversation: { ...conversation }
+        }
+      })
+    );
+
+    expect(conversationMetaMock.calls).toEqual([]);
+  });
+
   it("renders an injected provider rail footer with neutral context", () => {
     const activeConversation = createConversationSummary("session-1", {
       title: "Active conversation"
@@ -307,6 +341,7 @@ describe("AgentGUINodeView layout persistence", () => {
     });
 
     const footer = screen.getByTestId("agent-gui-sidebar-footer-slot");
+    const configFooter = screen.getByTestId("agent-gui-config-footer");
     const providerTileScrollArea = screen.getByRole("tablist", {
       name: "Switch provider"
     });
@@ -318,6 +353,10 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       container.querySelector(".agent-gui-node__rail")
     ).not.toContainElement(footer);
+    expect(
+      footer.compareDocumentPosition(configFooter) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(renderSidebarFooter).toHaveBeenCalledWith({
       currentUserId: "user-1",
       activeConversation
@@ -819,7 +858,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
+  it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, OpenCode, Hermes, OpenClaw without visible provider labels", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -829,6 +868,7 @@ describe("AgentGUINodeView layout persistence", () => {
             disabled: true
           },
           createLocalAgentGUIProviderTarget("claude-code"),
+          createLocalAgentGUIProviderTarget("opencode"),
           {
             ...createLocalAgentGUIProviderTarget("hermes"),
             disabled: true
@@ -852,12 +892,16 @@ describe("AgentGUINodeView layout persistence", () => {
       "Claude Code",
       "Cursor",
       "Tutti",
+      "Open Code",
       "Hermes",
       "OpenClaw"
     ]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("All");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
+      ""
+    );
+    expect(screen.getByRole("tab", { name: "Open Code" })).toHaveTextContent(
       ""
     );
     expect(screen.getByRole("tab", { name: "Tutti" })).toHaveTextContent("");
@@ -1192,26 +1236,24 @@ describe("AgentGUINodeView layout persistence", () => {
       ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
     );
     expect(heroIconGrid).not.toBeNull();
-    expect(heroIconGrid?.children).toHaveLength(4);
+    const items = Array.from(
+      heroIconGrid?.querySelectorAll(
+        ".agent-gui-node__provider-rail-launchpad-item"
+      ) ?? []
+    );
+    expect(items.length).toBeGreaterThan(1);
+    // The launchpad splits its icons around the selected agent so it stays
+    // centered; exactly one icon is active and it renders first (leading rail
+    // empty for the codex selection here).
     expect(
-      Array.from(
-        heroIconGrid?.querySelectorAll(
-          ".agent-gui-node__provider-rail-launchpad-item"
-        ) ?? []
-      ).map((item) => item.querySelector("img")?.getAttribute("src"))
-    ).toEqual([
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex,
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"],
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor,
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti
-    ]);
-    expect(
-      Array.from(
-        heroIconGrid?.querySelectorAll(
-          ".agent-gui-node__provider-rail-launchpad-item"
-        ) ?? []
-      ).map((item) => item.getAttribute("data-provider-active"))
-    ).toEqual(["true", "false", "false", "false"]);
+      items.filter(
+        (item) => item.getAttribute("data-provider-active") === "true"
+      )
+    ).toHaveLength(1);
+    expect(items[0]?.getAttribute("data-provider-active")).toBe("true");
+    expect(items[0]?.querySelector("img")?.getAttribute("src")).toBe(
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
+    );
   });
 
   it("remounts the empty hero icon when switching provider targets", () => {
@@ -1574,7 +1616,7 @@ describe("AgentGUINodeView layout persistence", () => {
       "Claude Code",
       "Cursor",
       "Tutti Agent",
-      "OpenCode",
+      "Open Code",
       "Hermes",
       "OpenClaw"
     ]);
@@ -2078,6 +2120,129 @@ describe("AgentGUINodeView layout persistence", () => {
       type: "open-workspace-file",
       workspaceRoot: "/workspace/app"
     });
+  });
+
+  it("requests project batch delete through the controller count flow", async () => {
+    const actions = createActions();
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        projectSectionMoreActions: "Project actions",
+        batchDeleteProjectSessions: "Delete project chats"
+      }
+    });
+
+    const projectActionsButton = screen.getByLabelText("Project actions");
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    fireEvent.click(projectActionsButton);
+    fireEvent.click(await screen.findByText("Delete project chats"));
+
+    expect(actions.requestDeleteProjectConversations).toHaveBeenCalledWith(
+      "/workspace/app"
+    );
+    expect(
+      screen.queryByText("batchDeleteProjectSessionsBody:1:App")
+    ).toBeNull();
+  });
+
+  it("requests conversations batch delete through the controller count flow", async () => {
+    const actions = createActions();
+    const conversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation]
+      },
+      labels: {
+        ...createLabels(),
+        conversationsSectionMoreActions: "Conversation actions",
+        batchDeleteConversations: "Delete chats"
+      }
+    });
+
+    const moreActionsButton = screen.getByLabelText("Conversation actions");
+    fireEvent.pointerDown(moreActionsButton, {
+      button: 0,
+      ctrlKey: false
+    });
+    fireEvent.click(moreActionsButton);
+    fireEvent.click(await screen.findByText("Delete chats"));
+
+    expect(actions.requestDeleteConversations).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("batchDeleteConversationsBody:1")).toBeNull();
+  });
+
+  it("shows loading feedback while conversations batch delete count is pending", () => {
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        pendingDeleteConversations: {
+          conversationCount: null
+        }
+      },
+      labels: {
+        ...createLabels(),
+        batchDeleteConversationsConfirm: "Delete chats",
+        batchDeleteConversationsTitle: "Delete chats?",
+        loadingConversations: "Counting chats"
+      }
+    });
+
+    expect(screen.getByText("Delete chats?")).toBeInTheDocument();
+    expect(screen.getByText("Counting chats")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete chats" })).toBeDisabled();
+  });
+
+  it("opens the conversations batch delete dialog after the rail store receives a pending target", () => {
+    const labels = {
+      ...createLabels(),
+      batchDeleteConversationsBody: (count: number) => `Delete ${count} chats`,
+      batchDeleteConversationsConfirm: "Delete chats",
+      batchDeleteConversationsTitle: "Delete chats?"
+    };
+    const actions = createActions();
+    const initialViewModel = createViewModel();
+    const rendered = renderAgentGUINodeView({
+      actions,
+      labels,
+      viewModel: initialViewModel
+    });
+
+    expect(screen.queryByText("Delete chats?")).toBeNull();
+
+    rendered.rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        labels,
+        viewModel: {
+          ...initialViewModel,
+          pendingDeleteConversations: {
+            conversationCount: 2
+          }
+        }
+      })
+    );
+
+    expect(screen.getByText("Delete chats?")).toBeInTheDocument();
+    expect(screen.getByText("Delete 2 chats")).toBeInTheDocument();
   });
 
   it("shows tooltips for project section icon actions", () => {
@@ -4016,6 +4181,29 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("keeps the composer busy from the controller active-turn state when rows are stale", () => {
+    const activeConversation = createConversationSummary("session-1");
+
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        activeConversationBusy: true,
+        canSubmit: false,
+        canQueueWhileBusy: true,
+        conversation: null,
+        conversationDetail: null,
+        isSubmitting: false
+      }
+    });
+
+    expect(composerMock.calls.at(-1)).toMatchObject({
+      isSendingTurn: true,
+      showStopButton: true
+    });
+  });
+
   it("keeps the selected transient conversation ahead of the latest runtime rail page", () => {
     const project = { id: "ryan", label: "ryan", path: "/Users/ryan" };
     const existingSection = {
@@ -4536,8 +4724,8 @@ describe("AgentGUINodeView provider readiness gate", () => {
     });
 
     expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate")
-    ).toHaveTextContent("providerGateInstallTitle");
+      screen.getByTestId("agent-gui-provider-readiness-gate-description")
+    ).toHaveTextContent("providerGateInstallDescription");
     expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
     expect(screen.queryByTestId("agent-composer")).toBeNull();
 
@@ -4560,8 +4748,8 @@ describe("AgentGUINodeView provider readiness gate", () => {
     });
 
     expect(
-      screen.getByTestId("agent-gui-provider-readiness-gate")
-    ).toHaveTextContent("providerGateLoginTitle");
+      screen.getByTestId("agent-gui-provider-readiness-gate-description")
+    ).toHaveTextContent("providerGateLoginDescription");
 
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
@@ -4678,6 +4866,42 @@ describe("AgentGUINodeView provider readiness gate", () => {
       screen.queryByTestId("custom-provider-unavailable")
     ).not.toBeInTheDocument();
     expect(renderProviderUnavailableState).not.toHaveBeenCalled();
+  });
+
+  it("lets the host render provider readiness gate state", () => {
+    const renderProviderReadinessGateState = vi.fn((ctx) => (
+      <div data-testid="custom-provider-readiness">
+        {ctx.providerLabel} / {ctx.gate.status} /{" "}
+        {ctx.target?.label ?? "no target"}
+      </div>
+    ));
+    const target = createLocalAgentGUIProviderTarget("codex");
+
+    renderAgentGUINodeView({
+      renderProviderReadinessGateState,
+      viewModel: createViewModel({
+        providerReadinessGate: {
+          status: "coming_soon"
+        },
+        selectedProviderTarget: target,
+        providerTargets: [target]
+      })
+    });
+
+    expect(screen.getByTestId("custom-provider-readiness")).toHaveTextContent(
+      "Codex / coming_soon / Codex"
+    );
+    expect(
+      screen.queryByTestId("agent-gui-provider-readiness-gate")
+    ).not.toBeInTheDocument();
+    expect(renderProviderReadinessGateState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        providerLabel: "Codex",
+        gate: expect.objectContaining({ status: "coming_soon" }),
+        target
+      })
+    );
   });
 
   it("renders the aggregate agents checking gate when the All tab is active", () => {
@@ -4805,6 +5029,7 @@ interface RenderAgentGUINodeViewOptions {
   renderSidebarFooter?: AgentGUINodeViewProps["renderSidebarFooter"];
   renderProviderRailEmpty?: AgentGUINodeViewProps["renderProviderRailEmpty"];
   renderProviderUnavailableState?: AgentGUINodeViewProps["renderProviderUnavailableState"];
+  renderProviderReadinessGateState?: AgentGUINodeViewProps["renderProviderReadinessGateState"];
   providerRailAllPresentation?: AgentGUINodeViewProps["providerRailAllPresentation"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
 }
@@ -4825,6 +5050,7 @@ function buildAgentGUINodeViewElement({
   renderSidebarFooter,
   renderProviderRailEmpty,
   renderProviderUnavailableState,
+  renderProviderReadinessGateState,
   providerRailAllPresentation,
   slashStatusLimits = []
 }: RenderAgentGUINodeViewOptions = {}) {
@@ -4835,6 +5061,7 @@ function buildAgentGUINodeViewElement({
         renderSidebarFooter={renderSidebarFooter}
         renderProviderRailEmpty={renderProviderRailEmpty}
         renderProviderUnavailableState={renderProviderUnavailableState}
+        renderProviderReadinessGateState={renderProviderReadinessGateState}
         providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
         isActive={isActive}
@@ -5097,7 +5324,11 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     toggleConversationPinned: vi.fn(),
     markConversationUnread: vi.fn(),
     removeProject: vi.fn(),
+    requestDeleteProjectConversations: vi.fn(),
+    cancelDeleteProjectConversations: vi.fn(),
     confirmDeleteProjectConversations: vi.fn(),
+    requestDeleteConversations: vi.fn(),
+    cancelDeleteConversations: vi.fn(),
     confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),
@@ -5154,11 +5385,13 @@ function createViewModel(
     isDeletingProjectConversations: false,
     pendingDeleteConversation: null,
     pendingDeleteProjectConversations: null,
+    pendingDeleteConversations: null,
     pendingApproval: null,
     pendingInteractivePrompt: null,
     activeLiveState: "inactive",
     activationError: null,
     openclawGateway: null,
+    activeConversationBusy: false,
     canSubmit: true,
     hasSentUserMessage: false,
     composerSettings: {

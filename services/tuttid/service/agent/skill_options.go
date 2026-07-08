@@ -61,6 +61,8 @@ func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]co
 		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
 	case agentprovider.Cursor:
 		return cursorComposerSkillRoots(cwd, env), cursorSkillTrigger
+	case agentprovider.OpenCode:
+		return openCodeComposerSkillRoots(cwd, env), openCodeSkillTrigger
 	default:
 		return nil, nil
 	}
@@ -128,6 +130,45 @@ func cursorComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 		})
 	}
 	return roots
+}
+
+func openCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
+	roots := make([]composerSkillRoot, 0)
+	roots = append(roots, ancestorSkillRoots(cwd, ".opencode", "skills", composerSkillSourceProject)...)
+	roots = append(roots, ancestorSkillRoots(cwd, ".claude", "skills", composerSkillSourceProject)...)
+	roots = append(roots, ancestorSkillRoots(cwd, ".agents", "skills", composerSkillSourceProject)...)
+	if userHome, err := os.UserHomeDir(); err == nil && strings.TrimSpace(userHome) != "" {
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(userHome, ".config", "opencode", "skills"),
+			sourceKind: composerSkillSourcePersonal,
+		})
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(userHome, ".claude", "skills"),
+			sourceKind: composerSkillSourcePersonal,
+		})
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(userHome, ".agents", "skills"),
+			sourceKind: composerSkillSourcePersonal,
+		})
+	}
+	if configDir := openCodeConfigDir(env); configDir != "" {
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(configDir, "skills"),
+			sourceKind: composerSkillSourcePersonal,
+		})
+	}
+	return roots
+}
+
+func openCodeConfigDir(env []string) string {
+	configDir := envValue(env, "OPENCODE_CONFIG_DIR")
+	if configDir == "" {
+		return ""
+	}
+	if filepath.Base(filepath.Clean(configDir)) != "opencode" {
+		configDir = filepath.Join(configDir, "opencode")
+	}
+	return configDir
 }
 
 type composerSkillRoot struct {
@@ -510,6 +551,14 @@ func claudeCodeSkillTrigger(root composerSkillRoot, name string) string {
 	}
 	if root.sourceKind == composerSkillSourcePlugin && strings.TrimSpace(root.pluginName) != "" {
 		return "/" + strings.TrimSpace(root.pluginName) + ":" + name
+	}
+	return "/" + name
+}
+
+func openCodeSkillTrigger(_ composerSkillRoot, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
 	}
 	return "/" + name
 }

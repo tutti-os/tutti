@@ -26,6 +26,9 @@ Current examples include:
 - `build-tutti-app-release.mjs` for packaging an external Tutti app into a zip plus `release.json` and `latest.json`
 - `build-tutti-app-catalog.mjs` for merging app `release.json` files into the App Center remote catalog
 - `build-tutti-app-runtime-catalog.mjs` for merging managed app runtime artifact metadata into the runtime download catalog
+- `capture-electron-trace.mjs` for recording desktop Electron performance
+  traces through CDP stream mode without opening the DevTools Performance export
+  UI
 - `lark-log-tool.mjs` for fetching Feishu/Lark message file attachments or Base bug-record attachments with `lark-cli`, extracting Tutti log bundles, summarizing repeated log failures around an anchor time, and optionally watching appended warn/error lines in real time
 
   ```bash
@@ -56,3 +59,14 @@ Current examples include:
   ```
 
 Core product behavior should graduate into Go services or first-class tools rather than remain in shell scripts indefinitely.
+
+Example desktop trace capture:
+
+```bash
+TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT=9223 \
+TUTTI_ELECTRON_JS_FLAGS=--max-old-space-size=8192 \
+VITE_TUTTI_WHY_DID_YOU_RENDER=0 \
+make dev-gui
+
+pnpm trace:desktop -- --duration 15
+```

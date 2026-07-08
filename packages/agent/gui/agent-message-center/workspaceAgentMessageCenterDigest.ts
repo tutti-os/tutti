@@ -36,6 +36,20 @@ export interface BuildWorkspaceAgentMessageCenterDigestInput {
   status: WorkspaceAgentActivityStatus;
 }
 
+interface DigestAgentMessageSummaryCacheEntry {
+  kind: string;
+  payload: AgentActivityMessage["payload"];
+  role: string;
+  status: string | null | undefined;
+  summary: string;
+  version: number;
+}
+
+const digestAgentMessageSummaryByMessage = new WeakMap<
+  AgentActivityMessage,
+  DigestAgentMessageSummaryCacheEntry
+>();
+
 export function buildWorkspaceAgentMessageCenterDigest(
   input: BuildWorkspaceAgentMessageCenterDigestInput
 ): WorkspaceAgentMessageCenterDigest {
@@ -108,13 +122,41 @@ export function buildWorkspaceAgentMessageCenterDigest(
 export function resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(
   message: AgentActivityMessage
 ): string {
+  const cached = digestAgentMessageSummaryByMessage.get(message);
+  if (
+    cached &&
+    cached.role === message.role &&
+    cached.kind === message.kind &&
+    cached.status === message.status &&
+    cached.payload === message.payload &&
+    cached.version === message.version
+  ) {
+    return cached.summary;
+  }
   if (
     !isAgentMessageRole(message.role) ||
     isReasoningMessageKind(message.kind)
   ) {
+    digestAgentMessageSummaryByMessage.set(message, {
+      kind: message.kind,
+      payload: message.payload,
+      role: message.role,
+      status: message.status,
+      summary: "",
+      version: message.version
+    });
     return "";
   }
-  return meaningfulMessageSummary(message);
+  const summary = meaningfulMessageSummary(message);
+  digestAgentMessageSummaryByMessage.set(message, {
+    kind: message.kind,
+    payload: message.payload,
+    role: message.role,
+    status: message.status,
+    summary,
+    version: message.version
+  });
+  return summary;
 }
 
 function pendingPromptSummary(

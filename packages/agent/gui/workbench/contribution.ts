@@ -483,6 +483,7 @@ export function createAgentGuiWorkbenchContribution(
           instanceId,
           state: {
             ...normalizeAgentGuiWorkbenchState(previousState),
+            lastActiveAgentSessionId: null,
             ...(providerTarget.agentTargetId
               ? { agentTargetId: providerTarget.agentTargetId }
               : {}),
@@ -677,6 +678,15 @@ function createAgentGuiWorkbenchDockEntry(input: {
     label: input.label,
     launchBehavior: "enabled",
     launchPayload: input.launchPayload ?? { provider: input.provider },
+    // A normal dock launch reuses the node already showing this provider/target
+    // (its instanceId is target-keyed). The popup's explicit "New window" action
+    // must instead always open a fresh window, so hand it a payload that flags
+    // openInNewWindow — the launch descriptor then derives a unique panel
+    // instanceId and cascades the new window off the existing one.
+    newWindowLaunchPayload: {
+      ...(input.launchPayload ?? { provider: input.provider }),
+      openInNewWindow: true
+    },
     matchNode: (node) => {
       if (node.data.typeId !== agentGuiWorkbenchTypeId) {
         return false;
@@ -824,13 +834,31 @@ function resolveAgentGuiWorkbenchLaunchPayload(
   ) {
     return request.payload;
   }
-  return (
+  const resolved =
     input.resolveDockLaunchPayload?.({
       dockEntryId: request.dockEntryId,
       payload: request.payload,
       reason: request.reason
-    }) ?? request.payload
-  );
+    }) ?? request.payload;
+  // The lazily-resolved dock payload replaces the incoming one, so carry over
+  // the "New window" intent (openInNewWindow) that the popup action set — the
+  // resolver only knows the target, not that this launch must open fresh.
+  if (
+    isOpenInNewWindowLaunchPayload(request.payload) &&
+    resolved &&
+    typeof resolved === "object" &&
+    !Array.isArray(resolved)
+  ) {
+    return { ...(resolved as Record<string, unknown>), openInNewWindow: true };
+  }
+  return resolved;
+}
+
+function isOpenInNewWindowLaunchPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
 }
 
 function isEmptyAgentGuiWorkbenchDockLaunchPayload(payload: unknown): boolean {

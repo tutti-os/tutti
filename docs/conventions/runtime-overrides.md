@@ -123,7 +123,11 @@ the daemon model catalog. The provider auth/config watcher invalidates that
 cache when OpenCode's auth marker (`~/.local/share/opencode/auth.json`) or
 configured OpenCode config files change, so local model-list updates refresh
 through the same `agent.model.catalog.invalidated` event path used by Codex and
-Claude Code. Prompt image capability for those options is resolved by the
+Claude Code. OpenCode composer skill options are discovered with slash triggers
+from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
+agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
+`~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills
+directory. Prompt image capability for those options is resolved by the
 daemon model capability service: Models.dev is fetched first as the public
 model source of truth and cached in memory, then provider-specific rules fill
 gaps for private composer models such as Cursor's `composer-*` ids. Speed

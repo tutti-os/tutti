@@ -6,7 +6,7 @@ export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
   "tutti-agent": "Tutti Agent",
   cursor: "Cursor",
   nexight: "Nexight",
-  opencode: "OpenCode",
+  opencode: "Open Code",
   openclaw: "OpenClaw",
   hermes: "Hermes Agent"
 };

@@ -1124,6 +1124,40 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     );
     expect(model.items[0]?.pendingPrompt).toBeNull();
   });
+
+  it("refreshes cached message analysis when a reused messages array grows", () => {
+    const activitySnapshot = snapshot({
+      messages: [
+        message({
+          agentSessionId: "session-1",
+          messageId: "assistant-1",
+          payload: { text: "First summary" },
+          occurredAtUnixMs: 10
+        })
+      ],
+      sessions: [
+        session({
+          agentSessionId: "session-1",
+          status: "completed"
+        })
+      ]
+    });
+    const first = buildWorkspaceAgentMessageCenterModel(activitySnapshot);
+
+    activitySnapshot.sessionMessagesById["session-1"]?.push(
+      message({
+        agentSessionId: "session-1",
+        messageId: "assistant-2",
+        version: 2,
+        payload: { text: "Second summary" },
+        occurredAtUnixMs: 20
+      })
+    );
+    const second = buildWorkspaceAgentMessageCenterModel(activitySnapshot);
+
+    expect(first.items[0]?.lastAgentMessageSummary).toBe("First summary");
+    expect(second.items[0]?.lastAgentMessageSummary).toBe("Second summary");
+  });
 });
 
 describe("stabilizeWorkspaceAgentMessageCenterModel", () => {

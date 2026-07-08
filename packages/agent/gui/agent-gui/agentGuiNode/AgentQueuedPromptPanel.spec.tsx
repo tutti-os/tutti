@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  resetAgentActivityRuntimeForTests,
+  setAgentActivityRuntimeForTests,
+  type AgentActivityRuntime
+} from "../../agentActivityRuntime";
 import { AgentQueuedPromptPanel } from "./AgentQueuedPromptPanel";
 
 const labels = {
@@ -10,6 +15,10 @@ const labels = {
   deleteQueuedPrompt: "Delete",
   queuedPromptMoreActions: "More"
 };
+
+afterEach(() => {
+  resetAgentActivityRuntimeForTests();
+});
 
 function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
   return {
@@ -189,6 +198,33 @@ describe("AgentQueuedPromptPanel", () => {
     expect(screen.queryByText(/mention:\/\/workspace-app/)).toBeNull();
   });
 
+  it("renders queued local file links with spaced paths as file tokens", () => {
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          textQueuedPrompt(
+            "queued-1",
+            "[@user](/Users/Sun/Documents/tutti/emoji 你好/user/) [@auth_api.py](/Users/Sun/Documents/tutti/emoji 你好/auth_api.py)"
+          )
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    const mentions = container.querySelectorAll(
+      '[data-agent-file-mention="true"]'
+    );
+    expect(mentions).toHaveLength(2);
+    expect(mentions[0]).toHaveClass("tsh-agent-object-token--file");
+    expect(mentions[0]).toHaveTextContent("user");
+    expect(mentions[1]).toHaveTextContent("auth_api.py");
+    expect(screen.queryByText(/\]\(\/Users\/Sun\/Documents/)).toBeNull();
+  });
+
   it("renders queued image prompt previews and routes edit", async () => {
     const onEditQueuedPrompt = vi.fn();
     const { container } = render(
@@ -228,6 +264,112 @@ describe("AgentQueuedPromptPanel", () => {
     expect(editItem).not.toHaveAttribute("aria-disabled", "true");
     fireEvent.click(editItem);
     expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-1");
+  });
+
+  it("loads path-backed queued image prompt previews without rendering undefined data urls", async () => {
+    const readPromptAsset = vi.fn(async () => ({
+      data: "c3RhZ2VkLWltYWdl",
+      mimeType: "image/png",
+      name: "staged.png",
+      path: "/agent-prompt-assets/staged.png"
+    }));
+    setAgentActivityRuntimeForTests({
+      readPromptAsset
+    } as unknown as AgentActivityRuntime);
+
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        workspaceId="workspace-1"
+        agentSessionId="session-1"
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                path: "/agent-prompt-assets/staged.png",
+                name: "staged.png"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(container.innerHTML).not.toContain("base64,undefined");
+
+    await waitFor(() => {
+      expect(readPromptAsset).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        mimeType: "image/png",
+        name: "staged.png",
+        path: "/agent-prompt-assets/staged.png"
+      });
+      expect(
+        container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+      ).toHaveAttribute("src", "data:image/png;base64,c3RhZ2VkLWltYWdl");
+    });
+  });
+
+  it("loads attachment-backed queued image prompt previews", async () => {
+    const readSessionAttachment = vi.fn(async () => ({
+      data: "YXR0YWNobWVudC1pbWFnZQ==",
+      mimeType: "image/png",
+      name: "attached.png"
+    }));
+    setAgentActivityRuntimeForTests({
+      readSessionAttachment
+    } as unknown as AgentActivityRuntime);
+
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        workspaceId="workspace-1"
+        agentSessionId="session-1"
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/png",
+                attachmentId: "attachment-1",
+                name: "attached.png"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+      />
+    );
+
+    expect(container.innerHTML).not.toContain("base64,undefined");
+
+    await waitFor(() => {
+      expect(readSessionAttachment).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        attachmentId: "attachment-1"
+      });
+      expect(
+        container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+      ).toHaveAttribute(
+        "src",
+        "data:image/png;base64,YXR0YWNobWVudC1pbWFnZQ=="
+      );
+    });
   });
 
   it("allows queued image prompt previews to zoom", () => {

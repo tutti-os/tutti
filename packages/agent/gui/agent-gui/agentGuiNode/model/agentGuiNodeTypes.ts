@@ -52,9 +52,13 @@ export interface AgentGUIInlineNotice {
 }
 
 export interface AgentGUIProjectConversationDeleteTarget {
-  conversationCount: number;
+  conversationCount: number | null;
   label: string;
   path: string;
+}
+
+export interface AgentGUIConversationSectionDeleteTarget {
+  conversationCount: number | null;
 }
 
 export interface AgentGUIComposerSettingOption {
@@ -304,14 +308,16 @@ export interface AgentGUINodeViewModel {
   isDeletingProjectConversations: boolean;
   pendingDeleteConversation: AgentGUIConversationSummary | null;
   pendingDeleteProjectConversations: AgentGUIProjectConversationDeleteTarget | null;
+  pendingDeleteConversations: AgentGUIConversationSectionDeleteTarget | null;
   pendingApproval: AgentGUIApprovalRequest | null;
   pendingInteractivePrompt: AgentGUIInteractivePrompt | null;
   activeLiveState: "inactive" | "activating" | "active" | "failed";
   activationError: string | null;
   openclawGateway: OpenclawGatewayViewState | null;
+  activeConversationBusy: boolean;
   canSubmit: boolean;
   composerSettings: AgentGUIComposerSettingsVM;
-  queuedPrompts: AgentGUIQueuedPromptVM[];
+  queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   canQueueWhileBusy: boolean;
   hasSentUserMessage: boolean;

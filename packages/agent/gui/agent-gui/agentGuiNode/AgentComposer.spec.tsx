@@ -5061,7 +5061,7 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it.each(["codex", "claude-code"] as const)(
+  it.each(["codex", "claude-code", "opencode"] as const)(
     "opens the %s review picker and submits the chosen target",
     (provider) => {
       const onSubmit = vi.fn();

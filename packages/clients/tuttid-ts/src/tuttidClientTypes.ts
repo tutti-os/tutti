@@ -32,6 +32,7 @@ import type {
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
   DeleteWorkspaceAgentSessionResponse,
+  DeleteWorkspaceAgentSessionSectionResponse,
   DeleteIssueManagerContextRefResponse,
   DeleteIssueManagerIssueResponse,
   DeleteIssueManagerTaskResponse,
@@ -103,6 +104,7 @@ import type {
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionPageResponse,
+  WorkspaceAgentSessionSectionCountResponse,
   WorkspaceAgentSessionSectionPageResponse,
   WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
@@ -255,6 +257,14 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<DeleteWorkspaceAgentSessionResponse>;
+  deleteWorkspaceAgentSessionSection(
+    workspaceID: string,
+    request: {
+      sectionKey: string;
+      agentTargetId?: string;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<DeleteWorkspaceAgentSessionSectionResponse>;
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
@@ -510,6 +520,14 @@ export interface TuttidClient {
     },
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionSectionPageResponse>;
+  countWorkspaceAgentSessionSection(
+    workspaceID: string,
+    request: {
+      sectionKey: string;
+      agentTargetId?: string;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionSectionCountResponse>;
   listWorkspaceAgentPinnedSessionPage(
     workspaceID: string,
     request?: {

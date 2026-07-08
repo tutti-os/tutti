@@ -985,6 +985,7 @@ export const zhCN = {
       mentionEmptyAgentGeneratedFiles: "暂无 Agent 生成的文件",
       mentionAgentGeneratedFolderBack: "返回",
       mentionAgentGeneratedFolderFileCount: "包含 {{count}} 个文件",
+      mentionAgentTargetAvailable: "可用",
       mentionNoMatchingFiles: "没有匹配到文件",
       mentionOpenReferences: "查看产物",
       issueRunPrompt: {

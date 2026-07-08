@@ -46,7 +46,7 @@ export const agentGuiWorkbenchProviderLabels: Record<
   hermes: "Hermes Agent",
   nexight: "Nexight",
   openclaw: "OpenClaw",
-  opencode: "OpenCode",
+  opencode: "Open Code",
   "tutti-agent": "Tutti Agent"
 };
 

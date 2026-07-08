@@ -11,6 +11,8 @@ export {
   createWorkspaceAgentGuiDraftLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest,
   workspaceAgentGuiDockEntryId,
   workspaceAgentGuiInstanceId,
   workspaceAgentGuiNodeID,

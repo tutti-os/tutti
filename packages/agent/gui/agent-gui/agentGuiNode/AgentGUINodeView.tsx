@@ -82,7 +82,11 @@ import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui"
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
-import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
+import {
+  BareIconButton,
+  Input,
+  ScrollArea
+} from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
   CreateChatIcon,
@@ -169,6 +173,7 @@ import {
 } from "../../agentActivityRuntime";
 import {
   ConversationMeta,
+  filterConversationSectionsBySearchMatches,
   groupConversations,
   normalizeConversationProjectPath,
   type ConversationSection
@@ -193,6 +198,7 @@ import {
   createAgentSessionMentionHref,
   formatAgentMentionMarkdown
 } from "./agentRichText/agentFileMentionExtension";
+import { AgentMentionTooltipProviderScope } from "./agentRichText/AgentMentionNodeView";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../agentGuiSessionProviderIconUrls";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
@@ -254,6 +260,11 @@ export function resolveAgentGUIHeroIconUrl(
   );
 }
 
+// Providers whose colorful provider-rail art is also the intended hero glyph
+// (their square "manage" avatar differs from the branded icon we show on the
+// empty hero).
+const HERO_USES_PROVIDER_RAIL_ICON = new Set(["cursor", "opencode"]);
+
 function agentGUIProviderIconPresentation(
   provider: string | undefined,
   iconUrl?: string | null
@@ -264,7 +275,9 @@ function agentGUIProviderIconPresentation(
   return {
     provider: normalizedProvider,
     iconUrl:
-      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
+      (HERO_USES_PROVIDER_RAIL_ICON.has(normalizedProvider)
+        ? providerRailIconUrl
+        : null) ||
       iconUrl?.trim() ||
       resolveAgentGUIHeroIconUrl(normalizedProvider)
   };
@@ -280,7 +293,9 @@ function agentGUIProviderRailIconPresentation(
   return {
     provider: normalizedProvider,
     iconUrl:
-      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
+      (HERO_USES_PROVIDER_RAIL_ICON.has(normalizedProvider)
+        ? providerRailIconUrl
+        : null) ||
       iconUrl?.trim() ||
       providerRailIconUrl ||
       resolveAgentGUIHeroIconUrl(normalizedProvider)
@@ -650,6 +665,12 @@ interface AgentGUINodeViewProps {
    * Other readiness gates keep the built-in AgentGUI flows.
    */
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
+  /**
+   * Renders host-owned main-pane readiness gates such as checking, install,
+   * login, coming-soon, or unavailable. When omitted, AgentGUI uses its built-in
+   * readiness gate pane.
+   */
+  renderProviderReadinessGateState?: AgentGUIProviderReadinessGateStateRenderer;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: (input: {
@@ -745,8 +766,12 @@ interface AgentGUINodeViewProps {
       title: string
     ) => Promise<void>;
     removeProject: (path: string) => void;
-    confirmDeleteProjectConversations: (path?: string) => void;
-    confirmDeleteConversations: (agentSessionIds: string[]) => void;
+    requestDeleteProjectConversations: (path: string) => void;
+    cancelDeleteProjectConversations: () => void;
+    confirmDeleteProjectConversations: () => void;
+    requestDeleteConversations: () => void;
+    cancelDeleteConversations: () => void;
+    confirmDeleteConversations: () => void;
     requestDeleteConversation: (agentSessionId: string) => void;
     cancelDeleteConversation: () => void;
     confirmDeleteConversation: () => void;
@@ -1146,11 +1171,31 @@ export type AgentGUIProviderUnavailableStateRenderer = (
   ctx: AgentGUIProviderUnavailableStateContext
 ) => ReactNode;
 
+export interface AgentGUIProviderReadinessGateStateContext {
+  provider: AgentGUIProvider;
+  providerLabel: string;
+  target: AgentGUIProviderTarget | null;
+  iconUrl: string;
+  gate: AgentGUIProviderReadinessGate;
+  showAllProviders: boolean;
+}
+
+/**
+ * Renders the main-pane state for a host-projected provider readiness gate.
+ * Use this when a host has product-specific semantics for a readiness state,
+ * for example a shared agent that is temporarily unavailable because the owner
+ * is offline or sharing was revoked.
+ */
+export type AgentGUIProviderReadinessGateStateRenderer = (
+  ctx: AgentGUIProviderReadinessGateStateContext
+) => ReactNode;
+
 export function AgentGUINodeView({
   viewModel,
   renderSidebarFooter,
   renderProviderRailEmpty,
   renderProviderUnavailableState,
+  renderProviderReadinessGateState,
   providerRailAllPresentation,
   onLinkAction,
   onHandoffConversation,
@@ -1375,8 +1420,20 @@ export function AgentGUINodeView({
     actions.toggleConversationPinned
   );
   const removeProject = useStableEventCallback(actions.removeProject);
+  const requestDeleteProjectConversations = useStableEventCallback(
+    actions.requestDeleteProjectConversations
+  );
+  const cancelDeleteProjectConversations = useStableEventCallback(
+    actions.cancelDeleteProjectConversations
+  );
   const confirmDeleteProjectConversations = useStableEventCallback(
     actions.confirmDeleteProjectConversations
+  );
+  const requestDeleteConversations = useStableEventCallback(
+    actions.requestDeleteConversations
+  );
+  const cancelDeleteConversations = useStableEventCallback(
+    actions.cancelDeleteConversations
   );
   const confirmDeleteConversations = useStableEventCallback(
     actions.confirmDeleteConversations
@@ -1649,21 +1706,11 @@ export function AgentGUINodeView({
   >(null);
   const [renameConversationDialogOpen, setRenameConversationDialogOpen] =
     useState(false);
-  const requestRenameConversation = useCallback(
-    (agentSessionId: string) => {
-      const target =
-        viewModel.conversations.find(
-          (conversation) => conversation.id === agentSessionId
-        ) ??
-        (viewModel.activeConversation?.id === agentSessionId
-          ? viewModel.activeConversation
-          : null);
-      if (target) {
-        setRenameConversationTarget(target);
-        setRenameConversationDialogOpen(true);
-      }
-    },
-    [viewModel.activeConversation, viewModel.conversations]
+  const requestRenameConversation = useStableEventCallback(
+    (conversation: AgentGUINodeViewModel["conversations"][number]) => {
+      setRenameConversationTarget(conversation);
+      setRenameConversationDialogOpen(true);
+    }
   );
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
@@ -1694,8 +1741,15 @@ export function AgentGUINodeView({
         onSelectConversation: selectConversation,
         onToggleConversationPinned: toggleConversationPinned,
         onMarkConversationUnread: actions.markConversationUnread,
+        pendingDeleteProjectConversations:
+          viewModel.pendingDeleteProjectConversations,
+        pendingDeleteConversations: viewModel.pendingDeleteConversations,
         onRemoveProject: removeProject,
+        onRequestDeleteProjectConversations: requestDeleteProjectConversations,
+        onCancelDeleteProjectConversations: cancelDeleteProjectConversations,
         onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
+        onRequestDeleteConversations: requestDeleteConversations,
+        onCancelDeleteConversations: cancelDeleteConversations,
         onConfirmDeleteConversations: confirmDeleteConversations,
         onRequestDeleteConversation: requestDeleteConversation,
         onRequestRenameConversation: requestRenameConversation,
@@ -1706,6 +1760,8 @@ export function AgentGUINodeView({
         selectProjectDirectory
       }),
       [
+        cancelDeleteProjectConversations,
+        cancelDeleteConversations,
         cancelDeleteConversation,
         confirmDeleteConversation,
         confirmDeleteConversations,
@@ -1720,6 +1776,8 @@ export function AgentGUINodeView({
         actions.updateConversationFilter,
         previewMode,
         removeProject,
+        requestDeleteProjectConversations,
+        requestDeleteConversations,
         requestCreateConversation,
         requestDeleteConversation,
         requestRenameConversation,
@@ -1737,6 +1795,8 @@ export function AgentGUINodeView({
         viewModel.isDeletingProjectConversations,
         viewModel.isLoadingConversations,
         viewModel.pendingDeleteConversation?.id,
+        viewModel.pendingDeleteProjectConversations,
+        viewModel.pendingDeleteConversations,
         workspaceUserProjectI18n
       ]
     );
@@ -1808,6 +1868,17 @@ export function AgentGUINodeView({
               onUpdateConversationFilter={actions.updateConversationFilter}
               onRequestComposerFocus={requestComposerFocus}
             />
+            {renderSidebarFooter ? (
+              <div
+                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                data-testid="agent-gui-sidebar-footer-slot"
+              >
+                {renderSidebarFooter({
+                  currentUserId: viewModel.currentUserId,
+                  activeConversation: viewModel.activeConversation
+                })}
+              </div>
+            ) : null}
             {shouldShowProviderRailConfigButton ? (
               <div
                 className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
@@ -1846,17 +1917,6 @@ export function AgentGUINodeView({
                     />
                   </button>
                 )}
-              </div>
-            ) : null}
-            {renderSidebarFooter ? (
-              <div
-                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
-                data-testid="agent-gui-sidebar-footer-slot"
-              >
-                {renderSidebarFooter({
-                  currentUserId: viewModel.currentUserId,
-                  activeConversation: viewModel.activeConversation
-                })}
               </div>
             ) : null}
           </aside>
@@ -1943,6 +2003,7 @@ export function AgentGUINodeView({
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             renderProviderUnavailableState={renderProviderUnavailableState}
+            renderProviderReadinessGateState={renderProviderReadinessGateState}
             previewMode={previewMode}
           />
         </section>
@@ -1993,7 +2054,13 @@ export function AgentGUINodeView({
     </AgentTargetPresentationProvider>
   );
 
-  return previewMode ? content : <TooltipProvider>{content}</TooltipProvider>;
+  return (
+    <TooltipProvider>
+      <AgentMentionTooltipProviderScope withTooltipProvider={false}>
+        {content}
+      </AgentMentionTooltipProviderScope>
+    </TooltipProvider>
+  );
 }
 
 interface AgentGUIRenameConversationDialogProps {
@@ -2061,7 +2128,7 @@ const AgentGUIRenameConversationDialog = memo(
     return (
       <ConfirmationDialog
         cancelLabel={labels.cancel}
-        className="sm:max-w-[480px]"
+        className="bg-[var(--background-fronted)] sm:max-w-[480px]"
         confirmBusy={isSaving}
         confirmDisabled={!trimmedTitle}
         confirmLabel={labels.renameSessionSave}
@@ -2099,10 +2166,11 @@ const AgentGUIRenameConversationDialog = memo(
         onConfirm={confirmRename}
         onOpenChange={onOpenChange}
       >
-        <input
+        <Input
           ref={inputRef}
           aria-label={labels.renameSessionTitle}
-          className="h-10 w-full rounded-md border border-border bg-background px-3 text-[14px] font-medium leading-5 text-text-primary shadow-none outline-none transition-colors placeholder:text-text-tertiary focus:border-primary"
+          className="h-9"
+          variant="md"
           placeholder={labels.renameSessionPlaceholder}
           value={title}
           onChange={(event) => setTitle(event.currentTarget.value)}
@@ -2149,6 +2217,7 @@ interface AgentGUIDetailPaneProps {
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
+  renderProviderReadinessGateState?: AgentGUIProviderReadinessGateStateRenderer;
 }
 
 function mergeWorkspaceAppIconsFromCommands(input: {
@@ -2243,7 +2312,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestComposerFocus,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
-  renderProviderUnavailableState
+  renderProviderUnavailableState,
+  renderProviderReadinessGateState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
   "use memo";
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -2405,7 +2475,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     conversation
   });
   const activeConversationTurnBusy =
-    viewModel.isSubmitting || derivedBusyStatus !== null;
+    viewModel.isSubmitting ||
+    viewModel.activeConversationBusy ||
+    derivedBusyStatus !== null;
   const isComposerSending =
     viewModel.isSubmitting ||
     activeConversationTurnBusy ||
@@ -3169,6 +3241,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     !hasActiveConversation &&
     disabledProviderTarget !== null &&
     renderProviderUnavailableState !== undefined;
+  const shouldRenderProviderReadinessGateState =
+    !hasActiveConversation &&
+    emptyProviderReadinessGate !== null &&
+    renderProviderReadinessGateState !== undefined;
   const bottomDockStoreState = useMemo<AgentGUIBottomDockStoreSnapshot>(
     () => ({
       // The lifted prompt is rendered from props on the pane; the store still
@@ -3605,12 +3681,38 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               })}
             </>
           ) : emptyProviderReadinessGate ? (
-            <AgentGUIProviderReadinessGatePane
-              provider={emptyHeroProvider}
-              gate={emptyProviderReadinessGate}
-              showAllProviders={viewModel.conversationFilter.kind === "all"}
-              labels={labels}
-            />
+            shouldRenderProviderReadinessGateState ? (
+              <>
+                {renderProviderReadinessGateState?.({
+                  provider: emptyHeroProvider,
+                  providerLabel:
+                    emptyHeroProviderLabel ||
+                    resolveAgentGuiWorkbenchProviderLabel(emptyHeroProvider),
+                  target: viewModel.selectedProviderTarget ?? null,
+                  iconUrl: resolveAgentGUIHeroIconUrl(emptyHeroProvider),
+                  gate: emptyProviderReadinessGate,
+                  showAllProviders: viewModel.conversationFilter.kind === "all"
+                })}
+              </>
+            ) : (
+              <AgentGUIProviderReadinessGatePane
+                provider={emptyHeroProvider}
+                gate={emptyProviderReadinessGate}
+                showAllProviders={viewModel.conversationFilter.kind === "all"}
+                emptyLabel={emptyHeroLabel}
+                emptyProvider={emptyHeroProviderLabel}
+                providerTargets={composerProviderTargets}
+                selectedProviderTarget={viewModel.selectedProviderTarget}
+                onProviderSelect={
+                  canSwitchComposerProvider &&
+                  viewModel.activeConversationId === null
+                    ? selectHomeComposerAgentTargetAndFocus
+                    : undefined
+                }
+                providerSelectLabel={labels.providerSwitchLabel}
+                labels={labels}
+              />
+            )
           ) : (
             <AgentGUIEmptyHeroPane
               provider={emptyHeroProvider}
@@ -3955,6 +4057,14 @@ interface AgentGUIProviderReadinessGatePaneProps {
   provider: AgentGUINodeViewModel["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
   showAllProviders?: boolean;
+  // Shared empty-hero title props so the not-installed / not-logged-in gate
+  // keeps the same main title and agent-switch dropdown as the ready state.
+  emptyLabel: string;
+  emptyProvider: string;
+  providerTargets: readonly AgentGUIProviderTarget[];
+  selectedProviderTarget: AgentGUIProviderTarget | null;
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerSelectLabel: string;
   labels: Pick<
     AgentGUIViewLabels,
     | "providerGateCheckingTitle"
@@ -3983,6 +4093,12 @@ const AgentGUIProviderReadinessGatePane = memo(
     provider,
     gate,
     showAllProviders = false,
+    emptyLabel,
+    emptyProvider,
+    providerTargets,
+    selectedProviderTarget,
+    onProviderSelect,
+    providerSelectLabel,
     labels
   }: AgentGUIProviderReadinessGatePaneProps): React.JSX.Element {
     "use memo";
@@ -4000,6 +4116,10 @@ const AgentGUIProviderReadinessGatePane = memo(
       showAllProviders: showAllProvidersChecking
     });
     const action = providerGateAction(gate.status);
+    // Not-installed / not-logged-in gates keep the ready state's main title and
+    // agent-switch dropdown; only the body (description + button) differs.
+    const useSharedHeroTitle =
+      gate.status === "not_installed" || gate.status === "auth_required";
     const pendingLabel =
       pendingAction === "install"
         ? labels.providerGatePendingInstall
@@ -4016,8 +4136,9 @@ const AgentGUIProviderReadinessGatePane = memo(
           data-testid="agent-gui-provider-readiness-gate"
           role="status"
         >
-          {showAllProvidersChecking ? (
+          {showAllProviders ? (
             <AgentGUIAllProviderGridIcon
+              activeProvider={provider}
               className={styles.emptyHeroLaunchpadIcon}
               icons={launchpadIconPresentations}
             />
@@ -4030,8 +4151,24 @@ const AgentGUIProviderReadinessGatePane = memo(
               alt=""
             />
           )}
-          <h2 className={styles.emptyHeroTitle}>{content.title}</h2>
-          <p className={styles.emptyProviderGateDescription}>
+          <h2 className={styles.emptyHeroTitle}>
+            {useSharedHeroTitle ? (
+              <EmptyHeroTitle
+                label={emptyLabel}
+                providerLabel={emptyProvider}
+                providerSelectLabel={providerSelectLabel}
+                providerTargets={providerTargets}
+                selectedProviderTarget={selectedProviderTarget}
+                onProviderSelect={onProviderSelect}
+              />
+            ) : (
+              content.title
+            )}
+          </h2>
+          <p
+            className={styles.emptyProviderGateDescription}
+            data-testid="agent-gui-provider-readiness-gate-description"
+          >
             {content.description}
           </p>
           {pendingLabel && !action ? (
@@ -4180,6 +4317,15 @@ function AgentGUIUnifiedProviderIcon({
   );
 }
 
+// Opacity applied to a hero launchpad icon based on how far it sits from the
+// centered (selected) agent — neighbours fade out toward both edges.
+function agentGUIHeroStripOpacity(distance: number): number {
+  if (distance <= 0) {
+    return 1;
+  }
+  return Math.max(0.15, 1 - distance * 0.4);
+}
+
 function AgentGUILaunchpadIconGrid({
   activeProvider,
   icons
@@ -4190,24 +4336,53 @@ function AgentGUILaunchpadIconGrid({
   const normalizedActiveProvider = activeProvider
     ? normalizeManagedAgentProvider(activeProvider)
     : null;
+  const activeIndex =
+    normalizedActiveProvider === null
+      ? -1
+      : icons.findIndex(
+          (icon) =>
+            normalizeManagedAgentProvider(icon.provider) ===
+            normalizedActiveProvider
+        );
+  const renderItem = (
+    icon: AgentGUIProviderIconPresentation,
+    distance: number,
+    isActive: boolean
+  ): React.JSX.Element => (
+    <span
+      key={`${icon.provider}:${icon.iconUrl}`}
+      className={styles.providerRailLaunchpadItem}
+      data-provider-active={
+        normalizedActiveProvider === null ? undefined : isActive
+      }
+      style={{ opacity: agentGUIHeroStripOpacity(distance) }}
+    >
+      <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
+    </span>
+  );
+  if (activeIndex < 0) {
+    return (
+      <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
+        {icons.map((icon) => renderItem(icon, 0, false))}
+      </span>
+    );
+  }
+  // Keep the icons left-to-right, but split them around the selected agent so
+  // the active icon always stays dead-center. The leading/trailing rails share
+  // equal flex width, so the center never drifts with uneven side counts.
   return (
     <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
-      {icons.map((icon) => {
-        return (
-          <span
-            key={`${icon.provider}:${icon.iconUrl}`}
-            className={styles.providerRailLaunchpadItem}
-            data-provider-active={
-              normalizedActiveProvider === null
-                ? undefined
-                : normalizeManagedAgentProvider(icon.provider) ===
-                  normalizedActiveProvider
-            }
-          >
-            <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
-          </span>
-        );
-      })}
+      <span className={styles.providerRailLaunchpadSide} data-side="leading">
+        {icons
+          .slice(0, activeIndex)
+          .map((icon, index) => renderItem(icon, activeIndex - index, false))}
+      </span>
+      {renderItem(icons[activeIndex]!, 0, true)}
+      <span className={styles.providerRailLaunchpadSide} data-side="trailing">
+        {icons
+          .slice(activeIndex + 1)
+          .map((icon, index) => renderItem(icon, index + 1, false))}
+      </span>
     </span>
   );
 }
@@ -4541,33 +4716,28 @@ interface AgentGUIConversationRailPaneProps {
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  pendingDeleteProjectConversations: AgentGUINodeViewModel["pendingDeleteProjectConversations"];
+  pendingDeleteConversations: AgentGUINodeViewModel["pendingDeleteConversations"];
   onRemoveProject: (path: string) => void;
-  onConfirmDeleteProjectConversations: (path?: string) => void;
-  onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
+  onRequestDeleteProjectConversations: (path: string) => void;
+  onCancelDeleteProjectConversations: () => void;
+  onConfirmDeleteProjectConversations: () => void;
+  onRequestDeleteConversations: () => void;
+  onCancelDeleteConversations: () => void;
+  onConfirmDeleteConversations: () => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUINodeViewModel["conversations"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
 
-type AgentGUIProjectActionDialog =
-  | {
-      kind: "batch-delete";
-      conversationCount: number;
-      label: string;
-      path: string;
-    }
-  | {
-      kind: "batch-delete-conversations";
-      conversationCount: number;
-      label: string;
-      sessionIds: string[];
-    }
-  | {
-      kind: "remove";
-      label: string;
-      path: string;
-    };
+type AgentGUIProjectActionDialog = {
+  kind: "remove";
+  label: string;
+  path: string;
+};
 
 type OpenclawGatewayViewModel =
   | NonNullable<AgentGUINodeViewModel["openclawGateway"]>
@@ -4611,6 +4781,9 @@ function agentGUIConversationRailStoreSnapshotsEqual(
   return (
     current.activeConversationId === next.activeConversationId &&
     current.pendingDeleteConversationId === next.pendingDeleteConversationId &&
+    current.pendingDeleteProjectConversations ===
+      next.pendingDeleteProjectConversations &&
+    current.pendingDeleteConversations === next.pendingDeleteConversations &&
     current.isLoadingConversations === next.isLoadingConversations &&
     current.isDeletingConversation === next.isDeletingConversation &&
     current.isDeletingProjectConversations ===
@@ -4639,8 +4812,17 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.onOpenConversationWindow === next.onOpenConversationWindow &&
     current.selectProjectDirectory === next.selectProjectDirectory &&
     current.onRemoveProject === next.onRemoveProject &&
+    current.onRequestDeleteProjectConversations ===
+      next.onRequestDeleteProjectConversations &&
+    current.onCancelDeleteProjectConversations ===
+      next.onCancelDeleteProjectConversations &&
     current.onConfirmDeleteProjectConversations ===
       next.onConfirmDeleteProjectConversations &&
+    current.onRequestDeleteConversations ===
+      next.onRequestDeleteConversations &&
+    current.onCancelDeleteConversations === next.onCancelDeleteConversations &&
+    current.onConfirmDeleteConversations ===
+      next.onConfirmDeleteConversations &&
     current.onRequestDeleteConversation === next.onRequestDeleteConversation &&
     current.onRequestRenameConversation === next.onRequestRenameConversation &&
     current.onCancelDeleteConversation === next.onCancelDeleteConversation &&
@@ -5190,8 +5372,8 @@ const agentGUIProviderRailOrder: readonly AgentGUIProvider[] = [
   "claude-code",
   "cursor",
   "tutti-agent",
-  "opencode",
   "nexight",
+  "opencode",
   "hermes",
   "openclaw"
 ];
@@ -5216,11 +5398,15 @@ function agentGUIProviderRailOrderIndex(provider: AgentGUIProvider): number {
 }
 
 function agentGUILaunchpadIconPresentations(): readonly AgentGUIProviderIconPresentation[] {
+  // Keep this order aligned with the left provider rail (`agentGUIProviderRailOrder`).
   return [
     agentGUIProviderRailIconPresentation("codex"),
     agentGUIProviderRailIconPresentation("claude-code"),
     agentGUIProviderRailIconPresentation("cursor"),
-    agentGUIProviderRailIconPresentation("tutti")
+    agentGUIProviderRailIconPresentation("tutti"),
+    agentGUIProviderRailIconPresentation("opencode"),
+    agentGUIProviderRailIconPresentation("hermes"),
+    agentGUIProviderRailIconPresentation("openclaw")
   ];
 }
 
@@ -6786,8 +6972,14 @@ const AgentGUIConversationRailPane = memo(
     onOpenProjectFiles,
     onOpenConversationWindow,
     selectProjectDirectory,
+    pendingDeleteProjectConversations,
+    pendingDeleteConversations,
     onRemoveProject,
+    onRequestDeleteProjectConversations,
+    onCancelDeleteProjectConversations,
     onConfirmDeleteProjectConversations,
+    onRequestDeleteConversations,
+    onCancelDeleteConversations,
     onConfirmDeleteConversations,
     onRequestDeleteConversation,
     onRequestRenameConversation,
@@ -6869,19 +7061,10 @@ const AgentGUIConversationRailPane = memo(
           ? runtimeRailSections
             ? !query
               ? runtimeRailSections
-              : runtimeRailSections
-                  .map((section) => ({
-                    ...section,
-                    items: section.items.filter((item) =>
-                      filteredConversations.some(
-                        (conversation) => conversation.id === item.id
-                      )
-                    )
-                  }))
-                  .filter(
-                    (section) =>
-                      section.kind !== "pinned" || section.items.length > 0
-                  )
+              : filterConversationSectionsBySearchMatches(
+                  runtimeRailSections,
+                  filteredConversations
+                )
             : []
           : groupConversations(filteredConversations, labels, userProjects, {
               includeEmptyConversations: !query
@@ -7096,6 +7279,10 @@ const AgentGUIConversationRailPane = memo(
                     onConfirmDeleteConversation={onConfirmDeleteConversation}
                     onCreateConversation={onCreateConversation}
                     onLoadMoreConversations={loadMoreSectionConversations}
+                    onRequestDeleteProjectConversations={
+                      onRequestDeleteProjectConversations
+                    }
+                    onRequestDeleteConversations={onRequestDeleteConversations}
                     onRequestDeleteConversation={onRequestDeleteConversation}
                     onRequestRenameConversation={onRequestRenameConversation}
                     onSelectConversation={onSelectConversation}
@@ -7118,46 +7305,60 @@ const AgentGUIConversationRailPane = memo(
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}
           confirmBusy={
-            (pendingProjectAction?.kind === "batch-delete" ||
-              pendingProjectAction?.kind === "batch-delete-conversations") &&
-            isDeletingProjectConversations
+            pendingDeleteProjectConversations?.conversationCount === null ||
+            pendingDeleteConversations?.conversationCount === null ||
+            ((pendingDeleteProjectConversations !== null ||
+              pendingDeleteConversations !== null) &&
+              isDeletingProjectConversations)
+          }
+          confirmDisabled={
+            pendingDeleteProjectConversations?.conversationCount === null ||
+            pendingDeleteConversations?.conversationCount === null
           }
           confirmLabel={
-            pendingProjectAction?.kind === "batch-delete"
+            pendingDeleteProjectConversations
               ? labels.batchDeleteProjectSessionsConfirm
-              : pendingProjectAction?.kind === "batch-delete-conversations"
+              : pendingDeleteConversations
                 ? labels.batchDeleteConversationsConfirm
                 : labels.removeProject
           }
           description={
-            pendingProjectAction?.kind === "batch-delete"
-              ? labels.batchDeleteProjectSessionsBody(
-                  pendingProjectAction.conversationCount,
-                  pendingProjectAction.label
-                )
-              : pendingProjectAction?.kind === "batch-delete-conversations"
-                ? labels.batchDeleteConversationsBody(
-                    pendingProjectAction.conversationCount
+            pendingDeleteProjectConversations
+              ? pendingDeleteProjectConversations.conversationCount === null
+                ? labels.loadingConversations
+                : labels.batchDeleteProjectSessionsBody(
+                    pendingDeleteProjectConversations.conversationCount,
+                    pendingDeleteProjectConversations.label
                   )
+              : pendingDeleteConversations
+                ? pendingDeleteConversations.conversationCount === null
+                  ? labels.loadingConversations
+                  : labels.batchDeleteConversationsBody(
+                      pendingDeleteConversations.conversationCount
+                    )
                 : pendingProjectAction
                   ? labels.removeProjectConfirmDescription(
                       pendingProjectAction.label
                     )
                   : undefined
           }
-          onCancel={() => setPendingProjectAction(null)}
+          onCancel={() => {
+            setPendingProjectAction(null);
+            onCancelDeleteProjectConversations();
+            onCancelDeleteConversations();
+          }}
           onConfirm={() => {
+            if (pendingDeleteProjectConversations) {
+              onConfirmDeleteProjectConversations();
+              return;
+            }
+            if (pendingDeleteConversations) {
+              onConfirmDeleteConversations();
+              return;
+            }
             const action = pendingProjectAction;
             setPendingProjectAction(null);
             if (!action) {
-              return;
-            }
-            if (action.kind === "batch-delete") {
-              onConfirmDeleteProjectConversations(action.path);
-              return;
-            }
-            if (action.kind === "batch-delete-conversations") {
-              onConfirmDeleteConversations(action.sessionIds);
               return;
             }
             onRemoveProject(action.path);
@@ -7165,14 +7366,20 @@ const AgentGUIConversationRailPane = memo(
           onOpenChange={(open) => {
             if (!open) {
               setPendingProjectAction(null);
+              onCancelDeleteProjectConversations();
+              onCancelDeleteConversations();
             }
           }}
-          open={pendingProjectAction !== null}
+          open={
+            pendingDeleteProjectConversations !== null ||
+            pendingDeleteConversations !== null ||
+            pendingProjectAction !== null
+          }
           overlayClassName={AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME}
           title={
-            pendingProjectAction?.kind === "batch-delete"
+            pendingDeleteProjectConversations
               ? labels.batchDeleteProjectSessionsTitle
-              : pendingProjectAction?.kind === "batch-delete-conversations"
+              : pendingDeleteConversations
                 ? labels.batchDeleteConversationsTitle
                 : labels.removeProjectConfirmTitle
           }
@@ -7213,8 +7420,12 @@ interface AgentGUIConversationRailSectionProps {
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
+  onRequestDeleteProjectConversations: (path: string) => void;
+  onRequestDeleteConversations: () => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUINodeViewModel["conversations"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -7247,6 +7458,8 @@ const AgentGUIConversationRailSection = memo(
     onMarkConversationUnread,
     onOpenProjectFiles,
     onOpenConversationWindow,
+    onRequestDeleteProjectConversations,
+    onRequestDeleteConversations,
     onRequestDeleteConversation,
     onRequestRenameConversation,
     onCancelDeleteConversation,
@@ -7473,13 +7686,7 @@ const AgentGUIConversationRailSection = memo(
                       <DropdownMenuItem
                         className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                         onSelect={() => {
-                          const label = projectLabel || projectPath;
-                          setPendingProjectAction({
-                            kind: "batch-delete",
-                            conversationCount: projectConversationCount,
-                            label,
-                            path: projectPath
-                          });
+                          onRequestDeleteProjectConversations(projectPath);
                         }}
                       >
                         <span>{labels.batchDeleteProjectSessions}</span>
@@ -7557,12 +7764,7 @@ const AgentGUIConversationRailSection = memo(
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       onSelect={() => {
-                        setPendingProjectAction({
-                          kind: "batch-delete-conversations",
-                          conversationCount: section.items.length,
-                          label: section.label,
-                          sessionIds: section.items.map((item) => item.id)
-                        });
+                        onRequestDeleteConversations();
                       }}
                     >
                       <span>{labels.batchDeleteConversations}</span>
@@ -7654,7 +7856,9 @@ interface AgentGUIConversationRailItemProps {
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUINodeViewModel["conversations"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -7726,8 +7930,8 @@ const AgentGUIConversationRailItem = memo(
       onRequestDeleteConversation(item.id);
     }, [item.id, onRequestDeleteConversation]);
     const handleRequestRename = useCallback(() => {
-      onRequestRenameConversation(item.id);
-    }, [item.id, onRequestRenameConversation]);
+      onRequestRenameConversation(item);
+    }, [item, onRequestRenameConversation]);
     const handleContextMenuRename = useCallback(() => {
       if (contextMenuRenameRequestedRef.current) {
         return;

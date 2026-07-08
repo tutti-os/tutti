@@ -91,7 +91,7 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
     {
       id: "opencode",
       // i18n-check-ignore: Provider brand name.
-      label: "OpenCode",
+      label: "Open Code",
       toolIds: ["opencode-cli"],
       agentIds: ["opencode"],
       runtimeManaged: true,

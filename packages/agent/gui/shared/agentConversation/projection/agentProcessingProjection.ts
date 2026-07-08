@@ -9,10 +9,6 @@ export function projectAgentProcessingRow(
   if (!detail.showProcessingIndicator) {
     return null;
   }
-  const status = detail.session.status?.trim().toLowerCase() ?? "";
-  if (!isWorkingSessionStatus(status)) {
-    return null;
-  }
   if (hasSpecificProgressRow(rows)) {
     return null;
   }
@@ -24,10 +20,6 @@ export function projectAgentProcessingRow(
     occurredAtUnixMs:
       detail.session.updatedAtUnixMs ?? detail.session.createdAtUnixMs ?? null
   };
-}
-
-function isWorkingSessionStatus(status: string): boolean {
-  return status === "working";
 }
 
 function hasSpecificProgressRow(

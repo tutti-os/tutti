@@ -2613,6 +2613,16 @@ type DeleteWorkspaceAgentSessionResponse struct {
 	Removed bool `json:"removed"`
 }
 
+// DeleteWorkspaceAgentSessionSectionResponse defines model for DeleteWorkspaceAgentSessionSectionResponse.
+type DeleteWorkspaceAgentSessionSectionResponse struct {
+	AgentTargetId     *string  `json:"agentTargetId,omitempty"`
+	RemovedMessages   int      `json:"removedMessages"`
+	RemovedSessionIds []string `json:"removedSessionIds"`
+	RemovedSessions   int      `json:"removedSessions"`
+	SectionKey        string   `json:"sectionKey"`
+	WorkspaceId       string   `json:"workspaceId"`
+}
+
 // DeleteWorkspaceAppResponse defines model for DeleteWorkspaceAppResponse.
 type DeleteWorkspaceAppResponse struct {
 	AppId       string `json:"appId"`
@@ -3632,6 +3642,14 @@ type WorkspaceAgentSessionSection struct {
 	UserProject *UserProject            `json:"userProject,omitempty"`
 }
 
+// WorkspaceAgentSessionSectionCountResponse defines model for WorkspaceAgentSessionSectionCountResponse.
+type WorkspaceAgentSessionSectionCountResponse struct {
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Count         int     `json:"count"`
+	SectionKey    string  `json:"sectionKey"`
+	WorkspaceId   string  `json:"workspaceId"`
+}
+
 // WorkspaceAgentSessionSectionKind defines model for WorkspaceAgentSessionSectionKind.
 type WorkspaceAgentSessionSectionKind string
 
@@ -4262,11 +4280,27 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// DeleteWorkspaceAgentSessionSectionParams defines parameters for DeleteWorkspaceAgentSessionSection.
+type DeleteWorkspaceAgentSessionSectionParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// AgentTargetId Optional agent target filter applied before deletion.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
 // ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.
 type ListWorkspaceAgentSessionSectionsParams struct {
 	LimitPerSection *int `form:"limitPerSection,omitempty" json:"limitPerSection,omitempty"`
 
 	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// CountWorkspaceAgentSessionSectionParams defines parameters for CountWorkspaceAgentSessionSection.
+type CountWorkspaceAgentSessionSectionParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// AgentTargetId Optional agent target filter applied before counting.
 	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
 }
 
