@@ -115,13 +115,14 @@ const defaultCodexAppServerTurnSteerTimeout = 10 * time.Second
 const startupModelSteadyRetryCount = 36
 
 type CodexAppServerAdapter struct {
-	transport   ProcessTransport
-	host        HostMetadata
-	mu          sync.Mutex
-	sessions    map[string]*codexAppServerSession
-	commandSink CommandSnapshotSink
-	eventSink   SessionEventSink
-	configSink  ConfigOptionsUpdateSink
+	transport       ProcessTransport
+	host            HostMetadata
+	commandResolver ProviderCommandResolver
+	mu              sync.Mutex
+	sessions        map[string]*codexAppServerSession
+	commandSink     CommandSnapshotSink
+	eventSink       SessionEventSink
+	configSink      ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize
 	// Start/Resume/Close/ReleaseLiveSession per agent session so concurrent
 	// lifecycle calls can never leave two live app-server processes for the
@@ -237,9 +238,18 @@ func NewCodexAppServerAdapter(transport ProcessTransport) *CodexAppServerAdapter
 }
 
 func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
+}
+
+func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
 		transport:         transport,
 		host:              host,
+		commandResolver:   commandResolver,
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
@@ -673,18 +683,29 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
+	command := []string{codexAppServerCommand, codexAppServerSubcmd}
+	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
+	if a.commandResolver != nil {
+		resolved, err := a.commandResolver(ctx, ProviderCodex)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		spawnEnv = append(spawnEnv, resolved.Env...)
+	}
 	trace.Log("process.start.begin", map[string]any{
-		"command": strings.Join([]string{codexAppServerCommand, codexAppServerSubcmd}, " "),
+		"command": strings.Join(command, " "),
 		"cwd":     a.sessionCWD(session),
 	})
 	processStartedAt := time.Now()
-	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
 	conn, err := a.transport.Start(ctx, ProcessSpec{
 		Provider:       ProviderCodex,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            a.sessionCWD(session),
-		Command:        []string{codexAppServerCommand, codexAppServerSubcmd},
+		Command:        command,
 		Env:            spawnEnv,
 	})
 	if err != nil {

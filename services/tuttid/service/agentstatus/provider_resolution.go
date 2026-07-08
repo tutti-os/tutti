@@ -199,6 +199,9 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	if spec.Provider != agentprovider.Codex {
 		return spec
 	}
+	if s.userNodeRuntimeAvailable(spec.AdapterEnv) {
+		return spec
+	}
 	appRuntime, ok := s.resolveManagedNodeRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {
 		if requireManagedRuntime {
@@ -208,6 +211,30 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
 	return spec
+}
+
+func (s Service) userNodeRuntimeAvailable(overrides []string) bool {
+	return s.userNodeRuntimePath(overrides) != ""
+}
+
+func (s Service) userNodeRuntimePath(overrides []string) string {
+	env := []string(nil)
+	if s.Environ != nil {
+		env = s.Environ()
+	} else {
+		env = os.Environ()
+	}
+	env = append(cloneStrings(env), overrides...)
+	for _, dir := range filepath.SplitList(managedruntime.EnvValue(env, "PATH")) {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, nodeBinaryName())
+		if s.executableFile(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (s Service) resolveExternalRegistryNPMSpec(
