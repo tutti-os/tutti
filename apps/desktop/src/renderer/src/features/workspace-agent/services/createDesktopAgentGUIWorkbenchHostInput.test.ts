@@ -2166,9 +2166,6 @@ function createWorkspaceAgentActivityService(
     ensureSessionSynchronized() {
       return () => {};
     },
-    retainSessionEvents() {
-      return () => {};
-    },
     async sendInput(input) {
       return {
         session: {

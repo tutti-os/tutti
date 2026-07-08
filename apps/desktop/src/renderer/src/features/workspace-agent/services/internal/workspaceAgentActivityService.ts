@@ -40,7 +40,6 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentActivityRetainSessionInput,
   WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
@@ -404,12 +403,6 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       }).catch(input.onError ?? (() => {}));
     }
     return () => {};
-  }
-
-  retainSessionEvents(
-    input: WorkspaceAgentActivityRetainSessionInput
-  ): () => void {
-    return this.ensureSessionSynchronized(input);
   }
 
   onSessionEvent(

@@ -95,9 +95,6 @@ export interface WorkspaceAgentActivityEnsureSessionSynchronizedInput {
   workspaceId: string;
 }
 
-export type WorkspaceAgentActivityRetainSessionInput =
-  WorkspaceAgentActivityEnsureSessionSynchronizedInput;
-
 export interface WorkspaceAgentActivityAttachment {
   attachmentId: string;
   mimeType: string;
@@ -200,10 +197,6 @@ export interface IWorkspaceAgentActivityService {
   }): Promise<void>;
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
-  ): () => void;
-  /** @deprecated Use ensureSessionSynchronized. */
-  retainSessionEvents(
-    input: WorkspaceAgentActivityRetainSessionInput
   ): () => void;
   sendInput(
     input: AgentActivitySendInput

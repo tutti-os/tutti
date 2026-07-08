@@ -346,7 +346,6 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       throw new Error("not implemented");
     },
     ensureSessionSynchronized: () => () => {},
-    retainSessionEvents: () => () => {},
     sendInput: async () => {
       throw new Error("not implemented");
     },
