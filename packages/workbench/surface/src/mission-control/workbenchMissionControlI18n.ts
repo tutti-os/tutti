@@ -23,6 +23,10 @@ export const tuttiI18nModule = createScopedLocaleObjectsI18nModuleManifest({
 const workbenchMissionControlEn = {
   layoutSelectionHint: "Select multiple windows to arrange",
   noAvailableLayout: "No layout fits the selected windows",
+  presetActions: {
+    arrangeOnce: "Arrange once",
+    lockLayout: "Lock layout"
+  },
   presets: {
     balanced: "Balanced layout",
     column: "Vertical equal layout",
@@ -33,6 +37,10 @@ const workbenchMissionControlEn = {
 const workbenchMissionControlZhCN = {
   layoutSelectionHint: "请选择多个你要整理布局的窗口",
   noAvailableLayout: "当前没有可用布局",
+  presetActions: {
+    arrangeOnce: "一次性整理",
+    lockLayout: "锁定布局"
+  },
   presets: {
     balanced: "智能均衡布局",
     column: "垂直等分布局",
@@ -43,6 +51,8 @@ const workbenchMissionControlZhCN = {
 export type WorkbenchMissionControlI18nKey =
   | "layoutSelectionHint"
   | "noAvailableLayout"
+  | "presetActions.arrangeOnce"
+  | "presetActions.lockLayout"
   | "presets.balanced"
   | "presets.column"
   | "presets.row";

@@ -8953,6 +8953,30 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   box-shadow: 0 0 0 1.5px var(--tutti-purple);
 }
 
+/* Clickable agent switchers: reset native button chrome, keep the same box, and
+   give a hover/focus affordance so the strip reads as interactive. */
+button.agent-gui-node__provider-rail-launchpad-item {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.agent-gui-node__empty-hero-launchpad-icon
+  button.agent-gui-node__provider-rail-launchpad-item:hover:not(
+    [data-provider-active="true"]
+  ) {
+  opacity: 1 !important;
+  transform: scale(1.08);
+}
+
+.agent-gui-node__empty-hero-launchpad-icon
+  button.agent-gui-node__provider-rail-launchpad-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1.5px var(--tutti-purple);
+}
+
 .agent-gui-node__provider-rail-tile[data-loading="true"]
   .agent-gui-node__provider-rail-avatar {
   background: linear-gradient(

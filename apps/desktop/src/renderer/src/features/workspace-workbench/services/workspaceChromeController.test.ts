@@ -21,6 +21,7 @@ test("workspace chrome controller derives workbench chrome state", () => {
   assert.deepEqual(controller.getSnapshot(), {
     hasFullscreenWorkbenchWindow: true,
     hasNativeCompactTitlebar: false,
+    lockedWorkbenchLayoutPreset: null,
     missionControlDisabled: false,
     useCompactTitlebar: true,
     visibleWorkbenchWindowCount: 2
@@ -73,6 +74,7 @@ test("workspace chrome controller ignores host compact titlebar on non-macOS pla
   assert.deepEqual(controller.getSnapshot(), {
     hasFullscreenWorkbenchWindow: false,
     hasNativeCompactTitlebar: false,
+    lockedWorkbenchLayoutPreset: null,
     missionControlDisabled: true,
     useCompactTitlebar: false,
     visibleWorkbenchWindowCount: 0
@@ -153,6 +155,7 @@ function createWorkbenchController(
         activeDragNodeId: null,
         activeResizeNodeId: null,
         activeSnapTarget: null,
+        lockedLayout: null,
         layoutConstraints: {
           minHeight: 160,
           minWidth: 280,

@@ -37,8 +37,8 @@ export function createWorkbenchHostMissionControlAdapter(input: {
   });
 
   return {
-    applyLayoutPreset(nodeIds, preset) {
-      input.controller.commands.applyLayoutPreset(nodeIds, preset);
+    applyLayoutPreset(nodeIds, preset, lock) {
+      input.controller.commands.applyLayoutPreset(nodeIds, preset, lock);
     },
     focusNode(nodeId) {
       if (input.activateNode) {

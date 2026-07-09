@@ -4,6 +4,7 @@ import {
   type WorkbenchLayoutPreset,
   type WorkbenchLayoutConstraints,
   type WorkbenchLayoutConstraintsInput,
+  type WorkbenchLockedLayout,
   type WorkbenchNodeSizeConstraints,
   type WorkbenchQuickLayoutTarget,
   type WorkbenchSafeArea,
@@ -385,7 +386,76 @@ export function getWorkbenchLayoutPresetFrames(
   }
 }
 
-function getWorkbenchSafeLayoutRect(
+export function normalizeWorkbenchFrameToRect(
+  frame: WorkbenchFrame,
+  rect: WorkbenchFrame
+): WorkbenchFrame {
+  const width = Math.max(rect.width, 1);
+  const height = Math.max(rect.height, 1);
+  return {
+    x: (frame.x - rect.x) / width,
+    y: (frame.y - rect.y) / height,
+    width: frame.width / width,
+    height: frame.height / height
+  };
+}
+
+export function denormalizeWorkbenchFrameFromRect(
+  normalized: WorkbenchFrame,
+  rect: WorkbenchFrame
+): WorkbenchFrame {
+  return {
+    x: rect.x + normalized.x * rect.width,
+    y: rect.y + normalized.y * rect.height,
+    width: normalized.width * rect.width,
+    height: normalized.height * rect.height
+  };
+}
+
+/**
+ * Resolves the slot frames of a locked layout at the given surface size: the
+ * user-adjusted grid geometry when present, the preset frames otherwise.
+ * Returns null when no lock is active or the preset cannot be laid out.
+ */
+export function getWorkbenchLockedSlotFrames(
+  lockedLayout: WorkbenchLockedLayout | null,
+  surfaceSize: WorkbenchSize,
+  constraints: WorkbenchLayoutConstraints = defaultWorkbenchLayoutConstraints
+): Array<{ nodeID: string; frame: WorkbenchFrame }> | null {
+  if (!lockedLayout || lockedLayout.nodeIDs.length < 2) {
+    return null;
+  }
+  const normalizedFrames = lockedLayout.normalizedFrames;
+  if (normalizedFrames) {
+    const rect = getWorkbenchSafeLayoutRect(surfaceSize, constraints);
+    const slots: Array<{ nodeID: string; frame: WorkbenchFrame }> = [];
+    for (const nodeID of lockedLayout.nodeIDs) {
+      const normalized = normalizedFrames[nodeID];
+      if (normalized) {
+        slots.push({
+          nodeID,
+          frame: denormalizeWorkbenchFrameFromRect(normalized, rect)
+        });
+      }
+    }
+    return slots.length >= 2 ? slots : null;
+  }
+  const frames = getWorkbenchLayoutPresetFrames(
+    lockedLayout.nodeIDs.length,
+    lockedLayout.preset,
+    surfaceSize,
+    constraints
+  );
+  if (!frames) {
+    return null;
+  }
+  return lockedLayout.nodeIDs.map((nodeID, index) => ({
+    nodeID,
+    frame: frames[index]!
+  }));
+}
+
+export function getWorkbenchSafeLayoutRect(
   surfaceSize: WorkbenchSize,
   constraints: WorkbenchLayoutConstraints = defaultWorkbenchLayoutConstraints
 ): WorkbenchFrame {

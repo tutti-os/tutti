@@ -32,6 +32,9 @@ import {
   AppWindowIcon,
   Button,
   CloseIcon,
+  LockGridHorizontalLinedIcon,
+  LockGridVerticalLinedIcon,
+  LockLayoutLinedIcon,
   OverviewLayoutIcon,
   SettingsIcon,
   ShortcutBadge,
@@ -295,8 +298,12 @@ export function WorkspaceChrome({
             workspace={workspace}
           />
           <WorkspaceMissionControlActions
+            lockedLayoutPreset={chromeState.lockedWorkbenchLayoutPreset}
             missionControl={missionControl}
             platform={platform}
+            onReleaseLockedLayout={() =>
+              workbenchController?.commands.releaseLockedLayout()
+            }
           />
           <WorkspaceSettingsTrigger
             onOpenExternalAgentImport={() => openExternalAgentImport()}
@@ -1003,10 +1010,19 @@ function workspaceAgentSessionMessageAliases(
   });
 }
 
+const lockedLayoutPresetIcons = {
+  balanced: LockLayoutLinedIcon,
+  column: LockGridVerticalLinedIcon,
+  row: LockGridHorizontalLinedIcon
+} as const;
+
 function WorkspaceMissionControlActions({
+  lockedLayoutPreset,
   missionControl,
-  platform
+  platform,
+  onReleaseLockedLayout
 }: {
+  lockedLayoutPreset: "balanced" | "row" | "column" | null;
   missionControl: {
     canOpen: boolean;
     close(): void;
@@ -1018,10 +1034,15 @@ function WorkspaceMissionControlActions({
     ): void;
     visibleWindowCount: number;
   };
+  onReleaseLockedLayout: () => void;
   platform: NodeJS.Platform;
 }) {
   const { t } = useTranslation();
   const isDarwin = platform === "darwin";
+  const LockedLayoutIcon =
+    lockedLayoutPreset === null
+      ? null
+      : lockedLayoutPresetIcons[lockedLayoutPreset];
 
   return (
     <div className="flex items-center gap-1">
@@ -1047,28 +1068,44 @@ function WorkspaceMissionControlActions({
       >
         <OverviewLayoutIcon className="size-4" />
       </WorkspaceMissionControlAction>
-      <WorkspaceMissionControlAction
-        active={missionControl.isOpen && missionControl.mode === "layout"}
-        disabled={!missionControl.canOpen}
-        label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
-        shortcutLabel={t(
-          isDarwin
-            ? "workspace.workbenchDesktop.missionControl.layoutShortcutMac"
-            : "workspace.workbenchDesktop.missionControl.layoutShortcutDefault"
-        )}
-        unavailableLabel={t(
-          "workspace.workbenchDesktop.missionControl.unavailableTrigger"
-        )}
-        onClick={() => {
-          if (missionControl.isOpen && missionControl.mode === "layout") {
-            missionControl.close();
-            return;
-          }
-          missionControl.open("layout", "button");
-        }}
-      >
-        <AppWindowIcon className="size-4" />
-      </WorkspaceMissionControlAction>
+      {LockedLayoutIcon ? (
+        <WorkspaceMissionControlAction
+          active
+          disabled={false}
+          label={t(
+            "workspace.workbenchDesktop.missionControl.unlockLayoutTrigger"
+          )}
+          unavailableLabel={t(
+            "workspace.workbenchDesktop.missionControl.unavailableTrigger"
+          )}
+          onClick={onReleaseLockedLayout}
+        >
+          <LockedLayoutIcon className="size-4" />
+        </WorkspaceMissionControlAction>
+      ) : (
+        <WorkspaceMissionControlAction
+          active={missionControl.isOpen && missionControl.mode === "layout"}
+          disabled={!missionControl.canOpen}
+          label={t("workspace.workbenchDesktop.missionControl.layoutTrigger")}
+          shortcutLabel={t(
+            isDarwin
+              ? "workspace.workbenchDesktop.missionControl.layoutShortcutMac"
+              : "workspace.workbenchDesktop.missionControl.layoutShortcutDefault"
+          )}
+          unavailableLabel={t(
+            "workspace.workbenchDesktop.missionControl.unavailableTrigger"
+          )}
+          onClick={() => {
+            if (missionControl.isOpen && missionControl.mode === "layout") {
+              missionControl.close();
+              return;
+            }
+            missionControl.open("layout", "button");
+          }}
+        >
+          <AppWindowIcon className="size-4" />
+        </WorkspaceMissionControlAction>
+      )}
     </div>
   );
 }
@@ -1087,7 +1124,7 @@ function WorkspaceMissionControlAction({
   disabled: boolean;
   label: string;
   onClick: () => void;
-  shortcutLabel: string;
+  shortcutLabel?: string;
   unavailableLabel: string;
 }) {
   const button = (
@@ -1126,7 +1163,9 @@ function WorkspaceMissionControlAction({
         ) : (
           <>
             <span>{label}</span>
-            <ShortcutBadge>{shortcutLabel}</ShortcutBadge>
+            {shortcutLabel ? (
+              <ShortcutBadge>{shortcutLabel}</ShortcutBadge>
+            ) : null}
           </>
         )}
       </TooltipContent>

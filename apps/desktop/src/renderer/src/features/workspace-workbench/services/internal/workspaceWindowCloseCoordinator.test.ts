@@ -368,6 +368,7 @@ function createWorkbenchHostHandleStub(
         activeResizeNodeId: null,
         activeSnapTarget: null,
         layoutConstraints: {} as never,
+        lockedLayout: null,
         nodes: (input.nodeIds ?? []).map((id) => ({
           data: {} as never,
           displayMode: "floating",

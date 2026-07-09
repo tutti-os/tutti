@@ -22,8 +22,18 @@ export interface WorkbenchCommands<TData = unknown> {
   enterFullscreen(nodeID: string): void;
   exitFullscreen(nodeID: string): void;
   applyQuickLayout(nodeID: string, target: WorkbenchQuickLayoutTarget): void;
-  applyLayoutPreset(nodeIDs: string[], preset: WorkbenchLayoutPreset): void;
+  applyLayoutPreset(
+    nodeIDs: string[],
+    preset: WorkbenchLayoutPreset,
+    lock?: boolean
+  ): void;
   applyVisibleLayoutPreset(preset: WorkbenchLayoutPreset): void;
+  settleLockedDrag(nodeID: string): void;
+  moveLockedNode(
+    nodeID: string,
+    direction: "left" | "right" | "up" | "down"
+  ): void;
+  releaseLockedLayout(): void;
   applyActiveSnapTarget(nodeID: string): void;
   applySnapTarget(nodeID: string, snapTarget: WorkbenchSnapTarget): void;
   dragNode(nodeID: string, frame: WorkbenchFrame): void;
@@ -74,11 +84,20 @@ export function createWorkbenchCommands<TData>(
     applyQuickLayout(nodeID, target) {
       store.dispatch({ type: "applyQuickLayout", nodeID, target });
     },
-    applyLayoutPreset(nodeIDs, preset) {
-      store.dispatch({ type: "applyLayoutPreset", nodeIDs, preset });
+    applyLayoutPreset(nodeIDs, preset, lock) {
+      store.dispatch({ type: "applyLayoutPreset", nodeIDs, preset, lock });
     },
     applyVisibleLayoutPreset(preset) {
       store.dispatch({ type: "applyVisibleLayoutPreset", preset });
+    },
+    settleLockedDrag(nodeID) {
+      store.dispatch({ type: "settleLockedDrag", nodeID });
+    },
+    moveLockedNode(nodeID, direction) {
+      store.dispatch({ type: "moveLockedNode", nodeID, direction });
+    },
+    releaseLockedLayout() {
+      store.dispatch({ type: "releaseLockedLayout" });
     },
     applyActiveSnapTarget(nodeID) {
       store.dispatch({ type: "applyActiveSnapTarget", nodeID });

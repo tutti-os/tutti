@@ -133,7 +133,8 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     layoutShortcutDefault: "missionControl.layoutShortcutDefault",
     layoutShortcutMac: "missionControl.layoutShortcutMac",
     layoutTrigger: "missionControl.layoutTrigger",
-    unavailableTrigger: "missionControl.unavailableTrigger"
+    unavailableTrigger: "missionControl.unavailableTrigger",
+    unlockLayoutTrigger: "missionControl.unlockLayoutTrigger"
   }
 } as const satisfies Record<string, unknown>;
 

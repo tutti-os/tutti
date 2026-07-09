@@ -900,7 +900,8 @@ export const zhCN = {
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "快速布局",
-        unavailableTrigger: "仅存在多个窗口时可使用"
+        unavailableTrigger: "仅存在多个窗口时可使用",
+        unlockLayoutTrigger: "解除固定布局"
       }
     }
   },

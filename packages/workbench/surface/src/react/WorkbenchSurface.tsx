@@ -10,6 +10,7 @@ import type {
   WorkbenchNode
 } from "../core/types.ts";
 import { WorkbenchDockFrame } from "./WorkbenchDockFrame.tsx";
+import { WorkbenchLockedSlotLayer } from "./WorkbenchLockedSlotLayer.tsx";
 import { WorkbenchNodeLayer } from "./WorkbenchNodeLayer.tsx";
 import {
   WorkbenchProvider,
@@ -263,6 +264,9 @@ function WorkbenchSurfaceInner<TData>({
         <div className="workbench-surface__top-chrome">{renderTopChrome()}</div>
       ) : null}
       {renderBackdrop ? renderBackdrop() : null}
+      {presentation?.mode === "mission-control" ? null : (
+        <WorkbenchLockedSlotLayer />
+      )}
       <WorkbenchNodeLayer
         genie={genie}
         interactive={interactive}

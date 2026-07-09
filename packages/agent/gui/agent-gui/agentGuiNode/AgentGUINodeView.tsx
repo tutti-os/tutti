@@ -4005,6 +4005,9 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
               activeProvider={provider}
               className={styles.emptyHeroLaunchpadIcon}
               icons={heroIconPresentations}
+              providerTargets={providerTargets}
+              onProviderSelect={onProviderSelect}
+              providerSelectLabel={providerSelectLabel}
             />
           ) : (
             <AgentGUIProviderIconVisual
@@ -4136,6 +4139,9 @@ const AgentGUIProviderReadinessGatePane = memo(
               activeProvider={provider}
               className={styles.emptyHeroLaunchpadIcon}
               icons={launchpadIconPresentations}
+              providerTargets={providerTargets}
+              onProviderSelect={onProviderSelect}
+              providerSelectLabel={providerSelectLabel}
             />
           ) : (
             <img
@@ -4273,15 +4279,23 @@ function providerGateAction(
 function AgentGUIAllProviderGridIcon({
   activeProvider,
   className,
-  icons
+  icons,
+  providerTargets,
+  onProviderSelect,
+  providerSelectLabel
 }: {
   activeProvider?: string;
   className?: string;
   icons: readonly AgentGUIProviderIconPresentation[];
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerSelectLabel?: string;
 }): React.JSX.Element {
+  const interactive =
+    onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
   return (
     <span
-      aria-hidden="true"
+      aria-hidden={interactive ? undefined : "true"}
       className={[styles.providerRailAvatar, className]
         .filter(Boolean)
         .join(" ")}
@@ -4289,6 +4303,9 @@ function AgentGUIAllProviderGridIcon({
       <AgentGUILaunchpadIconGrid
         activeProvider={activeProvider}
         icons={icons}
+        providerTargets={providerTargets}
+        onProviderSelect={onProviderSelect}
+        providerSelectLabel={providerSelectLabel}
       />
     </span>
   );
@@ -4312,21 +4329,41 @@ function AgentGUIUnifiedProviderIcon({
   );
 }
 
-// Opacity applied to a hero launchpad icon based on how far it sits from the
-// centered (selected) agent — neighbours fade out toward both edges.
-function agentGUIHeroStripOpacity(distance: number): number {
-  if (distance <= 0) {
-    return 1;
-  }
-  return Math.max(0.15, 1 - distance * 0.4);
+// Opacity applied to unselected hero launchpad icons. Every non-active agent
+// shares one value so they read as a consistent group; only the selected agent
+// is fully opaque.
+const AGENT_GUI_HERO_STRIP_INACTIVE_OPACITY = 0.4;
+
+function agentGUIHeroStripOpacity(isActive: boolean): number {
+  return isActive ? 1 : AGENT_GUI_HERO_STRIP_INACTIVE_OPACITY;
+}
+
+function agentGUILaunchpadProviderTarget(
+  providerTargets: readonly AgentGUIProviderTarget[],
+  provider: string
+): AgentGUIProviderTarget | null {
+  const normalized = normalizeManagedAgentProvider(provider);
+  return (
+    providerTargets.find(
+      (target) =>
+        target.disabled !== true &&
+        normalizeManagedAgentProvider(target.provider) === normalized
+    ) ?? null
+  );
 }
 
 function AgentGUILaunchpadIconGrid({
   activeProvider,
-  icons
+  icons,
+  providerTargets,
+  onProviderSelect,
+  providerSelectLabel
 }: {
   activeProvider?: string;
   icons: readonly AgentGUIProviderIconPresentation[];
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerSelectLabel?: string;
 }): React.JSX.Element {
   const normalizedActiveProvider = activeProvider
     ? normalizeManagedAgentProvider(activeProvider)
@@ -4339,33 +4376,67 @@ function AgentGUILaunchpadIconGrid({
             normalizeManagedAgentProvider(icon.provider) ===
             normalizedActiveProvider
         );
+  // Icons become clickable agent switchers when the host wires up targets and a
+  // select handler; otherwise they stay decorative (aria-hidden) as before.
+  const interactive =
+    onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
   const renderItem = (
     icon: AgentGUIProviderIconPresentation,
-    distance: number,
     isActive: boolean
-  ): React.JSX.Element => (
-    <span
-      key={`${icon.provider}:${icon.iconUrl}`}
-      className={styles.providerRailLaunchpadItem}
-      data-provider-active={
-        normalizedActiveProvider === null ? undefined : isActive
-      }
-      style={{ opacity: agentGUIHeroStripOpacity(distance) }}
-    >
-      <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
-    </span>
-  );
-  if (activeIndex < 0) {
+  ): React.JSX.Element => {
+    const key = `${icon.provider}:${icon.iconUrl}`;
+    const style = { opacity: agentGUIHeroStripOpacity(isActive) };
+    const dataActive = normalizedActiveProvider === null ? undefined : isActive;
+    const target = interactive
+      ? agentGUILaunchpadProviderTarget(providerTargets ?? [], icon.provider)
+      : null;
+    if (target && onProviderSelect) {
+      const label = providerSelectLabel
+        ? `${providerSelectLabel}: ${target.label}`
+        : target.label;
+      return (
+        <button
+          key={key}
+          type="button"
+          className={styles.providerRailLaunchpadItem}
+          data-provider-active={dataActive}
+          aria-label={label}
+          aria-pressed={isActive}
+          title={target.label}
+          style={style}
+          onClick={() =>
+            onProviderSelect({
+              provider: target.provider,
+              providerTargetId: target.targetId
+            })
+          }
+        >
+          <AgentGUIProviderIconVisual
+            ariaHidden
+            imageClassName=""
+            icon={icon}
+          />
+        </button>
+      );
+    }
     return (
-      <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
-        {icons.map((icon) => renderItem(icon, 0, false))}
+      <span
+        key={key}
+        className={styles.providerRailLaunchpadItem}
+        data-provider-active={dataActive}
+        style={style}
+      >
+        <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
       </span>
     );
-  }
+  };
   return (
-    <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
+    <span
+      aria-hidden={interactive ? undefined : "true"}
+      className={styles.providerRailLaunchpadIcon}
+    >
       {icons.map((icon, index) =>
-        renderItem(icon, Math.abs(index - activeIndex), index === activeIndex)
+        renderItem(icon, activeIndex < 0 ? true : index === activeIndex)
       )}
     </span>
   );

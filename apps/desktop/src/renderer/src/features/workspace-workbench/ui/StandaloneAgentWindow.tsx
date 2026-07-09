@@ -711,6 +711,7 @@ function createStandaloneAgentHost(input: {
     activeDragNodeId: null,
     activeResizeNodeId: null,
     activeSnapTarget: null,
+    lockedLayout: null,
     layoutConstraints: {
       minHeight: 0,
       minWidth: 0,

@@ -31,9 +31,11 @@ export function useWorkbenchShortcuts<TData = unknown>(
       }
 
       let handled = false;
-      const focusedNode = selectFocusedVisibleWorkbenchNode(
-        controller.getSnapshot()
-      );
+      const snapshot = controller.getSnapshot();
+      const focusedNode = selectFocusedVisibleWorkbenchNode(snapshot);
+      const isLockedFocusedNode =
+        focusedNode !== null &&
+        (snapshot.lockedLayout?.nodeIDs.includes(focusedNode.id) ?? false);
       if (intent.type === "exitFullscreen") {
         if (focusedNode?.displayMode === "fullscreen") {
           controller.commands.exitFullscreen(focusedNode.id);
@@ -41,15 +43,31 @@ export function useWorkbenchShortcuts<TData = unknown>(
         }
       } else if (intent.type === "applyFocusedSnapTarget") {
         if (focusedNode) {
-          controller.commands.applySnapTarget(
-            focusedNode.id,
-            intent.snapTarget
-          );
+          // With a locked layout, snapping shortcuts move the focused window
+          // between the locked grid slots instead of snapping it to an edge.
+          const lockedDirection = isLockedFocusedNode
+            ? resolveLockedMoveDirection(intent.snapTarget)
+            : null;
+          if (lockedDirection) {
+            controller.commands.moveLockedNode(focusedNode.id, lockedDirection);
+          } else {
+            controller.commands.applySnapTarget(
+              focusedNode.id,
+              intent.snapTarget
+            );
+          }
           handled = true;
         }
       } else if (intent.type === "applyFocusedQuickLayout") {
         if (focusedNode) {
-          controller.commands.applyQuickLayout(focusedNode.id, intent.target);
+          const lockedDirection = isLockedFocusedNode
+            ? resolveLockedMoveDirection(intent.target)
+            : null;
+          if (lockedDirection) {
+            controller.commands.moveLockedNode(focusedNode.id, lockedDirection);
+          } else {
+            controller.commands.applyQuickLayout(focusedNode.id, intent.target);
+          }
           handled = true;
         }
       } else {
@@ -68,4 +86,21 @@ export function useWorkbenchShortcuts<TData = unknown>(
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [controller, enabled, windowManagementShortcutPreset]);
+}
+
+function resolveLockedMoveDirection(
+  target: string
+): "left" | "right" | "up" | "down" | null {
+  switch (target) {
+    case "left":
+      return "left";
+    case "right":
+      return "right";
+    case "top":
+      return "up";
+    case "bottom":
+      return "down";
+    default:
+      return null;
+  }
 }

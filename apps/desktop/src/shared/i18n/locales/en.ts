@@ -948,7 +948,8 @@ export const en = {
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "Quick layout",
-        unavailableTrigger: "Available when multiple windows exist"
+        unavailableTrigger: "Available when multiple windows exist",
+        unlockLayoutTrigger: "Unlock layout"
       }
     }
   },
