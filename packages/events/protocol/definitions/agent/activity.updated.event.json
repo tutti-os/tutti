@@ -191,8 +191,8 @@
                       "minimum": 1
                     },
                     "turnId": {
-                      "type": "string",
-                      "minLength": 1
+                      "type": ["string", "null"],
+                      "description": "Protocol v2 message ownership: a non-empty turnId attaches the message to that turn; null marks a session-level message. Empty strings are a deprecated legacy encoding."
                     },
                     "status": {
                       "type": "string"
@@ -360,6 +360,229 @@
             }
           }
         }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agentSessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "eventType": {
+            "const": "turn_update"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "workspaceId",
+              "agentSessionId",
+              "eventType",
+              "occurredAtUnixMs",
+              "activeTurnId",
+              "turn"
+            ],
+            "properties": {
+              "workspaceId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agentSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eventType": {
+                "const": "turn_update"
+              },
+              "occurredAtUnixMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "activeTurnId": {
+                "type": ["string", "null"],
+                "description": "The session's active turn reference after this update; null once the turn settles."
+              },
+              "turn": {
+                "type": "object",
+                "required": [
+                  "turnId",
+                  "agentSessionId",
+                  "phase",
+                  "startedAtUnixMs",
+                  "updatedAtUnixMs"
+                ],
+                "properties": {
+                  "turnId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "agentSessionId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "phase": {
+                    "type": "string",
+                    "enum": [
+                      "submitted",
+                      "running",
+                      "waiting",
+                      "settling",
+                      "settled"
+                    ]
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": ["completed", "failed", "canceled", "interrupted"]
+                  },
+                  "error": {
+                    "type": "object",
+                    "required": ["message"],
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "code": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "fileChanges": true,
+                  "completedCommand": {
+                    "type": "object",
+                    "required": ["kind", "status"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["compact", "review", "undo", "goal"]
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["completed", "failed", "canceled"]
+                      }
+                    }
+                  },
+                  "startedAtUnixMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "settledAtUnixMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "updatedAtUnixMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agentSessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "eventType": {
+            "const": "interaction_update"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "workspaceId",
+              "agentSessionId",
+              "eventType",
+              "occurredAtUnixMs",
+              "interaction"
+            ],
+            "properties": {
+              "workspaceId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agentSessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eventType": {
+                "const": "interaction_update"
+              },
+              "occurredAtUnixMs": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "interaction": {
+                "type": "object",
+                "required": [
+                  "requestId",
+                  "agentSessionId",
+                  "turnId",
+                  "kind",
+                  "status",
+                  "createdAtUnixMs",
+                  "updatedAtUnixMs"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "agentSessionId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "turnId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["approval", "question", "plan"]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["pending", "answered", "superseded"]
+                  },
+                  "toolName": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "type": "object"
+                  },
+                  "output": {
+                    "type": "object"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "createdAtUnixMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "updatedAtUnixMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     ],
     "properties": {
@@ -380,7 +603,9 @@
           "session_update",
           "session_deleted",
           "message_update",
-          "state_patch"
+          "state_patch",
+          "turn_update",
+          "interaction_update"
         ]
       },
       "data": true

@@ -259,7 +259,7 @@ export type AgentActivityUpdatedPayloadV1 =
           payload: Record<string, unknown>;
           role: string;
           version: number;
-          turnId: string;
+          turnId: string | null;
           status?: string;
           occurredAtUnixMs: number;
           startedAtUnixMs?: number;
@@ -306,6 +306,60 @@ export type AgentActivityUpdatedPayloadV1 =
             state: string;
             reason?: string;
           };
+        };
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "turn_update";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "turn_update";
+        occurredAtUnixMs: number;
+        activeTurnId: string | null;
+        turn: {
+          turnId: string;
+          agentSessionId: string;
+          phase: "submitted" | "running" | "waiting" | "settling" | "settled";
+          outcome?: "completed" | "failed" | "canceled" | "interrupted";
+          error?: {
+            message: string;
+            code?: string;
+          };
+          fileChanges?: unknown;
+          completedCommand?: {
+            kind: "compact" | "review" | "undo" | "goal";
+            status: "completed" | "failed" | "canceled";
+          };
+          startedAtUnixMs: number;
+          settledAtUnixMs?: number;
+          updatedAtUnixMs: number;
+        };
+      };
+    }
+  | {
+      workspaceId: string;
+      agentSessionId: string;
+      eventType: "interaction_update";
+      data: {
+        workspaceId: string;
+        agentSessionId: string;
+        eventType: "interaction_update";
+        occurredAtUnixMs: number;
+        interaction: {
+          requestId: string;
+          agentSessionId: string;
+          turnId: string;
+          kind: "approval" | "question" | "plan";
+          status: "pending" | "answered" | "superseded";
+          toolName?: string;
+          input?: Record<string, unknown>;
+          output?: Record<string, unknown>;
+          metadata?: Record<string, unknown>;
+          createdAtUnixMs: number;
+          updatedAtUnixMs: number;
         };
       };
     };

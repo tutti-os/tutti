@@ -350,6 +350,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      use-sync-external-store:
+        specifier: ^1.6.0
+        version: 1.6.0(react@19.2.6)
       valtio:
         specifier: ^2.3.2
         version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
@@ -381,6 +384,9 @@ importers:
       "@types/react-dom":
         specifier: ^19.1.5
         version: 19.2.3(@types/react@19.2.15)
+      "@types/use-sync-external-store":
+        specifier: ^0.0.6
+        version: 0.0.6
       jsdom:
         specifier: ^27.2.0
         version: 27.4.0

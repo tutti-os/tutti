@@ -23,6 +23,8 @@ type Service struct {
 	UserProjectReader             UserProjectReader
 	MessageReader                 MessageReader
 	ExternalImportStore           agentactivitybiz.Repository
+	TurnStore                     TurnStore
+	TurnRecorder                  TurnStateRecorder
 	SessionDirectoryAllocator     SessionDirectoryAllocator
 	PromptAttachmentStore         PromptAttachmentStore
 	RuntimePreparer               agentsidecarservice.Preparer
@@ -100,6 +102,11 @@ type Session struct {
 	UpdatedAt          *time.Time
 	EndedAt            *time.Time
 	LastError          *string
+	// Protocol v2 turn state (agent-gui refactor plan): the session keeps an
+	// activeTurnId reference; phase/outcome/error live on the turn entity.
+	ActiveTurnID        string
+	ActiveTurn          *agentactivitybiz.Turn
+	PendingInteractions []agentactivitybiz.Interaction
 }
 
 type CancelReason string

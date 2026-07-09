@@ -140,7 +140,7 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
        user_id, settings_json, runtime_context_json, cwd,
        title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, workspaceID, agentSessionID)
@@ -170,7 +170,7 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
        user_id, settings_json, runtime_context_json, cwd,
        title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND deleted_at_unix_ms = 0
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
@@ -242,6 +242,20 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, now, now, workspaceID, agentSessionID); err != nil {
 			return false, fmt.Errorf("delete workspace agent session messages: %w", err)
 		}
+		// Turn and interaction rows are hard-deleted with the session so
+		// startup reconciliation never settles turns of deleted sessions.
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_interactions
+WHERE workspace_id = ? AND agent_session_id = ?
+`, workspaceID, agentSessionID); err != nil {
+			return false, fmt.Errorf("delete workspace agent session interactions: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_turns
+WHERE workspace_id = ? AND agent_session_id = ?
+`, workspaceID, agentSessionID); err != nil {
+			return false, fmt.Errorf("delete workspace agent session turns: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit delete workspace agent session: %w", err)
@@ -312,6 +326,20 @@ WHERE workspace_id = ?
 `, workspaceID)
 	if err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages: %w", err)
+	}
+	// Explicit deletes rather than FK cascades: SQLite only cascades with
+	// PRAGMA foreign_keys enabled, which hosts do not guarantee.
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_interactions
+WHERE workspace_id = ?
+`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent interactions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM workspace_agent_turns
+WHERE workspace_id = ?
+`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent turns: %w", err)
 	}
 	sessionResult, err := tx.ExecContext(ctx, `
 DELETE FROM workspace_agent_sessions
@@ -793,6 +821,7 @@ WHERE workspace_id = ? AND agent_session_id = ?
 func scanAgentSession(scanner rowScanner) (Session, error) {
 	var session Session
 	var agentTargetID sql.NullString
+	var activeTurnID sql.NullString
 	var settingsJSON string
 	var runtimeContextJSON string
 	err := scanner.Scan(
@@ -818,6 +847,7 @@ func scanAgentSession(scanner rowScanner) (Session, error) {
 		&session.PinnedAtUnixMS,
 		&session.CreatedAtUnixMS,
 		&session.UpdatedAtUnixMS,
+		&activeTurnID,
 	)
 	if err != nil {
 		return Session{}, err
@@ -826,6 +856,7 @@ func scanAgentSession(scanner rowScanner) (Session, error) {
 		return Session{}, fmt.Errorf("decode workspace agent session settings: %w", err)
 	}
 	session.AgentTargetID = strings.TrimSpace(agentTargetID.String)
+	session.ActiveTurnID = strings.TrimSpace(activeTurnID.String)
 	if session.RuntimeContext, err = unmarshalJSONMap(runtimeContextJSON); err != nil {
 		return Session{}, fmt.Errorf("decode workspace agent session runtime context: %w", err)
 	}

@@ -14,14 +14,20 @@ type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
 	DeleteSession(context.Context, string, string) (bool, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
+	GetTurn(context.Context, string, string, string) (Turn, bool, error)
+	ListSessionInteractions(context.Context, ListSessionInteractionsInput) ([]Interaction, error)
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
+	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
 	ListWorkspaceGeneratedFiles(context.Context, ListWorkspaceGeneratedFilesInput) (GeneratedFileList, bool, error)
 	ListSessionMessages(context.Context, ListSessionMessagesInput) (MessagePage, bool, error)
+	RecordTurnTransition(context.Context, TurnTransition) (Turn, bool, error)
 	ReportSessionMessages(context.Context, SessionMessageReport) (MessageReportResult, error)
 	ReportSessionState(context.Context, SessionStateReport) (StateReportResult, error)
+	SettleStaleTurns(context.Context) ([]StaleTurnSettlement, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
+	UpsertInteraction(context.Context, InteractionUpsert) (Interaction, bool, error)
 }
 
 type ClearSessionsResult struct {
@@ -100,13 +106,135 @@ type Session struct {
 	CurrentPhase      string
 	Title             string
 	LastError         string
-	MessageVersion    uint64
-	LastEventUnixMS   int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
-	PinnedAtUnixMS    int64
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
+	// currently in flight, empty when the session is idle.
+	ActiveTurnID    string
+	MessageVersion  uint64
+	LastEventUnixMS int64
+	StartedAtUnixMS int64
+	EndedAtUnixMS   int64
+	PinnedAtUnixMS  int64
+	CreatedAtUnixMS int64
+	UpdatedAtUnixMS int64
+}
+
+// Closed protocol v2 turn phase vocabulary. The storage CHECK constraints
+// mirror this list; keep both in sync with the openapi WorkspaceAgentTurnPhase
+// enum.
+const (
+	TurnPhaseSubmitted = "submitted"
+	TurnPhaseRunning   = "running"
+	TurnPhaseWaiting   = "waiting"
+	TurnPhaseSettling  = "settling"
+	TurnPhaseSettled   = "settled"
+)
+
+// Closed protocol v2 turn outcome vocabulary; mirrors the openapi
+// WorkspaceAgentTurnOutcome enum.
+const (
+	TurnOutcomeCompleted   = "completed"
+	TurnOutcomeFailed      = "failed"
+	TurnOutcomeCanceled    = "canceled"
+	TurnOutcomeInterrupted = "interrupted"
+)
+
+// Turn is the protocol v2 turn entity: one user-submission-driven execution
+// with its own phase, outcome, error, and file changes.
+type Turn struct {
+	WorkspaceID            string
+	AgentSessionID         string
+	TurnID                 string
+	Phase                  string
+	Outcome                string
+	ErrorMessage           string
+	ErrorCode              string
+	FileChanges            map[string]any
+	CompletedCommandKind   string
+	CompletedCommandStatus string
+	Backfilled             bool
+	StartedAtUnixMS        int64
+	SettledAtUnixMS        int64
+	CreatedAtUnixMS        int64
+	UpdatedAtUnixMS        int64
+}
+
+// TurnTransition records one turn phase transition. Transitions are written
+// synchronously per phase change (no batching); a settled turn is terminal
+// and rejects further transitions, which makes replays and cancel races
+// idempotent.
+type TurnTransition struct {
+	WorkspaceID            string
+	AgentSessionID         string
+	TurnID                 string
+	Phase                  string
+	Outcome                string
+	ErrorMessage           string
+	ErrorCode              string
+	FileChanges            map[string]any
+	CompletedCommandKind   string
+	CompletedCommandStatus string
+	StartedAtUnixMS        int64
+	SettledAtUnixMS        int64
+	OccurredAtUnixMS       int64
+}
+
+// Closed protocol v2 interaction vocabulary; mirrors the openapi
+// WorkspaceAgentInteractionKind / WorkspaceAgentInteractionStatus enums.
+const (
+	InteractionKindApproval = "approval"
+	InteractionKindQuestion = "question"
+	InteractionKindPlan     = "plan"
+
+	InteractionStatusPending    = "pending"
+	InteractionStatusAnswered   = "answered"
+	InteractionStatusSuperseded = "superseded"
+)
+
+// Interaction is the protocol v2 interaction entity: an agent-initiated
+// approval, question, or plan confirmation raised during a turn. Pending
+// means present with status pending; there is no tri-state null protocol.
+type Interaction struct {
+	WorkspaceID     string
+	AgentSessionID  string
+	RequestID       string
+	TurnID          string
+	Kind            string
+	Status          string
+	ToolName        string
+	Input           map[string]any
+	Output          map[string]any
+	Metadata        map[string]any
+	CreatedAtUnixMS int64
+	UpdatedAtUnixMS int64
+}
+
+type InteractionUpsert struct {
+	WorkspaceID      string
+	AgentSessionID   string
+	RequestID        string
+	TurnID           string
+	Kind             string
+	Status           string
+	ToolName         string
+	Input            map[string]any
+	Output           map[string]any
+	Metadata         map[string]any
+	OccurredAtUnixMS int64
+}
+
+type ListSessionInteractionsInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	// Status filters by interaction status when non-empty.
+	Status string
+}
+
+// StaleTurnSettlement identifies one turn that startup reconciliation
+// force-settled with outcome interrupted.
+type StaleTurnSettlement struct {
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
 }
 
 type SessionStateReport struct {

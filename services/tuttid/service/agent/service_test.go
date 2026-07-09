@@ -6096,6 +6096,43 @@ func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, s
 	return agentactivitybiz.Session{}, false, nil
 }
 
+func (*activityProjectionRepoStub) GetTurn(context.Context, string, string, string) (agentactivitybiz.Turn, bool, error) {
+	return agentactivitybiz.Turn{}, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionTurns(context.Context, string, string) ([]agentactivitybiz.Turn, error) {
+	return nil, nil
+}
+
+func (*activityProjectionRepoStub) RecordTurnTransition(_ context.Context, transition agentactivitybiz.TurnTransition) (agentactivitybiz.Turn, bool, error) {
+	return agentactivitybiz.Turn{
+		WorkspaceID:    transition.WorkspaceID,
+		AgentSessionID: transition.AgentSessionID,
+		TurnID:         transition.TurnID,
+		Phase:          transition.Phase,
+		Outcome:        transition.Outcome,
+	}, true, nil
+}
+
+func (*activityProjectionRepoStub) SettleStaleTurns(context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
+	return nil, nil
+}
+
+func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, bool, error) {
+	return agentactivitybiz.Interaction{
+		WorkspaceID:    upsert.WorkspaceID,
+		AgentSessionID: upsert.AgentSessionID,
+		RequestID:      upsert.RequestID,
+		TurnID:         upsert.TurnID,
+		Kind:           upsert.Kind,
+		Status:         upsert.Status,
+	}, true, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionInteractions(context.Context, agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
+	return nil, nil
+}
+
 type publishedActivityUpdate struct {
 	workspaceID    string
 	agentSessionID string

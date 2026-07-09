@@ -1234,18 +1234,71 @@ export type WorkspaceAgentSession = {
   status: WorkspaceAgentSessionStatus;
   turnLifecycle?: AgentActivityTurnLifecycle;
   submitAvailability?: AgentActivitySubmitAvailability;
+  /**
+   * Protocol v2. The only turn reference kept on the session; null when no turn is in flight.
+   */
+  activeTurnId?: string | null;
+  activeTurn?: WorkspaceAgentTurn;
+  /**
+   * Protocol v2. Pending interactions (approvals, questions, plan confirmations) for the active turn. Pending means present in this collection with status pending; there is no tri-state null protocol.
+   */
+  pendingInteractions?: Array<WorkspaceAgentInteraction>;
+  capabilities?: WorkspaceAgentCapabilities;
+  backgroundAgents?: WorkspaceAgentBackgroundAgents;
+  goal?: WorkspaceAgentSessionGoal;
+  /**
+   * Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
+   */
+  imported?: boolean;
   visible: boolean;
   settings?: AgentSessionComposerSettings;
   permissionConfig?: PermissionConfig;
+  /**
+   * Deprecated (protocol v2): untyped grab bag. Replaced by the explicit capabilities, backgroundAgents, goal, and imported fields.
+   *
+   * @deprecated
+   */
   runtimeContext?: {
     [key: string]: unknown;
   };
   resumable?: boolean;
   pinnedAtUnixMs?: number | null;
   title?: string | null;
+  /**
+   * Deprecated (protocol v2): use createdAtUnixMs.
+   *
+   * @deprecated
+   */
   createdAt: string;
+  /**
+   * Deprecated (protocol v2): use updatedAtUnixMs.
+   *
+   * @deprecated
+   */
   updatedAt: string | null;
+  /**
+   * Deprecated (protocol v2): use endedAtUnixMs.
+   *
+   * @deprecated
+   */
   endedAt?: string | null;
+  /**
+   * Protocol v2. Unix milliseconds replacement for createdAt.
+   */
+  createdAtUnixMs?: number;
+  /**
+   * Protocol v2. Unix milliseconds replacement for updatedAt.
+   */
+  updatedAtUnixMs?: number;
+  /**
+   * Protocol v2. Unix milliseconds replacement for endedAt.
+   */
+  endedAtUnixMs?: number | null;
+  /**
+   * Deprecated (protocol v2): turn failures belong to the turn entity (WorkspaceAgentTurn.error), not the session.
+   *
+   * @deprecated
+   */
   lastError?: string | null;
 };
 
@@ -1258,6 +1311,11 @@ export type WorkspaceAgentSessionCancelResponse = {
   cancel: WorkspaceAgentSessionCancelResult;
 };
 
+/**
+ * Deprecated (protocol v2): session-level cancel is a category error; use cancelWorkspaceAgentTurn with WorkspaceAgentTurnCancelResult.
+ *
+ * @deprecated
+ */
 export type WorkspaceAgentSessionCancelResult = {
   canceled: boolean;
   reason: "active_turn_canceled" | "no_active_turn" | "stale_turn_reconciled";
@@ -1266,10 +1324,165 @@ export type WorkspaceAgentSessionCancelResult = {
 export type SendWorkspaceAgentSessionInputResponse = {
   session: WorkspaceAgentSession;
   turnId: string;
+  turn?: WorkspaceAgentTurn;
   turnLifecycle: AgentActivityTurnLifecycle;
   submitAvailability: AgentActivitySubmitAvailability;
 };
 
+/**
+ * Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
+ */
+export type WorkspaceAgentTurnPhase =
+  | "submitted"
+  | "running"
+  | "waiting"
+  | "settling"
+  | "settled";
+
+/**
+ * Protocol v2 closed turn outcome vocabulary; only present once the turn is settled. interrupted marks turns reconciled at daemon startup after the provider process disappeared.
+ */
+export type WorkspaceAgentTurnOutcome =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "interrupted";
+
+/**
+ * Protocol v2 turn-scoped error; never pollutes session state.
+ */
+export type WorkspaceAgentTurnError = {
+  message: string;
+  code?: string;
+};
+
+/**
+ * Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
+ */
+export type WorkspaceAgentCompletedCommand = {
+  kind: "compact" | "review" | "undo" | "goal";
+  status: "completed" | "failed" | "canceled";
+};
+
+/**
+ * Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+ */
+export type WorkspaceAgentTurn = {
+  turnId: string;
+  agentSessionId: string;
+  phase: WorkspaceAgentTurnPhase;
+  outcome?: WorkspaceAgentTurnOutcome;
+  error?: WorkspaceAgentTurnError;
+  fileChanges?: {
+    [key: string]: unknown;
+  } | null;
+  completedCommand?: WorkspaceAgentCompletedCommand;
+  startedAtUnixMs: number;
+  settledAtUnixMs?: number | null;
+  updatedAtUnixMs: number;
+};
+
+export type WorkspaceAgentInteractionKind = "approval" | "question" | "plan";
+
+export type WorkspaceAgentInteractionStatus =
+  | "pending"
+  | "answered"
+  | "superseded";
+
+/**
+ * Protocol v2 interaction entity. An agent-initiated approval, question, or plan confirmation raised during a turn. Pending means present in a collection with status pending; replaces the tri-state null pendingInteractive protocol.
+ */
+export type WorkspaceAgentInteraction = {
+  requestId: string;
+  agentSessionId: string;
+  turnId: string;
+  kind: WorkspaceAgentInteractionKind;
+  status: WorkspaceAgentInteractionStatus;
+  toolName?: string | null;
+  input?: {
+    [key: string]: unknown;
+  } | null;
+  output?: {
+    [key: string]: unknown;
+  } | null;
+  metadata?: {
+    [key: string]: unknown;
+  } | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+/**
+ * Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
+ */
+export type WorkspaceAgentCapabilities = {
+  imageInput?: boolean;
+  skills?: boolean;
+  compact?: boolean;
+  tokenUsage?: boolean;
+  rateLimits?: boolean;
+  planMode?: boolean;
+  interrupt?: boolean;
+  browserUse?: boolean;
+  computerUse?: boolean;
+  goalPause?: boolean;
+  review?: boolean;
+  resumeRunningTurn?: boolean;
+};
+
+export type WorkspaceAgentBackgroundAgentItem = {
+  taskId: string;
+  description: string;
+  status: string;
+  summary?: string;
+  lastToolName?: string;
+  taskType?: string;
+  startedAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+};
+
+/**
+ * Protocol v2 explicit field extracted from runtimeContext.
+ */
+export type WorkspaceAgentBackgroundAgents = {
+  /**
+   * Number of background agents still running.
+   */
+  count: number;
+  items: Array<WorkspaceAgentBackgroundAgentItem>;
+};
+
+/**
+ * Protocol v2 explicit field extracted from runtimeContext.
+ */
+export type WorkspaceAgentSessionGoal = {
+  objective: string;
+  status: "active" | "paused" | "complete";
+  reason?: string;
+  iterations?: number;
+  durationMs?: number;
+  tokens?: number;
+};
+
+export type WorkspaceAgentTurnCancelResult = {
+  canceled: boolean;
+  /**
+   * turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+   */
+  reason: "turn_canceled" | "already_settled" | "not_found";
+};
+
+export type WorkspaceAgentTurnCancelResponse = {
+  cancel: WorkspaceAgentTurnCancelResult;
+  turn?: WorkspaceAgentTurn;
+};
+
+/**
+ * Deprecated (protocol v2): replaced by the WorkspaceAgentTurn entity with closed phase/outcome enums.
+ *
+ * @deprecated
+ */
 export type AgentActivityTurnLifecycle = {
   activeTurnId: string | null;
   phase: string;
@@ -1278,11 +1491,21 @@ export type AgentActivityTurnLifecycle = {
   completedCommand?: AgentActivityCompletedCommand;
 };
 
+/**
+ * Deprecated (protocol v2): replaced by WorkspaceAgentCompletedCommand with closed enums.
+ *
+ * @deprecated
+ */
 export type AgentActivityCompletedCommand = {
   kind: string;
   status: string;
 };
 
+/**
+ * Deprecated (protocol v2): submit availability is a derived value computed by client selectors from turn and interaction state, not a stored contract field.
+ *
+ * @deprecated
+ */
 export type AgentActivitySubmitAvailability = {
   state: string;
   reason?: string;
@@ -1296,10 +1519,18 @@ export type AgentActivityMessageSemantics = {
 };
 
 export type WorkspaceAgentSessionMessage = {
+  /**
+   * Deprecated (protocol v2): the autoincrement row id is a storage implementation detail. Message identity is messageId plus version.
+   *
+   * @deprecated
+   */
   id: number;
   agentSessionId: string;
   messageId: string;
-  turnId: string;
+  /**
+   * Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
+   */
+  turnId: string | null;
   role: string;
   kind: string;
   status?: string;
@@ -2280,6 +2511,8 @@ export type AgentSessionId = string;
 export type AgentSessionAttachmentId = string;
 
 export type AgentPermissionRequestId = string;
+
+export type AgentTurnId = string;
 
 export type TerminalAfterSeq = number;
 
@@ -6079,6 +6312,57 @@ export type CancelWorkspaceAgentSessionResponses = {
 
 export type CancelWorkspaceAgentSessionResponse =
   CancelWorkspaceAgentSessionResponses[keyof CancelWorkspaceAgentSessionResponses];
+
+export type CancelWorkspaceAgentTurnData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+    turnID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel";
+};
+
+export type CancelWorkspaceAgentTurnErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelWorkspaceAgentTurnError =
+  CancelWorkspaceAgentTurnErrors[keyof CancelWorkspaceAgentTurnErrors];
+
+export type CancelWorkspaceAgentTurnResponses = {
+  /**
+   * Workspace agent turn cancel result
+   */
+  200: WorkspaceAgentTurnCancelResponse;
+};
+
+export type CancelWorkspaceAgentTurnResponse =
+  CancelWorkspaceAgentTurnResponses[keyof CancelWorkspaceAgentTurnResponses];
 
 export type GoalControlWorkspaceAgentSessionData = {
   body: WorkspaceAgentSessionGoalControlRequest;

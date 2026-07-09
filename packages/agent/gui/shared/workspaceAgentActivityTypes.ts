@@ -1,3 +1,16 @@
+/**
+ * RETIREMENT PATH (agent-gui refactor plan, protocol v2 — see
+ * docs/architecture/agent-gui-refactor-plan.md, slices 3 and 7):
+ *
+ * This file is a hand-written mirror of daemon transport shapes. Protocol v2
+ * generates these types from the OpenAPI contract into
+ * `@tutti-os/tuttid-client` (WorkspaceAgentTurn, WorkspaceAgentInteraction,
+ * closed phase/outcome enums) and from the event protocol into
+ * `@tutti-os/event-protocol` (turn_update / interaction_update branches).
+ * Do not add new transport fields here; consume the generated types instead.
+ * Slice 3 migrates the engine onto the generated types; slice 7 deletes this
+ * mirror.
+ */
 import {
   mergeAgentActivityMessages,
   AgentActivityMessage,

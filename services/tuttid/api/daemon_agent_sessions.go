@@ -35,6 +35,7 @@ type AgentSessionService interface {
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (bool, error)
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
+	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
@@ -642,26 +643,57 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		settings = &value
 	}
 	runtimeContext := clonePayloadPointer(session.RuntimeContext)
+	// Protocol v2 turn state: the session carries an activeTurnId reference
+	// plus the embedded active turn and pending interactions.
+	var activeTurn *tuttigenerated.WorkspaceAgentTurn
+	if session.ActiveTurn != nil {
+		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.ActiveTurn)
+		activeTurn = &turn
+	}
+	var pendingInteractions *[]tuttigenerated.WorkspaceAgentInteraction
+	if len(session.PendingInteractions) > 0 {
+		interactions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.PendingInteractions))
+		for _, interaction := range session.PendingInteractions {
+			interactions = append(interactions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+		}
+		pendingInteractions = &interactions
+	}
+	var updatedAtUnixMS *int64
+	if session.UpdatedAt != nil {
+		value := session.UpdatedAt.UnixMilli()
+		updatedAtUnixMS = &value
+	}
+	var endedAtUnixMS *int64
+	if session.EndedAt != nil {
+		value := session.EndedAt.UnixMilli()
+		endedAtUnixMS = &value
+	}
 	return tuttigenerated.WorkspaceAgentSession{
-		AgentTargetId:      optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
-		CreatedAt:          session.CreatedAt,
-		Cwd:                stringPointer(strings.TrimSpace(session.Cwd)),
-		EndedAt:            session.EndedAt,
-		Id:                 session.ID,
-		LastError:          session.LastError,
-		PermissionConfig:   permissionConfigPointer(session.PermissionConfig),
-		Provider:           tuttigenerated.WorkspaceAgentProvider(session.Provider),
-		ProviderSessionId:  stringPointer(strings.TrimSpace(session.ProviderSessionID)),
-		PinnedAtUnixMs:     int64Pointer(session.PinnedAtUnixMS),
-		Resumable:          boolPointer(session.Resumable),
-		RuntimeContext:     runtimeContext,
-		Settings:           settings,
-		Status:             tuttigenerated.WorkspaceAgentSessionStatus(session.Status),
-		TurnLifecycle:      generatedAgentTurnLifecyclePointer(session.TurnLifecycle),
-		SubmitAvailability: generatedAgentSubmitAvailabilityPointer(session.SubmitAvailability),
-		Title:              session.Title,
-		UpdatedAt:          session.UpdatedAt,
-		Visible:            session.Visible,
+		ActiveTurn:          activeTurn,
+		ActiveTurnId:        optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
+		AgentTargetId:       optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
+		CreatedAt:           session.CreatedAt,
+		CreatedAtUnixMs:     int64Pointer(session.CreatedAt.UnixMilli()),
+		Cwd:                 stringPointer(strings.TrimSpace(session.Cwd)),
+		EndedAt:             session.EndedAt,
+		EndedAtUnixMs:       endedAtUnixMS,
+		Id:                  session.ID,
+		LastError:           session.LastError,
+		PendingInteractions: pendingInteractions,
+		PermissionConfig:    permissionConfigPointer(session.PermissionConfig),
+		Provider:            tuttigenerated.WorkspaceAgentProvider(session.Provider),
+		ProviderSessionId:   stringPointer(strings.TrimSpace(session.ProviderSessionID)),
+		PinnedAtUnixMs:      int64Pointer(session.PinnedAtUnixMS),
+		Resumable:           boolPointer(session.Resumable),
+		RuntimeContext:      runtimeContext,
+		Settings:            settings,
+		Status:              tuttigenerated.WorkspaceAgentSessionStatus(session.Status),
+		TurnLifecycle:       generatedAgentTurnLifecyclePointer(session.TurnLifecycle),
+		SubmitAvailability:  generatedAgentSubmitAvailabilityPointer(session.SubmitAvailability),
+		Title:               session.Title,
+		UpdatedAt:           session.UpdatedAt,
+		UpdatedAtUnixMs:     updatedAtUnixMS,
+		Visible:             session.Visible,
 	}
 }
 

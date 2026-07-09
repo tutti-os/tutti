@@ -1,4 +1,4 @@
-import type { AgentHostAgentSessionInteractivePrompt } from "./agentSession";
+import type { AgentHostAgentSessionInteractivePrompt } from "./agentSession"; // RETIREMENT PATH: hand-written daemon DTO mirror, superseded by generated types in @tutti-os/tuttid-client and @tutti-os/event-protocol; do not add transport fields — slice 3 migrates consumers, slice 7 deletes this file (docs/architecture/agent-gui-refactor-plan.md).
 
 export interface AgentHostMockSession {
   name: string;

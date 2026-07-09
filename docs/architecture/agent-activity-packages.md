@@ -59,6 +59,11 @@ It owns:
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`
+- the workspace session engine (`createAgentSessionEngine` under
+  `src/engine/`): intent dispatch loop, domain-composed pure reducers,
+  command-description effect executor, expiry-intent clock, and intent frame
+  batching, with scheduler/clock/command ports injected by the host (see
+  `docs/architecture/agent-gui-refactor-plan.md` section 3.3)
 
 It does not own:
 

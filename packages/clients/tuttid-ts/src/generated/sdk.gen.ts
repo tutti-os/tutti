@@ -22,6 +22,9 @@ import type {
   CancelWorkspaceAgentSessionData,
   CancelWorkspaceAgentSessionErrors,
   CancelWorkspaceAgentSessionResponses,
+  CancelWorkspaceAgentTurnData,
+  CancelWorkspaceAgentTurnErrors,
+  CancelWorkspaceAgentTurnResponses,
   CancelWorkspaceAppFactoryJobData,
   CancelWorkspaceAppFactoryJobErrors,
   CancelWorkspaceAppFactoryJobResponses,
@@ -1914,6 +1917,10 @@ export const listWorkspaceAgentSessionGitBranches = <
 
 /**
  * Cancel one workspace agent session
+ *
+ * Deprecated (protocol v2): cancellation is a turn-scoped operation. Use cancelWorkspaceAgentTurn instead. This endpoint remains as a compatibility path that cancels the session's active turn.
+ *
+ * @deprecated
  */
 export const cancelWorkspaceAgentSession = <
   ThrowOnError extends boolean = false
@@ -1927,6 +1934,24 @@ export const cancelWorkspaceAgentSession = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel",
+    ...options
+  });
+
+/**
+ * Cancel one workspace agent turn
+ *
+ * Idempotent turn-scoped cancellation (protocol v2). Canceling a turn that is already settled or unknown is a no-op success, not an error; the race between a user stop request and natural turn settlement is harmless at the protocol level.
+ */
+export const cancelWorkspaceAgentTurn = <ThrowOnError extends boolean = false>(
+  options: Options<CancelWorkspaceAgentTurnData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelWorkspaceAgentTurnResponses,
+    CancelWorkspaceAgentTurnErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel",
     ...options
   });
 

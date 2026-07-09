@@ -579,7 +579,7 @@ React 组件只剩订阅读取函数和派发意图，不再有编排性的 `use
 ```text
 ProviderDescriptor
 ├── identity        标识/名称/图标资源引用(生成界面图标表与多语言键)
-├── runtime         适配器构造(ACP 配置 或 专属适配器工厂)
+├── runtime         适配器构造(ACP 配置、专属适配器工厂或 SDK 边车入口)
 ├── status          安装/登录/探测规格(现状态注册表条目)
 ├── composerProfile 能力、权限模式、模型目录来源
 ├── target          local:<provider> 系统目标种子
@@ -588,7 +588,7 @@ ProviderDescriptor
 
 注册表成为唯一注册动作：控制器注册、事件归一化、目标种子由注册表驱动。openapi 与事件 schema 的 provider 枚举是例外——它们受规则六"schema 先行"约束，仍以 openapi 为唯一事实源手工维护，注册表与枚举之间做生成期或持续集成的一致性校验（注册表有而枚举缺、或反之，即红），而不是由 Go 侧反向生成 yaml。三个静默失败点（事件丢弃、目标缺失、图标回退）变成编译期或校验期错误。
 
-目标验收：加一个标准 ACP provider，等于一份描述符文件加图标资源加多语言文案。
+目标验收：新增 provider 不以 ACP 为边界。不论底层是标准 ACP、专属协议还是 SDK 边车，都必须通过同一份 `ProviderDescriptor` 暴露身份、运行时入口、状态探测、输入区配置、目标种子与事件归一化。标准 ACP provider 只是在 `runtime` 段提供 ACP 声明式配置；专属协议或 SDK 边车 provider 只是在 `runtime` 段提供对应适配器入口。界面仍只读能力与目录契约，不按 provider 名字做行为分支。
 
 ### 3.5 界面：纵向功能模块
 
@@ -626,7 +626,7 @@ ProviderDescriptor
 
 ### 4.1 工作分解
 
-第 0 步：立规矩（1~2 天）。【已完成：检查脚本 `tools/scripts/check-agent-gui-degradation.mjs`（全量基线对比 + `--staged` 增量拦截）与基线 `tools/degradation-baseline/agent-gui.json` 已入库并接入 pre-commit、`check:changed`、`check:full` 与 PR CI；修复体量软门禁 `tools/scripts/check-fix-scope.mjs` 与 PR 模板兜底三问已接入；渲染预算基建 `packages/agent/gui/shared/testing/renderBudget.tsx` 已落地；约定文档已同步。编辑器钩子即时反馈（5.3 节第一条)未随本步交付。】
+第 0 步：立规矩（1~2 天）。✅ 检查脚本 `tools/scripts/check-agent-gui-degradation.mjs`（全量基线对比 + `--staged` 增量拦截）与基线 `tools/degradation-baseline/agent-gui.json` 已入库并接入 pre-commit、`check:changed`、`check:full` 与 PR CI；修复体量软门禁 `tools/scripts/check-fix-scope.mjs` 与 PR 模板兜底三问已接入；渲染预算基建 `packages/agent/gui/shared/testing/renderBudget.tsx` 已落地；约定文档已同步。5.3 节编辑器钩子即时反馈未交付。
 
 - 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节全部检查项（禁同步定时器、禁静默吞错、缓存预算、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定），首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
 - 800 行规则对 agent 域生效，存量豁免清单只减不增；
@@ -636,9 +636,9 @@ ProviderDescriptor
 
 泳道 A：daemon 侧（可 1 人串行推进）。协议切片拆为三个子切片：
 
-- 协议 P1（契约）：openapi v2 schema——Session、Turn、Interaction 三实体，`cancelTurn`（含幂等语义，规则二），封闭枚举（含`interrupted`，规则九），毫秒时间与 `messageId` 加 `version` 消息身份（规则八），能力描述符 schema，事件 schema 修订；旧字段全部标废弃、不删除。
-- 协议 P2（生成链）：TypeScript 侧生成管道建立（Go 侧已有），补丁类型全生成，投影字段完备性防护落地为可复用样板（规则六），生成产物无漂移的持续集成校验。三份 TypeScript 手写镜像此时标记退役路径，实际删除在切片 3 消费方切换之后（见切片 7）。
-- 协议 P3（存储与投影）：turns 与 interactions 表的版本化迁移；每次 phase 变迁同步落库（写粒度约定）；启动对账——非 `settled` 存量 turn 迁移为 `interrupted` 加 session 级系统消息（规则九）；历史回填（可重入，验收为旧会话渲染零变化）；messages 表 `turn_id`空串归 NULL 加 CHECK 约束；`cancelTurn` 端到端实现；daemon 投影层输出新实体。
+- ✅ 协议 P1（契约）：openapi v2 schema——Session、Turn、Interaction 三实体，`cancelTurn`（含幂等语义，规则二），封闭枚举（含`interrupted`，规则九），毫秒时间与 `messageId` 加 `version` 消息身份（规则八），能力描述符 schema，事件 schema 修订（`turn_update`/`interaction_update` 新分支）；旧字段全部标废弃、不删除。
+- ✅ 协议 P2（生成链）：TypeScript 侧生成管道建立（Go 侧已有），补丁类型全生成，投影字段完备性防护落地为可复用样板（规则六：Go 侧 `GeneratedWorkspaceAgentTurn/Interaction` 显式构造 + 反射覆盖测试，TS 侧 `packages/clients/tuttid-ts/src/agentProtocolGuards.ts` 的 `satisfies` 样板），生成产物无漂移的持续集成校验（`check:api-generated` 追加 `check-agent-protocol-enums.mjs` 的 openapi ↔ 事件 schema 枚举一致性校验）。三份 TypeScript 手写镜像此时标记退役路径，实际删除在切片 3 消费方切换之后（见切片 7）。
+- ✅ 协议 P3（存储与投影）：turns 与 interactions 表的版本化迁移（`workspace_agent_activity_turns_v1`）；每次 phase 变迁同步落库（写粒度约定，`ReportSessionState` → `RecordTurnTransition`/`UpsertInteraction`）；启动对账——非 `settled` 存量 turn 迁移为 `interrupted` 加 session 级系统消息（规则九，`SettleStaleTurnsOnStartup`）；历史回填（可重入，验收为旧会话渲染零变化）；messages 表 `turn_id`空串归 NULL 加 CHECK 约束（独立迁移 `workspace_agent_activity_messages_v2`）；`cancelTurn` 端到端实现（幂等，`cancelSession` 委派兼容）；daemon 投影层输出新实体（session 读路径附带 `activeTurnId`/`activeTurn`/`pendingInteractions`）。
 
 provider 切片（依赖 P1 的能力描述符 schema）：
 
@@ -651,7 +651,7 @@ provider 切片（依赖 P1 的能力描述符 schema）：
 
 泳道 B：引擎与界面侧。
 
-引擎骨架切片（新增；原计划把它隐含在切片 1 里，现显式化。纯脚手架，全部可用合成实体开发测试，第 0 步后即可开工，不等协议切片）：
+引擎骨架切片：✅ `packages/agent/activity-core/src/engine/`（`createAgentSessionEngine`、根 `reducer`、副作用执行器、到期意图时钟、33 毫秒意图合帧、诊断 sink；宿主注入调度/时钟，引擎内无定时器、无模块单例）；`packages/agent/gui/shared/engine/useEngineSelector.ts`；事件交错测试绿。桌面合帧与事件接线迁移不在本切片，随切片 1~3 收编。
 
 - 引擎工厂与实例身份（工作区加来源二元组、显式注入、无模块单例，3.3 节外部宿主约束）；
 - dispatch 循环、按域组合的根 `reducer` 骨架（3.3 节引擎内部拆分约束）、副作用执行器（命令描述执行加结果回灌）、到期意图时钟（宿主时钟调度，`reducer` 不设定时器）；
@@ -709,19 +709,19 @@ provider 切片（依赖 P1 的能力描述符 schema）：
 
 ```mermaid
 flowchart TB
-    S0["第 0 步:立规矩(1~2 天)<br/>检查脚本 + 基线首跑 + 预算测试基建"]
+    S0["第 0 步:立规矩(1~2 天) ✅<br/>检查脚本 + 基线首跑 + 预算测试基建"]
 
     subgraph laneD["泳道 A: daemon 侧(可 1 人串行)"]
-        SP1["协议 P1: openapi v2 契约<br/>三实体/cancelTurn/封闭枚举/旧字段标废弃"]
-        SP2["协议 P2: 全链路生成<br/>TS 生成管道 + 无漂移校验 + 投影完备性样板"]
-        SP3["协议 P3: 存储与投影<br/>turns/interactions 迁移 + 启动对账 + 回填"]
+        SP1["协议 P1 ✅<br/>openapi v2 契约<br/>三实体/cancelTurn/封闭枚举/旧字段标废弃"]
+        SP2["协议 P2 ✅<br/>全链路生成<br/>无漂移校验 + 投影完备性样板"]
+        SP3["协议 P3 ✅<br/>存储与投影<br/>turns/interactions 迁移 + 启动对账 + 回填"]
         SR["provider 切片: 描述符注册表<br/>能力/目录下发 + 枚举一致性校验"]
         SP1 --> SP2 --> SP3
         SP1 --> SR
     end
 
     subgraph laneG["泳道 B: 引擎与界面侧"]
-        SE["引擎骨架: 工厂/循环/执行器/<br/>到期意图时钟/批处理/唯一绑定文件"]
+        SE["引擎骨架 ✅<br/>工厂/循环/执行器/到期意图时钟/批处理/唯一绑定"]
         S1["切片 1: turn 生命周期域<br/>提交可用性/队列/取消/墓碑/连接对账"]
         S2["切片 2: 乐观意图域<br/>pendingIntents + 删三 store 覆盖层 + 收乐观桥"]
         S3["切片 3: 消费方迁移<br/>八类消费方 + 删两份镜像与遗留投影"]
@@ -753,7 +753,7 @@ flowchart TB
 
 并行度说明：
 
-- 第 0 步后三线并发：协议 P1、引擎骨架、切片 1 的 `reducer` 开发同时开跑（骨架与切片 1 均为纯函数，喂合成的 turn 实体先写先测）；provider 切片在 P1 的能力描述符 schema 落定后即可与 P2、P3 并行。
+- 第 0 步后三线并发：协议 P1、引擎骨架、切片 1 的 `reducer` 开发同时开跑（切片 1 reducer 直接读协议 v2 实体）；provider 切片在 P1 的能力描述符 schema 落定后即可与 P2、P3 并行。
 - 并行开发、串行合入：切片 1 的合入要等协议 P1~P3。刻意不做"先基于旧协议字段、v2 就绪后切数据源"的两步走：那需要在引擎内部造一个从 session 混载字段合成伪 turn 的临时投影层，这层本身就是新的对账代码且注定要删，是"合法劣化"的温床。代价是切片 1 的稳定性收益等待协议切片先行，按 daemon 侧一人推进的评估，这个等待可以接受。
 - 切片 2 与切片 3 并行：切片 3 只需要切片 1 产出的读取函数（注意力项和摘要来自 turn 加 interaction 状态），不依赖乐观层；这段并行期由第 6 章的"跨界面口径以旧投影为准"仲裁规则兜底。
 - 切片 4 与切片 5 并行：输入区与会话列表是独立功能域，都只依赖切片 2（各自最脏的乐观覆盖层先被待确认意图统一，否则模块化等于把散装对账原样搬家），互不相碰。
@@ -763,21 +763,21 @@ flowchart TB
 
 ### 4.3 各切片退出标准
 
-| 步骤     | 内容                                           | 退出标准                                                                                          |
-| -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 0        | 检查脚本、基线、预算测试基建、钩子与文档       | 持续集成生效，基线 JSON 入库，重构期间不长新债                                                    |
-| 协议 P1  | openapi v2 契约                                | schema 评审通过；能力描述符与事件 schema 就绪；旧字段标废弃                                       |
-| 协议 P2  | 全链路生成                                     | 传输类型 Go/TS 全生成；无漂移校验入持续集成；投影完备性样板可复用；镜像退役路径明确               |
-| 协议 P3  | 存储与投影                                     | 新实体可读可写；`cancelTurn` 幂等可用；启动对账生效；回填验收通过（旧会话渲染零变化、可重入）     |
-| provider | 描述符注册表加能力下发                         | 加一个 ACP provider 等于一份描述符加图标加文案；三个静默失败点变编译或校验期错误；一致性校验入 CI |
-| 骨架     | 引擎工厂、循环、执行器、时钟、批处理、唯一绑定 | 合成实体下事件交错测试跑通；无模块单例；`useEngineSelector` 就位                                  |
-| 1        | turn 生命周期域入引擎（合入前置：协议 P1~P3）  | 状态机测试覆盖事件交错；相关链路缺陷停止增长；引擎内不存在旧协议字段合成层                        |
-| 2        | 乐观意图域                                     | 三个 store 的覆盖层逻辑删除；对账只有一处实现；桌面乐观桥迁入                                     |
-| 3        | 消费方迁移                                     | 八类消费方全部改读引擎读取函数，口径推导删除；两份镜像与遗留投影删除                              |
-| 4        | 输入区模块化                                   | `AgentComposer` 拆解；设置与草稿归属清晰；输入区预算测试绿                                        |
-| 5        | 会话列表模块化                                 | 会话列表 store 退役；列表预算测试绿                                                               |
-| 6        | 审批与就绪门槛模块、薄壳收口                   | `AgentGUINodeView`、超大 props、超大视图模型退役；五功能模块齐备；全景预算测试绿                  |
-| 7        | 收尾清理                                       | 旧字段清理迁移发布；npm 过渡导出移除；`agent-gui-node.md` 重写完成；基线锁定为终值                |
+| 步骤       | 内容                                           | 退出标准                                                                                                                                                                      |
+| ---------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 ✅       | 检查脚本、基线、预算测试基建、钩子与文档       | 持续集成生效，基线 JSON 入库，重构期间不长新债；5.3 编辑器即时反馈未交付                                                                                                      |
+| 协议 P1 ✅ | openapi v2 契约                                | 三实体 schema、`cancelTurn` 幂等契约、封闭枚举（含 `interrupted`）、`messageId`+`version`、`turn_update`/`interaction_update` 事件分支、能力描述符 schema；旧字段 deprecated  |
+| 协议 P2 ✅ | 全链路生成                                     | Go/TS 全生成；`check:api-generated` 与 openapi↔event 枚举一致性校验；规则六投影样板（Go 反射覆盖测试 + TS `agentProtocolGuards`）；手写镜像退役路径已标                       |
+| 协议 P3 ✅ | 存储与投影                                     | turns/interactions 迁移与历史回填；phase 同步落库；`SettleStaleTurnsOnStartup`；`cancelTurn` 幂等端到端；session 读路径输出 `activeTurnId`/`activeTurn`/`pendingInteractions` |
+| provider   | 描述符注册表加能力下发                         | 新增任意 runtime 形态的 provider（标准 ACP、专属协议、SDK 边车）都走同一份描述符；三个静默失败点变编译或校验期错误；一致性校验入 CI                                           |
+| 骨架 ✅    | 引擎工厂、循环、执行器、时钟、批处理、唯一绑定 | 事件交错测试跑通；无模块单例；`useEngineSelector` 就位；桌面合帧/事件接线随切片 1~3                                                                                           |
+| 1          | turn 生命周期域入引擎                          | 状态机测试覆盖事件交错；相关链路缺陷停止增长；引擎读协议 v2 实体，不建旧协议字段合成层                                                                                        |
+| 2          | 乐观意图域                                     | 三个 store 的覆盖层逻辑删除；对账只有一处实现；桌面乐观桥迁入                                                                                                                 |
+| 3          | 消费方迁移                                     | 八类消费方全部改读引擎读取函数，口径推导删除；两份镜像与遗留投影删除                                                                                                          |
+| 4          | 输入区模块化                                   | `AgentComposer` 拆解；设置与草稿归属清晰；输入区预算测试绿                                                                                                                    |
+| 5          | 会话列表模块化                                 | 会话列表 store 退役；列表预算测试绿                                                                                                                                           |
+| 6          | 审批与就绪门槛模块、薄壳收口                   | `AgentGUINodeView`、超大 props、超大视图模型退役；五功能模块齐备；全景预算测试绿                                                                                              |
+| 7          | 收尾清理                                       | 旧字段清理迁移发布；npm 过渡导出移除；`agent-gui-node.md` 重写完成；基线锁定为终值                                                                                            |
 
 ### 4.4 回归与验证
 

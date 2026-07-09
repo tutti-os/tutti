@@ -240,6 +240,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
 	agentActivityProjection.SetAnalyticsReporter(analyticsReporter)
 	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
+	// Protocol v2 startup reconciliation: no provider process survives a
+	// daemon restart, so persisted live turns are settled before serving.
+	agentActivityProjection.SettleStaleTurnsOnStartup(ctx)
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
@@ -297,6 +300,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
+	agentSessionService.TurnStore = agentActivityRepo
+	agentSessionService.TurnRecorder = agentActivityProjection
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
 		StateDir: tuttitypes.DefaultStateDir(),
 	}

@@ -214,7 +214,11 @@ rejection, object closure, array size limits, and numeric min/max constraints.
 ## Tooling Rules
 
 - run `pnpm generate:api` when the OpenAPI contract changes
-- run `pnpm check:api-generated` before finishing API contract changes
+- run `pnpm check:api-generated` before finishing API contract changes; this
+  also runs `pnpm check:agent-protocol-enums`, which fails when the closed
+  agent turn/interaction enums in `tuttid.v1.yaml` drift from the
+  `activity.updated` event schema
+  (`packages/events/protocol/definitions/agent/activity.updated.event.json`)
 - run `pnpm sync:workbench-openapi-schema` after changing the shared workbench
   snapshot schema
 - run `pnpm check:workbench-openapi-schema` when you only need to check that

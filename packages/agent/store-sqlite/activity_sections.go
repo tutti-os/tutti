@@ -34,7 +34,7 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
        user_id, settings_json, runtime_context_json, cwd,
        title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND rail_section_key = ?
@@ -107,7 +107,7 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
        user_id, settings_json, runtime_context_json, cwd,
        title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND pinned_at_unix_ms > 0

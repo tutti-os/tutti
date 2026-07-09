@@ -169,6 +169,9 @@ type ServerInterface interface {
 	// Update one workspace agent session title
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title)
 	UpdateWorkspaceAgentSessionTitle(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Cancel one workspace agent turn
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel)
+	CancelWorkspaceAgentTurn(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID, turnID AgentTurnID)
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
@@ -2266,6 +2269,56 @@ func (siw *ServerInterfaceWrapper) UpdateWorkspaceAgentSessionTitle(w http.Respo
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateWorkspaceAgentSessionTitle(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelWorkspaceAgentTurn operation middleware
+func (siw *ServerInterfaceWrapper) CancelWorkspaceAgentTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "turnID" -------------
+	var turnID AgentTurnID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "turnID", r.PathValue("turnID"), &turnID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "turnID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelWorkspaceAgentTurn(w, r, workspaceID, agentSessionID, turnID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6268,6 +6321,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/pin", wrapper.UpdateWorkspaceAgentSessionPin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings", wrapper.UpdateWorkspaceAgentSessionSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title", wrapper.UpdateWorkspaceAgentSessionTitle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel", wrapper.CancelWorkspaceAgentTurn)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility", wrapper.UpdateWorkspaceAgentSessionVisibility)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options", wrapper.GetWorkspaceAppFactoryAgentTargetComposerOptions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/app-factory/jobs", wrapper.ListWorkspaceAppFactoryJobs)
@@ -11411,6 +11465,124 @@ type UpdateWorkspaceAgentSessionTitle503JSONResponse struct {
 }
 
 func (response UpdateWorkspaceAgentSessionTitle503JSONResponse) VisitUpdateWorkspaceAgentSessionTitleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurnRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+	TurnID         AgentTurnID    `json:"turnID"`
+}
+
+type CancelWorkspaceAgentTurnResponseObject interface {
+	VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error
+}
+
+type CancelWorkspaceAgentTurn200JSONResponse WorkspaceAgentTurnCancelResponse
+
+func (response CancelWorkspaceAgentTurn200JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentTurn400JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CancelWorkspaceAgentTurn401JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentTurn404JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentTurn405JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentTurn502JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentTurn503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentTurn503JSONResponse) VisitCancelWorkspaceAgentTurnResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -22031,6 +22203,9 @@ type StrictServerInterface interface {
 	// Update one workspace agent session title
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title)
 	UpdateWorkspaceAgentSessionTitle(ctx context.Context, request UpdateWorkspaceAgentSessionTitleRequestObject) (UpdateWorkspaceAgentSessionTitleResponseObject, error)
+	// Cancel one workspace agent turn
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel)
+	CancelWorkspaceAgentTurn(ctx context.Context, request CancelWorkspaceAgentTurnRequestObject) (CancelWorkspaceAgentTurnResponseObject, error)
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(ctx context.Context, request UpdateWorkspaceAgentSessionVisibilityRequestObject) (UpdateWorkspaceAgentSessionVisibilityResponseObject, error)
@@ -23781,6 +23956,34 @@ func (sh *strictHandler) UpdateWorkspaceAgentSessionTitle(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkspaceAgentSessionTitleResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkspaceAgentSessionTitleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelWorkspaceAgentTurn operation middleware
+func (sh *strictHandler) CancelWorkspaceAgentTurn(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID, turnID AgentTurnID) {
+	var request CancelWorkspaceAgentTurnRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+	request.TurnID = turnID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelWorkspaceAgentTurn(ctx, request.(CancelWorkspaceAgentTurnRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelWorkspaceAgentTurn")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelWorkspaceAgentTurnResponseObject); ok {
+		if err := validResponse.VisitCancelWorkspaceAgentTurnResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

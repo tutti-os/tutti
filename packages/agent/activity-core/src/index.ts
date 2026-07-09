@@ -48,6 +48,35 @@ export {
   type AgentActivityUsage,
   type AgentActivityUsageInput
 } from "./usage.ts";
+export {
+  createAgentSessionEngine,
+  ENGINE_INTENT_BATCH_DELAY_MS,
+  type CreateAgentSessionEngineInput
+} from "./engine/createAgentSessionEngine.ts";
+export type {
+  EngineDiagnosticEvent,
+  EngineDiagnosticSink
+} from "./engine/diagnostics.ts";
+export type {
+  AgentSessionEngine,
+  AgentSessionEngineIdentity,
+  AgentSessionEngineListener,
+  AgentSessionEngineState,
+  EngineClock,
+  EngineCommand,
+  EngineCommandOutcome,
+  EngineCommandPort,
+  EngineConnectionStatus,
+  EngineDispatchOptions,
+  EngineDomainReducer,
+  EngineExternalCommand,
+  EngineIntent,
+  EngineInternalCommand,
+  EngineReducerResult,
+  EngineRuntimeState,
+  EngineScheduledTask,
+  EngineScheduler
+} from "./engine/types.ts";
 export type {
   AgentActivityDisplayStatus,
   AgentActivityCancelReason,

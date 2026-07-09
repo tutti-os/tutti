@@ -123,6 +123,30 @@ func (s *SQLiteStore) UpdateSessionTitle(ctx context.Context, workspaceID string
 	return s.agentStore().UpdateSessionTitle(ctx, workspaceID, agentSessionID, title)
 }
 
+func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
+	return s.agentStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
+}
+
+func (s *SQLiteStore) ListSessionTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
+	return s.agentStore().ListSessionTurns(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) RecordTurnTransition(ctx context.Context, transition agentactivitybiz.TurnTransition) (agentactivitybiz.Turn, bool, error) {
+	return s.agentStore().RecordTurnTransition(ctx, transition)
+}
+
+func (s *SQLiteStore) SettleStaleTurns(ctx context.Context) ([]agentactivitybiz.StaleTurnSettlement, error) {
+	return s.agentStore().SettleStaleTurns(ctx)
+}
+
+func (s *SQLiteStore) UpsertInteraction(ctx context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, bool, error) {
+	return s.agentStore().UpsertInteraction(ctx, upsert)
+}
+
+func (s *SQLiteStore) ListSessionInteractions(ctx context.Context, input agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {
+	return s.agentStore().ListSessionInteractions(ctx, input)
+}
+
 func (s *SQLiteStore) ListAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
 	targets, err := s.agentStore().ListAgentTargets(ctx)
 	if err != nil {

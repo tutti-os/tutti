@@ -149,6 +149,9 @@ func (p *ActivityProjection) ReportSessionState(
 		RequestBodyBytes:  result.RequestBodyBytes,
 	}
 	if result.Accepted {
+		// Protocol v2: turn transitions and interaction prompts are
+		// persisted synchronously alongside the legacy session patch.
+		p.persistTurnState(ctx, input)
 		if result.StateApplied {
 			p.publishActivityUpdated(
 				ctx,
@@ -742,6 +745,11 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 	}
 	out := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
+		// Protocol v2: session-level messages carry turnId null, never "".
+		var turnID any
+		if trimmed := strings.TrimSpace(message.TurnID); trimmed != "" {
+			turnID = trimmed
+		}
 		item := map[string]any{
 			"agentSessionId":   strings.TrimSpace(message.AgentSessionID),
 			"id":               message.ID,
@@ -750,7 +758,7 @@ func activityMessagesEventPayload(messages []agentactivitybiz.Message) []map[str
 			"occurredAtUnixMs": message.OccurredAtUnixMS,
 			"payload":          clonePayload(message.Payload),
 			"role":             strings.TrimSpace(message.Role),
-			"turnId":           strings.TrimSpace(message.TurnID),
+			"turnId":           turnID,
 			"version":          message.Version,
 		}
 		if status := strings.TrimSpace(message.Status); status != "" {

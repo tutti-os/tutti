@@ -100,10 +100,17 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
 	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, result.Session.Status, result.TurnID, result.TurnLifecycle.Phase, nil)
-	return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
+	response := tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
 		Session:            generatedAgentSession(result.Session),
 		TurnId:             result.TurnID,
 		TurnLifecycle:      generatedAgentTurnLifecycle(result.TurnLifecycle),
 		SubmitAvailability: generatedAgentSubmitAvailability(result.SubmitAvailability),
-	}, nil
+	}
+	// Protocol v2: the accepted submission's turn entity rides along when the
+	// session projection already carries it.
+	if result.Session.ActiveTurn != nil {
+		turn := agentservice.GeneratedWorkspaceAgentTurn(*result.Session.ActiveTurn)
+		response.Turn = &turn
+	}
+	return response, nil
 }

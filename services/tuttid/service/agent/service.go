@@ -429,7 +429,7 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
-		return service, nil
+		return s.withProtocolV2TurnState(ctx, workspaceID, service), nil
 	}
 	if reconcileStaleTurn {
 		if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
@@ -444,10 +444,10 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				}
 				return Session{}, ErrSessionNotFound
 			}
-			return sessionFromPersisted(
+			return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
 				persisted,
 				persistedSessionCanResume(s.controller(), persisted),
-			), nil
+			)), nil
 		}
 	}
 	return Session{}, ErrSessionNotFound
@@ -627,6 +627,35 @@ func (s *Service) Cancel(ctx context.Context, workspaceID string, agentSessionID
 		"workspaceId", workspaceID,
 		"agentSessionId", agentSessionID,
 	)
+	// Deprecated compatibility path (protocol v2): when the persisted active
+	// turn pointer is known, session cancel delegates to canceling that turn.
+	if activeTurnID := s.persistedActiveTurnID(ctx, workspaceID, agentSessionID); activeTurnID != "" {
+		turnResult, err := s.CancelTurn(ctx, workspaceID, agentSessionID, activeTurnID)
+		if err != nil {
+			return CancelSessionResult{}, err
+		}
+		reason := CancelReasonNoActiveTurn
+		canceled := false
+		switch {
+		case turnResult.StaleTurnReconciled:
+			reason = CancelReasonStaleTurnReconciled
+		case turnResult.Canceled:
+			reason = CancelReasonActiveTurnCanceled
+			canceled = true
+		}
+		slog.Info("workspace agent session cancel delegated to turn cancel",
+			"event", "workspace_agent_session.cancel.delegated_to_turn",
+			"workspaceId", workspaceID,
+			"agentSessionId", agentSessionID,
+			"turnId", activeTurnID,
+			"cancelReason", string(reason),
+		)
+		return CancelSessionResult{
+			Session:  turnResult.Session,
+			Canceled: canceled,
+			Reason:   reason,
+		}, nil
+	}
 	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		slog.Warn("workspace agent session cancel prepare failed",
@@ -758,6 +787,10 @@ func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, age
 			}
 		}
 		return Session{}, normalizeRuntimeError(err)
+	}
+	// Protocol v2: the answer is a persisted interaction status transition.
+	if s.TurnRecorder != nil {
+		s.TurnRecorder.MarkInteractionAnswered(ctx, workspaceID, agentSessionID, strings.TrimSpace(requestID))
 	}
 	return s.Get(ctx, workspaceID, agentSessionID)
 }

@@ -340,6 +340,10 @@ func (stubAgentSessionService) Cancel(context.Context, string, string) (agentser
 	return agentservice.CancelSessionResult{}, nil
 }
 
+func (stubAgentSessionService) CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error) {
+	return agentservice.CancelTurnResult{}, nil
+}
+
 func (stubAgentSessionService) GoalControl(context.Context, string, string, string, string) (agentservice.GoalControlSessionResult, error) {
 	return agentservice.GoalControlSessionResult{}, nil
 }
@@ -1681,15 +1685,17 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 	if response.Messages[0].MessageId != "msg-1" {
 		t.Fatalf("messageId = %q, want msg-1", response.Messages[0].MessageId)
 	}
-	if response.Messages[0].TurnId != "turn-1" {
-		t.Fatalf("turnId = %q, want turn-1", response.Messages[0].TurnId)
+	if response.Messages[0].TurnId == nil || *response.Messages[0].TurnId != "turn-1" {
+		t.Fatalf("turnId = %v, want turn-1", response.Messages[0].TurnId)
 	}
 	if response.Messages[0].OccurredAtUnixMs != 1717200001000 {
 		t.Fatalf("occurredAtUnixMs = %d, want startedAt fallback", response.Messages[0].OccurredAtUnixMs)
 	}
 }
 
-func TestDaemonAPIGeneratedRoutesRejectTurnlessAgentSessionMessages(t *testing.T) {
+// Protocol v2: messages without turn attribution are legitimate
+// session-level messages and project turnId null instead of failing.
+func TestDaemonAPIGeneratedRoutesProjectTurnlessAgentSessionMessagesAsSessionLevel(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentSessionService: stubAgentSessionService{
@@ -1721,17 +1727,20 @@ func TestDaemonAPIGeneratedRoutesRejectTurnlessAgentSessionMessages(t *testing.T
 		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/messages",
 		nil,
 	)
-	if recorder.Code != http.StatusBadGateway {
-		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadGateway, recorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
 
-	assertGeneratedRouteError(
-		t,
-		recorder,
-		tuttigenerated.WorkspaceOperationFailed,
-		apierrors.ReasonWorkspaceOperationFailed,
-		`workspace agent session message "msg-turnless" is missing turnId`,
-	)
+	var response tuttigenerated.WorkspaceAgentSessionMessagesResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("unmarshal response error = %v", err)
+	}
+	if len(response.Messages) != 1 {
+		t.Fatalf("len(messages) = %d, want 1", len(response.Messages))
+	}
+	if response.Messages[0].TurnId != nil {
+		t.Fatalf("turnId = %v, want null", *response.Messages[0].TurnId)
+	}
 }
 
 func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {

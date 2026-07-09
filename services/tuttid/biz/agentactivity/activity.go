@@ -46,3 +46,36 @@ type MessageReportResult = agentstore.MessageReportResult
 type Message = agentstore.Message
 
 type MessagePage = agentstore.MessagePage
+
+type Turn = agentstore.Turn
+
+type TurnTransition = agentstore.TurnTransition
+
+type Interaction = agentstore.Interaction
+
+type InteractionUpsert = agentstore.InteractionUpsert
+
+type ListSessionInteractionsInput = agentstore.ListSessionInteractionsInput
+
+type StaleTurnSettlement = agentstore.StaleTurnSettlement
+
+const (
+	TurnPhaseSubmitted = agentstore.TurnPhaseSubmitted
+	TurnPhaseRunning   = agentstore.TurnPhaseRunning
+	TurnPhaseWaiting   = agentstore.TurnPhaseWaiting
+	TurnPhaseSettling  = agentstore.TurnPhaseSettling
+	TurnPhaseSettled   = agentstore.TurnPhaseSettled
+
+	TurnOutcomeCompleted   = agentstore.TurnOutcomeCompleted
+	TurnOutcomeFailed      = agentstore.TurnOutcomeFailed
+	TurnOutcomeCanceled    = agentstore.TurnOutcomeCanceled
+	TurnOutcomeInterrupted = agentstore.TurnOutcomeInterrupted
+
+	InteractionKindApproval = agentstore.InteractionKindApproval
+	InteractionKindQuestion = agentstore.InteractionKindQuestion
+	InteractionKindPlan     = agentstore.InteractionKindPlan
+
+	InteractionStatusPending    = agentstore.InteractionStatusPending
+	InteractionStatusAnswered   = agentstore.InteractionStatusAnswered
+	InteractionStatusSuperseded = agentstore.InteractionStatusSuperseded
+)

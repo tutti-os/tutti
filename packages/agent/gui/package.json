@@ -70,6 +70,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0",
+    "use-sync-external-store": "^1.6.0",
     "valtio": "^2.3.2",
     "zustand": "^5.0.14"
   },
@@ -82,6 +83,7 @@
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "@types/use-sync-external-store": "^0.0.6",
     "jsdom": "^27.2.0",
     "tsup": "8.5.1",
     "typescript": "^5.8.3",

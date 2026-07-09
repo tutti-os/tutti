@@ -90,7 +90,7 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
   deleted_at_unix_ms = 0,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, workspaceID, agentSessionID, strings.TrimSpace(input.MessageID), version,
-		message.TurnID, message.Role, message.Kind, message.Status, string(payloadJSON),
+		nullString(strings.TrimSpace(message.TurnID)), message.Role, message.Kind, message.Status, string(payloadJSON),
 		message.OccurredAtUnixMS, message.StartedAtUnixMS, message.CompletedAtUnixMS,
 		message.CreatedAtUnixMS, message.UpdatedAtUnixMS)
 	if err != nil {
@@ -152,12 +152,13 @@ func messageProjectionSnapshot(message Message) agentactivityprojection.MessageS
 func scanAgentMessage(scanner rowScanner) (Message, error) {
 	var message Message
 	var payloadJSON string
+	var turnID sql.NullString
 	err := scanner.Scan(
 		&message.ID,
 		&message.AgentSessionID,
 		&message.MessageID,
 		&message.Version,
-		&message.TurnID,
+		&turnID,
 		&message.Role,
 		&message.Kind,
 		&message.Status,
@@ -171,6 +172,9 @@ func scanAgentMessage(scanner rowScanner) (Message, error) {
 	if err != nil {
 		return Message{}, fmt.Errorf("scan workspace agent message row: %w", err)
 	}
+	// NULL turn_id (session-level message) is surfaced as an empty string in
+	// the Go DTO; transport projections re-encode it as null.
+	message.TurnID = strings.TrimSpace(turnID.String)
 	if strings.TrimSpace(payloadJSON) == "" {
 		message.Payload = map[string]any{}
 		return message, nil
