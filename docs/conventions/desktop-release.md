@@ -190,6 +190,9 @@ When `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is configured, the download buttons
 
 After a successful mirrored upload, the workflow also upserts a managed `Direct Downloads` section into the GitHub Release body so the release description matches the Feishu direct links.
 
+After every published desktop release, including RC and beta releases, the workflow refreshes a floating GitHub Release named `stable`. This release is a navigation alias for the current concrete stable version, such as `v1.12.20`, so GitHub's Releases page opens with the stable entry before newer prereleases. The alias must be recreated with `--latest=false`, and the concrete stable version release must remain the GitHub `Latest` release.
+The `stable` tag must be refreshed as a lightweight tag pointing directly at the concrete stable release commit. Do not create an annotated `stable` tag: annotated tags require a configured Git committer identity on the runner and do not match the `stable` tag shape used by upstream projects such as n8n. Refresh the tag before deleting and recreating the floating `stable` GitHub Release, and do not use `gh release delete --cleanup-tag`; a failed release recreation must not leave the alias tag missing.
+
 Stable mirrored desktop releases also write mutable `latest.json` metadata at the release asset prefix root. That file lists the current stable desktop release tag, version, channel, preferred downloads, and CloudFront/static URLs for every uploaded asset:
 
 ```text

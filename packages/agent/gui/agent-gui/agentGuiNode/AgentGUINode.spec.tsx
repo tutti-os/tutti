@@ -4424,6 +4424,20 @@ describe("AgentGUINode", () => {
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
+  it("does not show provider fallback slash commands when disabled", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      hasSentUserMessage: true,
+      draftPrompt: "/",
+      availableCommands: []
+    });
+    renderAgentGUINode({ slashCommandFallbackMode: "none" });
+
+    expect(screen.queryByText("compact")).toBeNull();
+    expect(screen.queryByText("status")).toBeNull();
+    expect(screen.queryByText("plan")).toBeNull();
+  });
+
   it("shows OpenCode review from the adapter-owned fallback command", () => {
     const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
     mockViewModel = createViewModel({
@@ -7289,6 +7303,7 @@ function renderAgentGUINode({
   height = 560,
   embedded = false,
   previewMode = false,
+  slashCommandFallbackMode,
   isActive = true,
   workbenchWindowZIndex
 }: {
@@ -7337,6 +7352,9 @@ function renderAgentGUINode({
   height?: number;
   embedded?: boolean;
   previewMode?: boolean;
+  slashCommandFallbackMode?: React.ComponentProps<
+    typeof AgentGUINode
+  >["slashCommandFallbackMode"];
   isActive?: React.ComponentProps<typeof AgentGUINode>["isActive"];
   workbenchWindowZIndex?: number;
 } = {}): ReturnType<typeof render> {
@@ -7374,6 +7392,7 @@ function renderAgentGUINode({
       contextMentionProviders={createAgentGUITestContextMentionProviders()}
       embedded={embedded}
       previewMode={previewMode}
+      slashCommandFallbackMode={slashCommandFallbackMode}
       isActive={isActive}
     />
   );

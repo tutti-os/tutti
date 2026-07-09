@@ -272,6 +272,11 @@ export interface AgentGUINodeProps {
   providerTargetsLoading?: boolean;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   /**
+   * Controls whether AgentGUI adds local provider-default slash commands when
+   * the runtime advertises none. Defaults to "provider-default".
+   */
+  slashCommandFallbackMode?: AgentComposerProps["slashCommandFallbackMode"];
+  /**
    * Controls how the provider rail composes its list. "catalog" (default) adds
    * the static local catalog + placeholders + coming-soon; "exact" renders only
    * the provided targets and shows `renderProviderRailEmpty` when empty.
@@ -674,6 +679,7 @@ function areAgentGUINodePropsEqual(
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.providerRailAllPresentation?.iconUrl ===
       next.providerRailAllPresentation?.iconUrl &&
+    previous.slashCommandFallbackMode === next.slashCommandFallbackMode &&
     previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.providerRailMode === next.providerRailMode &&
     previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
@@ -742,6 +748,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   providerTargets,
   providerTargetsLoading = false,
   providerRailAllPresentation = null,
+  slashCommandFallbackMode = "provider-default",
   providerRailMode = "catalog",
   renderProviderRailEmpty,
   renderProviderUnavailableState,
@@ -1915,6 +1922,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             renderProviderUnavailableState={renderProviderUnavailableState}
             renderProviderReadinessGateState={renderProviderReadinessGateState}
             providerRailAllPresentation={providerRailAllPresentation}
+            slashCommandFallbackMode={slashCommandFallbackMode}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}

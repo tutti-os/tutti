@@ -727,6 +727,7 @@ interface AgentGUINodeViewProps {
   onAgentConfigMenuOpen?: () => void;
   /** Forces a fresh usage probe from the config menu's refresh control. */
   onAgentUsageRefresh?: () => void;
+  slashCommandFallbackMode?: AgentComposerProps["slashCommandFallbackMode"];
   accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
@@ -1240,6 +1241,7 @@ export function AgentGUINodeView({
   slashStatusUsageAttempted = false,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
+  slashCommandFallbackMode,
   accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
@@ -2014,6 +2016,7 @@ export function AgentGUINodeView({
             isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
+            slashCommandFallbackMode={slashCommandFallbackMode}
             onLinkAction={onLinkAction}
             onHandoffConversation={onHandoffConversation}
             capabilityMenuState={capabilityMenuState}
@@ -2225,6 +2228,7 @@ interface AgentGUIDetailPaneProps {
   isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashCommandFallbackMode?: AgentComposerProps["slashCommandFallbackMode"];
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
@@ -2325,6 +2329,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
+  slashCommandFallbackMode,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -3074,6 +3079,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       usage: viewModel.usage,
       draftContent: viewModel.draftContent,
       availableCommands: viewModel.availableCommands,
+      slashCommandFallbackMode,
       hasCompactableContext: viewModel.hasSentUserMessage,
       compactSupported: viewModel.compactSupported,
       availableSkills: viewModel.availableSkills,
@@ -3195,6 +3201,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,
+      slashCommandFallbackMode,
       slashStatus,
       submitDisabled,
       submitInteractivePrompt,

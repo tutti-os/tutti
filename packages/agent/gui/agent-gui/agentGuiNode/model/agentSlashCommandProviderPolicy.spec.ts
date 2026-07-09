@@ -375,6 +375,59 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toHaveLength(1);
   });
 
+  it("does not add provider fallback commands in none fallback mode", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "codex",
+        commands: [],
+        planSupported: true,
+        browserSupported: true,
+        computerSupported: true,
+        fallbackMode: "none"
+      })
+    ).toEqual([]);
+  });
+
+  it("keeps owner-advertised slash commands in none fallback mode", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "cursor",
+        commands: [
+          { name: "custom", description: "Owner command" },
+          { name: "plan", description: "Owner plan" }
+        ],
+        planSupported: false,
+        fallbackMode: "none"
+      }).map((command) => command.name)
+    ).toEqual(["custom", "plan"]);
+  });
+
+  it("keeps local semantics for owner-advertised built-ins in none fallback mode", () => {
+    const commands = resolveSlashCommandsForProvider({
+      provider: "codex",
+      commands: [
+        { name: "plan", description: "Owner plan" },
+        { name: "status", description: "Owner status" }
+      ],
+      fallbackMode: "none"
+    });
+
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "codex",
+        command: commands.find((command) => command.name === "plan")!,
+        currentDraft: "/pla"
+      })
+    ).toEqual({ kind: "togglePlanMode" });
+    expect(
+      resolveSlashCommandSubmitEffect({
+        provider: "codex",
+        commands,
+        draft: "/status"
+      })
+    ).toEqual({ kind: "showStatus" });
+  });
+
   it("surfaces only /plan for Cursor and hides agent-advertised slash commands", () => {
     expect(
       resolveSlashCommandsForProvider({

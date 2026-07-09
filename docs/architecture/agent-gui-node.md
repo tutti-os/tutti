@@ -1507,6 +1507,15 @@ fallbacks to make providers look aligned. For OpenCode, `/compact` and
 surface these as OpenCode fallbacks. OpenCode may reuse the shared review
 picker, but picker selections must still submit provider-native `/review ...`
 text and must not call Codex's structured `review/start` protocol.
+Legacy local hosts may keep AgentGUI's provider-default slash entries by
+omitting `slashCommandFallbackMode`. Shared or remote-owner hosts that already
+query slash commands from the owning runtime must pass
+`slashCommandFallbackMode="none"` so AgentGUI does not mix caller-local command
+defaults, local `/plan`, or local capability slash entries into the owner
+snapshot. This mode controls command-list synthesis, not the semantics of
+advertised commands: when the owner explicitly advertises a built-in name such
+as `/plan`, `/fast`, or `/status`, AgentGUI may still handle it with the same
+local composer behavior used for local sessions.
 Static catalog targets do not change the legacy activation contract: AgentGUI
 does not persist or send their `providerTargetRef`. Synthesized local targets
 may expose stable `local:<provider>` values as `agentTargetId` for supported

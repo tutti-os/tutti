@@ -23,6 +23,8 @@ export type AgentSlashCommand =
   | AgentSessionCommand
   | AgentSlashCommandCapability;
 
+export type AgentSlashCommandFallbackMode = "provider-default" | "none";
+
 export type SlashCommandSelectionEffect =
   | {
       kind: "fillDraft";
@@ -188,7 +190,8 @@ export function resolveSlashCommandsForProvider({
   planSupported = false,
   goalSupported = true,
   browserSupported = false,
-  computerSupported = false
+  computerSupported = false,
+  fallbackMode = "provider-default"
 }: {
   provider: AgentSlashCommandProvider;
   commands: readonly AgentSessionCommand[];
@@ -203,13 +206,18 @@ export function resolveSlashCommandsForProvider({
   goalSupported?: boolean;
   browserSupported?: boolean;
   computerSupported?: boolean;
+  fallbackMode?: AgentSlashCommandFallbackMode;
 }): AgentSlashCommand[] {
+  const useProviderDefaults = fallbackMode !== "none";
+  const fallbackCommands = useProviderDefaults
+    ? fallbackCommandsForProvider(provider)
+    : [];
   const mergedEntries = mergeSlashCommands(
     filterUnavailableSlashCommands(commands, {
       compactSupported,
       hasCompactableContext
     }),
-    filterUnavailableSlashCommands(fallbackCommandsForProvider(provider), {
+    filterUnavailableSlashCommands(fallbackCommands, {
       compactSupported,
       hasCompactableContext
     })
@@ -218,6 +226,9 @@ export function resolveSlashCommandsForProvider({
   // agent-advertised `plan` and re-surface our own entry only when supported.
   const commandEntries = mergedEntries.filter((entry) => {
     const commandName = normalizedCommandName(entry);
+    if (!useProviderDefaults) {
+      return goalSupported !== false || commandName !== "goal";
+    }
     return (
       commandName !== "plan" &&
       (goalSupported !== false || commandName !== "goal") &&
@@ -225,12 +236,14 @@ export function resolveSlashCommandsForProvider({
     );
   });
   const planEntries =
-    planSupported && isACPProvider(provider) ? [PLAN_MODE_COMMAND] : [];
+    useProviderDefaults && planSupported && isACPProvider(provider)
+      ? [PLAN_MODE_COMMAND]
+      : [];
   const capabilityEntries: AgentSlashCommandCapability[] = [];
-  if (browserSupported) {
+  if (useProviderDefaults && browserSupported) {
     capabilityEntries.push(BROWSER_USE_CAPABILITY_COMMAND);
   }
-  if (computerSupported) {
+  if (useProviderDefaults && computerSupported) {
     capabilityEntries.push(COMPUTER_USE_CAPABILITY_COMMAND);
   }
   return [...commandEntries, ...planEntries, ...capabilityEntries];

@@ -52,6 +52,7 @@ export {
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
+export type { AgentSlashCommandFallbackMode } from "./agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy";
 export type {
   AgentGUIProviderRailEmptyRenderer,
   AgentGUIProviderReadinessGateStateContext,

@@ -43,6 +43,36 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Desktop stable release alias disappears after an RC publish
+
+- Symptom:
+  The desktop release workflow publishes a concrete release, but the
+  `Refresh stable release alias` step fails with `Committer identity unknown`,
+  or the GitHub Releases page no longer has a `stable` entry after a failed RC
+  publish.
+- Quick checks:
+  Inspect the failed `Desktop Release` run's `Refresh stable release alias`
+  step. If the log shows `git tag -a` or `gh release delete stable --cleanup-tag`,
+  the workflow is using the unsafe annotated-tag refresh path. Also check
+  `gh release view stable` and `git ls-remote --tags origin stable` to confirm
+  whether the release, tag, or both are missing.
+- Root cause:
+  Annotated tags require a configured Git committer identity in GitHub Actions.
+  Deleting the old floating release and tag before creating the replacement
+  leaves the repository in a half-refreshed state if tag creation fails.
+- Fix:
+  Refresh `stable` as a lightweight tag with `git tag -f stable "${stable_sha}"`
+  and force-push it before deleting and recreating the floating `stable`
+  GitHub Release. Delete only the old release (`gh release delete stable --yes`)
+  and never pass `--cleanup-tag` from this step.
+- Validation:
+  Run `node --test ./tools/scripts/desktop-release-config.test.mjs` and verify
+  the workflow test rejects `git tag -a`, `--cleanup-tag`, and deleting
+  `refs/tags/stable`.
+- References:
+  [.github/workflows/desktop-release.yml](../../.github/workflows/desktop-release.yml)
+  [desktop-release-config.test.mjs](../../tools/scripts/desktop-release-config.test.mjs)
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:

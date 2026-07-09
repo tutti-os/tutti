@@ -165,11 +165,14 @@ func (s *Service) evaluateWaitSession(
 	if !stopped {
 		return session, false, true, nil
 	}
-	latestVersion, err := s.latestSessionVersion(ctx, workspaceID, agentSessionID)
+	if progressedPastStaleStop || currentStop != initialStop || effectiveAfter == 0 {
+		return session, true, true, nil
+	}
+	hasExecutionMessage, err := s.hasAgentExecutionMessageAfter(ctx, workspaceID, agentSessionID, effectiveAfter)
 	if err != nil {
 		return Session{}, false, progressedPastStaleStop, err
 	}
-	if progressedPastStaleStop || currentStop != initialStop || latestVersion > effectiveAfter {
+	if hasExecutionMessage {
 		return session, true, true, nil
 	}
 	return session, false, false, nil
@@ -222,6 +225,37 @@ func (s *Service) latestSessionVersion(ctx context.Context, workspaceID string, 
 		return 0, err
 	}
 	return page.LatestVersion, nil
+}
+
+func (s *Service) hasAgentExecutionMessageAfter(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	afterVersion uint64,
+) (bool, error) {
+	for {
+		page, err := s.ListMessages(ctx, workspaceID, agentSessionID, ListMessagesInput{
+			AfterVersion: afterVersion,
+			Limit:        defaultWaitMessageLimit,
+			Order:        agentactivitybiz.MessageOrderAsc,
+		})
+		if err != nil {
+			return false, err
+		}
+		for _, message := range page.Messages {
+			if strings.TrimSpace(message.Role) != "user" {
+				return true, nil
+			}
+		}
+		if !page.HasMore || len(page.Messages) == 0 {
+			return false, nil
+		}
+		nextAfterVersion := page.Messages[len(page.Messages)-1].Version
+		if nextAfterVersion <= afterVersion {
+			return false, nil
+		}
+		afterVersion = nextAfterVersion
+	}
 }
 
 func (s *Service) recentAgentExecutionMessages(
@@ -284,6 +318,11 @@ func reverseSessionMessages(messages []SessionMessage) {
 
 func waitReasonForSession(session Session) (WaitReason, bool) {
 	if session.TurnLifecycle != nil {
+		if strings.TrimSpace(session.TurnLifecycle.Phase) == "settled" {
+			if reason, ok := waitReasonForOutcome(session.TurnLifecycle.Outcome); ok {
+				return reason, true
+			}
+		}
 		if reason, ok := waitReasonForPhase(session.TurnLifecycle.Phase); ok {
 			return reason, true
 		}
@@ -298,6 +337,22 @@ func waitReasonForSession(session Session) (WaitReason, bool) {
 	case "failed":
 		return WaitReasonFailed, true
 	case "canceled":
+		return WaitReasonCanceled, true
+	default:
+		return "", false
+	}
+}
+
+func waitReasonForOutcome(outcome *string) (WaitReason, bool) {
+	if outcome == nil {
+		return "", false
+	}
+	switch strings.TrimSpace(*outcome) {
+	case "completed", "done", "success", "succeeded":
+		return WaitReasonCompleted, true
+	case "failed", "error":
+		return WaitReasonFailed, true
+	case "canceled", "cancelled", "interrupted":
 		return WaitReasonCanceled, true
 	default:
 		return "", false

@@ -52,6 +52,7 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 	runtime := newWaitRuntime()
 	turnID := "turn-1"
 	latestVersionReads := 0
+	freshStopReached := false
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
@@ -70,6 +71,18 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 			switch {
 			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 100:
 				return SessionMessagesPage{AgentSessionID: input.AgentSessionID}, true
+			case input.Order == agentactivitybiz.MessageOrderAsc && input.AfterVersion == 4:
+				if freshStopReached {
+					return SessionMessagesPage{
+						AgentSessionID: input.AgentSessionID,
+						LatestVersion:  8,
+						Messages: []SessionMessage{
+							{AgentSessionID: input.AgentSessionID, MessageID: "user-1", Role: "user", Kind: "text", Payload: map[string]any{"content": "Ignore"}, Version: 7},
+							{AgentSessionID: input.AgentSessionID, MessageID: "assistant-1", Role: "assistant", Kind: "text", Payload: map[string]any{"content": "First"}, Version: 6},
+						},
+					}, true
+				}
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 4}, true
 			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 1:
 				latestVersionReads++
 				if latestVersionReads <= 1 {
@@ -136,6 +149,7 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 	}
 	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
 
+	freshStopReached = true
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
@@ -217,6 +231,190 @@ func TestWaitTreatsCreatedSessionAsReady(t *testing.T) {
 	}
 	if result.Session.Status != "created" {
 		t.Fatalf("session status = %q, want created", result.Session.Status)
+	}
+}
+
+func TestWaitUsesSettledTurnOutcomeForCreatedSession(t *testing.T) {
+	runtime := newWaitRuntime()
+	outcome := "completed"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		TurnLifecycle: &TurnLifecycle{
+			Phase:   "settled",
+			Outcome: &outcome,
+		},
+		Visible:         true,
+		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAtUnixMS: time.Now().Add(-time.Second).UnixMilli(),
+	}
+	reader := &waitMessageReader{
+		list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+			switch {
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 100:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID}, true
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 1:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 3}, true
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 20:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 3}, true
+			default:
+				t.Fatalf("unexpected ListSessionMessages input: %#v", input)
+				return SessionMessagesPage{}, false
+			}
+		},
+	}
+	service := NewService(runtime)
+	service.MessageReader = reader
+
+	result, err := service.Wait(context.Background(), WaitInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		AfterVersion:   uint64Ptr(0),
+	})
+	if err != nil {
+		t.Fatalf("Wait() error = %v", err)
+	}
+	if result.Reason != WaitReasonCompleted {
+		t.Fatalf("reason = %q, want %q", result.Reason, WaitReasonCompleted)
+	}
+	if result.Session.Status != "created" {
+		t.Fatalf("session status = %q, want created", result.Session.Status)
+	}
+}
+
+func TestWaitIgnoresStaleTerminalStopWhenOnlyVersionAdvanced(t *testing.T) {
+	runtime := newWaitRuntime()
+	outcome := "completed"
+	freshStopReached := false
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		TurnLifecycle: &TurnLifecycle{
+			Phase:   "settled",
+			Outcome: &outcome,
+		},
+		Visible:         true,
+		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAtUnixMS: time.Now().Add(-time.Second).UnixMilli(),
+	}
+	reader := &waitMessageReader{
+		list: func(input agentactivitybiz.ListSessionMessagesInput) (SessionMessagesPage, bool) {
+			switch {
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 100:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID}, true
+			case input.Order == agentactivitybiz.MessageOrderAsc && input.AfterVersion == 4:
+				if freshStopReached {
+					return SessionMessagesPage{
+						AgentSessionID: input.AgentSessionID,
+						LatestVersion:  8,
+						Messages: []SessionMessage{
+							{AgentSessionID: input.AgentSessionID, MessageID: "user-1", Role: "user", Kind: "text", Payload: map[string]any{"content": "Continue"}, Version: 5},
+							{AgentSessionID: input.AgentSessionID, MessageID: "assistant-1", Role: "assistant", Kind: "text", Payload: map[string]any{"content": "Done"}, Version: 8},
+						},
+					}, true
+				}
+				return SessionMessagesPage{
+					AgentSessionID: input.AgentSessionID,
+					LatestVersion:  5,
+					Messages: []SessionMessage{
+						{AgentSessionID: input.AgentSessionID, MessageID: "user-1", Role: "user", Kind: "text", Payload: map[string]any{"content": "Continue"}, Version: 5},
+					},
+				}, true
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 1:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 5}, true
+			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 20:
+				return SessionMessagesPage{
+					AgentSessionID: input.AgentSessionID,
+					LatestVersion:  8,
+					Messages: []SessionMessage{
+						{AgentSessionID: input.AgentSessionID, MessageID: "assistant-1", Role: "assistant", Kind: "text", Payload: map[string]any{"content": "Done"}, Version: 8},
+						{AgentSessionID: input.AgentSessionID, MessageID: "user-1", Role: "user", Kind: "text", Payload: map[string]any{"content": "Continue"}, Version: 5},
+					},
+				}, true
+			default:
+				t.Fatalf("unexpected ListSessionMessages input: %#v", input)
+				return SessionMessagesPage{}, false
+			}
+		},
+	}
+	service := NewService(runtime)
+	service.MessageReader = reader
+
+	waitDone := make(chan WaitResult, 1)
+	waitErr := make(chan error, 1)
+	go func() {
+		result, err := service.Wait(context.Background(), WaitInput{
+			WorkspaceID:    "ws-1",
+			AgentSessionID: "session-1",
+			AfterVersion:   uint64Ptr(4),
+			MessageLimit:   1,
+			Timeout:        2 * time.Second,
+		})
+		if err != nil {
+			waitErr <- err
+			return
+		}
+		waitDone <- result
+	}()
+
+	<-runtime.subscribeStarted
+	select {
+	case err := <-waitErr:
+		t.Fatalf("Wait() error = %v", err)
+	case result := <-waitDone:
+		t.Fatalf("Wait() returned stale terminal stop after user-only progress: %#v", result)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	turnID := "turn-2"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "working",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &turnID,
+			Phase:        "running",
+		},
+		Visible:         true,
+		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAtUnixMS: time.Now().UnixMilli(),
+	}
+	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
+
+	freshStopReached = true
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		TurnLifecycle: &TurnLifecycle{
+			Phase:   "settled",
+			Outcome: &outcome,
+		},
+		Visible:         true,
+		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
+		UpdatedAtUnixMS: time.Now().Add(10 * time.Millisecond).UnixMilli(),
+	}
+	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
+	close(runtime.events)
+
+	select {
+	case err := <-waitErr:
+		t.Fatalf("Wait() error = %v", err)
+	case result := <-waitDone:
+		if result.Reason != WaitReasonCompleted {
+			t.Fatalf("reason = %q, want %q", result.Reason, WaitReasonCompleted)
+		}
+		if len(result.Messages) != 1 || result.Messages[0].MessageID != "assistant-1" {
+			t.Fatalf("messages = %#v", result.Messages)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Wait() did not return after fresh stop")
 	}
 }
 
@@ -560,6 +758,8 @@ func TestWaitClosedStreamDoesNotReturnStaleStop(t *testing.T) {
 			switch {
 			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 100:
 				return SessionMessagesPage{AgentSessionID: input.AgentSessionID}, true
+			case input.Order == agentactivitybiz.MessageOrderAsc && input.AfterVersion == 4:
+				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 4}, true
 			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 1:
 				return SessionMessagesPage{AgentSessionID: input.AgentSessionID, LatestVersion: 4}, true
 			case input.Order == agentactivitybiz.MessageOrderDesc && input.Limit == 20:
