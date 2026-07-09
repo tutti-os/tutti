@@ -9236,7 +9236,7 @@ button.agent-gui-node__provider-rail-launchpad-item {
 }
 
 .agent-gui-node__empty-hero-provider-select {
-  display: inline-flex;
+  display: inline-block;
   width: auto;
   min-width: 0;
   height: auto;
@@ -9253,6 +9253,8 @@ button.agent-gui-node__provider-rail-launchpad-item {
   letter-spacing: inherit;
   box-shadow: none;
   white-space: nowrap;
+  appearance: auto;
+  cursor: pointer;
 }
 
 .agent-gui-node__empty-hero-provider-select:hover,

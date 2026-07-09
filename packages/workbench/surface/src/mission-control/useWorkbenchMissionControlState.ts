@@ -277,16 +277,25 @@ export function useWorkbenchMissionControlState<TData>({
     };
   }, [mode, onRequestClose]);
 
-  if (mode === null || presentation === null) {
-    return null;
-  }
-
-  return {
-    applyPreset,
-    canApplyPreset,
-    canUsePreset,
-    mode,
-    presentation,
-    selectedCount: orderedSelectedNodeIds.length
-  };
+  return useMemo<WorkbenchMissionControlState | null>(
+    () =>
+      mode === null || presentation === null
+        ? null
+        : {
+            applyPreset,
+            canApplyPreset,
+            canUsePreset,
+            mode,
+            presentation,
+            selectedCount: orderedSelectedNodeIds.length
+          },
+    [
+      applyPreset,
+      canApplyPreset,
+      canUsePreset,
+      mode,
+      orderedSelectedNodeIds.length,
+      presentation
+    ]
+  );
 }

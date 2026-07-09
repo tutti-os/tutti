@@ -1400,11 +1400,12 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBeNull();
 
-    fireEvent.keyDown(
+    fireEvent.change(
       screen.getByRole("combobox", { name: "Switch provider" }),
-      { key: "ArrowDown" }
+      {
+        target: { value: claudeTarget.targetId }
+      }
     );
-    fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
 
     expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
       provider: "claude-code",
@@ -1707,7 +1708,7 @@ describe("AgentGUINodeView layout persistence", () => {
     const trigger = screen.getByRole("combobox", { name: "Switch provider" });
 
     expect(trigger).toHaveClass("agent-gui-node__empty-hero-provider-select");
-    expect(trigger).toHaveTextContent("Codex");
+    expect(trigger).toHaveValue(providerTargets[0]!.targetId);
   });
 
   it("renders provider switching options in the localized title", () => {
@@ -1734,10 +1735,10 @@ describe("AgentGUINodeView layout persistence", () => {
     const trigger = screen.getByRole("combobox", { name: "切换 Provider" });
 
     expect(trigger).toHaveClass("agent-gui-node__empty-hero-provider-select");
-    expect(trigger).toHaveTextContent("Codex");
+    expect(trigger).toHaveValue(providerTargets[0]!.targetId);
   });
 
-  it("uses Cursor colorful artwork in the empty hero provider select", async () => {
+  it("uses Cursor as the selected empty hero provider option", () => {
     const providerTargets = [
       createLocalAgentGUIProviderTarget("codex"),
       {
@@ -1769,13 +1770,11 @@ describe("AgentGUINodeView layout persistence", () => {
     const trigger = screen.getByRole("combobox", {
       name: "Switch provider"
     });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
 
-    expect(
-      (await screen.findByRole("option", { name: "Cursor" })).querySelector(
-        "img"
-      )
-    ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+    expect(trigger).toHaveValue(providerTargets[1]!.targetId);
+    expect(screen.getByRole("option", { name: "Cursor" })).toHaveValue(
+      providerTargets[1]!.targetId
+    );
   });
 
   it("uses Cursor colorful artwork in the empty hero icon", () => {
@@ -2725,7 +2724,9 @@ describe("AgentGUINodeView layout persistence", () => {
       "agent-gui-conversation-item-newer-pinned-session"
     );
     fireEvent.click(
-      screen.getByRole("button", { name: createLabels().showMoreConversations })
+      screen.getByRole("button", {
+        name: createLabels().showMoreConversations
+      })
     );
 
     await waitFor(() => {

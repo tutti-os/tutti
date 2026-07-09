@@ -2031,13 +2031,13 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     const emptyHeading = screen.getByRole("heading", {
-      name: "What can help you with?"
+      name: "What can Claude Code help you with?"
     });
     expect(
       within(emptyHeading).getByRole("combobox", {
         name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toHaveTextContent("Claude Code");
+    ).toHaveValue(claudeTarget.targetId);
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
