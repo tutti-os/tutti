@@ -103,6 +103,51 @@ once the carried renderer no longer duplicates its original UI asset tree.
 
 Desktop user-visible copy and locale resources are checked by `pnpm check:i18n`.
 
+## Agent GUI Degradation Ratchet
+
+The agent GUI refactor
+([docs/architecture/agent-gui-refactor-plan.md](../architecture/agent-gui-refactor-plan.md))
+is protected by a degradation ratchet:
+
+- `pnpm check:agent-gui-degradation` measures entropy metrics over
+  `packages/agent/gui` and `packages/agent/activity-core` (file line counts
+  over the business limit, effect and memoization density, provider behavior
+  branches, timers, swallowed catch blocks, view-embedded stores, direct
+  `useSyncExternalStore` calls, module-level mutable globals, and daemon Go
+  file-length exemptions) and compares them against the committed baseline in
+  `tools/degradation-baseline/agent-gui.json`.
+- Any metric increase fails. Any decrease also fails until the same change
+  updates the baseline with
+  `node tools/scripts/check-agent-gui-degradation.mjs --update-baseline`, so
+  refactor wins stay locked in.
+- The metric counting rules live in the script; numbers quoted in architecture
+  documents are illustrative only.
+- `identityExemptFiles` in the baseline lists identity-display files (provider
+  icons, labels, title projections) whose provider branches are tracked in a
+  separate bucket. The list may only shrink.
+- `pnpm check:agent-gui-degradation:staged` runs in `pre-commit` and blocks
+  new degradation patterns on staged added lines: uncommented timers (a
+  `// timing: <reason>` comment is required outside engine/reducer/selector
+  code, where timers are forbidden entirely), silently swallowed catch blocks,
+  store creation in component files, new provider behavior branches, direct
+  `useSyncExternalStore` calls outside the single engine binding file, and new
+  module-level mutable globals.
+
+The business file size limit below also applies to TypeScript under
+`packages/agent/gui` and `packages/agent/activity-core` through this ratchet:
+files over the limit that are not in the baseline fail the check, and
+baselined files may not grow.
+
+Render budget tests are the companion mechanism for performance work: the
+probe utility in `packages/agent/gui/shared/testing/renderBudget.tsx` asserts
+React commit counts for typical interactions, and budget test cases are
+delivered with each feature-module slice.
+
+Fix-scope is soft-gated in pull-request CI by
+`tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
+lines must answer "what is the root cause" and "why can this not be fixed at
+a lower layer" in the PR description.
+
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.
 

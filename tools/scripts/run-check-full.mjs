@@ -27,6 +27,10 @@ const phases = [
       {
         label: "agent-activity-runtime-boundaries",
         script: "check:agent-activity-runtime-boundaries"
+      },
+      {
+        label: "agent-gui-degradation",
+        script: "check:agent-gui-degradation"
       }
     ]
   },
