@@ -28,6 +28,7 @@ type AppCenterService struct {
 	Runner                 *AppRunner
 	AppCLIRegistry         *appcliservice.Registry
 	StateDir               string
+	HostTuttiVersion       string
 	Publisher              WorkspaceAppEventPublisher
 	BuiltinCatalog         func() ([]builtinapps.App, error)
 	ArtifactFetcher        AppArtifactFetcher

@@ -64,6 +64,9 @@ jobs:
         with:
           node-version-file: .node-version
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Validate AWS configuration
         shell: bash
         run: |
@@ -84,7 +87,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION_VALUE }}
           role-to-assume: ${{ env.AWS_ROLE_ARN_VALUE }}
 
-      - name: Download app release metadata
+      - name: Resolve catalog app ids
         shell: bash
         run: |
           if [ "${CATALOG_MODE}" != "merge" ] && [ "${CATALOG_MODE}" != "replace" ]; then
@@ -107,7 +110,6 @@ jobs:
           if [ "${CATALOG_MODE}" = "merge" ]; then
             if aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${catalog_key}" >/dev/null 2>tutti-app-releases/catalog-head-error.txt; then
               aws s3 cp "${s3_root}/catalog.json" tutti-app-releases/existing-catalog.json
-              echo "EXISTING_CATALOG_ARG=--existing-catalog tutti-app-releases/existing-catalog.json" >> "${GITHUB_ENV}"
             elif grep -Eq "(404|Not Found|NoSuchKey)" tutti-app-releases/catalog-head-error.txt; then
               echo "No existing catalog found. Merge will publish selected app ids only." >&2
             else
@@ -121,68 +123,52 @@ jobs:
             existing_app_ids="$(node -e '
               const fs = require("fs");
               const catalog = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-              for (const app of catalog.apps ?? []) {
-                const appId = app?.manifest?.appId;
-                if (typeof appId === "string" && appId.trim()) {
-                  console.log(appId.trim());
-                }
+              const appIds = new Set(
+                (catalog.apps ?? []).map((app) => app?.manifest?.appId)
+              );
+              for (const appId of Object.keys(catalog.compatibility?.apps ?? {})) {
+                appIds.add(appId);
+              }
+              for (const appId of [...appIds].filter(Boolean).map((value) => value.trim()).filter(Boolean).sort()) {
+                console.log(appId);
               }
             ' tutti-app-releases/existing-catalog.json)"
             app_ids_value="${existing_app_ids}"
           fi
 
-          : > tutti-app-releases/files.txt
+          : > tutti-app-releases/app-ids.txt
           while IFS= read -r app_id; do
             app_id="$(echo "${app_id}" | xargs)"
             if [ -z "${app_id}" ]; then
               continue
             fi
-            release_file="tutti-app-releases/${app_id}.json"
-            aws s3 cp "${s3_root}/apps/${app_id}/latest.json" "${release_file}"
-            printf '%s\n' "${release_file}" >> tutti-app-releases/files.txt
+            printf '%s\n' "${app_id}" >> tutti-app-releases/app-ids.txt
           done < <(printf '%s\n' "${app_ids_value}" | tr ',' '\n')
 
-          if [ ! -s tutti-app-releases/files.txt ] && [ ! -f tutti-app-releases/existing-catalog.json ]; then
+          if [ ! -s tutti-app-releases/app-ids.txt ]; then
             echo "At least one app id is required" >&2
             exit 1
           fi
 
-      - name: Build app catalog
+      - name: Publish app catalog
         shell: bash
         run: |
-          release_args=()
-          if [ -n "${EXISTING_CATALOG_ARG}" ]; then
-            read -r -a existing_catalog_args <<< "${EXISTING_CATALOG_ARG}"
-            release_args+=("${existing_catalog_args[@]}")
-          fi
-          while IFS= read -r release_file; do
-            release_args+=(--release-file "${release_file}")
-          done < tutti-app-releases/files.txt
-          node tools/scripts/build-tutti-app-catalog.mjs "${release_args[@]}" --output tutti-app-catalog/catalog.json
+          args=(
+            --s3-bucket "${S3_BUCKET_VALUE}"
+            --s3-prefix "${S3_PREFIX_VALUE}"
+            --mode "${CATALOG_MODE}"
+            --output-dir tutti-app-catalog
+          )
+          while IFS= read -r app_id; do
+            args+=(--app-id "${app_id}")
+          done < tutti-app-releases/app-ids.txt
+          pnpm --package @tutti-os/app-release-tools@latest dlx publish-tutti-app-catalog "${args[@]}"
 
       - name: Verify app catalog artifacts
         shell: bash
         run: |
-          release_args=()
-          while IFS= read -r release_file; do
-            release_args+=(--release-file "${release_file}")
-          done < tutti-app-releases/files.txt
-          node packages/workspace/app-release-tools/bin/verify-tutti-app-release-artifacts.mjs \
-            --catalog-file tutti-app-catalog/catalog.json \
-            "${release_args[@]}"
-
-      - name: Upload catalog to S3
-        shell: bash
-        run: |
-          prefix="${S3_PREFIX_VALUE%/}"
-          if [ -n "${prefix}" ]; then
-            s3_target="s3://${S3_BUCKET_VALUE}/${prefix}/catalog.json"
-          else
-            s3_target="s3://${S3_BUCKET_VALUE}/catalog.json"
-          fi
-          aws s3 cp tutti-app-catalog/catalog.json "${s3_target}" \
-            --content-type "application/json" \
-            --cache-control "public, max-age=60"
+          pnpm --package @tutti-os/app-release-tools@latest dlx verify-tutti-app-release-artifacts \
+            --catalog-file tutti-app-catalog/catalog.json
 
       - name: Invalidate CloudFront catalog
         if: env.CLOUDFRONT_DISTRIBUTION_ID_VALUE != ''

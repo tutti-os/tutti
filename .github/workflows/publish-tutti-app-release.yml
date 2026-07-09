@@ -26,6 +26,10 @@ on:
         required: false
         type: string
         default: ""
+      min_tutti_version:
+        required: false
+        type: string
+        default: ""
       create_release_tag:
         required: false
         type: boolean
@@ -100,6 +104,7 @@ jobs:
           RELEASE_ASSETS_BASE_URL: ${{ inputs.release_assets_base_url }}
           RELEASE_BUMP: ${{ inputs.release_bump }}
           CREATE_RELEASE_TAG: ${{ inputs.create_release_tag }}
+          MIN_TUTTI_VERSION: ${{ inputs.min_tutti_version }}
         run: |
           if [ -z "${PACKAGE_COMMAND}" ]; then
             echo "package_command is required unless catalog_only is true." >&2
@@ -111,6 +116,14 @@ jobs:
           fi
           if [ -z "${RELEASE_ASSETS_BASE_URL}" ]; then
             echo "release_assets_base_url is required unless catalog_only is true." >&2
+            exit 1
+          fi
+          if [ -z "${MIN_TUTTI_VERSION}" ]; then
+            echo "min_tutti_version is required unless catalog_only is true." >&2
+            exit 1
+          fi
+          if [[ ! "${MIN_TUTTI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "min_tutti_version must be valid SemVer." >&2
             exit 1
           fi
           if [ -n "${RELEASE_BUMP}" ] && [[ ! "${RELEASE_BUMP}" =~ ^(major|minor|patch)$ ]]; then
@@ -355,10 +368,6 @@ jobs:
             exit 1
           fi
 
-          aws s3 cp "tutti-app-release/apps/${APP_ID}/latest.json" "${s3_root}/apps/${APP_ID}/latest.json" \
-            --content-type "application/json" \
-            --cache-control "public, max-age=60"
-
       - name: Verify published app release artifact
         if: ${{ !inputs.catalog_only }}
         shell: bash
@@ -368,6 +377,53 @@ jobs:
         run: |
           pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-tutti-app-release-artifacts \
             --release-file "tutti-app-release/apps/${APP_ID}/latest.json"
+
+      - name: Publish app release metadata
+        shell: bash
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          CATALOG_ONLY: ${{ inputs.catalog_only }}
+          MIN_TUTTI_VERSION: ${{ inputs.min_tutti_version }}
+          PUBLISH_CATALOG: ${{ inputs.publish_catalog }}
+          RELEASE_TOOLS_PACKAGE: ${{ inputs.release_tools_package }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          S3_BUCKET: ${{ inputs.s3_bucket }}
+          S3_PREFIX: ${{ inputs.s3_prefix }}
+        run: |
+          args=(
+            --app-id "${APP_ID}"
+            --s3-bucket "${S3_BUCKET}"
+            --s3-prefix "${S3_PREFIX}"
+            --output-dir tutti-app-metadata
+          )
+          if [ -n "${MIN_TUTTI_VERSION}" ]; then
+            args+=(--min-tutti-version "${MIN_TUTTI_VERSION}")
+          fi
+          if [ "${CATALOG_ONLY}" = "true" ]; then
+            args+=(--catalog-only --publish-catalog)
+          else
+            args+=(--release-file "tutti-app-release/apps/${APP_ID}/${RELEASE_VERSION}/release.json")
+            if [ "${PUBLISH_CATALOG}" = "true" ]; then
+              args+=(--publish-catalog)
+            fi
+          fi
+          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx publish-tutti-app-metadata "${args[@]}"
+
+      - name: Verify published app metadata
+        shell: bash
+        env:
+          CATALOG_ONLY: ${{ inputs.catalog_only }}
+          PUBLISH_CATALOG: ${{ inputs.publish_catalog }}
+          RELEASE_TOOLS_PACKAGE: ${{ inputs.release_tools_package }}
+        run: |
+          args=(--versions-file tutti-app-metadata/versions.json)
+          if [ "${CATALOG_ONLY}" != "true" ]; then
+            args+=(--release-file tutti-app-metadata/latest.json)
+          fi
+          if [ "${CATALOG_ONLY}" = "true" ] || [ "${PUBLISH_CATALOG}" = "true" ]; then
+            args+=(--catalog-file tutti-app-metadata/catalog.json)
+          fi
+          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-tutti-app-release-artifacts "${args[@]}"
 
       - name: Create release tag
         if: ${{ !inputs.catalog_only && inputs.create_release_tag }}
@@ -402,57 +458,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${RELEASE_TAG_NAME}" "${RELEASE_GIT_SHA}" -m "Release ${APP_ID} ${RELEASE_VERSION}"
           git push origin "refs/tags/${RELEASE_TAG_NAME}"
-
-      - name: Publish app catalog
-        if: ${{ inputs.publish_catalog || inputs.catalog_only }}
-        shell: bash
-        env:
-          APP_ID: ${{ inputs.app_id }}
-          CATALOG_ONLY: ${{ inputs.catalog_only }}
-          RELEASE_TOOLS_PACKAGE: ${{ inputs.release_tools_package }}
-          S3_BUCKET: ${{ inputs.s3_bucket }}
-          S3_PREFIX: ${{ inputs.s3_prefix }}
-        run: |
-          mkdir -p tutti-app-catalog/releases
-
-          prefix="${S3_PREFIX%/}"
-          catalog_key="catalog.json"
-          if [ -n "${prefix}" ]; then
-            s3_root="s3://${S3_BUCKET}/${prefix}"
-            catalog_key="${prefix}/catalog.json"
-          else
-            s3_root="s3://${S3_BUCKET}"
-          fi
-
-          catalog_args=()
-          if aws s3api head-object --bucket "${S3_BUCKET}" --key "${catalog_key}" >/dev/null 2>tutti-app-catalog/head-error.txt; then
-            aws s3 cp "${s3_root}/catalog.json" tutti-app-catalog/existing-catalog.json
-            catalog_args+=(--existing-catalog tutti-app-catalog/existing-catalog.json)
-          elif grep -Eq "(404|Not Found|NotFound|NoSuchKey)" tutti-app-catalog/head-error.txt; then
-            echo "No existing catalog found. Publishing a catalog with ${APP_ID}." >&2
-          else
-            echo "Failed to check existing catalog. Refusing to publish a partial merge catalog." >&2
-            cat tutti-app-catalog/head-error.txt >&2
-            exit 1
-          fi
-
-          if [ "${CATALOG_ONLY}" = "true" ]; then
-            release_file="tutti-app-catalog/releases/${APP_ID}.json"
-            aws s3 cp "${s3_root}/apps/${APP_ID}/latest.json" "${release_file}"
-          else
-            release_file="tutti-app-release/apps/${APP_ID}/latest.json"
-          fi
-
-          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx build-tutti-app-catalog \
-            "${catalog_args[@]}" \
-            --release-file "${release_file}" \
-            --output tutti-app-catalog/catalog.json
-          pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-tutti-app-release-artifacts \
-            --catalog-file tutti-app-catalog/catalog.json \
-            --release-file "${release_file}"
-          aws s3 cp tutti-app-catalog/catalog.json "${s3_root}/catalog.json" \
-            --content-type "application/json" \
-            --cache-control "public, max-age=60"
 
       - name: Invalidate app catalog
         if: ${{ (inputs.publish_catalog || inputs.catalog_only) && inputs.catalog_cloudfront_distribution_id != '' }}

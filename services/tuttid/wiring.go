@@ -331,6 +331,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		PreferencesStore:      preferencesStore,
 		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
 		StateDir:              tuttitypes.DefaultStateDir(),
+		HostTuttiVersion:      tuttitypes.ResolveAppVersion(),
 		Publisher:             eventstreamservice.WorkspaceAppPublisher{Service: events},
 	}
 	go func() {

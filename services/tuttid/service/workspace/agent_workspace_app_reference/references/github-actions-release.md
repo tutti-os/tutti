@@ -21,7 +21,7 @@ Use the reusable Tutti release workflow instead of reimplementing S3/catalog log
 uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
 ```
 
-This reusable workflow builds the app package, generates release metadata, uploads immutable app release artifacts to S3, updates `latest.json`, verifies the published release, optionally creates a release tag, and optionally refreshes the app catalog.
+This reusable workflow builds the app package, generates release metadata, uploads immutable app release artifacts to S3, updates `latest.json` and `versions.json`, verifies the published release, optionally creates a release tag, and optionally refreshes the app catalog.
 
 ## Production Workflow Template
 
@@ -62,6 +62,7 @@ jobs:
     uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
     with:
       app_id: <app-id>
+      min_tutti_version: <minimum-supported-tutti-semver>
       package_command: pnpm package:tutti
       package_dir: build/tutti-app/package
       icon_path: build/tutti-app/package/icon.png
@@ -115,6 +116,7 @@ jobs:
     uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
     with:
       app_id: <app-id>
+      min_tutti_version: <minimum-supported-tutti-semver>
       package_command: pnpm package:tutti
       package_dir: build/tutti-app/package
       icon_path: build/tutti-app/package/icon.png
@@ -158,6 +160,11 @@ Recommended organization variables:
 Use repository-level variables for app-specific overrides, migration periods, repositories that publish to a separate bucket, prefix, base URL, or role, and private repositories that cannot read organization variables. Do not create long-lived AWS secrets for this flow; the release workflow uses GitHub OIDC with `id-token: write` and an AWS role ARN.
 
 Staging callers must set `TUTTI_APP_RELEASES_STAGING_BASE_URL` explicitly. Do not let staging inherit `TUTTI_APP_RELEASES_BASE_URL`, because that can upload release objects under the staging S3 prefix while writing production asset URLs into `latest.json` and `catalog.json`.
+
+Every normal release must set `min_tutti_version` explicitly. Use `0.0.0` only
+when the release is safe for every legacy Tutti client; there is intentionally
+no permissive default. Catalog-only repairs read the stored compatibility rule
+from `apps/<appId>/versions.json`.
 
 ## Validation
 

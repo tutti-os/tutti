@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { requireSemver } from "./tutti-app-versioning.mjs";
+
 const manifestSchemaVersion = "tutti.app.manifest.v1";
 const cliManifestSchemaVersion = "tutti.app.cli.v1";
 const releaseSchemaVersion = "tutti.app.release.v1";
@@ -37,6 +39,7 @@ export async function buildTuttiAppRelease(options) {
     "version"
   );
   requireSafePathSegment(version, "version");
+  requireSemver(version, "version");
   manifest.version = version;
   validateManifest(manifest, manifestPath);
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -496,6 +499,7 @@ export function validateRelease(release) {
   ]) {
     requireManifestString(release, key, "release");
   }
+  requireSemver(release.version, "release version");
   validateManifest(release.manifest, "release.manifest");
   if (release.manifest.appId !== release.appId) {
     throw new Error("release manifest.appId must match release appId");

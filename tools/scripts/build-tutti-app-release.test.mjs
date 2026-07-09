@@ -12,6 +12,7 @@ import {
   validateManifest
 } from "./build-tutti-app-release.mjs";
 import { buildTuttiAppCatalog } from "./build-tutti-app-catalog.mjs";
+import { buildTuttiAppVersions } from "../../packages/workspace/app-release-tools/bin/build-tutti-app-versions.mjs";
 import { verifyTuttiAppReleaseArtifacts } from "../../packages/workspace/app-release-tools/bin/verify-tutti-app-release-artifacts.mjs";
 
 const reusableWorkflowPath = new URL(
@@ -211,6 +212,118 @@ test("buildTuttiAppCatalog rejects duplicate app ids", async () => {
         outputPath: path.join(tmpdir(), "unused-catalog.json")
       }),
     /duplicate release appId duplicate-app/
+  );
+});
+
+test("buildTuttiAppVersions preserves history and is idempotent", async () => {
+  const first = await releaseFileForTest("versioned-app", "0.1.0");
+  const second = await releaseFileForTest("versioned-app", "0.2.0", {
+    publishedAt: "2026-06-05T00:00:00Z"
+  });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tutti-versions-"));
+  const firstOutput = path.join(tempDir, "first.json");
+  const secondOutput = path.join(tempDir, "second.json");
+
+  await buildTuttiAppVersions({
+    releaseFiles: [first],
+    minTuttiVersion: "0.0.0",
+    outputPath: firstOutput
+  });
+  const result = await buildTuttiAppVersions({
+    existingVersionsPath: firstOutput,
+    releaseFiles: [second],
+    minTuttiVersion: "0.12.0",
+    outputPath: secondOutput
+  });
+
+  assert.deepEqual(
+    result.versions.versions.map((record) => [
+      record.release.version,
+      record.minTuttiVersion,
+      record.status
+    ]),
+    [
+      ["0.1.0", "0.0.0", "active"],
+      ["0.2.0", "0.12.0", "active"]
+    ]
+  );
+
+  await buildTuttiAppVersions({
+    existingVersionsPath: secondOutput,
+    releaseFiles: [second],
+    minTuttiVersion: "0.12.0",
+    outputPath: path.join(tempDir, "idempotent.json")
+  });
+});
+
+test("buildTuttiAppVersions rejects changed compatibility for an immutable version", async () => {
+  const release = await releaseFileForTest("immutable-app", "1.0.0");
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tutti-versions-"));
+  const existing = path.join(tempDir, "existing.json");
+  await buildTuttiAppVersions({
+    releaseFiles: [release],
+    minTuttiVersion: "0.0.0",
+    outputPath: existing
+  });
+
+  await assert.rejects(
+    () =>
+      buildTuttiAppVersions({
+        existingVersionsPath: existing,
+        releaseFiles: [release],
+        minTuttiVersion: "0.12.0",
+        outputPath: path.join(tempDir, "changed.json")
+      }),
+    /different compatibility or release metadata/
+  );
+});
+
+test("buildTuttiAppCatalog emits legacy-safe apps and a compact compatibility frontier", async () => {
+  const releases = await Promise.all([
+    releaseFileForTest("frontier-app", "1.0.0"),
+    releaseFileForTest("frontier-app", "1.1.0", {
+      publishedAt: "2026-06-05T00:00:00Z"
+    }),
+    releaseFileForTest("frontier-app", "1.2.0", {
+      publishedAt: "2026-06-06T00:00:00Z"
+    })
+  ]);
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tutti-frontier-"));
+  const baseline = path.join(tempDir, "baseline.json");
+  const compatible = path.join(tempDir, "compatible.json");
+  const versions = path.join(tempDir, "versions.json");
+  await buildTuttiAppVersions({
+    releaseFiles: releases.slice(0, 2),
+    minTuttiVersion: "0.0.0",
+    outputPath: baseline
+  });
+  await buildTuttiAppVersions({
+    existingVersionsPath: baseline,
+    releaseFiles: [releases[2]],
+    minTuttiVersion: "0.12.0",
+    outputPath: compatible
+  });
+  await buildTuttiAppVersions({
+    existingVersionsPath: compatible,
+    setStatusVersion: "1.0.0",
+    status: "withdrawn",
+    outputPath: versions
+  });
+
+  const result = await buildTuttiAppCatalog({
+    versionsFiles: [versions],
+    outputPath: path.join(tempDir, "catalog.json")
+  });
+  assert.equal(result.catalog.apps[0].manifest.version, "1.1.0");
+  assert.deepEqual(
+    result.catalog.compatibility.apps["frontier-app"].map((entry) => [
+      entry.minTuttiVersion,
+      entry.app.manifest.version
+    ]),
+    [
+      ["0.0.0", "1.1.0"],
+      ["0.12.0", "1.2.0"]
+    ]
   );
 });
 
@@ -464,6 +577,7 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /workflow_call:/);
   assert.match(workflow, /release_tag_prefix:/);
   assert.match(workflow, /release_bump:/);
+  assert.match(workflow, /min_tutti_version:/);
   assert.match(workflow, /create_release_tag:/);
   assert.match(workflow, /publish_catalog:/);
   assert.match(workflow, /catalog_only:/);
@@ -476,6 +590,10 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(
     workflow,
     /release_assets_base_url is required unless catalog_only is true/
+  );
+  assert.match(
+    workflow,
+    /min_tutti_version is required unless catalog_only is true/
   );
   assert.match(workflow, /concurrency:/);
   assert.match(workflow, /tutti-app-catalog-\{0\}-\{1\}/);
@@ -525,7 +643,7 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     workflow,
     /aws s3 sync "tutti-app-release\/apps\/\$\{APP_ID\}\/\$\{RELEASE_VERSION\}\/"/
   );
-  assert.match(
+  assert.doesNotMatch(
     workflow,
     /aws s3 cp "tutti-app-release\/apps\/\$\{APP_ID\}\/latest\.json"/
   );
@@ -540,22 +658,17 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     workflow,
     /--release-file "tutti-app-release\/apps\/\$\{APP_ID\}\/latest\.json"/
   );
-  assert.match(workflow, /Publish app catalog/);
-  assert.match(workflow, /build-tutti-app-catalog/);
+  assert.match(workflow, /Publish app release metadata/);
+  assert.match(workflow, /publish-tutti-app-metadata/);
   assert.match(workflow, /CATALOG_ONLY:/);
-  assert.match(workflow, /tutti-app-catalog\/releases\/\$\{APP_ID\}\.json/);
-  assert.match(workflow, /apps\/\$\{APP_ID\}\/latest\.json/);
-  assert.match(
-    workflow,
-    /--existing-catalog tutti-app-catalog\/existing-catalog\.json/
-  );
-  assert.match(workflow, /--release-file "\$\{release_file\}"/);
-  assert.match(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
+  assert.match(workflow, /--min-tutti-version "\$\{MIN_TUTTI_VERSION\}"/);
+  assert.match(workflow, /--versions-file tutti-app-metadata\/versions\.json/);
+  assert.doesNotMatch(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
   assert.match(workflow, /Invalidate app catalog/);
   assert.match(workflow, /cloudfront create-invalidation/);
 });
 
-test("Tutti app catalog workflow aggregates latest release metadata", async () => {
+test("Tutti app catalog workflow aggregates version indexes", async () => {
   const workflow = await readFile(catalogWorkflowPath, "utf8");
 
   assert.match(workflow, /workflow_dispatch:/);
@@ -563,27 +676,20 @@ test("Tutti app catalog workflow aggregates latest release metadata", async () =
   assert.match(workflow, /default:\s*merge/);
   assert.doesNotMatch(workflow, /app_ids_preset/);
   assert.doesNotMatch(workflow, /APP_IDS_PRESET/);
-  assert.match(
-    workflow,
-    /--existing-catalog tutti-app-releases\/existing-catalog\.json/
-  );
   assert.match(workflow, /aws s3api head-object/);
   assert.match(workflow, /Refusing to publish a partial merge catalog/);
   assertCatalogWorkflowRefreshesExistingAppLatestMetadata(workflow);
-  assert.match(workflow, /apps\/\$\{app_id\}\/latest\.json/);
-  assert.match(workflow, /tools\/scripts\/build-tutti-app-catalog\.mjs/);
+  assert.match(workflow, /publish-tutti-app-catalog/);
+  assert.match(workflow, /app-ids\.txt/);
   assert.match(workflow, /Verify app catalog artifacts/);
   assertAwsValidationBeforeConfigure(workflow, [
     "AWS_REGION_VALUE",
     "AWS_ROLE_ARN_VALUE",
     "S3_BUCKET_VALUE"
   ]);
-  assert.match(
-    workflow,
-    /packages\/workspace\/app-release-tools\/bin\/verify-tutti-app-release-artifacts\.mjs/
-  );
+  assert.match(workflow, /verify-tutti-app-release-artifacts/);
   assert.match(workflow, /--catalog-file tutti-app-catalog\/catalog\.json/);
-  assert.match(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
+  assert.doesNotMatch(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
   assert.match(workflow, /cloudfront create-invalidation/);
 });
 
@@ -596,25 +702,18 @@ test("Tutti app staging catalog workflow uses an isolated prefix", async () => {
   assert.match(workflow, /catalog_mode:/);
   assert.doesNotMatch(workflow, /app_ids_preset/);
   assert.doesNotMatch(workflow, /APP_IDS_PRESET/);
-  assert.match(
-    workflow,
-    /--existing-catalog tutti-app-releases\/existing-catalog\.json/
-  );
   assert.match(workflow, /aws s3api head-object/);
   assert.match(workflow, /Refusing to publish a partial merge catalog/);
   assertCatalogWorkflowRefreshesExistingAppLatestMetadata(workflow);
-  assert.match(workflow, /apps\/\$\{app_id\}\/latest\.json/);
-  assert.match(workflow, /tools\/scripts\/build-tutti-app-catalog\.mjs/);
+  assert.match(workflow, /publish-tutti-app-catalog/);
+  assert.match(workflow, /app-ids\.txt/);
   assert.match(workflow, /Verify app catalog artifacts/);
   assertAwsValidationBeforeConfigure(workflow, [
     "AWS_REGION_VALUE",
     "AWS_ROLE_ARN_VALUE",
     "S3_BUCKET_VALUE"
   ]);
-  assert.match(
-    workflow,
-    /packages\/workspace\/app-release-tools\/bin\/verify-tutti-app-release-artifacts\.mjs/
-  );
+  assert.match(workflow, /verify-tutti-app-release-artifacts/);
   assert.match(workflow, /--catalog-file tutti-app-catalog\/catalog\.json/);
 });
 
@@ -691,7 +790,7 @@ async function releaseFileForTest(appId, version = "0.1.0", overrides = {}) {
     artifactSha256: overrides.artifactSha256 ?? "a".repeat(64),
     artifactSizeBytes: overrides.artifactSizeBytes ?? 123,
     iconUrl: `https://cdn.example.test/apps/${appId}/icon.svg`,
-    publishedAt: "2026-06-04T00:00:00Z",
+    publishedAt: overrides.publishedAt ?? "2026-06-04T00:00:00Z",
     gitSha: "abc123"
   };
   const releasePath = path.join(tempDir, "release.json");

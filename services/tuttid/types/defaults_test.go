@@ -235,6 +235,13 @@ func TestResolveAnalyticsConfigResolvesAppVersionOverride(t *testing.T) {
 	}
 }
 
+func TestResolveAppVersionIgnoresAnalyticsSpecificOverride(t *testing.T) {
+	t.Setenv("TUTTI_APP_VERSION", "1.2.3")
+	t.Setenv("TUTTI_ANALYTICS_APP_VERSION", "9.9.9")
+
+	assertEqual(t, ResolveAppVersion(), "1.2.3")
+}
+
 func assertEqual(t *testing.T, got string, want string) {
 	t.Helper()
 	if got != want {

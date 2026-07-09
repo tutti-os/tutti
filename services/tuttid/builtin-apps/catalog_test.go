@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -167,7 +168,7 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	t.Cleanup(server.Close)
 	t.Setenv(remoteCatalogURLEnv, server.URL+"/catalog.json")
 
-	snapshot, err := snapshot(true)
+	snapshot, err := snapshot(true, "")
 	if err != nil {
 		t.Fatalf("snapshot(true) error = %v", err)
 	}
@@ -445,6 +446,94 @@ func TestCatalogLoadsRemoteAutomationWhenProvidedByCatalog(t *testing.T) {
 	}
 	if matchingApps[0].Distribution.Kind != DistributionRemote {
 		t.Fatalf("automation distribution = %#v, want remote", matchingApps[0].Distribution)
+	}
+}
+
+func TestParseRemoteCatalogSelectsHighestCompatibleAppVersion(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("versioned-app", "1.0.0")
+	compatible := remoteCatalogAppForVersionTest("versioned-app", "1.1.0")
+	newest := remoteCatalogAppForVersionTest("versioned-app", "2.0.0")
+	newOnly := remoteCatalogAppForVersionTest("new-only-app", "1.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{Apps: map[string][]remoteCatalogCompatibilityEntry{
+			"versioned-app": {
+				{MinTuttiVersion: "0.0.0", App: compatible},
+				{MinTuttiVersion: "0.12.0", App: newest},
+			},
+			"new-only-app": {
+				{MinTuttiVersion: "0.12.0", App: newOnly},
+			},
+		}},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+
+	legacyApps, err := parseRemoteCatalogForTuttiVersion(data, "")
+	if err != nil {
+		t.Fatalf("parse legacy catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(legacyApps, "versioned-app"); app == nil || app.Manifest.Version != "1.0.0" {
+		t.Fatalf("legacy versioned app = %#v, want 1.0.0", app)
+	}
+	if app := findCatalogAppForTest(legacyApps, "new-only-app"); app != nil {
+		t.Fatalf("legacy new-only app = %#v, want omitted", app)
+	}
+
+	lowApps, err := parseRemoteCatalogForTuttiVersion(data, "0.11.0")
+	if err != nil {
+		t.Fatalf("parse low-version catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(lowApps, "versioned-app"); app == nil || app.Manifest.Version != "1.1.0" {
+		t.Fatalf("low-version app = %#v, want 1.1.0", app)
+	}
+
+	highApps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
+	if err != nil {
+		t.Fatalf("parse high-version catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(highApps, "versioned-app"); app == nil || app.Manifest.Version != "2.0.0" {
+		t.Fatalf("high-version app = %#v, want 2.0.0", app)
+	}
+	if app := findCatalogAppForTest(highApps, "new-only-app"); app == nil || app.Manifest.Version != "1.0.0" {
+		t.Fatalf("high-version new-only app = %#v, want 1.0.0", app)
+	}
+}
+
+func TestParseRemoteCatalogRejectsInvalidCompatibility(t *testing.T) {
+	entry := remoteCatalogAppForVersionTest("versioned-app", "1.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{entry},
+		Compatibility: &remoteCatalogCompatibility{Apps: map[string][]remoteCatalogCompatibilityEntry{
+			"versioned-app": {
+				{MinTuttiVersion: "not-semver", App: entry},
+			},
+		}},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	if _, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0"); err == nil {
+		t.Fatal("parse compatibility error = nil, want invalid semver")
+	}
+}
+
+func remoteCatalogAppForVersionTest(appID string, version string) remoteCatalogApp {
+	manifest := remoteCatalogManifestForTest(appID)
+	manifest.Version = version
+	return remoteCatalogApp{
+		Manifest: manifest,
+		Distribution: remoteDistribution{
+			Kind:           string(DistributionRemote),
+			ArtifactURL:    "https://cdn.example.test/" + appID + "/" + version + ".zip",
+			ArtifactSHA256: strings.Repeat("a", 64),
+			IconURL:        "https://cdn.example.test/" + appID + "/" + version + ".png",
+		},
 	}
 }
 
