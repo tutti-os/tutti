@@ -2003,7 +2003,7 @@ function PathLink({
   "use memo";
   return (
     <a
-      className="cursor-pointer"
+      className="cursor-pointer [overflow-wrap:anywhere] [word-break:break-word]"
       data-agent-link-href={href}
       role="link"
       tabIndex={0}

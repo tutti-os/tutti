@@ -104,6 +104,30 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByRole("list")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
+  it("lets long inline-code file paths wrap instead of overflowing the message", () => {
+    // Regression for #421: an inline code span holding a long absolute file
+    // path is promoted to a clickable PathLink. That link must keep the same
+    // word-breaking behavior as plain inline code, otherwise the unbreakable
+    // path inflates the markdown container and its tail is clipped.
+    // jsdom cannot lay out overflow, so we guard the break utility classes.
+    const onLinkClick = vi.fn();
+    const longPath =
+      "/Users/sun/.tutti/apps/installations/ai-slide/e7499ff49e24abc4/data/projects/1516ee94-0b47-4d04-a97c-39e08cc124cb/deck.slides/slides/02-contents.html";
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={`路径是 \`${longPath}\``}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    const link = container.querySelector("[data-agent-link-href]");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("data-agent-link-href")).toBe(longPath);
+    expect(link?.className).toMatch(
+      /overflow-wrap|word-break|break-(all|word)/
+    );
+  });
+
   it("renders a copy button on fenced code blocks", () => {
     render(<AgentMessageMarkdown content={"```ts\nconst x = 42;\n```"} />);
 
