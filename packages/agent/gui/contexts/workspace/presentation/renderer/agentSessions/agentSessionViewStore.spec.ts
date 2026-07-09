@@ -24,7 +24,7 @@ describe("agentSessionViewStore", () => {
     const reportDiagnostic = vi.fn();
     setAgentActivityRuntimeForTests({
       reportDiagnostic,
-      retainSessionEvents: () => () => {},
+      ensureSessionSynchronized: () => () => {},
       subscribeSessionEvents: (_workspaceId, listener) => {
         streamListener = listener;
         return () => {};
@@ -90,7 +90,7 @@ describe("agentSessionViewStore", () => {
     vi.useFakeTimers();
     let streamListener: ((event: unknown) => void) | undefined;
     setAgentActivityRuntimeForTests({
-      retainSessionEvents: () => () => {},
+      ensureSessionSynchronized: () => () => {},
       subscribeSessionEvents: (_workspaceId, listener) => {
         streamListener = listener;
         return () => {};
@@ -143,7 +143,7 @@ describe("agentSessionViewStore", () => {
     vi.useFakeTimers();
     let streamListener: ((event: unknown) => void) | undefined;
     setAgentActivityRuntimeForTests({
-      retainSessionEvents: () => () => {},
+      ensureSessionSynchronized: () => () => {},
       subscribeSessionEvents: (_workspaceId, listener) => {
         streamListener = listener;
         return () => {};
@@ -190,7 +190,7 @@ describe("agentSessionViewStore", () => {
   it("does not request durable control-state refreshes for inline state patches", async () => {
     let streamListener: ((event: unknown) => void) | undefined;
     setAgentActivityRuntimeForTests({
-      retainSessionEvents: () => () => {},
+      ensureSessionSynchronized: () => () => {},
       subscribeSessionEvents: (_workspaceId, listener) => {
         streamListener = listener;
         return () => {};

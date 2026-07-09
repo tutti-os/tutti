@@ -620,9 +620,7 @@ function ensureActivityStreamUpstream(
   const runtime = getAgentActivityRuntimeByOrigin(entry.payload.origin);
   if (runtime) {
     try {
-      const ensureSessionSynchronized =
-        runtime.ensureSessionSynchronized ?? runtime.retainSessionEvents;
-      entry.releaseRuntimeEvents = ensureSessionSynchronized({
+      entry.releaseRuntimeEvents = runtime.ensureSessionSynchronized({
         workspaceId: entry.payload.workspaceId,
         agentSessionId: entry.payload.agentSessionId,
         onError: (error) => {

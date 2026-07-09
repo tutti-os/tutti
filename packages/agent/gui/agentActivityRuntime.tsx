@@ -387,11 +387,11 @@ export interface AgentActivityRuntime {
     workspaceId: string,
     signal?: AbortSignal
   ): Promise<AgentActivitySnapshot>;
-  ensureSessionSynchronized?(
+  ensureSessionSynchronized(
     input: AgentActivityRuntimeEnsureSessionSynchronizedInput
   ): () => void;
   /** @deprecated Use ensureSessionSynchronized. */
-  retainSessionEvents(
+  retainSessionEvents?(
     input: AgentActivityRuntimeRetainSessionEventsInput
   ): () => void;
   sendInput(
