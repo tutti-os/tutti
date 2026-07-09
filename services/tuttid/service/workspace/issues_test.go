@@ -178,6 +178,7 @@ func TestIssueManagerServiceReconcilesRunningRunsFromBatchAgentSessions(t *testi
 		t.Fatalf("CreateTask() task-2 error = %v", err)
 	}
 	if _, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-1", CreateIssueManagerRunInput{
+		AgentTargetID:  "local:codex",
 		AgentProvider:  "codex",
 		AgentSessionID: "session-failed",
 		RunID:          "run-failed",
@@ -185,6 +186,7 @@ func TestIssueManagerServiceReconcilesRunningRunsFromBatchAgentSessions(t *testi
 		t.Fatalf("CreateRun() failed error = %v", err)
 	}
 	if _, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-2", CreateIssueManagerRunInput{
+		AgentTargetID:  "local:codex",
 		AgentProvider:  "codex",
 		AgentSessionID: "session-canceled",
 		RunID:          "run-canceled",
@@ -240,6 +242,7 @@ func TestIssueManagerServiceHidesIssueRunTaskFromVisibleSubtaskCounts(t *testing
 		t.Fatalf("CreateIssue() error = %v", err)
 	}
 	run, err := service.CreateRun(ctx, "workspace-1", "issue-1", "", CreateIssueManagerRunInput{
+		AgentTargetID: "local:codex",
 		AgentProvider: "codex",
 		RunID:         "run-1",
 	})
@@ -307,6 +310,7 @@ func TestIssueManagerServiceCountsPendingAcceptanceSubtasksAsCompletedProgress(t
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	run, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-1", CreateIssueManagerRunInput{
+		AgentTargetID: "local:codex",
 		AgentProvider: "codex",
 		RunID:         "run-1",
 	})
