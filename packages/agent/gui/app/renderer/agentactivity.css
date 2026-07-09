@@ -1857,6 +1857,37 @@ aside.workspace-agents-status-panel
   white-space: nowrap;
 }
 
+/* Compact tool-call rows when nested inside a details block (e.g. task STEPS) */
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-title,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-status,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-diff-stats,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-summary {
+  font-size: 11px;
+}
+
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-icon
+  svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Looser vertical rhythm for the nested step rows so they don't feel cramped */
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-stack {
+  gap: 12px;
+}
+
 .workspace-agents-status-panel__detail-tool-row-head
   .workspace-agents-status-panel__detail-tool-row-chevron {
   flex: 0 0 auto;
@@ -1915,7 +1946,7 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-tool-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -6487,7 +6518,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  padding-bottom: 24px;
+  padding-bottom: 16px;
   will-change: transform;
 }
 
@@ -6497,7 +6528,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-transcript-virtual-item
   > [data-testid="agent-transcript-turn-divider"]
   + .agent-gui-transcript-row {
-  margin-top: 24px;
+  margin-top: 16px;
 }
 
 .agent-gui-transcript-row[data-agent-transcript-row-enter="true"] {
