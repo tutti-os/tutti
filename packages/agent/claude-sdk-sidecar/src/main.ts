@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import * as readline from "node:readline/promises";
 import { stdin, stdout, stderr } from "node:process";
 import { pathToFileURL } from "node:url";
@@ -1029,7 +1030,7 @@ export class SessionRuntime {
       cwd: this.cwd || process.cwd(),
       env: {
         ...process.env,
-        ...loadClaudeSettingsEnv(claudeConfigDir()),
+        ...claudeSettingsEnv(this.cwd || process.cwd()),
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },
@@ -3688,8 +3689,50 @@ function claudeConfigDir(): string {
 export function loadClaudeSettingsEnv(
   configDir: string
 ): Record<string, string> {
+  return claudeSettingsEnvFromFile(join(configDir, "settings.json"));
+}
+
+// claudeSettingsEnv merges the `env` blocks the native Claude CLI would apply
+// for a session in `cwd`: user settings first, then project settings walking
+// from the filesystem root down to `cwd` (deeper directories win), with each
+// directory's `settings.local.json` overriding its `settings.json`. Mirrors
+// the daemon's claudeProjectSettingsPaths in provider_endpoint.go.
+export function claudeSettingsEnv(cwd: string): Record<string, string> {
+  const merged = loadClaudeSettingsEnv(claudeConfigDir());
+  for (const path of claudeProjectSettingsPaths(cwd)) {
+    Object.assign(merged, claudeSettingsEnvFromFile(path));
+  }
+  return merged;
+}
+
+function claudeProjectSettingsPaths(cwd: string): string[] {
+  const trimmed = cwd.trim();
+  if (!trimmed) {
+    return [];
+  }
+  const dirs: string[] = [];
+  let current = resolve(trimmed);
+  for (;;) {
+    dirs.push(current);
+    const parent = dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  dirs.reverse();
+  const paths: string[] = [];
+  for (const dir of dirs) {
+    paths.push(
+      join(dir, ".claude", "settings.json"),
+      join(dir, ".claude", "settings.local.json")
+    );
+  }
+  return paths;
+}
+
+function claudeSettingsEnvFromFile(path: string): Record<string, string> {
   try {
-    const path = `${configDir}/settings.json`;
     const content = readFileSync(path, "utf8");
     const parsed = parseJSONObject(content);
     if (

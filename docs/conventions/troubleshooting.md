@@ -2507,12 +2507,26 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   so those variables are missing. The sidecar previously only merged
   `process.env` with the ACP payload `env` and never read the file.
 - Fix:
-  Read `~/.claude/settings.json` in the sidecar and merge its `env` field
-  into the Claude SDK query options, between `process.env` (lower
-  priority) and the ACP payload `env` (higher priority). See
-  `loadClaudeSettingsEnv` and `ensureQuery` in
+  Read the Claude settings files in the sidecar and merge their `env`
+  blocks into the Claude SDK query options, between `process.env` (lower
+  priority) and the ACP payload `env` (higher priority). The merge covers
+  `${CLAUDE_CONFIG_DIR}/settings.json` (defaulting to `~/.claude`) plus
+  project-level `.claude/settings.json` / `.claude/settings.local.json`
+  walking from the filesystem root to the session `cwd`, matching the
+  native CLI's layering. See `claudeSettingsEnv` and `ensureQuery` in
   [claude-sdk-sidecar main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts).
+  The agentstatus probe reads the same `$CLAUDE_CONFIG_DIR`-aware location
+  (`claudeSettingsDeclares` in
+  [provider_custom_config.go](../../services/tuttid/service/agentstatus/provider_custom_config.go))
+  so the environment wizard and the runtime agree on whether credentials
+  exist.
 - Validation:
-  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test`. New unit tests
-  cover reading, non-string value skipping, missing file, malformed JSON,
-  and missing `env` field.
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `cd services/tuttid && go test ./service/agentstatus/`. Unit tests cover
+  reading, non-string value skipping, missing file, malformed JSON, missing
+  `env` field, user/project/local layering, and `CLAUDE_CONFIG_DIR`
+  resolution.
+- Note:
+  `credentials.effectiveSource` only tracks OAuth material (keychain or
+  `.credentials.json`). For API-key/proxy users it stays `"none"` even
+  after the fix; a connected session is the success signal, not that field.
