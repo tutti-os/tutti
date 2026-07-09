@@ -40,18 +40,6 @@ import {
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
 
-const agentTargetOptionsDebugPrefix = "[agent-target-options-debug]";
-
-function logAgentTargetOptionsDebug(
-  event: string,
-  payload: Record<string, unknown>
-): void {
-  console.info(
-    agentTargetOptionsDebugPrefix,
-    JSON.stringify({ event, ...payload })
-  );
-}
-
 const aiPptAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
   import.meta.url
@@ -562,7 +550,7 @@ function resolveAppCenterReadyAgentProviderOptions(
       .map((status) => status.provider)
   );
 
-  const options = agentTargets
+  return agentTargets
     .filter(
       (target) =>
         target.enabled === true &&
@@ -576,25 +564,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       label: target.name || resolveWorkspaceAgentGuiLabel(target.provider),
       provider: target.provider
     }));
-  logAgentTargetOptionsDebug("appCenter.factoryProviderOptions.resolved", {
-    agentTargets: agentTargets.map((target) => ({
-      agentTargetId: target.agentTargetId,
-      enabled: target.enabled,
-      provider: target.provider,
-      source: target.source
-    })),
-    hiddenProviders: hiddenProviders ? [...hiddenProviders] : [],
-    options: options.map((option) => ({
-      agentTargetId: option.agentTargetId,
-      provider: option.provider
-    })),
-    statuses: statuses.map((status) => ({
-      availability: status.availability.status,
-      provider: status.provider,
-      reasonCode: status.availability.reasonCode ?? null
-    }))
-  });
-  return options;
 }
 
 function createHiddenFactoryProviderSet(input: {

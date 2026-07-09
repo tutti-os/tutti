@@ -138,30 +138,11 @@ export function useWorkbenchHostRuntime({
       return undefined;
     }
 
-    logWorkbenchHostDebug("mission-control.adapter-ready", debugDiagnostics, {
-      action: missionControlAdapter ? "register" : "unregister",
-      isHydrating,
-      missionControlEnabled,
-      workspaceId
-    });
     onMissionControlAdapterReady(missionControlAdapter);
     return () => {
-      logWorkbenchHostDebug("mission-control.adapter-ready", debugDiagnostics, {
-        action: "unregister",
-        isHydrating,
-        missionControlEnabled,
-        workspaceId
-      });
       onMissionControlAdapterReady(null);
     };
-  }, [
-    debugDiagnostics,
-    isHydrating,
-    missionControlAdapter,
-    missionControlEnabled,
-    onMissionControlAdapterReady,
-    workspaceId
-  ]);
+  }, [missionControlAdapter, onMissionControlAdapterReady]);
 
   useEffect(() => {
     hostSession.reconcileProjectedNodes(projectedNodes ?? []);
