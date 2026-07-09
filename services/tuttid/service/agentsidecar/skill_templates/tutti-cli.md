@@ -13,7 +13,7 @@ Classify the request before invoking any Tutti CLI command:
 
 1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
 2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. Handoff decisions — who executes, which task to hand off, and where follow-ups go — belong to `$tutti-handoff`; use this skill as its CLI reference. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` for blocking progress checks without fetching execution messages. Use `agent session-summary --session-id <session-id> --json` only when you need the full compact context helper. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, or `claude` workflow implied by the user's prompt; do not assume launch-only behavior.
+3. Agent session work uses `agent ...`, `codex ...`, `claude ...`, or `tutti-agent ...`. Handoff decisions — who executes, which task to hand off, and where follow-ups go — belong to `$tutti-handoff`; use this skill as its CLI reference. For `mention://agent-session/<sessionId>?workspaceId=...`, prefer `agent wait --session-id <session-id> --json` for blocking progress checks without fetching execution messages. Use `agent session-summary --session-id <session-id> --json` only when you need the full compact context helper. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, `claude`, or `tutti-agent` workflow implied by the user's prompt; do not assume launch-only behavior.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
 6. If none match, read `command-guide.md` before guessing.
@@ -27,7 +27,7 @@ Tutti mention links are internal handoffs. Parse them as data; do not open them 
 - `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
 - `mention://agent-session/<sessionId>?workspaceId=...`: behavior per `$tutti-handoff`; use this skill for `agent wait --session-id <session-id> --json` progress checks and `agent session-summary --session-id <session-id> --json` full context recovery.
-- `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff` (an instruction for the mentioned agent is handed off, not absorbed); this skill provides the `agent`/`codex`/`claude` command syntax. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
+- `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff` (an instruction for the mentioned agent is handed off, not absorbed); this skill provides the `agent`/`codex`/`claude`/`tutti-agent` command syntax. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
 Agent session summary JSON is compact and includes session context plus recent messages.
@@ -50,7 +50,7 @@ App window opening:
 
 - `app open --app-id <app-id> --json` is allowed only when the user explicitly asks to open or show an app window, or confirms an app window should be opened.
 - Do not use `app open` or app-specific open commands such as `<scope> open` as the default way to inspect, query, update, execute app work, or show generated media. Prefer the app-specific CLI command for the requested operation, then render generated images inline with Markdown.
-- Use `app open --app-id <app-id> --json` for any app window the user explicitly asks to open. Built-in app ids include `agent-codex`, `agent-claude-code`, `issue-manager`, and `tutti-onboarding`. Use `agent open --session-id <session-id> --json` when the user asks to open an existing agent session.
+- Use `app open --app-id <app-id> --json` for any app window the user explicitly asks to open. Built-in app ids include `agent-codex`, `agent-claude-code`, `agent-tutti-agent`, `issue-manager`, and `tutti-onboarding`. Use `agent open --session-id <session-id> --json` when the user asks to open an existing agent session.
 
 Output rules:
 
@@ -82,7 +82,7 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 `issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `$issue-manager`, not this skill.
 
-`agent ...`, `codex ...`, and `claude ...` cover provider discovery, composer options, session start/open/send/cancel, active peers, and session context recovery.
+`agent ...`, `codex ...`, `claude ...`, and `tutti-agent ...` cover provider discovery, composer options, session start/open/send/cancel, active peers, and session context recovery.
 
 `browser ...` drives the daemon-owned browser session. Prefer it over generic browser tooling when Tutti browser context is requested.
 

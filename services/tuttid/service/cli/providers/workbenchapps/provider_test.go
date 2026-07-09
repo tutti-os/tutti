@@ -129,6 +129,7 @@ func TestOpenPublishesSpecialAppWorkbenchLaunch(t *testing.T) {
 	}{
 		{appID: "agent-codex", typeID: agentGUITypeID, dockEntryID: agentGUITypeID, payload: `{"provider":"codex"}`},
 		{appID: "agent-claude-code", typeID: agentGUITypeID, dockEntryID: "agent-gui:claude-code", payload: `{"provider":"claude-code"}`},
+		{appID: "agent-tutti-agent", typeID: agentGUITypeID, dockEntryID: "agent-gui:tutti-agent", payload: `{"provider":"tutti-agent"}`},
 		{appID: issueManagerAppID, typeID: issueManagerTypeID, dockEntryID: issueManagerTypeID},
 	}
 	for _, test := range tests {

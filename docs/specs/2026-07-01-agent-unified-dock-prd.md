@@ -50,9 +50,9 @@ settings panel so the unified dock can remain controlled while it is validated.
   `mention://workspace-app/agent-codex?...` or
   `mention://workspace-app/agent-claude-code?...` mentions. They may remain as
   inert historical mention chips or unknown workspace-app mentions.
-- Do not remove provider convenience CLI commands such as `tutti codex start`
-  or `tutti claude start`; the breaking change applies only to `@` mention
-  discovery identity.
+- Do not remove provider convenience CLI commands such as `tutti codex start`,
+  `tutti claude start`, or `tutti tutti-agent start`; the breaking change
+  applies only to `@` mention discovery identity.
 
 ## 4. Terminology
 
@@ -399,8 +399,8 @@ Rules:
   from `agent_targets.launch_ref_json`.
 - The external `@` provider must not expose `launch_ref_json` as a free-form
   invocation payload.
-- Provider convenience commands remain valid, including `tutti codex start` and
-  `tutti claude start`.
+- Provider convenience commands remain valid, including `tutti codex start`,
+  `tutti claude start`, and `tutti tutti-agent start`.
 - Future custom agents should use generic target-first launch paths, such as an
   Agent Activity create-session request with `agentTargetId`, rather than
   generating one app id or one CLI shortcut per target.
@@ -494,11 +494,12 @@ Do not put durable Agent Target business rules only in `apps/desktop`.
 ### AgentGUI `@` Mention Palette
 
 - AgentGUI shows agent candidates from `agent-target`, not `workspace-app`.
-- The Agents tab includes `local:codex` and `local:claude-code` in first
-  iteration.
-- The Apps tab does not include `agent-codex` or `agent-claude-code`.
-- Inserting a Codex or Claude Code agent mention creates an `agent-target`
-  mention using the Agent Target id.
+- The Agents tab includes `local:codex`, `local:claude-code`, and
+  `local:tutti-agent` in first iteration.
+- The Apps tab does not include `agent-codex`, `agent-claude-code`, or
+  `agent-tutti-agent`.
+- Inserting a Codex, Claude Code, or Tutti Agent mention creates an
+  `agent-target` mention using the Agent Target id.
 - New AgentGUI and external `@` queries do not create
   `mention://workspace-app/agent-codex?...` or
   `mention://workspace-app/agent-claude-code?...`.

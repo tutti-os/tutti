@@ -403,7 +403,9 @@ func providerAgentAppIDs(capabilities []cliservice.Capability) []string {
 	ids := []string{}
 	for _, capability := range capabilities {
 		if capability.Source.Kind == cliservice.CapabilitySourceApp &&
-			(capability.Source.AppID == codexAgentAppID || capability.Source.AppID == claudeCodeAgentAppID) {
+			(capability.Source.AppID == codexAgentAppID ||
+				capability.Source.AppID == claudeCodeAgentAppID ||
+				capability.Source.AppID == tuttiAgentAppID) {
 			ids = append(ids, capability.Source.AppID)
 		}
 	}
@@ -791,7 +793,9 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	if !errors.Is(err, cliservice.ErrInvalidInput) {
 		t.Fatalf("err = %v, want ErrInvalidInput", err)
 	}
-	if !strings.Contains(err.Error(), "tutti codex start") || !strings.Contains(err.Error(), "tutti claude start") {
+	if !strings.Contains(err.Error(), "tutti codex start") ||
+		!strings.Contains(err.Error(), "tutti claude start") ||
+		!strings.Contains(err.Error(), "tutti tutti-agent start") {
 		t.Fatalf("err = %v, want provider command guidance", err)
 	}
 	if sessions.createCallCount != 0 {
@@ -1357,6 +1361,7 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 	commands := provider.Commands()
 	codex := commandByID(t, commands, "agent-context.codex.start")
 	claude := commandByID(t, commands, "agent-context.claude.start")
+	tuttiAgent := commandByID(t, commands, "agent-context.tutti-agent.start")
 
 	if codex.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
 		codex.Capability.Source.AppID != codexAgentAppID ||
@@ -1374,14 +1379,23 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		claude.Capability.Path[1] != "start" {
 		t.Fatalf("claude capability = %#v", claude.Capability)
 	}
+	if tuttiAgent.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
+		tuttiAgent.Capability.Source.AppID != tuttiAgentAppID ||
+		tuttiAgent.Capability.Source.AppName != "Tutti Agent" ||
+		len(tuttiAgent.Capability.Path) != 2 ||
+		tuttiAgent.Capability.Path[0] != "tutti-agent" ||
+		tuttiAgent.Capability.Path[1] != "start" {
+		t.Fatalf("tutti-agent capability = %#v", tuttiAgent.Capability)
+	}
 
 	for name, tc := range map[string]struct {
 		commandID  string
 		want       string
 		wantTarget string
 	}{
-		"codex":  {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
-		"claude": {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
+		"codex":       {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
+		"claude":      {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
+		"tutti-agent": {commandID: "agent-context.tutti-agent.start", want: "tutti-agent", wantTarget: agenttargetbiz.IDLocalTuttiAgent},
 	} {
 		sessions := &fakeAgentSessions{}
 		command := commandByID(t, newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
@@ -1410,29 +1424,41 @@ func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"codex unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"claude unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID},
+			wantAppIDs: []string{codexAgentAppID, tuttiAgentAppID},
+		},
+		"tutti-agent unavailable": {
+			availability: []agentservice.ProviderAvailability{
+				availableProvider("codex"),
+				availableProvider("claude-code"),
+				providerAvailability("tutti-agent", agentservice.ProviderAvailabilityUnavailable),
+			},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
 		},
 		"unknown hidden": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnknown),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"missing hidden": {
 			availability: []agentservice.ProviderAvailability{

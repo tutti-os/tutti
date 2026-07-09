@@ -266,6 +266,23 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 				AppName: "Claude Code",
 			},
 		},
+		{
+			ID:          "agent-context.tutti-agent.start",
+			Path:        []string{"tutti-agent", "start"},
+			Summary:     "Start a Tutti Agent session",
+			Description: "Start a Tutti Agent session in the current workspace.",
+			InputSchema: map[string]any{
+				"required": []string{"model", "prompt"},
+				"properties": map[string]any{
+					"image": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "agent-tutti-agent",
+				AppName: "Tutti Agent",
+			},
+		},
 	})
 
 	if !strings.Contains(guide, "tutti-dev codex start --prompt <prompt>") {
@@ -273,6 +290,9 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev claude start --prompt <prompt>") {
 		t.Fatalf("guide missing claude start: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev tutti-agent start --prompt <prompt>") {
+		t.Fatalf("guide missing tutti-agent start: %q", guide)
 	}
 	if strings.Contains(guide, "start --model <model>") {
 		t.Fatalf("guide should omit agent launcher model requirement: %q", guide)
@@ -284,7 +304,8 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 		t.Fatalf("guide missing image guidance: %q", guide)
 	}
 	if !strings.Contains(guide, "App id: agent-codex.") ||
-		!strings.Contains(guide, "App id: agent-claude-code.") {
+		!strings.Contains(guide, "App id: agent-claude-code.") ||
+		!strings.Contains(guide, "App id: agent-tutti-agent.") {
 		t.Fatalf("guide missing app ids: %q", guide)
 	}
 }
@@ -381,6 +402,9 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	if !strings.Contains(guide, "tutti-dev agent wait --session-id <session-id> --json") ||
 		!strings.Contains(guide, "use `agent session-summary` when you need the full compact session context") {
 		t.Fatalf("guide = %q, want tutti-dev await fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev tutti-agent start --prompt <prompt> --json") {
+		t.Fatalf("guide = %q, want tutti-agent start fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
 		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)

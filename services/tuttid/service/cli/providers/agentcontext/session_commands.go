@@ -72,7 +72,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 		ID:          appID + ".agent.start",
 		Path:        []string{"agent", "start"},
 		Summary:     "Start an agent session with a provider shortcut",
-		Description: "Generic provider start is target-aware and no longer creates sessions directly. Use `tutti codex start` or `tutti claude start`.",
+		Description: "Generic provider start is target-aware and no longer creates sessions directly. Use `tutti codex start`, `tutti claude start`, or `tutti tutti-agent start`.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -150,7 +150,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	}
 	agentTargetID = strings.TrimSpace(agentTargetID)
 	if agentTargetID == "" {
-		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...` or `tutti claude start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...`, `tutti claude start --prompt ...`, or `tutti tutti-agent start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
 	}
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
