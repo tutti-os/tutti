@@ -74,10 +74,10 @@ test("workspace settings general panel lists system controls", () => {
   );
 });
 
-test("workspace settings default provider only offers Codex and Claude Code", () => {
+test("workspace settings default provider offers enabled local agent defaults", () => {
   assert.match(
     source,
-    /const workspaceSettingsDefaultAgentProviders = \[\s*"codex",\s*"claude-code"\s*\]/
+    /const workspaceSettingsDefaultAgentProviders = \[\s*"codex",\s*"claude-code",\s*"cursor",\s*"opencode"\s*\]/
   );
   assert.match(
     source,

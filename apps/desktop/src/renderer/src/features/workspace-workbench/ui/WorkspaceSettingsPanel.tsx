@@ -160,8 +160,22 @@ const cuaDriverToggleDemoUrl = new URL(
 ).href;
 const workspaceSettingsDefaultAgentProviders = [
   "codex",
-  "claude-code"
+  "claude-code",
+  "cursor",
+  "opencode"
 ] as const satisfies readonly DesktopDefaultAgentProvider[];
+
+const agentTargetOptionsDebugPrefix = "[agent-target-options-debug]";
+
+function logAgentTargetOptionsDebug(
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  console.info(
+    agentTargetOptionsDebugPrefix,
+    JSON.stringify({ event, ...payload })
+  );
+}
 
 function isWorkspaceSettingsDefaultAgentProvider(
   provider: DesktopAgentProvider
@@ -3670,6 +3684,19 @@ function WorkspaceAgentSettingsSection({
     changingAgentConversationDetailMode !== null;
   const pendingAgentConversationDetailMode =
     changingAgentConversationDetailMode ?? agentConversationDetailMode;
+
+  useEffect(() => {
+    logAgentTargetOptionsDebug("settings.defaultProviderOptions.rendered", {
+      defaultAgentProvider,
+      options: [...workspaceSettingsDefaultAgentProviders],
+      pendingDefaultAgentProvider,
+      rawPendingDefaultAgentProvider
+    });
+  }, [
+    defaultAgentProvider,
+    pendingDefaultAgentProvider,
+    rawPendingDefaultAgentProvider
+  ]);
 
   useEffect(() => {
     if (!focusedAnchor || focusRequestID === 0) {

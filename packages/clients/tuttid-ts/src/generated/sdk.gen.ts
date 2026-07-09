@@ -154,6 +154,15 @@ import type {
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAppAgentPreferencesData,
+  GetWorkspaceAppAgentPreferencesErrors,
+  GetWorkspaceAppAgentPreferencesResponses,
+  GetWorkspaceAppAgentProviderComposerOptionsData,
+  GetWorkspaceAppAgentProviderComposerOptionsErrors,
+  GetWorkspaceAppAgentProviderComposerOptionsResponses,
+  GetWorkspaceAppAgentProviderStatusesData,
+  GetWorkspaceAppAgentProviderStatusesErrors,
+  GetWorkspaceAppAgentProviderStatusesResponses,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
@@ -1074,6 +1083,76 @@ export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/apps/{appID}/reload-local",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get workspace-app agent preference projection
+ *
+ * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only.
+ *
+ */
+export const getWorkspaceAppAgentPreferences = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAppAgentPreferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAppAgentPreferencesResponses,
+    GetWorkspaceAppAgentPreferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent",
+    ...options
+  });
+
+/**
+ * Get agent provider availability for one workspace app
+ *
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. Returns the same provider availability snapshot.
+ *
+ */
+export const getWorkspaceAppAgentProviderStatuses = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAppAgentProviderStatusesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAppAgentProviderStatusesResponses,
+    GetWorkspaceAppAgentProviderStatusesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status",
+    ...options
+  });
+
+/**
+ * Get agent provider composer options for one workspace app
+ *
+ * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens.
+ *
+ */
+export const getWorkspaceAppAgentProviderComposerOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAppAgentProviderComposerOptionsData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    GetWorkspaceAppAgentProviderComposerOptionsResponses,
+    GetWorkspaceAppAgentProviderComposerOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",

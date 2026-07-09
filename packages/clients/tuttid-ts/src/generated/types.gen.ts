@@ -378,7 +378,11 @@ export type DesktopAgentComposerDefaults = {
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
 
-export type DesktopDefaultAgentProvider = "claude-code" | "codex";
+export type DesktopDefaultAgentProvider =
+  | "claude-code"
+  | "codex"
+  | "cursor"
+  | "opencode";
 
 export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
@@ -423,6 +427,12 @@ export type DesktopMinimizeAnimation = "scale" | "genie" | "off";
 export type DesktopPreferencesStateResponse = {
   initialized: boolean;
   preferences: DesktopPreferences;
+};
+
+export type WorkspaceAppAgentPreferencesResponse = {
+  defaultAgentProvider: DesktopDefaultAgentProvider;
+  enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
 };
 
 export type PutDesktopPreferencesRequest = {
@@ -3827,6 +3837,156 @@ export type ReloadLocalWorkspaceAppResponses = {
 
 export type ReloadLocalWorkspaceAppResponse =
   ReloadLocalWorkspaceAppResponses[keyof ReloadLocalWorkspaceAppResponses];
+
+export type GetWorkspaceAppAgentPreferencesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent";
+};
+
+export type GetWorkspaceAppAgentPreferencesErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentPreferencesError =
+  GetWorkspaceAppAgentPreferencesErrors[keyof GetWorkspaceAppAgentPreferencesErrors];
+
+export type GetWorkspaceAppAgentPreferencesResponses = {
+  /**
+   * Workspace app agent preferences
+   */
+  200: WorkspaceAppAgentPreferencesResponse;
+};
+
+export type GetWorkspaceAppAgentPreferencesResponse =
+  GetWorkspaceAppAgentPreferencesResponses[keyof GetWorkspaceAppAgentPreferencesResponses];
+
+export type GetWorkspaceAppAgentProviderStatusesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: {
+    providers?: Array<WorkspaceAgentProvider>;
+    includeNetwork?: boolean;
+  };
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status";
+};
+
+export type GetWorkspaceAppAgentProviderStatusesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentProviderStatusesError =
+  GetWorkspaceAppAgentProviderStatusesErrors[keyof GetWorkspaceAppAgentProviderStatusesErrors];
+
+export type GetWorkspaceAppAgentProviderStatusesResponses = {
+  /**
+   * Agent provider status snapshot
+   */
+  200: AgentProviderStatusListResponse;
+};
+
+export type GetWorkspaceAppAgentProviderStatusesResponse =
+  GetWorkspaceAppAgentProviderStatusesResponses[keyof GetWorkspaceAppAgentProviderStatusesResponses];
+
+export type GetWorkspaceAppAgentProviderComposerOptionsData = {
+  body?: GetAgentProviderComposerOptionsRequest;
+  path: {
+    workspaceID: string;
+    appID: string;
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options";
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsError =
+  GetWorkspaceAppAgentProviderComposerOptionsErrors[keyof GetWorkspaceAppAgentProviderComposerOptionsErrors];
+
+export type GetWorkspaceAppAgentProviderComposerOptionsResponses = {
+  /**
+   * Agent provider composer options
+   */
+  200: AgentProviderComposerOptionsResponse;
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsResponse =
+  GetWorkspaceAppAgentProviderComposerOptionsResponses[keyof GetWorkspaceAppAgentProviderComposerOptionsResponses];
 
 export type ListWorkspaceAppReferencesData = {
   body: AppReferenceListRequest;

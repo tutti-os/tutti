@@ -51,6 +51,18 @@ import { resolveWorkspaceAgentGuiLabel } from "./workspaceAgentProviderCatalog.t
 import { renderIssueManagerLatestRunMessageCenterCard } from "../../ui/IssueManagerLatestRunMessageCenterCard.tsx";
 import { workspaceTaskDockSectionId } from "./workspaceDockSections.ts";
 
+const agentTargetOptionsDebugPrefix = "[agent-target-options-debug]";
+
+function logAgentTargetOptionsDebug(
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  console.info(
+    agentTargetOptionsDebugPrefix,
+    JSON.stringify({ event, ...payload })
+  );
+}
+
 export function createWorkspaceIssueManagerContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
   appCenterService: IWorkspaceAppCenterService;
@@ -259,6 +271,24 @@ function resolveIssueManagerReadyAgentTargetOptions(
         target.label.trim() || resolveWorkspaceAgentGuiLabel(target.provider),
       provider: target.provider
     }));
+  logAgentTargetOptionsDebug("issueManager.agentTargetOptions.resolved", {
+    defaultAgentProvider: defaultAgentProvider ?? null,
+    options: options.map((option) => ({
+      agentTargetId: option.agentTargetId,
+      provider: option.provider
+    })),
+    providerTargets: (providerTargets ?? []).map((target) => ({
+      agentTargetId: target.agentTargetId ?? null,
+      disabled: target.disabled === true,
+      provider: target.provider,
+      targetId: target.targetId
+    })),
+    statuses: statuses.map((status) => ({
+      availability: status.availability.status,
+      provider: status.provider,
+      reasonCode: status.availability.reasonCode ?? null
+    }))
+  });
   const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
     options,
     defaultAgentProvider

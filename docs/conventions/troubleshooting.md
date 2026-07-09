@@ -43,6 +43,40 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Agent provider picker shows only Claude Code and Codex
+
+- Symptom:
+  Desktop settings, App Center, Issue Manager, or an installed workspace app
+  only shows Claude Code and Codex even after Cursor/OpenCode are enabled.
+- Quick checks:
+  For host-owned pickers, compare `/v1/agent-targets` with
+  `/v1/agent-providers/status`. The target list must include enabled
+  `local:cursor`/`local:opencode`, and provider status must report them as
+  `ready`. For workspace apps, inspect the app server's provider detection;
+  host preferences are not injected into app-owned provider lists.
+- Root cause:
+  Host-owned app/workbench pickers are derived from daemon agent targets plus
+  provider readiness and visibility preferences. The desktop default provider
+  preference is a separate OpenAPI/event schema enum. Workspace apps own their
+  runtime provider policy through `@tutti-os/agent-acp-kit`, so generated or
+  packaged app UIs can still be limited to the providers the app implements.
+- Fix:
+  Keep the host default-provider enum, desktop settings options, daemon
+  validation, and generated clients/protocol schemas in sync. For installed
+  workspace apps, update the app's provider detection/runtime integration
+  instead of expecting host settings to expand the app UI.
+- Validation:
+  Run `pnpm generate:api`, `pnpm generate:event-protocol`,
+  `pnpm check:api-generated`, `pnpm check:event-protocol-generated`, desktop
+  typecheck, and focused daemon preferences/API tests. If local `pnpm` resolves
+  to the wrong version inside generator subprocesses, run the checks with a
+  temporary `pnpm` PATH shim that delegates to `corepack pnpm@10.11.0`.
+- References:
+  [core.ts](../../apps/desktop/src/shared/preferences/core.ts)
+  [model.go](../../services/tuttid/biz/preferences/model.go)
+  [tuttid.v1.yaml](../../services/tuttid/api/openapi/tuttid.v1.yaml)
+  [workspace-app-runtime.md](./workspace-app-runtime.md)
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:

@@ -13,6 +13,7 @@ import {
 } from "../core/types.ts";
 import { getWorkbenchLayoutPresetFrames } from "../core/geometry.ts";
 import type { WorkbenchSurfacePresentation } from "../react/types.ts";
+import type { WorkbenchDebugDiagnostics } from "../store/types.ts";
 import {
   orderWorkbenchNodesForMissionControl,
   resolveWorkbenchMissionControlPreviewLayout
@@ -49,14 +50,18 @@ export interface WorkbenchMissionControlState {
 
 export function useWorkbenchMissionControlState<TData>({
   adapter,
+  debugDiagnostics,
   mode,
   nodeIds,
-  onRequestClose
+  onRequestClose,
+  workspaceId
 }: {
   adapter: WorkbenchMissionControlAdapter<TData> | null;
+  debugDiagnostics?: WorkbenchDebugDiagnostics;
   mode: WorkbenchMissionControlMode | null;
   nodeIds?: readonly string[];
   onRequestClose: () => void;
+  workspaceId?: string;
 }): WorkbenchMissionControlState | null {
   const isActive = mode !== null && adapter !== null;
   const snapshot = useExternalStoreSnapshot(
@@ -105,6 +110,10 @@ export function useWorkbenchMissionControlState<TData>({
     () => (isActive ? orderWorkbenchNodesForMissionControl(visibleNodes) : []),
     [isActive, visibleNodes]
   );
+  const orderedNodeSummary = useMemo(
+    () => summarizeMissionControlNodes(orderedNodes),
+    [orderedNodes]
+  );
   const orderedSelectedNodeIds = useMemo(
     () =>
       orderedNodes
@@ -138,16 +147,56 @@ export function useWorkbenchMissionControlState<TData>({
           },
     [isActive, surfaceSize]
   );
-  const previewItems = useMemo(
-    () =>
-      isActive
-        ? resolveWorkbenchMissionControlPreviewLayout({
-            container: previewFrame,
-            nodes: orderedNodes
-          })
-        : [],
-    [isActive, orderedNodes, previewFrame]
-  );
+  const previewLayoutResult = useMemo(() => {
+    const startedAt = performance.now();
+    const items = isActive
+      ? resolveWorkbenchMissionControlPreviewLayout({
+          container: previewFrame,
+          nodes: orderedNodes
+        })
+      : [];
+    return {
+      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+      items
+    };
+  }, [isActive, orderedNodes, previewFrame]);
+  const previewItems = previewLayoutResult.items;
+  useEffect(() => {
+    if (mode === null) {
+      return;
+    }
+
+    logMissionControlDebug(
+      "mission-control.preview-layout",
+      debugDiagnostics,
+      workspaceId,
+      {
+        durationMs: previewLayoutResult.durationMs,
+        invalidFrameCount: countInvalidMissionControlFrames(orderedNodes),
+        mode,
+        previewFrame: frameDiagnostic(previewFrame),
+        previewItemCount: previewItems.length,
+        scopedNodeCount: nodeIds?.length ?? null,
+        surfaceHeight: surfaceSize.height,
+        surfaceWidth: surfaceSize.width,
+        visibleNodeCount: visibleNodes.length,
+        visibleNodes: orderedNodeSummary
+      }
+    );
+  }, [
+    debugDiagnostics,
+    mode,
+    nodeIds?.length,
+    orderedNodeSummary,
+    orderedNodes,
+    previewFrame,
+    previewItems.length,
+    previewLayoutResult.durationMs,
+    surfaceSize.height,
+    surfaceSize.width,
+    visibleNodes.length,
+    workspaceId
+  ]);
   const canUsePreset = useCallback(
     (nextPreset: WorkbenchLayoutPreset) =>
       orderedSelectedNodeIds.length < 2
@@ -289,4 +338,68 @@ export function useWorkbenchMissionControlState<TData>({
     presentation,
     selectedCount: orderedSelectedNodeIds.length
   };
+}
+
+function logMissionControlDebug(
+  event: string,
+  debugDiagnostics: WorkbenchDebugDiagnostics | undefined,
+  workspaceId: string | undefined,
+  details: Record<string, unknown>
+): void {
+  if (!debugDiagnostics?.log) {
+    return;
+  }
+
+  void Promise.resolve(
+    debugDiagnostics.log({
+      details,
+      event,
+      level: "info",
+      source: "workbench-mission-control",
+      workspaceId: workspaceId ?? null
+    })
+  ).catch(() => undefined);
+}
+
+function summarizeMissionControlNodes<TData>(
+  nodes: readonly { frame: WorkbenchFrame; id: string; data?: TData }[]
+): string {
+  return nodes
+    .slice(0, 12)
+    .map((node) => {
+      const typeId =
+        node.data &&
+        typeof node.data === "object" &&
+        "typeId" in node.data &&
+        typeof node.data.typeId === "string"
+          ? node.data.typeId
+          : "unknown";
+      return `${node.id}:${typeId}:${frameDiagnostic(node.frame)}`;
+    })
+    .join(",");
+}
+
+function countInvalidMissionControlFrames<TData>(
+  nodes: readonly { frame: WorkbenchFrame; data?: TData; id: string }[]
+): number {
+  return nodes.filter((node) => !isFiniteMissionControlFrame(node.frame))
+    .length;
+}
+
+function isFiniteMissionControlFrame(frame: WorkbenchFrame): boolean {
+  return (
+    Number.isFinite(frame.x) &&
+    Number.isFinite(frame.y) &&
+    Number.isFinite(frame.width) &&
+    Number.isFinite(frame.height)
+  );
+}
+
+function frameDiagnostic(frame: WorkbenchFrame): string {
+  return [
+    Math.round(frame.x),
+    Math.round(frame.y),
+    Math.round(frame.width),
+    Math.round(frame.height)
+  ].join("x");
 }

@@ -24,6 +24,18 @@ const EMPTY_AGENTS_SNAPSHOT: AgentsSnapshot = Object.freeze({
   providerTargets: Object.freeze([])
 });
 
+const agentTargetOptionsDebugPrefix = "[agent-target-options-debug]";
+
+function logAgentTargetOptionsDebug(
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  console.info(
+    agentTargetOptionsDebugPrefix,
+    JSON.stringify({ event, ...payload })
+  );
+}
+
 export class DesktopAgentsService implements IAgentsService {
   readonly _serviceBrand = undefined;
 
@@ -77,10 +89,25 @@ export class DesktopAgentsService implements IAgentsService {
 
   private async fetchSnapshot(signal?: AbortSignal): Promise<AgentsSnapshot> {
     if (signal?.aborted) {
+      logAgentTargetOptionsDebug("desktopAgentsService.fetch.abortedBefore", {
+        existingAgentTargets: this.snapshot.agentTargets.map((target) => ({
+          agentTargetId: target.agentTargetId,
+          enabled: target.enabled,
+          provider: target.provider
+        }))
+      });
       return this.snapshot;
     }
     const response = await this.dependencies.tuttidClient.listAgentTargets();
     if (signal?.aborted) {
+      logAgentTargetOptionsDebug("desktopAgentsService.fetch.abortedAfter", {
+        responseTargets: response.targets.map((target) => ({
+          enabled: target.enabled,
+          id: target.id,
+          provider: target.provider,
+          source: target.source
+        }))
+      });
       return this.snapshot;
     }
     const agentTargets = mapAgentTargetsToPresentations(response.targets, {
@@ -96,6 +123,26 @@ export class DesktopAgentsService implements IAgentsService {
       providerTargets:
         mapAgentTargetPresentationsToProviderTargets(agentTargets)
     };
+    logAgentTargetOptionsDebug("desktopAgentsService.fetch.resolved", {
+      providerTargets: nextSnapshot.providerTargets.map((target) => ({
+        agentTargetId: target.agentTargetId,
+        disabled: target.disabled,
+        provider: target.provider,
+        targetId: target.targetId
+      })),
+      responseTargets: response.targets.map((target) => ({
+        enabled: target.enabled,
+        id: target.id,
+        provider: target.provider,
+        source: target.source
+      })),
+      snapshotTargets: agentTargets.map((target) => ({
+        agentTargetId: target.agentTargetId,
+        enabled: target.enabled,
+        provider: target.provider,
+        source: target.source
+      }))
+    });
     this.snapshot = nextSnapshot;
     this.emit();
     return nextSnapshot;

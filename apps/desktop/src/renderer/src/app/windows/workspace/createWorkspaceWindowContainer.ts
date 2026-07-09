@@ -214,6 +214,9 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     ),
     workspaceUserProjectService
   });
+  subscribeAgentProviderVisibility(() => {
+    void workspaceAgentServices.agentsService.refresh().catch(() => {});
+  });
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),

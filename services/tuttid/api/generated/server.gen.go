@@ -229,6 +229,12 @@ type ServerInterface interface {
 	// Delete one local workspace app package
 	// (DELETE /v1/workspaces/{workspaceID}/apps/{appID})
 	DeleteWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// Get agent provider availability for one workspace app
+	// (GET /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status)
+	GetWorkspaceAppAgentProviderStatuses(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, params GetWorkspaceAppAgentProviderStatusesParams)
+	// Get agent provider composer options for one workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options)
+	GetWorkspaceAppAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, provider WorkspaceAgentProvider)
 	// Export one workspace app package archive
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/export)
 	ExportWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -241,6 +247,9 @@ type ServerInterface interface {
 	// Launch one installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/launch)
 	LaunchWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// Get workspace-app agent preference projection
+	// (GET /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent)
+	GetWorkspaceAppAgentPreferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
 	// List file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
 	ListWorkspaceAppReferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -3069,6 +3078,126 @@ func (siw *ServerInterfaceWrapper) DeleteWorkspaceApp(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkspaceAppAgentProviderStatuses operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceAppAgentProviderStatuses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorkspaceAppAgentProviderStatusesParams
+
+	// ------------- Optional query parameter "providers" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "providers", r.URL.Query(), &params.Providers, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "providers"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providers", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeNetwork" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeNetwork", r.URL.Query(), &params.IncludeNetwork, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeNetwork"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeNetwork", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceAppAgentProviderStatuses(w, r, workspaceID, appID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspaceAppAgentProviderComposerOptions operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceAppAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider" -------------
+	var provider WorkspaceAgentProvider
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider", r.PathValue("provider"), &provider, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceAppAgentProviderComposerOptions(w, r, workspaceID, appID, provider)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ExportWorkspaceApp operation middleware
 func (siw *ServerInterfaceWrapper) ExportWorkspaceApp(w http.ResponseWriter, r *http.Request) {
 
@@ -3224,6 +3353,47 @@ func (siw *ServerInterfaceWrapper) LaunchWorkspaceApp(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LaunchWorkspaceApp(w, r, workspaceID, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspaceAppAgentPreferences operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceAppAgentPreferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceAppAgentPreferences(w, r, workspaceID, appID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6416,10 +6586,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/start-enabled", wrapper.StartEnabledWorkspaceApps)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/stop-all", wrapper.StopAllWorkspaceApps)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}", wrapper.DeleteWorkspaceApp)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status", wrapper.GetWorkspaceAppAgentProviderStatuses)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options", wrapper.GetWorkspaceAppAgentProviderComposerOptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/export", wrapper.ExportWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/icon", wrapper.ReplaceWorkspaceAppIcon)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/install", wrapper.InstallWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/launch", wrapper.LaunchWorkspaceApp)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent", wrapper.GetWorkspaceAppAgentPreferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/list", wrapper.ListWorkspaceAppReferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/references/search", wrapper.SearchWorkspaceAppReferences)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/reload-local", wrapper.ReloadLocalWorkspaceApp)
@@ -13890,6 +14063,243 @@ func (response DeleteWorkspaceApp503JSONResponse) VisitDeleteWorkspaceAppRespons
 	return err
 }
 
+type GetWorkspaceAppAgentProviderStatusesRequestObject struct {
+	WorkspaceID WorkspaceID    `json:"workspaceID"`
+	AppID       WorkspaceAppID `json:"appID"`
+	Params      GetWorkspaceAppAgentProviderStatusesParams
+}
+
+type GetWorkspaceAppAgentProviderStatusesResponseObject interface {
+	VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceAppAgentProviderStatuses200JSONResponse AgentProviderStatusListResponse
+
+func (response GetWorkspaceAppAgentProviderStatuses200JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderStatuses400JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetWorkspaceAppAgentProviderStatuses401JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderStatuses404JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderStatuses405JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderStatuses502JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderStatuses503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderStatuses503JSONResponse) VisitGetWorkspaceAppAgentProviderStatusesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptionsRequestObject struct {
+	WorkspaceID WorkspaceID            `json:"workspaceID"`
+	AppID       WorkspaceAppID         `json:"appID"`
+	Provider    WorkspaceAgentProvider `json:"provider"`
+	Body        *GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody
+}
+
+type GetWorkspaceAppAgentProviderComposerOptionsResponseObject interface {
+	VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions200JSONResponse AgentProviderComposerOptionsResponse
+
+func (response GetWorkspaceAppAgentProviderComposerOptions200JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderComposerOptions400JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetWorkspaceAppAgentProviderComposerOptions401JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderComposerOptions404JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderComposerOptions405JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderComposerOptions502JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentProviderComposerOptions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentProviderComposerOptions503JSONResponse) VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportWorkspaceAppRequestObject struct {
 	WorkspaceID WorkspaceID    `json:"workspaceID"`
 	AppID       WorkspaceAppID `json:"appID"`
@@ -14350,6 +14760,107 @@ type LaunchWorkspaceApp503JSONResponse struct {
 }
 
 func (response LaunchWorkspaceApp503JSONResponse) VisitLaunchWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferencesRequestObject struct {
+	WorkspaceID WorkspaceID    `json:"workspaceID"`
+	AppID       WorkspaceAppID `json:"appID"`
+}
+
+type GetWorkspaceAppAgentPreferencesResponseObject interface {
+	VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceAppAgentPreferences200JSONResponse WorkspaceAppAgentPreferencesResponse
+
+func (response GetWorkspaceAppAgentPreferences200JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetWorkspaceAppAgentPreferences401JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferences404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentPreferences404JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferences405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentPreferences405JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferences502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentPreferences502JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspaceAppAgentPreferences503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentPreferences503JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -22455,6 +22966,12 @@ type StrictServerInterface interface {
 	// Delete one local workspace app package
 	// (DELETE /v1/workspaces/{workspaceID}/apps/{appID})
 	DeleteWorkspaceApp(ctx context.Context, request DeleteWorkspaceAppRequestObject) (DeleteWorkspaceAppResponseObject, error)
+	// Get agent provider availability for one workspace app
+	// (GET /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status)
+	GetWorkspaceAppAgentProviderStatuses(ctx context.Context, request GetWorkspaceAppAgentProviderStatusesRequestObject) (GetWorkspaceAppAgentProviderStatusesResponseObject, error)
+	// Get agent provider composer options for one workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options)
+	GetWorkspaceAppAgentProviderComposerOptions(ctx context.Context, request GetWorkspaceAppAgentProviderComposerOptionsRequestObject) (GetWorkspaceAppAgentProviderComposerOptionsResponseObject, error)
 	// Export one workspace app package archive
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/export)
 	ExportWorkspaceApp(ctx context.Context, request ExportWorkspaceAppRequestObject) (ExportWorkspaceAppResponseObject, error)
@@ -22467,6 +22984,9 @@ type StrictServerInterface interface {
 	// Launch one installed workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/launch)
 	LaunchWorkspaceApp(ctx context.Context, request LaunchWorkspaceAppRequestObject) (LaunchWorkspaceAppResponseObject, error)
+	// Get workspace-app agent preference projection
+	// (GET /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent)
+	GetWorkspaceAppAgentPreferences(ctx context.Context, request GetWorkspaceAppAgentPreferencesRequestObject) (GetWorkspaceAppAgentPreferencesResponseObject, error)
 	// List file references exposed by one running workspace app
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/references/list)
 	ListWorkspaceAppReferences(ctx context.Context, request ListWorkspaceAppReferencesRequestObject) (ListWorkspaceAppReferencesResponseObject, error)
@@ -24747,6 +25267,74 @@ func (sh *strictHandler) DeleteWorkspaceApp(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetWorkspaceAppAgentProviderStatuses operation middleware
+func (sh *strictHandler) GetWorkspaceAppAgentProviderStatuses(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, params GetWorkspaceAppAgentProviderStatusesParams) {
+	var request GetWorkspaceAppAgentProviderStatusesRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceAppAgentProviderStatuses(ctx, request.(GetWorkspaceAppAgentProviderStatusesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceAppAgentProviderStatuses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceAppAgentProviderStatusesResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceAppAgentProviderStatusesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspaceAppAgentProviderComposerOptions operation middleware
+func (sh *strictHandler) GetWorkspaceAppAgentProviderComposerOptions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID, provider WorkspaceAgentProvider) {
+	var request GetWorkspaceAppAgentProviderComposerOptionsRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+	request.Provider = provider
+
+	var body GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceAppAgentProviderComposerOptions(ctx, request.(GetWorkspaceAppAgentProviderComposerOptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceAppAgentProviderComposerOptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceAppAgentProviderComposerOptionsResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceAppAgentProviderComposerOptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ExportWorkspaceApp operation middleware
 func (sh *strictHandler) ExportWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
 	var request ExportWorkspaceAppRequestObject
@@ -24878,6 +25466,33 @@ func (sh *strictHandler) LaunchWorkspaceApp(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LaunchWorkspaceAppResponseObject); ok {
 		if err := validResponse.VisitLaunchWorkspaceAppResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspaceAppAgentPreferences operation middleware
+func (sh *strictHandler) GetWorkspaceAppAgentPreferences(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
+	var request GetWorkspaceAppAgentPreferencesRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceAppAgentPreferences(ctx, request.(GetWorkspaceAppAgentPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceAppAgentPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceAppAgentPreferencesResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceAppAgentPreferencesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

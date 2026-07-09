@@ -704,6 +704,8 @@ func (e DesktopBrowserUseConnectionMode) Valid() bool {
 const (
 	DesktopDefaultAgentProviderClaudeCode DesktopDefaultAgentProvider = "claude-code"
 	DesktopDefaultAgentProviderCodex      DesktopDefaultAgentProvider = "codex"
+	DesktopDefaultAgentProviderCursor     DesktopDefaultAgentProvider = "cursor"
+	DesktopDefaultAgentProviderOpencode   DesktopDefaultAgentProvider = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the DesktopDefaultAgentProvider enum.
@@ -712,6 +714,10 @@ func (e DesktopDefaultAgentProvider) Valid() bool {
 	case DesktopDefaultAgentProviderClaudeCode:
 		return true
 	case DesktopDefaultAgentProviderCodex:
+		return true
+	case DesktopDefaultAgentProviderCursor:
+		return true
+	case DesktopDefaultAgentProviderOpencode:
 		return true
 	default:
 		return false
@@ -3707,6 +3713,13 @@ type WorkspaceApp struct {
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
 }
 
+// WorkspaceAppAgentPreferencesResponse defines model for WorkspaceAppAgentPreferencesResponse.
+type WorkspaceAppAgentPreferencesResponse struct {
+	DefaultAgentProvider DesktopDefaultAgentProvider `json:"defaultAgentProvider"`
+	EnableCursorAgent    bool                        `json:"enableCursorAgent"`
+	EnableOpenCodeAgent  bool                        `json:"enableOpenCodeAgent"`
+}
+
 // WorkspaceAppAuthor defines model for WorkspaceAppAuthor.
 type WorkspaceAppAuthor struct {
 	AvatarUrl *string `json:"avatarUrl,omitempty"`
@@ -4343,6 +4356,12 @@ type ListWorkspaceAgentSessionMessagesParams struct {
 // ListWorkspaceAgentSessionMessagesParamsOrder defines parameters for ListWorkspaceAgentSessionMessages.
 type ListWorkspaceAgentSessionMessagesParamsOrder string
 
+// GetWorkspaceAppAgentProviderStatusesParams defines parameters for GetWorkspaceAppAgentProviderStatuses.
+type GetWorkspaceAppAgentProviderStatusesParams struct {
+	Providers      *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
+	IncludeNetwork *bool                     `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
+}
+
 // ListWorkspaceFileDirectoryParams defines parameters for ListWorkspaceFileDirectory.
 type ListWorkspaceFileDirectoryParams struct {
 	// Path Omit to resolve the current workspace file root.
@@ -4490,6 +4509,9 @@ type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest
 
 // LoadLocalWorkspaceAppJSONRequestBody defines body for LoadLocalWorkspaceApp for application/json ContentType.
 type LoadLocalWorkspaceAppJSONRequestBody = LoadLocalWorkspaceAppRequest
+
+// GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody defines body for GetWorkspaceAppAgentProviderComposerOptions for application/json ContentType.
+type GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
 
 // ExportWorkspaceAppJSONRequestBody defines body for ExportWorkspaceApp for application/json ContentType.
 type ExportWorkspaceAppJSONRequestBody = ExportWorkspaceAppRequest

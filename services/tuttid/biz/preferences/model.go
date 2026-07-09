@@ -158,7 +158,7 @@ func IsDesktopAgentConversationDetailMode(value string) bool {
 
 func IsDesktopDefaultAgentProvider(value string) bool {
 	switch strings.TrimSpace(value) {
-	case agentproviderbiz.ClaudeCode, agentproviderbiz.Codex:
+	case agentproviderbiz.ClaudeCode, agentproviderbiz.Codex, agentproviderbiz.Cursor, agentproviderbiz.OpenCode:
 		return true
 	default:
 		return false

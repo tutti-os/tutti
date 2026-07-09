@@ -77,7 +77,7 @@
     },
     "defaultAgentProvider": {
       "type": "string",
-      "enum": ["claude-code", "codex"]
+      "enum": ["claude-code", "codex", "cursor", "opencode"]
     },
     "dockIconStyle": {
       "type": "string",

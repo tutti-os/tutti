@@ -937,6 +937,125 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    get:
+      operationId: getWorkspaceAppAgentPreferences
+      tags:
+        - app-center
+      summary: Get workspace-app agent preference projection
+      description: >
+        Read-only subset of desktop agent preferences for one workspace app
+        runtime. Intended for workspace app server tokens; exposes default
+        provider selection and developer-gated provider visibility only.
+      responses:
+        "200":
+          description: Workspace app agent preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppAgentPreferencesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    get:
+      operationId: getWorkspaceAppAgentProviderStatuses
+      tags:
+        - app-center
+      summary: Get agent provider availability for one workspace app
+      description: >
+        Workspace-app scoped alias of `GET /v1/agent-providers/status` for app
+        server tokens. Returns the same provider availability snapshot.
+      parameters:
+        - name: providers
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/WorkspaceAgentProvider"
+        - name: includeNetwork
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Agent provider status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderStatusListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    post:
+      operationId: getWorkspaceAppAgentProviderComposerOptions
+      tags:
+        - app-center
+      summary: Get agent provider composer options for one workspace app
+      description: >
+        Workspace-app scoped alias of
+        `POST /v1/agent-providers/{provider}/composer-options` for app server
+        tokens.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetAgentProviderComposerOptionsRequest"
+      responses:
+        "200":
+          description: Agent provider composer options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderComposerOptionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps/{appID}/references/list:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -4593,6 +4712,8 @@ components:
       enum:
         - claude-code
         - codex
+        - cursor
+        - opencode
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4670,6 +4791,20 @@ components:
           type: boolean
         preferences:
           $ref: "#/components/schemas/DesktopPreferences"
+    WorkspaceAppAgentPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - defaultAgentProvider
+        - enableCursorAgent
+        - enableOpenCodeAgent
+      properties:
+        defaultAgentProvider:
+          $ref: "#/components/schemas/DesktopDefaultAgentProvider"
+        enableCursorAgent:
+          type: boolean
+        enableOpenCodeAgent:
+          type: boolean
     PutDesktopPreferencesRequest:
       type: object
       additionalProperties: false

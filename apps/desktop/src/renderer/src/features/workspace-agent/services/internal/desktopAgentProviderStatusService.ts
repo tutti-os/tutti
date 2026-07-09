@@ -98,6 +98,18 @@ const emptySnapshot: AgentProviderStatusSnapshot = {
   statuses: []
 };
 
+const agentTargetOptionsDebugPrefix = "[agent-target-options-debug]";
+
+function logAgentTargetOptionsDebug(
+  event: string,
+  payload: Record<string, unknown>
+): void {
+  console.info(
+    agentTargetOptionsDebugPrefix,
+    JSON.stringify({ event, ...payload })
+  );
+}
+
 export class DesktopAgentProviderStatusService implements IAgentProviderStatusService {
   readonly _serviceBrand = undefined;
 
@@ -181,12 +193,30 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     if (this.hasLoadedProviderSnapshot(input.providers)) {
+      logAgentTargetOptionsDebug("providerStatus.ensureLoaded.cacheHit", {
+        includeNetwork: input.includeNetwork === true,
+        requestedProviders: input.providers ?? null,
+        snapshotProviders: this.snapshot.statuses.map((status) => ({
+          availability: status.availability.status,
+          provider: status.provider,
+          reasonCode: status.availability.reasonCode ?? null
+        }))
+      });
       return this.snapshotResponse();
     }
 
     if (this.inflightRequest) {
       await this.inflightRequest;
       if (this.hasLoadedProviderSnapshot(input.providers)) {
+        logAgentTargetOptionsDebug("providerStatus.ensureLoaded.inflightHit", {
+          includeNetwork: input.includeNetwork === true,
+          requestedProviders: input.providers ?? null,
+          snapshotProviders: this.snapshot.statuses.map((status) => ({
+            availability: status.availability.status,
+            provider: status.provider,
+            reasonCode: status.availability.reasonCode ?? null
+          }))
+        });
         return this.snapshotResponse();
       }
     }
@@ -201,9 +231,17 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
     if (this.inflightRequest) {
+      logAgentTargetOptionsDebug("providerStatus.request.reuseInflight", {
+        includeNetwork: input.includeNetwork === true,
+        requestedProviders: input.providers ?? null
+      });
       return this.inflightRequest;
     }
 
+    logAgentTargetOptionsDebug("providerStatus.request.start", {
+      includeNetwork: input.includeNetwork === true,
+      requestedProviders: input.providers ?? null
+    });
     this.setSnapshot({
       ...this.snapshot,
       error: null,
@@ -217,6 +255,18 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then(async (response) => {
+        logAgentTargetOptionsDebug("providerStatus.request.response", {
+          defaultProvider: response.defaultProvider,
+          providers: response.providers.map((status) => ({
+            adapterInstalled: status.adapter.installed,
+            authStatus: status.auth.status,
+            availability: status.availability.status,
+            cliInstalled: status.cli.installed,
+            provider: status.provider,
+            reasonCode: status.availability.reasonCode ?? null
+          })),
+          requestedProviders: input.providers ?? null
+        });
         let responseProviders = response.providers;
         if (this.requestSequence === requestId) {
           const previousStatuses = this.snapshot.statuses;
@@ -261,6 +311,13 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         };
       })
       .catch(async (error: unknown) => {
+        logAgentTargetOptionsDebug("providerStatus.request.error", {
+          error:
+            error instanceof Error
+              ? { message: error.message, name: error.name }
+              : String(error),
+          requestedProviders: input.providers ?? null
+        });
         if (this.requestSequence === requestId) {
           this.setSnapshot({
             ...this.snapshot,
@@ -455,6 +512,19 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   private setSnapshot(snapshot: AgentProviderStatusSnapshot): void {
+    logAgentTargetOptionsDebug("providerStatus.snapshot.set", {
+      capturedAt: snapshot.capturedAt,
+      defaultProvider: snapshot.defaultProvider,
+      error: snapshot.error,
+      isLoading: snapshot.isLoading,
+      providers: snapshot.statuses.map((status) => ({
+        adapterInstalled: status.adapter.installed,
+        authStatus: status.auth.status,
+        availability: status.availability.status,
+        provider: status.provider,
+        reasonCode: status.availability.reasonCode ?? null
+      }))
+    });
     this.snapshot = snapshot;
     this.revision += 1;
     for (const listener of this.listeners) {

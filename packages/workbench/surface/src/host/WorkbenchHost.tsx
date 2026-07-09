@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   WorkbenchMissionControlBackdrop,
   WorkbenchMissionControlOverlay
@@ -77,6 +77,24 @@ export function WorkbenchHost({
   const missionControlClose = missionControl?.onRequestClose ?? noop;
   const missionControlEnabled =
     missionControlMode !== null || onMissionControlAdapterReady !== undefined;
+  useEffect(() => {
+    logWorkbenchHostMissionControlDebug(
+      "mission-control.props",
+      debugDiagnostics,
+      workspaceId,
+      {
+        enabled: missionControlEnabled,
+        mode: missionControlMode ?? "closed",
+        nodeIds: missionControlNodeIds?.join("|") ?? null
+      }
+    );
+  }, [
+    debugDiagnostics,
+    missionControlEnabled,
+    missionControlMode,
+    missionControlNodeIds,
+    workspaceId
+  ]);
   const {
     chromeContext,
     externalStateRevision,
@@ -123,13 +141,33 @@ export function WorkbenchHost({
   });
   const missionControlState = useWorkbenchMissionControlState({
     adapter: missionControlAdapter,
+    debugDiagnostics,
     mode: missionControlMode,
     nodeIds: missionControlNodeIds,
-    onRequestClose: missionControlClose
+    onRequestClose: missionControlClose,
+    workspaceId
   });
   const missionControlPresence =
     useWorkbenchMissionControlPresence(missionControlState);
   const missionControlRenderedState = missionControlPresence.state;
+  useEffect(() => {
+    logWorkbenchHostMissionControlDebug(
+      "mission-control.presence",
+      debugDiagnostics,
+      workspaceId,
+      {
+        mode: missionControlRenderedState?.mode ?? "closed",
+        phase: missionControlPresence.phase,
+        selectedCount: missionControlRenderedState?.selectedCount ?? 0
+      }
+    );
+  }, [
+    debugDiagnostics,
+    missionControlPresence.phase,
+    missionControlRenderedState?.mode,
+    missionControlRenderedState?.selectedCount,
+    workspaceId
+  ]);
 
   return (
     <WorkbenchSurface<WorkbenchHostNodeData>
@@ -192,4 +230,25 @@ export function WorkbenchHost({
       windowChromeMode={surfaceRenderers.windowChromeMode}
     />
   );
+}
+
+function logWorkbenchHostMissionControlDebug(
+  event: string,
+  debugDiagnostics: WorkbenchHostProps["debugDiagnostics"],
+  workspaceId: string,
+  details: Record<string, unknown>
+): void {
+  if (!debugDiagnostics?.log) {
+    return;
+  }
+
+  void Promise.resolve(
+    debugDiagnostics.log({
+      details,
+      event,
+      level: "info",
+      source: "workbench-mission-control",
+      workspaceId
+    })
+  ).catch(() => undefined);
 }
