@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.11.0+sha512.6540583f41cc5f628eb3d9773ecee802f4f9ef9923cc45b69890fb47991d4b092964694ec3a4f738a420c918a333062c8b925d312f42e4f0c263eb603551f977",
   "workspaces": [
     "apps/*",
+    "workers/*",
     "packages/*/*",
     "services/tuttid/builtin-apps/tutti-onboarding",
     "tools/fixtures/*"
@@ -77,7 +78,7 @@
     "sync:workbench-go-contract": "node ./tools/scripts/generate-workbench-go-contract.mjs",
     "test:tools": "node --test ./tools/scripts/check-tutti-names.test.mjs ./tools/scripts/check-renderer-feature-boundaries.test.mjs ./tools/scripts/check-electron-runtime-boundaries.test.mjs ./tools/scripts/check-i18n.test.mjs ./tools/scripts/desktop-build-version.test.mjs ./tools/scripts/desktop-dmg-notarization.test.mjs ./tools/scripts/desktop-release-changelog.test.mjs ./tools/scripts/desktop-release-config.test.mjs ./tools/scripts/desktop-release-download-links.test.mjs ./tools/scripts/desktop-release-feishu-card.test.mjs ./tools/scripts/desktop-release-latest.test.mjs ./tools/scripts/desktop-release-reservation.test.mjs ./tools/scripts/desktop-release-summary.test.mjs ./tools/scripts/desktop-release-versioning.test.mjs ./tools/scripts/generate-defaults.test.mjs ./tools/scripts/lark-log-tool.test.mjs ./tools/scripts/npm-release-packages.test.mjs ./tools/scripts/package-release-version.test.mjs ./tools/scripts/publish-packages.test.mjs ./tools/scripts/build-tutti-app-release.test.mjs ./tools/scripts/build-tutti-app-runtime-catalog.test.mjs ./tools/scripts/run-check-changed-targets.test.mjs ./tools/scripts/run-check-changed.test.mjs",
     "test:go": "pnpm generate:builtin-apps && cd packages/appcli/core && go test ./... && cd ../../workspace/files && go test ./... && cd ../../workbench/service && go test ./... && cd ../../../services/tuttid && go test ./... && cd ../../apps/cli && go test ./...",
-    "test:ts": "pnpm --filter @tutti-os/desktop test && pnpm --filter @tutti-os/browser-node test && pnpm --filter @tutti-os/client-tuttid-ts test && pnpm --filter @tutti-os/workbench-snapshot test && pnpm --filter @tutti-os/workbench-surface test && pnpm --filter @tutti-os/workspace-file-preview test && pnpm --filter @tutti-os/workspace-file-manager test && pnpm test:tools",
+    "test:ts": "pnpm --filter @tutti-os/desktop test && pnpm --filter @tutti-os/desktop-download-worker test && pnpm --filter @tutti-os/browser-node test && pnpm --filter @tutti-os/client-tuttid-ts test && pnpm --filter @tutti-os/workbench-snapshot test && pnpm --filter @tutti-os/workbench-surface test && pnpm --filter @tutti-os/workspace-file-preview test && pnpm --filter @tutti-os/workspace-file-manager test && pnpm test:tools",
     "typecheck": "node ./tools/scripts/run-typecheck.mjs"
   },
   "lint-staged": {

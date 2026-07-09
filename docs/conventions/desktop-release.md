@@ -216,20 +216,43 @@ The `latest.json` metadata must include stable-identifying fields:
 - a stable `tag`, such as `v1.12.20`
 - `preferredDownloads.macosUniversalDmg`
 
-External download workers should treat these fields as a fail-closed contract. If the metadata is missing, malformed, or points at an RC or beta tag, the worker must not return that package as the public download.
+External download workers should treat these fields as a guarded public contract. If mirrored stable metadata is missing, malformed, or points at an RC or beta tag, the worker may fall back to GitHub's latest stable release. It must not return an RC or beta package as the public stable download.
 
 The download worker may expose `channel=preview` and `channel=beta` query parameters for internal links. Missing `channel` must default to `stable`. `channel=preview` must read RC metadata only; it must not fall back to beta.
 
-The `tutti-desktop-download` Worker is currently maintained directly in the Cloudflare Dashboard production editor, not in this repository. Update the production Worker there and keep this document aligned with the public contract.
+The `tutti-desktop-download` Worker is maintained in this repository under:
+
+```text
+workers/tutti-desktop-download
+```
+
+Deploy it to the Cloudflare production Worker after release download contract changes, and keep this document aligned with the public contract. The production Worker URL in Cloudflare is:
+
+```text
+https://dash.cloudflare.com/39fe2eae2688546b97e5d7e8da81cceb/workers/services/view/tutti-desktop-download/production
+```
 
 The Worker supports:
 
 ```text
-/desktop/download?platform=macos&arch=universal&format=dmg
-/desktop/download?channel=stable&platform=macos&arch=universal&format=dmg
-/desktop/download?channel=preview&platform=macos&arch=universal&format=dmg
-/desktop/download?channel=beta&platform=macos&arch=universal&format=dmg
+/desktop/latest.json
+/desktop/latest.json?channel=preview
+/desktop/download?platform=macos&arch=universal&format=dmg&source=readme
+/desktop/download?channel=stable&platform=macos&arch=universal&format=dmg&source=readme
+/desktop/download?channel=preview&platform=macos&arch=universal&format=dmg&source=qa
+/desktop/download?channel=beta&platform=macos&arch=universal&format=dmg&source=qa
 ```
+
+`channel=rc` is accepted as an alias for `channel=preview`.
+`/desktop/latest.json` returns metadata with asset `url` fields rewritten to
+public `/desktop/download` URLs while preserving original artifact URLs in
+`cdnUrl`.
+
+Successful GET download redirects should report the DataFinder Tea event
+`desktop_download.clicked` with normalized `platform`, `arch`, `format`,
+`release_channel`, release metadata, selected asset metadata, and `source`.
+`source` is provided by the download URL query string and defaults to
+`unknown` when absent. Analytics failures must not block the download redirect.
 
 Stable mirrored releases also update the aggregate changelog feed:
 

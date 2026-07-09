@@ -1,0 +1,9 @@
+{
+  "name": "@tutti-os/desktop-download-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy:production": "pnpm dlx wrangler@4.24.3 deploy --env production",
+    "test": "node --test ./src/worker.test.mjs"
+  }
+}

@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "workers/*"
   - "packages/*/*"
   - "services/tuttid/builtin-apps/tutti-onboarding"
   - "tools/fixtures/*"
