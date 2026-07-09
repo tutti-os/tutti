@@ -38,8 +38,12 @@ export const adapter: AgentActivityAdapter = {
     };
   },
 
-  async listSessionMessages({ workspaceId, agentSessionId, afterVersion }) {
-    return fetchMessages({ workspaceId, agentSessionId, afterVersion });
+  async listSessionMessages(input) {
+    return fetchMessages(input);
+  },
+
+  async loadComposerOptions(input) {
+    return fetchComposerOptions(input);
   },
 
   // Optional: implement only when this host wants the core controller to manage
@@ -61,8 +65,10 @@ export const adapter: AgentActivityAdapter = {
   createSession: createAgentSession,
   sendInput: sendAgentInput,
   cancelSession: cancelAgentSession,
-  respondPermission: respondToAgentPermission,
-  deleteSession: deleteAgentSession
+  goalControl: controlAgentGoal,
+  submitInteractive: submitAgentInteractiveResponse,
+  deleteSession: deleteAgentSession,
+  renameSession: renameAgentSession
 };
 ```
 

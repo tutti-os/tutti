@@ -190,9 +190,15 @@ export interface AgentActivityAdapter {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;
+    beforeVersion?: number;
     limit?: number;
+    order?: AgentActivityMessageOrder;
     signal?: AbortSignal;
   }): Promise<AgentActivityMessagePage>;
+
+  loadComposerOptions(
+    input: AgentActivityLoadComposerOptionsInput
+  ): Promise<AgentActivityComposerOptions>;
 
   subscribeSessionEvents?(input: {
     workspaceId: string;
@@ -206,16 +212,24 @@ export interface AgentActivityAdapter {
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;
-  sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  sendInput(
+    input: AgentActivitySendInput
+  ): Promise<AgentActivitySendInputResult>;
   cancelSession(
     input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivitySession>;
-  respondPermission(
-    input: AgentActivityPermissionResponseInput
+  ): Promise<AgentActivityCancelSessionResult>;
+  goalControl(
+    input: AgentActivityGoalControlInput
+  ): Promise<AgentActivityGoalControlResult>;
+  submitInteractive(
+    input: AgentActivitySubmitInteractiveInput
   ): Promise<unknown>;
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
 }
 ```
 
