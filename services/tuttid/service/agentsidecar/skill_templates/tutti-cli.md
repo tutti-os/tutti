@@ -82,7 +82,7 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 `issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `$issue-manager`, not this skill.
 
-`agent ...`, `codex ...`, `claude ...`, and `tutti-agent ...` cover provider discovery, composer options, session start/open/send/cancel, active peers, and session context recovery.
+`agent ...` covers provider discovery, composer options, session open/send/cancel, active peers, and session context recovery. `codex ...`, `claude ...`, and `tutti-agent ...` cover provider-specific session start shortcuts.
 
 `browser ...` drives the daemon-owned browser session. Prefer it over generic browser tooling when Tutti browser context is requested.
 
