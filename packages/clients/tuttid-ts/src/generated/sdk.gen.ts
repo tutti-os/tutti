@@ -1114,7 +1114,7 @@ export const getWorkspaceAppAgentPreferences = <
 /**
  * Get agent provider availability for one workspace app
  *
- * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. Returns the same provider availability snapshot.
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it.
  *
  */
 export const getWorkspaceAppAgentProviderStatuses = <
