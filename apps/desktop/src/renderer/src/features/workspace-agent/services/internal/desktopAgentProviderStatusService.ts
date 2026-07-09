@@ -1176,6 +1176,17 @@ function summarizeAgentProviderInstallFailureReason(reason: string): string {
   }
 
   if (
+    normalized.includes("eexist") &&
+    (normalized.includes("file exists") ||
+      normalized.includes("npm error path")) &&
+    normalized.includes("tutti-agent")
+  ) {
+    return translate(
+      "workspace.workbenchDesktop.agentProviders.installFailedOutdatedLocalAgent"
+    );
+  }
+
+  if (
     normalized.includes("enoent") ||
     normalized.includes("error: spawn") ||
     normalized.includes("spawn ") ||

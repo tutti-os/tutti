@@ -235,7 +235,7 @@ export const en = {
       stageProblemInstallPlatformIncomplete:
         "{{provider}} platform package missing",
       stageInstallVersionRequirement: "{{current}} · requires ≥ {{required}}",
-      stageAdapterVersionRequirement: "{{current}} · requires {{required}}",
+      stageAdapterVersionRequirement: "{{current}} · requires ≥ {{required}}",
       stageProblemAdapterMissing: "Adapter not installed",
       stageProblemAdapterMismatch: "Adapter version unsupported",
       stageProblemLoginMissing: "Not signed in",
@@ -888,6 +888,8 @@ export const en = {
           "Unable to connect the local agent right now. Try again in a moment.",
         installFailedMissingRuntime:
           "The local agent executable could not be found. Check that it is installed correctly.",
+        installFailedOutdatedLocalAgent:
+          "An older local Agent was detected, but automatic upgrade failed.",
         installFailedTimedOut: "Connection timed out. Try again in a moment.",
         installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",

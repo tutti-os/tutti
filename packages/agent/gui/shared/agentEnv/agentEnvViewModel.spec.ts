@@ -125,6 +125,35 @@ describe("buildAgentEnvWizardViewModel", () => {
     });
   });
 
+  it("shows installed and required Tutti Agent adapter versions on mismatch", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        provider: "tutti-agent",
+        status: status({
+          provider: "tutti-agent",
+          availability: {
+            status: "not_installed",
+            reasonCode: "acp_adapter_version_mismatch"
+          },
+          adapter: {
+            installed: false,
+            version: "0.0.1",
+            requiredVersion: "0.0.2",
+            command: ["tutti-agent", "app-server"],
+            binaryPath: "/opt/tutti-agent"
+          }
+        })
+      })
+    );
+    const adapter = vm.displayStages.find((s) => s.id === "adapter");
+    expect(adapter?.status).toBe("error");
+    expect(adapter?.detail).toEqual({
+      kind: "version-mismatch",
+      current: "0.0.1",
+      required: "0.0.2"
+    });
+  });
+
   it("assembles network checks and treats an unconfigured proxy as reachable", () => {
     const vm = buildAgentEnvWizardViewModel(
       input({

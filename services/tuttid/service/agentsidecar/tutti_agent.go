@@ -261,19 +261,27 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 // bootstrapTuttiAgentUserAuth is the provider-prepare variant that preserves
 // runtime prepare trace context when a real Tutti Agent session is starting.
 func bootstrapTuttiAgentUserAuth(ctx context.Context, input PrepareInput) {
-	if tuttiAgentUserAuthReady() {
-		return
-	}
 	cookie, ok := tuttiAgentAccountSessionCookie()
 	if !ok {
+		if err := logoutTuttiAgentUserAuth(ctx); err != nil {
+			slog.Warn("tutti-agent auth cleanup without host session failed", "error", err)
+		}
 		logRuntimePrepareTrace("runtime_prepare.tutti_agent.auth_bootstrap_skipped", input, map[string]any{
 			"reason": "no_host_account_session",
 		})
 		return
 	}
+	if tuttiAgentUserAuthReady() {
+		return
+	}
 	bundle, err := issueTuttiAgentLLMToken(ctx, cookie)
 	if err != nil {
 		slog.Warn("tutti-agent llm token issue failed", "error", err)
+		if tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
+			if cleanupErr := logoutTuttiAgentUserAuth(ctx); cleanupErr != nil {
+				slog.Warn("tutti-agent auth cleanup after token rejection failed", "error", cleanupErr)
+			}
+		}
 		return
 	}
 	if err := runTuttiAgentTokenLogin(ctx, bundle); err != nil {
@@ -380,6 +388,20 @@ type tuttiAgentLLMTokenBundle struct {
 	Scopes                []string `json:"scopes"`
 }
 
+type tuttiAgentLLMTokenIssueRejectedError struct {
+	Code   int
+	Errmsg string
+}
+
+func (e tuttiAgentLLMTokenIssueRejectedError) Error() string {
+	return fmt.Sprintf("llm token issue rejected: code=%d errmsg=%s", e.Code, e.Errmsg)
+}
+
+func tuttiAgentLLMTokenIssueRejectedWithCode(err error, code int) bool {
+	var rejected tuttiAgentLLMTokenIssueRejectedError
+	return errors.As(err, &rejected) && rejected.Code == code
+}
+
 func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMTokenBundle, error) {
 	requestBody, err := json.Marshal(map[string]any{
 		"requested_app_id": tuttiAgentLLMAppID(),
@@ -422,7 +444,10 @@ func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMT
 		return tuttiAgentLLMTokenBundle{}, fmt.Errorf("decode llm token response (status %d): %w", response.StatusCode, err)
 	}
 	if payload.Code != 0 {
-		return tuttiAgentLLMTokenBundle{}, fmt.Errorf("llm token issue rejected: code=%d errmsg=%s", payload.Code, payload.Errmsg)
+		return tuttiAgentLLMTokenBundle{}, tuttiAgentLLMTokenIssueRejectedError{
+			Code:   payload.Code,
+			Errmsg: payload.Errmsg,
+		}
 	}
 	accessExpires, _ := strconv.ParseInt(strings.TrimSpace(payload.Data.AccessTokenExpiresAt), 10, 64)
 	refreshExpires, _ := strconv.ParseInt(strings.TrimSpace(payload.Data.RefreshTokenExpiresAt), 10, 64)

@@ -1158,7 +1158,7 @@ export type AgentProviderCliStatus = {
   binaryPath?: string | null;
   version?: string | null;
   /**
-   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
    */
   minVersion?: string | null;
 };
@@ -1172,7 +1172,7 @@ export type AgentProviderAdapterStatus = {
    */
   version?: string | null;
   /**
-   * The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+   * The minimum adapter package version this provider accepts. With version, lets the UI show "current X, requires >= Y" for an adapter version mismatch and makes the drift visible in telemetry.
    */
   requiredVersion?: string | null;
 };

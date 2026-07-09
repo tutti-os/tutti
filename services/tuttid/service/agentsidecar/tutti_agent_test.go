@@ -161,6 +161,72 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	}
 }
 
+func TestBootstrapTuttiAgentUserAuthClearsAuthWithoutHostSession(t *testing.T) {
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/v1/llm-token/revoke" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0}`))
+	}))
+	defer account.Close()
+
+	home := t.TempDir()
+	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(
+		t,
+		home,
+		`{"tutti_llm":{"account_base_url":`+strconv.Quote(account.URL)+`,"access_token":"lat_old","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_old"}}`,
+	)
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
+
+	bootstrapTuttiAgentUserAuth(t.Context(), PrepareInput{})
+
+	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
+	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
+		t.Fatalf("auth json stat error = %v, want not exist", err)
+	}
+}
+
+func TestBootstrapTuttiAgentUserAuthClearsAuthAfterUnauthorizedTokenIssue(t *testing.T) {
+	home := t.TempDir()
+	expiredAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	writeTuttiAgentUserAuth(t, home, `{"tutti_llm":{"access_token":"lat_old","access_token_expires_at":`+strconv.Quote(expiredAt)+`,"refresh_token":"lrt_old"}}`)
+
+	stateDir := t.TempDir()
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=stale"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case tuttiAgentLLMTokenIssueRoute:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":401,"errmsg":"session not found"}`))
+		case "/auth/v1/llm-token/revoke":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"code":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+
+	bootstrapTuttiAgentUserAuth(t.Context(), PrepareInput{})
+
+	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
+	if _, err := os.Stat(authPath); !os.IsNotExist(err) {
+		t.Fatalf("auth json stat error = %v, want not exist", err)
+	}
+}
+
 func TestLogoutTuttiAgentUserAuthRemovesAuthAndRevokesToken(t *testing.T) {
 	revokeBody := make(chan map[string]string, 1)
 	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

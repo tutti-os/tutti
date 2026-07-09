@@ -158,7 +158,16 @@ func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.
 	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(`{"tutti_llm":{"access_token":"access","refresh_token":"refresh"}}`), 0o600); err != nil {
+	accessExpiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	authJSON := `{"tutti_llm":{"access_token":"access","access_token_expires_at":` + strconv.Quote(accessExpiresAt) + `,"refresh_token":"refresh"}}`
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(authJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	userConfig := strings.Join([]string{

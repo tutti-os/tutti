@@ -230,7 +230,7 @@ export const zhCN = {
       stageProblemInstallOutdated: "{{provider}} CLI 版本不受支持",
       stageProblemInstallPlatformIncomplete: "{{provider}} 平台二进制包缺失",
       stageInstallVersionRequirement: "当前 {{current}} · 需要 ≥ {{required}}",
-      stageAdapterVersionRequirement: "当前 {{current}} · 需要 {{required}}",
+      stageAdapterVersionRequirement: "当前 {{current}} · 需要 ≥ {{required}}",
       stageProblemAdapterMissing: "未安装适配器",
       stageProblemAdapterMismatch: "适配器版本不受支持",
       stageProblemLoginMissing: "未登录",
@@ -843,6 +843,7 @@ export const zhCN = {
         installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
         installFailedMissingRuntime:
           "找不到本地 Agent 可执行文件，请检查是否已正确安装",
+        installFailedOutdatedLocalAgent: "检测到旧版本本地 Agent，自动升级失败",
         installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",

@@ -1991,7 +1991,7 @@ type AgentProviderAdapterStatus struct {
 	Command    []string `json:"command"`
 	Installed  bool     `json:"installed"`
 
-	// RequiredVersion The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+	// RequiredVersion The minimum adapter package version this provider accepts. With version, lets the UI show "current X, requires >= Y" for an adapter version mismatch and makes the drift visible in telemetry.
 	RequiredVersion *string `json:"requiredVersion,omitempty"`
 
 	// Version The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
@@ -2051,7 +2051,7 @@ type AgentProviderCliStatus struct {
 	BinaryPath *string `json:"binaryPath,omitempty"`
 	Installed  bool    `json:"installed"`
 
-	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
 	MinVersion *string `json:"minVersion,omitempty"`
 	Version    *string `json:"version,omitempty"`
 }

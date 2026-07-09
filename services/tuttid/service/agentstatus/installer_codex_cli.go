@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -112,6 +113,7 @@ func (s Service) runManagedNPMPackageInstaller(
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
 	registries := s.rankedAgentNPMRegistries(ctx, packageName)
 	var result InstallCommandResult
+	binConflictRepaired := false
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)
 		setActiveAction(ctx, provider, ActiveAction{
@@ -141,6 +143,37 @@ func (s Service) runManagedNPMPackageInstaller(
 			})
 			return result, nil
 		}
+		if !binConflictRepaired && s.repairManagedNPMBinEEXIST(ctx, result, installPrefix, binaryName, spec.PackageVersion, baseEnv) {
+			binConflictRepaired = true
+			setActiveAction(ctx, provider, ActiveAction{
+				ID:         ActionInstall,
+				Status:     "running",
+				Step:       "repair",
+				Registry:   registryDisplay,
+				NodeTarget: nodeTarget,
+				Stdout:     result.Stdout,
+			})
+			attemptCtx, cancel = context.WithTimeout(ctx, perRegistryInstallTimeout)
+			result, err = s.installCommand(attemptCtx, InstallCommandInput{
+				Command: command,
+				Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
+				OnStdout: func(output string) {
+					appendActiveActionStdout(ctx, provider, output)
+				},
+			})
+			cancel()
+			if err == nil && result.ExitCode == 0 {
+				setActiveAction(ctx, provider, ActiveAction{
+					ID:         ActionInstall,
+					Status:     "running",
+					Step:       "verify",
+					Registry:   registryDisplay,
+					NodeTarget: nodeTarget,
+					Stdout:     result.Stdout,
+				})
+				return result, nil
+			}
+		}
 		if i < len(registries)-1 {
 			slog.Warn(
 				"agent provider managed npm install failed on registry, trying next",
@@ -153,6 +186,41 @@ func (s Service) runManagedNPMPackageInstaller(
 		}
 	}
 	return result, err
+}
+
+func (s Service) repairManagedNPMBinEEXIST(
+	ctx context.Context,
+	result InstallCommandResult,
+	installPrefix string,
+	binaryName string,
+	requiredVersion string,
+	env []string,
+) bool {
+	conflictPath, ok := managedNPMBinEEXISTPath(result)
+	if !ok || !managedNPMBinConflictMatchesInstallTarget(conflictPath, installPrefix, binaryName) {
+		return false
+	}
+	installedVersion := s.cliVersion(ctx, conflictPath, env)
+	if required := strings.TrimSpace(requiredVersion); required != "" && installedVersion == required {
+		return false
+	}
+	if err := os.Remove(conflictPath); err != nil {
+		slog.Warn(
+			"agent provider managed npm bin conflict cleanup failed",
+			"path", conflictPath,
+			"installedVersion", installedVersion,
+			"requiredVersion", strings.TrimSpace(requiredVersion),
+			"error", err,
+		)
+		return false
+	}
+	slog.Info(
+		"agent provider managed npm bin conflict cleaned for retry",
+		"path", conflictPath,
+		"installedVersion", installedVersion,
+		"requiredVersion", strings.TrimSpace(requiredVersion),
+	)
+	return true
 }
 
 func (s Service) resolveManagedNPMInstallerNodeRuntime(
@@ -185,6 +253,68 @@ func managedNPMPackageSpec(spec ManagedNPMPackageInstallerSpec) string {
 		return packageName
 	}
 	return packageName + "@" + version
+}
+
+func managedNPMBinEEXISTPath(result InstallCommandResult) (string, bool) {
+	output := result.Stderr + "\n" + result.Stdout
+	if !strings.Contains(strings.ToLower(output), "eexist") {
+		return "", false
+	}
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		const npmPathPrefix = "npm error path "
+		if strings.HasPrefix(trimmed, npmPathPrefix) {
+			path := strings.TrimSpace(strings.TrimPrefix(trimmed, npmPathPrefix))
+			if path != "" {
+				return path, true
+			}
+		}
+		const fileExistsPrefix = "File exists:"
+		if idx := strings.Index(trimmed, fileExistsPrefix); idx >= 0 {
+			path := strings.TrimSpace(trimmed[idx+len(fileExistsPrefix):])
+			if path != "" {
+				return path, true
+			}
+		}
+	}
+	return "", false
+}
+
+func managedNPMBinConflictMatchesInstallTarget(conflictPath, installPrefix, binaryName string) bool {
+	conflictPath = cleanNonEmptyPath(conflictPath)
+	if conflictPath == "" {
+		return false
+	}
+	for _, candidate := range managedNPMBinPathCandidates(installPrefix, binaryName) {
+		if conflictPath == cleanNonEmptyPath(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func managedNPMBinPathCandidates(installPrefix, binaryName string) []string {
+	installPrefix = strings.TrimSpace(installPrefix)
+	binaryName = strings.TrimSpace(binaryName)
+	if installPrefix == "" || binaryName == "" {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return []string{
+			filepath.Join(installPrefix, binaryName),
+			filepath.Join(installPrefix, binaryName+".cmd"),
+			filepath.Join(installPrefix, binaryName+".ps1"),
+		}
+	}
+	return []string{filepath.Join(installPrefix, "bin", binaryName)}
+}
+
+func cleanNonEmptyPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
 }
 
 func managedNPMRepairInstallPrefix(existingCLIPath, packageName string) (string, bool) {

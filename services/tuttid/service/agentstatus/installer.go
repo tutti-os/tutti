@@ -358,7 +358,15 @@ func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, v
 	if requiredVersion == "" {
 		return true
 	}
-	return strings.TrimSpace(version) == requiredVersion
+	version = strings.TrimSpace(version)
+	if version == requiredVersion {
+		return true
+	}
+	cmp, ok := compareCodexVersions(version, requiredVersion)
+	if !ok {
+		return false
+	}
+	return cmp >= 0
 }
 
 func (s Service) executeInstaller(
