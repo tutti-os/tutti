@@ -188,6 +188,24 @@ func TestProviderHasAPICredentialCodexConfigTomlInlineKey(t *testing.T) {
 	}
 }
 
+func TestProviderHasAPICredentialCodexAuthJSONAPIKey(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "auth.json"), `{"OPENAI_API_KEY":"sk-test"}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("expected codex auth.json OPENAI_API_KEY to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialCodexAuthJSONEmptyKeyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "auth.json"), `{"OPENAI_API_KEY":"","tokens":{"access_token":"x"}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("empty OPENAI_API_KEY in auth.json must not count as an API credential")
+	}
+}
+
 func TestProviderHasAPICredentialCodexConfigTomlEndpointOnlyIsNotCredential(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".codex", "config.toml"), `

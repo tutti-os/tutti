@@ -165,7 +165,7 @@ Use this shape for new entries:
   `TUTTI_APP_NPM`, managed `PATH`) when user Node is missing. Ensure the Codex
   app-server adapter consumes that provider command resolution; otherwise status
   probes can pass while session startup still fails with `env: node: No such
-  file or directory`. If the CLI path exists but `codex app-server` cannot
+file or directory`. If the CLI path exists but `codex app-server` cannot
   launch, treat the failed probe as a repair trigger so the install action does
   not clear immediately without running an installer.
 - Validation:
@@ -1015,6 +1015,84 @@ delimited by ---`, and the composer skill picker may show partial or
 - Validation:
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
+
+### Codex provider shows login required when only an API key is configured
+
+- Symptom:
+  The environment wizard / dock marks Codex as needing login ("未登录") even
+  though an API key is configured and Codex sessions can already run
+  successfully. Common sources: `OPENAI_API_KEY` in the environment,
+  `api_key` in `~/.codex/config.toml`, or `OPENAI_API_KEY` inside
+  `~/.codex/auth.json` (written by tools such as cc-switch for OpenRouter /
+  custom providers with `requires_openai_auth = true`).
+- Quick checks:
+  Run `codex login status` (often prints `Not logged in`). Confirm a credential
+  via `echo $OPENAI_API_KEY`, `grep -E 'api_key' ~/.codex/config.toml`, or
+  checking that `~/.codex/auth.json` exists and contains a non-empty
+  `OPENAI_API_KEY` field. If `auth.json` is missing while cc-switch still has a
+  current Codex provider, re-apply / switch that provider so it rewrites
+  `auth.json`.
+- Root cause:
+  `codex login status` only reflects a ChatGPT OAuth session. API-key billing
+  (env, config.toml, or auth.json `OPENAI_API_KEY`) is invisible to that
+  command, so tuttid used to treat the provider as `auth_required` and block
+  the wizard even though the runtime can authenticate with the key. Separately,
+  if `auth.json` is deleted while config still points at a custom provider with
+  `requires_openai_auth = true`, app-server `account/read` returns
+  `requiresOpenaiAuth` with a null account and the AgentGUI login gate appears.
+- Fix:
+  Provider status should call `providerHasAPICredential` for Codex the same way
+  it does for Claude Code, including `auth.json` `OPENAI_API_KEY`. When an API
+  key is present, report auth as authenticated with method `apiKey` / label
+  `API Usage Billing` instead of requiring login. A bare custom base URL
+  without a credential must not trigger this override. Keep `auth.json` in sync
+  with the active API-key provider (or restore it from the provider switcher).
+- Validation:
+  Add or update `agentstatus` tests for Codex API-key-without-login readiness
+  (env, config.toml, and auth.json), then run
+  `cd services/tuttid && go test ./service/agentstatus`.
+
+### Codex custom model_provider mixes official models, duplicates replies, or shows metadata warnings
+
+- Symptom:
+  With `model_provider` set to a custom endpoint (for example OpenRouter via
+  cc-switch) and `model` set to a vendor id such as `minimax/minimax-m2.5` or
+  `openai/gpt-5.5-pro`:
+  1. The composer model menu lists official GPT ids plus the configured custom
+     id.
+  2. A simple greeting turn shows the same assistant reply twice.
+  3. A yellow system notice says `Model metadata for \`...\` not found.
+     Defaulting to fallback metadata`.
+- Quick checks:
+  Inspect `~/.codex/config.toml` for non-empty `model_provider` other than
+  `openai`, plus the top-level `model`. Export a Tutti log pack and open the
+  matching `agent-sessions/codex/.../messages.jsonl`: look for two completed
+  assistant text rows with identical body and different `messageId`s in one
+  turn, plus an `agent_system_notice` warning carrying the metadata text.
+  Session `runtimeContext.configOptions[model].options` should list only the
+  configured model after the fix.
+- Root cause:
+  1. Menu: tuttid always merged Codex `model/list` (official ids) with
+     `applyConfiguredDefaultModel`, which only appends the configured custom
+     id. Custom providers cannot serve those official ids.
+  2. Duplicate reply: app-server finalizes `agentMessage` on `item/completed`
+     and repeats the same text inside `turn/completed`. `ApplyAssistantFinalText`
+     opened a new segment whenever `assistantSegmentCompleted` was true, so the
+     identical replay became a second bubble.
+  3. Metadata warning: Codex itself emits the diagnostic for unknown custom
+     model ids; Tutti forwarded it as a runtime system notice. Users cannot act
+     on it from the transcript.
+- Fix:
+  When `model_provider` is custom and `model` is set, the Codex model catalog
+  returns only that configured model. Ignore identical final-text replays after
+  a completed assistant segment (distinct follow-up text still opens a new
+  segment). Drop Codex model-metadata fallback warnings in the conversation
+  projection the same way skills-context-budget diagnostics are dropped.
+- Validation:
+  Run
+  `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,
+  `cd services/tuttid && go test ./service/agent -run TestAgentModelCatalog`,
+  and the AgentGUI projection spec covering Codex diagnostic notice drops.
 
 ### Codex app-server subagent output appears as the parent reply
 

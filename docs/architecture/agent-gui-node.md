@@ -721,13 +721,15 @@ safe to treat as finished.
 state. Consumers that make decisions (queued-prompt drain, composer busy)
 must derive it locally with `deriveSubmitAvailability` from
 `@tutti-os/agent-activity-core` (turn lifecycle + `runtimeContext.
-backgroundAgents`, mirroring `submitAvailabilityForAuthoritySession` in
-`packages/agent/daemon/runtime/controller.go`), so a stale wire copy can never
-contradict the lifecycle. The wire value remains for display and for records
-without a lifecycle (non-migrated providers keep their status-token
-fallbacks). The Go/TS derivations are pinned to each other by the parity
-tables in `packages/agent/daemon/runtime/submit_availability_parity_test.go`
-and `packages/agent/activity-core/src/selectors.test.ts`.
+backgroundAgents`), so a stale wire copy can never contradict the lifecycle.
+The wire value remains for display and for records without a lifecycle
+(non-migrated providers keep their status-token fallbacks). On this release
+line the daemon still derives wire availability via reporter phase mapping
+plus `reconcileFinishedTurnStatus` (including `background_agent`); the
+unified Go helper `submitAvailabilityForAuthoritySession` from ADR 0008 is
+not present here. Pin the TS derivation with
+`packages/agent/activity-core/src/selectors.test.ts` until that Go helper is
+backported together with its parity table.
 When a runtime snapshot regresses after a terminal turn, first inspect
 `agent.activity.reconcile.trace` for the exact source that upserted the older
 session state. Reconcile fixes should target that owner and ordering path; do

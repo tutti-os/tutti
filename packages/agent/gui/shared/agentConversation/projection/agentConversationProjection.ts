@@ -31,6 +31,8 @@ export interface AgentConversationProjectionOptions {
 const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
 const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT =
   "skill descriptions were shortened to fit the 2% skills context budget";
+const CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT =
+  "defaulting to fallback metadata";
 
 export function projectAgentConversationVM(
   detail: WorkspaceAgentSessionDetailViewModel,
@@ -266,7 +268,7 @@ function dropCodexRuntimeDiagnosticNotices(
       continue;
     }
     const messages = row.messages.filter(
-      (message) => !isCodexSkillsContextBudgetNotice(message)
+      (message) => !isCodexRuntimeDiagnosticNotice(message)
     );
     if (messages.length === 0 && row.thinking.length === 0) {
       continue;
@@ -280,7 +282,7 @@ function dropCodexRuntimeDiagnosticNotices(
   return filteredRows;
 }
 
-function isCodexSkillsContextBudgetNotice(
+function isCodexRuntimeDiagnosticNotice(
   message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
@@ -294,7 +296,10 @@ function isCodexSkillsContextBudgetNotice(
     .filter(Boolean)
     .join("\n")
     .toLowerCase();
-  return text.includes(CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT);
+  return (
+    text.includes(CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT) ||
+    text.includes(CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT)
+  );
 }
 
 function dropRedundantErrorWarningNotices(

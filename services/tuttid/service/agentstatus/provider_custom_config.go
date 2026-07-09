@@ -44,7 +44,7 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 	}
 	switch provider {
 	case agentprovider.Codex:
-		return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key")
+		return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key") || s.codexAuthJSONHasAPIKey()
 	case agentprovider.ClaudeCode:
 		return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
 	default:
@@ -57,7 +57,8 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 // via env vars or on-disk config. This is the signal that usage is billed to an
 // API account rather than a Console/subscription session, and it overrides
 // whatever `claude auth status` reports (which only reflects the stored OAuth
-// session, not env/settings credentials).
+// session, not env/settings credentials). Used for Claude Code and Codex today;
+// other providers return false until credential env/config detection is added.
 func (s Service) providerHasAPICredential(provider string) bool {
 	for _, key := range providerCredentialEnvVars(provider) {
 		if strings.TrimSpace(s.lookupEnv(key)) != "" {
@@ -66,7 +67,7 @@ func (s Service) providerHasAPICredential(provider string) bool {
 	}
 	switch provider {
 	case agentprovider.Codex:
-		return s.codexConfigDeclares("api_key")
+		return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
 	case agentprovider.ClaudeCode:
 		return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
 	default:
@@ -165,6 +166,32 @@ func (s Service) codexConfigDeclares(keys ...string) bool {
 		}
 	}
 	return false
+}
+
+// codexAuthJSONHasAPIKey reports whether ~/.codex/auth.json (or $CODEX_HOME)
+// stores a non-empty OPENAI_API_KEY. Tools such as cc-switch write custom
+// provider keys there (not as config.toml api_key); Codex treats that field as
+// an API-key login and can run without a ChatGPT OAuth session.
+func (s Service) codexAuthJSONHasAPIKey() bool {
+	codexHome := strings.TrimSpace(s.lookupEnv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	content, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	if err != nil {
+		return false
+	}
+	var parsed struct {
+		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return false
+	}
+	return strings.TrimSpace(parsed.OpenAIAPIKey) != ""
 }
 
 // claudeSettingsDeclares reports whether ~/.claude/settings.json sets any of

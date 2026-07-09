@@ -635,9 +635,11 @@ test("a present turn lifecycle resolves the display status entirely", () => {
   );
 });
 
-// PARITY TABLE: mirrored in Go at
-// packages/agent/daemon/runtime/submit_availability_parity_test.go — keep the
-// two tables identical (the Go side owns the derivation semantics).
+// Contract table for deriveSubmitAvailability. On main this is mirrored by
+// packages/agent/daemon/runtime/submit_availability_parity_test.go against
+// submitAvailabilityForAuthoritySession (ADR 0008). That Go helper/table is
+// not on release/0704 yet, so this TS table alone pins the consumer-side
+// derivation used by AgentGUI and the queued-prompt drain coordinator.
 const deriveSubmitAvailabilityParityCases: Array<{
   name: string;
   input: DeriveSubmitAvailabilityInput;

@@ -107,15 +107,30 @@ func (c *CachedAgentModelCatalog) listCodexModels(ctx context.Context) (AgentMod
 		lister = CodexCLIModelLister{}
 	}
 	listResult, err := lister.ListModels(ctx)
+	configuredModel := readCodexConfiguredDefaultModel()
+	models := applyConfiguredDefaultModel(
+		listResult.Models,
+		configuredModel,
+		"Codex configured custom model",
+	)
+	source := "codex-cli"
+	// Custom model_provider endpoints (OpenRouter, etc.) do not serve the
+	// official model/list ids. Expose only the configured model so the
+	// composer menu matches what the session can actually run.
+	if err == nil && codexUsesCustomModelProvider() && configuredModel != "" {
+		models = []AgentModelOption{{
+			ID:          configuredModel,
+			DisplayName: configuredModel,
+			Description: "Codex configured custom model",
+			IsDefault:   true,
+		}}
+		source = "codex-configured-model"
+	}
 	result := AgentModelCatalogResult{
 		Provider:  agentprovider.Codex,
-		Source:    "codex-cli",
+		Source:    source,
 		FetchedAt: now,
-		Models: applyConfiguredDefaultModel(
-			listResult.Models,
-			readCodexConfiguredDefaultModel(),
-			"Codex configured custom model",
-		),
+		Models:    models,
 	}
 	c.writeCodexCache(now, result, err)
 	return cloneAgentModelCatalogResult(result), err

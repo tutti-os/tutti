@@ -419,6 +419,15 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 				"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-msg", "delta": "the repo.",
 			})
+			// The real app-server finalizes the assistant message item with
+			// item/completed and later repeats the same text inside the
+			// turn/completed payload (confirmed via exported live session
+			// transcripts). Keep the scripted connection faithful to that
+			// double-report so adapter tests exercise the same contract.
+			c.notify(appServerNotifyItemCompleted, map[string]any{
+				"threadId": "codex-thread-1", "turnId": "turn-1",
+				"item": map[string]any{"type": "agentMessage", "id": "item-msg", "text": "I'll check the repo."},
+			})
 			c.notify(appServerNotifyItemStarted, map[string]any{
 				"threadId": "codex-thread-1", "turnId": "turn-1", "startedAtMs": 1750000000000,
 				"item": map[string]any{
@@ -1210,18 +1219,24 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 		t.Fatalf("turn/start input = %#v", turnStart["input"])
 	}
 
-	messages := eventsOfType(events, activityshared.EventMessageAppended)
-	var assistantText, thinkingText string
-	for _, event := range messages {
+	// Contract: one answer per turn. The app-server reports the final
+	// assistant text twice (item/completed and the turn/completed payload);
+	// the adapter must surface exactly one completed assistant message, not
+	// one per report.
+	var completedAssistant []string
+	var thinkingText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
 		switch event.Payload.Role {
 		case activityshared.MessageRoleAssistant:
-			assistantText = event.Payload.Content
+			if event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				completedAssistant = append(completedAssistant, event.Payload.Content)
+			}
 		case activityshared.MessageRole(RoleAssistantThinking):
 			thinkingText = event.Payload.Content
 		}
 	}
-	if assistantText != "I'll check the repo." {
-		t.Fatalf("assistant content = %q, want streamed message", assistantText)
+	if len(completedAssistant) != 1 || completedAssistant[0] != "I'll check the repo." {
+		t.Fatalf("completed assistant messages = %#v, want exactly one %q", completedAssistant, "I'll check the repo.")
 	}
 	if thinkingText != "Need context." {
 		t.Fatalf("thinking content = %q", thinkingText)

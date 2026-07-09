@@ -118,6 +118,15 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if finalText == "" {
 		return
 	}
+	// Codex app-server reports the same final assistant text twice: once via
+	// item/completed(agentMessage) and again inside the turn/completed payload.
+	// When the current segment is already completed with identical text, keep
+	// it closed so turn/completed does not open a duplicate assistant message.
+	if n.assistantSegmentCompleted &&
+		n.assistantMessageID != "" &&
+		strings.TrimSpace(n.assistantContent.String()) == finalText {
+		return
+	}
 	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
 		n.assistantMessageID = newID()
 		n.assistantSegmentCompleted = false

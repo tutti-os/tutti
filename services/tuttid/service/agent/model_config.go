@@ -13,6 +13,23 @@ const (
 )
 
 func readCodexConfiguredDefaultModel() string {
+	return readCodexTopLevelConfigString("model")
+}
+
+func readCodexConfiguredModelProvider() string {
+	return readCodexTopLevelConfigString("model_provider")
+}
+
+// codexUsesCustomModelProvider reports whether config.toml routes Codex
+// through a non-default model_provider (for example openrouter via cc-switch).
+// Empty and "openai" keep the official model/list catalog; anything else is
+// treated as a custom endpoint whose official GPT ids are not servable.
+func codexUsesCustomModelProvider() bool {
+	provider := strings.ToLower(strings.TrimSpace(readCodexConfiguredModelProvider()))
+	return provider != "" && provider != "openai"
+}
+
+func readCodexTopLevelConfigString(key string) string {
 	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if codexHome == "" {
 		home, err := os.UserHomeDir()
@@ -21,7 +38,7 @@ func readCodexConfiguredDefaultModel() string {
 		}
 		codexHome = filepath.Join(home, ".codex")
 	}
-	return readTopLevelTomlString(filepath.Join(codexHome, codexConfigFileName), "model")
+	return readTopLevelTomlString(filepath.Join(codexHome, codexConfigFileName), key)
 }
 
 func readClaudeCodeConfiguredDefaultModel() string {

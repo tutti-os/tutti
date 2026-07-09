@@ -412,6 +412,68 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
   });
 
+  // Contract: Codex-internal diagnostics that the user cannot act on must not
+  // surface as transcript rows. "Model metadata ... not found. Defaulting to
+  // fallback metadata" fires on every turn when config.toml points at a
+  // custom-provider model id (e.g. an OpenRouter model), exactly like the
+  // skills-context-budget warning above.
+  it("drops Codex model metadata fallback runtime warning notices", () => {
+    const metadataWarning =
+      "Model metadata for `minimax/minimax-m2.5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "你好" },
+            userMessages: [{ id: "user-1", body: "你好" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: metadataWarning,
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    source: "runtime",
+                    title: metadataWarning,
+                    detail: metadataWarning,
+                    retryable: null
+                  }
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "你好！有什么我可以帮你的吗？"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages[0]?.id).toBe("assistant-1");
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
+  });
+
   it("groups bridge thinking inside completed tool disclosures", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

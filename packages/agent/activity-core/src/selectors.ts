@@ -172,13 +172,16 @@ export interface DeriveSubmitAvailabilityInput {
   runtimeContext?: Record<string, unknown> | null;
 }
 
-// SOURCE OF TRUTH: packages/agent/daemon/runtime/controller.go
-// (submitAvailabilityForAuthoritySession). The wire submitAvailability is a
-// value derived by the daemon from the same inputs; consumers making
-// decisions must derive locally so a stale wire copy can never contradict
-// the turn lifecycle (the record's turnLifecycle and runtimeContext refresh
-// together on every state patch, while a dropped patch leaves both stale in
-// a mutually consistent way).
+// Consumer-side derivation for decision paths (queued-prompt drain, composer
+// busy). The wire submitAvailability is daemon-derived and can go stale when
+// a patch is dropped; consumers must derive locally from turnLifecycle +
+// runtimeContext so those two fields stay mutually consistent even when both
+// are stale together.
+//
+// On release/0704 the daemon still maps wire availability through reporter
+// phase helpers and reconcileFinishedTurnStatus rather than a single
+// submitAvailabilityForAuthoritySession helper (ADR 0008). Keep this TS
+// derivation as the authoritative decision path until that Go helper lands.
 //
 // Returns null when the record carries no turn lifecycle at all — such
 // records (non-migrated providers, fresh sessions) must keep their

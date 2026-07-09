@@ -69,6 +69,56 @@ func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
 	}
 }
 
+// TestApplyAssistantFinalTextIgnoresIdenticalReplayAfterCompletedSegment pins
+// the Codex app-server double-report contract: the final assistant text
+// arrives once via item/completed (agentMessage) and again inside the
+// turn/completed payload. Re-applying the identical text after the segment
+// completed must not open a second assistant message — a live minimax turn
+// (exported session 8eecfc8c) rendered the same reply twice because of this.
+func TestApplyAssistantFinalTextIgnoresIdenticalReplayAfterCompletedSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	finalText := "你好！有什么我可以帮你的吗？"
+
+	// item/completed(agentMessage) path finalizes the answer segment.
+	normalizer.ApplyAssistantFinalText(finalText)
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	if got := len(activityMessagesWithRole(first, activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("item/completed assistant messages = %d, want 1", got)
+	}
+
+	// turn/completed replays the identical final text.
+	normalizer.ApplyAssistantFinalText(finalText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	if duplicates := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant); len(duplicates) != 0 {
+		t.Fatalf("turn/completed assistant messages = %#v, want none (identical final text already projected)", duplicates)
+	}
+}
+
+// TestApplyAssistantFinalTextKeepsDistinctFollowUpSegment guards the other
+// side of the contract: a genuinely different agentMessage after a completed
+// segment (multi-answer turns) must still surface as its own message.
+func TestApplyAssistantFinalTextKeepsDistinctFollowUpSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+
+	normalizer.ApplyAssistantFinalText("First answer.")
+	if got := len(activityMessagesWithRole(normalizer.Finish(session, "turn-1", messageStreamStateCompleted), activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("first segment assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantFinalText("Second answer.")
+	events := normalizer.FinishCompleted(session, "turn-1")
+	messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 || messages[0].Payload.Content != "Second answer." {
+		t.Fatalf("follow-up assistant messages = %#v, want exactly one %q", messages, "Second answer.")
+	}
+}
+
 func TestApplyAssistantFinalTextReplacesEditedSnapshot(t *testing.T) {
 	t.Parallel()
 
