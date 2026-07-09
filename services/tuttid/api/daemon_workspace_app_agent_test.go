@@ -143,7 +143,7 @@ func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesNarrowExplicitProviders
 
 func installedWorkspaceAppCenter(appID string) stubWorkspaceAppCenterService {
 	return stubWorkspaceAppCenterService{
-		listFn: func(_ context.Context, workspaceID string) ([]workspacebiz.WorkspaceApp, error) {
+		listFn: func(_ context.Context, _ string) ([]workspacebiz.WorkspaceApp, error) {
 			return []workspacebiz.WorkspaceApp{workspaceAppForRouteTest(appID, workspacebiz.AppRuntimeStatusIdle)}, nil
 		},
 	}
