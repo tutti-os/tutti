@@ -3374,7 +3374,7 @@ function nodeDefaultDraftContentKey(
 function normalizeProjectDraftPath(
   value: string | null | undefined
 ): string | null {
-  const normalized = value?.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalized = value?.trim().replace(/[\\/]+$/, "");
   return normalized ? normalized : null;
 }
 

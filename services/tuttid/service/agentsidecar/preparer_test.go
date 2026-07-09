@@ -26,6 +26,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	userCodexConfig := strings.Join([]string{
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
+		`model_catalog_json = "cc-switch-model-catalog.json"`,
 		`service_tier = "default"`,
 		"",
 		"[model_providers.proxy]",
@@ -33,6 +34,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		"",
 	}, "\n")
 	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "cc-switch-model-catalog.json"), []byte(`{"models":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
@@ -116,6 +120,13 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
 		t.Fatalf("codex auth not exposed: %v", err)
+	}
+	catalogLink, err := os.Lstat(filepath.Join(codexHome, "cc-switch-model-catalog.json"))
+	if err != nil {
+		t.Fatalf("codex model catalog not exposed: %v", err)
+	}
+	if catalogLink.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("codex model catalog should be a symlink, got mode %v", catalogLink.Mode())
 	}
 	for _, rel := range []string{
 		filepath.Join("plugins", "cache"),

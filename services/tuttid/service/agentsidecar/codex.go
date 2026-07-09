@@ -132,7 +132,10 @@ func exposeUserCodexFiles(codexHome string) error {
 	if err := exposeUserCodexPluginState(codexHome, userCodexHome); err != nil {
 		return err
 	}
-	return exposeUserCodexConfig(codexHome, userCodexHome)
+	if err := exposeUserCodexConfig(codexHome, userCodexHome); err != nil {
+		return err
+	}
+	return exposeUserCodexModelCatalog(codexHome, userCodexHome)
 }
 
 // exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
@@ -229,6 +232,65 @@ func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	}
 	if err := copyFile(source, target, 0o600); err != nil {
 		return fmt.Errorf("copy codex config: %w", err)
+	}
+	return nil
+}
+
+// exposeUserCodexModelCatalog symlinks the model_catalog_json file referenced
+// by the user's config into the sandboxed CODEX_HOME. Codex resolves this path
+// relative to CODEX_HOME, so without exposing it the config loader fails with
+// "file not found" on thread/start.
+//
+// The function reads the already-copied config from codexHome, extracts the
+// model_catalog_json value, and if it is a relative path, symlinks (or copies
+// as fallback) the corresponding file from the user's real ~/.codex into the
+// sandbox. Absolute paths and missing keys are no-ops.
+func exposeUserCodexModelCatalog(codexHome string, userCodexHome string) error {
+	configPath := filepath.Join(codexHome, "config.toml")
+	contentBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read codex config for model catalog path: %w", err)
+	}
+	lines := strings.Split(strings.ReplaceAll(string(contentBytes), "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		value, ok := codexConfigStringAssignmentValue(trimmed, "model_catalog_json")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil
+		}
+		if filepath.IsAbs(value) {
+			return nil
+		}
+		source := filepath.Join(userCodexHome, value)
+		if _, err := os.Stat(source); err != nil {
+			return nil
+		}
+		target := filepath.Join(codexHome, value)
+		if _, err := os.Lstat(target); err == nil {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return fmt.Errorf("create codex model catalog parent dir: %w", err)
+		}
+		if err := os.Symlink(source, target); err != nil {
+			if copyErr := copyFile(source, target, 0o600); copyErr != nil {
+				return fmt.Errorf("expose codex model catalog %s: symlink failed: %v; copy failed: %w", value, err, copyErr)
+			}
+		}
+		return nil
 	}
 	return nil
 }
