@@ -18,7 +18,9 @@ func (api DaemonAPI) GetWorkspaceAppAgentPreferences(
 ) (tuttigenerated.GetWorkspaceAppAgentPreferencesResponseObject, error) {
 	workspaceID, appID, errResponse := validateWorkspaceAppPath(request.WorkspaceID, request.AppID)
 	if errResponse != nil {
-		return writeGetWorkspaceAppAgentPreferencesError(workspacedata.ErrWorkspaceAppNotFound), nil
+		return tuttigenerated.GetWorkspaceAppAgentPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: *errResponse,
+		}, nil
 	}
 	if err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID); err != nil {
 		return writeGetWorkspaceAppAgentPreferencesError(err), nil
@@ -158,15 +160,27 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderComposerOptions(
 	if err := api.ensureWorkspaceAppInstalled(ctx, workspaceID, appID); err != nil {
 		return writeGetWorkspaceAppAgentProviderComposerOptionsError(err), nil
 	}
+	requestedProviders := []tuttigenerated.WorkspaceAgentProvider{request.Provider}
+	visibleProviders, err := api.workspaceAppAgentStatusProviders(ctx, &requestedProviders)
+	if err != nil {
+		return writeGetWorkspaceAppAgentProviderComposerOptionsError(err), nil
+	}
+	if len(*visibleProviders) == 0 {
+		return writeGetWorkspaceAppAgentProviderComposerOptionsError(
+			apierrors.InvalidRequest(
+				apierrors.ReasonAgentProviderUnavailable,
+				apierrors.WithDeveloperMessage("agent provider is not visible to this workspace app"),
+				apierrors.WithParams(map[string]any{"provider": request.Provider}),
+			),
+		), nil
+	}
 
 	body := request.Body
 	if body == nil {
 		body = &tuttigenerated.GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody{}
 	}
-	if body.WorkspaceId == nil || strings.TrimSpace(*body.WorkspaceId) == "" {
-		workspaceIDCopy := workspaceID
-		body.WorkspaceId = &workspaceIDCopy
-	}
+	workspaceIDCopy := workspaceID
+	body.WorkspaceId = &workspaceIDCopy
 
 	response, err := api.GetAgentProviderComposerOptions(ctx, tuttigenerated.GetAgentProviderComposerOptionsRequestObject{
 		Provider: request.Provider,
@@ -200,6 +214,10 @@ func (api DaemonAPI) ensureWorkspaceAppInstalled(ctx context.Context, workspaceI
 func writeGetWorkspaceAppAgentPreferencesError(err error) tuttigenerated.GetWorkspaceAppAgentPreferencesResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.GetWorkspaceAppAgentPreferences400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
 	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceAppNotFound:
 		return tuttigenerated.GetWorkspaceAppAgentPreferences404JSONResponse{
 			WorkspaceAppNotFoundErrorJSONResponse: workspaceAppNotFoundError(protocolErr),
@@ -236,6 +254,10 @@ func writeGetWorkspaceAppAgentProviderStatusesError(err error) tuttigenerated.Ge
 func writeGetWorkspaceAppAgentProviderComposerOptionsError(err error) tuttigenerated.GetWorkspaceAppAgentProviderComposerOptionsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.GetWorkspaceAppAgentProviderComposerOptions400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
 	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceAppNotFound:
 		return tuttigenerated.GetWorkspaceAppAgentProviderComposerOptions404JSONResponse{
 			WorkspaceAppNotFoundErrorJSONResponse: workspaceAppNotFoundError(protocolErr),

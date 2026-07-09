@@ -58,7 +58,7 @@ Store runtime profiles with Tutti provider IDs such as `claude-code`, `codex`, `
 
 ## Provider Detection
 
-Create a small runtime wrapper. Server run endpoints should derive a managed context from request headers:
+Create the shared runtime once with the full default provider set. This snippet only registers execution plugins; each server run endpoint must still derive its managed context with `createManagedAgentRunContextFromHeaders(...)` as shown under Runtime Execution.
 
 ```ts
 import {

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 	"golang.org/x/mod/semver"
 )
 
@@ -65,7 +66,7 @@ func parseRemoteCatalogForTuttiVersion(data []byte, tuttiVersion string) ([]App,
 		appsByID[appID] = app
 	}
 
-	hostVersion, hostVersionValid := normalizeCatalogSemver(tuttiVersion)
+	hostVersion, hostVersionValid := tuttitypes.NormalizeSemver(tuttiVersion)
 	if document.Compatibility != nil {
 		if document.Compatibility.Apps == nil {
 			return nil, errors.New("app catalog compatibility.apps is required")
@@ -79,7 +80,7 @@ func parseRemoteCatalogForTuttiVersion(data []byte, tuttiVersion string) ([]App,
 			seenMinimums := make(map[string]struct{}, len(entries))
 			selected, hasSelected := appsByID[appID]
 			for _, entry := range entries {
-				minimum, ok := normalizeCatalogSemver(entry.MinTuttiVersion)
+				minimum, ok := tuttitypes.NormalizeSemver(entry.MinTuttiVersion)
 				if !ok {
 					return nil, fmt.Errorf("app catalog compatibility app %q has invalid minTuttiVersion %q", appID, entry.MinTuttiVersion)
 				}
@@ -87,6 +88,9 @@ func parseRemoteCatalogForTuttiVersion(data []byte, tuttiVersion string) ([]App,
 					return nil, fmt.Errorf("app catalog compatibility app %q has duplicate minTuttiVersion %q", appID, entry.MinTuttiVersion)
 				}
 				seenMinimums[minimum] = struct{}{}
+				if !hostVersionValid || semver.Compare(minimum, hostVersion) > 0 {
+					continue
+				}
 				app, err := parseRemoteCatalogApp(entry.App)
 				if err != nil {
 					return nil, err
@@ -94,7 +98,7 @@ func parseRemoteCatalogForTuttiVersion(data []byte, tuttiVersion string) ([]App,
 				if strings.TrimSpace(app.Manifest.AppID) != appID {
 					return nil, fmt.Errorf("app catalog compatibility app %q manifest appId mismatch", appID)
 				}
-				version, ok := normalizeCatalogSemver(app.Manifest.Version)
+				version, ok := tuttitypes.NormalizeSemver(app.Manifest.Version)
 				if !ok {
 					return nil, fmt.Errorf("app catalog compatibility app %q has invalid version %q", appID, app.Manifest.Version)
 				}
@@ -102,9 +106,6 @@ func parseRemoteCatalogForTuttiVersion(data []byte, tuttiVersion string) ([]App,
 					return nil, fmt.Errorf("app catalog compatibility app %q has duplicate version %q", appID, app.Manifest.Version)
 				}
 				seenVersions[version] = struct{}{}
-				if !hostVersionValid || semver.Compare(minimum, hostVersion) > 0 {
-					continue
-				}
 				if !hasSelected || compareCatalogAppVersions(app, selected) > 0 {
 					selected = app
 					hasSelected = true
@@ -147,23 +148,20 @@ func parseRemoteCatalogApp(entry remoteCatalogApp) (App, error) {
 }
 
 func compareCatalogAppVersions(left App, right App) int {
-	leftVersion, leftOK := normalizeCatalogSemver(left.Manifest.Version)
-	rightVersion, rightOK := normalizeCatalogSemver(right.Manifest.Version)
+	leftVersion, leftOK := tuttitypes.NormalizeSemver(left.Manifest.Version)
+	rightVersion, rightOK := tuttitypes.NormalizeSemver(right.Manifest.Version)
 	if leftOK && rightOK {
 		if comparison := semver.Compare(leftVersion, rightVersion); comparison != 0 {
 			return comparison
 		}
 	}
-	return strings.Compare(left.Manifest.Version, right.Manifest.Version)
-}
-
-func normalizeCatalogSemver(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", false
+	if leftOK != rightOK {
+		if leftOK {
+			return 1
+		}
+		return -1
 	}
-	normalized := "v" + strings.TrimPrefix(value, "v")
-	return normalized, semver.IsValid(normalized)
+	return strings.Compare(left.Manifest.Version, right.Manifest.Version)
 }
 
 func isSupportedRemoteCatalogSchemaVersion(schemaVersion string) bool {

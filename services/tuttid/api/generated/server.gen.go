@@ -14794,6 +14794,22 @@ func (response GetWorkspaceAppAgentPreferences200JSONResponse) VisitGetWorkspace
 	return err
 }
 
+type GetWorkspaceAppAgentPreferences400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetWorkspaceAppAgentPreferences400JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkspaceAppAgentPreferences401JSONResponse struct{ UnauthorizedErrorJSONResponse }
 
 func (response GetWorkspaceAppAgentPreferences401JSONResponse) VisitGetWorkspaceAppAgentPreferencesResponse(w http.ResponseWriter) error {

@@ -9,8 +9,26 @@ import (
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 )
+
+func TestDaemonAPIRoutesWorkspaceAppAgentPreferencesRejectInvalidPath(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/%20/apps/canvas/preferences/agent",
+		nil,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
 
 func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesDefaultToEnabledAgentTargets(t *testing.T) {
 	t.Parallel()
@@ -138,6 +156,88 @@ func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesNarrowExplicitProviders
 	}
 	if !reflect.DeepEqual(capturedProviders, []string{"codex"}) {
 		t.Fatalf("providers = %#v, want [codex]", capturedProviders)
+	}
+}
+
+func TestDaemonAPIRoutesWorkspaceAppComposerOptionsBindPathWorkspace(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			composerOptionsFn: func(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
+				if input.WorkspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", input.WorkspaceID)
+				}
+				return agentservice.ComposerOptions{Provider: input.Provider}, nil
+			},
+		},
+		AgentTargetService: stubAgentTargetService{
+			listFn: func(context.Context) ([]agenttargetbiz.Target, error) {
+				return []agenttargetbiz.Target{{
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				}}, nil
+			},
+		},
+		AppCenterService: installedWorkspaceAppCenter("canvas"),
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/apps/canvas/agent-providers/codex/composer-options",
+		map[string]any{"workspaceId": "ws-2"},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIRoutesWorkspaceAppComposerOptionsRejectHiddenProvider(t *testing.T) {
+	t.Parallel()
+
+	composerOptionsCalled := false
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			composerOptionsFn: func(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
+				composerOptionsCalled = true
+				return agentservice.ComposerOptions{Provider: input.Provider}, nil
+			},
+		},
+		AgentTargetService: stubAgentTargetService{
+			listFn: func(context.Context) ([]agenttargetbiz.Target, error) {
+				return []agenttargetbiz.Target{{
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				}}, nil
+			},
+		},
+		AppCenterService: installedWorkspaceAppCenter("canvas"),
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/apps/canvas/agent-providers/opencode/composer-options",
+		nil,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if composerOptionsCalled {
+		t.Fatal("composer options service called for hidden provider")
 	}
 }
 

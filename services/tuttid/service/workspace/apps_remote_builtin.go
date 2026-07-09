@@ -13,6 +13,7 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 	"golang.org/x/mod/semver"
 )
 
@@ -66,10 +67,15 @@ func shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin 
 }
 
 func compareWorkspaceAppVersions(left string, right string) int {
-	leftVersion, leftOK := normalizeWorkspaceAppSemver(left)
-	rightVersion, rightOK := normalizeWorkspaceAppSemver(right)
+	leftVersion, leftOK := tuttitypes.NormalizeSemver(left)
+	rightVersion, rightOK := tuttitypes.NormalizeSemver(right)
 	if !leftOK || !rightOK {
-		return 0
+		if strings.TrimSpace(left) == strings.TrimSpace(right) {
+			return 0
+		}
+		// Legacy non-SemVer packages have no safe ordering. Preserve the remote
+		// catalog's former authoritative-on-change behavior for those versions.
+		return 1
 	}
 	comparison := semver.Compare(leftVersion, rightVersion)
 	if comparison == 0 && strings.TrimSpace(left) != strings.TrimSpace(right) {
@@ -78,15 +84,6 @@ func compareWorkspaceAppVersions(left string, right string) int {
 		return 1
 	}
 	return comparison
-}
-
-func normalizeWorkspaceAppSemver(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", false
-	}
-	normalized := "v" + strings.TrimPrefix(value, "v")
-	return normalized, semver.IsValid(normalized)
 }
 
 func (s *AppCenterService) materializeEmbeddedArchiveBuiltinPackage(ctx context.Context, builtin builtinapps.App) (workspacebiz.AppPackage, error) {

@@ -141,12 +141,32 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       !desktopPreferencesService.store.enableOpenCodeAgent);
   const subscribeAgentProviderVisibility = (
     listener: () => void
-  ): (() => void) => subscribe(desktopPreferencesService.store, listener);
+  ): (() => void) => {
+    let enableCursorAgent = desktopPreferencesService.store.enableCursorAgent;
+    let enableOpenCodeAgent =
+      desktopPreferencesService.store.enableOpenCodeAgent;
+    return subscribe(desktopPreferencesService.store, () => {
+      const nextEnableCursorAgent =
+        desktopPreferencesService.store.enableCursorAgent;
+      const nextEnableOpenCodeAgent =
+        desktopPreferencesService.store.enableOpenCodeAgent;
+      if (
+        nextEnableCursorAgent === enableCursorAgent &&
+        nextEnableOpenCodeAgent === enableOpenCodeAgent
+      ) {
+        return;
+      }
+      enableCursorAgent = nextEnableCursorAgent;
+      enableOpenCodeAgent = nextEnableOpenCodeAgent;
+      listener();
+    });
+  };
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
     reporterService
   });
   let disposeAgentOutcomeNotificationController: (() => void) | null = null;
+  let disposeAgentProviderVisibilityRefresh: (() => void) | null = null;
   let releasedWindowAnalytics = false;
   const releaseWindowAnalytics = () => {
     if (releasedWindowAnalytics) {
@@ -156,6 +176,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     window.removeEventListener("beforeunload", releaseWindowAnalytics);
     disposeAgentOutcomeNotificationController?.();
     disposeAgentOutcomeNotificationController = null;
+    disposeAgentProviderVisibilityRefresh?.();
+    disposeAgentProviderVisibilityRefresh = null;
     predefinePageviewAnalytics.dispose();
     daemonConnectionAnalytics.release();
   };
@@ -214,9 +236,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     ),
     workspaceUserProjectService
   });
-  subscribeAgentProviderVisibility(() => {
-    void workspaceAgentServices.agentsService.refresh().catch(() => {});
-  });
+  disposeAgentProviderVisibilityRefresh = subscribeAgentProviderVisibility(
+    () => {
+      void workspaceAgentServices.agentsService.refresh().catch(() => {});
+    }
+  );
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),

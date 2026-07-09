@@ -523,6 +523,48 @@ func TestParseRemoteCatalogRejectsInvalidCompatibility(t *testing.T) {
 	}
 }
 
+func TestParseRemoteCatalogIgnoresFutureCompatibilityPayload(t *testing.T) {
+	legacy := remoteCatalogAppForVersionTest("versioned-app", "1.0.0")
+	document := remoteCatalogDocument{
+		SchemaVersion: remoteCatalogSchemaVersionV1,
+		Apps:          []remoteCatalogApp{legacy},
+		Compatibility: &remoteCatalogCompatibility{Apps: map[string][]remoteCatalogCompatibilityEntry{
+			"versioned-app": {
+				{
+					MinTuttiVersion: "99.0.0",
+					App: remoteCatalogApp{
+						Manifest: workspacebiz.AppManifest{Version: "future-invalid-payload"},
+					},
+				},
+			},
+		}},
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatalf("marshal catalog: %v", err)
+	}
+	apps, err := parseRemoteCatalogForTuttiVersion(data, "0.12.0")
+	if err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+	if app := findCatalogAppForTest(apps, "versioned-app"); app == nil || app.Manifest.Version != "1.0.0" {
+		t.Fatalf("versioned app = %#v, want legacy 1.0.0", app)
+	}
+}
+
+func TestCompareCatalogAppVersionsPrefersSemver(t *testing.T) {
+	t.Parallel()
+
+	valid := App{Manifest: workspacebiz.AppManifest{Version: "1.0.0"}}
+	invalid := App{Manifest: workspacebiz.AppManifest{Version: "beta"}}
+	if comparison := compareCatalogAppVersions(valid, invalid); comparison <= 0 {
+		t.Fatalf("valid vs invalid comparison = %d, want positive", comparison)
+	}
+	if comparison := compareCatalogAppVersions(invalid, valid); comparison >= 0 {
+		t.Fatalf("invalid vs valid comparison = %d, want negative", comparison)
+	}
+}
+
 func remoteCatalogAppForVersionTest(appID string, version string) remoteCatalogApp {
 	manifest := remoteCatalogManifestForTest(appID)
 	manifest.Version = version

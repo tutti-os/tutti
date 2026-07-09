@@ -2570,6 +2570,15 @@ func TestShouldUseRemoteBuiltinNeverDowngradesInstalledPackage(t *testing.T) {
 	if !shouldUseRemoteBuiltin(appPackage, builtin) {
 		t.Fatal("newer remote builtin should replace installed package")
 	}
+	appPackage.Version = "legacy-a"
+	builtin.Manifest.Version = "legacy-b"
+	if !shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("changed non-semver remote builtin should replace installed package")
+	}
+	builtin.Manifest.Version = "legacy-a"
+	if shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("equal non-semver remote builtin must not replace installed package")
+	}
 }
 
 func TestAppCenterServiceKeepsUserPackageWhenRemoteBuiltinSharesAppID(t *testing.T) {

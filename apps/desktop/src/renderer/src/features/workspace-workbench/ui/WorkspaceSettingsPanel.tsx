@@ -168,7 +168,9 @@ const workspaceSettingsDefaultAgentProviders = [
 function isWorkspaceSettingsDefaultAgentProvider(
   provider: DesktopAgentProvider
 ): provider is DesktopDefaultAgentProvider {
-  return provider === "codex" || provider === "claude-code";
+  return workspaceSettingsDefaultAgentProviders.includes(
+    provider as DesktopDefaultAgentProvider
+  );
 }
 
 export function WorkspaceSettingsPanel({

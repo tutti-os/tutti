@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { buildTuttiAppCatalog } from "./build-tutti-app-catalog.mjs";
 import { publishTuttiAppMetadata } from "./publish-tutti-app-metadata.mjs";
+import { verifyTuttiAppReleaseArtifacts } from "./verify-tutti-app-release-artifacts.mjs";
 
 export async function publishTuttiAppCatalog(options) {
   const appIds = [...new Set(options.appIds ?? [])]
@@ -70,6 +71,11 @@ export async function publishTuttiAppCatalog(options) {
       existingCatalogPath: mode === "merge" ? existing?.path : null,
       versionsFiles,
       outputPath: catalogPath
+    });
+    await verifyTuttiAppReleaseArtifacts({
+      catalogFile: catalogPath,
+      versionsFiles,
+      verifyArtifacts: true
     });
     try {
       putObject({

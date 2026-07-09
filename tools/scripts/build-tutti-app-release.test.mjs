@@ -27,6 +27,10 @@ const stagingCatalogWorkflowPath = new URL(
   "../../.github/workflows/publish-tutti-app-catalog-staging.yml",
   import.meta.url
 );
+const publishCatalogToolPath = new URL(
+  "../../packages/workspace/app-release-tools/bin/publish-tutti-app-catalog.mjs",
+  import.meta.url
+);
 const releaseReferencePath = new URL(
   "../../services/tuttid/service/workspace/agent_workspace_app_reference/references/github-actions-release.md",
   import.meta.url
@@ -248,12 +252,18 @@ test("buildTuttiAppVersions preserves history and is idempotent", async () => {
     ]
   );
 
-  await buildTuttiAppVersions({
+  const idempotentOutput = path.join(tempDir, "idempotent.json");
+  const idempotentResult = await buildTuttiAppVersions({
     existingVersionsPath: secondOutput,
     releaseFiles: [second],
     minTuttiVersion: "0.12.0",
-    outputPath: path.join(tempDir, "idempotent.json")
+    outputPath: idempotentOutput
   });
+  assert.deepEqual(idempotentResult.versions, result.versions);
+  assert.equal(
+    await readFile(idempotentOutput, "utf8"),
+    await readFile(secondOutput, "utf8")
+  );
 });
 
 test("buildTuttiAppVersions rejects changed compatibility for an immutable version", async () => {
@@ -691,6 +701,18 @@ test("Tutti app catalog workflow aggregates version indexes", async () => {
   assert.match(workflow, /--catalog-file tutti-app-catalog\/catalog\.json/);
   assert.doesNotMatch(workflow, /aws s3 cp tutti-app-catalog\/catalog\.json/);
   assert.match(workflow, /cloudfront create-invalidation/);
+});
+
+test("publishTuttiAppCatalog verifies before uploading catalog metadata", async () => {
+  const source = await readFile(publishCatalogToolPath, "utf8");
+  const verifyIndex = source.indexOf("await verifyTuttiAppReleaseArtifacts({");
+  const uploadIndex = source.indexOf("putObject({");
+  assert.notEqual(verifyIndex, -1);
+  assert.notEqual(uploadIndex, -1);
+  assert.ok(
+    verifyIndex < uploadIndex,
+    "catalog verification must precede upload"
+  );
 });
 
 test("Tutti app staging catalog workflow uses an isolated prefix", async () => {

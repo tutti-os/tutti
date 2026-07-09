@@ -33,12 +33,13 @@ reader limit. The older `--release-file` form remains available for legacy
 tooling but does not create compatibility metadata.
 
 The verify command checks release and catalog metadata against the referenced
-artifact downloads. When both `--catalog-file` and `--release-file` are passed,
-catalog entries for those apps must exactly match the corresponding release metadata
-before artifact SHA-256 and size checks run.
+artifact downloads. When `--catalog-file` is combined with `--release-file` or
+`--versions-file`, catalog entries for those apps must exactly match the
+corresponding release metadata before artifact SHA-256 and size checks run.
 
 `publish-tutti-app-metadata` and `publish-tutti-app-catalog` update mutable S3
 JSON objects with ETag conditional writes and retry on concurrent changes. They
 bootstrap a missing versions index from the exact immutable release currently
 present in the legacy catalog; they never infer legacy compatibility from a
-newer `latest.json` object.
+newer `latest.json` object. Catalog publication validates all metadata and
+downloads referenced artifacts before attempting the conditional S3 write.

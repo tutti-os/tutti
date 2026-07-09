@@ -62,14 +62,14 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Analytics
 
-| Variable                         | Owner document                                              | Purpose                                                            |
-| -------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
-| `TUTTI_APP_VERSION`              | [Analytics Tracking](../architecture/analytics-tracking.md) | Supplies the shared desktop app version propagated to tuttid.      |
-| `TUTTI_ANALYTICS_DISABLED`       | [Analytics Tracking](../architecture/analytics-tracking.md) | Disables DataFinder reporting and constructs `NoopReporter`.       |
-| `TUTTI_ANALYTICS_APP_ID`         | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder app id for development or test backends.  |
-| `TUTTI_ANALYTICS_APP_KEY`        | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder app key for development or test backends. |
-| `TUTTI_ANALYTICS_CHANNEL_DOMAIN` | [Analytics Tracking](../architecture/analytics-tracking.md) | Overrides the DataFinder reporting endpoint.                       |
-| `TUTTI_ANALYTICS_APP_VERSION`    | [Analytics Tracking](../architecture/analytics-tracking.md) | Compatibility override for the analytics app version common param. |
+| Variable                         | Owner document                                                                                                   | Purpose                                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `TUTTI_APP_VERSION`              | [Analytics Tracking](../architecture/analytics-tracking.md), [Workspace App Catalog](./workspace-app-catalog.md) | Supplies the shared desktop app version used for analytics and workspace-app compatibility selection. |
+| `TUTTI_ANALYTICS_DISABLED`       | [Analytics Tracking](../architecture/analytics-tracking.md)                                                      | Disables DataFinder reporting and constructs `NoopReporter`.                                          |
+| `TUTTI_ANALYTICS_APP_ID`         | [Analytics Tracking](../architecture/analytics-tracking.md)                                                      | Overrides the DataFinder app id for development or test backends.                                     |
+| `TUTTI_ANALYTICS_APP_KEY`        | [Analytics Tracking](../architecture/analytics-tracking.md)                                                      | Overrides the DataFinder app key for development or test backends.                                    |
+| `TUTTI_ANALYTICS_CHANNEL_DOMAIN` | [Analytics Tracking](../architecture/analytics-tracking.md)                                                      | Overrides the DataFinder reporting endpoint.                                                          |
+| `TUTTI_ANALYTICS_APP_VERSION`    | [Analytics Tracking](../architecture/analytics-tracking.md)                                                      | Compatibility override for the analytics app version common param.                                    |
 
 ## Logging And Diagnostics
 

@@ -121,7 +121,7 @@ jobs:
     uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
     with:
       app_id: your-app-id
-      min_tutti_version: "0.0.0"
+      min_tutti_version: "REQUIRED_MIN_TUTTI_VERSION"
       package_command: pnpm package:tutti
       package_dir: build/tutti-app/package
       icon_path: build/tutti-app/package/icon.png

@@ -957,6 +957,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAppAgentPreferencesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "404":

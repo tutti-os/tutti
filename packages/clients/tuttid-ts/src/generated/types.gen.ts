@@ -3850,6 +3850,10 @@ export type GetWorkspaceAppAgentPreferencesData = {
 
 export type GetWorkspaceAppAgentPreferencesErrors = {
   /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
    * Bearer token is missing or invalid
    */
   401: ApiErrorResponse;
