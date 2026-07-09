@@ -678,6 +678,11 @@ const deriveSubmitAvailabilityParityCases: Array<{
     expected: { state: "available" }
   },
   {
+    name: "settled with stale activeTurnId -> available",
+    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "settled" } },
+    expected: { state: "available" }
+  },
+  {
     name: "settled with live background agents (count) -> blocked/background_agent",
     input: {
       turnLifecycle: { activeTurnId: null, phase: "settled" },
@@ -737,6 +742,16 @@ test("resolveSubmitAvailability supersedes stale wire blocks with derivable reas
     resolveSubmitAvailability({
       turnLifecycle: { activeTurnId: null, phase: "settled" },
       submitAvailability: { state: "blocked", reason: "active_turn" }
+    }),
+    { state: "available" }
+  );
+});
+
+test("resolveSubmitAvailability keeps explicit wire available over a derived active turn block", () => {
+  assert.deepEqual(
+    resolveSubmitAvailability({
+      turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
+      submitAvailability: { state: "available" }
     }),
     { state: "available" }
   );

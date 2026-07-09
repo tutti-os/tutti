@@ -378,33 +378,15 @@ test("desktop agent activity adapter passes through unrelated create failures", 
   );
 });
 
-test("desktop agent activity adapter requires an injected session event subscription", async () => {
+test("desktop agent activity adapter leaves session event subscription to the service runtime", () => {
   const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient(),
     runtimeApi: createRuntimeApi(diagnostics)
   });
 
-  await assert.rejects(
-    adapter.subscribeSessionEvents({
-      agentSessionId: "agent-session-1",
-      onEvent: () => {},
-      signal: new AbortController().signal,
-      workspaceId
-    }),
-    /subscription is unavailable/
-  );
-
-  assert.deepEqual(diagnostics, [
-    {
-      details: {
-        error: "workspace agent session event subscription is unavailable"
-      },
-      event: "agent.gui.session_event.subscribe.unavailable",
-      level: "warn",
-      workspaceId
-    }
-  ]);
+  assert.equal(adapter.subscribeSessionEvents, undefined);
+  assert.deepEqual(diagnostics, []);
 });
 
 test("desktop agent activity adapter submits interactive responses through tuttid", async () => {

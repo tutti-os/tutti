@@ -3,6 +3,7 @@ import {
   createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
   isWorkspaceAgentActivityRuntimeSessionOrigin,
   mergeWorkspaceAgentActivityDurableAndOverlayMessages,
+  minFiniteDurableWorkspaceAgentActivityMessageVersion,
   selectWorkspaceAgentActivityOverlayMessages,
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN
 } from "./workspaceAgentActivityTypes";
@@ -34,6 +35,46 @@ describe("isWorkspaceAgentActivityRuntimeSessionOrigin", () => {
 });
 
 describe("selectWorkspaceAgentActivityOverlayMessages", () => {
+  it("excludes optimistic and timeline projection messages from durable paging cursors", () => {
+    expect(
+      minFiniteDurableWorkspaceAgentActivityMessageVersion([
+        userMessage({
+          messageId: "timeline-ms-user",
+          version: 1_760_000_000_000,
+          payload: {
+            __agentGuiTimelineProjection: true,
+            text: "timeline projection"
+          }
+        }),
+        userMessage({
+          messageId: "optimistic-user",
+          version: 0,
+          payload: {
+            __agentGuiOptimisticPrompt: true,
+            text: "optimistic"
+          }
+        }),
+        userMessage({
+          messageId: "durable-user",
+          version: 7,
+          payload: { text: "durable" }
+        })
+      ])
+    ).toBe(7);
+    expect(
+      minFiniteDurableWorkspaceAgentActivityMessageVersion([
+        userMessage({
+          messageId: "timeline-ms-user",
+          version: 1_760_000_000_000,
+          payload: {
+            __agentGuiTimelineProjection: true,
+            text: "timeline projection"
+          }
+        })
+      ])
+    ).toBeNull();
+  });
+
   it("uses the same client submit derived message id for optimistic and durable user messages", () => {
     const messageId =
       createWorkspaceAgentActivityUserMessageIdFromClientSubmitId("submit-1");

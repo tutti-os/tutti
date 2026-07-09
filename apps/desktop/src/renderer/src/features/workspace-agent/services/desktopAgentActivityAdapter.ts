@@ -177,19 +177,6 @@ export function createDesktopAgentActivityAdapter({
         result
       );
     },
-    subscribeSessionEvents(input) {
-      void runtimeApi.logTerminalDiagnostic({
-        details: {
-          error: "workspace agent session event subscription is unavailable"
-        },
-        event: "agent.gui.session_event.subscribe.unavailable",
-        level: "warn",
-        workspaceId: input.workspaceId
-      });
-      return Promise.reject(
-        new Error("Workspace agent session event subscription is unavailable.")
-      );
-    },
     async createSession(input) {
       reportDesktopAgentSubmitTrace(runtimeApi, {
         agentSessionId: input.agentSessionId?.trim() ?? null,

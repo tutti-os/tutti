@@ -166,6 +166,10 @@ export interface DerivedSubmitAvailability {
 
 export interface DeriveSubmitAvailabilityInput {
   turnLifecycle?: {
+    /**
+     * Hosts should clear this when a turn settles. Consumers still treat the
+     * terminal phase as authoritative when older runtimes leave a stale id.
+     */
     activeTurnId?: string | null;
     phase?: string | null;
   } | null;
@@ -173,12 +177,10 @@ export interface DeriveSubmitAvailabilityInput {
 }
 
 // SOURCE OF TRUTH: packages/agent/daemon/runtime/controller.go
-// (submitAvailabilityForAuthoritySession). The wire submitAvailability is a
-// value derived by the daemon from the same inputs; consumers making
-// decisions must derive locally so a stale wire copy can never contradict
-// the turn lifecycle (the record's turnLifecycle and runtimeContext refresh
-// together on every state patch, while a dropped patch leaves both stale in
-// a mutually consistent way).
+// (submitAvailabilityForAuthoritySession). The wire submitAvailability carries
+// host authority. Local derivation fills missing/stale derived reasons from the
+// turn lifecycle, but must not turn an explicit wire available state into a
+// local block.
 //
 // Returns null when the record carries no turn lifecycle at all — such
 // records (non-migrated providers, fresh sessions) must keep their
@@ -198,7 +200,7 @@ export function deriveSubmitAvailability(
   // Defensive vs Go: a lifecycle with an activeTurnId but no phase counts as
   // a live turn here (the daemon never emits that shape; treating it as busy
   // is the safe direction for queue dispatch).
-  if (activeTurnId !== "" || isLiveTurnLifecyclePhase(phase)) {
+  if (isLiveTurnLifecyclePhase(phase) || (activeTurnId !== "" && !phase)) {
     return { state: "blocked", reason: "active_turn" };
   }
   if (runtimeContextHasLiveBackgroundAgents(record.runtimeContext)) {
@@ -225,13 +227,19 @@ export interface ResolveSubmitAvailabilityInput extends DeriveSubmitAvailability
   } | null;
 }
 
-// Effective submit availability for decision consumers: derivation-first
-// (ADR 0008), wire fallback for lifecycle-less records, and unknown wire
-// block reasons always respected.
+// Effective submit availability for decision consumers: wire available is
+// authoritative; local derivation fills missing/stale derived blocks; and
+// unknown wire block reasons always stay respected.
 export function resolveSubmitAvailability(
   record: ResolveSubmitAvailabilityInput
 ): { state: string; reason?: string } {
   const wire = record.submitAvailability;
+  if (wire?.state === "available") {
+    return {
+      state: "available",
+      ...(wire.reason ? { reason: wire.reason } : {})
+    };
+  }
   const derived = deriveSubmitAvailability(record);
   if (!derived) {
     return wire?.state

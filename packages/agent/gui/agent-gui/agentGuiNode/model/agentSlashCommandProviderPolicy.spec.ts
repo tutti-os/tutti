@@ -107,6 +107,16 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual(["compact", "status", "fast", "goal", "review"]);
   });
 
+  it("drops goal commands when goal control is not supported", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "codex",
+        commands: [{ name: "goal" }],
+        goalSupported: false
+      }).map((command) => command.name)
+    ).not.toContain("goal");
+  });
+
   it("keeps noisy Claude Code discovered commands out of the slash palette", () => {
     expect(
       resolveSlashCommandsForProvider({

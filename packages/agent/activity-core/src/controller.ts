@@ -383,6 +383,10 @@ export function createAgentActivityController({
     if (!normalizedAgentSessionId) {
       return () => {};
     }
+    const subscribeSessionEvents = adapter.subscribeSessionEvents;
+    if (!subscribeSessionEvents) {
+      return () => {};
+    }
 
     const existing = retainedStreams.get(normalizedAgentSessionId);
     if (existing) {
@@ -403,19 +407,18 @@ export function createAgentActivityController({
     const streamAfterVersion =
       afterVersion ?? latestAgentActivityMessageVersion(cachedMessages);
 
-    void adapter
-      .subscribeSessionEvents({
-        workspaceId,
-        agentSessionId: normalizedAgentSessionId,
-        afterVersion: streamAfterVersion,
-        signal: abortController.signal,
-        onEvent(event) {
-          if (!abortController.signal.aborted) {
-            updateSnapshot((current) => applySessionEvent(current, event));
-          }
-        },
-        onError
-      })
+    void subscribeSessionEvents({
+      workspaceId,
+      agentSessionId: normalizedAgentSessionId,
+      afterVersion: streamAfterVersion,
+      signal: abortController.signal,
+      onEvent(event) {
+        if (!abortController.signal.aborted) {
+          updateSnapshot((current) => applySessionEvent(current, event));
+        }
+      },
+      onError
+    })
       .then((unsubscribe) => {
         const retained = retainedStreams.get(normalizedAgentSessionId);
         if (!retained || retained.abortController.signal.aborted) {

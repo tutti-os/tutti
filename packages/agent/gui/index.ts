@@ -71,6 +71,7 @@ export { AgentActivityHostProvider } from "./agentActivityHost";
 export type { AgentActivityHostProviderProps } from "./agentActivityHost";
 export {
   AgentActivityRuntimeProvider,
+  agentActivityRuntimeCapabilityEnabled,
   getAgentActivityRuntime,
   getOptionalAgentActivityRuntime,
   resetAgentActivityRuntimeForTests,
@@ -81,6 +82,8 @@ export {
 } from "./agentActivityRuntime";
 export type {
   AgentActivityRuntime,
+  AgentActivityRuntimeCapabilities,
+  AgentActivityRuntimeCapabilityKey,
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
   AgentActivityRuntimePromptContentBlock,

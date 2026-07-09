@@ -1588,19 +1588,10 @@ export const en = {
       }
     },
     workspaceConnecting: "Preparing your room…",
-    /** Shown while entering a room you do not own (shared / invite join). */
-    workspaceConnectingOthersSpace: "Entering the room…",
     unknownProvider: "Unknown provider",
     messages: {
-      inviteCodeGenerated: "Invite code generated",
-      inviteRevoked: "Invite revoked",
       roomOpened: "Room opened",
       roomOpenedIssue: "Room opened. Preparing to focus the task.",
-      recognizedSharedRoomNeedInvite:
-        "Recognized a shared room. Enter the invite code to join the canvas.",
-      roomJoined: "Joined room",
-      roomJoinedIssue: "Joined room. Preparing to focus the task.",
-      inviteCodeRequired: "Enter an invite code",
       issueTitleRequired: "Enter a task title first",
       issueCreated: "Task created",
       issueUpdated: "Task updated",
@@ -1628,15 +1619,6 @@ export const en = {
       issueUploaded: "Uploaded {{count}} file(s)",
       issueDirectInstallUnsupported:
         "Installing Agents is not supported here yet",
-      currentInviteMissingCode:
-        "The current invite is missing an invite code. Refresh the share panel and try again.",
-      roomShareLinkCopied: "Share link copied",
-      visitorShareLinkCopied: "Guest share link copied",
-      visitorShareOptionsUpdated: "Guest share settings updated",
-      visitorShareDisabled: "Guest sharing is off",
-      visitorShareTokenUnavailable:
-        "Guest link already exists and settings were updated. The old raw link cannot be read again.",
-      postCreateInviteLinkCopied: "Invite link copied",
       collabCompleted: "This collaboration task is complete",
       githubLoginCompleted: "GitHub sign-in complete",
       googleLoginCompleted: "Google sign-in complete"
@@ -2355,44 +2337,6 @@ export const en = {
       skillSourceCustom: "Custom",
       noSkillsFound: "No skills found."
     }
-  },
-  workspaceSharePanel: {
-    title: "Share room",
-    /** Room top bar — primary 一级, size sm (28px); modal Copy link uses default (32px) */
-    topBarAction: "Share",
-    subtitle:
-      "You are the room owner. You can invite {{count}} more collaborators.",
-    closeAria: "Close share dialog",
-    membersSection: "Members",
-    ownerRole: "Room owner",
-    inviteSlots: "Invites",
-    invitedCount: "Invited {{current}}/{{max}}",
-    slotLabel: "Invite slot {{n}}",
-    slotSubUsedShort: "Invite link used",
-    slotSubPending: "Link generated, not yet used",
-    slotSubEmpty: "Pending invite",
-    statusPending: "Unused",
-    statusUsed: "Used",
-    statusRevoked: "Revoked",
-    statusEmpty: "Empty",
-    copyInviteLink: "Copy link",
-    revoke: "Revoke",
-    emptyStateUsed: "Used; can reissue",
-    emptyStatePending: "Pending invite",
-    generateLink: "Generate link",
-    memberViaInvite: "Joined via invite link",
-    memberRole: "Collaborator",
-    visitorShareTitle: "Guest sharing",
-    visitorShareEnabled: "On",
-    visitorShareDisabled: "Off",
-    visitorShareContextLabel: "Let guests view messages and file tree",
-    visitorShareContextHint:
-      "Guests can only read. They cannot edit, use terminals, or run agents.",
-    visitorShareNoLinkHint:
-      "Generate a guest link so anyone with the link can open this room read-only.",
-    visitorShareGetLink: "Get share link",
-    visitorShareCopyLink: "Copy share link",
-    visitorShareDisable: "Turn off sharing"
   },
   settingsPanel: enSettingsPanel,
   websiteNode: enWebsiteNode,

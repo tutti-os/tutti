@@ -108,6 +108,7 @@ const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
 const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [];
 const OPENCODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
+  { name: "goal" },
   { name: REVIEW_COMMAND }
 ];
 const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
@@ -185,6 +186,7 @@ export function resolveSlashCommandsForProvider({
   hasCompactableContext = true,
   compactSupported,
   planSupported = false,
+  goalSupported = true,
   browserSupported = false,
   computerSupported = false
 }: {
@@ -198,6 +200,7 @@ export function resolveSlashCommandsForProvider({
    */
   compactSupported?: boolean | null;
   planSupported?: boolean;
+  goalSupported?: boolean;
   browserSupported?: boolean;
   computerSupported?: boolean;
 }): AgentSlashCommand[] {
@@ -217,6 +220,7 @@ export function resolveSlashCommandsForProvider({
     const commandName = normalizedCommandName(entry);
     return (
       commandName !== "plan" &&
+      (goalSupported !== false || commandName !== "goal") &&
       isSlashPaletteCommandVisible(provider, commandName)
     );
   });

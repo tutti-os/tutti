@@ -1999,7 +1999,11 @@ describe("AgentGUINode", () => {
     expect(emptyHeading).toBeTruthy();
     expect(iconEffect).toBeNull();
     expect(launchpadIcon).not.toBeNull();
-    expect(launchpadIcon?.children).toHaveLength(7);
+    expect(
+      launchpadIcon?.querySelectorAll(
+        ".agent-gui-node__provider-rail-launchpad-item"
+      )
+    ).toHaveLength(7);
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
@@ -7686,6 +7690,10 @@ function createViewModel(
     isInterrupting: false,
     isCancelPending: false,
     isRespondingApproval: false,
+    canCancel: true,
+    canSubmitInteractive: true,
+    canGoalControl: true,
+    canUploadAttachment: true,
     promptImagesSupported: true,
     compactSupported: null,
     goalPauseSupported: true,

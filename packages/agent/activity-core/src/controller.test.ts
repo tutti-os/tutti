@@ -1167,6 +1167,67 @@ test("controller cleans failed retained streams so callers can retry", async () 
   });
 });
 
+test("controller no-ops retained streams when adapter does not support session event subscriptions", async () => {
+  const adapter = fakeAdapter({ omitSubscribe: true });
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  const release = controller.retainSessionEvents({
+    agentSessionId: "session-1",
+    onError(error) {
+      throw error;
+    }
+  });
+  release();
+
+  await controller.load();
+
+  assert.equal(controller.getSnapshot().sessions.length, 1);
+});
+
+test("controller does not auto-retain loaded sessions when auto retention is disabled", async () => {
+  const messageRequests: Array<{
+    afterVersion?: number;
+    agentSessionId: string;
+  }> = [];
+  const adapter = fakeAdapter({
+    omitSubscribe: true,
+    listSessions: () =>
+      Promise.resolve({
+        sessions: [
+          createSession({
+            agentSessionId: "session-1",
+            messageVersion: 4,
+            status: "working"
+          })
+        ]
+      }),
+    listSessionMessages(input) {
+      messageRequests.push({
+        afterVersion: input.afterVersion,
+        agentSessionId: input.agentSessionId
+      });
+      return Promise.resolve({
+        hasMore: false,
+        latestVersion: 4,
+        messages: []
+      });
+    }
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    autoRetainSessionEvents: false,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+  await Promise.resolve();
+
+  assert.deepEqual(messageRequests, []);
+});
+
 test("controller ignores events for other workspaces", () => {
   const controller = createAgentActivityController({
     adapter: fakeAdapter(),
@@ -1637,10 +1698,11 @@ function fakeAdapter(
     listSessions?: AgentActivityAdapter["listSessions"];
     listSessionMessages?: AgentActivityAdapter["listSessionMessages"];
     loadComposerOptions?: AgentActivityAdapter["loadComposerOptions"];
-    subscribe?: AgentActivityAdapter["subscribeSessionEvents"];
+    omitSubscribe?: boolean;
+    subscribe?: NonNullable<AgentActivityAdapter["subscribeSessionEvents"]>;
   } = {}
 ): AgentActivityAdapter {
-  return {
+  const adapter: AgentActivityAdapter = {
     listSessions:
       overrides.listSessions ??
       (() =>
@@ -1658,11 +1720,6 @@ function fakeAdapter(
     loadComposerOptions:
       overrides.loadComposerOptions ??
       ((input) => Promise.resolve(createComposerOptions(input))),
-    subscribeSessionEvents:
-      overrides.subscribe ??
-      (() => {
-        return Promise.resolve(() => {});
-      }),
     createSession: async (input) => ({
       workspaceId: input.workspaceId,
       agentSessionId: "session-1",
@@ -1718,6 +1775,14 @@ function fakeAdapter(
     }),
     deleteSession: async () => ({ removed: true })
   };
+  if (!overrides.omitSubscribe) {
+    adapter.subscribeSessionEvents =
+      overrides.subscribe ??
+      (() => {
+        return Promise.resolve(() => {});
+      });
+  }
+  return adapter;
 }
 
 function createComposerOptions(

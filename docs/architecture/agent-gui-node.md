@@ -897,17 +897,18 @@ Message Center and AgentGUI should keep AgentActivityRuntime as the source of
 truth instead of guessing that a completed turn with stale active-turn fields is
 safe to treat as finished.
 
-`submitAvailability` on the wire is a daemon-derived value, not independent
-state. Consumers that make decisions (queued-prompt drain, composer busy)
-must derive it locally with `deriveSubmitAvailability` from
-`@tutti-os/agent-activity-core` (turn lifecycle + `runtimeContext.
-backgroundAgents`, mirroring `submitAvailabilityForAuthoritySession` in
-`packages/agent/daemon/runtime/controller.go`), so a stale wire copy can never
-contradict the lifecycle. The wire value remains for display and for records
-without a lifecycle (non-migrated providers keep their status-token
-fallbacks). The Go/TS derivations are pinned to each other by the parity
-tables in `packages/agent/daemon/runtime/submit_availability_parity_test.go`
-and `packages/agent/activity-core/src/selectors.test.ts`.
+`submitAvailability` on the wire is host authority, while
+`deriveSubmitAvailability` is a compatibility guard for missing or stale
+derived block reasons. Consumers that make decisions (queued-prompt drain,
+composer busy) should call `resolveSubmitAvailability` from
+`@tutti-os/agent-activity-core`: an explicit wire `available` stays available,
+unknown wire block reasons stay blocked, and locally derived `active_turn`,
+`waiting`, or `background_agent` blocks fill the remaining gaps. A settled
+turn lifecycle is terminal even if an older runtime forgot to clear
+`activeTurnId`; hosts should still clear it when settling a turn. The Go/TS
+derivations are pinned to each other by the parity tables in
+`packages/agent/daemon/runtime/submit_availability_parity_test.go` and
+`packages/agent/activity-core/src/selectors.test.ts`.
 When a runtime snapshot regresses after a terminal turn, first inspect
 `agent.activity.reconcile.trace` for the exact source that upserted the older
 session state. Reconcile fixes should target that owner and ordering path; do
@@ -1407,6 +1408,19 @@ commands. It owns or delegates:
 - create, activate, unactivate, send input, cancel, interactive response,
   delete, pin, settings update, and composer option operations
 - diagnostics through `reportDiagnostic`
+
+Runtime capability declarations are also part of this contract. Missing
+capability keys default to enabled for backwards compatibility. Hosts can set
+`capabilities.canCancel`, `canSubmitInteractive`, `canGoalControl`, or
+`canUploadAttachment` to `false` to hide and no-op the corresponding AgentGUI
+UI affordance. `canUploadAttachment` applies to prompt attachment upload paths
+(pasted images, pasted large text, dropped/host-local files) and must not hide
+ordinary `@` references or workspace-reference mention selection.
+When `reportDiagnostic` is omitted, development builds use a low-cost console
+sink for AgentGUI diagnostics such as message page requests/resolutions,
+render-state changes, and caught errors. Hosts can set
+`devDiagnosticConsoleSink: false` to keep a development runtime silent;
+production remains silent by default.
 
 Production AgentGUI code should not call legacy `AgentHostApi.workspaceAgents`
 or `AgentHostApi.agentSessions` as a list, timeline, message, or write source.

@@ -255,6 +255,30 @@ export function isWorkspaceAgentActivityOptimisticMessage(
   return message.payload?.__agentGuiOptimisticPrompt === true;
 }
 
+export function isWorkspaceAgentActivityTimelineProjectionMessage(
+  message: WorkspaceAgentActivityMessage
+): boolean {
+  return message.payload?.__agentGuiTimelineProjection === true;
+}
+
+export function minFiniteDurableWorkspaceAgentActivityMessageVersion(
+  messages: readonly WorkspaceAgentActivityMessage[]
+): number | null {
+  let result: number | null = null;
+  for (const message of messages) {
+    if (
+      !Number.isFinite(message.version) ||
+      isWorkspaceAgentActivityOptimisticMessage(message) ||
+      isWorkspaceAgentActivityTimelineProjectionMessage(message)
+    ) {
+      continue;
+    }
+    result =
+      result === null ? message.version : Math.min(result, message.version);
+  }
+  return result;
+}
+
 export function selectWorkspaceAgentActivityOverlayMessages(input: {
   durableMessages?: readonly WorkspaceAgentActivityMessage[] | null;
   localMessages?: readonly WorkspaceAgentActivityMessage[] | null;

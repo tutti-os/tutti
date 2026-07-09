@@ -149,6 +149,7 @@ describe("useAgentGUINodeController", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     cleanup();
     vi.restoreAllMocks();
     useAccountStore.getState().clear();
@@ -205,6 +206,117 @@ describe("useAgentGUINodeController", () => {
     await Promise.resolve();
 
     expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults runtime capabilities to enabled", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.canCancel).toBe(true);
+    expect(result.current.viewModel.canSubmitInteractive).toBe(true);
+    expect(result.current.viewModel.canGoalControl).toBe(true);
+    expect(result.current.viewModel.canUploadAttachment).toBe(true);
+  });
+
+  it("hides and no-ops runtime features when capabilities are disabled", async () => {
+    const cancel = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      canceled: true,
+      reason: "active_turn_canceled",
+      sessionStatus: "ready"
+    }));
+    const submitInteractive = vi.fn(async () => ({}));
+    const goalControl = vi.fn(async () => ({
+      goal: null,
+      session: agentActivitySessionFromHostSession(
+        agentSession("session-1"),
+        "room-1"
+      )
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      cancel,
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          pendingInteractive: {
+            kind: "approval",
+            requestId: "request-1",
+            toolName: "Run command",
+            status: "waiting",
+            input: {
+              callId: "call-1",
+              options: [
+                { id: "allow_once", label: "Allow once", kind: "allow_once" }
+              ]
+            }
+          }
+        })
+      ),
+      submitInteractive
+    });
+    const runtime = (
+      window as unknown as { agentActivityRuntime: AgentActivityRuntime }
+    ).agentActivityRuntime;
+    runtime.capabilities = {
+      canCancel: false,
+      canSubmitInteractive: false,
+      canGoalControl: false,
+      canUploadAttachment: false
+    };
+    runtime.goalControl = goalControl;
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.canCancel).toBe(false);
+    expect(result.current.viewModel.canSubmitInteractive).toBe(false);
+    expect(result.current.viewModel.canGoalControl).toBe(false);
+    expect(result.current.viewModel.canUploadAttachment).toBe(false);
+    expect(result.current.viewModel.promptImagesSupported).toBe(false);
+    expect(result.current.viewModel.pendingApproval).toBeNull();
+
+    act(() => {
+      result.current.actions.interruptCurrentTurn("stop");
+      result.current.actions.submitInteractivePrompt({
+        requestId: "request-1",
+        optionId: "allow_once"
+      });
+      result.current.actions.goalControl("clear");
+    });
+
+    expect(cancel).not.toHaveBeenCalled();
+    expect(submitInteractive).not.toHaveBeenCalled();
+    expect(goalControl).not.toHaveBeenCalled();
   });
 
   it("loads user projects and reprojects conversations after project updates", async () => {
@@ -856,11 +968,14 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    await waitFor(() => {
-      expect(result.current.viewModel.activeConversationId).toBe(
-        "claude-session"
-      );
-    });
+    await waitFor(
+      () => {
+        expect(result.current.viewModel.activeConversationId).toBe(
+          "claude-session"
+        );
+      },
+      { timeout: 3000 }
+    );
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
       "claude-code"
     );
@@ -11178,6 +11293,102 @@ describe("useAgentGUINodeController", () => {
       source: "agent-gui",
       workspaceId: "room-1"
     });
+  });
+
+  it("uses a development console diagnostic sink when runtime reportDiagnostic is absent", async () => {
+    vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const listSessionTimeline = vi.fn(async () => ({
+      timelineItems: [
+        timelineMessage({
+          agentSessionId: "session-1",
+          id: 1,
+          eventId: "user-1",
+          role: "user",
+          content: "hello",
+          turnId: "turn-1"
+        })
+      ],
+      latestVersion: 1,
+      hasMore: false
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    delete (window as unknown as { agentActivityRuntime: AgentActivityRuntime })
+      .agentActivityRuntime.reportDiagnostic;
+
+    renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        consoleInfo.mock.calls.some(
+          ([prefix, event]) =>
+            prefix === "[agent-gui]" &&
+            event === "agent.gui.messages.initial.resolved"
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("allows development console diagnostics to be disabled", async () => {
+    vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const listSessionTimeline = vi.fn(async () => ({
+      timelineItems: [
+        timelineMessage({
+          agentSessionId: "session-1",
+          id: 1,
+          eventId: "user-1",
+          role: "user",
+          content: "hello",
+          turnId: "turn-1"
+        })
+      ],
+      latestVersion: 1,
+      hasMore: false
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline,
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+    const runtime = (
+      window as unknown as { agentActivityRuntime: AgentActivityRuntime }
+    ).agentActivityRuntime;
+    delete runtime.reportDiagnostic;
+    runtime.devDiagnosticConsoleSink = false;
+
+    renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(listSessionTimeline).toHaveBeenCalled();
+    });
+    expect(consoleInfo).not.toHaveBeenCalledWith(
+      "[agent-gui]",
+      "agent.gui.messages.initial.resolved",
+      expect.anything()
+    );
   });
 
   describe.each(["codex", "claude-code"] as const)(

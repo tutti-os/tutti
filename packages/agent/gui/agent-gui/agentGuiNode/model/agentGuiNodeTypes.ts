@@ -289,6 +289,10 @@ export interface AgentGUINodeViewModel {
   isInterrupting: boolean;
   isCancelPending: boolean;
   isRespondingApproval: boolean;
+  canCancel: boolean;
+  canSubmitInteractive: boolean;
+  canGoalControl: boolean;
+  canUploadAttachment: boolean;
   promptImagesSupported: boolean;
   compactSupported: boolean | null;
   /**

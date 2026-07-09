@@ -52,9 +52,10 @@ It owns:
 - agent activity contracts used by UI packages and host adapters
 - the host adapter interface
 - session and message snapshot state
-- live event subscription lifecycle
+- optional live event subscription lifecycle for hosts that let the core
+  controller manage per-session streams
 - retained stream reference counting when multiple consumers watch the same
-  session
+  session through the optional adapter stream capability
 - message merge, version ordering, and duplicate handling
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
@@ -189,11 +190,17 @@ export interface AgentActivityAdapter {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;
+    beforeVersion?: number;
     limit?: number;
+    order?: AgentActivityMessageOrder;
     signal?: AbortSignal;
   }): Promise<AgentActivityMessagePage>;
 
-  subscribeSessionEvents(input: {
+  loadComposerOptions(
+    input: AgentActivityLoadComposerOptionsInput
+  ): Promise<AgentActivityComposerOptions>;
+
+  subscribeSessionEvents?(input: {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;
@@ -205,16 +212,24 @@ export interface AgentActivityAdapter {
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;
-  sendInput(input: AgentActivitySendInput): Promise<AgentActivitySession>;
+  sendInput(
+    input: AgentActivitySendInput
+  ): Promise<AgentActivitySendInputResult>;
   cancelSession(
     input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivitySession>;
-  respondPermission(
-    input: AgentActivityPermissionResponseInput
+  ): Promise<AgentActivityCancelSessionResult>;
+  goalControl(
+    input: AgentActivityGoalControlInput
+  ): Promise<AgentActivityGoalControlResult>;
+  submitInteractive(
+    input: AgentActivitySubmitInteractiveInput
   ): Promise<unknown>;
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
+  renameSession(
+    input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
 }
 ```
 
@@ -248,6 +263,10 @@ must not synthesize providers for shared or remote targets.
 
 The adapter decides how to connect. The controller decides when to connect,
 when to disconnect, and how to merge the resulting events.
+`subscribeSessionEvents` is optional because some hosts own real-time delivery
+at a service/runtime layer and apply events to the controller from that layer.
+Those hosts should omit the adapter method instead of providing a throwing
+stub.
 
 Hosts may accept older provider/runtime reports with missing transcript
 ownership or ordering fields, but those gaps must be filled before events enter

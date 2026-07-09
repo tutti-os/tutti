@@ -2514,6 +2514,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewModel.isInterrupting ||
         viewModel.isCreatingConversation));
   const showStopButton =
+    viewModel.canCancel &&
     !viewModel.isSubmitting &&
     viewModel.activeLiveState !== "failed" &&
     sessionChrome.auth === null &&
@@ -3081,6 +3082,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       composerFocusRequestSequence,
       isActive,
       promptImagesSupported: viewModel.promptImagesSupported,
+      canGoalControl: viewModel.canGoalControl,
+      canUploadAttachment: viewModel.canUploadAttachment,
       providerSelectLabel: labels.providerSwitchLabel,
       handoffLabel: labels.handoffConversation,
       handoffMenuLabel: labels.handoffConversationMenu,
@@ -3194,6 +3197,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.isInterrupting,
       viewModel.isRespondingApproval,
       viewModel.promptImagesSupported,
+      viewModel.canGoalControl,
+      viewModel.canUploadAttachment,
       viewModel.queuedPrompts,
       viewModel.usage,
       viewModel.workspaceId,
@@ -4626,7 +4631,9 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
   const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
   const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
-  const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
+  const showGoalBanner =
+    composerProps.canGoalControl &&
+    isGoalBannerVisible(goalObjective, goalStatus);
 
   return (
     <div

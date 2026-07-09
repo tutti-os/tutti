@@ -897,6 +897,53 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps /goal as plain prompt text when goal control is disabled", () => {
+    const onDraftContentChange = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        canGoalControl={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "/goal ship it" }
+    });
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(
+      createDraft("/goal ship it")
+    );
+    expect(
+      screen.queryByRole("button", { name: "目标" })
+    ).not.toBeInTheDocument();
+  });
+
   it("opens computer-use setup from Enter when the capability is not installed", async () => {
     const onDraftContentChange = vi.fn();
     const onSettingsChange = vi.fn();
@@ -3983,6 +4030,58 @@ describe("AgentComposer", () => {
     expect(
       screen.queryByTestId("agent-gui-composer-large-text-draft")
     ).not.toBeInTheDocument();
+  });
+
+  it("does not upload pasted large text when attachment upload is disabled", () => {
+    const uploadPromptContent = vi.fn();
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("hello");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        canUploadAttachment={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("mock-paste-large-text"));
+
+    expect(uploadPromptContent).not.toHaveBeenCalled();
+    expect(draftContent.prompt).toBe(
+      "hello\nfirst pasted line\nsecond pasted line"
+    );
+    expect(draftContent.largeTexts ?? []).toEqual([]);
   });
 
   it("lands pasted large text as a file and submits a pasted-text file block", async () => {

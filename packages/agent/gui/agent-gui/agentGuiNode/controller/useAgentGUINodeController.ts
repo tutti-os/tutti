@@ -10,6 +10,7 @@ import { debounce } from "lodash";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
+  agentActivityRuntimeCapabilityEnabled,
   useAgentActivityRuntime,
   useAgentActivitySnapshot,
   type AgentActivityRuntime
@@ -126,6 +127,7 @@ import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/ag
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
 import {
   isWorkspaceAgentActivityOptimisticMessage,
+  minFiniteDurableWorkspaceAgentActivityMessageVersion,
   selectWorkspaceAgentActivityOverlayMessages,
   type WorkspaceAgentActivityMessage,
   type WorkspaceAgentActivityStatePatch,
@@ -542,6 +544,55 @@ type AgentSubmitTraceState = {
   turnId: string | null;
 };
 
+type AgentGUIDiagnosticInput = {
+  details?: Record<string, unknown>;
+  event: string;
+  level?: "debug" | "info" | "warn" | "error";
+  source?: string;
+  workspaceId?: string | null;
+};
+
+function reportAgentGUIDiagnostic(
+  runtime: AgentActivityRuntime,
+  input: AgentGUIDiagnosticInput
+): void {
+  const reportDiagnostic = runtime.reportDiagnostic;
+  try {
+    if (reportDiagnostic) {
+      void Promise.resolve(reportDiagnostic.call(runtime, input)).catch(
+        () => {}
+      );
+      return;
+    }
+    if (!agentGUIDevConsoleDiagnosticSinkEnabled(runtime)) {
+      return;
+    }
+    const level = input.level ?? "info";
+    const consoleMethod =
+      level === "error"
+        ? console.error
+        : level === "warn"
+          ? console.warn
+          : level === "debug"
+            ? console.debug
+            : console.info;
+    consoleMethod.call(console, "[agent-gui]", input.event, input);
+  } catch {
+    // Diagnostic logging must never affect Agent GUI behavior.
+  }
+}
+
+function agentGUIDevConsoleDiagnosticSinkEnabled(
+  runtime: AgentActivityRuntime
+): boolean {
+  return (
+    runtime.devDiagnosticConsoleSink !== false &&
+    typeof process !== "undefined" &&
+    (process.env.NODE_ENV === "development" ||
+      process.env.AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE === "1")
+  );
+}
+
 function reportAgentGUIRuntimeError(input: {
   agentSessionId?: string | null;
   context?: Record<string, unknown>;
@@ -552,10 +603,6 @@ function reportAgentGUIRuntimeError(input: {
   runtime: AgentActivityRuntime;
   workspaceId: string;
 }): void {
-  const reportDiagnostic = input.runtime.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
   const details: Record<string, unknown> = {
     error: normalizeAgentGUIDiagnosticError(input.error),
     errorCode: getAgentGUIErrorCode(input.error),
@@ -567,19 +614,13 @@ function reportAgentGUIRuntimeError(input: {
       : {}),
     ...(input.context ?? {})
   };
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(input.runtime, {
-        details,
-        event: "agent.gui.caught_error",
-        level: "error",
-        source: "agent-gui",
-        workspaceId: input.workspaceId
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect the Agent GUI recovery path.
-  }
+  reportAgentGUIDiagnostic(input.runtime, {
+    details,
+    event: "agent.gui.caught_error",
+    level: "error",
+    source: "agent-gui",
+    workspaceId: input.workspaceId
+  });
 }
 
 function showAgentGUIControllerErrorToast(
@@ -601,28 +642,18 @@ function reportAgentGUIConversationFilterTargetUnresolved(input: {
   runtime: AgentActivityRuntime;
   workspaceId: string;
 }): void {
-  const reportDiagnostic = input.runtime.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(input.runtime, {
-        details: {
-          provider: input.provider,
-          providerTargetCount: input.providerTargetCount,
-          providerTargetId: input.providerTargetId,
-          reason: input.reason
-        },
-        event: "agent.gui.conversation_filter.target_unresolved",
-        level: "warn",
-        source: "agent-gui",
-        workspaceId: input.workspaceId
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect conversation filter selection.
-  }
+  reportAgentGUIDiagnostic(input.runtime, {
+    details: {
+      provider: input.provider,
+      providerTargetCount: input.providerTargetCount,
+      providerTargetId: input.providerTargetId,
+      reason: input.reason
+    },
+    event: "agent.gui.conversation_filter.target_unresolved",
+    level: "warn",
+    source: "agent-gui",
+    workspaceId: input.workspaceId
+  });
 }
 
 function reportAgentGUIMessagePageDiagnostic(input: {
@@ -634,36 +665,26 @@ function reportAgentGUIMessagePageDiagnostic(input: {
   runtime: AgentActivityRuntime;
   workspaceId: string;
 }): void {
-  const reportDiagnostic = input.runtime.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
   const versions = (input.messages ?? [])
     .map((message) => message.version)
     .filter((version) => Number.isFinite(version));
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(input.runtime, {
-        details: {
-          agentSessionId: input.agentSessionId,
-          ...(input.messages
-            ? {
-                firstVersion: versions.length ? Math.min(...versions) : null,
-                lastVersion: versions.length ? Math.max(...versions) : null,
-                messageCount: input.messages.length
-              }
-            : {}),
-          ...(input.details ?? {})
-        },
-        event: input.event,
-        level: input.level ?? "info",
-        source: "agent-gui",
-        workspaceId: input.workspaceId
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect message loading.
-  }
+  reportAgentGUIDiagnostic(input.runtime, {
+    details: {
+      agentSessionId: input.agentSessionId,
+      ...(input.messages
+        ? {
+            firstVersion: versions.length ? Math.min(...versions) : null,
+            lastVersion: versions.length ? Math.max(...versions) : null,
+            messageCount: input.messages.length
+          }
+        : {}),
+      ...(input.details ?? {})
+    },
+    event: input.event,
+    level: input.level ?? "info",
+    source: "agent-gui",
+    workspaceId: input.workspaceId
+  });
 }
 
 function reportAgentGUIRenderStateDiagnostic(input: {
@@ -687,51 +708,39 @@ function reportAgentGUIRenderStateDiagnostic(input: {
   runtime: AgentActivityRuntime;
   workspaceId: string;
 }): void {
-  const reportDiagnostic = input.runtime.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(input.runtime, {
-        details: {
-          activeActivityDisplayStatus: input.activeActivityDisplayStatus,
-          activeConversationBusy: input.activeConversationBusy,
-          activeConversationId: input.activeConversationId,
-          activeConversationStatus: input.activeConversation?.status ?? null,
-          activeHasPendingSubmittedTurn: input.activeHasPendingSubmittedTurn,
-          activeLiveState: input.activeLiveState,
-          activeSubmitBlocked: input.activeSubmitBlocked,
-          canQueueWhileBusy: input.canQueueWhileBusy,
-          canSubmit: input.canSubmit,
-          conversation: agentGUIConversationDiagnosticDetails(
-            input.conversation
-          ),
-          isCreatingConversation: input.isCreatingConversation,
-          isLoadingMessages: input.isLoadingMessages,
-          isSubmitting: input.isSubmitting,
-          pendingApprovalRequestId: input.pendingApproval?.requestId ?? null,
-          pendingInteractivePromptKind:
-            input.pendingInteractivePrompt?.kind ?? null,
-          pendingInteractivePromptRequestId: promptRequestId(
-            input.pendingInteractivePrompt
-          ),
-          runtimeSession: agentGUIRuntimeSessionDiagnosticDetails(
-            input.activeRuntimeSession
-          ),
-          sessionState: agentGUISessionStateDiagnosticDetails(
-            input.activeSessionState
-          )
-        },
-        event: "agent.gui.node.render_state_changed",
-        level: "info",
-        source: "agent-gui",
-        workspaceId: input.workspaceId
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect Agent GUI rendering.
-  }
+  reportAgentGUIDiagnostic(input.runtime, {
+    details: {
+      activeActivityDisplayStatus: input.activeActivityDisplayStatus,
+      activeConversationBusy: input.activeConversationBusy,
+      activeConversationId: input.activeConversationId,
+      activeConversationStatus: input.activeConversation?.status ?? null,
+      activeHasPendingSubmittedTurn: input.activeHasPendingSubmittedTurn,
+      activeLiveState: input.activeLiveState,
+      activeSubmitBlocked: input.activeSubmitBlocked,
+      canQueueWhileBusy: input.canQueueWhileBusy,
+      canSubmit: input.canSubmit,
+      conversation: agentGUIConversationDiagnosticDetails(input.conversation),
+      isCreatingConversation: input.isCreatingConversation,
+      isLoadingMessages: input.isLoadingMessages,
+      isSubmitting: input.isSubmitting,
+      pendingApprovalRequestId: input.pendingApproval?.requestId ?? null,
+      pendingInteractivePromptKind:
+        input.pendingInteractivePrompt?.kind ?? null,
+      pendingInteractivePromptRequestId: promptRequestId(
+        input.pendingInteractivePrompt
+      ),
+      runtimeSession: agentGUIRuntimeSessionDiagnosticDetails(
+        input.activeRuntimeSession
+      ),
+      sessionState: agentGUISessionStateDiagnosticDetails(
+        input.activeSessionState
+      )
+    },
+    event: "agent.gui.node.render_state_changed",
+    level: "info",
+    source: "agent-gui",
+    workspaceId: input.workspaceId
+  });
 }
 
 function reportAgentGUIActiveConversationCleared(input: {
@@ -2015,20 +2024,7 @@ function messageActivityTimeUnixMs(
 function minFiniteMessageVersion(
   messages: readonly WorkspaceAgentActivityMessage[]
 ): number | null {
-  let result: number | null = null;
-  for (const message of messages) {
-    // Optimistic echoes live outside the durable version domain (version 0)
-    // and must never feed a paging cursor.
-    if (
-      !Number.isFinite(message.version) ||
-      isWorkspaceAgentActivityOptimisticMessage(message)
-    ) {
-      continue;
-    }
-    result =
-      result === null ? message.version : Math.min(result, message.version);
-  }
-  return result;
+  return minFiniteDurableWorkspaceAgentActivityMessageVersion(messages);
 }
 
 function isUserTextMessage(message: WorkspaceAgentActivityMessage): boolean {
@@ -3924,6 +3920,22 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
+  const canCancel = agentActivityRuntimeCapabilityEnabled(
+    agentActivityRuntime,
+    "canCancel"
+  );
+  const canSubmitInteractive = agentActivityRuntimeCapabilityEnabled(
+    agentActivityRuntime,
+    "canSubmitInteractive"
+  );
+  const canGoalControl = agentActivityRuntimeCapabilityEnabled(
+    agentActivityRuntime,
+    "canGoalControl"
+  );
+  const canUploadAttachment = agentActivityRuntimeCapabilityEnabled(
+    agentActivityRuntime,
+    "canUploadAttachment"
+  );
   // Stable identity of the injected runtime; drives the conversation-list query
   // key and every session-view ref so local/shared runtimes stay isolated.
   const agentActivityRuntimeOrigin =
@@ -4374,7 +4386,9 @@ export function useAgentGUINodeController({
           (option) => option.value === selectedModelForPromptImages
         )?.supportsImageInput ?? false);
   const promptImagesSupported =
-    (resolvedPromptImagesSupported ?? true) && selectedModelImageInputSupported;
+    canUploadAttachment &&
+    (resolvedPromptImagesSupported ?? true) &&
+    selectedModelImageInputSupported;
   const compactSupported = resolveAgentActivityCapability("compact", {
     composerOptions: providerComposerOptions,
     sessionRuntimeContext: activeSessionRuntimeContext
@@ -9071,7 +9085,7 @@ export function useAgentGUINodeController({
   // goal bar.
   const goalControl = useCallback(
     (action: AgentActivityGoalControlAction, objective?: string) => {
-      if (previewMode) {
+      if (previewMode || !canGoalControl) {
         return;
       }
       const agentSessionId = activeConversationIdRef.current;
@@ -9103,6 +9117,7 @@ export function useAgentGUINodeController({
     },
     [
       agentActivityRuntime,
+      canGoalControl,
       executePrompt,
       isCurrentConversation,
       previewMode,
@@ -9254,6 +9269,9 @@ export function useAgentGUINodeController({
       optionId?: string;
       payload?: Record<string, unknown>;
     }) => {
+      if (!canSubmitInteractive) {
+        return;
+      }
       // Codex plan-implementation actions are client-orchestrated (no server
       // submitInteractive); route them to the plan decision handlers.
       if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
@@ -9330,7 +9348,8 @@ export function useAgentGUINodeController({
       loadSessionState,
       refreshMessagesFromSnapshot,
       workspaceId,
-      agentActivityRuntime
+      agentActivityRuntime,
+      canSubmitInteractive
     ]
   );
 
@@ -9343,6 +9362,9 @@ export function useAgentGUINodeController({
 
   const interruptCurrentTurn = useCallback(
     (noRunningResponseMessage: string) => {
+      if (!canCancel) {
+        return;
+      }
       const agentSessionId = activeConversationIdRef.current;
       if (!agentSessionId || interruptingSessionIds[agentSessionId]) {
         return;
@@ -9467,7 +9489,8 @@ export function useAgentGUINodeController({
       runtimeSessionsBySessionId,
       activeSessionState,
       workspaceId,
-      agentActivityRuntime
+      agentActivityRuntime,
+      canCancel
     ]
   );
 
@@ -11375,11 +11398,15 @@ export function useAgentGUINodeController({
   ]);
 
   const pendingApproval =
-    hasProviderSessionNotFoundError || isActivePromptSuppressed
+    !canSubmitInteractive ||
+    hasProviderSessionNotFoundError ||
+    isActivePromptSuppressed
       ? null
       : rawPendingApproval;
   const serverInteractivePrompt =
-    hasProviderSessionNotFoundError || isActivePromptSuppressed
+    !canSubmitInteractive ||
+    hasProviderSessionNotFoundError ||
+    isActivePromptSuppressed
       ? null
       : rawPendingInteractivePrompt;
   const isInterrupting =
@@ -11524,6 +11551,7 @@ export function useAgentGUINodeController({
   // (server exit-plan wins if both somehow apply). Suppressed once skipped for
   // that plan turn; a fresh plan turn re-arms it.
   const planImplementationPromptVM =
+    canSubmitInteractive &&
     planImplementationTurnId !== null &&
     activeConversationId !== null &&
     dismissedPlanTurnIdBySessionId[activeConversationId] !==
@@ -12526,6 +12554,10 @@ export function useAgentGUINodeController({
         isInterrupting,
         isCancelPending,
         isRespondingApproval,
+        canCancel,
+        canSubmitInteractive,
+        canGoalControl,
+        canUploadAttachment,
         promptImagesSupported,
         compactSupported,
         goalPauseSupported,
@@ -12575,6 +12607,10 @@ export function useAgentGUINodeController({
       availableCommands,
       availableSkills,
       canSubmit,
+      canCancel,
+      canSubmitInteractive,
+      canGoalControl,
+      canUploadAttachment,
       canQueueWhileBusy,
       conversation,
       conversationFilter,

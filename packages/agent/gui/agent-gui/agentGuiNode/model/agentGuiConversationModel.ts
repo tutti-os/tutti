@@ -871,6 +871,7 @@ function workspaceAgentMessagesFromTimelineItems(
       ...(item.status ? { status: item.status } : {}),
       payload: {
         ...item.payload,
+        __agentGuiTimelineProjection: true,
         content: item.payload?.content ?? item.content,
         text: item.payload?.text ?? item.content,
         callType: item.callType,

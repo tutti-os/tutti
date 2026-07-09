@@ -6,8 +6,7 @@ const agentGuiRoot = resolve(workspaceRoot, "packages/agent/gui");
 
 const allowedFiles = new Set([
   "packages/agent/gui/host/agentHostApi.ts",
-  "packages/agent/gui/shared/agentActivitySnapshotProjection.ts",
-  "packages/agent/gui/shared/roomShare.ts"
+  "packages/agent/gui/shared/agentActivitySnapshotProjection.ts"
 ]);
 
 const ignoredPathFragments = [

@@ -54,6 +54,11 @@ func TestSubmitAvailabilityForAuthoritySessionParity(t *testing.T) {
 			expectedState: "available",
 		},
 		{
+			name:          "settled with stale activeTurnId -> available",
+			lifecycle:     &TurnLifecycle{ActiveTurnID: &turnID, Phase: "settled"},
+			expectedState: "available",
+		},
+		{
 			name:      "settled with live background agents (count) -> blocked/background_agent",
 			lifecycle: &TurnLifecycle{Phase: "settled"},
 			runtimeContext: map[string]any{

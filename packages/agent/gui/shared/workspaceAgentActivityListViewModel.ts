@@ -7,7 +7,6 @@ import { translate } from "../i18n/index";
 import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload";
 import { normalizeAgentTitleText } from "./utils/agentTitleText";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
-import type { RoomShareMemberView } from "./roomShare";
 import { resolveDisplayableWorkspaceAgentSessionTitle } from "./workspaceAgentSessionTitle";
 import type { WorkspaceAgentToolCallDisplay } from "./workspaceAgentToolCallDisplay";
 import {
@@ -59,7 +58,6 @@ export interface WorkspaceAgentActivityListViewModel {
 export interface BuildWorkspaceAgentActivityListOptions {
   sessionMessagesById?: Record<string, WorkspaceAgentActivityMessage[]>;
   userProfilesById?: Record<string, AgentHostUserInfo>;
-  fallbackMembers?: RoomShareMemberView[];
 }
 
 export interface CollectWorkspaceAgentGeneratedFilesOptions {
@@ -323,17 +321,6 @@ function resolveActivityUser(
     return resolveUserFromId(sessionUserId, options);
   }
 
-  const fallbackMember = selectFallbackMember(options.fallbackMembers ?? []);
-  if (fallbackMember) {
-    return {
-      userId: fallbackMember.userId,
-      userName: fallbackMember.label || "Unknown member",
-      ...(fallbackMember.avatarUrl
-        ? { userAvatarUrl: fallbackMember.avatarUrl }
-        : {})
-    };
-  }
-
   return {
     userId: null,
     userName: "Unknown member"
@@ -355,14 +342,6 @@ function resolveUserFromId(
     userName: stripTrailingParentheticalEmailFromLabel(rawName) || rawName,
     ...(profileAvatar ? { userAvatarUrl: profileAvatar } : {})
   };
-}
-
-function selectFallbackMember(
-  members: RoomShareMemberView[]
-): RoomShareMemberView | null {
-  return (
-    members.find((member) => member.role === "owner") ?? members[0] ?? null
-  );
 }
 
 function resolveProvider(

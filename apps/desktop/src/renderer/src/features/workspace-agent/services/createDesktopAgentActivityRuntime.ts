@@ -342,8 +342,6 @@ export function createDesktopAgentActivityRuntime(
       });
       return workspaceAgentActivityService.ensureSessionSynchronized(input);
     },
-    retainSessionEvents: (input) =>
-      workspaceAgentActivityService.ensureSessionSynchronized(input),
     async sendInput(input) {
       reportAgentSubmitTraceDiagnostic({
         agentSessionId: input.agentSessionId,

@@ -25,6 +25,23 @@ Runtime-owned data includes:
 - provider/session preparation hooks that directly gate activity flow, such as
   OpenClaw gateway warmup
 
+Runtime-owned capability declarations are optional and default to enabled:
+
+- `canCancel`: shows and enables Stop/cancel controls.
+- `canSubmitInteractive`: shows approval, ask-user, and plan-decision
+  interaction entries.
+- `canGoalControl`: shows goal banner controls, `/goal`, and the goal badge.
+- `canUploadAttachment`: enables prompt attachment upload paths such as pasted
+  images, pasted large text, and dropped or host-local files. Ordinary `@`
+  references and workspace-reference mentions remain available.
+
+If `reportDiagnostic` is omitted, non-production development builds emit AgentGUI
+diagnostics to `console` by default for message page requests/resolutions,
+render-state changes, and caught errors. Set
+`devDiagnosticConsoleSink: false` on the runtime to disable that development
+fallback. Production builds stay silent unless the host provides
+`reportDiagnostic`.
+
 `AgentHostApi` is still accepted for host capabilities that are not agent
 activity data:
 

@@ -217,6 +217,16 @@ export interface AgentActivityRuntimeDiagnosticInput {
   workspaceId?: string | null;
 }
 
+export interface AgentActivityRuntimeCapabilities {
+  canCancel?: boolean;
+  canSubmitInteractive?: boolean;
+  canGoalControl?: boolean;
+  canUploadAttachment?: boolean;
+}
+
+export type AgentActivityRuntimeCapabilityKey =
+  keyof AgentActivityRuntimeCapabilities;
+
 interface AgentActivityRuntimeActivateSessionInputBase {
   agentSessionId: string;
   cwd?: string;
@@ -327,6 +337,16 @@ export interface AgentActivityRuntime {
     file?: boolean;
     image?: boolean;
   };
+  /**
+   * Host-declared command surface. Missing capability keys default to true for
+   * backwards compatibility with older runtimes.
+   */
+  capabilities?: AgentActivityRuntimeCapabilities;
+  /**
+   * When reportDiagnostic is absent, development builds emit AgentGUI
+   * diagnostics to console by default. Set false to keep a dev runtime silent.
+   */
+  devDiagnosticConsoleSink?: boolean;
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;
@@ -435,6 +455,13 @@ export interface AgentActivityRuntime {
     workspaceId: string,
     listener: AgentActivitySnapshotListener
   ): () => void;
+}
+
+export function agentActivityRuntimeCapabilityEnabled(
+  runtime: Pick<AgentActivityRuntime, "capabilities"> | null | undefined,
+  capability: AgentActivityRuntimeCapabilityKey
+): boolean {
+  return runtime?.capabilities?.[capability] ?? true;
 }
 
 const AgentActivityRuntimeContext = createContext<AgentActivityRuntime | null>(

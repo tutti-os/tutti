@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
@@ -36,7 +36,10 @@ describe("AgentTranscriptView virtual rendering", () => {
     virtualizerMockState.virtualIndexes = [0];
 
     render(
-      <div style={{ height: "480px", overflow: "auto" }}>
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
         <AgentTranscriptView
           conversation={conversationWithRows(12)}
           labels={{
@@ -56,11 +59,14 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(screen.getByText("virtual transcript row 11")).toBeTruthy();
   });
 
-  it("virtualizes by turn and keeps all rows from the visible turn mounted together", () => {
+  it("virtualizes by turn and keeps all rows from the visible turn mounted together", async () => {
     virtualizerMockState.virtualIndexes = [10];
 
     render(
-      <div style={{ height: "480px", overflow: "auto" }}>
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
         <AgentTranscriptView
           conversation={conversationWithMultiRowTurns(40)}
           labels={{
@@ -76,8 +82,10 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(useVirtualizer).toHaveBeenCalledWith(
       expect.objectContaining({ count: 40 })
     );
-    expect(screen.getByText("turn 10 user row")).toBeTruthy();
-    expect(screen.getByText("turn 10 assistant row")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("turn 10 user row")).toBeTruthy();
+      expect(screen.getByText("turn 10 assistant row")).toBeTruthy();
+    });
     expect(screen.queryByText("turn 9 user row")).toBeNull();
     expect(screen.queryByText("turn 11 assistant row")).toBeNull();
   });
@@ -86,7 +94,10 @@ describe("AgentTranscriptView virtual rendering", () => {
     virtualizerMockState.virtualIndexes = [29];
 
     render(
-      <div style={{ height: "480px", overflow: "auto" }}>
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
         <AgentTranscriptView
           conversation={conversationWithRows(30)}
           labels={{
@@ -106,7 +117,10 @@ describe("AgentTranscriptView virtual rendering", () => {
     virtualizerMockState.virtualIndexes = [0];
 
     render(
-      <div style={{ height: "480px", overflow: "auto" }}>
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
         <AgentTranscriptView
           conversation={conversationWithRows(1, {
             body: [
@@ -142,11 +156,14 @@ describe("AgentTranscriptView virtual rendering", () => {
     ).toBeTruthy();
   });
 
-  it("renders only the virtualized transcript window for long conversations", () => {
+  it("renders only the virtualized transcript window for long conversations", async () => {
     virtualizerMockState.virtualIndexes = [100, 101, 102, 103, 104];
 
     render(
-      <div style={{ height: "480px", overflow: "auto" }}>
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
         <AgentTranscriptView
           conversation={conversationWithRows(200)}
           labels={{
@@ -160,9 +177,11 @@ describe("AgentTranscriptView virtual rendering", () => {
     );
 
     expect(useVirtualizer).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText("virtual transcript row 100")).toBeTruthy();
+      expect(screen.getByText("virtual transcript row 104")).toBeTruthy();
+    });
     expect(screen.queryByText("virtual transcript row 0")).toBeNull();
-    expect(screen.getByText("virtual transcript row 100")).toBeTruthy();
-    expect(screen.getByText("virtual transcript row 104")).toBeTruthy();
     expect(screen.queryByText("virtual transcript row 199")).toBeNull();
   });
 });
