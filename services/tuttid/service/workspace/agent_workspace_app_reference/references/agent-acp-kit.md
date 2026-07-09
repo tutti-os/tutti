@@ -1,6 +1,6 @@
 # Agent ACP Kit Integration
 
-Use this reference only when the app needs local Codex/Claude execution or a local agent runtime.
+Use this reference only when the app needs local agent execution or a local agent runtime behind Tutti-owned provider catalog APIs.
 
 ## Rule
 
@@ -20,15 +20,46 @@ Application use-case
         -> run-scoped MCP/tool gateway
 ```
 
-Use provider IDs from the kit or an explicit allowlist such as `codex` and `claude`. Detect providers before showing them as available. The app's primary agent flow must support both Claude Code and Codex as provider choices when available, hide or disable unavailable providers, and choose a usable default from the detected providers.
+Use provider IDs from Tutti's workspace-app scoped agent APIs. Do not keep app-local catalog allowlists such as `codex`/`claude` unless the app's product requirements explicitly document that a provider is unsupported. The app should show the provider set returned by Tutti, keep unavailable providers visible as disabled with a reason, and choose a usable default from the Tutti catalog.
+
+## Dynamic Provider Catalog
+
+Workspace apps should converge on the `@tutti-os/agent-acp-kit/tutti` catalog helpers when that subpath is available. The catalog source of truth is Tutti's app-scoped daemon API, not the app package or kit version:
+
+```ts
+const catalog = await resolveTuttiAgentProviderCatalog({
+  baseUrl: process.env.TUTTI_API_BASE_URL,
+  token: process.env.TUTTI_APP_SERVER_TOKEN,
+  workspaceId: process.env.TUTTI_WORKSPACE_ID,
+  appId: process.env.TUTTI_APP_ID
+});
+```
+
+The resolver must call:
+
+- `GET /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent` for default provider and preference gates.
+- `GET /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status` without an app-local provider list. Tutti returns the Agent GUI-visible provider set from enabled daemon-owned Agent Targets.
+- `POST /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options` for provider model, reasoning, and speed options.
+
+Tutti decides which providers are visible to workspace apps. The app and kit must not replace that set with `runtime.listProviders()`, static `WorkspaceAgentProvider` enum values, or hard-coded app allowlists. Adding a new Agent should require updating Tutti/Agent GUI support, not rebuilding every app package.
+
+Keep only the minimal provider alias table needed to bridge kit and daemon IDs:
+
+- kit to daemon: `claude` -> `claude-code`, `nexight` -> `tutti-agent`
+- daemon to kit: `claude-code` -> `claude`, `tutti-agent` -> `nexight`
+
+Display names should prefer Tutti target/status/composer labels. Fall back to title-casing the provider ID.
+
+Add a thin version-compatibility fallback only around whole-catalog failure, such as an unavailable scoped app-server API, `404`/`405`, schema incompatibility, or a thrown kit helper. The fallback catalog is fixed to `codex` and `claude`, both `available: true`, both with `models: [{ id: "default", label: "default" }]`, and both with `defaultModelId: "default"`. This fallback is only for UI display and basic run entry; it should not participate in daemon enrichment.
+
+Store runtime profiles with Tutti provider IDs such as `claude-code`, `codex`, `cursor`, or `opencode`, plus any future provider returned by the app-scoped status API. Store model selections as `${provider}:${modelId}` in app state, and strip the provider prefix before calling `localAgentRuntime.run(...)`. Use shared kit helpers for provider-specific translations such as Cursor `default` -> `default[]` when available.
 
 ## Provider Detection
 
-Create a small discovery wrapper. Server detect/model endpoints should derive a context from request headers:
+Create a small runtime wrapper. Server run endpoints should derive a managed context from request headers:
 
 ```ts
 import {
-  createManagedAgentDetectContextFromHeaders,
   createDefaultLocalAgentProviderPlugins,
   createLocalAgentRuntime
 } from "@tutti-os/agent-acp-kit";
@@ -37,15 +68,22 @@ const localAgentRuntime = createLocalAgentRuntime({
   providers: createDefaultLocalAgentProviderPlugins()
 });
 
-export async function detectLocalAgents(
-  headers: Headers | Record<string, string | string[] | undefined>
-) {
-  const context = createManagedAgentDetectContextFromHeaders(headers);
-  return localAgentRuntime.detect(context);
-}
+export { localAgentRuntime };
 ```
 
-Map detected provider models to app model IDs with a provider prefix, such as `codex:gpt-5.1` or `claude:sonnet`.
+Map Tutti composer models to app model IDs with a provider prefix, such as `codex:gpt-5.1` or `claude-code:sonnet`.
+
+When an app customizes provider behavior, transform the full default plugin list instead of filtering it:
+
+```ts
+const providers = createDefaultLocalAgentProviderPlugins().map((provider) =>
+  provider.id === "claude"
+    ? withAppClaudeStreamCompatibility(provider)
+    : provider
+);
+```
+
+Provider-specific wrappers are fine; app-local catalog allowlists are not.
 
 Do not call a browser JSB API to fetch credentials for detection. Do not accept a credential field in the request body. If no managed credential header is present, the helper returns a local-compatible context and detection continues through the normal local path.
 
@@ -183,7 +221,10 @@ Package builders should bundle the MCP entrypoint and expose its path through an
 
 Add tests for:
 
-- provider filtering and model mapping
+- Tutti app-scoped provider catalog resolution and model mapping
+- app status queries that omit app-local provider allowlists
+- provider visibility following the app-scoped status API rather than `runtime.listProviders()`
+- whole-catalog failure returning the Codex/Claude `default` legacy catalog
 - SSR/server provider detection using `createManagedAgentDetectContextFromHeaders(...)`
 - model-list detection using request-header managed context
 - run creation using `createManagedAgentRunContextFromHeaders(...)`

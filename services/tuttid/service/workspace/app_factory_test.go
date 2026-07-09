@@ -349,8 +349,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Do not hand-roll provider detection",
-		"Claude Code and Codex",
-		"localAgentRuntime.detect",
+		"Tutti's app-scoped daemon API",
+		"whole-catalog failure",
+		"agent-providers/status",
 	} {
 		if !strings.Contains(agentACPReference, want) {
 			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
@@ -476,7 +477,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"Default new apps to a Node server",
 		"@tutti-os/agent-acp-kit",
 		"TUTTI_CLI agent/codex/session polling",
-		"Claude Code and Codex provider options",
+		"Tutti workspace-app scoped agent APIs",
 	} {
 		if !strings.Contains(constraints, want) {
 			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)

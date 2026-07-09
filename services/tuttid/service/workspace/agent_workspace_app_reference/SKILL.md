@@ -1,6 +1,6 @@
 ---
 name: tutti-agent-workspace-app
-description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, @tutti-os/agent-acp-kit local agent runtimes, Codex or Claude provider detection, run-scoped MCP tool gateways, app-owned package builders, Tutti CLI/reference surfaces, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
+description: "Build or evolve a complex agent-enabled Tutti workspace app repository. Use for Tutti apps with web/server/shared monorepos, @tutti-os/agent-acp-kit local agent runtimes, Tutti app-scoped agent provider APIs, run-scoped MCP tool gateways, app-owned package builders, Tutti CLI/reference surfaces, web-first debugging, i18n harnesses, and production package validation. For simple package creation or repair, use tutti-workspace-app-factory instead."
 ---
 
 # Tutti Agent Workspace App
@@ -15,7 +15,7 @@ Use this skill for:
 
 - New agent-enabled Tutti app repositories.
 - Existing web/server apps being converted into maintainable Tutti app repos.
-- Apps that need `@tutti-os/agent-acp-kit` for local Codex or Claude runtime execution.
+- Apps that need `@tutti-os/agent-acp-kit` for local agent runtime execution behind Tutti-owned provider catalog APIs.
 - App-specific MCP or command gateways that expose domain tools to local agents.
 - Multi-package `pnpm` workspaces with `apps/web`, `apps/server`, and `packages/shared`.
 - App-owned packaging, smoke tests, i18n enforcement, and CLI/reference endpoints.
@@ -41,8 +41,8 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 2. Choose the smallest architecture that can stay maintainable: do not add local agents, WebSocket, MCP, CLI, or background workers unless the product needs them.
 3. Define shared contracts before wiring web/server calls. Keep domain DTOs, WebSocket messages, CLI-visible shapes, and runtime profile types in `packages/shared`.
 4. Build the web UI as the primary development surface. Keep the server as local API/static host and app orchestration layer.
-5. If agents are needed, add `@tutti-os/agent-acp-kit`, provider detection, runtime provider abstraction, event normalization, and a run-scoped tool gateway.
-   The main app flow must offer at least Claude Code and Codex as provider options when they are detected as available. Pick one available provider as the default; do not hard-code a single provider.
+5. If agents are needed, add `@tutti-os/agent-acp-kit`, Tutti app-scoped provider catalog integration, runtime provider abstraction, event normalization, and a run-scoped tool gateway.
+   The main app flow must derive provider options from Tutti's workspace-app scoped `preferences/agent`, `agent-providers/status`, and `agent-providers/{provider}/composer-options` APIs. Do not maintain app-local provider allowlists. Pick one usable default from the current Tutti catalog.
    For apps that must run both locally and in cloud/managed Tutti, follow `references/agent-acp-kit.md` exactly: managed credentials come from request headers on the server, never from browser JSB fallback or request body fields.
 6. Add package generation only after the local dev app runs. Package the built web assets, bundled server, `tutti.app.json`, optional `tutti.cli.json`, executable `bootstrap.sh`, assets, locales, and package-local `AGENTS.md`.
 7. If the user asks to connect to the Tutti app ecosystem, treat ecosystem integration as required: expose app capabilities through `tutti.cli.json`, make the app callable by other Tutti apps and agents, and use `TUTTI_CLI` for any calls to other installed Tutti apps.

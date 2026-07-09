@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"strings"
+	"time"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 )
 
 func (api DaemonAPI) GetWorkspaceAppAgentPreferences(
@@ -60,9 +63,19 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderStatuses(
 		return writeGetWorkspaceAppAgentProviderStatusesError(err), nil
 	}
 
+	providers, err := api.workspaceAppAgentStatusProviders(ctx, request.Params.Providers)
+	if err != nil {
+		return writeGetWorkspaceAppAgentProviderStatusesError(err), nil
+	}
+	if providers != nil && len(*providers) == 0 {
+		return tuttigenerated.GetWorkspaceAppAgentProviderStatuses200JSONResponse(
+			generatedAgentProviderStatusList(agentstatusEmptySnapshot(), api.defaultAgentProvider(ctx)),
+		), nil
+	}
+
 	response, err := api.GetAgentProviderStatuses(ctx, tuttigenerated.GetAgentProviderStatusesRequestObject{
 		Params: tuttigenerated.GetAgentProviderStatusesParams{
-			Providers:      request.Params.Providers,
+			Providers:      providers,
 			IncludeNetwork: request.Params.IncludeNetwork,
 		},
 	})
@@ -70,6 +83,66 @@ func (api DaemonAPI) GetWorkspaceAppAgentProviderStatuses(
 		return nil, err
 	}
 	return mapGetAgentProviderStatusesToWorkspaceApp(response), nil
+}
+
+func (api DaemonAPI) workspaceAppAgentStatusProviders(
+	ctx context.Context,
+	requestedProviders *[]tuttigenerated.WorkspaceAgentProvider,
+) (*[]tuttigenerated.WorkspaceAgentProvider, error) {
+	if api.AgentTargetService == nil {
+		return nil, apierrors.ServiceUnavailable(
+			"agent_target_service_unavailable",
+			apierrors.WithDeveloperMessage("agent target service is unavailable"),
+		)
+	}
+	targets, err := api.AgentTargetService.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visible := map[string]struct{}{}
+	ordered := make([]string, 0, len(targets))
+	for _, target := range targets {
+		normalized, err := agenttargetbiz.NormalizeTarget(target)
+		if err != nil || !normalized.Enabled {
+			continue
+		}
+		if _, ok := visible[normalized.Provider]; ok {
+			continue
+		}
+		visible[normalized.Provider] = struct{}{}
+		ordered = append(ordered, normalized.Provider)
+	}
+	providers := make([]tuttigenerated.WorkspaceAgentProvider, 0, len(targets))
+	seen := map[string]struct{}{}
+	if requestedProviders != nil && len(*requestedProviders) > 0 {
+		for _, provider := range *requestedProviders {
+			normalized := strings.TrimSpace(string(provider))
+			if _, ok := visible[normalized]; !ok {
+				continue
+			}
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			providers = append(providers, tuttigenerated.WorkspaceAgentProvider(normalized))
+		}
+		return &providers, nil
+	}
+	for _, provider := range ordered {
+		if _, ok := seen[provider]; ok {
+			continue
+		}
+		seen[provider] = struct{}{}
+		providers = append(providers, tuttigenerated.WorkspaceAgentProvider(provider))
+	}
+	return &providers, nil
+}
+
+func agentstatusEmptySnapshot() agentstatusservice.Snapshot {
+	return agentstatusservice.Snapshot{
+		CapturedAt: time.Now().UTC(),
+		Providers:  []agentstatusservice.ProviderStatus{},
+	}
 }
 
 func (api DaemonAPI) GetWorkspaceAppAgentProviderComposerOptions(
