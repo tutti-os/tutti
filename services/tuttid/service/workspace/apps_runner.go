@@ -198,7 +198,8 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		bootstrap = "bootstrap.sh"
 	}
 	bootstrapPath := filepath.Join(input.PackageDir, filepath.Clean(bootstrap))
-	command := exec.Command(bootstrapPath)
+	bootstrapCommand, bootstrapArgs := appPackageScriptCommand(bootstrapPath)
+	command := exec.Command(bootstrapCommand, bootstrapArgs...)
 	prepareAppProcessCommand(command)
 	command.Dir = input.RuntimeDir
 	command.Stdout = logFile

@@ -17,7 +17,19 @@ func (s *AppCenterService) packageCacheDir(appID string, version string) string 
 }
 
 func (s *AppCenterService) packageCacheRoot() string {
-	return filepath.Join(s.stateDir(), "apps", "packages")
+	return appPackageCacheRoot(s.stateDir())
+}
+
+func (s *AppCenterService) packageCacheTrashRoot() string {
+	return appPackageTrashRoot(s.stateDir())
+}
+
+func appPackageCacheRoot(stateDir string) string {
+	return filepath.Join(stateDir, "apps", "packages")
+}
+
+func appPackageTrashRoot(stateDir string) string {
+	return filepath.Join(appPackageCacheRoot(stateDir), ".trash")
 }
 
 func (s *AppCenterService) workspaceAppStateRoot(workspaceID string, appID string) string {

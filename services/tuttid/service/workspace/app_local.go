@@ -166,7 +166,7 @@ func validateLocalAppPackage(packageDir string, manifest workspacebiz.AppManifes
 	if info.IsDir() {
 		return fmt.Errorf("%w: bootstrap %q must be a file", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
 	}
-	if info.Mode()&0o111 == 0 {
+	if !appPackageFileIsExecutable(info) {
 		return fmt.Errorf("%w: bootstrap %q must be executable", ErrLocalAppPackageInvalid, manifest.Runtime.Bootstrap)
 	}
 	return nil

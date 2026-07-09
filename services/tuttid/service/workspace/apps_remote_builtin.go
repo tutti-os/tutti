@@ -201,7 +201,7 @@ func (s *AppCenterService) materializeBuiltinArchivePackage(ctx context.Context,
 	}
 
 	packageDir := s.packageCacheDir(manifest.AppID, manifest.Version)
-	if err := os.RemoveAll(packageDir); err != nil {
+	if err := replacePackageDir(packageDir, s.packageCacheTrashRoot()); err != nil {
 		return workspacebiz.AppPackage{}, fmt.Errorf("replace builtin app package dir: %w", err)
 	}
 	if err := copyDirectory(packageRoot, packageDir); err != nil {

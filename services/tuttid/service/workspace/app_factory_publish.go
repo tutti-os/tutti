@@ -91,7 +91,7 @@ func (s *AppFactoryService) Publish(ctx context.Context, workspaceID string, job
 		return workspacebiz.AppFactoryJob{}, workspacebiz.WorkspaceApp{}, err
 	}
 	packageDir := filepath.Join(s.stateDir(), "apps", "packages", safeAppPathSegment(manifest.AppID), safeAppPathSegment(manifest.Version))
-	if err := os.RemoveAll(packageDir); err != nil {
+	if err := replacePackageDir(packageDir, appPackageTrashRoot(s.stateDir())); err != nil {
 		err := fmt.Errorf("replace app package dir: %w", err)
 		logAppFactoryPublishFailed(workspaceID, job, manifest, "package_replace", wasPreviouslyPublished, startedAt, err)
 		return workspacebiz.AppFactoryJob{}, workspacebiz.WorkspaceApp{}, err

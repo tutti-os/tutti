@@ -338,6 +338,7 @@ func TestEmbeddedOnboardingArchiveMatchesCatalog(t *testing.T) {
 	requireZipEntryForTest(t, archive, "dist/index.html")
 	requireZipEntryForTest(t, archive, "bin/darwin-arm64/tutti-onboarding-server")
 	requireZipEntryForTest(t, archive, "bin/darwin-amd64/tutti-onboarding-server")
+	requireZipEntryForTest(t, archive, "bin/windows-amd64/tutti-onboarding-server.exe")
 
 	archiveManifestData := readZipEntryForTest(t, archive, "tutti.app.json")
 	archiveManifest, _, err := workspacebiz.ParseAppManifestJSON(archiveManifestData)

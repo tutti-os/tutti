@@ -502,7 +502,7 @@ prepare_tuttid_binary() {
   log "generating builtin workspace apps"
   (
     cd "${ROOT_DIR}"
-    pnpm generate:builtin-apps
+    pnpm --filter @tutti-os/builtin-tutti-onboarding package:builtin
   )
 
   log "downloading daemon Go modules"
@@ -547,7 +547,7 @@ start_desktop_dev() {
     TUTTID_BIN="${tuttid_bin_path}" \
       TUTTID_LOG_OUTPUT="${TUTTID_LOG_OUTPUT:-tee}" \
       VITE_TUTTI_WHY_DID_YOU_RENDER="${why_did_you_render}" \
-      pnpm dev:desktop < /dev/null
+      pnpm --filter @tutti-os/desktop dev < /dev/null
   ) &
   DEV_GUI_CHILD_PID="$!"
 

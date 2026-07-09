@@ -105,7 +105,7 @@ func (s *AppCenterService) ImportPackage(ctx context.Context, archivePath string
 		return workspacebiz.WorkspaceApp{}, err
 	}
 	packageDir := s.packageCacheDir(manifest.AppID, manifest.Version)
-	if err := os.RemoveAll(packageDir); err != nil {
+	if err := replacePackageDir(packageDir, s.packageCacheTrashRoot()); err != nil {
 		return workspacebiz.WorkspaceApp{}, fmt.Errorf("replace imported app package dir: %w", err)
 	}
 	if err := copyDirectory(packageRoot, packageDir); err != nil {
@@ -172,7 +172,7 @@ func (s *AppCenterService) DeletePackage(ctx context.Context, workspaceID string
 		return err
 	}
 	for packageDir := range packageDirs {
-		if err := os.RemoveAll(packageDir); err != nil {
+		if err := replacePackageDir(packageDir, s.packageCacheTrashRoot()); err != nil {
 			return fmt.Errorf("delete workspace app package dir: %w", err)
 		}
 		if err := s.pruneEmptyPackageCacheParents(packageDir); err != nil {
@@ -259,7 +259,7 @@ func (s *AppCenterService) deleteRemoteBuiltinPackageFilesAndRecord(ctx context.
 		}
 	}
 	for packageDir := range packageDirs {
-		if err := os.RemoveAll(packageDir); err != nil {
+		if err := replacePackageDir(packageDir, s.packageCacheTrashRoot()); err != nil {
 			return fmt.Errorf("delete remote builtin workspace app package dir: %w", err)
 		}
 		if err := s.pruneEmptyPackageCacheParents(packageDir); err != nil {
@@ -297,7 +297,7 @@ func (s *AppCenterService) pruneInactiveAppPackageVersions(ctx context.Context, 
 			return err
 		}
 		if dir := strings.TrimSpace(versionPackage.PackageDir); dir != "" && versionPackage.Source != workspacebiz.AppPackageSourceLocalDev {
-			if err := os.RemoveAll(dir); err != nil {
+			if err := replacePackageDir(dir, s.packageCacheTrashRoot()); err != nil {
 				return fmt.Errorf("delete inactive workspace app package dir: %w", err)
 			}
 			if err := s.pruneEmptyPackageCacheParents(dir); err != nil {

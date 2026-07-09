@@ -496,7 +496,7 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 	if info.IsDir() {
 		return errors.New("prepare.sh must be a file")
 	}
-	if info.Mode()&0o111 == 0 {
+	if !appPackageFileIsExecutable(info) {
 		return errors.New("prepare.sh must be executable")
 	}
 
@@ -511,7 +511,8 @@ func prepareAppFactoryJob(ctx context.Context, job workspacebiz.AppFactoryJob) e
 	if err != nil {
 		return fmt.Errorf("resolve managed app runtime: %w", err)
 	}
-	command := exec.CommandContext(runCtx, preparePath)
+	prepareCommand, prepareArgs := appPackageScriptCommand(preparePath)
+	command := exec.CommandContext(runCtx, prepareCommand, prepareArgs...)
 	command.Dir = draftPackageDir
 	command.Stdout = logFile
 	command.Stderr = logFile
@@ -560,7 +561,7 @@ func (s *AppFactoryService) validatePackage(ctx context.Context, workspaceID str
 	if info.IsDir() {
 		return errors.New("runtime bootstrap must be a file")
 	}
-	if info.Mode()&0o111 == 0 {
+	if !appPackageFileIsExecutable(info) {
 		return errors.New("runtime bootstrap must be executable")
 	}
 

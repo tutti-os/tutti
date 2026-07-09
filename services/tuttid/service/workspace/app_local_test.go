@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,9 @@ func TestAppCenterServiceLoadLocalPackageValidatesInputsAndConflicts(t *testing.
 	})
 
 	t.Run("bootstrap not executable", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("POSIX executable bits are not reliable on Windows")
+		}
 		service := newLocalAppPackageTestService(t)
 		packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), localAppManifestForTest("non-executable", "Non Executable"))
 		if err := os.Chmod(filepath.Join(packageDir, "bootstrap.sh"), 0o644); err != nil {

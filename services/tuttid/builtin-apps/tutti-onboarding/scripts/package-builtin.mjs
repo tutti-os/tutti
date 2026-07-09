@@ -97,7 +97,7 @@ async function packageBuiltin({ checkOnly = false } = {}) {
       `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
     );
     try {
-      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      await writeZipFile(tempZipPath, packageRoot);
       await rename(tempZipPath, zipPath);
     } finally {
       await rm(tempZipPath, { force: true });
@@ -308,10 +308,38 @@ async function copyCliManifest(manifest) {
   await cp(path.join(packageSourceDir, documentationFile), documentationTarget);
 }
 
+async function writeZipFile(zipPath, sourceDir) {
+  if (process.platform !== "win32") {
+    await run("zip", ["-qry", zipPath, "."], { cwd: sourceDir });
+    return;
+  }
+
+  const zipCommand = [
+    "Add-Type -AssemblyName System.IO.Compression",
+    "Add-Type -AssemblyName System.IO.Compression.FileSystem",
+    "$zip = [System.IO.Compression.ZipFile]::Open($env:TUTTI_PACKAGE_ZIP_PATH, [System.IO.Compression.ZipArchiveMode]::Create)",
+    "try {",
+    "Get-ChildItem -LiteralPath $env:TUTTI_PACKAGE_SOURCE_DIR -Recurse -File | ForEach-Object {",
+    "$relative = $_.FullName.Substring($env:TUTTI_PACKAGE_SOURCE_DIR.Length).TrimStart([char]92, [char]47)",
+    "$entryName = $relative.Replace([string][char]92, '/')",
+    "[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null",
+    "}",
+    "} finally { $zip.Dispose() }"
+  ].join("; ");
+
+  await run("powershell.exe", ["-NoProfile", "-Command", zipCommand], {
+    cwd: sourceDir,
+    env: {
+      ...process.env,
+      TUTTI_PACKAGE_SOURCE_DIR: sourceDir,
+      TUTTI_PACKAGE_ZIP_PATH: zipPath
+    }
+  });
+}
 async function buildStandaloneServers() {
   const sourcePath = path.join(packageSourceDir, "server.go");
   await access(sourcePath);
-  for (const target of ["darwin-arm64", "darwin-amd64"]) {
+  for (const target of ["darwin-arm64", "darwin-amd64", "windows-amd64"]) {
     const [goos, goarch] = target.split("-");
     const targetDir = path.join(packageRoot, "bin", target);
     await mkdir(targetDir, { recursive: true });
@@ -323,7 +351,12 @@ async function buildStandaloneServers() {
         "-ldflags",
         "-s -w",
         "-o",
-        path.join(targetDir, "tutti-onboarding-server"),
+        path.join(
+          targetDir,
+          goos === "windows"
+            ? "tutti-onboarding-server.exe"
+            : "tutti-onboarding-server"
+        ),
         sourcePath
       ],
       {
@@ -373,7 +406,7 @@ async function validatePackageRoot(root) {
     throw new Error("AGENTS.md must be non-empty.");
   }
   const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
-  if ((bootstrapStat.mode & 0o111) === 0) {
+  if (process.platform !== "win32" && (bootstrapStat.mode & 0o111) === 0) {
     throw new Error("bootstrap.sh must be executable.");
   }
   await assertNoSymlinks(root);
@@ -551,12 +584,34 @@ async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
 }
 
+function resolveProcessCommand(command, args) {
+  if (command !== "pnpm") {
+    return { args, command, shell: false };
+  }
+
+  const npmExecPath = process.env.npm_execpath;
+  const npmExecExt = npmExecPath ? path.extname(npmExecPath).toLowerCase() : "";
+  if ([".cjs", ".js", ".mjs"].includes(npmExecExt)) {
+    return {
+      args: [npmExecPath, ...args],
+      command: process.execPath,
+      shell: false
+    };
+  }
+
+  return {
+    args,
+    command,
+    shell: process.platform === "win32"
+  };
+}
 async function run(command, args, options = {}) {
+  const resolved = resolveProcessCommand(command, args);
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(resolved.command, resolved.args, {
       cwd: options.cwd ?? appDir,
       env: options.env ?? process.env,
-      shell: false,
+      shell: resolved.shell,
       stdio: "inherit"
     });
     child.on("error", reject);

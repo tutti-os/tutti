@@ -510,7 +510,7 @@ func validateExtractedAppPackage(packageRoot string, manifest workspacebiz.AppMa
 	if info.IsDir() {
 		return errors.New("runtime bootstrap must be a file")
 	}
-	if info.Mode()&0o111 == 0 {
+	if !appPackageFileIsExecutable(info) {
 		return errors.New("runtime bootstrap must be executable")
 	}
 	agentsData, err := os.ReadFile(filepath.Join(packageRoot, "AGENTS.md"))
