@@ -138,7 +138,7 @@ describe("buildAgentEnvWizardViewModel", () => {
           adapter: {
             installed: false,
             version: "0.0.1",
-            requiredVersion: "0.0.2",
+            requiredVersion: "0.0.3",
             command: ["tutti-agent", "app-server"],
             binaryPath: "/opt/tutti-agent"
           }
@@ -150,7 +150,7 @@ describe("buildAgentEnvWizardViewModel", () => {
     expect(adapter?.detail).toEqual({
       kind: "version-mismatch",
       current: "0.0.1",
-      required: "0.0.2"
+      required: "0.0.3"
     });
   });
 
