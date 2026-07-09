@@ -218,9 +218,11 @@ catalog workflows provide the same repair path when a caller workflow does not
 expose catalog-only dispatch.
 
 Retrying a release version is allowed only when the existing immutable
-`release.json` matches the newly generated release metadata. In that case the
-workflow repairs mutable state such as `latest.json`, catalog metadata, and
-CloudFront invalidation without re-uploading immutable artifacts.
+`release.json` matches the newly generated release metadata. Release archives
+normalize entry order, timestamps, and optional zip metadata so rebuilding the
+same package produces the same artifact SHA-256. In that case the workflow
+repairs mutable state such as `latest.json`, catalog metadata, and CloudFront
+invalidation without re-uploading immutable artifacts.
 
 Each app uploads under:
 

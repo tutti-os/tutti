@@ -2,7 +2,18 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  utimes,
+  writeFile
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { requireSemver } from "./tutti-app-versioning.mjs";
@@ -75,7 +86,7 @@ export async function buildTuttiAppRelease(options) {
 
   const artifactName = `${appId}-${version}.zip`;
   const artifactPath = path.join(releaseDir, artifactName);
-  createZip(packageDir, artifactPath);
+  await createZip(packageDir, artifactPath);
   const artifact = await fileDigestAndSize(artifactPath);
 
   const iconName = path.basename(sourceIconPath);
@@ -623,17 +634,71 @@ function validateReleaseLocalizations(localizations, sourceLabel) {
   }
 }
 
-function createZip(packageDir, artifactPath) {
-  const result = spawnSync("zip", ["-qr", artifactPath, "."], {
-    cwd: packageDir,
-    encoding: "utf8"
+async function createZip(packageDir, artifactPath) {
+  const stagingDir = await mkdtemp(
+    path.join(tmpdir(), "tutti-app-release-archive-")
+  );
+  const archiveRoot = path.join(stagingDir, "package");
+  try {
+    await cp(packageDir, archiveRoot, {
+      recursive: true,
+      dereference: true
+    });
+    const entries = await normalizeArchiveEntries(archiveRoot);
+    await rm(artifactPath, { force: true });
+    const result = spawnSync("zip", ["-X", "-q", artifactPath, "-@"], {
+      cwd: archiveRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        LC_ALL: "C",
+        TZ: "UTC"
+      },
+      input: `${entries.join("\n")}\n`
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(
+        result.stderr || `zip exited with status ${result.status}`
+      );
+    }
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+}
+
+async function normalizeArchiveEntries(rootDir, relativeDir = "") {
+  const fixedTimestamp = new Date("1980-01-01T00:00:00.000Z");
+  const directoryEntries = await readdir(path.join(rootDir, relativeDir), {
+    withFileTypes: true
   });
-  if (result.error) {
-    throw result.error;
+  directoryEntries.sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+  );
+
+  const result = [];
+  for (const entry of directoryEntries) {
+    if (entry.name.includes("\n") || entry.name.includes("\r")) {
+      throw new Error(
+        `package path contains an unsupported newline: ${path.join(relativeDir, entry.name)}`
+      );
+    }
+    const relativePath = path.join(relativeDir, entry.name);
+    const absolutePath = path.join(rootDir, relativePath);
+    await utimes(absolutePath, fixedTimestamp, fixedTimestamp);
+    if (entry.isDirectory()) {
+      result.push(`${relativePath}/`);
+      result.push(...(await normalizeArchiveEntries(rootDir, relativePath)));
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error(`unsupported package entry type: ${relativePath}`);
+    }
+    result.push(relativePath);
   }
-  if (result.status !== 0) {
-    throw new Error(result.stderr || `zip exited with status ${result.status}`);
-  }
+  return result;
 }
 
 async function fileDigestAndSize(filePath) {

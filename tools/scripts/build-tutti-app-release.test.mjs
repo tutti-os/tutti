@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, chmod, mkdir } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  utimes,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -117,6 +124,45 @@ test("buildTuttiAppRelease includes package manifest localizations", async () =>
       tags: ["本地化", "工作区"]
     }
   ]);
+});
+
+test("buildTuttiAppRelease creates reproducible archives", async () => {
+  const packageDir = await createPackageForTest("reproducible-app");
+  const firstOutputDir = await mkdtemp(
+    path.join(tmpdir(), "tutti-release-first-")
+  );
+  const secondOutputDir = await mkdtemp(
+    path.join(tmpdir(), "tutti-release-second-")
+  );
+  const options = {
+    appId: "reproducible-app",
+    packageDir,
+    baseUrl: "https://cdn.example.test/tutti-apps",
+    version: "1.2.3",
+    gitSha: "abc123",
+    publishedAt: "2026-06-04T00:00:00Z"
+  };
+
+  const first = await buildTuttiAppRelease({
+    ...options,
+    outputDir: firstOutputDir
+  });
+  const changedTimestamp = new Date("2030-01-02T03:04:06.000Z");
+  await utimes(
+    path.join(packageDir, "AGENTS.md"),
+    changedTimestamp,
+    changedTimestamp
+  );
+  const second = await buildTuttiAppRelease({
+    ...options,
+    outputDir: secondOutputDir
+  });
+
+  assert.equal(first.release.artifactSha256, second.release.artifactSha256);
+  assert.deepEqual(
+    await readFile(first.artifactPath),
+    await readFile(second.artifactPath)
+  );
 });
 
 test("buildTuttiAppCatalog merges release files into remote catalog", async () => {
