@@ -248,9 +248,6 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 	actorUserID := strings.TrimSpace(input.ActorUserID)
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	agentProvider := strings.ToLower(strings.TrimSpace(input.AgentProvider))
-	if agentTargetID == "" {
-		agentTargetID = legacyAgentTargetIDForProvider(agentProvider)
-	}
 	if agentProvider == "" {
 		agentProvider = agentProviderForAgentTargetID(agentTargetID)
 	}
@@ -306,21 +303,6 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 		return Run{}, err
 	}
 	return created, nil
-}
-
-func legacyAgentTargetIDForProvider(provider string) string {
-	switch strings.TrimSpace(provider) {
-	case "codex":
-		return "local:codex"
-	case "claude-code":
-		return "local:claude-code"
-	case "cursor":
-		return "local:cursor"
-	case "opencode":
-		return "local:opencode"
-	default:
-		return ""
-	}
 }
 
 func agentProviderForAgentTargetID(agentTargetID string) string {

@@ -336,6 +336,42 @@ func TestServiceCreateRunDerivesProviderFromAgentTargetID(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRunRequiresAgentTargetID(t *testing.T) {
+	store := newFakeStore()
+	service := testService(store)
+	ctx := context.Background()
+
+	issue, err := service.CreateIssue(ctx, CreateIssueInput{
+		WorkspaceID: "workspace-1",
+		TopicID:     DefaultTopicID,
+		ActorUserID: "user-1",
+		Title:       "Editor polish",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	task, err := service.CreateTask(ctx, CreateTaskInput{
+		WorkspaceID: "workspace-1",
+		IssueID:     issue.IssueID,
+		ActorUserID: "user-1",
+		Title:       "Fix selection highlight",
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	_, err = service.CreateRun(ctx, CreateRunInput{
+		WorkspaceID:   "workspace-1",
+		IssueID:       issue.IssueID,
+		TaskID:        task.TaskID,
+		ActorUserID:   "user-1",
+		AgentProvider: "codex",
+	})
+	if err != ErrInvalidArgument {
+		t.Fatalf("CreateRun() error = %v, want %v", err, ErrInvalidArgument)
+	}
+}
+
 func TestServiceGetIssueDetailIncludesOutputsFromAllIssueTasks(t *testing.T) {
 	store := newFakeStore()
 	service := testService(store)
