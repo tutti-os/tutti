@@ -119,9 +119,21 @@ explicit runtime-preparation workflow before first launch. Listing App Center
 apps must not preload runtimes as a side effect. App manifests must not declare
 a runtime kind. Apps that only need Node may declare
 `runtime.profile: "node-static"` so launch does not require the Python
-component. If runtime requirements need to become more selective later, add a
+component. On Windows, while the published runtime catalog does not yet include
+`windows-amd64`, tuttid may satisfy `node-static` and the default baseline
+profile from the system `node.exe` and `npm.cmd` on `PATH`; Python is omitted in
+that fallback. Remove this fallback once Windows runtime artifacts are
+published. If runtime requirements need to become more selective later, add a
 capability list such as runtime component requirements rather than restoring a
 single-kind manifest field.
+
+## Windows Shell Entrypoints
+
+Workspace app packages use `bootstrap.sh` and optional `prepare.sh` shell
+entrypoints. On Windows, tuttid must prefer Git Bash for these scripts when it
+is installed. The Windows `bash.exe` in `System32` is the WSL launcher and can
+resolve `C:/.../bootstrap.sh` as a Linux path, causing app startup to fail even
+though the script exists on the host filesystem.
 
 ## Runtime Overrides
 

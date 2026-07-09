@@ -43,6 +43,57 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Windows workspace app bootstrap.sh cannot be found
+
+- Symptom:
+  A workspace app install succeeds, but startup fails with `exit status 127`,
+  `app healthcheck timed out`, and the app runtime log contains
+  `/bin/bash: C:/Users/.../bootstrap.sh: No such file or directory` even though
+  the package directory contains `bootstrap.sh`.
+- Quick checks:
+  Inspect `Get-Command bash.exe -All` and the app runtime log. If `bash.exe`
+  resolves to `C:\Windows\System32\bash.exe`, the app is going through the WSL
+  launcher rather than Git Bash.
+- Root cause:
+  Windows `System32\bash.exe` is a WSL entrypoint. Passing a host path such as
+  `C:/Users/.../bootstrap.sh` to WSL bash can make bash resolve it as a Linux
+  path instead of a Windows file, so the daemon never reaches the app server or
+  provider checks.
+- Fix:
+  In tuttid, Windows `.sh` launch must prefer Git Bash by absolute path when it
+  is installed, falling back to `bash.exe` only when no Git Bash candidate is
+  available. Keep the app package script path normalized with forward slashes.
+- Validation:
+  Run the workspace shell-command unit test, rebuild `tuttid`, launch the app,
+  and confirm the app reaches `status: running`. For agent-enabled apps, also
+  call the app's provider endpoint and verify Codex no longer reports a spawn
+  error.
+- References:
+  [app_package_platform.go](../../services/tuttid/service/workspace/app_package_platform.go)
+  [workspace-app-runtime.md](workspace-app-runtime.md)
+
+### Windows Node scripts cannot spawn pnpm directly
+
+- Symptom:
+  A Node packaging or generation script fails on Windows with
+  `spawn pnpm ENOENT` even though `pnpm` works from the terminal.
+- Quick checks:
+  Search the failing script for `spawn("pnpm", ...)`, `spawnSync("pnpm", ...)`,
+  a local process helper invoked as `run("pnpm", ...)`, or package scripts that
+  invoke a nested bare `pnpm` after a launcher has already pinned the version.
+- Root cause:
+  On Windows, package-manager shims are commonly resolved through the shell.
+  Direct Node `spawn` calls can miss the `pnpm` command shim when `shell` is
+  forced to `false`.
+- Fix:
+  When a script runs under pnpm, prefer spawning `process.execPath` with
+  `process.env.npm_execpath` so child commands reuse the same pinned pnpm. For
+  direct `node` invocations without a pnpm parent, use
+  `shell: process.platform === "win32"` for the `pnpm` fallback.
+- Validation:
+  Re-run the package or generation command that failed, such as
+  `pnpm generate:builtin-apps` or the owning package script.
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:
@@ -604,6 +655,39 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
 - References:
   [apps.go](../../services/tuttid/service/workspace/apps.go)
   [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
+
+### App Center install fails on Windows missing runtime platform
+
+- Symptom:
+  Installing a remote App Center app on Windows fails with
+  `workspace_app_install_job_failed` and
+  `managed app runtime catalog does not contain platform "windows-amd64"`.
+  Download logs may also show `context canceled`; that is usually a consequence
+  of the runtime preload failure canceling the parallel package download.
+- Quick checks:
+  Inspect the package or catalog manifest for `runtime.profile`. Older remote
+  Node/static packages may omit it and therefore use the default baseline
+  profile, even though their `bootstrap.sh` only launches `TUTTI_APP_NODE`.
+  Confirm `node.exe` and `npm.cmd` are available on `PATH` with `where.exe node`
+  and `where.exe npm`.
+- Root cause:
+  The published managed runtime catalog can lag platform support. When it lacks
+  `windows-amd64`, strict baseline resolution blocks installs before Node-only
+  packages can launch, and concurrent downloads are canceled as part of job
+  failure cleanup.
+- Fix:
+  Until Windows runtime artifacts are published, allow the Windows resolver to
+  satisfy `node-static` and the default baseline profile from system Node/NPM
+  when the only runtime failure is a missing catalog platform. Keep the normal
+  managed runtime path for platforms present in the catalog or explicit runtime
+  roots.
+- Validation:
+  Run the managed runtime tests and a targeted workspace App Center install
+  test. Then start the dev app on Windows, install a remote Node app, and confirm
+  the failure no longer reports missing `windows-amd64`.
+- References:
+  [runtime.go](../../services/tuttid/service/managedruntime/runtime.go)
+  [workspace-app-runtime.md](./workspace-app-runtime.md)
 
 ### Workspace app uninstall fails on cached manifest validation
 

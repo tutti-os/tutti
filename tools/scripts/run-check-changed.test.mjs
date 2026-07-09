@@ -6,7 +6,8 @@ import test from "node:test";
 import {
   printSummary,
   runLanes,
-  selectExistingLintFiles
+  selectExistingLintFiles,
+  windowsCommandLine
 } from "./run-check-changed.mjs";
 
 test("selectExistingLintFiles drops deleted lint targets", () => {
@@ -35,6 +36,17 @@ test("selectExistingLintFiles keeps existing lintable paths", () => {
   assert.deepEqual(lintFiles, changedFiles);
 });
 
+test("windowsCommandLine quotes cmd arguments with spaces and shell metacharacters", () => {
+  assert.equal(
+    windowsCommandLine([
+      "corepack.cmd",
+      "pnpm@10.11.0",
+      "arg with space",
+      "a&b"
+    ]),
+    'corepack.cmd pnpm@10.11.0 "arg with space" "a&b"'
+  );
+});
 test("runLanes preserves lane indexes without relying on outer scope", async () => {
   const runDirectory = mkdtempSync(join(tmpdir(), "run-check-changed-"));
   const lanes = [

@@ -90,14 +90,13 @@ export function buildGoLintLane({
 }) {
   const golangciConfigPath = join(workspaceRoot, GOLANGCI_CONFIG_RELATIVE_PATH);
   const targetList = Array.from(targets).sort().join(" ");
+  const script = `cd ${shellQuote(moduleRoot)} && golangci-lint run --config ${shellQuote(golangciConfigPath)} ${targetList}`;
   return {
     key: `lint:go:${sanitizeLaneKey(moduleRoot)}`,
     label: `lint:go (${moduleRoot})`,
-    command: [
-      "bash",
-      "-lc",
-      `cd ${shellQuote(moduleRoot)} && golangci-lint run --config ${shellQuote(golangciConfigPath)} ${targetList}`
-    ]
+    command: goValidationCommand(script, {
+      windowsScript: `Set-Location -LiteralPath ${powershellQuote(moduleRoot)}; golangci-lint run --config ${powershellQuote(golangciConfigPath)} ${targetList}; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`
+    })
   };
 }
 
@@ -116,14 +115,19 @@ export function buildGoTestLane({
         })} `
       : "";
 
+  const windowsBuiltinEnsure =
+    moduleRoot === "services/tuttid"
+      ? buildTuttidBuiltinEnsurePowerShell(pnpmCommand, {
+          forceGenerate: forceBuiltinGenerate
+        })
+      : "";
+  const script = `${builtinEnsure}cd ${shellQuote(moduleRoot)} && go test ${targetList}`;
   return {
     key: `test:go:${sanitizeLaneKey(moduleRoot)}`,
     label: `test:go (${moduleRoot})`,
-    command: [
-      "bash",
-      "-lc",
-      `${builtinEnsure}cd ${shellQuote(moduleRoot)} && go test ${targetList}`
-    ]
+    command: goValidationCommand(script, {
+      windowsScript: `${windowsBuiltinEnsure}Set-Location -LiteralPath ${powershellQuote(moduleRoot)}; go test ${targetList}; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`
+    })
   };
 }
 
@@ -238,6 +242,31 @@ function resolveVitestInvocation(testScript) {
   return args.length > 0 ? args : ["run"];
 }
 
+function goValidationCommand(bashScript, { windowsScript }) {
+  if (process.platform !== "win32") {
+    return ["bash", "-lc", bashScript];
+  }
+  return [
+    "powershell.exe",
+    "-NoLogo",
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    windowsScript
+  ];
+}
+
+function powershellQuote(value) {
+  return `'${String(value).replace(/'/gu, "''")}'`;
+}
+
+function buildTuttidBuiltinEnsurePowerShell(pnpmCommand, { forceGenerate }) {
+  if (forceGenerate) {
+    return `${pnpmCommand} generate:builtin-apps; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; `;
+  }
+  return `${pnpmCommand} --filter @tutti-os/builtin-tutti-onboarding package:builtin:check; if ($LASTEXITCODE -ne 0) { ${pnpmCommand} generate:builtin-apps; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; `;
+}
 function buildTuttidBuiltinEnsureCommand(pnpmCommand, { forceGenerate }) {
   if (forceGenerate) {
     return `${pnpmCommand} generate:builtin-apps &&`;

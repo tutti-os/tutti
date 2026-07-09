@@ -114,6 +114,11 @@ When the changed set includes deleted TypeScript or JavaScript files,
 Oxlint invocation while still preserving the broader changed-file set for
 boundary checks and package validation.
 
+When repository validation runners such as `check:changed` or `check:full`
+launch pinned pnpm lanes on Windows, invoke `.cmd` and `.bat` entrypoints
+through `cmd.exe /d /s /c`. Direct Node `spawn` of batch files can throw
+`EINVAL` before the lane has a chance to write a useful failure log.
+
 ## UI Boundary Enforcement
 
 The shared UI boundary is enforced in two modes:

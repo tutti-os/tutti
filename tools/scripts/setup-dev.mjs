@@ -123,14 +123,22 @@ function checkNode() {
 function checkPnpm() {
   const result = spawnSync("pnpm", ["--version"], {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    shell: process.platform === "win32"
   });
 
-  if (result.error?.code === "ENOENT") {
+  if (result.error?.code === "ENOENT" || result.status !== 0) {
+    const details = [
+      result.error?.message ? `error=${result.error.message}` : "",
+      result.stderr ? `stderr=${result.stderr.trim()}` : ""
+    ]
+      .filter(Boolean)
+      .join("; ");
+
     return {
       ok: false,
       success: "",
-      failure: `install pnpm ${pinnedPnpmVersion}`
+      failure: `install pnpm ${pinnedPnpmVersion}${details ? ` (${details})` : ""}`
     };
   }
 
@@ -237,7 +245,7 @@ function parsePnpmVersion(packageManager) {
   if (!match) {
     throw new Error(`unsupported packageManager value: ${packageManager}`);
   }
-  return match[1];
+  return match[1].split("+")[0];
 }
 
 function parseGoVersionPrefix(goMod) {

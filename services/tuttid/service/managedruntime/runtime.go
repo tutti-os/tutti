@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -90,13 +91,24 @@ var managedAppRuntimeDownloadLocks sync.Map
 func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 	root := r.runtimeRoot()
 	if err := r.ensureRuntime(ctx, root); err != nil {
+		if r.canUseSystemNodeRuntimeFallback(appRuntimeBaselineProfile, err) {
+			return r.systemNodeStaticRuntime()
+		}
 		return ResolvedRuntime{}, err
 	}
 	return r.resolvedRuntimeForComponents(root, []string{"python", "node"})
 }
 
 func (r DefaultResolver) PreloadProfile(ctx context.Context, profile string) error {
-	return r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+	err := r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+	if err == nil {
+		return nil
+	}
+	if r.canUseSystemNodeRuntimeFallback(profile, err) {
+		_, fallbackErr := r.systemNodeStaticRuntime()
+		return fallbackErr
+	}
+	return err
 }
 
 func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (ResolvedRuntime, error) {
@@ -106,6 +118,9 @@ func (r DefaultResolver) ResolveProfile(ctx context.Context, profile string) (Re
 	}
 	root := r.runtimeRoot()
 	if err := r.ensureRuntimeProfile(ctx, root, profile); err != nil {
+		if r.canUseSystemNodeRuntimeFallback(profile, err) {
+			return r.systemNodeStaticRuntime()
+		}
 		return ResolvedRuntime{}, err
 	}
 	if profile == appRuntimeNodeStaticProfile {
@@ -221,7 +236,7 @@ func (r DefaultResolver) ensureRuntimeProfile(ctx context.Context, root string, 
 	}
 	entry, ok := catalog.Runtimes[platformArch]
 	if !ok {
-		return fmt.Errorf("managed app runtime catalog does not contain platform %q", platformArch)
+		return appRuntimePlatformMissingError{platform: platformArch}
 	}
 	componentNames, err := appRuntimeProfileComponentNames(entry, profile)
 	if err != nil {
@@ -251,7 +266,7 @@ func (r DefaultResolver) runtimeProfileComponentNames(ctx context.Context, profi
 	}
 	entry, ok := catalog.Runtimes[platformArch]
 	if !ok {
-		return nil, fmt.Errorf("managed app runtime catalog does not contain platform %q", platformArch)
+		return nil, appRuntimePlatformMissingError{platform: platformArch}
 	}
 	return appRuntimeProfileComponentNames(entry, profile)
 }
@@ -591,6 +606,63 @@ func appRuntimePlatformArch(platform string, arch string) string {
 	return platform + "-" + arch
 }
 
+func (r DefaultResolver) canUseSystemNodeRuntimeFallback(profile string, err error) bool {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		profile = appRuntimeBaselineProfile
+	}
+	if runtime.GOOS != "windows" || (profile != appRuntimeNodeStaticProfile && profile != appRuntimeBaselineProfile) {
+		return false
+	}
+	var missing appRuntimePlatformMissingError
+	return errors.As(err, &missing)
+}
+
+func (r DefaultResolver) systemNodeStaticRuntime() (ResolvedRuntime, error) {
+	nodePath, err := exec.LookPath(nodeBinaryName())
+	if err != nil {
+		return ResolvedRuntime{}, fmt.Errorf("resolve system node for managed app runtime fallback: %w", err)
+	}
+	npmPath, err := exec.LookPath(npmBinaryName())
+	if err != nil {
+		return ResolvedRuntime{}, fmt.Errorf("resolve system npm for managed app runtime fallback: %w", err)
+	}
+	nodePath = cleanResolvedExecutablePath(nodePath)
+	npmPath = cleanResolvedExecutablePath(npmPath)
+	nodeBinDir := filepath.Dir(nodePath)
+	pathKey := pathEnvKey(r.environ())
+	pathValue := envValue(r.environ(), pathKey)
+	if strings.TrimSpace(pathValue) == "" {
+		pathValue = os.Getenv(pathKey)
+	}
+	pathDirs := mergeAppPathDirs(append([]string{nodeBinDir}, filepath.SplitList(pathValue)...))
+	return ResolvedRuntime{
+		Root:    nodeBinDir,
+		Node:    nodePath,
+		NPM:     npmPath,
+		BinDirs: []string{nodeBinDir},
+		EnvOverrides: []string{
+			"TUTTI_APP_NODE=" + nodePath,
+			"TUTTI_APP_NPM=" + npmPath,
+			pathKey + "=" + strings.Join(pathDirs, string(os.PathListSeparator)),
+		},
+	}, nil
+}
+
+func cleanResolvedExecutablePath(path string) string {
+	if resolved, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return filepath.Clean(path)
+}
+
+type appRuntimePlatformMissingError struct {
+	platform string
+}
+
+func (e appRuntimePlatformMissingError) Error() string {
+	return fmt.Sprintf("managed app runtime catalog does not contain platform %q", e.platform)
+}
 func ProcessEnv(overrides ...string) []string {
 	env := os.Environ()
 	for _, override := range overrides {

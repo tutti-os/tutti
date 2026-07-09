@@ -253,6 +253,69 @@ func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
 	}
 }
 
+func TestDefaultResolverFallsBackToSystemNodeOnWindowsWhenCatalogLacksPlatform(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("system Node fallback is Windows-only")
+	}
+	catalogPath := filepath.Join(t.TempDir(), "runtimes.json")
+	catalogJSON := `{
+  "schemaVersion": "tutti.app.runtimes.v2",
+  "runtimes": {
+    "darwin-arm64": {
+      "version": "test",
+      "components": {
+        "node": {
+          "version": "test-node",
+          "artifactUrl": "https://cdn.example.test/node.zip",
+          "artifactSha256": "` + strings.Repeat("0", 64) + `"
+        }
+      },
+      "profiles": {
+        "baseline": ["node"],
+        "node-static": ["node"]
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(catalogPath, []byte(catalogJSON), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	resolver := DefaultResolver{
+		Environ: func() []string {
+			return []string{
+				tuttiAppRuntimeCacheRootEnv + "=" + t.TempDir(),
+				tuttiAppRuntimeCatalogEnv + "=" + catalogPath,
+				"PATH=" + os.Getenv("PATH"),
+			}
+		},
+	}
+	if err := resolver.PreloadProfile(context.Background(), "node-static"); err != nil {
+		t.Fatalf("PreloadProfile(node-static) error = %v", err)
+	}
+	resolved, err := resolver.ResolveProfile(context.Background(), "node-static")
+	if err != nil {
+		t.Fatalf("ResolveProfile(node-static) error = %v", err)
+	}
+	if resolved.Python != "" {
+		t.Fatalf("Python = %q, want empty", resolved.Python)
+	}
+	if !isExecutableFile(resolved.Node) || !isExecutableFile(resolved.NPM) {
+		t.Fatalf("system Node fallback did not resolve executable node/npm: %#v", resolved)
+	}
+	if got := EnvValue(ProcessEnv(resolved.EnvOverrides...), "TUTTI_APP_NODE"); got != resolved.Node {
+		t.Fatalf("TUTTI_APP_NODE = %q, want %q", got, resolved.Node)
+	}
+	baseline, err := resolver.Resolve(context.Background())
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if baseline.Python != "" {
+		t.Fatalf("Resolve() Python = %q, want empty for system Node fallback", baseline.Python)
+	}
+	if baseline.Node != resolved.Node || baseline.NPM != resolved.NPM {
+		t.Fatalf("Resolve() = %#v, want same system node/npm fallback as node-static %#v", baseline, resolved)
+	}
+}
 func TestDefaultResolverRejectsRuntimeShaMismatch(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")

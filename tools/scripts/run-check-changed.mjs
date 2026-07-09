@@ -300,13 +300,23 @@ function runLane(lane, index, runDirectory) {
 
   return new Promise((resolve) => {
     const [command, ...args] = lane.command;
-    const child = spawn(command, args, {
-      cwd: workspaceRoot,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-
     logStream.write(`$ ${formatCommand(lane.command)}\n\n`);
+
+    const invocation = windowsBatchInvocation(command, args);
+    let child;
+    try {
+      child = spawn(invocation.command, invocation.args, {
+        cwd: workspaceRoot,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+    } catch (error) {
+      logStream.write(`\n[runner] ${error.message}\n`);
+      logStream.end();
+      resolve(buildLaneResult(lane, index, logPath, startedAt, 1));
+      return;
+    }
+
     child.stdout.on("data", (chunk) => logStream.write(chunk));
     child.stderr.on("data", (chunk) => logStream.write(chunk));
 
@@ -330,6 +340,27 @@ function runLane(lane, index, runDirectory) {
   });
 }
 
+function windowsBatchInvocation(command, args) {
+  if (process.platform !== "win32" || !/\.(?:bat|cmd)$/iu.test(command)) {
+    return { command, args };
+  }
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", windowsCommandLine([command, ...args])]
+  };
+}
+
+export function windowsCommandLine(command) {
+  return command.map(windowsCommandArg).join(" ");
+}
+
+function windowsCommandArg(value) {
+  const text = String(value);
+  if (text.length > 0 && !/[\s"&|<>^]/u.test(text)) {
+    return text;
+  }
+  return `"${text.replace(/"/gu, '""')}"`;
+}
 function buildLaneResult(lane, index, logPath, startedAt, exitCode) {
   return {
     command: lane.command,

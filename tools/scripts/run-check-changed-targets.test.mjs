@@ -231,9 +231,10 @@ describe("builtin onboarding ensure", () => {
       forceBuiltinGenerate: false
     });
 
-    assert.match(lane.command[2], /package:builtin:check/);
-    assert.match(lane.command[2], /generate:builtin-apps\) && cd/);
-    assert.match(lane.command[2], /go test \.\/service\/workspace\/\.\.\./);
+    const commandText = lane.command.join(" ");
+    assert.match(commandText, /package:builtin:check/);
+    assert.match(commandText, /generate:builtin-apps/);
+    assert.match(commandText, /go test \.\/service\/workspace\/\.\.\./);
   });
   it("requires forced builtin generation before tuttid Go tests", () => {
     const lane = buildGoTestLane({
@@ -244,8 +245,9 @@ describe("builtin onboarding ensure", () => {
       forceBuiltinGenerate: true
     });
 
-    assert.match(lane.command[2], /^pnpm generate:builtin-apps/);
-    assert.match(lane.command[2], /generate:builtin-apps && cd/);
+    const commandText = lane.command.join(" ");
+    assert.match(commandText, /pnpm generate:builtin-apps/);
+    assert.match(commandText, /generate:builtin-apps/);
   });
 });
 
@@ -258,7 +260,8 @@ describe("buildGoLintLane", () => {
       shellQuote: (value) => value
     });
 
-    assert.doesNotMatch(lane.command[2], /generate:builtin-apps/);
-    assert.match(lane.command[2], /golangci-lint run/);
+    const commandText = lane.command.join(" ");
+    assert.doesNotMatch(commandText, /generate:builtin-apps/);
+    assert.match(commandText, /golangci-lint run/);
   });
 });

@@ -26,23 +26,21 @@ const tsbuildInfoPath = join(
 );
 mkdirSync(tsbuildInfoDirectory, { recursive: true });
 
-const child = spawn(
-  tsgoPath,
-  [
-    "--noEmit",
-    "--incremental",
-    "--tsBuildInfoFile",
-    tsbuildInfoPath,
-    "-p",
-    "tsconfig.json",
-    ...forwardedArgs
-  ],
-  {
-    cwd: packageRoot,
-    env: process.env,
-    stdio: "inherit"
-  }
-);
+const tsgoArgs = [
+  "--noEmit",
+  "--incremental",
+  "--tsBuildInfoFile",
+  tsbuildInfoPath,
+  "-p",
+  "tsconfig.json",
+  ...forwardedArgs
+];
+const invocation = windowsBatchInvocation(tsgoPath, tsgoArgs);
+const child = spawn(invocation.command, invocation.args, {
+  cwd: packageRoot,
+  env: process.env,
+  stdio: "inherit"
+});
 
 child.on("error", (error) => {
   console.error(error.message);
@@ -53,6 +51,27 @@ child.on("close", (code) => {
   process.exit(typeof code === "number" ? code : 1);
 });
 
+function windowsBatchInvocation(command, args) {
+  if (process.platform !== "win32" || !/\.(?:bat|cmd)$/iu.test(command)) {
+    return { command, args };
+  }
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", windowsCommandLine([command, ...args])]
+  };
+}
+
+function windowsCommandLine(command) {
+  return command.map(windowsCommandArg).join(" ");
+}
+
+function windowsCommandArg(value) {
+  const text = String(value);
+  if (text.length > 0 && !/[\s"&|<>^]/u.test(text)) {
+    return text;
+  }
+  return `"${text.replace(/"/gu, '""')}"`;
+}
 function sanitizeFileName(value) {
   return value.replace(/[^A-Za-z0-9_.-]+/gu, "-");
 }

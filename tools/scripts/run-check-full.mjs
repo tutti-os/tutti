@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import readline from "node:readline";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -42,29 +42,31 @@ const phases = [
   }
 ];
 
-let failed = false;
+export async function main() {
+  let failed = false;
 
-for (const phase of phases) {
-  console.log(`\n==> ${phase.title}`);
-  const results = await Promise.all(phase.tasks.map(runTask));
-  const failures = results.filter((result) => result.exitCode !== 0);
+  for (const phase of phases) {
+    console.log(`\n==> ${phase.title}`);
+    const results = await Promise.all(phase.tasks.map(runTask));
+    const failures = results.filter((result) => result.exitCode !== 0);
 
-  if (failures.length > 0) {
-    process.stderr.write(`\n${phase.title} failed:\n`);
-    for (const failure of failures) {
-      process.stderr.write(
-        `- ${failure.task.script} exited with code ${failure.exitCode}\n`
-      );
+    if (failures.length > 0) {
+      process.stderr.write(`\n${phase.title} failed:\n`);
+      for (const failure of failures) {
+        process.stderr.write(
+          `- ${failure.task.script} exited with code ${failure.exitCode}\n`
+        );
+      }
+      failed = true;
+      break;
     }
-    failed = true;
-    break;
   }
-}
 
-if (failed) {
-  process.exitCode = 1;
-} else {
-  console.log("\ncheck:full passed");
+  if (failed) {
+    process.exitCode = 1;
+  } else {
+    console.log("\ncheck:full passed");
+  }
 }
 
 function runTask(task) {
@@ -72,10 +74,22 @@ function runTask(task) {
 
   return new Promise((resolve) => {
     const [command, ...prefixArgs] = pnpmCommand;
-    const child = spawn(command, [...prefixArgs, "run", task.script], {
-      cwd: workspaceRoot,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    const invocation = windowsBatchInvocation(command, [
+      ...prefixArgs,
+      "run",
+      task.script
+    ]);
+    let child;
+    try {
+      child = spawn(invocation.command, invocation.args, {
+        cwd: workspaceRoot,
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+    } catch (error) {
+      process.stderr.write(`[${task.label}] ${error.message}\n`);
+      resolve({ task, exitCode: 1 });
+      return;
+    }
 
     pipeWithPrefix(child.stdout, task.label, process.stdout);
     pipeWithPrefix(child.stderr, task.label, process.stderr);
@@ -92,6 +106,28 @@ function runTask(task) {
       resolve({ task, exitCode });
     });
   });
+}
+
+function windowsBatchInvocation(command, args) {
+  if (process.platform !== "win32" || !/\.(?:bat|cmd)$/iu.test(command)) {
+    return { command, args };
+  }
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", windowsCommandLine([command, ...args])]
+  };
+}
+
+export function windowsCommandLine(command) {
+  return command.map(windowsCommandArg).join(" ");
+}
+
+function windowsCommandArg(value) {
+  const text = String(value);
+  if (text.length > 0 && !/[\s"&|<>^]/u.test(text)) {
+    return text;
+  }
+  return `"${text.replace(/"/gu, '""')}"`;
 }
 
 function resolvePnpmCommand() {
@@ -118,5 +154,15 @@ function pipeWithPrefix(stream, label, output) {
 
   rl.on("line", (line) => {
     output.write(`[${label}] ${line}\n`);
+  });
+}
+
+const currentPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === currentPath) {
+  main().catch((error) => {
+    console.error(
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+    process.exitCode = 1;
   });
 }
