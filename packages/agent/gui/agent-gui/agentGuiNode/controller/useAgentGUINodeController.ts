@@ -4219,6 +4219,14 @@ export function useAgentGUINodeController({
     Record<string, AgentComposerDraft>
   >({});
   const draftBySessionIdRef = useRef(draftBySessionId);
+  // Home drafts that were just submitted and are still visible in the composer
+  // during the async session-create round trip (their eager clear is skipped so
+  // the box isn't left blank mid-flight). Keyed by the same home draft key. This
+  // lets `createConversation` distinguish already-sent leftover text (safe to
+  // clear) from genuinely unsent content the user still wants to keep.
+  const pendingSubmittedHomeDraftRef = useRef<
+    Record<string, AgentComposerDraft>
+  >({});
   const [draftSettingsBySessionId, setDraftSettingsBySessionId] = useState<
     Record<string, AgentSessionComposerSettings>
   >({});
@@ -7636,6 +7644,14 @@ export function useAgentGUINodeController({
       const submittedHomeDraft =
         draftBySessionIdRef.current[submittedHomeDraftKey] ??
         EMPTY_AGENT_COMPOSER_DRAFT;
+      // Remember the just-submitted home draft so a `createConversation` fired
+      // mid-flight clears only this leftover sent text, not later unsent edits.
+      if (agentComposerDraftHasContent(submittedHomeDraft)) {
+        pendingSubmittedHomeDraftRef.current = {
+          ...pendingSubmittedHomeDraftRef.current,
+          [submittedHomeDraftKey]: submittedHomeDraft
+        };
+      }
       isCreatingConversationRef.current = true;
       setLocalIsCreatingConversation(true);
       setDetailError(null);
@@ -8209,6 +8225,16 @@ export function useAgentGUINodeController({
         .finally(() => {
           isCreatingConversationRef.current = false;
           setLocalIsCreatingConversation(false);
+          // The create has settled (success cleared the draft; failure kept it
+          // as a real unsent draft). Either way the submitted home draft is no
+          // longer in-flight leftover text, so drop its pending marker — a
+          // subsequent createConversation must treat any home content as unsent
+          // and preserve it.
+          if (pendingSubmittedHomeDraftRef.current[submittedHomeDraftKey]) {
+            const nextPending = { ...pendingSubmittedHomeDraftRef.current };
+            delete nextPending[submittedHomeDraftKey];
+            pendingSubmittedHomeDraftRef.current = nextPending;
+          }
         });
     },
     [
@@ -8322,10 +8348,21 @@ export function useAgentGUINodeController({
         let next: Record<string, AgentComposerDraft> | null = null;
         for (const key of homeDraftKeysToClear) {
           const existing = current[key];
-          if (existing && agentComposerDraftHasContent(existing)) {
-            next = next ?? { ...current };
-            next[key] = emptyAgentComposerDraft();
+          if (!existing || !agentComposerDraftHasContent(existing)) {
+            continue;
           }
+          // Only wipe leftover text from a submission still in-flight (the eager
+          // clear was skipped so the box wasn't blank mid-round-trip). Genuinely
+          // unsent content the user typed must survive starting a new session.
+          const pendingSubmitted = pendingSubmittedHomeDraftRef.current[key];
+          if (
+            !pendingSubmitted ||
+            !areAgentComposerDraftsEqual(existing, pendingSubmitted)
+          ) {
+            continue;
+          }
+          next = next ?? { ...current };
+          next[key] = emptyAgentComposerDraft();
         }
         return next ?? current;
       };

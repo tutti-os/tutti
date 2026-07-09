@@ -326,8 +326,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		t.Fatalf("app factory skill missing manifest reference: %#v", appFactorySkill.Files)
 	}
 	runtimeEnvReference := appFactorySkill.Files["references/runtime-env.md"]
-	if !strings.Contains(runtimeEnvReference, "@tutti-os/agent-acp-kit` detection") {
-		t.Fatalf("runtime env reference should route agent provider choices through app-owned agent-acp-kit detection:\n%s", runtimeEnvReference)
+	if !strings.Contains(runtimeEnvReference, "Tutti workspace-app scoped daemon APIs") {
+		t.Fatalf("runtime env reference should route agent provider choices through app-scoped daemon APIs:\n%s", runtimeEnvReference)
 	}
 	tuttiCLIReference := appFactorySkill.Files["references/tutti-cli-commands.md"]
 	if !strings.Contains(tuttiCLIReference, "@tutti-os/agent-acp-kit") {
@@ -347,11 +347,16 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if !ok {
 		t.Fatalf("agent workspace app skill missing agent-acp-kit reference: %#v", agentWorkspaceAppSkill.Files)
 	}
+	if _, ok := agentWorkspaceAppSkill.Files["references/dynamic-agent-providers.md"]; !ok {
+		t.Fatalf("agent workspace app skill missing dynamic-agent-providers reference: %#v", agentWorkspaceAppSkill.Files)
+	}
 	for _, want := range []string{
 		"Do not hand-roll provider detection",
 		"Tutti's app-scoped daemon API",
 		"whole-catalog failure",
 		"agent-providers/status",
+		"dynamic-agent-providers.md",
+		"localAgentRuntime.detect",
 	} {
 		if !strings.Contains(agentACPReference, want) {
 			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
@@ -478,6 +483,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"@tutti-os/agent-acp-kit",
 		"TUTTI_CLI agent/codex/session polling",
 		"Tutti workspace-app scoped agent APIs",
+		"dynamic-agent-providers.md",
 	} {
 		if !strings.Contains(constraints, want) {
 			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)

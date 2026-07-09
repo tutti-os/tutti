@@ -5,7 +5,12 @@ import type {
   SDKMessage,
   SDKUserMessage
 } from "@anthropic-ai/claude-agent-sdk";
-import { SessionRuntime, withSidecarEventSinkForTest } from "./main.ts";
+import {
+  claudeSettingsEnv,
+  loadClaudeSettingsEnv,
+  SessionRuntime,
+  withSidecarEventSinkForTest
+} from "./main.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 
 type TestCanUseToolOptions = Parameters<
@@ -2893,3 +2898,186 @@ async function waitForEvent(
     `timed out waiting for ${type}; events=${JSON.stringify(events)}`
   );
 }
+
+test("loadClaudeSettingsEnv reads env from ~/.claude/settings.json", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-merge-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "PROXY_MANAGED",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:15721"
+      }
+    })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "PROXY_MANAGED");
+    assert.equal(result.ANTHROPIC_BASE_URL, "http://127.0.0.1:15721");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv skips non-string env values", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-skip-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "valid-token",
+        ANTHROPIC_BASE_URL: 12345,
+        DISABLED: null
+      }
+    })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "valid-token");
+    assert.equal(result.ANTHROPIC_BASE_URL, undefined);
+    assert.equal(result.DISABLED, undefined);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object when settings.json missing", async () => {
+  const { mkdirSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-empty-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object for malformed settings.json", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(
+    tmpdir(),
+    `tutti-claude-settings-malformed-${Date.now()}`
+  );
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(join(tempDir, "settings.json"), "{ not valid json");
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object when env field absent", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-noenv-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({ mcpServers: {} })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("claudeSettingsEnv layers user, project, and local settings", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-layered-${Date.now()}`);
+  const configDir = join(tempDir, "config");
+  const projectDir = join(tempDir, "project");
+  mkdirSync(join(configDir), { recursive: true });
+  mkdirSync(join(projectDir, ".claude"), { recursive: true });
+  writeFileSync(
+    join(configDir, "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "user-token",
+        ANTHROPIC_BASE_URL: "https://user.example",
+        USER_ONLY: "user"
+      }
+    })
+  );
+  writeFileSync(
+    join(projectDir, ".claude", "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: "https://project.example",
+        PROJECT_ONLY: "project"
+      }
+    })
+  );
+  writeFileSync(
+    join(projectDir, ".claude", "settings.local.json"),
+    JSON.stringify({
+      env: { ANTHROPIC_BASE_URL: "https://local.example" }
+    })
+  );
+  const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = configDir;
+  try {
+    const result = claudeSettingsEnv(projectDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "user-token");
+    assert.equal(result.USER_ONLY, "user");
+    assert.equal(result.PROJECT_ONLY, "project");
+    assert.equal(result.ANTHROPIC_BASE_URL, "https://local.example");
+  } finally {
+    if (previousConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("claudeSettingsEnv works without project settings", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(
+    tmpdir(),
+    `tutti-claude-settings-useronly-${Date.now()}`
+  );
+  const configDir = join(tempDir, "config");
+  const projectDir = join(tempDir, "project");
+  mkdirSync(configDir, { recursive: true });
+  mkdirSync(projectDir, { recursive: true });
+  writeFileSync(
+    join(configDir, "settings.json"),
+    JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "user-token" } })
+  );
+  const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = configDir;
+  try {
+    const result = claudeSettingsEnv(projectDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "user-token");
+  } finally {
+    if (previousConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+    }
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

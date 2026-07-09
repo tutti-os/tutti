@@ -57,7 +57,8 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 // via env vars or on-disk config. This is the signal that usage is billed to an
 // API account rather than a Console/subscription session, and it overrides
 // whatever `claude auth status` reports (which only reflects the stored OAuth
-// session, not env/settings credentials).
+// session, not env/settings credentials). Used for Claude Code and Codex today;
+// other providers return false until credential env/config detection is added.
 func (s Service) providerHasAPICredential(provider string) bool {
 	for _, key := range providerCredentialEnvVars(provider) {
 		if strings.TrimSpace(s.lookupEnv(key)) != "" {
@@ -170,15 +171,21 @@ func (s Service) codexConfigDeclares(keys ...string) bool {
 	return false
 }
 
-// claudeSettingsDeclares reports whether ~/.claude/settings.json sets any of
+// claudeSettingsDeclares reports whether the Claude settings.json sets any of
 // the given env keys to a non-blank value, or — when withAPIKeyHelper is true —
-// declares a non-blank apiKeyHelper.
+// declares a non-blank apiKeyHelper. The settings file lives under
+// $CLAUDE_CONFIG_DIR when set (matching the claude-sdk-sidecar), otherwise
+// ~/.claude.
 func (s Service) claudeSettingsDeclares(keys []string, withAPIKeyHelper bool) bool {
-	home, err := s.homeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return false
+	configDir := strings.TrimSpace(s.lookupEnv("CLAUDE_CONFIG_DIR"))
+	if configDir == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		configDir = filepath.Join(home, ".claude")
 	}
-	content, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	content, err := os.ReadFile(filepath.Join(configDir, "settings.json"))
 	if err != nil {
 		return false
 	}

@@ -6507,6 +6507,61 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("preserves an unsent home draft when starting a new session from an existing conversation", async () => {
+    const activate = vi.fn((input: AgentHostActivateAgentSessionInput) =>
+      Promise.resolve({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec: vi.fn(async () => ({ turnId: "turn-1" }))
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    // Go to the home composer and type something without sending it.
+    act(() => {
+      result.current.actions.createConversation();
+    });
+    act(() => {
+      result.current.actions.updateDraftContent(draftContent("unsent draft"));
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("unsent draft");
+
+    // Navigate into an existing conversation, then start a brand-new session.
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    act(() => {
+      result.current.actions.createConversation();
+    });
+
+    // The never-sent draft must still be waiting in the fresh composer.
+    expect(result.current.viewModel.activeConversationId).toBeNull();
+    expect(result.current.viewModel.draftPrompt).toBe("unsent draft");
+  });
+
   it("renders live assistant messages for a newly created session with only an optimistic prompt in detail", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)

@@ -150,14 +150,11 @@ recovery.
 agent sessions. It should wait for the next meaningful stop point such as turn
 completion, failure, cancellation, waiting for approval, waiting for user
 input, or timeout. Its JSON result should stay narrow: compact session status,
-wait reason, latest version, timeout flag, and only the most recent agent
-execution messages from the wait window. It must not return a full transcript;
-callers that need broader context should follow with `agent session-summary`.
-When a caller continues an existing session with `agent send`, the send action
-should return a `waitAfterVersion` cursor, and the next wait call should pass
-that cursor as `agent wait --after-version <waitAfterVersion> ...` so the wait
-blocks for the new stop point instead of immediately replaying the previous
-session stop state.
+wait reason, latest version, and timeout flag. It must not return execution
+messages or a full transcript; callers that need broader context should follow
+with `agent session-summary`. Keep version cursors and message window controls
+out of the public wait command shape; those are internal synchronization
+details, not model-facing query parameters.
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at
@@ -166,14 +163,15 @@ grouped under their source message. Do not flatten images across turns in this
 command; the calling agent decides which turns to inspect and which returned
 `localPath` values to pass to provider launchers as `--image`.
 
-Provider launcher commands such as `codex start` and `claude start` should keep
-`--model` optional. When omitted, tuttid resolves the model from composer
-defaults or the provider configured/default model before starting the session.
-These provider launchers must create sessions through their fixed local agent
-targets (`local:codex` and `local:claude-code`). Generic provider-shaped launch
-commands such as `agent start --provider ...` must not create a provider-only
-session when no agent target is available; return a CLI invalid-input error that
-points callers to the provider launcher commands or a target-first launch path.
+Provider launcher commands such as `codex start`, `claude start`, and
+`tutti-agent start` should keep `--model` optional. When omitted, tuttid
+resolves the model from composer defaults or the provider configured/default
+model before starting the session. These provider launchers must create sessions
+through their fixed local agent targets (`local:codex`, `local:claude-code`,
+and `local:tutti-agent`). Generic provider-shaped launch commands such as
+`agent start --provider ...` must not create a provider-only session when no
+agent target is available; return a CLI invalid-input error that points callers
+to the provider launcher commands or a target-first launch path.
 `--show` on provider launchers requests AgentGUI activation only; it must not
 change the created session's visibility. User-started sessions should stay on
 the normal visible default; only an explicit `--hidden` launcher input should
@@ -188,7 +186,7 @@ Examples:
 - `issue list`
 - `agent session-summary`
 - `topic-id`
-- `after-version`
+- `wait`
 - `page-size`
 
 Do not introduce snake_case, camelCase, spaces, or leading dashes in command
@@ -241,13 +239,14 @@ created from `--prompt`. Keep this compatibility conversion in the CLI provider
 layer; downstream agent session services should receive structured prompt
 content, not raw CLI image flags.
 
-When an agent delegates work through `codex start` or `claude start`, local file
-references in the handoff prompt should use `[@filename](/absolute/path)`
-instead of bare paths. Images have two valid representations, and the delegating
-agent should choose one per image: pass `--image <localPath>` for structured
-visual input, or use `[@filename](/absolute/path)` in the prompt when preserving
-the file reference's prompt/turn ordering is more important. Do not duplicate the
-same image through both representations unless the user explicitly asks.
+When an agent delegates work through `codex start`, `claude start`, or
+`tutti-agent start`, local file references in the handoff prompt should use
+`[@filename](/absolute/path)` instead of bare paths. Images have two valid
+representations, and the delegating agent should choose one per image: pass
+`--image <localPath>` for structured visual input, or use
+`[@filename](/absolute/path)` in the prompt when preserving the file reference's
+prompt/turn ordering is more important. Do not duplicate the same image through
+both representations unless the user explicitly asks.
 
 Input structs should use tags for CLI field names, validation, and recovery
 hints. Required inputs must include a recovery hint when a user can reasonably

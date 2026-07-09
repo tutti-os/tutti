@@ -35,6 +35,13 @@ Runtime-owned capability declarations are optional and default to enabled:
   images, pasted large text, and dropped or host-local files. Ordinary `@`
   references and workspace-reference mentions remain available.
 
+Slash commands come from the runtime session command snapshot. AgentGUI keeps
+legacy provider-default slash entries unless the host passes
+`slashCommandFallbackMode="none"`, which makes the slash palette show only
+runtime-advertised commands. The mode only controls whether AgentGUI synthesizes
+provider fallback entries; owner-advertised built-in command names still keep
+AgentGUI's local interaction semantics for a consistent composer experience.
+
 If `reportDiagnostic` is omitted, non-production development builds emit AgentGUI
 diagnostics to `console` by default for message page requests/resolutions,
 render-state changes, and caught errors. Set

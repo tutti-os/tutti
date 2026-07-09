@@ -1,6 +1,6 @@
 # Agent ACP Kit Integration
 
-Use this reference only when the app needs local agent execution or a local agent runtime behind Tutti-owned provider catalog APIs.
+Use this reference only when the app needs local agent execution or a local agent runtime behind Tutti-owned dynamic provider catalog APIs.
 
 ## Rule
 
@@ -21,6 +21,8 @@ Application use-case
 ```
 
 Use provider IDs from Tutti's workspace-app scoped agent APIs. Do not keep app-local catalog allowlists such as `codex`/`claude` unless the app's product requirements explicitly document that a provider is unsupported. The app should show the provider set returned by Tutti, keep unavailable providers visible as disabled with a reason, and choose a usable default from the Tutti catalog.
+
+Read `references/dynamic-agent-providers.md` for the full discovery, normalization, UI, and compatibility rules. Register the complete kit default provider set for execution; use `localAgentRuntime.detect(...)` only for standalone operation or the documented whole-catalog compatibility path, not to replace Tutti's app-scoped daemon API inside Tutti.
 
 ## Dynamic Provider Catalog
 
@@ -72,6 +74,8 @@ export { localAgentRuntime };
 ```
 
 Map Tutti composer models to app model IDs with a provider prefix, such as `codex:gpt-5.1` or `claude-code:sonnet`.
+
+For standalone kit detection, map detected provider models with the same prefix rule, such as `cursor:default` or `codex:gpt-5.1`. Build prefixes from the detected `provider` value; do not assume only Codex/Claude models exist.
 
 When an app customizes provider behavior, transform the full default plugin list instead of filtering it:
 
@@ -225,6 +229,8 @@ Add tests for:
 - app status queries that omit app-local provider allowlists
 - provider visibility following the app-scoped status API rather than `runtime.listProviders()`
 - whole-catalog failure returning the Codex/Claude `default` legacy catalog
+- dynamic provider catalog exposure and default selection (see `references/dynamic-agent-providers.md`)
+- provider filtering and model mapping
 - SSR/server provider detection using `createManagedAgentDetectContextFromHeaders(...)`
 - model-list detection using request-header managed context
 - run creation using `createManagedAgentRunContextFromHeaders(...)`

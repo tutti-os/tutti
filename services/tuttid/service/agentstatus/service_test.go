@@ -2915,6 +2915,84 @@ func TestServiceListReportsReadyForClaudeAPIBillingDespiteOauthTokenStatus(t *te
 	}
 }
 
+// Codex can run with OPENAI_API_KEY (or config.toml api_key) without a ChatGPT
+// login. `codex login status` only reflects the OAuth session, so an API-key
+// user is reported as "Not logged in" even though the CLI can already run.
+// Detect the credential and treat the provider as ready instead of blocking.
+func TestServiceListReportsReadyForCodexAPIKeyWithoutLogin(t *testing.T) {
+	service := testService(func(name string) (string, error) {
+		return "/usr/local/bin/" + name, nil
+	}, map[string]bool{})
+	service.Environ = func() []string {
+		return []string{"OPENAI_API_KEY=sk-test"}
+	}
+	service.RunAuthStatusCommand = func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+		if spec.Provider != "codex" {
+			t.Fatalf("Provider = %q, want codex", spec.Provider)
+		}
+		if binaryPath != "/usr/local/bin/codex" {
+			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)
+		}
+		return parseCodexAuthStatusOutput([]byte("Not logged in"))
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated {
+		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
+	}
+	if status.Auth.AuthMethod != "apiKey" {
+		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, "apiKey")
+	}
+	if status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
+	}
+}
+
+func TestServiceListReportsReadyForCodexConfigTomlAPIKeyWithoutLogin(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatalf("mkdir .codex: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("api_key = \"sk-inline\"\n"), 0o600); err != nil {
+		t.Fatalf("write config.toml: %v", err)
+	}
+	service := testService(func(name string) (string, error) {
+		return "/usr/local/bin/" + name, nil
+	}, map[string]bool{})
+	service.HomeDir = func() (string, error) { return home, nil }
+	service.Environ = func() []string { return []string{} }
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return parseCodexAuthStatusOutput([]byte("Not logged in"))
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthAuthenticated {
+		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
+	}
+	if status.Auth.AuthMethod != "apiKey" {
+		t.Fatalf("Auth.AuthMethod = %q, want apiKey", status.Auth.AuthMethod)
+	}
+	if status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
+	}
+}
+
 // A bare custom endpoint (no API credential) must NOT be mislabeled as API
 // Usage Billing. The user may be on an OAuth/subscription session against that
 // endpoint, so the CLI-reported auth status and label must be preserved.

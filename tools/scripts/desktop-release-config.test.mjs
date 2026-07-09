@@ -311,9 +311,13 @@ test("desktop release workflow keeps GitHub release draft until assets are ready
     "name: Update release notes with direct downloads"
   );
   const publishIndex = publishJob.indexOf("name: Publish GitHub release");
+  const stableAliasIndex = publishJob.indexOf(
+    "name: Refresh stable release alias"
+  );
 
   assert.notEqual(stageIndex, -1, "release assets should be staged");
   assert.notEqual(publishIndex, -1, "release should be published explicitly");
+  assert.notEqual(stableAliasIndex, -1, "stable release alias should refresh");
   assert.match(publishJob, /draft:\s*true/);
   assert.match(
     publishJob,
@@ -322,6 +326,46 @@ test("desktop release workflow keeps GitHub release draft until assets are ready
   assert.ok(stageIndex < s3Index);
   assert.ok(s3Index < notesIndex);
   assert.ok(notesIndex < publishIndex);
+  assert.ok(publishIndex < stableAliasIndex);
+});
+
+test("desktop release workflow refreshes the stable alias without taking Latest", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJobMatch = workflow.match(
+    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(publishJobMatch, "publish job should exist");
+  const publishJob = publishJobMatch[0];
+  const stableAliasStep = publishJob.match(
+    /- name: Refresh stable release alias[\s\S]*?(?=\n\s{6}- name:|\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+
+  assert.ok(stableAliasStep, "stable alias step should exist");
+  assert.match(stableAliasStep, /TUTTI_DESKTOP_RELEASE_CHANNEL/);
+  assert.match(stableAliasStep, /gh release list/);
+  assert.match(stableAliasStep, /--exclude-drafts/);
+  assert.match(stableAliasStep, /--exclude-pre-releases/);
+  assert.match(stableAliasStep, /\.tagName != "stable"/);
+  assert.match(
+    stableAliasStep,
+    /select\(\.tagName != "stable" and \(\.tagName \| test\("\^v\[0-9\]\+\\\\\.\[0-9\]\+\\\\\.\[0-9\]\+\$"\)\)\)\]/
+  );
+  assert.match(
+    stableAliasStep,
+    /apps\/desktop\/scripts\/build-stable-release-alias-body\.mjs/
+  );
+  assert.match(stableAliasStep, /git tag -f stable "\$\{stable_sha\}"/);
+  assert.match(stableAliasStep, /git push origin refs\/tags\/stable --force/);
+  assert.match(stableAliasStep, /gh release delete stable --yes/);
+  assert.doesNotMatch(stableAliasStep, /--cleanup-tag/);
+  assert.doesNotMatch(stableAliasStep, /git push origin :refs\/tags\/stable/);
+  assert.doesNotMatch(stableAliasStep, /git tag -a/);
+  assert.match(stableAliasStep, /gh release create stable/);
+  assert.match(stableAliasStep, /--verify-tag/);
+  assert.doesNotMatch(stableAliasStep, /--target "\$\{stable_sha\}"/);
+  assert.match(stableAliasStep, /--latest=false/);
+  assert.match(stableAliasStep, /gh release edit "\$\{stable_tag\}" --latest/);
 });
 
 test("desktop release workflow publishes only macOS release assets for now", async () => {

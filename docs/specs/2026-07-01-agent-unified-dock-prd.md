@@ -50,9 +50,9 @@ settings panel so the unified dock can remain controlled while it is validated.
   `mention://workspace-app/agent-codex?...` or
   `mention://workspace-app/agent-claude-code?...` mentions. They may remain as
   inert historical mention chips or unknown workspace-app mentions.
-- Do not remove provider convenience CLI commands such as `tutti codex start`
-  or `tutti claude start`; the breaking change applies only to `@` mention
-  discovery identity.
+- Do not remove provider convenience CLI commands such as `tutti codex start`,
+  `tutti claude start`, or `tutti tutti-agent start`; the breaking change
+  applies only to `@` mention discovery identity.
 
 ## 4. Terminology
 
@@ -120,7 +120,7 @@ First iteration:
 ```ts
 type AgentTargetLaunchRef = {
   type: "local_cli";
-  provider: "codex" | "claude-code";
+  provider: "codex" | "claude-code" | "tutti-agent";
 };
 ```
 
@@ -138,7 +138,7 @@ Future extension example:
 
 ```ts
 type AgentTargetLaunchRef =
-  | { type: "local_cli"; provider: "codex" | "claude-code" }
+  | { type: "local_cli"; provider: "codex" | "claude-code" | "tutti-agent" }
   | { type: "agent_profile"; provider: string; profile_id: string };
 ```
 
@@ -146,7 +146,7 @@ The profile payload itself should live in a separate profile/config table.
 
 ### 5.4 Default Rows
 
-Initialize two system targets during repository/workspace setup:
+Initialize three system targets during repository/workspace setup:
 
 ```json
 {
@@ -177,6 +177,22 @@ Initialize two system targets during repository/workspace setup:
   "enabled": true,
   "source": "system",
   "sort_order": 20
+}
+```
+
+```json
+{
+  "id": "local:tutti-agent",
+  "provider": "tutti-agent",
+  "launch_ref_json": {
+    "type": "local_cli",
+    "provider": "tutti-agent"
+  },
+  "name": "Tutti Agent",
+  "icon_key": "tutti-agent",
+  "enabled": true,
+  "source": "system",
+  "sort_order": 30
 }
 ```
 
@@ -345,7 +361,7 @@ Rules:
 - `workspace-app` returns real workspace app candidates only. It must not
   return Agent Target rows or agent pseudo apps.
 - `agent-target` returns Agent Target candidates. First iteration candidates are
-  `local:codex` and `local:claude-code`.
+  `local:codex`, `local:claude-code`, and `local:tutti-agent`.
 - AgentGUI renders an Agents tab backed by `agent-target`.
 - AgentGUI renders an Apps tab backed by `workspace-app`, excluding agent
   targets.
@@ -363,6 +379,7 @@ identity.
 ```text
 mention://agent-target/local:codex
 mention://agent-target/local:claude-code
+mention://agent-target/local:tutti-agent
 ```
 
 The inserted mention should carry:
@@ -399,8 +416,8 @@ Rules:
   from `agent_targets.launch_ref_json`.
 - The external `@` provider must not expose `launch_ref_json` as a free-form
   invocation payload.
-- Provider convenience commands remain valid, including `tutti codex start` and
-  `tutti claude start`.
+- Provider convenience commands remain valid, including `tutti codex start`,
+  `tutti claude start`, and `tutti tutti-agent start`.
 - Future custom agents should use generic target-first launch paths, such as an
   Agent Activity create-session request with `agentTargetId`, rather than
   generating one app id or one CLI shortcut per target.
@@ -449,7 +466,8 @@ Do not put durable Agent Target business rules only in `apps/desktop`.
 
 ### Data
 
-- A fresh workspace has system Agent Targets for Codex and Claude Code.
+- A fresh workspace has system Agent Targets for Codex, Claude Code, and
+  Tutti Agent.
 - `launch_ref_json` is validated as a controlled union.
 - Invalid launch refs are rejected or ignored safely.
 - System targets cannot be accidentally deleted through normal target editing.
@@ -494,11 +512,12 @@ Do not put durable Agent Target business rules only in `apps/desktop`.
 ### AgentGUI `@` Mention Palette
 
 - AgentGUI shows agent candidates from `agent-target`, not `workspace-app`.
-- The Agents tab includes `local:codex` and `local:claude-code` in first
-  iteration.
-- The Apps tab does not include `agent-codex` or `agent-claude-code`.
-- Inserting a Codex or Claude Code agent mention creates an `agent-target`
-  mention using the Agent Target id.
+- The Agents tab includes `local:codex`, `local:claude-code`, and
+  `local:tutti-agent` in first iteration.
+- The Apps tab does not include `agent-codex`, `agent-claude-code`, or
+  `agent-tutti-agent`.
+- Inserting a Codex, Claude Code, or Tutti Agent mention creates an
+  `agent-target` mention using the Agent Target id.
 - New AgentGUI and external `@` queries do not create
   `mention://workspace-app/agent-codex?...` or
   `mention://workspace-app/agent-claude-code?...`.

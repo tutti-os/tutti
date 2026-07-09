@@ -77,6 +77,36 @@ Use this shape for new entries:
   [tuttid.v1.yaml](../../services/tuttid/api/openapi/tuttid.v1.yaml)
   [workspace-app-runtime.md](./workspace-app-runtime.md)
 
+### Desktop stable release alias disappears after an RC publish
+
+- Symptom:
+  The desktop release workflow publishes a concrete release, but the
+  `Refresh stable release alias` step fails with `Committer identity unknown`,
+  or the GitHub Releases page no longer has a `stable` entry after a failed RC
+  publish.
+- Quick checks:
+  Inspect the failed `Desktop Release` run's `Refresh stable release alias`
+  step. If the log shows `git tag -a` or `gh release delete stable --cleanup-tag`,
+  the workflow is using the unsafe annotated-tag refresh path. Also check
+  `gh release view stable` and `git ls-remote --tags origin stable` to confirm
+  whether the release, tag, or both are missing.
+- Root cause:
+  Annotated tags require a configured Git committer identity in GitHub Actions.
+  Deleting the old floating release and tag before creating the replacement
+  leaves the repository in a half-refreshed state if tag creation fails.
+- Fix:
+  Refresh `stable` as a lightweight tag with `git tag -f stable "${stable_sha}"`
+  and force-push it before deleting and recreating the floating `stable`
+  GitHub Release. Delete only the old release (`gh release delete stable --yes`)
+  and never pass `--cleanup-tag` from this step.
+- Validation:
+  Run `node --test ./tools/scripts/desktop-release-config.test.mjs` and verify
+  the workflow test rejects `git tag -a`, `--cleanup-tag`, and deleting
+  `refs/tags/stable`.
+- References:
+  [.github/workflows/desktop-release.yml](../../.github/workflows/desktop-release.yml)
+  [desktop-release-config.test.mjs](../../tools/scripts/desktop-release-config.test.mjs)
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:
@@ -1461,6 +1491,65 @@ delimited by ---`, and the composer skill picker may show partial or
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
 
+### Codex provider shows login required when only an API key is configured
+
+- Symptom:
+  The environment wizard / dock marks Codex as needing login ("未登录") even
+  though `OPENAI_API_KEY` is set or `~/.codex/config.toml` declares `api_key`,
+  and Codex sessions can already run successfully.
+- Quick checks:
+  Run `codex login status` (often prints `Not logged in`). Confirm an API
+  credential exists via `echo $OPENAI_API_KEY` or
+  `grep -E 'api_key' ~/.codex/config.toml`.
+- Root cause:
+  `codex login status` only reflects a ChatGPT OAuth session. API-key billing
+  is invisible to that command, so tuttid used to treat the provider as
+  `auth_required` and block the wizard even though the runtime can authenticate
+  with the key.
+- Fix:
+  Provider status should call `providerHasAPICredential` for Codex the same way
+  it does for Claude Code. When an API key is present (env or config.toml),
+  report auth as authenticated with method `apiKey` / label
+  `API Usage Billing` instead of requiring login. A bare custom base URL
+  without a credential must not trigger this override.
+- Validation:
+  Add or update `agentstatus` tests for Codex API-key-without-login readiness,
+  then run `cd services/tuttid && go test ./service/agentstatus`.
+
+### Codex session fails with not connected when model_catalog_json is relative
+
+- Symptom:
+  Codex is installed and `codex login status` reports logged in, but Tutti
+  chat fails with `agent session is not connected`. Daemon logs show
+  `thread/start` failing with
+  `failed to load configuration: No such file or directory (os error 2)`.
+  Tools such as CC Switch often set
+  `model_catalog_json = "cc-switch-model-catalog.json"` in `~/.codex/config.toml`.
+  If that catalog file is missing entirely, the same config error can also make
+  provider status show login required (`auth_unknown`) even though OAuth tokens
+  exist.
+- Quick checks:
+  `grep model_catalog_json ~/.codex/config.toml` and confirm the referenced
+  file exists under `~/.codex/`. Inspect the run-scoped
+  `~/.tutti-dev/agent/runs/<session>/codex-home/` (or `~/.tutti/...` in prod):
+  `config.toml` is copied, but a relative catalog must also be present there.
+- Root cause:
+  Tutti prepares a run-scoped `CODEX_HOME` and copies only `config.toml` (plus
+  auth/plugin/skill exposure). Relative `model_catalog_json` paths resolve
+  against that sandbox home, so the catalog is missing unless Tutti mirrors it.
+- Fix:
+  After copying `config.toml`, resolve top-level `model_catalog_json`. For
+  relative paths under `~/.codex`, symlink (or copy) the catalog into the
+  run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
+  need no mirror. Do not mutate the user's global config.
+- Validation:
+  Add or update `agentsidecar` tests that set a relative catalog beside
+  `config.toml` and assert the sandbox exposes it. Run
+  `cd services/tuttid && go test ./service/agentsidecar`.
+- References:
+  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
+  [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
+
 ### Codex app-server subagent output appears as the parent reply
 
 - Symptom:
@@ -2547,3 +2636,48 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
 - References:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [model_validation.go](../../services/tuttid/service/agent/model_validation.go)
+
+### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
+
+- Symptom:
+  Tutti desktop sessions for the `claude-code` provider never connect. The UI
+  reports `agent session is not connected` even though the same Claude CLI
+  works fine when run from a terminal session that loaded CC-Switch (or a
+  similar `~/.claude/settings.json` proxy).
+- Quick checks:
+  In `tuttid.log` search for `CLAUDE_CODE_AUTH_REFRESH_DEBUG`. If
+  `credentials.effectiveSource` is `"none"` and both `keychain.found` and
+  `plaintext.found` are `false`, but `~/.claude/settings.json` contains an
+  `env` block with `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`, the
+  sidecar never propagated the file's `env` to the Claude SDK.
+- Root cause:
+  CC-Switch writes proxy credentials into `~/.claude/settings.json`'s
+  `env` field. The native Claude CLI picks them up because the user shell
+  exports them into `process.env`, but the Tutti
+  `claude-sdk-sidecar` is launched directly without going through a shell,
+  so those variables are missing. The sidecar previously only merged
+  `process.env` with the ACP payload `env` and never read the file.
+- Fix:
+  Read the Claude settings files in the sidecar and merge their `env`
+  blocks into the Claude SDK query options, between `process.env` (lower
+  priority) and the ACP payload `env` (higher priority). The merge covers
+  `${CLAUDE_CONFIG_DIR}/settings.json` (defaulting to `~/.claude`) plus
+  project-level `.claude/settings.json` / `.claude/settings.local.json`
+  walking from the filesystem root to the session `cwd`, matching the
+  native CLI's layering. See `claudeSettingsEnv` and `ensureQuery` in
+  [claude-sdk-sidecar main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts).
+  The agentstatus probe reads the same `$CLAUDE_CONFIG_DIR`-aware location
+  (`claudeSettingsDeclares` in
+  [provider_custom_config.go](../../services/tuttid/service/agentstatus/provider_custom_config.go))
+  so the environment wizard and the runtime agree on whether credentials
+  exist.
+- Validation:
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `cd services/tuttid && go test ./service/agentstatus/`. Unit tests cover
+  reading, non-string value skipping, missing file, malformed JSON, missing
+  `env` field, user/project/local layering, and `CLAUDE_CONFIG_DIR`
+  resolution.
+- Note:
+  `credentials.effectiveSource` only tracks OAuth material (keychain or
+  `.credentials.json`). For API-key/proxy users it stays `"none"` even
+  after the fix; a connected session is the success signal, not that field.

@@ -2031,13 +2031,13 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     const emptyHeading = screen.getByRole("heading", {
-      name: "What can help you with?"
+      name: "What can Claude Code help you with?"
     });
     expect(
       within(emptyHeading).getByRole("combobox", {
         name: "agentHost.agentGui.providerSwitchLabel"
       })
-    ).toHaveTextContent("Claude Code");
+    ).toHaveValue(claudeTarget.targetId);
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
@@ -4422,6 +4422,20 @@ describe("AgentGUINode", () => {
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
     expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
+  });
+
+  it("does not show provider fallback slash commands when disabled", () => {
+    mockViewModel = createViewModel({
+      activeConversationId: "session-1",
+      hasSentUserMessage: true,
+      draftPrompt: "/",
+      availableCommands: []
+    });
+    renderAgentGUINode({ slashCommandFallbackMode: "none" });
+
+    expect(screen.queryByText("compact")).toBeNull();
+    expect(screen.queryByText("status")).toBeNull();
+    expect(screen.queryByText("plan")).toBeNull();
   });
 
   it("shows OpenCode review from the adapter-owned fallback command", () => {
@@ -7289,6 +7303,7 @@ function renderAgentGUINode({
   height = 560,
   embedded = false,
   previewMode = false,
+  slashCommandFallbackMode,
   isActive = true,
   workbenchWindowZIndex
 }: {
@@ -7337,6 +7352,9 @@ function renderAgentGUINode({
   height?: number;
   embedded?: boolean;
   previewMode?: boolean;
+  slashCommandFallbackMode?: React.ComponentProps<
+    typeof AgentGUINode
+  >["slashCommandFallbackMode"];
   isActive?: React.ComponentProps<typeof AgentGUINode>["isActive"];
   workbenchWindowZIndex?: number;
 } = {}): ReturnType<typeof render> {
@@ -7374,6 +7392,7 @@ function renderAgentGUINode({
       contextMentionProviders={createAgentGUITestContextMentionProviders()}
       embedded={embedded}
       previewMode={previewMode}
+      slashCommandFallbackMode={slashCommandFallbackMode}
       isActive={isActive}
     />
   );

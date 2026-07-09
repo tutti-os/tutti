@@ -789,7 +789,7 @@ test("runAction summarizes managed npm bin conflicts as outdated local agent", a
                   command: {
                     cwd: "/workspace",
                     input:
-                      "npm install -g @tutti-os/tutti-agent@0.0.2 --include=optional\n"
+                      "npm install -g @tutti-os/tutti-agent@0.0.3 --include=optional\n"
                   },
                   id: "install",
                   kind: "terminal_command"

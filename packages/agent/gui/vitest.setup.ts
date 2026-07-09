@@ -1,13 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { createElement, isValidElement, cloneElement, useState } from "react";
-import { createPortal } from "react-dom";
-import type {
-  MouseEvent as ReactMouseEvent,
-  ReactElement,
-  ReactNode
-} from "react";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import {
   resetAgentHostApiForTests,
   setAgentHostApiForTests
@@ -93,109 +86,6 @@ if (typeof Range !== "undefined") {
 }
 
 let restoreReactRenderLoopConsoleTrap: (() => void) | null = null;
-
-vi.mock("react-medium-image-zoom", () => ({
-  default: function TestZoom({
-    a11yNameButtonZoom,
-    a11yNameButtonUnzoom,
-    children,
-    classDialog,
-    onZoomChange,
-    ZoomContent
-  }: {
-    a11yNameButtonZoom?: string;
-    a11yNameButtonUnzoom?: string;
-    children?: ReactNode;
-    classDialog?: string;
-    onZoomChange?: (
-      value: boolean,
-      data: { event: ReactMouseEvent | Event }
-    ) => void;
-    ZoomContent?: (props: {
-      buttonUnzoom: ReactElement;
-      img: ReactElement | null;
-      modalState?: "LOADED" | "UNLOADING" | "UNLOADED";
-    }) => ReactNode;
-  }) {
-    const [modalState, setModalState] = useState<
-      "LOADED" | "UNLOADING" | "UNLOADED"
-    >("UNLOADED");
-    const isOpen = modalState !== "UNLOADED";
-    const labelZoom = a11yNameButtonZoom ?? "Zoom image";
-    const labelUnzoom = a11yNameButtonUnzoom ?? "Minimize image";
-    const childElement = isValidElement(children)
-      ? (children as ReactElement<{
-          onClick?: (event: ReactMouseEvent) => void;
-        }>)
-      : null;
-    const visibleChildren =
-      childElement !== null
-        ? cloneElement(childElement, {
-            onClick: (event: ReactMouseEvent) => {
-              childElement.props.onClick?.(event);
-              onZoomChange?.(true, { event });
-              setModalState("LOADED");
-            }
-          })
-        : children;
-    const modalImage =
-      childElement !== null
-        ? cloneElement(childElement as ReactElement<Record<string, unknown>>, {
-            "data-rmiz-modal-img": true,
-            onTransitionEnd: () => setModalState("UNLOADED")
-          })
-        : null;
-    const buttonUnzoom = createElement(
-      "button",
-      {
-        type: "button",
-        "aria-label": labelUnzoom,
-        onClick: (event: ReactMouseEvent) => {
-          onZoomChange?.(false, { event });
-          setModalState("UNLOADING");
-        }
-      },
-      labelUnzoom
-    );
-    const modal = isOpen
-      ? createPortal(
-          createElement(
-            "span",
-            { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
-            ZoomContent
-              ? ZoomContent({ buttonUnzoom, img: modalImage, modalState })
-              : [modalImage, buttonUnzoom]
-          ),
-          document.body
-        )
-      : null;
-
-    return createElement(
-      "span",
-      { "data-rmiz": "" },
-      createElement("span", { "data-rmiz-content": "found" }, visibleChildren),
-      createElement(
-        "span",
-        { "data-rmiz-ghost": "" },
-        createElement(
-          "button",
-          {
-            type: "button",
-            "aria-label": labelZoom,
-            "aria-hidden": isOpen ? true : undefined,
-            "data-rmiz-btn-zoom": "",
-            onClick: (event: ReactMouseEvent) => {
-              onZoomChange?.(true, { event });
-              setModalState("LOADED");
-            }
-          },
-          labelZoom
-        )
-      ),
-      modal
-    );
-  }
-}));
 
 beforeEach(() => {
   restoreReactRenderLoopConsoleTrap?.();

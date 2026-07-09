@@ -231,6 +231,8 @@ func specialAppLaunchRequest(appID string) (string, string, json.RawMessage, boo
 		return agentGUITypeID, agentGUITypeID, json.RawMessage(`{"provider":"codex"}`), true
 	case "agent-claude-code":
 		return agentGUITypeID, "agent-gui:claude-code", json.RawMessage(`{"provider":"claude-code"}`), true
+	case "agent-tutti-agent":
+		return agentGUITypeID, "agent-gui:tutti-agent", json.RawMessage(`{"provider":"tutti-agent"}`), true
 	case issueManagerAppID:
 		return issueManagerTypeID, issueManagerTypeID, nil, true
 	default:

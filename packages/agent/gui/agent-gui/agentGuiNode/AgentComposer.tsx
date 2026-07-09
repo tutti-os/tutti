@@ -84,6 +84,7 @@ import {
   resolveTuttiBrowserUseSubmitEffect,
   type AgentSlashCommand,
   type AgentSlashCommandCapability,
+  type AgentSlashCommandFallbackMode,
   type SlashCommandSelectionEffect
 } from "./model/agentSlashCommandProviderPolicy";
 import {
@@ -250,6 +251,7 @@ export interface AgentComposerProps {
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
   availableCommands: readonly AgentSessionCommand[];
+  slashCommandFallbackMode?: AgentSlashCommandFallbackMode;
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
@@ -1052,6 +1054,7 @@ export function AgentComposer({
   usage = null,
   draftContent,
   availableCommands,
+  slashCommandFallbackMode,
   hasCompactableContext = true,
   compactSupported = null,
   availableSkills = EMPTY_PROVIDER_SKILLS,
@@ -1217,7 +1220,8 @@ export function AgentComposer({
         planSupported: composerSettings.supportsPlanMode,
         goalSupported: canGoalControl,
         browserSupported: Boolean(composerSettings.supportsBrowser),
-        computerSupported: Boolean(composerSettings.supportsComputerUse)
+        computerSupported: Boolean(composerSettings.supportsComputerUse),
+        fallbackMode: slashCommandFallbackMode
       }),
     [
       availableCommands,
@@ -1227,7 +1231,8 @@ export function AgentComposer({
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
       hasCompactableContext,
-      provider
+      provider,
+      slashCommandFallbackMode
     ]
   );
   const filteredCommands = useMemo(

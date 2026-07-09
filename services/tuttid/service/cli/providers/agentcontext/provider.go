@@ -17,6 +17,7 @@ const appID = "agent-context"
 const (
 	codexAgentAppID      = "agent-codex"
 	claudeCodeAgentAppID = "agent-claude-code"
+	tuttiAgentAppID      = "agent-tutti-agent"
 )
 
 type AgentSessions interface {
@@ -96,6 +97,16 @@ func (p Provider) Commands() []cliservice.Command {
 			AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
 			Summary:       "Start a Claude Code agent session",
 		}),
+		p.newProviderStartCommand(providerStartCommandSpec{
+			AppID:         tuttiAgentAppID,
+			AppName:       "Tutti Agent",
+			CommandID:     appID + ".tutti-agent.start",
+			Description:   "Start a Tutti Agent session in the current workspace. Use --show to request AgentGUI activation.",
+			Path:          []string{"tutti-agent", "start"},
+			Provider:      agentproviderbiz.TuttiAgent,
+			AgentTargetID: agenttargetbiz.IDLocalTuttiAgent,
+			Summary:       "Start a Tutti Agent session",
+		}),
 		p.newStartCommand(),
 		p.newGetCommand(),
 		p.newOpenCommand(),
@@ -142,6 +153,8 @@ func providerAgentAppCapabilityProvider(capability cliservice.Capability) (strin
 		return agentproviderbiz.Codex, true
 	case claudeCodeAgentAppID:
 		return agentproviderbiz.ClaudeCode, true
+	case tuttiAgentAppID:
+		return agentproviderbiz.TuttiAgent, true
 	default:
 		return "", false
 	}

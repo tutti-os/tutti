@@ -1,14 +1,13 @@
 import {
-  cloneElement,
-  isValidElement,
   type CSSProperties,
   type ComponentPropsWithoutRef,
   type JSX,
+  type KeyboardEvent,
   type MouseEvent,
-  type ReactElement,
   type WheelEvent,
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 import { createPortal } from "react-dom";
@@ -23,7 +22,6 @@ import {
   RestoreIcon
 } from "@tutti-os/ui-system";
 import { RotateCcwIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
-import Zoom from "react-medium-image-zoom";
 import { useTranslation } from "../../../i18n/index";
 import { cn } from "../lib/utils";
 import { ConversationImageContextMenu } from "../../../shared/agentConversation/components/ConversationImageContextMenu";
@@ -68,6 +66,8 @@ export function ZoomableImage({
   const [imagePreviewZoom, setImagePreviewZoom] = useState(1);
   const [isWheelZooming, setIsWheelZooming] = useState(false);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
+  const [isImagePreviewClosing, setIsImagePreviewClosing] = useState(false);
+  const closePreviewTimerRef = useRef<number | null>(null);
   const imagePreviewZoomPercent = Math.round(imagePreviewZoom * 100);
   const canZoomOut = imagePreviewZoom > IMAGE_PREVIEW_ZOOM_MIN;
   const canZoomIn = imagePreviewZoom < IMAGE_PREVIEW_ZOOM_MAX;
@@ -75,6 +75,56 @@ export function ZoomableImage({
   const closeContextMenu = useCallback(() => {
     setContextMenuPosition(null);
   }, []);
+
+  const finishClosePreviewImage = useCallback((): void => {
+    if (closePreviewTimerRef.current !== null) {
+      window.clearTimeout(closePreviewTimerRef.current);
+      closePreviewTimerRef.current = null;
+    }
+    setIsImagePreviewOpen(false);
+    setIsImagePreviewClosing(false);
+    setIsWheelZooming(false);
+    setImagePreviewZoom(1);
+  }, []);
+
+  const closePreviewImage = useCallback((): void => {
+    if (!isImagePreviewOpen) {
+      return;
+    }
+    if (closePreviewTimerRef.current !== null) {
+      window.clearTimeout(closePreviewTimerRef.current);
+    }
+    setIsImagePreviewClosing(true);
+    setIsWheelZooming(false);
+    setImagePreviewZoom(1);
+    closeContextMenu();
+    closePreviewTimerRef.current = window.setTimeout(
+      finishClosePreviewImage,
+      180
+    );
+  }, [closeContextMenu, finishClosePreviewImage, isImagePreviewOpen]);
+
+  const openPreviewImage = useCallback((): void => {
+    if (!actionSource) {
+      return;
+    }
+    if (closePreviewTimerRef.current !== null) {
+      window.clearTimeout(closePreviewTimerRef.current);
+      closePreviewTimerRef.current = null;
+    }
+    closeContextMenu();
+    setIsImagePreviewClosing(false);
+    setIsImagePreviewOpen(true);
+  }, [actionSource, closeContextMenu]);
+
+  useEffect(
+    () => () => {
+      if (closePreviewTimerRef.current !== null) {
+        window.clearTimeout(closePreviewTimerRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!contextMenuPosition) {
@@ -90,6 +140,26 @@ export function ZoomableImage({
   }, [closeContextMenu, contextMenuPosition]);
 
   useEffect(() => {
+    if (!isImagePreviewOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closePreviewImage();
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closePreviewImage, isImagePreviewOpen]);
+
+  useEffect(() => {
     if (!copyStatus || copyStatus.busy) {
       return;
     }
@@ -98,8 +168,8 @@ export function ZoomableImage({
   }, [copyStatus]);
 
   const handleContextMenu = useCallback(
-    (event: MouseEvent<HTMLImageElement>): void => {
-      onContextMenu?.(event);
+    (event: MouseEvent<HTMLElement>): void => {
+      onContextMenu?.(event as MouseEvent<HTMLImageElement>);
       if (event.defaultPrevented || !actionSource || !hasImageActions) {
         return;
       }
@@ -195,154 +265,83 @@ export function ZoomableImage({
     />
   ) : null;
 
-  const renderZoomContent = ({
-    buttonUnzoom,
-    img,
-    modalState
-  }: {
-    buttonUnzoom: ReactElement<HTMLButtonElement>;
-    img: ReactElement | null;
-    modalState?: "LOADED" | "LOADING" | "UNLOADED" | "UNLOADING";
-  }): JSX.Element => {
-    const typedButtonUnzoom = buttonUnzoom as unknown as ReactElement<
-      ComponentPropsWithoutRef<"button">
-    >;
-    const buttonUnzoomProps =
-      typedButtonUnzoom.props as ComponentPropsWithoutRef<"button">;
-    const zoomSrc =
-      isValidElement(img) &&
-      typeof (img.props as { src?: unknown }).src === "string"
-        ? (img.props as { src: string }).src
-        : null;
-    const isUnzooming = modalState === "UNLOADING";
-    const effectiveImagePreviewZoom = isUnzooming ? 1 : imagePreviewZoom;
-    const renderedImage = img
-      ? cloneImageWithPreviewZoom(
-          img,
-          effectiveImagePreviewZoom,
-          isUnzooming ? false : isWheelZooming,
-          handlePreviewImageWheel
-        )
-      : null;
-    return (
-      <>
-        {actionButtons && renderedImage && zoomSrc ? (
-          cloneElement(
-            renderedImage as ReactElement<ComponentPropsWithoutRef<"img">>,
-            {
-              onContextMenu: handleContextMenu
-            }
-          )
-        ) : !actionButtons && renderedImage && zoomSrc ? (
-          <ConversationImageContextMenu
-            src={zoomSrc}
-            asChild
-            contentStyle={{ zIndex: "var(--z-dialog-popover)" }}
-          >
-            {renderedImage}
-          </ConversationImageContextMenu>
-        ) : (
-          renderedImage
-        )}
-        <ImagePreviewZoomControls
-          canZoomIn={canZoomIn}
-          canZoomOut={canZoomOut}
-          percent={imagePreviewZoomPercent}
-          percentLabel={t("common.imageZoomPercent", {
-            percent: imagePreviewZoomPercent
-          })}
-          reportPercentStatus={!copyStatus}
-          resetLabel={t("common.resetImageZoom")}
-          zoomInLabel={t("common.zoomInImage")}
-          zoomOutLabel={t("common.zoomOutImage")}
-          onReset={resetPreviewImageZoom}
-          onZoomIn={zoomInPreviewImage}
-          onZoomOut={zoomOutPreviewImage}
-          onWheel={handlePreviewImageWheel}
-        />
-        {actionButtons ? (
-          <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
-            {actionButtons}
-          </div>
-        ) : null}
-        {contextMenuPosition?.inZoomDialog && actionButtons ? (
-          <div
-            className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
-            style={{
-              left: contextMenuPosition.x,
-              top: contextMenuPosition.y
-            }}
-            role="menu"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ImageActionButtons
-              copyLabel={t("common.copyImage")}
-              downloadLabel={t("common.downloadImage")}
-              itemRole="menuitem"
-              onCopy={handleCopyImageAction}
-              onDownload={handleDownloadImage}
-            />
-          </div>
-        ) : null}
-        {copyStatus ? (
-          <ImageCopyStatusToast
-            busy={copyStatus.busy}
-            message={copyStatus.message}
-            variant={copyStatus.variant}
-            onOpenChange={(open) => {
-              if (!open) {
-                setCopyStatus(null);
-              }
-            }}
-          />
-        ) : null}
-        <Button
-          asChild
-          className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
-          size="icon"
-          variant="chrome"
-        >
-          {cloneElement(
-            typedButtonUnzoom,
-            {
-              onClick: (event: MouseEvent<HTMLButtonElement>) => {
-                setIsWheelZooming(false);
-                setImagePreviewZoom(1);
-                buttonUnzoomProps.onClick?.(event);
-              }
-            },
-            <RestoreIcon aria-hidden="true" className="size-4" />
-          )}
-        </Button>
-      </>
+  const previewImage =
+    (isImagePreviewOpen || isImagePreviewClosing) && actionSource ? (
+      <img
+        alt={alt}
+        data-rmiz-modal-img=""
+        data-tsh-image-zoom={formatImagePreviewZoom(imagePreviewZoom)}
+        draggable={false}
+        src={actionSource}
+        title={typeof props.title === "string" ? props.title : undefined}
+        className="tsh-zoom-dialog__image nodrag tsh-desktop-no-drag"
+        style={{
+          transform: resolveZoomedImageTransform(
+            undefined,
+            imagePreviewZoom,
+            null,
+            null
+          ),
+          transition: isWheelZooming
+            ? "none"
+            : mergeImagePreviewTransition(undefined)
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          closePreviewImage();
+        }}
+        onContextMenu={hasImageActions ? handleContextMenu : onContextMenu}
+        onTransitionEnd={
+          isImagePreviewClosing ? finishClosePreviewImage : undefined
+        }
+        onWheel={handlePreviewImageWheel}
+      />
+    ) : null;
+
+  const previewContent =
+    previewImage && !actionButtons && actionSource ? (
+      <ConversationImageContextMenu
+        src={actionSource}
+        asChild
+        contentStyle={{ zIndex: "var(--z-dialog-popover)" }}
+      >
+        {previewImage}
+      </ConversationImageContextMenu>
+    ) : (
+      previewImage
     );
-  };
+
+  const Wrapper = wrapElement;
 
   return (
     <>
-      <Zoom
-        a11yNameButtonZoom={t("common.expandImage")}
-        a11yNameButtonUnzoom={t("common.minimizeImage")}
-        classDialog="tsh-zoom-dialog nodrag tsh-desktop-no-drag"
-        wrapElement={wrapElement}
-        zoomMargin={24}
-        ZoomContent={renderZoomContent}
-        onZoomChange={(zoomed) => {
-          setIsImagePreviewOpen(zoomed);
-          if (!zoomed) {
-            setIsWheelZooming(false);
-            setImagePreviewZoom(1);
-          }
-        }}
+      <Wrapper
+        className={cn(
+          "tsh-zoomable-image nodrag tsh-desktop-no-drag",
+          wrapElement === "div" && "tsh-zoomable-image--block"
+        )}
       >
         <img
           {...props}
           alt={alt}
           src={src}
+          onClick={(event) => {
+            props.onClick?.(event);
+            if (!event.defaultPrevented) {
+              openPreviewImage();
+            }
+          }}
           onContextMenu={hasImageActions ? handleContextMenu : onContextMenu}
           className={cn("nodrag tsh-desktop-no-drag cursor-zoom-in", className)}
         />
-      </Zoom>
+        <button
+          type="button"
+          aria-label={t("common.expandImage")}
+          className="tsh-zoomable-image__trigger nodrag tsh-desktop-no-drag"
+          onClick={openPreviewImage}
+          onContextMenu={handleContextMenu}
+        />
+      </Wrapper>
       {contextMenuPosition && !contextMenuPosition.inZoomDialog && actionButtons
         ? createPortal(
             <div
@@ -361,6 +360,96 @@ export function ZoomableImage({
                 onCopy={handleCopyImageAction}
                 onDownload={handleDownloadImage}
               />
+            </div>,
+            document.body
+          )
+        : null}
+      {(isImagePreviewOpen || isImagePreviewClosing) && actionSource
+        ? createPortal(
+            <div
+              aria-modal="true"
+              className="tsh-zoom-dialog nodrag tsh-desktop-no-drag"
+              data-rmiz-modal=""
+              role="dialog"
+              tabIndex={-1}
+              onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                if (event.key === "Escape") {
+                  closePreviewImage();
+                }
+              }}
+            >
+              <div
+                data-rmiz-modal-overlay="visible"
+                onClick={closePreviewImage}
+              />
+              <div data-rmiz-modal-content="true">{previewContent}</div>
+              <ImagePreviewZoomControls
+                canZoomIn={canZoomIn}
+                canZoomOut={canZoomOut}
+                percent={imagePreviewZoomPercent}
+                percentLabel={t("common.imageZoomPercent", {
+                  percent: imagePreviewZoomPercent
+                })}
+                reportPercentStatus={!copyStatus}
+                resetLabel={t("common.resetImageZoom")}
+                zoomInLabel={t("common.zoomInImage")}
+                zoomOutLabel={t("common.zoomOutImage")}
+                onReset={resetPreviewImageZoom}
+                onZoomIn={zoomInPreviewImage}
+                onZoomOut={zoomOutPreviewImage}
+                onWheel={handlePreviewImageWheel}
+              />
+              {actionButtons ? (
+                <div className="tsh-zoom-dialog__image-actions nodrag tsh-desktop-no-drag">
+                  {actionButtons}
+                </div>
+              ) : null}
+              {contextMenuPosition?.inZoomDialog && actionButtons ? (
+                <div
+                  className="tsh-image-context-menu nodrag tsh-desktop-no-drag"
+                  style={{
+                    left: contextMenuPosition.x,
+                    top: contextMenuPosition.y
+                  }}
+                  role="menu"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <ImageActionButtons
+                    copyLabel={t("common.copyImage")}
+                    downloadLabel={t("common.downloadImage")}
+                    itemRole="menuitem"
+                    onCopy={handleCopyImageAction}
+                    onDownload={handleDownloadImage}
+                  />
+                </div>
+              ) : null}
+              {copyStatus ? (
+                <ImageCopyStatusToast
+                  busy={copyStatus.busy}
+                  message={copyStatus.message}
+                  variant={copyStatus.variant}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setCopyStatus(null);
+                    }
+                  }}
+                />
+              ) : null}
+              <Button
+                asChild
+                className="tsh-zoom-dialog__icon-button nodrag tsh-desktop-no-drag"
+                size="icon"
+                variant="chrome"
+              >
+                <button
+                  type="button"
+                  aria-label={t("common.minimizeImage")}
+                  data-rmiz-btn-unzoom=""
+                  onClick={closePreviewImage}
+                >
+                  <RestoreIcon aria-hidden="true" className="size-4" />
+                </button>
+              </Button>
             </div>,
             document.body
           )
@@ -571,44 +660,6 @@ function ImageActionButtons({
   );
 }
 
-function cloneImageWithPreviewZoom(
-  img: ReactElement,
-  zoom: number,
-  isWheelZooming: boolean,
-  onWheel: (event: WheelEvent<HTMLElement>) => void
-): ReactElement {
-  const props = img.props as {
-    height?: unknown;
-    onWheel?: (event: WheelEvent<HTMLElement>) => void;
-    style?: CSSProperties;
-    width?: unknown;
-  };
-  const style = props.style;
-  const mergedStyle: CSSProperties = {
-    ...style,
-    transform: resolveZoomedImageTransform(
-      style?.transform,
-      zoom,
-      resolveImagePreviewDimension(style?.width ?? props.width),
-      resolveImagePreviewDimension(style?.height ?? props.height)
-    ),
-    transition: isWheelZooming
-      ? "none"
-      : mergeImagePreviewTransition(style?.transition)
-  };
-  if (style?.transformOrigin !== undefined) {
-    mergedStyle.transformOrigin = style.transformOrigin;
-  }
-  return cloneElement(img, {
-    "data-tsh-image-zoom": formatImagePreviewZoom(zoom),
-    onWheel: (event: WheelEvent<HTMLElement>) => {
-      props.onWheel?.(event);
-      onWheel(event);
-    },
-    style: mergedStyle
-  } as Partial<typeof img.props>);
-}
-
 function resolveWheelZoomDelta(event: WheelEvent<HTMLElement>): number {
   return (
     -event.deltaY *
@@ -651,17 +702,6 @@ function resolveImagePreviewZoomTransform(
   const halfWidth = formatCssNumber(width / 2);
   const halfHeight = formatCssNumber(height / 2);
   return `translate(${halfWidth}px,${halfHeight}px) ${scale} translate(-${halfWidth}px,-${halfHeight}px)`;
-}
-
-function resolveImagePreviewDimension(value: unknown): number | null {
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? value : null;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const dimension = Number.parseFloat(value);
-  return Number.isFinite(dimension) && dimension > 0 ? dimension : null;
 }
 
 function formatCssNumber(value: number): string {

@@ -1,4 +1,3 @@
-@import "react-medium-image-zoom/dist/styles.css";
 @source "../..";
 
 /* Restored agent activity renderer styles from the TSH desktop source during the GUI migration. */
@@ -79,12 +78,52 @@
   );
 }
 
-.tsh-zoom-dialog[data-rmiz-modal] {
-  z-index: 100300;
+.tsh-zoomable-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.tsh-zoomable-image--block {
+  display: block;
+}
+
+.tsh-zoomable-image__trigger {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  cursor: zoom-in;
   -webkit-app-region: no-drag;
 }
 
+.tsh-zoom-dialog[data-rmiz-modal] {
+  position: fixed;
+  inset: 0;
+  z-index: 100300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  -webkit-app-region: no-drag;
+}
+
+.tsh-zoom-dialog [data-rmiz-modal-overlay] {
+  position: absolute;
+  inset: 0;
+}
+
 .tsh-zoom-dialog [data-rmiz-modal-content] {
+  position: relative;
+  z-index: 100300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
   -webkit-app-region: no-drag;
 }
 
@@ -98,9 +137,20 @@
 }
 
 .tsh-zoom-dialog [data-rmiz-btn-unzoom] {
+  position: fixed;
   top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
   right: 20px;
   inset-inline-end: 20px;
+  z-index: 100301;
+}
+
+.tsh-zoom-dialog__image {
+  display: block;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  object-fit: contain;
+  transform-origin: center center;
+  cursor: zoom-out;
 }
 
 .tsh-zoom-dialog__image-actions {
@@ -9186,7 +9236,7 @@ button.agent-gui-node__provider-rail-launchpad-item {
 }
 
 .agent-gui-node__empty-hero-provider-select {
-  display: inline-flex;
+  display: inline-block;
   width: auto;
   min-width: 0;
   height: auto;
@@ -9203,6 +9253,8 @@ button.agent-gui-node__provider-rail-launchpad-item {
   letter-spacing: inherit;
   box-shadow: none;
   white-space: nowrap;
+  appearance: auto;
+  cursor: pointer;
 }
 
 .agent-gui-node__empty-hero-provider-select:hover,

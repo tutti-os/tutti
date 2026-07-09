@@ -547,6 +547,7 @@ type WaitInput struct {
 	AgentSessionID string
 	AfterVersion   *uint64
 	MessageLimit   int
+	SkipMessages   bool
 	Timeout        time.Duration
 }
 

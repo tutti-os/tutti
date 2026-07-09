@@ -191,7 +191,7 @@ func requiredInputHintFromNames(required []string) string {
 
 func agentLauncherCommandUsesDefaultModel(id string) bool {
 	switch strings.TrimSpace(id) {
-	case "agent-context.codex.start", "agent-context.claude.start":
+	case "agent-context.codex.start", "agent-context.claude.start", "agent-context.tutti-agent.start":
 		return true
 	default:
 		return false
@@ -292,7 +292,7 @@ func asSchemaString(value any) string {
 
 func agentCommandAcceptsImageInput(id string, schema map[string]any) bool {
 	switch strings.TrimSpace(id) {
-	case "agent-context.agent.start", "agent-context.codex.start", "agent-context.claude.start", "agent-context.agent.send":
+	case "agent-context.agent.start", "agent-context.codex.start", "agent-context.claude.start", "agent-context.tutti-agent.start", "agent-context.agent.send":
 	default:
 		return false
 	}
@@ -415,7 +415,10 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Create an issue task run: `%s issue task run create --issue-id <issue-id> --task-id <task-id> --agent-target-id <agent-target-id> --json` - Execution mode only; the CLI binds the current AgentGUI session from runtime context. Do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- Complete an issue task run: `%s issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed --summary <summary> --outputs '[{\"path\":\"<artifact-path>\"}]' --json` - Execution mode only; do not use for breakdown-only work.", cliName),
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
-		fmt.Sprintf("- Wait for the next agent stop point with recent execution messages only: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent session-summary` when you need the full compact session context.", cliName),
+		fmt.Sprintf("- Start a Codex agent session: `%s codex start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
+		fmt.Sprintf("- Start a Claude Code agent session: `%s claude start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
+		fmt.Sprintf("- Start a Tutti Agent session: `%s tutti-agent start --prompt <prompt> --json` - Add `--show` to request AgentGUI activation. Omit --model unless the user explicitly requested a model; tuttid uses the target provider default. Pass --image <path> multiple times to include local PNG, JPEG, or WebP image context.", cliName),
+		fmt.Sprintf("- Wait for the next agent stop point without fetching execution messages: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent session-summary` when you need the full compact session context.", cliName),
 		fmt.Sprintf("- Get agent session summary: `%s agent session-summary --session-id <session-id> --json`", cliName),
 		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),

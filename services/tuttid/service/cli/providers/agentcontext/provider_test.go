@@ -403,7 +403,9 @@ func providerAgentAppIDs(capabilities []cliservice.Capability) []string {
 	ids := []string{}
 	for _, capability := range capabilities {
 		if capability.Source.Kind == cliservice.CapabilitySourceApp &&
-			(capability.Source.AppID == codexAgentAppID || capability.Source.AppID == claudeCodeAgentAppID) {
+			(capability.Source.AppID == codexAgentAppID ||
+				capability.Source.AppID == claudeCodeAgentAppID ||
+				capability.Source.AppID == tuttiAgentAppID) {
 			ids = append(ids, capability.Source.AppID)
 		}
 	}
@@ -429,13 +431,6 @@ func equalStrings(left []string, right []string) bool {
 		}
 	}
 	return true
-}
-
-func waitAfterVersionValue(value *uint64) (uint64, bool) {
-	if value == nil {
-		return 0, false
-	}
-	return *value, true
 }
 
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
@@ -655,7 +650,7 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	}
 }
 
-func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
+func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		waitResult: agentservice.WaitResult{
 			Session: agentservice.Session{
@@ -667,141 +662,63 @@ func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 					Phase: "waiting_input",
 				},
 			},
-			Messages: []agentservice.SessionMessage{
-				{
-					AgentSessionID: "SESSION-1",
-					MessageID:      "assistant-1",
-					Role:           "assistant",
-					Kind:           "text",
-					Status:         "completed",
-					Payload:        map[string]any{"content": "First reply"},
-					Version:        8,
-				},
-				{
-					AgentSessionID: "SESSION-1",
-					MessageID:      "tool-1",
-					Role:           "tool",
-					Kind:           "call",
-					Status:         "completed",
-					Payload:        map[string]any{"name": "Read files", "status": "completed"},
-					Version:        9,
-				},
-			},
-			LatestVersion:  9,
-			Reason:         agentservice.WaitReasonWaitingInput,
-			EffectiveAfter: 7,
+			LatestVersion: 9,
+			Reason:        agentservice.WaitReasonWaitingInput,
 		},
 	}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "limit": "5", "timeout-ms": "2500"},
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "timeout-ms": "2500"},
 		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
+	if sessions.waitInput.AfterVersion == nil || *sessions.waitInput.AfterVersion != 7 {
+		t.Fatalf("after version = %#v, want 7", sessions.waitInput.AfterVersion)
+	}
 	if sessions.waitInput.WorkspaceID != "workspace-1" ||
 		sessions.waitInput.AgentSessionID != "SESSION-1" ||
-		!ok ||
-		waitAfterVersion != 7 ||
-		sessions.waitInput.MessageLimit != 5 ||
+		sessions.waitInput.MessageLimit != 0 ||
+		!sessions.waitInput.SkipMessages ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
 		t.Fatalf("wait input = %#v", sessions.waitInput)
 	}
 	if output.Value["agentSessionId"] != "SESSION-1" ||
 		output.Value["reason"] != "waiting_input" ||
 		output.Value["timedOut"] != false ||
-		output.Value["latestVersion"] != uint64(9) ||
-		output.Value["effectiveAfter"] != uint64(7) {
+		output.Value["latestVersion"] != uint64(9) {
 		t.Fatalf("output = %#v", output.Value)
 	}
 	session := output.Value["session"].(map[string]any)
 	if _, ok := session["settings"]; ok {
 		t.Fatalf("wait session should stay compact: %#v", session)
 	}
-	messages := output.Value["messages"].([]any)
-	if len(messages) != 2 {
-		t.Fatalf("messages = %#v", messages)
-	}
-	first := messages[0].(map[string]any)
-	if first["messageId"] != "assistant-1" || first["text"] != "First reply" {
-		t.Fatalf("first message = %#v", first)
-	}
-	second := messages[1].(map[string]any)
-	if second["messageId"] != "tool-1" || second["text"] != "call: Read files" {
-		t.Fatalf("second message = %#v", second)
+	for _, key := range []string{"messages", "hasMore", "effectiveAfter"} {
+		if _, ok := output.Value[key]; ok {
+			t.Fatalf("wait output should omit %q: %#v", key, output.Value)
+		}
 	}
 }
 
-func TestWaitCommandPreservesExplicitZeroAfterVersion(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+func TestWaitCommandExposesCursorAndSleepParameters(t *testing.T) {
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newWaitCommand()
 
-	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "0"},
-		OutputMode: cliservice.OutputModeJSON,
-	}); err != nil {
-		t.Fatalf("Handler: %v", err)
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	if _, ok := properties["session-id"]; !ok {
+		t.Fatalf("schema = %#v, want session-id", properties)
 	}
-	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
-	if !ok || waitAfterVersion != 0 {
-		t.Fatalf("wait after version = %#v, want explicit zero", sessions.waitInput.AfterVersion)
+	if _, ok := properties["after-version"]; !ok {
+		t.Fatalf("schema = %#v, want after-version", properties)
 	}
-}
-
-func TestWaitCommandIncludesImageCompactMetadata(t *testing.T) {
-	sessions := &fakeAgentSessions{
-		localPaths: map[string]string{"attachment-1": "/tmp/agent/attachments/SESSION-1/attachment-1.png"},
-		waitResult: agentservice.WaitResult{
-			Session: agentservice.Session{
-				ID:       "SESSION-1",
-				Provider: "codex",
-				Status:   "waiting",
-				Visible:  true,
-			},
-			Messages: []agentservice.SessionMessage{{
-				AgentSessionID: "SESSION-1",
-				MessageID:      "message-1",
-				Role:           "user",
-				Kind:           "text",
-				Status:         "completed",
-				Payload: map[string]any{
-					"content": []any{
-						map[string]any{"type": "text", "text": "look"},
-						map[string]any{
-							"type":         "image",
-							"attachmentId": "attachment-1",
-							"mimeType":     "image/png",
-							"name":         "shot.png",
-						},
-					},
-				},
-				Version: 8,
-			}},
-			LatestVersion:  8,
-			Reason:         agentservice.WaitReasonWaitingInput,
-			EffectiveAfter: 7,
-		},
+	if _, ok := properties["timeout-ms"]; !ok {
+		t.Fatalf("schema = %#v, want timeout-ms", properties)
 	}
-	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
-
-	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1"},
-		OutputMode: cliservice.OutputModeJSON,
-	})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	messages := output.Value["messages"].([]any)
-	images := messages[0].(map[string]any)["images"].([]any)
-	image := images[0].(map[string]any)
-	if image["attachmentId"] != "attachment-1" ||
-		image["mimeType"] != "image/png" ||
-		image["name"] != "shot.png" ||
-		image["localPath"] != "/tmp/agent/attachments/SESSION-1/attachment-1.png" {
-		t.Fatalf("image = %#v", image)
+	for _, key := range []string{"limit"} {
+		if _, ok := properties[key]; ok {
+			t.Fatalf("schema should omit %q: %#v", key, properties)
+		}
 	}
 }
 
@@ -817,6 +734,9 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	}
 	if sessions.waitInput.AfterVersion != nil {
 		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
+	}
+	if !sessions.waitInput.SkipMessages {
+		t.Fatalf("skip messages = false, want true")
 	}
 	if sessions.waitInput.Timeout != 5*time.Minute {
 		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)
@@ -878,7 +798,9 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	if !errors.Is(err, cliservice.ErrInvalidInput) {
 		t.Fatalf("err = %v, want ErrInvalidInput", err)
 	}
-	if !strings.Contains(err.Error(), "tutti codex start") || !strings.Contains(err.Error(), "tutti claude start") {
+	if !strings.Contains(err.Error(), "tutti codex start") ||
+		!strings.Contains(err.Error(), "tutti claude start") ||
+		!strings.Contains(err.Error(), "tutti tutti-agent start") {
 		t.Fatalf("err = %v, want provider command guidance", err)
 	}
 	if sessions.createCallCount != 0 {
@@ -1444,6 +1366,7 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 	commands := provider.Commands()
 	codex := commandByID(t, commands, "agent-context.codex.start")
 	claude := commandByID(t, commands, "agent-context.claude.start")
+	tuttiAgent := commandByID(t, commands, "agent-context.tutti-agent.start")
 
 	if codex.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
 		codex.Capability.Source.AppID != codexAgentAppID ||
@@ -1461,14 +1384,23 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		claude.Capability.Path[1] != "start" {
 		t.Fatalf("claude capability = %#v", claude.Capability)
 	}
+	if tuttiAgent.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
+		tuttiAgent.Capability.Source.AppID != tuttiAgentAppID ||
+		tuttiAgent.Capability.Source.AppName != "Tutti Agent" ||
+		len(tuttiAgent.Capability.Path) != 2 ||
+		tuttiAgent.Capability.Path[0] != "tutti-agent" ||
+		tuttiAgent.Capability.Path[1] != "start" {
+		t.Fatalf("tutti-agent capability = %#v", tuttiAgent.Capability)
+	}
 
 	for name, tc := range map[string]struct {
 		commandID  string
 		want       string
 		wantTarget string
 	}{
-		"codex":  {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
-		"claude": {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
+		"codex":       {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
+		"claude":      {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
+		"tutti-agent": {commandID: "agent-context.tutti-agent.start", want: "tutti-agent", wantTarget: agenttargetbiz.IDLocalTuttiAgent},
 	} {
 		sessions := &fakeAgentSessions{}
 		command := commandByID(t, newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
@@ -1497,29 +1429,41 @@ func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"codex unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"claude unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID},
+			wantAppIDs: []string{codexAgentAppID, tuttiAgentAppID},
+		},
+		"tutti-agent unavailable": {
+			availability: []agentservice.ProviderAvailability{
+				availableProvider("codex"),
+				availableProvider("claude-code"),
+				providerAvailability("tutti-agent", agentservice.ProviderAvailabilityUnavailable),
+			},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
 		},
 		"unknown hidden": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnknown),
 				availableProvider("claude-code"),
+				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
 		},
 		"missing hidden": {
 			availability: []agentservice.ProviderAvailability{
@@ -1808,7 +1752,7 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	}
 }
 
-func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
+func TestSendCommandDoesNotReturnWaitCursor(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -1825,11 +1769,11 @@ func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.limit != 1 || sessions.order != agentactivitybiz.MessageOrderDesc {
-		t.Fatalf("list messages input = limit %d order %q", sessions.limit, sessions.order)
+	if sessions.limit != 0 {
+		t.Fatalf("send should not query latest message version, limit = %d", sessions.limit)
 	}
-	if output.Value["waitAfterVersion"] != uint64(2) {
-		t.Fatalf("output = %#v", output.Value)
+	if _, ok := output.Value["waitAfterVersion"]; ok {
+		t.Fatalf("send output should omit wait cursor: %#v", output.Value)
 	}
 }
 
