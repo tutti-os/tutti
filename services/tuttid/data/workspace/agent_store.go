@@ -16,9 +16,6 @@ import (
 // database handle. The delegation below keeps SQLiteStore satisfying the
 // AgentActivityStore and AgentTargetStore interfaces unchanged.
 
-const legacyIDLocalCodex = "local-codex"
-const legacyIDLocalClaudeCode = "local-claude-code"
-
 func (s *SQLiteStore) newAgentStore() *agentstore.Store {
 	return agentstore.New(s.db, agentstore.Options{
 		WorkspaceExists:        s.ensureWorkspaceExists,
@@ -26,10 +23,6 @@ func (s *SQLiteStore) newAgentStore() *agentstore.Store {
 		NormalizeTarget:        normalizeStoreAgentTarget,
 		IsSkippableTargetError: isSkippableAgentTargetRowError,
 		SeedSystemTargets:      defaultSystemStoreAgentTargets,
-		LegacySystemTargetIDRenames: map[string]string{
-			legacyIDLocalCodex:      agenttargetbiz.IDLocalCodex,
-			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
-		},
 		TargetIDBackfillByProvider: map[string]string{
 			"codex":       agenttargetbiz.IDLocalCodex,
 			"claude-code": agenttargetbiz.IDLocalClaudeCode,
