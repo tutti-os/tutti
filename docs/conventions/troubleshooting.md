@@ -1052,6 +1052,40 @@ delimited by ---`, and the composer skill picker may show partial or
   (env, config.toml, and auth.json), then run
   `cd services/tuttid && go test ./service/agentstatus`.
 
+### Codex session fails with not connected when model_catalog_json is relative
+
+- Symptom:
+  Codex is installed and `codex login status` reports logged in, but Tutti
+  chat fails with `agent session is not connected`. Daemon logs show
+  `thread/start` failing with
+  `failed to load configuration: No such file or directory (os error 2)`.
+  Tools such as CC Switch often set
+  `model_catalog_json = "cc-switch-model-catalog.json"` in `~/.codex/config.toml`.
+  If that catalog file is missing entirely, the same config error can also make
+  provider status show login required (`auth_unknown`) even though OAuth tokens
+  exist.
+- Quick checks:
+  `grep model_catalog_json ~/.codex/config.toml` and confirm the referenced
+  file exists under `~/.codex/`. Inspect the run-scoped
+  `~/.tutti-dev/agent/runs/<session>/codex-home/` (or `~/.tutti/...` in prod):
+  `config.toml` is copied, but a relative catalog must also be present there.
+- Root cause:
+  Tutti prepares a run-scoped `CODEX_HOME` and copies only `config.toml` (plus
+  auth/plugin/skill exposure). Relative `model_catalog_json` paths resolve
+  against that sandbox home, so the catalog is missing unless Tutti mirrors it.
+- Fix:
+  After copying `config.toml`, resolve top-level `model_catalog_json`. For
+  relative paths under `~/.codex`, symlink (or copy) the catalog into the
+  run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
+  need no mirror. Do not mutate the user's global config.
+- Validation:
+  Add or update `agentsidecar` tests that set a relative catalog beside
+  `config.toml` and assert the sandbox exposes it. Run
+  `cd services/tuttid && go test ./service/agentsidecar`.
+- References:
+  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
+  [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
+
 ### Codex custom model_provider mixes official models, duplicates replies, or shows metadata warnings
 
 - Symptom:

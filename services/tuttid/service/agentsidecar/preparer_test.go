@@ -26,6 +26,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	userCodexConfig := strings.Join([]string{
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
+		`model_catalog_json = "cc-switch-model-catalog.json"`,
 		`service_tier = "default"`,
 		"",
 		"[model_providers.proxy]",
@@ -33,6 +34,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		"",
 	}, "\n")
 	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "cc-switch-model-catalog.json"), []byte(`{"models":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
@@ -116,6 +120,13 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "auth.json")); err != nil {
 		t.Fatalf("codex auth not exposed: %v", err)
+	}
+	catalogLink, err := os.Lstat(filepath.Join(codexHome, "cc-switch-model-catalog.json"))
+	if err != nil {
+		t.Fatalf("codex model catalog not exposed: %v", err)
+	}
+	if catalogLink.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("codex model catalog should be a symlink, got mode %v", catalogLink.Mode())
 	}
 	for _, rel := range []string{
 		filepath.Join("plugins", "cache"),
@@ -319,6 +330,73 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if envValue(prepared.Env, "TUTTI_WORKSPACE_ID") != "workspace-1" {
 		t.Fatalf("prepared env = %#v, want workspace id", prepared.Env)
+	}
+}
+
+func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	catalogName := "cc-switch-model-catalog.json"
+	catalogBody := `{"models":[{"slug":"gpt-5.5","display_name":"gpt-5.5"}]}`
+	if err := os.WriteFile(filepath.Join(userCodexHome, catalogName), []byte(catalogBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_catalog_json = "cc-switch-model-catalog.json"`,
+		`model_provider = "proxy"`,
+		"",
+		"[model_providers.proxy]",
+		`base_url = "https://openai.proxy.test/v1"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	prepared, err := NewDefaultPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-catalog",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	sandboxCatalog := filepath.Join(codexHome, catalogName)
+	info, err := os.Lstat(sandboxCatalog)
+	if err != nil {
+		t.Fatalf("relative model catalog not exposed into sandbox: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("sandbox model catalog mode = %v, want symlink", info.Mode())
+	}
+	linkTarget, err := os.Readlink(sandboxCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != filepath.Join(userCodexHome, catalogName) {
+		t.Fatalf("sandbox catalog symlink target = %q, want user catalog", linkTarget)
+	}
+	got, err := os.ReadFile(sandboxCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != catalogBody {
+		t.Fatalf("sandbox catalog body = %q, want %q", string(got), catalogBody)
 	}
 }
 
