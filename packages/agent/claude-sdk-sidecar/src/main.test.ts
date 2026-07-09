@@ -5,7 +5,11 @@ import type {
   SDKMessage,
   SDKUserMessage
 } from "@anthropic-ai/claude-agent-sdk";
-import { SessionRuntime, withSidecarEventSinkForTest } from "./main.ts";
+import {
+  loadClaudeSettingsEnv,
+  SessionRuntime,
+  withSidecarEventSinkForTest
+} from "./main.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 
 type TestCanUseToolOptions = Parameters<
@@ -2893,3 +2897,103 @@ async function waitForEvent(
     `timed out waiting for ${type}; events=${JSON.stringify(events)}`
   );
 }
+
+test("loadClaudeSettingsEnv reads env from ~/.claude/settings.json", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-merge-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "PROXY_MANAGED",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:15721"
+      }
+    })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "PROXY_MANAGED");
+    assert.equal(result.ANTHROPIC_BASE_URL, "http://127.0.0.1:15721");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv skips non-string env values", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-skip-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "valid-token",
+        ANTHROPIC_BASE_URL: 12345,
+        DISABLED: null
+      }
+    })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.equal(result.ANTHROPIC_AUTH_TOKEN, "valid-token");
+    assert.equal(result.ANTHROPIC_BASE_URL, undefined);
+    assert.equal(result.DISABLED, undefined);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object when settings.json missing", async () => {
+  const { mkdirSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-empty-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object for malformed settings.json", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(
+    tmpdir(),
+    `tutti-claude-settings-malformed-${Date.now()}`
+  );
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(join(tempDir, "settings.json"), "{ not valid json");
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadClaudeSettingsEnv returns empty object when env field absent", async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const tempDir = join(tmpdir(), `tutti-claude-settings-noenv-${Date.now()}`);
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(
+    join(tempDir, "settings.json"),
+    JSON.stringify({ mcpServers: {} })
+  );
+  try {
+    const result = loadClaudeSettingsEnv(tempDir);
+    assert.deepEqual(result, {});
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

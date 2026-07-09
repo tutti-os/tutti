@@ -1029,6 +1029,7 @@ export class SessionRuntime {
       cwd: this.cwd || process.cwd(),
       env: {
         ...process.env,
+        ...loadClaudeSettingsEnv(claudeConfigDir()),
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },
@@ -3682,6 +3683,32 @@ function credentialProbeErrorPayload(error: unknown): Record<string, unknown> {
 
 function claudeConfigDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || `${homedir()}/.claude`;
+}
+
+export function loadClaudeSettingsEnv(
+  configDir: string
+): Record<string, string> {
+  try {
+    const path = `${configDir}/settings.json`;
+    const content = readFileSync(path, "utf8");
+    const parsed = parseJSONObject(content);
+    if (
+      !parsed?.env ||
+      typeof parsed.env !== "object" ||
+      Array.isArray(parsed.env)
+    ) {
+      return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed.env)) {
+      if (typeof key === "string" && typeof value === "string") {
+        result[key] = value;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
 }
 
 function claudeKeychainAccount(): string {
