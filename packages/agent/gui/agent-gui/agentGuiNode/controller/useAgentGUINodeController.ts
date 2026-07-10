@@ -3997,8 +3997,6 @@ export function useAgentGUINodeController({
     pendingConversationId: pendingCreateConversationId
   });
   const isCreatingConversationRef = useRef(isCreatingConversation);
-  const pendingCreateRef = useRef(false);
-  pendingCreateRef.current = pendingCreateConversationId !== null;
   const resolvePendingSubmit = useCallback(
     () =>
       conversationListQuery
@@ -7372,7 +7370,7 @@ export function useAgentGUINodeController({
       const target = selectedProviderTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
       if (
-        pendingCreateRef.current ||
+        startingConversationIdRef.current !== null ||
         target.disabled === true ||
         (targetData.provider === "openclaw" &&
           openclawGateway?.status !== "ready")
@@ -7408,7 +7406,7 @@ export function useAgentGUINodeController({
       const submittedHomeDraft =
         draftBySessionIdRef.current[submittedHomeDraftKey] ??
         EMPTY_AGENT_COMPOSER_DRAFT;
-      pendingCreateRef.current = true;
+      isCreatingConversationRef.current = true;
       setDetailError(null);
       let pendingCreateAgentSessionId: string | null = null;
       let pendingOptimisticConversation: AgentGUIConversationSummary | null =
@@ -7987,7 +7985,7 @@ export function useAgentGUINodeController({
           setDetailError(message);
         })
         .finally(() => {
-          pendingCreateRef.current = false;
+          isCreatingConversationRef.current = false;
           setPendingCreateConversationId(null);
         });
     },

@@ -1082,6 +1082,13 @@ User-visible rules:
   first-message activation, this same busy state is the only normal pending
   indicator. The "connecting conversation" state belongs to existing-session
   activation/recovery. The transcript processing row is runtime turn state.
+- Keep the pending-create command guard separate from the active composer's
+  creating state. A node may block a second new-conversation command while the
+  first activation is unresolved, but after the user selects another existing
+  conversation, that background create must not disable the selected session's
+  composer or prevent its target-scoped options from loading. Derive the
+  visible creating state by matching the pending conversation id to
+  `activeConversationId` (with the empty home composer remaining blocked).
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
