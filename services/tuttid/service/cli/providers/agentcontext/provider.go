@@ -95,6 +95,7 @@ func (p Provider) Commands() []cliservice.Command {
 		commands = append(commands,
 			p.newProvidersCommand(),
 			p.newComposerOptionsCommand(),
+			p.newStartCommand(),
 		)
 	}
 	commands = append(commands,
@@ -129,7 +130,6 @@ func (p Provider) Commands() []cliservice.Command {
 			AgentTargetID: agenttargetbiz.IDLocalTuttiAgent,
 			Summary:       "Start a Tutti Agent session",
 		}),
-		p.newStartCommand(),
 		p.newGetCommand(),
 		p.newOpenCommand(),
 		p.newSendCommand(),

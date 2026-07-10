@@ -116,7 +116,7 @@ func TestProviderWithoutAgentTargetsDoesNotAdvertiseCatalogCommands(t *testing.T
 	provider := NewProviderWithLaunchPublisher(nil, nil, nil)
 	for _, command := range provider.Commands() {
 		path := strings.Join(command.Capability.Path, " ")
-		if path == "agent providers" || path == "agent composer-options" {
+		if path == "agent providers" || path == "agent composer-options" || path == "agent start" {
 			t.Fatalf("command %q requires AgentTargetLister", path)
 		}
 	}
@@ -821,16 +821,50 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"provider": "codex", "prompt": "do work"},
 	})
-	if !errors.Is(err, cliservice.ErrInvalidInput) {
-		t.Fatalf("err = %v, want ErrInvalidInput", err)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
 	}
-	if !strings.Contains(err.Error(), "tutti codex start") ||
-		!strings.Contains(err.Error(), "tutti claude start") ||
-		!strings.Contains(err.Error(), "tutti tutti-agent start") {
-		t.Fatalf("err = %v, want provider command guidance", err)
+	if sessions.createCallCount != 1 {
+		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
 	}
-	if sessions.createCallCount != 0 {
-		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	if sessions.createInput.Provider != "codex" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("create input = %#v", sessions.createInput)
+	}
+}
+
+func TestGenericStartCanonicalizesLegacyProviderAndRejectsDisabledProvider(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newStartCommand()
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "claude", "prompt": "do work"},
+	}); err != nil {
+		t.Fatalf("legacy provider Handler: %v", err)
+	}
+	if sessions.createInput.Provider != "claude-code" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("create input = %#v", sessions.createInput)
+	}
+
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	targets[0].Enabled = false
+	disabledSessions := &fakeAgentSessions{}
+	disabledCommand := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		disabledSessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	).newStartCommand()
+	_, err := disabledCommand.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "codex", "prompt": "do work"},
+	})
+	var unavailable *agentservice.ProviderUnavailableError
+	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
+		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
+	}
+	if disabledSessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", disabledSessions.createCallCount)
 	}
 }
 

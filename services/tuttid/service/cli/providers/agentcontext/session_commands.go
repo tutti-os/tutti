@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
@@ -72,14 +74,18 @@ func (p Provider) newStartCommand() cliservice.Command {
 		ID:          appID + ".agent.start",
 		Path:        []string{"agent", "start"},
 		Summary:     "Start an agent session with a provider shortcut",
-		Description: "Generic provider start is target-aware and no longer creates sessions directly. Use `tutti codex start`, `tutti claude start`, or `tutti tutti-agent start`.",
+		Description: "Start an agent session by canonical provider id. Tutti resolves the provider through the enabled Agent Target catalog.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			return p.runStart(ctx, invoke, input.Provider, "", startFields{
+			target, err := p.resolveGenericStartTarget(ctx, input.Provider)
+			if err != nil {
+				return nil, err
+			}
+			return p.runStart(ctx, invoke, target.Provider, target.ID, startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
 				Hidden:          input.Hidden,
@@ -94,6 +100,26 @@ func (p Provider) newStartCommand() cliservice.Command {
 			})
 		},
 	})
+}
+
+func (p Provider) resolveGenericStartTarget(ctx context.Context, provider string) (agenttargetbiz.Target, error) {
+	canonicalProvider := agentproviderbiz.Normalize(provider)
+	if canonicalProvider == "" {
+		return agenttargetbiz.Target{}, fmt.Errorf("%w: unsupported agent provider %q", cliservice.ErrInvalidInput, provider)
+	}
+	targets, err := p.enabledAgentTargets(ctx)
+	if err != nil {
+		return agenttargetbiz.Target{}, err
+	}
+	target, ok := agenttargetbiz.EnabledTargetForProvider(targets, canonicalProvider)
+	if !ok {
+		return agenttargetbiz.Target{}, &agentservice.ProviderUnavailableError{
+			Provider:   canonicalProvider,
+			ReasonCode: "agent_provider_not_enabled",
+			Message:    "agent provider is not enabled",
+		}
+	}
+	return target, nil
 }
 
 type providerStartCommandSpec struct {
@@ -150,7 +176,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	}
 	agentTargetID = strings.TrimSpace(agentTargetID)
 	if agentTargetID == "" {
-		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...`, `tutti claude start --prompt ...`, or `tutti tutti-agent start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: agent target id is required", cliservice.ErrInvalidInput)
 	}
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
