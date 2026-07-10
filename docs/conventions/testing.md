@@ -50,6 +50,13 @@ Do not hide failures with retries as a substitute for stabilization.
 Direct changes to the agent daemon should still run the lane locally. Use a
 repeated focused run when changing asynchronous lifecycle behavior.
 
+For asynchronous runtime tests, prefer request/event channels and the session
+event sink over fixed-interval polling of mutex-protected slices. Wait for the
+specific protocol request or lifecycle event with a descriptive timeout so a
+failure identifies the missing transition. Protocol mocks should also cover
+valid response/notification reorderings; an RPC response must not be assumed to
+arrive before the notifications caused by that request.
+
 ## Output and Logs
 
 Root test runners execute independent lanes with bounded concurrency. Successful

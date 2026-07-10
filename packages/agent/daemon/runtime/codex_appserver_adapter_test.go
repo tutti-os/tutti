@@ -38,6 +38,11 @@ type scriptedAppServerTransport struct {
 	conn  *scriptedAppServerConnection
 }
 
+type scriptedAppServerRequest struct {
+	method string
+	params map[string]any
+}
+
 func newScriptedAppServerTransport() *scriptedAppServerTransport {
 	return &scriptedAppServerTransport{conn: newScriptedAppServerConnection()}
 }
@@ -45,6 +50,7 @@ func newScriptedAppServerTransport() *scriptedAppServerTransport {
 func newScriptedAppServerConnection() *scriptedAppServerConnection {
 	return &scriptedAppServerConnection{
 		recv:                     make(chan ProcessFrame, 128),
+		requests:                 make(chan scriptedAppServerRequest, 1024),
 		goalCompletionAfterTurns: 1,
 	}
 }
@@ -57,9 +63,10 @@ func (t *scriptedAppServerTransport) Start(_ context.Context, spec ProcessSpec) 
 }
 
 type scriptedAppServerConnection struct {
-	mu   sync.Mutex
-	sent [][]byte
-	recv chan ProcessFrame
+	mu       sync.Mutex
+	sent     [][]byte
+	recv     chan ProcessFrame
+	requests chan scriptedAppServerRequest
 
 	requiresAuth                 bool
 	collaborationModeUnsupported bool
@@ -88,6 +95,7 @@ type scriptedAppServerConnection struct {
 	approvalResponse             map[string]any
 	goal                         map[string]any
 	goalStartsTurn               bool
+	goalResponseAfterTurn        bool // deliver goal/set result after its turn notifications
 	goalTurnsStarted             int
 	goalCompletionAfterTurns     int
 	goalTurnFailAtTurn           int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
@@ -164,6 +172,10 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			Error  json.RawMessage `json:"error"`
 		}
 		_ = json.Unmarshal([]byte(line), &message)
+		c.requests <- scriptedAppServerRequest{
+			method: message.Method,
+			params: clonePayload(message.Params),
+		}
 		switch message.Method {
 		case appServerMethodInitialize:
 			c.sendJSON(map[string]any{
@@ -568,6 +580,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.mu.Lock()
 			previousGoal := clonePayload(c.goal)
 			goalStartsTurn := c.goalStartsTurn
+			goalResponseAfterTurn := c.goalResponseAfterTurn
 			goalTurnNumber := c.goalTurnsStarted
 			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
 				c.goalTurnsStarted++
@@ -594,10 +607,15 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			}
 			c.goal = clonePayload(goal)
 			c.mu.Unlock()
-			c.sendJSON(map[string]any{
-				"id":     message.ID,
-				"result": map[string]any{"goal": goal},
-			})
+			respond := func() {
+				c.sendJSON(map[string]any{
+					"id":     message.ID,
+					"result": map[string]any{"goal": goal},
+				})
+			}
+			if !goalResponseAfterTurn {
+				respond()
+			}
 			if goalStartsTurn && goalTurnNumber > 0 {
 				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
 				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
@@ -626,21 +644,24 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 							"error":  map[string]any{"message": "transient tool failure"},
 						},
 					})
-					continue
-				}
-				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
-					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
-				})
-				c.notify(appServerNotifyTurnCompleted, map[string]any{
-					"threadId": "codex-thread-1",
-					"turn": map[string]any{
-						"id":     turnID,
-						"status": "completed",
-						"items": []any{
-							map[string]any{"type": "agentMessage", "id": itemID, "text": messageText},
+				} else {
+					c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+						"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
+					})
+					c.notify(appServerNotifyTurnCompleted, map[string]any{
+						"threadId": "codex-thread-1",
+						"turn": map[string]any{
+							"id":     turnID,
+							"status": "completed",
+							"items": []any{
+								map[string]any{"type": "agentMessage", "id": itemID, "text": messageText},
+							},
 						},
-					},
-				})
+					})
+				}
+			}
+			if goalResponseAfterTurn {
+				respond()
 			}
 		case appServerMethodThreadGoalGet:
 			c.mu.Lock()
@@ -781,6 +802,60 @@ func appServerRequestParams(t *testing.T, conn *scriptedAppServerConnection, met
 		t.Fatalf("missing app-server request method %q", method)
 	}
 	return requests[0]
+}
+
+func waitForAppServerRequests(
+	t *testing.T,
+	conn *scriptedAppServerConnection,
+	method string,
+	want int,
+) []map[string]any {
+	t.Helper()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	requests := make([]map[string]any, 0, want)
+	for len(requests) < want {
+		select {
+		case request := <-conn.requests:
+			if request.method == method {
+				requests = append(requests, request.params)
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %d %s requests; received %d", want, method, len(requests))
+		}
+	}
+	return requests
+}
+
+func captureSessionEvents(adapter *CodexAppServerAdapter) <-chan activityshared.Event {
+	events := make(chan activityshared.Event, 128)
+	adapter.SetSessionEventSink(func(_ string, emitted []activityshared.Event) {
+		for _, event := range emitted {
+			events <- event
+		}
+	})
+	return events
+}
+
+func waitForSessionEvent(
+	t *testing.T,
+	events <-chan activityshared.Event,
+	description string,
+	matches func(activityshared.Event) bool,
+) activityshared.Event {
+	t.Helper()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-events:
+			if matches(event) {
+				return event
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s", description)
+		}
+	}
 }
 
 func startedAppServerAdapter(t *testing.T) (*CodexAppServerAdapter, *scriptedAppServerTransport, Session) {
@@ -1813,8 +1888,6 @@ func TestCodexAppServerAdapterClientDeathSettlesTurn(t *testing.T) {
 }
 
 func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
-	t.Parallel()
-
 	adapter, transport, session := startedAppServerAdapter(t)
 	transport.conn.holdTurn = true
 	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
@@ -1855,10 +1928,7 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 			t.Fatalf("cancel child event turn id = %q, want turn-1", event.Payload.TurnID)
 		}
 	}
-	waitForCondition(t, func() bool {
-		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)) == 3
-	})
-	requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+	requests := waitForAppServerRequests(t, transport.conn, appServerMethodTurnInterrupt, 3)
 	byThread := map[string]map[string]any{}
 	for _, request := range requests {
 		byThread[asString(request["threadId"])] = request
@@ -1878,8 +1948,6 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 }
 
 func TestCodexAppServerAdapterCancelAfterTurnCompletedStillMarksChildrenCanceled(t *testing.T) {
-	t.Parallel()
-
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
 		"type":              "collabAgentToolCall",
@@ -2948,20 +3016,15 @@ func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 }
 
 func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) {
-	t.Parallel()
-
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
+	// Codex may settle the first turn before the goal/set RPC result is
+	// applied locally. Continuation scheduling must survive that ordering.
+	transport.conn.goalResponseAfterTurn = true
 	transport.conn.goalCompletionAfterTurns = 2
 
-	var sinkMu sync.Mutex
-	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
-		sinkMu.Lock()
-		defer sinkMu.Unlock()
-		sinkEvents = append(sinkEvents, events...)
-	})
+	sinkEvents := captureSessionEvents(adapter)
 
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal finish the DrawingML pass",
@@ -2989,30 +3052,15 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 
 	// The continuation nudge re-sends goal/set; the mock then starts the
 	// second turn, which must be adopted and stream through the session sink.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		sinkMu.Lock()
-		adoptedCompleted := ""
-		adoptedStarted := false
-		for _, event := range sinkEvents {
-			if event.Type == activityshared.EventTurnStarted && event.Payload.Metadata["goalContinuation"] == true {
-				adoptedStarted = true
-			}
-			if event.Type == activityshared.EventMessageAppended &&
-				event.Payload.Role == activityshared.MessageRoleAssistant &&
-				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
-				adoptedCompleted = event.Payload.Content
-			}
-		}
-		sinkMu.Unlock()
-		if adoptedStarted && adoptedCompleted == "Goal complete." {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("adopted continuation turn did not complete; started=%v message=%q", adoptedStarted, adoptedCompleted)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSessionEvent(t, sinkEvents, "adopted goal continuation turn start", func(event activityshared.Event) bool {
+		return event.Type == activityshared.EventTurnStarted && event.Payload.Metadata["goalContinuation"] == true
+	})
+	waitForSessionEvent(t, sinkEvents, "adopted goal continuation completion", func(event activityshared.Event) bool {
+		return event.Type == activityshared.EventMessageAppended &&
+			event.Payload.Role == activityshared.MessageRoleAssistant &&
+			event.Payload.Metadata["streamState"] == messageStreamStateCompleted &&
+			event.Payload.Content == "Goal complete."
+	})
 
 	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
 	if len(goalSets) != 2 {
@@ -3032,21 +3080,13 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 // does on a clean completion, or the goal stops advancing for good with no
 // further signal ("goal 执行一半不动了").
 func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T) {
-	t.Parallel()
-
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
 	transport.conn.goalTurnFailAtTurn = 2
 	transport.conn.goalCompletionAfterTurns = 3
 
-	var sinkMu sync.Mutex
-	sinkEvents := []activityshared.Event{}
-	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
-		sinkMu.Lock()
-		defer sinkMu.Unlock()
-		sinkEvents = append(sinkEvents, events...)
-	})
+	sinkEvents := captureSessionEvents(adapter)
 
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal finish the DrawingML pass",
@@ -3062,47 +3102,18 @@ func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T)
 	// fix, finalizeSettledTurn only nudged on a clean completion, so this
 	// failed settle would never schedule a continuation and the goal would
 	// hang here forever.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		sinkMu.Lock()
-		failedSeen := false
-		for _, event := range sinkEvents {
-			if event.Type == activityshared.EventTurnFailed {
-				failedSeen = true
-			}
-		}
-		sinkMu.Unlock()
-		if failedSeen {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("adopted continuation turn did not settle failed")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSessionEvent(t, sinkEvents, "adopted continuation failure", func(event activityshared.Event) bool {
+		return event.Type == activityshared.EventTurnFailed
+	})
 
 	// The nudge must still fire after the failed settle and drive the goal to
 	// its third, successful turn.
-	deadline = time.Now().Add(5 * time.Second)
-	for {
-		sinkMu.Lock()
-		adoptedCompleted := ""
-		for _, event := range sinkEvents {
-			if event.Type == activityshared.EventMessageAppended &&
-				event.Payload.Role == activityshared.MessageRoleAssistant &&
-				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
-				adoptedCompleted = event.Payload.Content
-			}
-		}
-		sinkMu.Unlock()
-		if adoptedCompleted == "Goal complete." {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("goal did not continue past the failed turn to completion")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForSessionEvent(t, sinkEvents, "goal completion after failed turn", func(event activityshared.Event) bool {
+		return event.Type == activityshared.EventMessageAppended &&
+			event.Payload.Role == activityshared.MessageRoleAssistant &&
+			event.Payload.Metadata["streamState"] == messageStreamStateCompleted &&
+			event.Payload.Content == "Goal complete."
+	})
 
 	// initial /goal (turn 1) + nudge after turn 1 (turn 2, fails) + nudge
 	// after turn 2's failure (turn 3, completes the goal). The nudge

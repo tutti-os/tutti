@@ -2279,7 +2279,9 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 // scheduleGoalContinuationNudge re-sends thread/goal/set {status: active}
 // when a goal turn settled but codex did not auto-start the next turn within
 // the grace window. It is a safety net: the primary continuation driver is
-// codex itself (whose turns are adopted on turn/started).
+// codex itself (whose turns are adopted on turn/started). Goal state is only
+// checked after the grace window because turn notifications can settle before
+// the in-flight thread/goal/set response records the goal as active locally.
 func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 	agentSessionID := session.AgentSessionID
 	appSession := a.getSession(agentSessionID)
@@ -2288,9 +2290,6 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 	}
 	client := appSession.client
 	threadID := appSession.threadID
-	if strings.TrimSpace(asString(a.sessionGoal(agentSessionID)["status"])) != "active" {
-		return
-	}
 	grace := a.goalContinuationGraceWindow
 	if grace <= 0 {
 		grace = defaultCodexAppServerGoalContinuationGraceWindow

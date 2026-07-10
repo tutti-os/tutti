@@ -111,6 +111,38 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Codex goal stops after a turn while the goal remains active
+
+- Symptom:
+  A `/goal` completes or fails one turn, remains `active`, but never starts a
+  continuation turn. The conversation looks idle even though the goal banner
+  still says it is running.
+- Quick checks:
+  Enable `TUTTI_TEST_LOGS=1` for a focused runtime reproduction and compare
+  `agent_session.app_server.goal.status_changed` with
+  `agent_session.app_server.goal.continuation_nudge`. If the first turn settles
+  before the initial `thread/goal/set` response records the active goal, an
+  eager scheduling check can return without ever creating the continuation
+  timer.
+- Root cause:
+  App-server notifications and the response for their triggering RPC do not
+  have a safe application-order guarantee. A `turn/completed` notification may
+  settle the first goal turn while `thread/goal/set` is still in flight, so
+  local goal state can still be empty when the settle path schedules its nudge.
+- Fix:
+  Always create the continuation grace timer for a settled goal-driven turn.
+  After the grace window, re-read both the active turn and goal state; send the
+  nudge only when no turn has continued and the goal is then `active`. Do not
+  gate timer creation on the immediate local goal snapshot.
+- Validation:
+  Keep a scripted protocol test that deliberately delivers goal turn
+  notifications before the `thread/goal/set` result, then verify the next turn
+  is adopted. Cover both a clean first turn and a failed mid-goal turn with
+  repeated focused runs; use event channels rather than polling shared slices.
+- References:
+  [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
 ### Agent session stays loading after a completed turn
 
 - Symptom:
