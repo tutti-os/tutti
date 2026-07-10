@@ -3996,6 +3996,10 @@ export function useAgentGUINodeController({
     sessionRuntimeContext: activeSessionState?.runtimeContext
   });
   const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
+  const activeSessionRuntimeModel = configOptionCurrentValue(
+    activeSessionRuntimeContext,
+    ["model"]
+  );
   const backgroundAgentCount = useMemo(
     () => activeBackgroundAgentCount(activeSessionRuntimeContext),
     [activeSessionRuntimeContext]
@@ -6280,11 +6284,21 @@ export function useAgentGUINodeController({
         drafts: draftSettingsBySessionIdRef.current
       });
       const activeAgentSessionId = activeConversationIdRef.current;
-      const activeSessionSettings = activeAgentSessionId
+      const activeControlState = activeAgentSessionId
         ? (getAgentSessionView(sessionViewRef(activeAgentSessionId))
-            ?.controlState?.settings ?? null)
+            ?.controlState ?? null)
         : null;
-      const settings = activeSessionSettings ?? defaultDraftSettings;
+      const activeSessionSettings = activeControlState?.settings ?? null;
+      const activeRuntimeModel = configOptionCurrentValue(
+        activeControlState?.runtimeContext,
+        ["model"]
+      );
+      const settings = activeSessionSettings
+        ? {
+            ...activeSessionSettings,
+            ...(activeRuntimeModel ? { model: activeRuntimeModel } : {})
+          }
+        : defaultDraftSettings;
       const composerOptionsCwd =
         selectedProjectPathRef.current?.trim() || workspacePath.trim() || "";
       void Promise.resolve(
@@ -6399,7 +6413,12 @@ export function useAgentGUINodeController({
     );
   }, [
     activeConversationId,
+    activeSessionRuntimeModel,
     activeSessionState?.settings?.model,
+    activeSessionState?.settings?.permissionModeId,
+    activeSessionState?.settings?.planMode,
+    activeSessionState?.settings?.reasoningEffort,
+    activeSessionState?.settings?.speed,
     composerTargetData.agentTargetId,
     composerTargetData.provider,
     isComposerHome,

@@ -16,12 +16,13 @@ const (
 )
 
 type AgentModelOption struct {
-	ID                        string
-	DisplayName               string
-	Description               string
-	DefaultReasoningEffort    string
-	IsDefault                 bool
-	SupportedReasoningEfforts []AgentModelReasoningEffortOption
+	ID                         string
+	DisplayName                string
+	Description                string
+	DefaultReasoningEffort     string
+	IsDefault                  bool
+	ReasoningEffortsAdvertised bool
+	SupportedReasoningEfforts  []AgentModelReasoningEffortOption
 }
 
 type AgentModelReasoningEffortOption struct {

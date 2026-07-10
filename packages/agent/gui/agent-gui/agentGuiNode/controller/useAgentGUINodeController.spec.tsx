@@ -11600,7 +11600,9 @@ describe("useAgentGUINodeController", () => {
         agentSessionState("session-1", {
           provider: "claude-code",
           settings: {
-            model: "opus",
+            // Simulate the control-state settings lagging behind ACP's live
+            // model config after the switch.
+            model: "haiku",
             reasoningEffort: "xhigh",
             speed: null,
             planMode: false,

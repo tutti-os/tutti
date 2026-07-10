@@ -246,13 +246,18 @@ func normalizeCodexModel(raw json.RawMessage) (AgentModelOption, bool) {
 	if displayName == "" {
 		displayName = id
 	}
+	reasoningEffortsValue, reasoningEffortsAdvertised := object["supportedReasoningEfforts"]
+	if !reasoningEffortsAdvertised {
+		reasoningEffortsValue, reasoningEffortsAdvertised = object["supported_reasoning_efforts"]
+	}
 	return AgentModelOption{
-		ID:                        id,
-		DisplayName:               displayName,
-		Description:               stringMapValue(object, "description"),
-		DefaultReasoningEffort:    firstNonEmptyString(stringMapValue(object, "defaultReasoningEffort"), stringMapValue(object, "default_reasoning_effort")),
-		IsDefault:                 boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
-		SupportedReasoningEfforts: normalizeCodexReasoningEfforts(object["supportedReasoningEfforts"]),
+		ID:                         id,
+		DisplayName:                displayName,
+		Description:                stringMapValue(object, "description"),
+		DefaultReasoningEffort:     firstNonEmptyString(stringMapValue(object, "defaultReasoningEffort"), stringMapValue(object, "default_reasoning_effort")),
+		IsDefault:                  boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
+		ReasoningEffortsAdvertised: reasoningEffortsAdvertised,
+		SupportedReasoningEfforts:  normalizeCodexReasoningEfforts(reasoningEffortsValue),
 	}, true
 }
 

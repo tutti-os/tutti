@@ -1557,6 +1557,71 @@ test("loadComposerOptions refetches when composer settings change", async () => 
   assert.deepEqual(requestedModels, ["gpt-5.6-sol", "gpt-5.6-luna"]);
 });
 
+test("loadComposerOptions refetches when an agent target switches provider", async () => {
+  const requestedProviders: string[] = [];
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        requestedProviders.push(input.provider);
+        return createComposerOptions({ provider: input.provider });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({
+    agentTargetId: "shared-target",
+    provider: "codex"
+  });
+  await controller.loadComposerOptions({
+    agentTargetId: "shared-target",
+    provider: "claude-code"
+  });
+
+  assert.deepEqual(requestedProviders, ["codex", "claude-code"]);
+});
+
+test("invalidateComposerOptions keeps an in-flight load stale", async () => {
+  const resolvers: Array<(options: AgentActivityComposerOptions) => void> = [];
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async () =>
+        new Promise<AgentActivityComposerOptions>((resolve) => {
+          resolvers.push(resolve);
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  const staleLoad = controller.loadComposerOptions({ provider: "codex" });
+  await waitFor(() => assert.equal(resolvers.length, 1));
+  controller.invalidateComposerOptions({ providers: ["codex"] });
+  const freshLoad = controller.loadComposerOptions({ provider: "codex" });
+  await waitFor(() => assert.equal(resolvers.length, 2));
+
+  resolvers[0]?.(
+    createComposerOptions({
+      models: [{ value: "stale", label: "Stale" }]
+    })
+  );
+  await staleLoad;
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex,
+    undefined
+  );
+
+  resolvers[1]?.(
+    createComposerOptions({
+      models: [{ value: "fresh", label: "Fresh" }]
+    })
+  );
+  await freshLoad;
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex?.models[0]?.value,
+    "fresh"
+  );
+});
+
 function fakeAdapter(
   overrides: {
     listSessions?: AgentActivityAdapter["listSessions"];

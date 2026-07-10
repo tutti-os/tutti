@@ -72,6 +72,10 @@ describe("model reasoning options", () => {
             { value: "low", name: "Low" },
             { value: "medium", name: "Medium" }
           ]
+        },
+        "no-reasoning": {
+          defaultValue: null,
+          options: []
         }
       }
     },
@@ -128,6 +132,44 @@ describe("model reasoning options", () => {
       )
     ).toEqual({
       currentValue: "xhigh",
+      options: [
+        { value: "high", label: "High" },
+        { value: "xhigh", label: "X High" }
+      ]
+    });
+  });
+
+  it("preserves an authoritative empty model reasoning list", () => {
+    expect(
+      reasoningSelectionFromComposerOptions(
+        composerOptions,
+        "high",
+        "no-reasoning"
+      )
+    ).toEqual({ currentValue: null, options: [] });
+  });
+
+  it("rejects a stale live current value outside the advertised list", () => {
+    expect(
+      reasoningSelectionFromComposerOptions(
+        composerOptions,
+        "ultra",
+        "gpt-5.6-sol",
+        {
+          configOptions: [
+            {
+              id: "reasoning_effort",
+              currentValue: "ultra",
+              options: [
+                { value: "high", name: "High" },
+                { value: "xhigh", name: "X High" }
+              ]
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      currentValue: "high",
       options: [
         { value: "high", label: "High" },
         { value: "xhigh", label: "X High" }

@@ -350,7 +350,7 @@ function effortFromText(
 ): { summaryValue: string; version: string } | undefined {
   const effortMatch = text
     .toLowerCase()
-    .match(/\b(minimal|low|medium|high|x[-\s]?high)\s+effort\b/);
+    .match(/\b(minimal|low|medium|high|x[-\s]?high|max|ultra)\s+effort\b/);
   if (!effortMatch?.[1]) {
     return undefined;
   }

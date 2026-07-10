@@ -99,7 +99,10 @@ function settingOptionsWithLocalizedPresentation(
     }
     const localizedOption = {
       ...option,
-      label: localized.label
+      label:
+        localized.label !== localized.value || option.label === option.value
+          ? localized.label
+          : option.label
     };
     return localized.description
       ? { ...localizedOption, description: localized.description }

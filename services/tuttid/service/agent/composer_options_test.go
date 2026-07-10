@@ -193,3 +193,14 @@ func TestNormalizeRuntimeContextPreservesCodexModelReasoningOptions(t *testing.T
 		t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
 	}
 }
+
+func TestResolveAdvertisedReasoningEffortPreservesAuthoritativeMinimalDefault(t *testing.T) {
+	advertised := []AgentModelReasoningEffortOption{{Value: "minimal"}}
+	if got := resolveAdvertisedReasoningEffort("codex", "", "minimal", advertised); got != "minimal" {
+		t.Fatalf("resolveAdvertisedReasoningEffort = %q, want minimal", got)
+	}
+	options := composerAdvertisedReasoningOptionValues("codex", "minimal", "en", advertised)
+	if len(options) != 1 || options[0].Value != "minimal" {
+		t.Fatalf("composer advertised options = %#v, want only minimal", options)
+	}
+}

@@ -803,6 +803,47 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
 });
 
+test("desktop agent activity adapter preserves ACP labels over synthesized config labels", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: { configurable: true, options: [] },
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: {
+            configurable: true,
+            currentValue: "ultra",
+            options: []
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "reasoning_effort",
+                currentValue: "ultra",
+                options: [{ value: "ultra", name: "ACP Ultra" }]
+              }
+            ]
+          },
+          skills: [],
+          capabilityCatalog: []
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "codex"
+  });
+
+  assert.deepEqual(options.reasoningEfforts, [
+    { value: "ultra", label: "ACP Ultra" }
+  ]);
+});
+
 test("desktop agent activity adapter uses Claude draft live model list", async () => {
   const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({

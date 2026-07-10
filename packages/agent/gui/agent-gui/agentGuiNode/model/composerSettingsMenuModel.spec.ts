@@ -143,6 +143,27 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.reasoning.options).toEqual([{ value: "ultra", label: "极致" }]);
   });
 
+  it("localizes ultra effort in model summaries", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        availableModels: [
+          {
+            value: "gpt-5.6-sol",
+            label: "GPT-5.6-Sol",
+            description: "GPT-5.6 Sol · ultra effort"
+          }
+        ],
+        selectedModelValue: "gpt-5.6-sol"
+      }),
+      labels
+    );
+
+    expect(menu.model.options[0]).toMatchObject({
+      summary: ["Ultra"],
+      tooltip: { version: "Version: ultra effort" }
+    });
+  });
+
   it("marks the trigger as fast and localizes model descriptions", () => {
     const menu = buildComposerModelMenuModel(
       vm({

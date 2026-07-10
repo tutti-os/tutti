@@ -94,6 +94,7 @@ export function createAgentActivityController({
     input: Omit<AgentActivityLoadComposerOptionsInput, "workspaceId">
   ): string =>
     JSON.stringify([
+      input.provider.trim(),
       normalizeComposerCwd(input.cwd),
       normalizeComposerSetting(input.settings?.model),
       normalizeComposerSetting(input.settings?.reasoningEffort),
@@ -101,6 +102,18 @@ export function createAgentActivityController({
       input.settings?.planMode ?? null,
       normalizeComposerSetting(input.settings?.permissionModeId)
     ]);
+  const composerOptionsProviderFromRequestKey = (
+    requestKey: string
+  ): string | null => {
+    try {
+      const values = JSON.parse(requestKey) as unknown;
+      return Array.isArray(values) && typeof values[0] === "string"
+        ? values[0]
+        : null;
+    } catch {
+      return null;
+    }
+  };
   const composerOptionsProviderCacheKey = (provider: string): string =>
     `provider:${provider}`;
   const composerOptionsTargetCacheKey = (agentTargetId: string): string =>
@@ -313,8 +326,23 @@ export function createAgentActivityController({
           }
         }
       }
+      for (const [
+        cacheKey,
+        requestKey
+      ] of activeComposerOptionsLoadRequestKeys) {
+        if (
+          matchesProvider(composerOptionsProviderFromRequestKey(requestKey))
+        ) {
+          staleCacheKeys.add(cacheKey);
+        }
+      }
       for (const cacheKey of staleCacheKeys) {
         composerOptionsRequestKeyByCacheKey.delete(cacheKey);
+        activeComposerOptionsLoadRequestKeys.delete(cacheKey);
+        composerOptionsLoadVersions.set(
+          cacheKey,
+          (composerOptionsLoadVersions.get(cacheKey) ?? 0) + 1
+        );
       }
     },
     async listSessionMessages({

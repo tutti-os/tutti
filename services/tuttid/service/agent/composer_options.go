@@ -182,7 +182,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			); len(modelReasoningOptions) > 0 {
 				runtimeContext["modelReasoningOptionsByModel"] = modelReasoningOptions
 			}
-			if len(catalogOptions.ReasoningEfforts) > 0 {
+			if catalogOptions.ReasoningEffortsAdvertised {
 				requestedReasoningEffort := effectiveSettings.ReasoningEffort
 				if settings.ReasoningEffort == "" {
 					requestedReasoningEffort = ""
@@ -634,11 +634,12 @@ func composerModelConfig(provider string, selected string, options []map[string]
 }
 
 type composerModelCatalogOptions struct {
-	DefaultReasoningEffort string
-	ModelOptions           []map[string]string
-	ReasoningProfiles      map[string]composerModelReasoningProfile
-	ReasoningEfforts       []AgentModelReasoningEffortOption
-	Source                 string
+	DefaultReasoningEffort     string
+	ModelOptions               []map[string]string
+	ReasoningEffortsAdvertised bool
+	ReasoningProfiles          map[string]composerModelReasoningProfile
+	ReasoningEfforts           []AgentModelReasoningEffortOption
+	Source                     string
 }
 
 func composerModelOptionsFromCatalog(
@@ -680,7 +681,7 @@ func composerModelOptionsFromCatalog(
 			"name":  name,
 			"value": id,
 		})
-		if len(model.SupportedReasoningEfforts) > 0 {
+		if model.ReasoningEffortsAdvertised {
 			reasoningProfiles[id] = composerModelReasoningProfile{
 				DefaultReasoningEffort: strings.TrimSpace(model.DefaultReasoningEffort),
 				ReasoningEfforts: append(
@@ -705,6 +706,7 @@ func composerModelOptionsFromCatalog(
 	}
 	if selectedCatalogModel != nil {
 		catalogOptions.DefaultReasoningEffort = strings.TrimSpace(selectedCatalogModel.DefaultReasoningEffort)
+		catalogOptions.ReasoningEffortsAdvertised = selectedCatalogModel.ReasoningEffortsAdvertised
 		catalogOptions.ReasoningEfforts = append(
 			[]AgentModelReasoningEffortOption(nil),
 			selectedCatalogModel.SupportedReasoningEfforts...,

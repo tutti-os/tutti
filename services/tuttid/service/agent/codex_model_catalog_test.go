@@ -42,6 +42,9 @@ done
 	if models[0].DefaultReasoningEffort != "medium" {
 		t.Fatalf("first model default reasoning effort = %q, want medium", models[0].DefaultReasoningEffort)
 	}
+	if !models[0].ReasoningEffortsAdvertised {
+		t.Fatal("first model reasoning efforts advertised = false, want true")
+	}
 	if len(models[0].SupportedReasoningEfforts) != 2 ||
 		models[0].SupportedReasoningEfforts[1].Value != "ultra" ||
 		models[0].SupportedReasoningEfforts[1].Description != "Maximum reasoning with automatic task delegation" {
@@ -49,6 +52,22 @@ done
 	}
 	if models[1].ID != "gpt-5.1" || models[1].DisplayName != "gpt-5.1" {
 		t.Fatalf("second model = %#v", models[1])
+	}
+	if models[1].ReasoningEffortsAdvertised {
+		t.Fatal("second model reasoning efforts advertised = true, want false")
+	}
+}
+
+func TestNormalizeCodexModelPreservesAdvertisedEmptyReasoningEfforts(t *testing.T) {
+	model, ok := normalizeCodexModel([]byte(`{"id":"no-reasoning","supportedReasoningEfforts":[]}`))
+	if !ok {
+		t.Fatal("normalizeCodexModel ok = false")
+	}
+	if !model.ReasoningEffortsAdvertised {
+		t.Fatal("ReasoningEffortsAdvertised = false, want true")
+	}
+	if model.SupportedReasoningEfforts == nil || len(model.SupportedReasoningEfforts) != 0 {
+		t.Fatalf("SupportedReasoningEfforts = %#v, want advertised empty list", model.SupportedReasoningEfforts)
 	}
 }
 

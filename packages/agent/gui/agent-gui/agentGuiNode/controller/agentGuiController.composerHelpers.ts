@@ -180,22 +180,28 @@ export function reasoningSelectionFromComposerOptions(
     currentValue,
     selectedModel
   );
-  const sourceOptions = liveConfig?.options.length
+  const sourceOptions = liveConfig
     ? liveConfig.options
-    : modelSelection?.options.length
+    : modelSelection
       ? modelSelection.options
       : options
         ? composerSettingOptionsFromActivity(options.reasoningEfforts)
         : [];
-  if (!options && sourceOptions.length === 0) {
+  if (!options && !liveConfig && !modelSelection) {
     return null;
   }
   const supportedValues = new Set(sourceOptions.map((option) => option.value));
+  const supportedValue = (
+    value: AgentSessionReasoningEffort | string | null | undefined
+  ): AgentSessionReasoningEffort | null =>
+    value && supportedValues.has(value)
+      ? (value as AgentSessionReasoningEffort)
+      : null;
   const resolvedCurrentValue =
-    (currentValue && supportedValues.has(currentValue) ? currentValue : null) ??
-    liveConfig?.currentValue ??
-    modelSelection?.currentValue ??
-    sourceOptions[0]?.value ??
+    supportedValue(currentValue) ??
+    supportedValue(liveConfig?.currentValue) ??
+    supportedValue(modelSelection?.currentValue) ??
+    (sourceOptions[0]?.value as AgentSessionReasoningEffort | undefined) ??
     null;
   return {
     options: sourceOptions,
