@@ -43,11 +43,10 @@ function Toaster({ toastOptions, style, ...props }: ToasterProps) {
         ...toastOptions,
         classNames: {
           toast:
-            "group pointer-events-auto min-h-14 rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] px-3.5 py-3 text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]",
-          title:
-            "text-[13px] font-semibold leading-5 text-[var(--text-primary)]",
+            "group pointer-events-auto min-h-14 rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] p-3 text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]",
+          title: "text-[13px] font-medium leading-5 text-[var(--text-primary)]",
           description:
-            "mt-0.5 text-[11px] leading-5 text-[var(--text-secondary)]",
+            "mt-0.5 text-[11px] leading-[1.3] text-[var(--text-secondary)]",
           actionButton:
             "h-7 rounded-[6px] bg-[var(--text-primary)] px-2.5 text-[11px] font-normal text-[var(--text-inverted)] transition-colors hover:bg-[var(--text-primary-hover)]",
           cancelButton:

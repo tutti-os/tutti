@@ -40,6 +40,7 @@ DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
 ## Hard Rules
 
 - Published workspace packages use `@tutti-os/*`; keep manifests, imports, docs, and release config aligned.
+- All new requirements and features across Tutti projects must first reuse existing `@tutti-os/ui-system` components, semantic color tokens, typography, spacing, and other established UI conventions. Before introducing bespoke UI or raw color values, inspect the existing UI System exports and tokens; if the required capability is missing, prefer extending the shared UI System with a reusable primitive or token and document the rationale.
 - User-visible copy must go through the relevant i18n layer. Do not hardcode UI text, dialog text, status labels, empty states, or user-facing errors.
 - Change `services/tuttid/api/openapi/tuttid.v1.yaml` before daemon HTTP request/response contracts.
 - Document new supported runtime/env overrides in the matching durable convention doc.
