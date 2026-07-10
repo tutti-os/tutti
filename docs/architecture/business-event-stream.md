@@ -1,20 +1,21 @@
 # Business Event Stream
 
-This document describes the intended architecture for a shared business event
-stream between desktop clients, `tuttid`, and future extensible feature
-surfaces.
+Status: current implemented architecture
+
+This document describes the shared business event stream between desktop
+clients, `tuttid`, and extensible feature surfaces.
 
 The event stream is a business transport, not an Electron host bridge and not a
 replacement for every existing WebSocket route.
 
-## Goals
+## Design Goals
 
 - provide one general-purpose business event stream for bidirectional product
   coordination
 - keep one schema-first source of truth for shared event contracts
 - let reusable packages consume typed business events without owning WebSocket
   details
-- support future extension-owned event fragments without collapsing into
+- support extension-owned event fragments without collapsing into
   untyped `unknown` payloads
 
 ## Non-Goals
@@ -26,8 +27,8 @@ replacement for every existing WebSocket route.
 
 ## Why This Exists
 
-`tuttid` and desktop clients are expected to need more frequent bidirectional
-coordination than ordinary request-response APIs handle well.
+`tuttid` and desktop clients use this stream for bidirectional coordination that
+ordinary request-response APIs do not handle well.
 
 We want one durable event model that:
 
@@ -42,7 +43,7 @@ We want one durable event model that:
 Business events use a dedicated managed loopback WebSocket route, separate from
 ordinary HTTP APIs and separate from terminal streaming.
 
-Current intended transport split:
+Current transport split:
 
 - HTTP request-response for ordinary daemon business APIs
 - dedicated terminal WebSocket for terminal-specific stream semantics
@@ -177,7 +178,7 @@ The event envelope is protocol-owned and shared across all topics.
 Each event route-specific payload lives under `payload`; protocol metadata such
 as `id`, `topic`, and timestamp are not redefined inside each topic schema.
 
-Intended envelope shape:
+Current envelope shape:
 
 ```ts
 type EventEnvelope<TTopic extends string, TPayload> = {
@@ -234,27 +235,27 @@ Core server-to-client frames:
 The business socket protocol should stay narrow and reusable. Terminal-specific
 frames such as resize or byte-stream input stay on the terminal transport.
 
-For V1, `publish` should be interpreted as transport for typed client intents
+`publish` is transport for typed client intents
 and extension-owned request topics, not as a shortcut around daemon business
 authority.
 
 ## Catalog And Fragment Composition
 
-The shared event package should organize definitions as one composed catalog
+The shared event package organizes definitions as one composed catalog
 assembled from domain-local fragments.
 
-Recommended source layout:
+Current source layout:
 
 ```text
-events/
-  workspace/
-    issue.updated.event.json
-    issue.patch-requested.event.json
-  preferences/
-    theme.changed.event.json
-  ext/
-    github/
-      issue.synced.event.json
+packages/events/protocol/
+  definitions/
+    agent/
+    analytics/
+    preferences/
+    workspace/
+  schemas/
+    core/
+    topics/
 ```
 
 Rules:

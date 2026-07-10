@@ -16956,7 +16956,8 @@ describe("useAgentGUINodeController", () => {
   // Step 9 (Cluster A desktop-half): the "user message disappears" class.
   // The three historical sessions (7633ebb9 / 2d73bad7 / 08920807) have no
   // per-session forensics; each test below pins one failure shape of the
-  // class. See docs/specs/2026-07-02-codex-appserver-step9-desktop-plan.md.
+  // class. The current optimistic/reconcile contract lives in
+  // docs/architecture/agent-gui-node.md.
   it("recovers a rapid-fire user prompt buried behind tool spam after a desktop reload (shape 7633ebb9)", async () => {
     // Server history: turn-2's user prompt (version 100) is buried under 120
     // assistant/tool rows; turn-3's user prompt (version 221) is in the

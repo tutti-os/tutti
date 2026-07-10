@@ -21,7 +21,7 @@ Then read the package/activity boundary document:
 For composer file references or mention behavior, also read the relevant
 reference architecture:
 
-- [docs/architecture/agent-reference-source-services.md](../../../docs/architecture/agent-reference-source-services.md)
+- [Agent Reference Sources](../../../docs/architecture/agent-reference-sources.md)
 - [docs/architecture/agent-reference-mention-resolution.md](../../../docs/architecture/agent-reference-mention-resolution.md)
 
 ## AgentGUI Rules
@@ -47,12 +47,12 @@ reference architecture:
   changes usually update
   [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md);
   recurring symptoms usually update
-  [docs/conventions/troubleshooting.md](../../../docs/conventions/troubleshooting.md).
+  [Agent Runtime Troubleshooting](../../../docs/conventions/troubleshooting/agent-runtime.md).
 - When a fix captures a recurring AgentGuiNode debugging trap, record the
   lesson in the matching durable doc when it is in scope, or ask the user first
   if adding the note would broaden the requested change:
   [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md)
-  or [docs/conventions/troubleshooting.md](../../../docs/conventions/troubleshooting.md).
+  or [Agent Runtime Troubleshooting](../../../docs/conventions/troubleshooting/agent-runtime.md).
 
 ## Checks
 

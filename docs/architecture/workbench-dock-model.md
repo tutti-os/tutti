@@ -407,18 +407,9 @@ Disallowed dock-related snapshot metadata:
 The host should recompute dock visibility, badges, and hover actions from live
 state on each render.
 
-## Recommended Migration Plan
+## Current Outcomes
 
-1. introduce `dockEntries` and entry-level matching in `WorkbenchHost`
-2. update dock popup, anchor registration, badge rendering, and click behavior
-   to operate on dock entry identity rather than node `typeId`
-3. add `payload` and `dockEntryId` to launch contracts
-4. persist `dockEntryId` with sanitized shell metadata
-5. migrate existing hosts to explicit dock entries
-
-## Expected Outcomes
-
-After this change, hosts should be able to express:
+The implemented model lets hosts express:
 
 - stable dock ordering and grouping
 - provider-specific entries for a shared node type

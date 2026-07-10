@@ -46,7 +46,7 @@ DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
 - Document new supported runtime/env overrides in the matching durable convention doc.
 - Business-code files should stay at or below `800` lines. Prefer decomposition before adding more logic.
 - When changing repository-managed checks, hooks, or static analysis, update `docs/conventions/local-git-hooks.md` or `docs/conventions/static-analysis.md`.
-- When a fix captures a recurring debugging trap, add the durable note to `docs/conventions/troubleshooting.md`.
+- When a fix captures a recurring debugging trap, route it through `docs/conventions/troubleshooting/README.md` and update the matching domain file.
 
 ## Self-Evolution Notes
 

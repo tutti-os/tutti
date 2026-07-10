@@ -3,8 +3,8 @@ package agentruntime
 import "testing"
 
 // Step 0 characterization corpus. These tests capture CURRENT behavior of the
-// app-server reducer's pure helpers so the layer refactor (steps 1-9) cannot
-// silently change it. See docs/specs/2026-07-01-codex-appserver-bug-corpus.md.
+// app-server reducer's pure helpers so later refactors cannot silently change
+// established behavior.
 
 // A completed collab (sub-agent) tool call must surface its result/output into
 // the parent card's rawOutput. Step 3 keeps this outcome while switching the

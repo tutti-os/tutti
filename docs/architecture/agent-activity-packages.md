@@ -1,29 +1,25 @@
 # Agent Activity Packages
 
-Status: shared Agent Activity core, desktop adapter, Agent GUI runtime input,
-and Message Center snapshot model implemented; legacy Host API projection kept
-only at compatibility and desktop bridge boundaries
+Status: current implemented architecture
 
 This document records the package split for reusable Agent Activity and Agent
 GUI surfaces. The goal is to make the agent session data flow reusable by other
 repositories while keeping host-specific transport and desktop integration out
 of the shared packages.
 
-## Goals
+## Design Goals
 
-- Replace the legacy `@tutti-os/agentactivity-renderer` package name with
-  clearer public package names.
 - Put reusable agent session state, event merging, and attention selectors
   behind a host-agnostic core package.
 - Keep `apps/desktop` responsible for `tuttid`, preload, Electron, local file,
   and runtime integration.
-- Let Agent GUI and the future Agent Message Center consume one shared Agent
-  Activity snapshot instead of building separate session caches.
+- Let Agent GUI and Message Center consume one shared Agent Activity snapshot
+  instead of building separate session caches.
 - Prepare for external repository adoption through a narrow adapter interface.
 
-## Package Plan
+## Package Map
 
-The long-term package family is:
+The current package family is:
 
 ```text
 packages/agent/activity-core
@@ -31,14 +27,7 @@ packages/agent/activity-core
 
 packages/agent/gui
   @tutti-os/agent-gui
-
-packages/agent/message-center
-  @tutti-os/agent-message-center
 ```
-
-This iteration creates the first two packages only.
-`@tutti-os/agent-message-center` remains a planned package name until the
-header message UI is implemented.
 
 ## Responsibilities
 
@@ -85,6 +74,8 @@ It owns:
 - timeline, tool call, approval, and interactive prompt presentation
 - package-owned stylesheet entrypoint
 - React-facing hooks or providers that are specific to Agent GUI
+- Message Center snapshot model and UI while it shares AgentGUI activity and
+  interaction ownership
 
 It may depend on `@tutti-os/agent-activity-core`.
 
@@ -128,21 +119,6 @@ helpers that accept runtime-shaped adapters.
 
 It should not know how a host connects to `tuttid`, opens SSE streams, resolves
 workspace paths, or talks to Electron.
-
-### `@tutti-os/agent-message-center`
-
-This package is planned but not created in this iteration.
-
-It is expected to own:
-
-- the header Agent Message trigger
-- needs-attention badge UI
-- needs-attention popover/list UI
-- actions that open the relevant Agent GUI session or submit the required user
-  response
-
-It should consume `agent-activity-core` selectors instead of interpreting raw
-message payloads directly.
 
 ### `apps/desktop`
 
@@ -246,10 +222,13 @@ present. State patch reducers must update the session when an event includes
 `agentTargetId`, but a patch that omits the field must not clear an existing
 target id because older runtimes and historical imports are provider-only.
 
-Composer options are cached by `agentTargetId` when a target-backed request
-includes one. Provider-keyed composer options remain a legacy/provider-only
-cache and may be used by UI as a fallback while target-specific options load,
-but target-backed loads must not reuse or overwrite the provider cache.
+Composer options use one cache key space: the resolved `agentTargetId` is passed
+to activity-core as an opaque `targetKey`, round-tripped verbatim, and forwarded
+to the daemon as `agentTargetId`. Activity-core must not parse or rewrite the
+key. There is no provider-keyed fallback cache: two targets under the same
+provider must remain isolated. Provider-based invalidation filters on the
+`provider` stored in each cached value rather than deriving provider identity
+from the key.
 
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
 host-owned legacy reference for selecting which target under the real provider
@@ -342,106 +321,7 @@ canceled, superseded, or already answered prompts must not be counted.
 Failed sessions are not automatically needs-attention items unless they expose a
 specific user action that can resolve the failure.
 
-## Migration Plan
-
-### Step 1: Breaking package rename
-
-Move the legacy package:
-
-```text
-packages/agent/renderer
-@tutti-os/agentactivity-renderer
-```
-
-to:
-
-```text
-packages/agent/gui
-@tutti-os/agent-gui
-```
-
-Update all imports, stylesheet imports, Vite externals, package references,
-local shims, and boundary documentation.
-
-The stylesheet contract becomes:
-
-```ts
-import "@tutti-os/agent-gui/styles.css";
-```
-
-This step should not change runtime behavior.
-
-### Step 2: Create `agent-activity-core`
-
-Create `packages/agent/activity-core` with:
-
-- package manifest and build scripts
-- public contracts
-- adapter interface
-- controller/store skeleton
-- message merge helpers
-- needs-attention selectors
-- unit tests for merge and attention counting
-
-The package must typecheck without React or desktop dependencies.
-
-### Step 3: Add the desktop adapter
-
-In `apps/desktop`, create a concrete adapter that wraps the generated
-`tuttid` client and event stream APIs.
-
-Desktop keeps transport and host knowledge. Core receives normalized contracts.
-
-The first implementation routes desktop session-message cache merging and
-retained event stream lifecycle through `agent-activity-core`. The concrete
-desktop adapter owns the `tuttid` calls, SSE subscription, and host event
-normalization.
-
-`createDesktopAgentHostApi` remains the compatibility adapter from the shared
-activity controller into the existing Agent GUI Host API. It may still call
-desktop-only Host APIs directly when those operations are outside the shared
-activity snapshot.
-
-### Step 4: Connect Agent GUI to core
-
-Update `@tutti-os/agent-gui` and the desktop Agent GUI workbench body to use
-the shared controller or snapshot source.
-
-AgentGUI now requires `agentActivityRuntime: AgentActivityRuntime` in
-production. Desktop passes a runtime wrapper over
-`WorkspaceAgentActivityService` together with `agentHostApi`.
-
-AgentGUI production code should call the runtime hook directly and keep
-UI-local state limited to selection, drafts, scroll/loading/error state,
-highlight state, and optimistic overlays. Legacy host session-control helpers
-(`activate`, `unactivate`, `getState`, `updateSettings`, and
-`getComposerOptions`) remain temporary host capabilities; they must not be used
-as list, timeline, message, or write-operation data sources.
-
-`@tutti-os/agent-gui` now also exposes
-`buildAgentActivitySnapshotProjection(snapshot)`, so shared Agent GUI surfaces
-can start from the core snapshot and shared needs-attention selectors without
-rebuilding Host DTO projection locally.
-
-### Step 5: Message Center Snapshot Model
-
-Do not create an empty `@tutti-os/agent-message-center` package in this
-iteration.
-
-Desktop chrome MessageCenter remains in `@tutti-os/agent-gui` for now. Its
-model is derived directly from `AgentActivitySnapshot`,
-`AgentActivitySession`, `AgentActivityMessage`, and
-`selectNeedsAttentionItems`; it must not round-trip through
-`AgentHostWorkspaceAgent*` DTOs.
-
-## Testing Expectations
-
-For package rename work:
-
-- `pnpm typecheck`
-- `pnpm --filter @tutti-os/desktop typecheck`
-- `pnpm check:ui-boundaries` when stylesheet boundary rules change
-- `pnpm check:renderer-boundaries` when desktop renderer imports change
+## Validation
 
 For `agent-activity-core`:
 
@@ -473,8 +353,6 @@ For runtime boundary enforcement:
 
 - Do not move desktop transport into a package.
 - Do not create a vague `shared`, `common`, or `utils` package.
-- Do not create an empty message-center package before there is UI behavior.
-- Do not rewrite all Agent GUI projection code in the first migration step.
 - Do not change daemon HTTP contracts without first updating
   `services/tuttid/api/openapi/tuttid.v1.yaml`.
 
@@ -482,10 +360,9 @@ For runtime boundary enforcement:
 
 - New public exports in `agent-activity-core` should be stable contracts, not
   convenience exports for one host.
-- A selector belongs in core when both Agent GUI and Agent Message Center can
-  consume it without knowing host details.
-- A React hook belongs in `agent-gui` or the future `agent-message-center`, not
-  in core.
+- A selector belongs in core when Agent GUI and another host-agnostic consumer can
+  use it without knowing host details.
+- A React hook belongs in `agent-gui` rather than in core.
 - A `tuttid` mapping belongs in the desktop adapter unless it is a
   host-agnostic contract type.
 - External repository adoption should require implementing the adapter, not

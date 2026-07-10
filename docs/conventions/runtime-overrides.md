@@ -53,12 +53,13 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Account Remote Services
 
-| Variable                  | Owner document                                                                 | Purpose                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `TUTTI_ACCOUNT_BASE_URL`  | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the daemon account auth/user-info API base URL.                                         |
-| `TUTTI_AUTH_LOGIN_URL`    | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the desktop account login URL used by the auth bridge.                                  |
-| `TUTTI_COMMERCE_BASE_URL` | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
-| `TUTTI_WEB_BASE_URL`      | [AgentGUI Tutti Account Menu](../architecture/agent-gui-tutti-account-menu.md) | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
+| Variable                  | Owner document                                                                        | Purpose                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `TUTTI_ACCOUNT_BASE_URL`  | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the daemon account auth/user-info API base URL.                                         |
+| `TUTTI_AGENT_LLM_APP_ID`  | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Overrides the Tutti LLM application id used when issuing provider auth tokens.                    |
+| `TUTTI_AUTH_LOGIN_URL`    | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the desktop account login URL used by the auth bridge.                                  |
+| `TUTTI_COMMERCE_BASE_URL` | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.  |
+| `TUTTI_WEB_BASE_URL`      | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)           | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI. |
 
 ## Analytics
 
@@ -91,19 +92,20 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Agent Runtime Diagnostics
 
-| Variable                               | Owner document                                  | Purpose                                                                                          |
-| -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md) | Overrides the migrated agent context config path for tests and diagnostics.                      |
-| `TUTTI_AGENT_CWD`                      | This document                                   | Mirrors the prepared agent runtime working directory for diagnostics.                            |
-| `TUTTI_AGENT_SESSION_ID`               | This document                                   | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
-| `TUTTI_AGENT_ROUTING`                  | This document                                   | Marks provider subprocesses launched through the migrated agent routing path.                    |
-| `TUTTI_ACP_TOOL_DEBUG`                 | This document                                   | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
-| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                   | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
-| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                   | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
-| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                   | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
-| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                   | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
-| `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                   | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
-| `TUTTI_WORKSPACE_ID`                   | This document                                   | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
+| Variable                               | Owner document                                                                        | Purpose                                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md)                                       | Overrides the migrated agent context config path for tests and diagnostics.                      |
+| `TUTTI_AGENT_CWD`                      | This document                                                                         | Mirrors the prepared agent runtime working directory for diagnostics.                            |
+| `TUTTI_AGENT_SESSION_ID`               | This document                                                                         | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
+| `TUTTI_AGENT_ROUTING`                  | This document                                                                         | Marks provider subprocesses launched through the migrated agent routing path.                    |
+| `TUTTI_ACP_TOOL_DEBUG`                 | This document                                                                         | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
+| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                                                         | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
+| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
+| `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                                                         | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
+| `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                                                         | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
+| `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                                                         | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
+| `TUTTI_WORKSPACE_ID`                   | This document                                                                         | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
+| `TUTTI_AGENT_NPM_REGISTRY`             | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Pins managed agent npm installation to one registry with no fallback.                            |
 
 Claude Code provider availability follows `TUTTI_CLAUDE_CODE_RUNTIME`: the
 default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry
@@ -141,19 +143,19 @@ unsupported in AgentGUI.
 
 ## Desktop Renderer Diagnostics
 
-| Variable                               | Owner document                          | Purpose                                                                                       |
-| -------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `TUTTI_ENABLE_PERF_MONITOR`            | This document                           | Enables the development-only ReactRenderTracker injection in the desktop renderer dev server. |
-| `TUTTI_ELECTRON_JS_FLAGS`              | [Troubleshooting](./troubleshooting.md) | Appends Electron `js-flags` for local diagnostics before the app is ready.                    |
-| `TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT` | [Troubleshooting](./troubleshooting.md) | Appends Electron `remote-debugging-port` for local CDP diagnostics before the app is ready.   |
+| Variable                               | Owner document                                                  | Purpose                                                                                       |
+| -------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `TUTTI_ENABLE_PERF_MONITOR`            | This document                                                   | Enables the development-only ReactRenderTracker injection in the desktop renderer dev server. |
+| `TUTTI_ELECTRON_JS_FLAGS`              | [Desktop Troubleshooting](./troubleshooting/desktop-release.md) | Appends Electron `js-flags` for local diagnostics before the app is ready.                    |
+| `TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT` | [Desktop Troubleshooting](./troubleshooting/desktop-release.md) | Appends Electron `remote-debugging-port` for local CDP diagnostics before the app is ready.   |
 
 ## Browser MCP
 
-| Variable                       | Owner document                          | Purpose                                                                                                            |
-| ------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `TUTTI_BROWSER_MCP_COMMAND`    | [Troubleshooting](./troubleshooting.md) | Overrides the command used by tuttid to launch `chrome-devtools-mcp`.                                              |
-| `TUTTI_BROWSER_MCP_ARGS`       | [Troubleshooting](./troubleshooting.md) | Overrides the full argument list for `chrome-devtools-mcp`; desktop browser-mode preferences are ignored when set. |
-| `TUTTI_BROWSER_MCP_ENTRY_PATH` | [Troubleshooting](./troubleshooting.md) | Internal packaged-desktop handoff pointing tuttid at the vendored `chrome-devtools-mcp` entry script.              |
+| Variable                       | Owner document                                                             | Purpose                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `TUTTI_BROWSER_MCP_COMMAND`    | [Browser Troubleshooting](./troubleshooting/toolchain-browser-terminal.md) | Overrides the command used by tuttid to launch `chrome-devtools-mcp`.                                              |
+| `TUTTI_BROWSER_MCP_ARGS`       | [Browser Troubleshooting](./troubleshooting/toolchain-browser-terminal.md) | Overrides the full argument list for `chrome-devtools-mcp`; desktop browser-mode preferences are ignored when set. |
+| `TUTTI_BROWSER_MCP_ENTRY_PATH` | [Browser Troubleshooting](./troubleshooting/toolchain-browser-terminal.md) | Internal packaged-desktop handoff pointing tuttid at the vendored `chrome-devtools-mcp` entry script.              |
 
 ## Review Questions
 

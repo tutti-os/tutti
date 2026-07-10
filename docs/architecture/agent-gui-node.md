@@ -685,6 +685,8 @@ composer submit with no activeConversationId
   -> normalize prompt content and optional displayPrompt
   -> set local first-create busy state
   -> mark conversation-list create pending
+  -> create optimistic conversation id + user message
+  -> enter optimistic conversation detail
   -> activation.activate(mode="new")
   -> AgentActivityRuntime.activateSession
   -> WorkspaceAgentActivityService.activateSession
@@ -695,9 +697,9 @@ composer submit with no activeConversationId
   -> RuntimeController.Start
   -> RuntimeController.Exec when initialContent exists
   -> activation succeeds
-  -> create/attach conversation summary
-  -> record optimistic user message
-  -> clear home draft and enter conversation detail
+  -> replace transient summary with durable conversation
+  -> reconcile optimistic user message
+  -> clear the submitted home draft if it was not edited in flight
   -> ActivityProjection receives runtime reports
   -> agent.activity.updated events
   -> AgentActivityController snapshot update
@@ -1094,7 +1096,9 @@ User-visible rules:
 
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
-  activation keeps the user on the home composer until activation succeeds.
+  activation immediately enters an optimistic conversation so the submitted
+  message is visible while the backend session is being created. Failure
+  removes that optimistic conversation and restores the submitted home draft.
 - New-conversation entry points that return the user to the home composer,
   including workbench header or external workbench events, should also issue a
   composer focus request so the empty input is ready for typing immediately.
@@ -1103,9 +1107,10 @@ User-visible rules:
   and conversation-list refreshes may temporarily disturb UI-local refs; they
   must not retarget the user's prompt to a newly created session.
 - The send button spinner is local submit/approval response state. For
-  first-message activation, this same busy state is the only normal pending
-  indicator. The "connecting conversation" state belongs to existing-session
-  activation/recovery. The transcript processing row is runtime turn state.
+  first-message activation, the spinner and optimistic transcript are the
+  normal pending indicators. The "connecting conversation" state belongs to
+  existing-session activation/recovery. The transcript processing row is
+  runtime turn state.
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
@@ -1168,10 +1173,10 @@ User-visible rules:
   git worktrees itself; new experiments should add a desktop feature-flag
   catalog entry and keep any product-specific behavior in the owning desktop or
   daemon layer.
-- Target-backed home/new composer defaults and draft settings must be keyed by
-  `agentTargetId` first. Provider-keyed defaults are legacy fallback only, so two
-  targets under the same provider cannot share model, permission, reasoning,
-  speed, or draft state by accident.
+- Home/new composer defaults, overrides, options, and draft settings are keyed
+  by a directory-resolved `agentTargetId`. They have no provider-keyed fallback,
+  so two targets under the same provider cannot share model, permission,
+  reasoning, speed, or draft state by accident.
 - Active session settings are session state. Opening, restoring, or editing an
   active session must not promote that session's model, permission mode, or
   reasoning setting into user defaults.
@@ -1182,6 +1187,24 @@ User-visible rules:
   flight.
 - Display prompt is for user-facing echo/title when content is collapsed or
   bundled. Expanded prompt blocks remain the runtime command input.
+
+### Provider Environment Setup
+
+Provider setup state follows the same service/store/controller/view split as
+other desktop feature orchestration:
+
+- `@tutti-os/agent-gui` owns the pure setup flow and i18n-agnostic view model in
+  `shared/agentEnv`.
+- Desktop owns `agentEnvWizardStore`, `agentEnvWizardController`, and
+  `useAgentEnvWizard`; these subscribe to the provider-status service, dedupe
+  per-open automatic actions, and coordinate anomaly reporting and progressive
+  reveal.
+- `AgentEnvPanel` subscribes and renders. It must not duplicate readiness
+  detection, installation, login, or reporting workflows in React effects.
+
+The provider-status service remains the source of truth for installed,
+authenticated, network, and active-action state. Wizard-local state is
+ephemeral presentation state and resets with the panel lifecycle.
 
 ### Busy Queued Prompts
 
@@ -1462,6 +1485,22 @@ family (`codex`, `claude-code`, `nexight`, and so on) and remains the key for
 display labels/icons, probes, provider status, historical conversation filters,
 telemetry, and provider execution policy.
 
+`agentTargetId` is a foreign key into the local target directory, not an opaque
+identity supplied by a session. Session ingestion preserves an id only when it
+resolves in `agent_targets`; a registered alias may be rewritten to its local
+canonical id as defense in depth, while a definitive miss is cleared and the
+original value is retained only in diagnostic runtime context. Shared-agent
+owner-domain ids must be translated by the host projection layer before they
+reach the caller's daemon. The daemon must not infer identity from
+`providerTargetRef`, provider, or other session-carried metadata.
+
+AgentGUI resolves active-session identity through the same directory. While the
+directory is loading the composer stays neutral; after loading, an unresolved
+target produces a session-scoped missing-agent state with a disabled composer
+and read-only history. A legacy provider-only session resolves through the
+registered `local:<provider>` target. This is still a directory lookup, not a
+provider fallback.
+
 `providerTargets` lets a host expose multiple targets under that same provider.
 AgentGUI owns only target display and passthrough:
 
@@ -1477,6 +1516,8 @@ AgentGUI owns only target display and passthrough:
 - pass `agentTargetId` through `AgentActivityRuntime.activateSession`
 - pass `providerTargetRef` only as legacy opaque state for selection recovery;
   it must not authorize or replace `agentTargetId` for new launches
+- use the resolved target id as the opaque activity-core composer `targetKey`;
+  never derive a cache key from provider or provider-target state
 
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is
@@ -1590,7 +1631,7 @@ questions in the PR, commit notes, or working notes:
 6. Which user-visible surface owns the loading/error/disabled/selected state,
    and what exact condition clears it?
 7. Is this a recurring bug pattern that should update this document or
-   `docs/conventions/troubleshooting.md`?
+   `docs/conventions/troubleshooting/agent-runtime.md`?
 
 If the answer to source of truth is unclear, stop and trace the chain before
 editing.
@@ -2002,7 +2043,7 @@ wording:
 
 > This change exposed a reusable AgentGUI pattern. Should I add it to
 > `docs/architecture/agent-gui-node.md` or
-> `docs/conventions/troubleshooting.md`?
+> `docs/conventions/troubleshooting/agent-runtime.md`?
 
 Use these decisions:
 
@@ -2048,7 +2089,7 @@ state that no durable documentation update was needed.
 
 - [Agent Activity Packages](./agent-activity-packages.md)
 - [Agent Reference Mention Resolution](./agent-reference-mention-resolution.md)
-- [Agent Reference Source Services](./agent-reference-source-services.md)
+- [Agent Reference Sources](./agent-reference-sources.md)
 - [Desktop Layering](../conventions/desktop-layering.md)
-- [Troubleshooting](../conventions/troubleshooting.md)
+- [Agent Runtime Troubleshooting](../conventions/troubleshooting/agent-runtime.md)
 - [`@tutti-os/agent-gui` README](../../packages/agent/gui/README.md)

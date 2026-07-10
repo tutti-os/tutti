@@ -1,6 +1,6 @@
 # Workbench Contributions
 
-This document defines a compatible extension model for
+This document defines the current compatible extension model for
 `@tutti-os/workbench-surface`.
 
 The goal is to let hosts move from one large, centralized workbench host
@@ -48,8 +48,8 @@ consumers.
 
 ## Decision
 
-Add a new optional `contributions` input to `WorkbenchHost` while preserving the
-current host props and their behavior.
+`WorkbenchHost` accepts an optional `contributions` input while preserving the
+explicit host props and their behavior.
 
 `contributions` are an additive composition mechanism, not a replacement host
 API.
@@ -61,14 +61,7 @@ Compatibility rule:
 - existing explicit props remain supported and keep their current semantics
 - `contributions` are optional and may be adopted incrementally
 
-This creates a staged path:
-
-1. keep current consumers stable
-2. let new or growing hosts compose workbench capabilities as feature-owned
-   contributions
-3. migrate internal hosts gradually, feature by feature
-
-After this model exists in a host, new workbench modules should default to
+New workbench modules should default to
 contribution-based integration. Direct top-level `nodes`, `dockEntries`,
 `externalStateSource`, `onLaunchRequest`, and `onNodeCloseRequest` wiring should
 be reserved for compatibility, host-wide policy, or deliberately simple shells.
@@ -89,13 +82,12 @@ The contribution model should:
 
 This change does not try to:
 
-- remove or deprecate the current flat `WorkbenchHost` prop model in the first
-  landing
+- remove or deprecate the flat `WorkbenchHost` prop model
 - move preload APIs, Electron globals, `tuttid` clients, or host-specific
   transport wiring into shared packages
 - make workbench contributions responsible for top-level shell concerns such as
   `snapshotRepository`, `workspaceId`, `missionControl`, or layout constraints
-- force all existing workbench features to migrate at once
+- force simple or compatibility consumers to use contributions
 
 ## Ownership Boundaries
 
@@ -156,10 +148,9 @@ The consuming host should continue to own:
   `missionControl`, and layout constraints
 - any product-local contributions that do not yet have a real shared boundary
 
-## Proposed Public Shape
+## Public Shape
 
-The current `WorkbenchHostProps` shape remains valid. Add one new optional
-field:
+The current `WorkbenchHostProps` shape includes one optional composition field:
 
 ```ts
 export interface WorkbenchContribution {
@@ -191,12 +182,12 @@ export interface WorkbenchHostProps {
 }
 ```
 
-This first version keeps the model intentionally small. It mirrors the parts of
+The model stays intentionally small. It mirrors the parts of
 the existing host API that are already repeated across feature integrations.
 
 ## Configuration Resolution
 
-`WorkbenchHost` should normalize all configuration through one internal
+`WorkbenchHost` normalizes all configuration through one internal
 resolution step before runtime wiring.
 
 Illustrative shape:
@@ -353,35 +344,6 @@ required top-level shell inputs:
 />
 ```
 
-## Migration Strategy
-
-Migration should be feature-by-feature rather than host-wide.
-
-Recommended order:
-
-1. land `contributions` and the internal resolver in `workbench-surface`
-2. keep all existing host integrations unchanged
-3. migrate one internal capability as a trial, preferably one with limited
-   cross-feature coupling
-4. extract contribution factories from owning packages only where a real shared
-   boundary already exists
-
-For new modules, skip the centralized host-service assembly step and introduce a
-contribution from the beginning. This keeps the host service focused on
-registry, shared shell policy, and host adapters rather than feature-specific
-node wiring.
-
-Suggested early contribution candidates:
-
-- browser node
-- terminal node
-- issue manager node
-
-Suggested desktop-local holdouts:
-
-- files node or other host-shell features that do not yet have a real
-  multi-consumer boundary
-
 ## Downstream Package Guidance
 
 When a shared capability package adds contribution support, prefer a narrow
@@ -468,30 +430,8 @@ This contribution model complements the current workbench architecture:
 Contributions are only a host configuration mechanism. They do not change the
 underlying node lifecycle or snapshot rules.
 
-## Landing Plan
+## Current Contract Summary
 
-Recommended first landing:
-
-1. add the contribution types to `@tutti-os/workbench-surface`
-2. add `resolveWorkbenchHostConfig(...)` and move internal runtime wiring to use
-   the resolved config
-3. keep explicit props fully supported
-4. document merge precedence in package README and types comments
-5. migrate one internal host capability to validate ergonomics
-
-Follow-up work may later consider:
-
-- helper utilities for composing contribution arrays
-- adapter helpers such as `createWorkbenchContribution(...)` from narrower host
-  slices
-- optional diagnostics for duplicate `typeId` or duplicate dock-entry `id`
-- future deprecation only if multiple downstream consumers have already adopted
-  the new model and a later cleanup becomes worth the churn
-
-## Decision Summary
-
-The workbench contribution model should be introduced as a backward-compatible,
-optional composition layer.
-
-It should improve internal modularity and package ownership without forcing
-current downstream consumers to rewrite their `WorkbenchHost` integrations.
+The workbench contribution model is a backward-compatible optional composition
+layer. It improves module ownership without forcing simple or downstream hosts
+to rewrite explicit `WorkbenchHost` integrations.
