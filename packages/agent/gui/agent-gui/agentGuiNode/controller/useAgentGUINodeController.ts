@@ -215,6 +215,7 @@ import {
   configOptionCurrentValue,
   composerTargetDataForConversation,
   composerTargetDataFromNodeData,
+  isConversationCreateActive,
   isForegroundModelOptionsLoading,
   reconcileOptimisticComposerTarget,
   resolveComposerSettingsPresentation,
@@ -3991,11 +3992,13 @@ export function useAgentGUINodeController({
   const hasLoadedConversations = conversationListState?.initialized ?? false;
   const isLoadingConversations = conversationListState?.isLoading ?? false;
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [localIsCreatingConversation, setLocalIsCreatingConversation] =
-    useState(false);
-  const isCreatingConversation =
-    localIsCreatingConversation || pendingCreateConversationId !== null;
+  const isCreatingConversation = isConversationCreateActive({
+    activeConversationId,
+    pendingConversationId: pendingCreateConversationId
+  });
   const isCreatingConversationRef = useRef(isCreatingConversation);
+  const pendingCreateRef = useRef(false);
+  pendingCreateRef.current = pendingCreateConversationId !== null;
   const resolvePendingSubmit = useCallback(
     () =>
       conversationListQuery
@@ -7369,7 +7372,7 @@ export function useAgentGUINodeController({
       const target = selectedProviderTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
       if (
-        isCreatingConversation ||
+        pendingCreateRef.current ||
         target.disabled === true ||
         (targetData.provider === "openclaw" &&
           openclawGateway?.status !== "ready")
@@ -7405,8 +7408,7 @@ export function useAgentGUINodeController({
       const submittedHomeDraft =
         draftBySessionIdRef.current[submittedHomeDraftKey] ??
         EMPTY_AGENT_COMPOSER_DRAFT;
-      isCreatingConversationRef.current = true;
-      setLocalIsCreatingConversation(true);
+      pendingCreateRef.current = true;
       setDetailError(null);
       let pendingCreateAgentSessionId: string | null = null;
       let pendingOptimisticConversation: AgentGUIConversationSummary | null =
@@ -7505,6 +7507,7 @@ export function useAgentGUINodeController({
         const agentSessionId =
           draftAgentSessionId ?? createAgentGUIConversationId();
         pendingCreateAgentSessionId = agentSessionId;
+        setPendingCreateConversationId(agentSessionId);
         const createdAtUnixMs = Date.now();
         const submitTrace = createAgentSubmitTraceState({
           agentSessionId,
@@ -7984,8 +7987,8 @@ export function useAgentGUINodeController({
           setDetailError(message);
         })
         .finally(() => {
-          isCreatingConversationRef.current = false;
-          setLocalIsCreatingConversation(false);
+          pendingCreateRef.current = false;
+          setPendingCreateConversationId(null);
         });
     },
     [
@@ -7993,7 +7996,6 @@ export function useAgentGUINodeController({
       currentUserId,
       data,
       defaultReasoningEffort,
-      isCreatingConversation,
       openclawGateway?.status,
       syncConversationListProjection,
       loadSelectedConversationMessages,

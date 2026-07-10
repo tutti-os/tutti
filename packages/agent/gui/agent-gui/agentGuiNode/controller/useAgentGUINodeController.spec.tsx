@@ -3924,6 +3924,8 @@ describe("useAgentGUINodeController", () => {
     });
     await waitFor(() => {
       expect(result.current.viewModel.activeConversationId).toBe("session-1");
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+      expect(result.current.viewModel.canSubmit).toBe(true);
     });
 
     // The create resolves while the user is on session-1.

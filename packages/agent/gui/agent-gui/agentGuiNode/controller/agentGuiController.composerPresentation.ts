@@ -28,6 +28,17 @@ export interface OptimisticComposerTarget {
   target: AgentGUIComposerTargetData;
 }
 
+export function isConversationCreateActive(input: {
+  activeConversationId: string | null;
+  pendingConversationId: string | null;
+}): boolean {
+  return (
+    input.pendingConversationId !== null &&
+    (input.activeConversationId === null ||
+      input.activeConversationId === input.pendingConversationId)
+  );
+}
+
 export function composerTargetDataFromNodeData(
   data: AgentGUINodeData
 ): AgentGUIComposerTargetData {
