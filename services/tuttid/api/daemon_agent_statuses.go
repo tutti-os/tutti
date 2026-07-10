@@ -334,10 +334,12 @@ func generatedAgentProviderAvailability(availability agentstatusservice.Availabi
 
 func generatedAgentProviderCLIStatus(status agentstatusservice.CLIStatus) tuttigenerated.AgentProviderCliStatus {
 	return tuttigenerated.AgentProviderCliStatus{
-		BinaryPath: stringPointerIfNotBlank(status.BinaryPath),
-		Installed:  status.Installed,
-		Version:    stringPointerIfNotBlank(status.Version),
-		MinVersion: stringPointerIfNotBlank(status.MinVersion),
+		BinaryPath:      stringPointerIfNotBlank(status.BinaryPath),
+		Installed:       status.Installed,
+		LatestVersion:   stringPointerIfNotBlank(status.LatestVersion),
+		MinVersion:      stringPointerIfNotBlank(status.MinVersion),
+		UpdateAvailable: boolPointer(status.UpdateAvailable),
+		Version:         stringPointerIfNotBlank(status.Version),
 	}
 }
 

@@ -80,6 +80,8 @@ export interface DeriveAgentSetupStagesInput {
    * would show no spinner.
    */
   installActionPending: boolean;
+  /** Whether an installed CLI is currently updating in place. */
+  updateActionPending: boolean;
   loginPending: boolean;
   /**
    * Active connectivity probe verdict: true (reachable), false (offline), or
@@ -141,8 +143,10 @@ export function deriveAgentSetupStages(
       !input.versionTooOld &&
       !input.platformPackageIncomplete);
   const installStatus: CodexSetupStepStatus = cliOk
-    ? "ok"
-    : installing
+    ? input.updateActionPending
+      ? "running"
+      : "ok"
+    : installing || input.updateActionPending
       ? "running"
       : input.versionTooOld
         ? "error"
@@ -259,7 +263,7 @@ export function shouldAdvanceReveal(
   return cursor.status === "ok" || cursor.status === "skipped";
 }
 
-export type StageActionId = "install" | "login" | "redetect";
+export type StageActionId = "install" | "update" | "login" | "redetect";
 
 /**
  * The problem token a blocked stage represents. The UI maps this to "未xxx"
@@ -307,11 +311,9 @@ export function stageRemediation(
         return { actionId: "install", problem: stage.problem };
       }
       // A genuinely missing CLI is installed for the user; a present-but-
-      // outdated CLI is NOT — we don't silently reinstall a binary the user
-      // manages. Instead the panel shows the manual upgrade command and
-      // re-detection confirms it once they've upgraded.
+      // outdated CLI uses the provider-specific update action.
       return stage.status === "error"
-        ? { actionId: "redetect", problem: "install-outdated" }
+        ? { actionId: "update", problem: "install-outdated" }
         : { actionId: "install", problem: "install-missing" };
     case "adapter":
       return {
@@ -367,9 +369,9 @@ function autoStartCandidate(
     case "repair":
       return "install";
     case "upgrade":
-      // CLI upgrades are user-driven: opening the panel from a version error
-      // shows the manual upgrade command rather than auto-running an install
-      // (which can't upgrade an already-present binary anyway).
+      // CLI upgrades remain user-confirmed: opening the panel from a version
+      // error shows the warning and update action without immediately mutating
+      // the user's installed tool.
       return null;
     case "auth":
       return "login";

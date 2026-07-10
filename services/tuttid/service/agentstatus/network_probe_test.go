@@ -3,9 +3,11 @@ package agentstatus
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +41,53 @@ func TestProbeRegistryReachableReturnsOfficial(t *testing.T) {
 	got := svc.probeRegistry(context.Background(), "@openai/codex")
 	if !got.Reachable || got.Endpoint != officialNPMRegistry {
 		t.Fatalf("probeRegistry() = %#v, want reachable official", got)
+	}
+}
+
+func TestListReportsLatestClaudeCodeVersionAndUpdateAvailability(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := binDir + "/claude"
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\necho '2.1.100 (Claude Code)'\n"), 0o755); err != nil {
+		t.Fatalf("write claude fixture: %v", err)
+	}
+	service := testService(func(name string) (string, error) {
+		if name == "claude" {
+			return claudePath, nil
+		}
+		return "", errors.New("not found")
+	}, map[string]bool{})
+	service.HTTPClient = &http.Client{Transport: networkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var body io.ReadCloser = http.NoBody
+		if request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/latest") {
+			body = io.NopCloser(strings.NewReader(`{"version":"2.1.200"}`))
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+	})}
+	service.ResolveProxy = func(*http.Request) (*url.URL, error) { return nil, nil }
+
+	snapshot, err := service.List(context.Background(), ListInput{
+		Providers:      []string{agentprovider.ClaudeCode},
+		IncludeNetwork: true,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != "2.1.100" {
+		t.Fatalf("CLI.Version = %q, want 2.1.100", status.CLI.Version)
+	}
+	if status.CLI.LatestVersion != "2.1.200" {
+		t.Fatalf("CLI.LatestVersion = %q, want 2.1.200", status.CLI.LatestVersion)
+	}
+	if !status.CLI.UpdateAvailable {
+		t.Fatal("CLI.UpdateAvailable = false, want true")
+	}
+	specs, err := DefaultRegistry().Select([]string{agentprovider.ClaudeCode})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("select Claude Code spec: specs=%#v err=%v", specs, err)
+	}
+	if got := agentNPMRegistryProbePackage(specs[0]); got != "@anthropic-ai/claude-code" {
+		t.Fatalf("Claude registry probe package = %q, want @anthropic-ai/claude-code", got)
 	}
 }
 

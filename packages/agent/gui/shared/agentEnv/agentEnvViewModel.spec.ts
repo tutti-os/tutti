@@ -25,6 +25,8 @@ function status(
       installed: true,
       binaryPath: "/usr/bin/codex",
       version: "1.2.3",
+      latestVersion: "1.2.3",
+      updateAvailable: false,
       minVersion: "1.0.0"
     },
     adapter: {
@@ -55,6 +57,7 @@ function input(
     isLoading: false,
     activeAction: null,
     installActionPending: false,
+    updateActionPending: false,
     loginPending: false,
     revealIndex: Number.MAX_SAFE_INTEGER,
     stageLabels: LABELS,
@@ -95,6 +98,54 @@ describe("buildAgentEnvWizardViewModel", () => {
       required: "1.0.0"
     });
     expect(install?.status).toBe("error");
+    expect(vm.cliUpdateNotice).toEqual({
+      currentVersion: "0.9.0",
+      targetVersion: "1.0.0"
+    });
+  });
+
+  it("surfaces a non-blocking CLI update notice from the latest registry version", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        provider: "claude-code",
+        status: status({
+          provider: "claude-code",
+          cli: {
+            installed: true,
+            version: "2.1.100",
+            latestVersion: "2.1.200",
+            updateAvailable: true,
+            binaryPath: "/usr/bin/claude",
+            minVersion: null
+          }
+        })
+      })
+    );
+    expect(vm.ready).toBe(true);
+    expect(vm.cliUpdateNotice).toEqual({
+      currentVersion: "2.1.100",
+      targetVersion: "2.1.200"
+    });
+  });
+
+  it("treats a pending CLI update as busy and runs the CLI stage", () => {
+    const vm = buildAgentEnvWizardViewModel(
+      input({
+        updateActionPending: true,
+        status: status({
+          availability: {
+            status: "auth_required",
+            reasonCode: "auth_required"
+          },
+          auth: { status: "required", accountLabel: null, authMethod: null }
+        })
+      })
+    );
+    expect(vm.busy).toBe(true);
+    expect(vm.updatePending).toBe(true);
+    expect(
+      vm.displayStages.find((stage) => stage.id === "install")?.status
+    ).toBe("running");
   });
 
   it("does NOT red the install (CLI) stage on an adapter version mismatch", () => {

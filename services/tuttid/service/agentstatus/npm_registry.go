@@ -2,6 +2,7 @@ package agentstatus
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -176,6 +177,37 @@ func npmRegistryPackageEndpoint(registry string, packageName string) string {
 	}
 	escapedPackage := strings.ReplaceAll(packageName, "/", "%2f")
 	return registry + "/" + escapedPackage
+}
+
+// fetchNPMRegistryLatestVersion reads the package registry's stable `latest`
+// manifest. The environment wizard calls this only during its opt-in network
+// check, so normal provider readiness remains local-only and fast.
+func (s Service) fetchNPMRegistryLatestVersion(ctx context.Context, registry string, packageName string) string {
+	endpoint := npmRegistryPackageEndpoint(registry, packageName)
+	if endpoint == "" {
+		return ""
+	}
+	attemptCtx, cancel := context.WithTimeout(ctx, networkProbeAttemptTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, endpoint+"/latest", nil)
+	if err != nil {
+		return ""
+	}
+	response, err := s.httpClient().Do(request)
+	if err != nil {
+		return ""
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return ""
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 256*1024)).Decode(&manifest); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(manifest.Version)
 }
 
 // withAgentNPMRegistry returns env with exactly one npm_config_registry entry.

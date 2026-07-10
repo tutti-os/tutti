@@ -48,14 +48,11 @@ export function describeStageProblem(
         isError: false
       };
     case "install-outdated":
-      // We don't auto-upgrade a present CLI: the headline states it's outdated,
-      // the manual upgrade command is shown below, and the action re-checks
-      // once the user has upgraded it themselves.
       return {
         headline: t("workspace.agentEnv.stageProblemInstallOutdated", {
           provider: providerLabel
         }),
-        actionLabel: t("workspace.agentEnv.stageDoRedetect"),
+        actionLabel: t("workspace.agentEnv.stageDoUpgrade"),
         isError: true
       };
     case "install-platform-incomplete":

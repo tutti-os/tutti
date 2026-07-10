@@ -161,12 +161,15 @@ func activeActionForProvider(provider string) *ActiveAction {
 }
 
 // providerInstallInFlight reports whether the provider currently has a running
-// install action. The network does not change during an install, so List skips
-// the slow connectivity probe for such providers — otherwise the per-second
-// install-progress poll re-probes (and flickers) a flaky proxy on every tick.
+// install or CLI update action. The network does not change during either
+// mutation, so List skips the slow connectivity probe for such providers —
+// otherwise the per-second progress poll re-probes (and flickers) a flaky proxy
+// on every tick.
 func providerInstallInFlight(provider string) bool {
 	action := activeActionForProvider(provider)
-	return action != nil && action.ID == ActionInstall && action.Status == "running"
+	return action != nil &&
+		(action.ID == ActionInstall || action.ID == ActionUpdate) &&
+		action.Status == "running"
 }
 
 func activeActionOutputStats(output string) (int, int) {

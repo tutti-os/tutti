@@ -79,6 +79,7 @@ export interface AgentEnvWizardViewModelInput {
   isLoading: boolean;
   activeAction: CodexSetupActiveAction | null;
   installActionPending: boolean;
+  updateActionPending: boolean;
   loginPending: boolean;
   revealIndex: number;
   stageLabels: AgentSetupStageLabels;
@@ -98,7 +99,12 @@ export interface AgentEnvWizardViewModel {
   error: CodexSetupActiveActionError | null;
   manualCommand: string | null;
   installPending: boolean;
+  updatePending: boolean;
   loginPending: boolean;
+  cliUpdateNotice: {
+    currentVersion: string | null;
+    targetVersion: string | null;
+  } | null;
 }
 
 export function buildAgentEnvWizardViewModel(
@@ -107,9 +113,11 @@ export function buildAgentEnvWizardViewModel(
   const { status, activeAction, provider } = input;
   const ready = status?.availability.status === "ready";
   const installPending = input.installActionPending;
+  const updatePending = input.updateActionPending;
   const loginPending = input.loginPending;
   const busy =
     installPending ||
+    updatePending ||
     activeAction?.phase === "install" ||
     activeAction?.phase === "repair" ||
     activeAction?.phase === "verify";
@@ -211,6 +219,7 @@ export function buildAgentEnvWizardViewModel(
     ready: Boolean(ready),
     activePhase: activeAction?.phase ?? null,
     installActionPending: installPending,
+    updateActionPending: updatePending,
     loginPending,
     networkReachable,
     cliVersionDetail: cliDetail,
@@ -240,6 +249,14 @@ export function buildAgentEnvWizardViewModel(
     blockingStage && input.revealIndex >= blockingIndex
       ? blockingStage.id
       : null;
+  const cliUpdateNotice =
+    status?.cli.updateAvailable === true || versionTooOld
+      ? {
+          currentVersion: status?.cli.version ?? null,
+          targetVersion:
+            status?.cli.latestVersion ?? status?.cli.minVersion ?? null
+        }
+      : null;
 
   return {
     ready: Boolean(ready),
@@ -255,6 +272,8 @@ export function buildAgentEnvWizardViewModel(
     error: activeAction?.error ?? null,
     manualCommand: MANUAL_INSTALL_COMMANDS[provider] ?? null,
     installPending,
+    updatePending,
+    cliUpdateNotice,
     loginPending
   };
 }
