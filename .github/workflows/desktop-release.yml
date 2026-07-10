@@ -663,8 +663,12 @@ jobs:
           )"
           stable_alias_tree="$(git rev-parse "${stable_alias_sha}^{tree}")"
           stable_alias_parent="$(git rev-parse "${stable_alias_sha}^")"
-          if [[ "${stable_alias_tree}" != "${stable_tree}" || "${stable_alias_parent}" != "${stable_sha}" ]]; then
-            echo "Stable alias commit must preserve the canonical stable tree and parent." >&2
+          if [[ "${stable_alias_tree}" != "${stable_tree}" ]]; then
+            echo "Stable alias tree mismatch: expected ${stable_tree}, got ${stable_alias_tree}." >&2
+            exit 1
+          fi
+          if [[ "${stable_alias_parent}" != "${stable_sha}" ]]; then
+            echo "Stable alias parent mismatch: expected ${stable_sha}, got ${stable_alias_parent}." >&2
             exit 1
           fi
 

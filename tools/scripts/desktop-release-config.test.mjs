@@ -360,8 +360,16 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
     /stable_tree="\$\(git rev-parse "\$\{stable_sha\}\^\{tree\}"\)"/
   );
   assert.match(stableAliasStep, /GIT_AUTHOR_NAME="github-actions\[bot\]"/);
+  assert.match(
+    stableAliasStep,
+    /GIT_AUTHOR_EMAIL="41898282\+github-actions\[bot\]@users\.noreply\.github\.com"/
+  );
   assert.match(stableAliasStep, /GIT_AUTHOR_DATE="\$\{stable_alias_time\}"/);
   assert.match(stableAliasStep, /GIT_COMMITTER_NAME="github-actions\[bot\]"/);
+  assert.match(
+    stableAliasStep,
+    /GIT_COMMITTER_EMAIL="41898282\+github-actions\[bot\]@users\.noreply\.github\.com"/
+  );
   assert.match(
     stableAliasStep,
     /Signed-off-by: github-actions\[bot\] <41898282\+github-actions\[bot\]@users\.noreply\.github\.com>/
@@ -378,6 +386,8 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
     stableAliasStep,
     /stable_alias_parent="\$\(git rev-parse "\$\{stable_alias_sha\}\^"\)"/
   );
+  assert.match(stableAliasStep, /Stable alias tree mismatch:/);
+  assert.match(stableAliasStep, /Stable alias parent mismatch:/);
   assert.match(stableAliasStep, /git tag -f stable "\$\{stable_alias_sha\}"/);
   assert.doesNotMatch(stableAliasStep, /git tag -f stable "\$\{stable_sha\}"/);
   assert.match(stableAliasStep, /git push origin refs\/tags\/stable --force/);
