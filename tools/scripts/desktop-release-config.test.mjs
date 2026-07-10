@@ -355,7 +355,31 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
     stableAliasStep,
     /apps\/desktop\/scripts\/build-stable-release-alias-body\.mjs/
   );
-  assert.match(stableAliasStep, /git tag -f stable "\$\{stable_sha\}"/);
+  assert.match(
+    stableAliasStep,
+    /stable_tree="\$\(git rev-parse "\$\{stable_sha\}\^\{tree\}"\)"/
+  );
+  assert.match(stableAliasStep, /GIT_AUTHOR_NAME="github-actions\[bot\]"/);
+  assert.match(stableAliasStep, /GIT_AUTHOR_DATE="\$\{stable_alias_time\}"/);
+  assert.match(stableAliasStep, /GIT_COMMITTER_NAME="github-actions\[bot\]"/);
+  assert.match(
+    stableAliasStep,
+    /Signed-off-by: github-actions\[bot\] <41898282\+github-actions\[bot\]@users\.noreply\.github\.com>/
+  );
+  assert.match(
+    stableAliasStep,
+    /git commit-tree "\$\{stable_tree\}" -p "\$\{stable_sha\}"/
+  );
+  assert.match(
+    stableAliasStep,
+    /stable_alias_tree="\$\(git rev-parse "\$\{stable_alias_sha\}\^\{tree\}"\)"/
+  );
+  assert.match(
+    stableAliasStep,
+    /stable_alias_parent="\$\(git rev-parse "\$\{stable_alias_sha\}\^"\)"/
+  );
+  assert.match(stableAliasStep, /git tag -f stable "\$\{stable_alias_sha\}"/);
+  assert.doesNotMatch(stableAliasStep, /git tag -f stable "\$\{stable_sha\}"/);
   assert.match(stableAliasStep, /git push origin refs\/tags\/stable --force/);
   assert.match(stableAliasStep, /gh release delete stable --yes/);
   assert.doesNotMatch(stableAliasStep, /--cleanup-tag/);
@@ -363,9 +387,25 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   assert.doesNotMatch(stableAliasStep, /git tag -a/);
   assert.match(stableAliasStep, /gh release create stable/);
   assert.match(stableAliasStep, /--verify-tag/);
+  assert.match(stableAliasStep, /--title "Stable \(Recommended\)"/);
   assert.doesNotMatch(stableAliasStep, /--target "\$\{stable_sha\}"/);
   assert.match(stableAliasStep, /--latest=false/);
   assert.match(stableAliasStep, /gh release edit "\$\{stable_tag\}" --latest/);
+
+  const aliasCommitIndex = stableAliasStep.indexOf("git commit-tree");
+  const tagPushIndex = stableAliasStep.indexOf(
+    "git push origin refs/tags/stable --force"
+  );
+  const releaseDeleteIndex = stableAliasStep.indexOf(
+    "gh release delete stable --yes"
+  );
+  const releaseCreateIndex = stableAliasStep.indexOf(
+    "gh release create stable"
+  );
+
+  assert.ok(aliasCommitIndex < tagPushIndex);
+  assert.ok(tagPushIndex < releaseDeleteIndex);
+  assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
 test("desktop release workflow publishes only macOS release assets for now", async () => {

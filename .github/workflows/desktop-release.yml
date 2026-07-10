@@ -639,12 +639,36 @@ jobs:
 
           git fetch --force origin "refs/tags/${stable_tag}:refs/tags/${stable_tag}"
           stable_sha="$(git rev-list -n 1 "${stable_tag}")"
+          stable_tree="$(git rev-parse "${stable_sha}^{tree}")"
           gh release view "${stable_tag}" --json body,name,tagName,url > stable-release.json
           node apps/desktop/scripts/build-stable-release-alias-body.mjs \
             stable-release.json \
             stable-release-body.md
 
-          git tag -f stable "${stable_sha}"
+          stable_alias_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          stable_alias_sha="$(
+            printf '%s\n' \
+              "chore(release): refresh stable alias for ${stable_tag}" \
+              "" \
+              "Canonical stable release: ${stable_tag}" \
+              "" \
+              "Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" |
+              GIT_AUTHOR_NAME="github-actions[bot]" \
+              GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_AUTHOR_DATE="${stable_alias_time}" \
+              GIT_COMMITTER_NAME="github-actions[bot]" \
+              GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_COMMITTER_DATE="${stable_alias_time}" \
+              git commit-tree "${stable_tree}" -p "${stable_sha}"
+          )"
+          stable_alias_tree="$(git rev-parse "${stable_alias_sha}^{tree}")"
+          stable_alias_parent="$(git rev-parse "${stable_alias_sha}^")"
+          if [[ "${stable_alias_tree}" != "${stable_tree}" || "${stable_alias_parent}" != "${stable_sha}" ]]; then
+            echo "Stable alias commit must preserve the canonical stable tree and parent." >&2
+            exit 1
+          fi
+
+          git tag -f stable "${stable_alias_sha}"
           git push origin refs/tags/stable --force
 
           if gh release view stable >/dev/null 2>&1; then
@@ -653,7 +677,7 @@ jobs:
 
           gh release create stable \
             --verify-tag \
-            --title stable \
+            --title "Stable (Recommended)" \
             --notes-file stable-release-body.md \
             --latest=false
           gh release edit "${stable_tag}" --latest

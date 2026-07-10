@@ -77,32 +77,43 @@ Use this shape for new entries:
   [tuttid.v1.yaml](../../services/tuttid/api/openapi/tuttid.v1.yaml)
   [workspace-app-runtime.md](./workspace-app-runtime.md)
 
-### Desktop stable release alias disappears after an RC publish
+### Desktop stable release alias disappears or stays below a prerelease
 
 - Symptom:
   The desktop release workflow publishes a concrete release, but the
   `Refresh stable release alias` step fails with `Committer identity unknown`,
-  or the GitHub Releases page no longer has a `stable` entry after a failed RC
-  publish.
+  the GitHub Releases page no longer has a `stable` entry after a failed RC
+  publish, or `stable` remains below a newer RC after its tag was refreshed.
 - Quick checks:
   Inspect the failed `Desktop Release` run's `Refresh stable release alias`
   step. If the log shows `git tag -a` or `gh release delete stable --cleanup-tag`,
   the workflow is using the unsafe annotated-tag refresh path. Also check
   `gh release view stable` and `git ls-remote --tags origin stable` to confirm
-  whether the release, tag, or both are missing.
+  whether the release, tag, or both are missing. For ordering failures, compare
+  `gh release view stable --json createdAt` with the prerelease commit time;
+  moving a tag alone does not refresh the release's captured `createdAt`.
 - Root cause:
   Annotated tags require a configured Git committer identity in GitHub Actions.
   Deleting the old floating release and tag before creating the replacement
   leaves the repository in a half-refreshed state if tag creation fails.
+  Separately, pointing `stable` directly at an older concrete stable commit
+  gives the alias that older commit time, and moving a tag after its GitHub
+  Release already exists does not update the release ordering timestamp.
 - Fix:
-  Refresh `stable` as a lightweight tag with `git tag -f stable "${stable_sha}"`
-  and force-push it before deleting and recreating the floating `stable`
-  GitHub Release. Delete only the old release (`gh release delete stable --yes`)
-  and never pass `--cleanup-tag` from this step.
+  Create a tag-only alias commit whose tree matches the concrete stable commit,
+  whose parent is that concrete commit, and whose timestamp is newer than the
+  just-published release. Verify the tree and parent, force-push the lightweight
+  `stable` tag to the alias commit, then delete and recreate the floating
+  `stable` GitHub Release so GitHub captures the new commit time. Delete only
+  the old release (`gh release delete stable --yes`) and never pass
+  `--cleanup-tag` from this step. Keep the concrete stable release as `Latest`.
 - Validation:
   Run `node --test ./tools/scripts/desktop-release-config.test.mjs` and verify
-  the workflow test rejects `git tag -a`, `--cleanup-tag`, and deleting
-  `refs/tags/stable`.
+  the workflow test checks the alias tree and parent, enforces tag push before
+  release recreation, and rejects `git tag -a`, `--cleanup-tag`, and deleting
+  `refs/tags/stable`. After a live release, confirm the GitHub Releases page and
+  API list `stable` first while `/releases/latest` still resolves to the
+  concrete stable semver release.
 - References:
   [.github/workflows/desktop-release.yml](../../.github/workflows/desktop-release.yml)
   [desktop-release-config.test.mjs](../../tools/scripts/desktop-release-config.test.mjs)
