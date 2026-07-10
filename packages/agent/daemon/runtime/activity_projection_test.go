@@ -67,6 +67,24 @@ func TestActivitySessionStatusFromControllerStatusPreservesWaiting(t *testing.T)
 	}
 }
 
+func TestProjectActivityEventsKeepsTurnlessSessionFailureStateOnly(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	event := newSessionActivityEvent(session, EventSessionFailed, SessionStatusFailed, map[string]any{
+		"error":      "provider configuration is invalid",
+		"startError": true,
+	})
+
+	streamEvents := ProjectActivityEventsToStreamEvents(session, []activityshared.Event{event})
+	if len(streamEvents) != 1 {
+		t.Fatalf("stream events = %#v, want one state patch", streamEvents)
+	}
+	if streamEvents[0].EventType != StreamEventStatePatch {
+		t.Fatalf("stream event type = %q, want %q", streamEvents[0].EventType, StreamEventStatePatch)
+	}
+}
+
 func TestReportableActivityEventsReportsFailedAssistantFinalSnapshots(t *testing.T) {
 	t.Parallel()
 

@@ -393,39 +393,53 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   API-key-without-login readiness, then run
   `cd services/tuttid && go test ./service/agentstatus`.
 
-### Codex session fails with not connected when model_catalog_json is relative
+### Codex session fails when a config-relative dependency is unavailable
 
 - Symptom:
-  Codex is installed and `codex login status` reports logged in, but Tutti
-  chat fails with `agent session is not connected`. Daemon logs show
-  `thread/start` failing with
+  Codex is installed and authenticated, but session creation reports that its
+  configuration references an unavailable file. Older builds may instead
+  continue into the initial prompt and show `agent session is not connected`,
+  while daemon logs show `thread/start` failing with
   `failed to load configuration: No such file or directory (os error 2)`.
-  Tools such as CC Switch often set
-  `model_catalog_json = "cc-switch-model-catalog.json"` in `~/.codex/config.toml`.
-  If that catalog file is missing entirely, the same config error can also make
-  provider status show login required (`auth_unknown`) even though OAuth tokens
-  exist.
+  Configuration switchers commonly write relative `model_catalog_json` or
+  `model_instructions_file` values beside `~/.codex/config.toml`.
 - Quick checks:
-  `grep model_catalog_json ~/.codex/config.toml` and confirm the referenced
-  file exists under `~/.codex/`. Inspect the run-scoped
+  Run `rg '^(model_catalog_json|model_instructions_file)' ~/.codex/config.toml`
+  and confirm each referenced file exists and is a readable regular file.
+  Inspect the run-scoped
   `~/.tutti-dev/agent/runs/<session>/codex-home/` (or `~/.tutti/...` in prod):
-  `config.toml` is copied, but a relative catalog must also be present there.
+  `config.toml` is copied, and every relative dependency must be present at the
+  same relative path. Search the API/renderer diagnostic for
+  `agent.config_dependency_unavailable`; its params identify the provider,
+  config key, safe dependency path, and failure kind without exposing the
+  absolute user-home parent path.
 - Root cause:
-  Tutti prepares a run-scoped `CODEX_HOME` and copies only `config.toml` (plus
-  auth/plugin/skill exposure). Relative `model_catalog_json` paths resolve
-  against that sandbox home, so the catalog is missing unless Tutti mirrors it.
+  Tutti still launches the user's Codex CLI executable, but intentionally gives
+  it a run-scoped `CODEX_HOME`. Copying `config.toml` changes the base directory
+  used by Codex to resolve relative file references. A config dependency that
+  exists beside the user's real config is therefore unavailable unless Tutti
+  preserves the same relative layout in the run-scoped home.
 - Fix:
-  After copying `config.toml`, resolve top-level `model_catalog_json`. For
-  relative paths under `~/.codex`, symlink (or copy) the catalog into the
-  run-scoped `CODEX_HOME` at the same relative path. Absolute catalog paths
-  need no mirror. Do not mutate the user's global config.
+  Route provider-declared file references through the runtime-preparation
+  config-dependency materializer. Codex extracts top-level
+  `model_catalog_json` and `model_instructions_file`; relative paths are
+  validated against the real config root and symlinked (or copied) into the
+  run-scoped `CODEX_HOME`, while absolute paths are validated in place. Reject
+  empty, traversing, missing, non-regular, or unreadable dependencies before
+  starting the runtime. Do not mutate the user's global config and do not call
+  `Exec` after a failed `Start`. A session-level failure without a turn id is a
+  state patch only; never synthesize a turnless transcript message.
 - Validation:
-  Add or update `runtimeprep` tests that set a relative catalog beside
-  `config.toml` and assert the sandbox exposes it. Run
-  `cd packages/agent/runtimeprep && go test ./...`.
+  Cover relative and absolute dependencies, missing files, traversal rejection,
+  idempotent materialization, start-error short-circuiting, and turnless
+  session-failure projection. Run `cd packages/agent/runtimeprep && go test ./...`,
+  `cd packages/agent/daemon && go test ./runtime`, and the focused AgentGUI
+  controller/error-helper tests.
 - References:
+  [config_dependency.go](../../../packages/agent/runtimeprep/config_dependency.go)
   [codex.go](../../../packages/agent/runtimeprep/codex.go)
-  [preparer_test.go](../../../packages/agent/runtimeprep/preparer_test.go)
+  [visible_error.go](../../../packages/agent/daemon/runtime/visible_error.go)
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
 
 ### Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings
 

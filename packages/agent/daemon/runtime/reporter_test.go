@@ -1239,6 +1239,43 @@ func TestReporterProjectsTurnFailureErrorToStatePatch(t *testing.T) {
 	}
 }
 
+func TestReporterProjectsTurnlessSessionFailureWithoutMessageUpdate(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	client := &retryingActivityClient{}
+	reporter := Reporter{
+		ClientProvider: func() ActivityClient { return client },
+		MaxAttempts:    1,
+	}
+	event := newSessionActivityEvent(session, EventSessionFailed, SessionStatusFailed, map[string]any{
+		"error":      "provider configuration is invalid",
+		"startError": true,
+	})
+
+	input := reportActivityInput(session, []activityshared.Event{event})
+	if err := reporter.Report(context.Background(), input); err != nil {
+		t.Fatalf("Report: %v", err)
+	}
+	if len(input.StatePatches) != 1 {
+		t.Fatalf("state patches = %#v, want one session failure patch", input.StatePatches)
+	}
+	if input.StatePatches[0].LastError == "" {
+		t.Fatalf("state patch = %#v, want last error", input.StatePatches[0])
+	}
+	if len(input.MessageUpdates) != 0 {
+		t.Fatalf("message updates = %#v, want none without a turn id", input.MessageUpdates)
+	}
+	if client.calls != 1 || len(client.stateInputs) != 1 || len(client.messageInputs) != 0 {
+		t.Fatalf(
+			"client reports = calls:%d state:%d messages:%d, want state only",
+			client.calls,
+			len(client.stateInputs),
+			len(client.messageInputs),
+		)
+	}
+}
+
 func TestReporterDoesNotSendEmptyOrUnreportableBatches(t *testing.T) {
 	t.Parallel()
 

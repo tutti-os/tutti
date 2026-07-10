@@ -24,6 +24,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
 		`model_catalog_json = "cc-switch-model-catalog.json"`,
+		`model_instructions_file = "instructions/gpt-5.5.md"`,
 		`service_tier = "default"`,
 		"",
 		"[model_providers.proxy]",
@@ -36,6 +37,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if err := os.WriteFile(filepath.Join(userCodexHome, "cc-switch-model-catalog.json"), []byte(`{"models":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "instructions", "gpt-5.5.md"), "Use the custom model instructions.\n")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "cache", "sample", "plugin.txt"), "plugin cache")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", "data", "sample", "state.txt"), "plugin state")
 	writeSidecarTestFile(t, filepath.Join(userCodexHome, "plugins", ".plugin-appserver", "codex"), "plugin server")
@@ -124,6 +126,13 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if catalogLink.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("codex model catalog should be a symlink, got mode %v", catalogLink.Mode())
+	}
+	instructionsLink, err := os.Lstat(filepath.Join(codexHome, "instructions", "gpt-5.5.md"))
+	if err != nil {
+		t.Fatalf("codex model instructions not exposed: %v", err)
+	}
+	if instructionsLink.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("codex model instructions should be a symlink, got mode %v", instructionsLink.Mode())
 	}
 	for _, rel := range []string{
 		filepath.Join("plugins", "cache"),
@@ -394,6 +403,133 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 	}
 	if string(got) != catalogBody {
 		t.Fatalf("sandbox catalog body = %q, want %q", string(got), catalogBody)
+	}
+}
+
+func TestDefaultPreparerCodexExposesRelativeModelInstructionsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	writeSidecarTestFile(t, filepath.Join(userCodexHome, "profiles", "gpt-5.5.md"), "Custom instructions\n")
+	writeSidecarTestFile(
+		t,
+		filepath.Join(userCodexHome, "config.toml"),
+		`model_instructions_file = "profiles/gpt-5.5.md"`+"\n",
+	)
+
+	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	target := filepath.Join(codexHome, "profiles", "gpt-5.5.md")
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("relative model instructions not exposed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("model instructions mode = %v, want symlink", info.Mode())
+	}
+	content, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "Custom instructions\n" {
+		t.Fatalf("model instructions = %q", string(content))
+	}
+}
+
+func TestDefaultPreparerCodexFailsFastForMissingConfigDependency(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	writeSidecarTestFile(
+		t,
+		filepath.Join(userCodexHome, "config.toml"),
+		`model_instructions_file = "profiles/missing.md"`+"\n",
+	)
+
+	_, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err == nil {
+		t.Fatal("Prepare() error = nil, want missing config dependency")
+	}
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.Provider != "codex" ||
+		dependencyErr.ConfigKey != "model_instructions_file" ||
+		dependencyErr.DependencyPath != filepath.Join("profiles", "missing.md") ||
+		dependencyErr.FailureKind != ConfigDependencyFailureMissing {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+	if strings.Contains(err.Error(), home) {
+		t.Fatalf("public error leaks user home path: %q", err.Error())
+	}
+}
+
+func TestDefaultPreparerCodexRejectsTraversingConfigDependency(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	writeSidecarTestFile(
+		t,
+		filepath.Join(userCodexHome, "config.toml"),
+		`model_catalog_json = "../catalog.json"`+"\n",
+	)
+
+	_, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-invalid-catalog",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureInvalid {
+		t.Fatalf("failure kind = %q, want %q", dependencyErr.FailureKind, ConfigDependencyFailureInvalid)
+	}
+}
+
+func TestDefaultPreparerCodexAcceptsAbsoluteConfigDependencyWithoutMirroring(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userCodexHome := filepath.Join(home, ".codex")
+	absoluteInstructions := filepath.Join(t.TempDir(), "absolute-instructions.md")
+	writeSidecarTestFile(t, absoluteInstructions, "Absolute instructions\n")
+	writeSidecarTestFile(
+		t,
+		filepath.Join(userCodexHome, "config.toml"),
+		`model_instructions_file = `+strconv.Quote(absoluteInstructions)+"\n",
+	)
+
+	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-absolute-instructions",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if codexHome := envValue(prepared.Env, "CODEX_HOME"); codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
 	}
 }
 

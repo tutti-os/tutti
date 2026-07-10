@@ -2,12 +2,65 @@ package main
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	activityevents "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
+
+type failingRuntimeStartAdapter struct{}
+
+func (failingRuntimeStartAdapter) Provider() string { return "failing-start" }
+
+func (failingRuntimeStartAdapter) Start(context.Context, agentruntime.Session) ([]activityevents.Event, error) {
+	return nil, errors.New("provider configuration is invalid")
+}
+
+func (failingRuntimeStartAdapter) Resume(context.Context, agentruntime.Session) error { return nil }
+
+func (failingRuntimeStartAdapter) Close(context.Context, agentruntime.Session) error { return nil }
+
+func (failingRuntimeStartAdapter) Exec(
+	context.Context,
+	agentruntime.Session,
+	[]agentruntime.PromptContentBlock,
+	string,
+	string,
+	agentruntime.EventSink,
+	agentruntime.CommandSnapshotSink,
+) ([]activityevents.Event, error) {
+	return nil, nil
+}
+
+func (failingRuntimeStartAdapter) Cancel(context.Context, agentruntime.Session, string) ([]activityevents.Event, error) {
+	return nil, nil
+}
+
+func TestAgentRuntimeAdapterReturnsEmbeddedStartFailure(t *testing.T) {
+	controller := agentruntime.NewController([]agentruntime.Adapter{failingRuntimeStartAdapter{}}, nil)
+	adapter := newAgentRuntimeAdapter(controller)
+
+	_, err := adapter.Start(t.Context(), agentservice.RuntimeStartInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "agent-session-failed",
+		Provider:       "failing-start",
+		Cwd:            t.TempDir(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider configuration is invalid") {
+		t.Fatalf("Start() error = %v, want provider start failure", err)
+	}
+	session, ok := controller.Session("workspace-1", "agent-session-failed")
+	if !ok {
+		t.Fatal("failed runtime session was not retained")
+	}
+	if session.Status != agentruntime.SessionStatusFailed {
+		t.Fatalf("session status = %q, want failed", session.Status)
+	}
+}
 
 func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 	t.Setenv("TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER", "1")

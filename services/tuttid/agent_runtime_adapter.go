@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -304,6 +305,19 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 	})
 	if err != nil {
 		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+	}
+	if result.Error != nil {
+		message := strings.TrimSpace(result.Error.DebugMessage)
+		if message == "" {
+			message = strings.TrimSpace(result.Error.Message)
+		}
+		if message == "" {
+			message = strings.TrimSpace(result.Error.Code)
+		}
+		if message == "" {
+			message = "agent runtime failed to start"
+		}
+		return agentservice.RuntimeSession{}, errors.New(message)
 	}
 	return a.runtimeSessionWithState(result.Session), nil
 }

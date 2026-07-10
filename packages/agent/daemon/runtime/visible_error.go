@@ -85,7 +85,8 @@ func visibleFailureMessageUpdate(
 		return agentsessionstore.WorkspaceAgentMessageUpdate{}, false
 	}
 	eventID := strings.TrimSpace(event.EventID)
-	if strings.TrimSpace(sessionID) == "" || eventID == "" {
+	turnID := strings.TrimSpace(event.Payload.TurnID)
+	if strings.TrimSpace(sessionID) == "" || eventID == "" || turnID == "" {
 		return agentsessionstore.WorkspaceAgentMessageUpdate{}, false
 	}
 	phase := "turn"
@@ -115,7 +116,7 @@ func visibleFailureMessageUpdate(
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        "visible-error:" + eventID,
 		Seq:              uint64(timestamp),
-		TurnID:           strings.TrimSpace(event.Payload.TurnID),
+		TurnID:           turnID,
 		Role:             string(activityshared.MessageRoleAssistant),
 		Kind:             "text",
 		Status:           messageStreamStateFailed,
