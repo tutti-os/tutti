@@ -96,7 +96,7 @@ func composerReasoningOptionValues(provider string, selected string, locale stri
 }
 
 func composerAdvertisedReasoningOptionValues(
-	provider string,
+	_ string,
 	selected string,
 	locale string,
 	advertised []AgentModelReasoningEffortOption,
