@@ -207,3 +207,41 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeRuntimeContextPreservesCodexModelReasoningOptions(t *testing.T) {
+	t.Parallel()
+	runtimeContext := map[string]any{
+		"configOptions": []any{
+			map[string]any{
+				"id":           "reasoning_effort",
+				"currentValue": "ultra",
+				"options": []any{
+					map[string]any{"name": "High", "value": "high"},
+					map[string]any{"name": "Ultra", "value": "ultra"},
+				},
+			},
+		},
+	}
+
+	normalized := normalizeRuntimeContextForProvider(
+		"codex",
+		ComposerSettings{ReasoningEffort: "ultra"},
+		runtimeContext,
+	)
+	configOptions, ok := normalized["configOptions"].([]any)
+	if !ok || len(configOptions) != 1 {
+		t.Fatalf("configOptions = %#v", normalized["configOptions"])
+	}
+	reasoningOption, ok := configOptions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("reasoning option = %#v", configOptions[0])
+	}
+	options, ok := reasoningOption["options"].([]any)
+	if !ok || len(options) != 2 {
+		t.Fatalf("reasoning options = %#v", reasoningOption["options"])
+	}
+	ultra, ok := options[1].(map[string]any)
+	if !ok || ultra["value"] != "ultra" {
+		t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
+	}
+}

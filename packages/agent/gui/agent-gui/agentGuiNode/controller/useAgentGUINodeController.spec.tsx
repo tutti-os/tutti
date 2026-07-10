@@ -12453,6 +12453,123 @@ describe("useAgentGUINodeController", () => {
     expect(onDataChange).toHaveBeenCalled();
   });
 
+  it("switches pre-launch reasoning options and draft defaults with the selected model", async () => {
+    const getComposerOptions = vi.fn(async () => ({
+      provider: "codex",
+      effectiveSettings: {
+        model: "gpt-5.6-sol",
+        reasoningEffort: "ultra",
+        speed: null,
+        planMode: false,
+        permissionModeId: "auto"
+      },
+      modelConfig: {
+        configurable: true,
+        options: [
+          { value: "gpt-5.6-sol", name: "GPT-5.6-Sol" },
+          { value: "gpt-5.6-luna", name: "GPT-5.6-Luna" }
+        ]
+      },
+      reasoningConfig: {
+        configurable: true,
+        currentValue: "ultra",
+        options: [
+          { value: "low", name: "Low" },
+          { value: "medium", name: "Medium" },
+          { value: "high", name: "High" },
+          { value: "xhigh", name: "X-High" },
+          { value: "max", name: "Max" },
+          { value: "ultra", name: "ultra" }
+        ]
+      },
+      runtimeContext: {
+        modelReasoningOptionsByModel: {
+          "gpt-5.6-sol": {
+            defaultValue: "low",
+            options: [
+              { value: "low", name: "Low" },
+              { value: "medium", name: "Medium" },
+              { value: "high", name: "High" },
+              { value: "xhigh", name: "X-High" },
+              { value: "max", name: "Max" },
+              { value: "ultra", name: "ultra" }
+            ]
+          },
+          "gpt-5.6-luna": {
+            defaultValue: "medium",
+            options: [
+              { value: "low", name: "Low" },
+              { value: "medium", name: "Medium" },
+              { value: "high", name: "High" },
+              { value: "xhigh", name: "X-High" },
+              { value: "max", name: "Max" }
+            ]
+          }
+        }
+      }
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          composerOverrides: {
+            model: "gpt-5.6-sol",
+            reasoningEffort: "ultra"
+          }
+        }),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.composerSettings.availableReasoningEfforts
+      ).toHaveLength(6);
+      expect(
+        result.current.viewModel.composerSettings.availableReasoningEfforts[5]
+      ).toEqual({ value: "ultra", label: "Ultra" });
+    });
+
+    act(() => {
+      result.current.actions.updateComposerSettings({
+        model: "gpt-5.6-luna"
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.composerSettings.availableReasoningEfforts
+      ).toEqual([
+        { value: "low", label: "Low" },
+        { value: "medium", label: "Medium" },
+        { value: "high", label: "High" },
+        { value: "xhigh", label: "X-High" },
+        { value: "max", label: "Max" }
+      ]);
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.reasoningEffort
+      ).toBe("medium");
+      expect(
+        result.current.viewModel.composerSettings.selectedReasoningEffortValue
+      ).toBe("medium");
+    });
+    expect(getComposerOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ model: "gpt-5.6-luna" })
+      })
+    );
+  });
+
   it("keeps pre-launch model options loading until ACP config options are available", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
@@ -13712,41 +13829,49 @@ describe("useAgentGUINodeController", () => {
         permissionModeId: "preset"
       }
     }));
-    const getComposerOptions = vi.fn(async () => ({
-      provider: "claude-code",
-      runtimeContext: {
-        configOptions: [
-          {
-            id: "model",
-            options: [
-              {
-                value: "default",
-                name: "Default (recommended)",
-                description: "Sonnet 4.6 · Best for everyday tasks"
-              },
-              {
-                value: "opus",
-                name: "Opus",
-                description:
-                  "Opus 4.7 · Most capable for complex work · ~2x usage vs Sonnet"
-              },
-              {
-                value: "haiku",
-                name: "Haiku",
-                description: "Haiku 4.5 · Fastest for quick answers"
-              }
-            ]
-          },
-          {
-            id: "effort",
-            options: [
-              { value: "high", name: "High" },
-              { value: "xhigh", name: "X High" }
-            ]
-          }
-        ]
-      }
-    }));
+    const getComposerOptions = vi.fn(
+      async (input: { settings?: { model?: string | null } }) => ({
+        provider: "claude-code",
+        runtimeContext: {
+          configOptions: [
+            {
+              id: "model",
+              options: [
+                {
+                  value: "default",
+                  name: "Default (recommended)",
+                  description: "Sonnet 4.6 · Best for everyday tasks"
+                },
+                {
+                  value: "opus",
+                  name: "Opus",
+                  description:
+                    "Opus 4.7 · Most capable for complex work · ~2x usage vs Sonnet"
+                },
+                {
+                  value: "haiku",
+                  name: "Haiku",
+                  description: "Haiku 4.5 · Fastest for quick answers"
+                }
+              ]
+            },
+            {
+              id: "effort",
+              options:
+                input.settings?.model === "opus"
+                  ? [
+                      { value: "high", name: "High" },
+                      { value: "xhigh", name: "X High" }
+                    ]
+                  : [
+                      { value: "low", name: "Low" },
+                      { value: "medium", name: "Medium" }
+                    ]
+            }
+          ]
+        }
+      })
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -13805,8 +13930,8 @@ describe("useAgentGUINodeController", () => {
       expect(
         result.current.viewModel.composerSettings.availableReasoningEfforts
       ).toEqual([
-        { value: "high", label: "High" },
-        { value: "xhigh", label: "X High" }
+        { value: "low", label: "Low" },
+        { value: "medium", label: "Medium" }
       ]);
     });
 
@@ -13827,8 +13952,13 @@ describe("useAgentGUINodeController", () => {
         result.current.viewModel.composerSettings.availableReasoningEfforts
       ).toEqual([
         { value: "high", label: "High" },
-        { value: "xhigh", label: "X High" }
+        { value: "xhigh", label: "X-High" }
       ]);
+      expect(getComposerOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({ model: "opus" })
+        })
+      );
     });
     expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
       "opus"
@@ -14664,34 +14794,31 @@ describe("useAgentGUINodeController", () => {
           }
         })
       );
-    const getComposerOptions = vi
-      .fn()
-      .mockResolvedValueOnce({
+    const getComposerOptions = vi.fn(
+      async (input: { settings?: { model?: string | null } }) => ({
         provider: "codex",
         runtimeContext: {
-          configOptions: [
-            {
-              id: "model",
-              options: [{ value: "gpt-old", name: "GPT old" }]
-            }
-          ]
+          configOptions:
+            input.settings?.model === "gpt-new"
+              ? [
+                  {
+                    id: "model",
+                    options: [{ value: "gpt-new", name: "GPT new" }]
+                  },
+                  {
+                    id: "reasoning_effort",
+                    options: [{ value: "medium", name: "Medium" }]
+                  }
+                ]
+              : [
+                  {
+                    id: "model",
+                    options: [{ value: "gpt-old", name: "GPT old" }]
+                  }
+                ]
         }
       })
-      .mockResolvedValue({
-        provider: "codex",
-        runtimeContext: {
-          configOptions: [
-            {
-              id: "model",
-              options: [{ value: "gpt-new", name: "GPT new" }]
-            },
-            {
-              id: "reasoning_effort",
-              options: [{ value: "medium", name: "Medium" }]
-            }
-          ]
-        }
-      });
+    );
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],

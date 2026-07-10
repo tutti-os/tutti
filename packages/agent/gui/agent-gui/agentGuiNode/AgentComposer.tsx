@@ -321,6 +321,7 @@ export interface AgentComposerProps {
     reasoningOptionHigh: string;
     reasoningOptionXHigh: string;
     reasoningOptionMax: string;
+    reasoningOptionUltra: string;
     speedLabel: string;
     speedSelectionLabel: string;
     speedOptionStandard: string;
@@ -4374,6 +4375,7 @@ export function AgentComposer({
                     reasoningOptionHigh: labels.reasoningOptionHigh,
                     reasoningOptionXHigh: labels.reasoningOptionXHigh,
                     reasoningOptionMax: labels.reasoningOptionMax,
+                    reasoningOptionUltra: labels.reasoningOptionUltra,
                     speedLabel: labels.speedLabel,
                     speedSelectionLabel: labels.speedSelectionLabel,
                     speedOptionStandard: labels.speedOptionStandard,

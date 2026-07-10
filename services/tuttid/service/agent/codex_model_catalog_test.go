@@ -14,7 +14,7 @@ func TestCodexCLIModelListerReadsModelListFromAppServer(t *testing.T) {
 while IFS= read -r line; do
   case "$line" in
     *model/list*)
-      echo '{"id":"2","result":{"data":[{"id":"gpt-5","displayName":"GPT-5","description":"default","isDefault":true},{"model":"gpt-5.1"}]}}'
+      echo '{"id":"2","result":{"data":[{"id":"gpt-5","displayName":"GPT-5","description":"default","isDefault":true,"defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"medium","description":"Balanced"},{"reasoningEffort":"ultra","description":"Maximum reasoning with automatic task delegation"}]},{"model":"gpt-5.1"}]}}'
       sleep 10
       exit 0
       ;;
@@ -38,6 +38,14 @@ done
 	}
 	if models[0].ID != "gpt-5" || models[0].DisplayName != "GPT-5" || !models[0].IsDefault {
 		t.Fatalf("first model = %#v", models[0])
+	}
+	if models[0].DefaultReasoningEffort != "medium" {
+		t.Fatalf("first model default reasoning effort = %q, want medium", models[0].DefaultReasoningEffort)
+	}
+	if len(models[0].SupportedReasoningEfforts) != 2 ||
+		models[0].SupportedReasoningEfforts[1].Value != "ultra" ||
+		models[0].SupportedReasoningEfforts[1].Description != "Maximum reasoning with automatic task delegation" {
+		t.Fatalf("first model reasoning efforts = %#v", models[0].SupportedReasoningEfforts)
 	}
 	if models[1].ID != "gpt-5.1" || models[1].DisplayName != "gpt-5.1" {
 		t.Fatalf("second model = %#v", models[1])

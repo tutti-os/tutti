@@ -406,6 +406,7 @@ export const en = {
       reasoningOptionHigh: "High",
       reasoningOptionXHigh: "X-High",
       reasoningOptionMax: "Max",
+      reasoningOptionUltra: "Ultra",
       speedLabel: "Speed",
       speedSelectionLabel: "Speed",
       speedOptionStandard: "Standard",

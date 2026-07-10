@@ -263,11 +263,45 @@ func normalizeCodexModel(raw json.RawMessage) (AgentModelOption, bool) {
 		displayName = id
 	}
 	return AgentModelOption{
-		ID:          id,
-		DisplayName: displayName,
-		Description: stringMapValue(object, "description"),
-		IsDefault:   boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
+		ID:                        id,
+		DisplayName:               displayName,
+		Description:               stringMapValue(object, "description"),
+		DefaultReasoningEffort:    firstNonEmptyString(stringMapValue(object, "defaultReasoningEffort"), stringMapValue(object, "default_reasoning_effort")),
+		IsDefault:                 boolMapValue(object, "isDefault") || boolMapValue(object, "is_default"),
+		SupportedReasoningEfforts: normalizeCodexReasoningEfforts(object["supportedReasoningEfforts"]),
 	}, true
+}
+
+func normalizeCodexReasoningEfforts(value any) []AgentModelReasoningEffortOption {
+	rawOptions, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	options := make([]AgentModelReasoningEffortOption, 0, len(rawOptions))
+	seen := make(map[string]struct{}, len(rawOptions))
+	for _, rawOption := range rawOptions {
+		var option AgentModelReasoningEffortOption
+		switch typed := rawOption.(type) {
+		case string:
+			option.Value = strings.TrimSpace(typed)
+		case map[string]any:
+			option.Value = firstNonEmptyString(
+				stringMapValue(typed, "reasoningEffort"),
+				stringMapValue(typed, "effort"),
+				stringMapValue(typed, "value"),
+			)
+			option.Description = stringMapValue(typed, "description")
+		}
+		if option.Value == "" {
+			continue
+		}
+		if _, exists := seen[option.Value]; exists {
+			continue
+		}
+		seen[option.Value] = struct{}{}
+		options = append(options, option)
+	}
+	return options
 }
 
 func stringMapValue(object map[string]any, key string) string {

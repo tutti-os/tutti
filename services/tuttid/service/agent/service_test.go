@@ -2789,7 +2789,20 @@ func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 			Provider: "codex",
 			Source:   "codex-cli",
 			Models: []AgentModelOption{
-				{ID: "gpt-5.5", DisplayName: "GPT-5.5", IsDefault: true},
+				{
+					ID:                     "gpt-5.6-sol",
+					DisplayName:            "GPT-5.6-Sol",
+					DefaultReasoningEffort: "low",
+					IsDefault:              true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low", Description: "Fast responses with lighter reasoning"},
+						{Value: "medium"},
+						{Value: "high"},
+						{Value: "xhigh"},
+						{Value: "max"},
+						{Value: "ultra", Description: "Maximum reasoning with automatic task delegation"},
+					},
+				},
 				{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
 			},
 		},
@@ -2797,25 +2810,114 @@ func TestServiceGetsComposerOptionsWithResolvedCodexDefaultModel(t *testing.T) {
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider: "codex",
+		Locale:   "zh-CN",
 	})
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "gpt-5.5" {
-		t.Fatalf("effectiveSettings.model = %q, want gpt-5.5", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "gpt-5.6-sol" {
+		t.Fatalf("effectiveSettings.model = %q, want gpt-5.6-sol", options.EffectiveSettings.Model)
 	}
-	if options.EffectiveSettings.ReasoningEffort != "high" {
-		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	if options.EffectiveSettings.ReasoningEffort != "low" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want low", options.EffectiveSettings.ReasoningEffort)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	if configOptions[0]["currentValue"] != "gpt-5.5" {
+	if configOptions[0]["currentValue"] != "gpt-5.6-sol" {
 		t.Fatalf("model option = %#v", configOptions[0])
 	}
-	if len(configOptions) < 2 || configOptions[1]["currentValue"] != "high" {
+	if len(configOptions) < 2 || configOptions[1]["currentValue"] != "low" {
 		t.Fatalf("reasoning option = %#v", configOptions)
+	}
+	reasoningRuntimeOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if !ok || len(reasoningRuntimeOptions) != 6 || reasoningRuntimeOptions[5]["value"] != "ultra" {
+		t.Fatalf("reasoning runtime options = %#v, want model-advertised ultra", configOptions[1]["options"])
+	}
+	if len(options.ReasoningConfig.Options) != 6 ||
+		options.ReasoningConfig.Options[5].Value != "ultra" ||
+		options.ReasoningConfig.Options[5].Label != "极致" ||
+		options.ReasoningConfig.Options[5].Description != "最高强度推理，并自动委派任务" {
+		t.Fatalf("reasoningConfig = %#v, want model-advertised ultra", options.ReasoningConfig)
+	}
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
+	}
+	solProfile, ok := profiles["gpt-5.6-sol"].(map[string]any)
+	if !ok || solProfile["defaultValue"] != "low" {
+		t.Fatalf("sol reasoning profile = %#v, want low default", profiles["gpt-5.6-sol"])
+	}
+	solOptions, ok := solProfile["options"].([]map[string]string)
+	if !ok || len(solOptions) != 6 || solOptions[5]["name"] != "极致" {
+		t.Fatalf("sol reasoning profile options = %#v, want localized ultra", solProfile["options"])
+	}
+}
+
+func TestServiceGetsComposerOptionsUsesSelectedCodexModelReasoningEfforts(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                     "gpt-5.6-sol",
+					DisplayName:            "GPT-5.6-Sol",
+					DefaultReasoningEffort: "low",
+					IsDefault:              true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "ultra"},
+					},
+				},
+				{
+					ID:                     "gpt-5.6-luna",
+					DisplayName:            "GPT-5.6-Luna",
+					DefaultReasoningEffort: "medium",
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"},
+						{Value: "medium"},
+						{Value: "high"},
+						{Value: "xhigh"},
+						{Value: "max"},
+					},
+				},
+			},
+		},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Settings: ComposerSettings{
+			Model:           "gpt-5.6-luna",
+			ReasoningEffort: "ultra",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.ReasoningEffort != "medium" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want medium", options.EffectiveSettings.ReasoningEffort)
+	}
+	values := make([]string, 0, len(options.ReasoningConfig.Options))
+	for _, option := range options.ReasoningConfig.Options {
+		values = append(values, option.Value)
+	}
+	if !slices.Equal(values, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Fatalf("reasoningConfig values = %#v, want selected Luna model capabilities", values)
+	}
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
+	if !ok {
+		t.Fatalf("modelReasoningOptionsByModel = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
+	}
+	solProfile := profiles["gpt-5.6-sol"].(map[string]any)
+	lunaProfile := profiles["gpt-5.6-luna"].(map[string]any)
+	if len(solProfile["options"].([]map[string]string)) != 2 ||
+		len(lunaProfile["options"].([]map[string]string)) != 5 {
+		t.Fatalf("reasoning profiles = %#v, want model-specific option counts", profiles)
 	}
 }
 

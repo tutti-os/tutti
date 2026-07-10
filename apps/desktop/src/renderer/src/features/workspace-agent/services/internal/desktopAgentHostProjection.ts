@@ -240,7 +240,9 @@ function composerRuntimeContextFromSettings(
       {
         currentValue: reasoningEffort,
         id: "reasoning_effort",
-        options: reasoningEffortOptions(reasoningEffort)
+        options: reasoningEffort
+          ? [{ name: reasoningEffort, value: reasoningEffort }]
+          : []
       },
       {
         currentValue: speed,
@@ -253,36 +255,6 @@ function composerRuntimeContextFromSettings(
     reasoningEffort,
     speed
   };
-}
-
-function reasoningEffortOptions(
-  selected: string | null
-): Array<{ name: string; value: string }> {
-  const values = ["minimal", "low", "medium", "high", "xhigh"];
-  const options = values.map((value) => ({
-    name: reasoningEffortLabel(value),
-    value
-  }));
-  return selected && !values.includes(selected)
-    ? [...options, { name: reasoningEffortLabel(selected), value: selected }]
-    : options;
-}
-
-function reasoningEffortLabel(value: string): string {
-  switch (value) {
-    case "minimal":
-      return "Minimal";
-    case "low":
-      return "Low";
-    case "medium":
-      return "Medium";
-    case "high":
-      return "High";
-    case "xhigh":
-      return "X-High";
-    default:
-      return value;
-  }
 }
 
 function normalizedOptionalString(

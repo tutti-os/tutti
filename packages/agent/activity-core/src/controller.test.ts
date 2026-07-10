@@ -1785,6 +1785,37 @@ test("loadComposerOptions refetches when cwd changes and caches per cwd", async 
   void afterSwitch;
 });
 
+test("loadComposerOptions refetches when composer settings change", async () => {
+  const requestedModels: Array<string | null | undefined> = [];
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        requestedModels.push(input.settings?.model);
+        return createComposerOptions({ provider: input.provider });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({
+    provider: "codex",
+    targetKey: "local:codex",
+    settings: { model: "gpt-5.6-sol" }
+  });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    targetKey: "local:codex",
+    settings: { model: "gpt-5.6-sol" }
+  });
+  await controller.loadComposerOptions({
+    provider: "codex",
+    targetKey: "local:codex",
+    settings: { model: "gpt-5.6-luna" }
+  });
+
+  assert.deepEqual(requestedModels, ["gpt-5.6-sol", "gpt-5.6-luna"]);
+});
+
 function fakeAdapter(
   overrides: {
     listSessions?: AgentActivityAdapter["listSessions"];

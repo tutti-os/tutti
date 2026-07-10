@@ -28,12 +28,25 @@ type composerOptionDisplayText struct {
 var composerOptionLocaleCatalogs sync.Map
 
 func reasoningEffortLabel(value string, locale string) string {
+	label, _ := reasoningEffortDisplay(value, locale, "")
+	return label
+}
+
+func reasoningEffortDisplay(value string, locale string, fallbackDescription string) (string, string) {
 	value = strings.TrimSpace(value)
 	catalog := composerOptionLocaleCatalogFor(locale)
-	if text, ok := catalog.Reasoning[value]; ok && strings.TrimSpace(text.Label) != "" {
-		return strings.TrimSpace(text.Label)
+	text, ok := catalog.Reasoning[value]
+	label := value
+	description := strings.TrimSpace(fallbackDescription)
+	if ok {
+		if localizedLabel := strings.TrimSpace(text.Label); localizedLabel != "" {
+			label = localizedLabel
+		}
+		if localizedDescription := strings.TrimSpace(text.Description); localizedDescription != "" {
+			description = localizedDescription
+		}
 	}
-	return value
+	return label, description
 }
 
 func speedDisplay(value string, locale string) (string, string) {

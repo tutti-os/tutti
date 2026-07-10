@@ -9,7 +9,8 @@ import {
   nodeDataFromComposerSettings,
   permissionModeOptions,
   readNodeDefaultDraftPrompt,
-  readNodeDefaultDraftSettings
+  readNodeDefaultDraftSettings,
+  reasoningSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
 
@@ -105,6 +106,99 @@ describe("permissionModeOptions", () => {
         description: "仅对检测到的风险操作请求批准"
       }
     ]);
+  });
+});
+
+describe("model reasoning options", () => {
+  afterEach(() => {
+    setAgentGuiI18nTestLocale("en");
+  });
+
+  const composerOptions = {
+    provider: "codex",
+    models: [
+      { value: "gpt-5.6-sol", label: "GPT-5.6-Sol" },
+      { value: "gpt-5.6-luna", label: "GPT-5.6-Luna" }
+    ],
+    reasoningEfforts: [{ value: "high", label: "High" }],
+    speeds: [],
+    skills: [],
+    runtimeContext: {
+      modelReasoningOptionsByModel: {
+        "gpt-5.6-sol": {
+          defaultValue: "low",
+          options: [
+            { value: "low", name: "Low" },
+            { value: "ultra", name: "ultra" }
+          ]
+        },
+        "gpt-5.6-luna": {
+          defaultValue: "medium",
+          options: [
+            { value: "low", name: "Low" },
+            { value: "medium", name: "Medium" }
+          ]
+        }
+      }
+    },
+    loadedAtUnixMs: 1
+  } as unknown as AgentActivityComposerOptions;
+
+  it("switches the list by model without another catalog request", () => {
+    expect(
+      reasoningSelectionFromComposerOptions(
+        composerOptions,
+        "high",
+        "gpt-5.6-sol"
+      )
+    ).toEqual({
+      currentValue: "low",
+      options: [
+        { value: "low", label: "Low" },
+        { value: "ultra", label: "ultra" }
+      ]
+    });
+    expect(
+      reasoningSelectionFromComposerOptions(
+        composerOptions,
+        "ultra",
+        "gpt-5.6-luna"
+      )
+    ).toEqual({
+      currentValue: "medium",
+      options: [
+        { value: "low", label: "Low" },
+        { value: "medium", label: "Medium" }
+      ]
+    });
+  });
+
+  it("prefers the active ACP config options over the home catalog profile", () => {
+    expect(
+      reasoningSelectionFromComposerOptions(
+        composerOptions,
+        "xhigh",
+        "gpt-5.6-sol",
+        {
+          configOptions: [
+            {
+              id: "reasoning_effort",
+              currentValue: "xhigh",
+              options: [
+                { value: "high", name: "High" },
+                { value: "xhigh", name: "X High" }
+              ]
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      currentValue: "xhigh",
+      options: [
+        { value: "high", label: "High" },
+        { value: "xhigh", label: "X High" }
+      ]
+    });
   });
 });
 

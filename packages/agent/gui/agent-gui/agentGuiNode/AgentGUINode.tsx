@@ -1115,6 +1115,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       reasoningOptionHigh: t("agentHost.agentGui.reasoningOptionHigh"),
       reasoningOptionXHigh: t("agentHost.agentGui.reasoningOptionXHigh"),
       reasoningOptionMax: t("agentHost.agentGui.reasoningOptionMax"),
+      reasoningOptionUltra: t("agentHost.agentGui.reasoningOptionUltra"),
       speedLabel: t("agentHost.agentGui.speedLabel"),
       speedSelectionLabel: t("agentHost.agentGui.speedSelectionLabel"),
       speedOptionStandard: t("agentHost.agentGui.speedOptionStandard"),

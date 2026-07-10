@@ -378,6 +378,7 @@ export const zhCN = {
       reasoningOptionHigh: "高",
       reasoningOptionXHigh: "超高",
       reasoningOptionMax: "最高",
+      reasoningOptionUltra: "极致",
       speedLabel: "速度",
       speedSelectionLabel: "速度",
       speedOptionStandard: "标准",

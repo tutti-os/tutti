@@ -20,11 +20,18 @@ const (
 )
 
 type AgentModelOption struct {
-	ID                 string
-	DisplayName        string
-	Description        string
-	IsDefault          bool
-	SupportsImageInput *bool
+	ID                        string
+	DisplayName               string
+	Description               string
+	DefaultReasoningEffort    string
+	IsDefault                 bool
+	SupportedReasoningEfforts []AgentModelReasoningEffortOption
+	SupportsImageInput        *bool
+}
+
+type AgentModelReasoningEffortOption struct {
+	Description string
+	Value       string
 }
 
 type AgentModelCatalogResult struct {
@@ -285,6 +292,12 @@ func cloneAgentModelOptions(models []AgentModelOption) []AgentModelOption {
 	}
 	result := make([]AgentModelOption, len(models))
 	copy(result, models)
+	for index := range result {
+		result[index].SupportedReasoningEfforts = append(
+			[]AgentModelReasoningEffortOption(nil),
+			models[index].SupportedReasoningEfforts...,
+		)
+	}
 	return result
 }
 
