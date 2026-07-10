@@ -19,7 +19,10 @@ const catalog = await loadTuttiAgentProviderCatalog({
 The facade returns the enabled CLI catalog inside Tutti and automatically returns a standalone runtime catalog when `TUTTI_CLI` is absent. Load composer options lazily for the selected provider:
 
 ```ts
+import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
 import { loadTuttiAgentComposerOptions } from "@tutti-os/agent-acp-kit/tutti";
+
+const localAgentRuntime = createDefaultLocalAgentRuntime();
 
 export async function loadSelectedProviderOptions(providerId: string) {
   return loadTuttiAgentComposerOptions({
