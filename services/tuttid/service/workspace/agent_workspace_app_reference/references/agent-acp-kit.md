@@ -22,39 +22,13 @@ Application use-case
 
 Use provider IDs from Tutti's workspace-app scoped agent APIs. Do not keep app-local catalog allowlists such as `codex`/`claude` unless the app's product requirements explicitly document that a provider is unsupported. The app should show the provider set returned by Tutti, keep unavailable providers visible as disabled with a reason, and choose a usable default from the Tutti catalog.
 
-Read `references/dynamic-agent-providers.md` for the full discovery, normalization, UI, and compatibility rules. Register the complete kit default provider set for execution; use `localAgentRuntime.detect(...)` only for standalone operation or the documented whole-catalog compatibility path, not to replace Tutti's app-scoped daemon API inside Tutti.
+Read `references/dynamic-agent-providers.md` for the full discovery, normalization, UI, and runtime rules. Register the complete kit default provider set for execution; use `localAgentRuntime.detect(...)` for standalone operation, not to replace Tutti's app-scoped daemon API inside Tutti.
 
 ## Dynamic Provider Catalog
 
-Workspace apps should converge on the `@tutti-os/agent-acp-kit/tutti` catalog helpers when that subpath is available. The catalog source of truth is Tutti's app-scoped daemon API, not the app package or kit version:
+Follow `references/dynamic-agent-providers.md` for the server environment, scoped routes, response mapping, catalog failure behavior, and persisted provider IDs. Tutti controls provider visibility. The kit controls runtime registration and execution.
 
-```ts
-const catalog = await resolveTuttiAgentProviderCatalog({
-  baseUrl: process.env.TUTTI_API_BASE_URL,
-  token: process.env.TUTTI_APP_SERVER_TOKEN,
-  workspaceId: process.env.TUTTI_WORKSPACE_ID,
-  appId: process.env.TUTTI_APP_ID
-});
-```
-
-The resolver must call:
-
-- `GET /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent` for default provider and preference gates.
-- `GET /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status` without an app-local provider list. Tutti returns the Agent GUI-visible provider set from enabled daemon-owned Agent Targets.
-- `POST /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options` for provider model, reasoning, and speed options.
-
-Tutti decides which providers are visible to workspace apps. The app and kit must not replace that set with `runtime.listProviders()`, static `WorkspaceAgentProvider` enum values, or hard-coded app allowlists. Adding a new Agent should require updating Tutti/Agent GUI support, not rebuilding every app package.
-
-Keep only the minimal provider alias table needed to bridge kit and daemon IDs:
-
-- kit to daemon: `claude` -> `claude-code`, `nexight` -> `tutti-agent`
-- daemon to kit: `claude-code` -> `claude`, `tutti-agent` -> `nexight`
-
-Display names should prefer Tutti target/status/composer labels. Fall back to title-casing the provider ID.
-
-Add a thin version-compatibility fallback only around whole-catalog failure, such as an unavailable scoped app-server API, `404`/`405`, schema incompatibility, or a thrown kit helper. The fallback catalog is fixed to `codex` and `claude`, both `available: true`, both with `models: [{ id: "default", label: "default" }]`, and both with `defaultModelId: "default"`. This fallback is only for UI display and basic run entry; it should not participate in daemon enrichment.
-
-Store runtime profiles with Tutti provider IDs such as `claude-code`, `codex`, `cursor`, or `opencode`, plus any future provider returned by the app-scoped status API. Store model selections as `${provider}:${modelId}` in app state, and strip the provider prefix before calling `localAgentRuntime.run(...)`. Use shared kit helpers for provider-specific translations such as Cursor `default` -> `default[]` when available.
+Use the `@tutti-os/agent-acp-kit/tutti` subpath for Tutti CLI skill context. Do not assume it exports a provider catalog resolver. Keep the app-owned catalog client separate from the kit runtime, then normalize the selected Tutti provider id at the execution boundary.
 
 ## Provider Detection
 
@@ -89,22 +63,23 @@ const providers = createDefaultLocalAgentProviderPlugins().map((provider) =>
 
 Provider-specific wrappers are fine; app-local catalog allowlists are not.
 
-Do not call a browser JSB API to fetch credentials for detection. Do not accept a credential field in the request body. If no managed credential header is present, the helper returns a local-compatible context and detection continues through the normal local path.
+Do not call a browser JSB API to fetch credentials for detection. Do not accept a credential field in the request body. Standalone detection requires no managed credential; call `localAgentRuntime.detect()` without a context unless the app has a trusted local detection context.
 
 ## Runtime Execution
 
 For each agent run:
 
 1. Generate a stable app run ID.
-2. Derive managed run context on the server from request headers with `createManagedAgentRunContextFromHeaders(...)`.
-3. Materialize app or workspace skills only when the app needs them, using paths under the returned `runContext.cwd` or app-owned runtime/data paths. Do not invent a separate managed cwd policy.
-4. Build a prompt envelope with conversation identity, current user turn, attachments, current app state, collaboration rules, and tool gateway guidance.
-5. Load Tutti dynamic skill context through `@tutti-os/agent-acp-kit/tutti` when the app runs inside Tutti and needs platform CLI skills.
-6. Create a run-scoped tool gateway session and MCP config.
-7. Call `localAgentRuntime.run(...)` with the returned managed invocation context.
-8. Normalize ACP events into app stream events.
-9. Persist provider session/resume metadata when the kit returns it, but never persist managed credentials.
-10. Always revoke the gateway token and clean up app-owned temporary files in `finally`.
+2. Normalize the Tutti provider id to the kit runtime id.
+3. Check for a managed credential on the server. Reject unsupported managed provider ids, then await `createManagedAgentRunContextFromHeaders(...)` only for `isManagedAgentInvocationProviderId(...)` providers. Without a managed credential, use an app-owned local cwd.
+4. Materialize app or workspace skills only when the app needs them, using paths under the selected cwd or app-owned runtime/data paths. Do not invent a separate managed cwd policy.
+5. Build a prompt envelope with conversation identity, current user turn, attachments, current app state, collaboration rules, and tool gateway guidance.
+6. Load Tutti dynamic skill context through `@tutti-os/agent-acp-kit/tutti` when the app runs inside Tutti and needs platform CLI skills.
+7. Create a run-scoped tool gateway session and MCP config.
+8. Call `localAgentRuntime.run(...)` with the normalized provider id and optional managed invocation context.
+9. Normalize ACP events into app stream events.
+10. Persist provider session/resume metadata when the kit returns it, but never persist managed credentials.
+11. Always revoke the gateway token and clean up app-owned temporary files in `finally`.
 
 Tutti dynamic CLI skills should use the kit helper, not per-app subprocess and JSON parsing code:
 
@@ -132,34 +107,52 @@ The app still owns policy. `tuttiContext.recommendedSystemPrompt?.content` is ra
 Skeleton:
 
 ```ts
-import { createManagedAgentRunContextFromHeaders } from "@tutti-os/agent-acp-kit";
+import {
+  createManagedAgentRunContextFromHeaders,
+  getManagedAgentInvocationCredentialFromHeaders,
+  isManagedAgentInvocationProviderId
+} from "@tutti-os/agent-acp-kit";
+import { toKitAgentProviderId } from "./provider-id.js";
 
-const runContext = createManagedAgentRunContextFromHeaders(req.headers, {
-  providerId: provider,
-  runId
-});
+const runtimeProviderId = toKitAgentProviderId(provider);
+const managedCredential = getManagedAgentInvocationCredentialFromHeaders(
+  req.headers
+);
+if (
+  managedCredential &&
+  !isManagedAgentInvocationProviderId(runtimeProviderId)
+) {
+  throw new Error(`Managed execution does not support ${runtimeProviderId}`);
+}
+const runContext = isManagedAgentInvocationProviderId(runtimeProviderId)
+  ? await createManagedAgentRunContextFromHeaders(req.headers, {
+      providerId: runtimeProviderId,
+      runId
+    })
+  : undefined;
+const cwd = runContext?.cwd ?? appLocalRunCwd;
 
 for await (const event of localAgentRuntime.run({
   runId,
-  provider,
-  cwd: runContext.cwd,
+  provider: runtimeProviderId,
+  cwd,
   prompt,
   systemPrompt,
   model,
   runtimeKind: "local-agent",
-  runtimeProvider: provider,
+  runtimeProvider: runtimeProviderId,
   mcpServers,
   resume,
   signal,
   skillManifest,
   timeoutMs,
-  managedAgentInvocation: runContext.managedAgentInvocation
+  managedAgentInvocation: runContext?.managedAgentInvocation
 })) {
   yield adaptLocalAgentEvent(event);
 }
 ```
 
-Do not claim a file write, canvas edit, image generation, or other side effect happened unless the corresponding tool event succeeded.
+Derive `appLocalRunCwd` from app-owned local policy. Do not accept a browser-provided cwd for managed runs. Do not claim a file write, canvas edit, image generation, or other side effect happened unless the corresponding tool event succeeded.
 
 Do not add these managed-agent anti-patterns:
 
@@ -228,13 +221,13 @@ Add tests for:
 - Tutti app-scoped provider catalog resolution and model mapping
 - app status queries that omit app-local provider allowlists
 - provider visibility following the app-scoped status API rather than `runtime.listProviders()`
-- whole-catalog failure returning the Codex/Claude `default` legacy catalog
+- catalog failure returning an unavailable state without synthetic providers
 - dynamic provider catalog exposure and default selection (see `references/dynamic-agent-providers.md`)
-- provider filtering and model mapping
-- SSR/server provider detection using `createManagedAgentDetectContextFromHeaders(...)`
-- model-list detection using request-header managed context
-- run creation using `createManagedAgentRunContextFromHeaders(...)`
-- local no-header fallback behavior
+- provider plugin transformation and model mapping
+- standalone provider detection with the full default plugin set
+- awaited run context creation using the normalized kit provider id
+- rejection when a managed credential targets an unsupported provider id
+- local run context behavior when no managed header is present
 - credential non-leakage in response DTOs, logs, frontend events, and persisted run state
 - event normalization
 - MCP config env and packaged path
@@ -242,4 +235,4 @@ Add tests for:
 - run cancellation cleanup
 - resume metadata persistence
 
-For real-agent smoke tests, start with detection, then run a narrow prompt with no irreversible side effects.
+For real-agent smoke tests inside Tutti, load the scoped catalog before running a narrow prompt. For standalone smoke tests, run detection first. Do not use irreversible side effects.

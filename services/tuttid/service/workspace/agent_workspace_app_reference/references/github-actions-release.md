@@ -21,7 +21,13 @@ Use the reusable Tutti release workflow instead of reimplementing S3/catalog log
 uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
 ```
 
-This reusable workflow builds the app package, generates release metadata, uploads immutable app release artifacts to S3, updates `latest.json` and `versions.json`, verifies the published release, optionally creates a release tag, and optionally refreshes the app catalog.
+This reusable workflow builds, publishes, and verifies the app package. It can also create a release tag and publish the App Center catalog.
+
+## Version compatibility contract
+
+Declare one exact stable SemVer in `min_tutti_version` for every normal release. Choose the earliest Tutti version that contains every host API and runtime contract used by the app. Use `0.0.0` only when the app requires no minimum Tutti version. Publish a new app version when this minimum changes.
+
+The workspace-app scoped provider APIs first ship in `0.1.19-rc.0`. Production apps that use `references/dynamic-agent-providers.md` require the stable floor `min_tutti_version: "0.1.19"` or later.
 
 ## Production Workflow Template
 
@@ -48,7 +54,7 @@ on:
         type: boolean
         default: true
       catalog_only:
-        description: Whether to skip app release upload and only publish the existing latest release to catalog.
+        description: Whether to refresh this app in the catalog without publishing a new release.
         required: false
         type: boolean
         default: false
@@ -102,7 +108,7 @@ on:
         type: boolean
         default: false
       catalog_only:
-        description: Whether to skip app release upload and only publish the existing latest release to staging catalog.
+        description: Whether to refresh this app in the staging catalog without publishing a new release.
         required: false
         type: boolean
         default: false
@@ -159,12 +165,7 @@ Recommended organization variables:
 
 Use repository-level variables for app-specific overrides, migration periods, repositories that publish to a separate bucket, prefix, base URL, or role, and private repositories that cannot read organization variables. Do not create long-lived AWS secrets for this flow; the release workflow uses GitHub OIDC with `id-token: write` and an AWS role ARN.
 
-Staging callers must set `TUTTI_APP_RELEASES_STAGING_BASE_URL` explicitly. Do not let staging inherit `TUTTI_APP_RELEASES_BASE_URL`, because that can upload release objects under the staging S3 prefix while writing production asset URLs into `latest.json` and `catalog.json`.
-
-Every normal release must set `min_tutti_version` explicitly. Use `0.0.0` only
-when the release is safe for every legacy Tutti client; there is intentionally
-no permissive default. Catalog-only repairs read the stored compatibility rule
-from `apps/<appId>/versions.json`.
+Staging callers must set `TUTTI_APP_RELEASES_STAGING_BASE_URL` explicitly. Do not let staging inherit `TUTTI_APP_RELEASES_BASE_URL`, because that can write production asset URLs into staging release metadata.
 
 ## Validation
 
@@ -175,4 +176,6 @@ Before considering the release workflows ready:
 - Confirm the app id in `tutti.app.json`, `app_id`, and `release_tag_prefix` are consistent.
 - Confirm the selected runner can build the app package.
 - Confirm the organization or repository variables are visible to the app repository.
+- When `min_tutti_version` is greater than `0.0.0`, confirm a lower Tutti version does not select the release.
+- Confirm the declared minimum or a newer Tutti version selects the release. For `0.0.0`, also test the oldest supported Tutti version.
 - Run the staging workflow first, then production only after the staging release and optional staging catalog are verified.

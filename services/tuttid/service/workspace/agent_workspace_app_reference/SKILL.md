@@ -50,22 +50,22 @@ Also read `$tutti-workspace-app-factory` before changing final package files or 
 8. For GitHub-hosted app repositories that should publish releases, add staging and production release workflows after the package builder is stable.
 9. Verify with the repo's targeted checks first, then package checks.
 
-## Cloud-Compatible Local Agent Checklist
+## Managed and standalone agent checklist
 
-When adapting an existing local-first agent app for cloud/managed Tutti, the app must keep the local path working while removing app-owned credential plumbing:
+Keep Tutti-hosted and standalone provider discovery separate while sharing the same runtime execution layer:
 
 1. Upgrade `@tutti-os/agent-acp-kit` to a version that exports managed-agent header context helpers.
-2. In server-side detect/model endpoints, call `createManagedAgentDetectContextFromHeaders(req.headers)` and pass the returned context to `localAgentRuntime.detect(...)`.
-3. In server-side run creation, call `createManagedAgentRunContextFromHeaders(req.headers, { providerId, runId })`.
-4. Pass only `cwd: runContext.cwd` and `managedAgentInvocation: runContext.managedAgentInvocation` into `localAgentRuntime.run(...)`.
-5. Delete browser JSB credential fallback code.
-6. Delete request body credential fields and client-side credential forwarding.
-7. Never persist managed credentials.
-8. Never expose managed cwd or credentials through frontend events, logs, status APIs, or stored app state.
+2. Inside Tutti, load provider choices from the workspace-app scoped daemon APIs. Do not replace that catalog with `localAgentRuntime.detect(...)`.
+3. Outside Tutti, use `localAgentRuntime.detect(...)` with the full default provider plugin set.
+4. Normalize the Tutti provider id to the kit runtime id at the execution boundary.
+5. If a managed credential is present, require `isManagedAgentInvocationProviderId(runtimeProviderId)` before awaiting `createManagedAgentRunContextFromHeaders(...)`. Reject unsupported managed providers instead of silently running them locally.
+6. Without a managed credential, use an app-owned local cwd. Pass the normalized provider id, selected cwd, and optional `managedAgentInvocation` into `localAgentRuntime.run(...)`.
+7. Delete browser JSB credential fallback code and request body credential fields.
+8. Never persist managed credentials or expose managed cwd and credentials through frontend events, logs, status APIs, or stored app state.
 9. Do not hard-code `/workspace`, `.agent-runs`, or `CODEX_HOME` policy in the app business layer. Let the kit derive managed run context from headers and runtime env.
 10. If agent instructions are sent over WebSocket, confirm the Tutti/TSH host injects the managed credential into that WebSocket route too; do not invent a second credential channel inside the app.
-11. Add or update the cloud zip/package script so the packaged app contains the built server, web assets, MCP/tool entrypoints, and runtime metadata needed by Tutti.
-12. Add tests covering SSR/server detect, model detect, run context creation, credential non-leakage, and local no-header fallback behavior.
+11. Package the built server, web assets, MCP/tool entrypoints, and runtime metadata needed by Tutti.
+12. Test Tutti catalog resolution, standalone detection, provider id normalization, managed and local run context creation, and credential non-leakage.
 
 ## Validation
 

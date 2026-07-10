@@ -121,6 +121,11 @@ Rules:
 - Users edit display name and description, not `appId`.
 - `bootstrap.sh` starts the app server without requiring runner arguments.
 - The app binds `127.0.0.1:$TUTTI_APP_PORT`.
+- Server-side Tutti API calls use `TUTTI_API_BASE_URL` with the scoped
+  `TUTTI_APP_SERVER_TOKEN`.
+- The app server uses `TUTTI_WORKSPACE_ID` and `TUTTI_APP_ID` for
+  workspace-app scoped routes.
+- Browser code must never receive, persist, or log `TUTTI_APP_SERVER_TOKEN`.
 - The app passes `runtime.healthcheckPath`.
 - The package includes a non-empty `AGENTS.md`.
 - App data belongs under `TUTTI_APP_DATA_DIR`.

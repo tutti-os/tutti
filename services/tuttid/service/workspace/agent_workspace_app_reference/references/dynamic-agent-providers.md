@@ -8,6 +8,8 @@ Never hard-code an agent provider catalog such as `codex` and `claude` only. Ins
 
 The app owns presentation and policy. Tutti owns provider visibility, preferences, availability, and composer options; the kit owns runtime registration, standalone detection, and execution.
 
+The workspace-app scoped provider APIs first ship in Tutti `0.1.19-rc.0`. Production app releases use stable compatibility floors, so set `min_tutti_version` to at least `0.1.19` for apps that use this integration.
+
 ## Architecture
 
 ```text
@@ -46,35 +48,96 @@ Upgrade `@tutti-os/agent-acp-kit` when Tutti adds providers. Do not copy provide
 
 ## Discovery
 
-Expose one app-owned backend endpoint (for example `GET /api/agents/providers`) that returns the provider catalog. Inside Tutti, build it from the app-scoped daemon APIs:
+Expose one app-owned backend endpoint, such as `GET /api/agents/providers`, that returns the provider catalog. Inside Tutti, build it from the app-scoped daemon APIs. Keep the daemon token in the server process.
+
+Define an app-owned client around the daemon fields used by the app:
 
 ```ts
-export async function listAppAgentProviders(tutti: TuttiAppAgentCatalogClient) {
-  const [preferences, statuses] = await Promise.all([
+type AvailabilityStatus =
+  | "ready"
+  | "not_installed"
+  | "auth_required"
+  | "unsupported"
+  | "unknown";
+
+interface ProviderStatus {
+  provider: string;
+  availability: { status: AvailabilityStatus; reasonCode?: string | null };
+}
+
+interface TuttiAppAgentCatalogClient {
+  getAgentPreferences(): Promise<{ defaultAgentProvider: string }>;
+  getAgentProviderStatuses(): Promise<{ providers: ProviderStatus[] }>;
+  getAgentProviderComposerOptions(provider: string): Promise<unknown>;
+}
+```
+
+Only request composer options for ready providers. Keep composer failures local to one provider:
+
+```ts
+async function getComposerOptions(
+  tutti: TuttiAppAgentCatalogClient,
+  status: ProviderStatus,
+  available: boolean
+) {
+  if (!available) return null;
+  try {
+    return await tutti.getAgentProviderComposerOptions(status.provider);
+  } catch {
+    return null;
+  }
+}
+```
+
+Use the returned `providers` array and `defaultAgentProvider` field:
+
+```ts
+export async function listAppAgentProviders(
+  tutti: TuttiAppAgentCatalogClient,
+  registeredKitProviderIds: ReadonlySet<string>
+) {
+  const [preferences, snapshot] = await Promise.all([
     tutti.getAgentPreferences(),
     tutti.getAgentProviderStatuses()
   ]);
 
   return Promise.all(
-    statuses.map(async (status) => ({
-      ...status,
-      preferred: status.provider === preferences.defaultProvider,
-      composerOptions: await tutti.getAgentProviderComposerOptions(
-        status.provider
-      )
-    }))
+    snapshot.providers.map(async (status) => {
+      const runtimeProviderId = toKitAgentProviderId(status.provider);
+      const runtimeSupported = registeredKitProviderIds.has(runtimeProviderId);
+      const available =
+        status.availability.status === "ready" && runtimeSupported;
+      return {
+        ...status,
+        runtimeProviderId,
+        available,
+        reasonCode: runtimeSupported
+          ? (status.availability.reasonCode ?? undefined)
+          : "kit_runtime_unavailable",
+        preferred: status.provider === preferences.defaultAgentProvider,
+        composerOptions: await getComposerOptions(tutti, status, available)
+      };
+    })
   );
 }
 ```
 
-The status request must omit an app-local `providers` filter so Tutti can return every Agent GUI-visible provider from enabled daemon-owned Agent Targets. Use the app server token and workspace/app route parameters injected by Tutti; do not expose those credentials to browser code.
+Build `registeredKitProviderIds` from `localAgentRuntime.listProviders()`. Use it only to disable catalog entries that the installed kit cannot execute; never use it to add or remove entries from Tutti's provider list.
+
+The app-owned client must call these routes with `TUTTI_APP_SERVER_TOKEN` as a bearer credential:
+
+- `GET /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent`
+- `GET /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status`
+- `POST /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options`
+
+Omit an app-local `providers` filter from the status request. Use `TUTTI_API_BASE_URL`, `TUTTI_WORKSPACE_ID`, and `TUTTI_APP_ID` to build the routes. Never expose the token to browser code.
 
 UI rules:
 
 - Render every provider returned by the API response.
-- Show unavailable providers as disabled with the server-provided `reason`.
+- Show unavailable providers as disabled. Map the returned `reasonCode` to localized UI copy; do not render the raw code.
 - Do not filter the list down to Codex/Claude in frontend code.
-- Use server-provided labels for display. Allowlist product names in i18n checks; do not hard-code label maps such as `if (provider === "codex")`.
+- Derive display names from provider IDs with an app-owned formatter. Keep brand-casing overrides presentation-only; never use them to decide visibility or runtime support.
 
 Default provider selection:
 
@@ -116,20 +179,17 @@ export function toKitAgentProviderId(daemonProviderId: string) {
 
 Extend this map when Tutti documents a new alias. Do not rebuild a full static provider catalog in the app.
 
-## Standalone And Version Compatibility
+## Standalone development
 
-When the app is running inside a compatible Tutti host, do not replace the app-scoped catalog with `localAgentRuntime.listProviders()` or `localAgentRuntime.detect(...)`. Tutti's catalog controls which Agent Targets are visible to workspace apps.
+When the app runs inside Tutti, do not replace the app-scoped catalog with `localAgentRuntime.listProviders()` or `localAgentRuntime.detect(...)`. Tutti's catalog controls which Agent Targets are visible to workspace apps.
 
-For standalone development outside Tutti, use the full kit default plugin set and `localAgentRuntime.detect(...)`:
+For standalone development outside Tutti, use the full kit default plugin set and call runtime detection directly:
 
 ```ts
-const context = createManagedAgentDetectContextFromHeaders(headers);
-const detections = await localAgentRuntime.detect(context);
+const detections = await localAgentRuntime.detect();
 ```
 
-Keep a thin compatibility fallback around whole-catalog failures caused by an older Tutti host, unavailable app-scoped routes, or incompatible response schemas. That fallback may expose Codex and Claude with `default` models so existing apps can still open a basic run, but it must never be merged into a successful Tutti catalog response.
-
-Do not query the app-scoped status route with `providers=codex&providers=claude-code`, and do not treat kit registration as permission to expose a provider that Tutti omitted.
+Treat standalone detection as a separate development mode. Inside Tutti, return an unavailable state when a catalog request fails. Show retry guidance and do not invent provider entries. Do not query the app-scoped status route with `providers=codex&providers=claude-code`, and do not treat kit registration as permission to expose a provider that Tutti omitted.
 
 ## Optional Capability Filtering
 
@@ -169,7 +229,7 @@ Host-owned provider lists are exposed through the workspace-app scoped daemon AP
 
 ## Model IDs
 
-Use provider-prefixed app model IDs built from detection output:
+Use provider-prefixed app model IDs built from catalog or standalone detection output:
 
 ```ts
 const appModelId = `${provider}:${model.id}`;
@@ -185,6 +245,7 @@ Do not:
 - require "at least Claude Code and Codex" in UI copy or validation
 - map display names with only Codex/Claude branches when detection already returns `displayName`
 - query the workspace-app scoped `agent-providers/status` route with a fixed provider subset
+- synthesize a fixed provider catalog when Tutti catalog loading fails
 - filter `createDefaultLocalAgentProviderPlugins()` to Codex/Claude unless documented as a temporary product constraint
 - shell out to `$TUTTI_CLI agent ...` for provider discovery
 
@@ -193,11 +254,12 @@ Do not:
 Add tests for:
 
 - app status request omits app-local provider filters
-- UI/provider picker renders every provider returned by Tutti and disables unavailable ones
+- UI/provider picker renders every provider returned by Tutti and disables daemon-unavailable or kit-unsupported entries
 - default provider comes from Tutti preferences, a valid persisted app selection, or the first available catalog result
 - provider ID normalization covers `claude-code` <-> `claude` and daemon-only IDs such as `cursor` / `opencode`
-- whole-catalog failure uses only the documented compatibility fallback
+- catalog failure exposes an unavailable state without synthetic providers
 - standalone detection returns every registered kit provider entry
-- run creation accepts any catalog provider that maps to an installed runtime plugin
+- local run creation accepts catalog providers that map to installed runtime plugins
+- managed run creation accepts only `isManagedAgentInvocationProviderId(...)` providers
 
 For smoke tests, load the Tutti catalog first (or run standalone detection), then execute one narrow turn on whichever provider is available. Do not assume Codex or Claude is installed.
