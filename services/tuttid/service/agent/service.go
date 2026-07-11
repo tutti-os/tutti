@@ -112,12 +112,27 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.Metadata, nil)
 	requestedModel := value(input.Model)
-	input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, input.Model)
+	planEndpoint, planModels := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, requestedModel)
 	nodeStartedAt = time.Now()
-	if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
-		if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
+	if planEndpoint != nil {
+		// The bound plan owns the model catalog for this session: the model is
+		// validated against the plan's model list and defaults to the
+		// plan-resolved model instead of provider-native sources.
+		if err := validateModelAgainstPlan(provider, requestedModel, planModels); err != nil {
 			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 			return Session{}, err
+		}
+		if strings.TrimSpace(planEndpoint.Model) != "" {
+			resolvedModel := planEndpoint.Model
+			input.Model = &resolvedModel
+		}
+	} else {
+		input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, input.Model)
+		if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
+			if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
+				s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
+				return Session{}, err
+			}
 		}
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
@@ -204,6 +219,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		return Session{}, cleanupPrepared(normalizedErr)
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
+	s.registerPendingPlanFirstUse(workspaceID, session.ID, planEndpoint, input.AgentTargetID)
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
 		"provider_runtime_status": session.Status,
 	})
@@ -355,12 +371,14 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 		return preparedRuntime{Cwd: cwd}, nil
 	}
 	provider := strings.TrimSpace(input.Provider)
+	planEndpoint, _ := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, value(input.Model))
 	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
 		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
 		Provider:          provider,
 		Cwd:               cwd,
+		ModelEndpoint:     planEndpoint,
 		Title:             value(input.Title),
 		PermissionModeID:  value(input.PermissionModeID),
 		PlanMode:          clampComposerPlanModeForProvider(provider, valueBool(input.PlanMode)),

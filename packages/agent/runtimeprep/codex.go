@@ -41,11 +41,15 @@ func (CodexPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pro
 		input.Manifest.RecordManagedFile(codexHome, "codex-home", true)
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.resolved", input.PrepareInput, nil)
+	env := []string{
+		"CODEX_HOME=" + codexHome,
+	}
+	if input.ModelEndpoint.supportsCodex() {
+		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
+	}
 	return ProviderPrepareResult{
 		Cwd: input.Cwd,
-		Env: []string{
-			"CODEX_HOME=" + codexHome,
-		},
+		Env: env,
 	}, nil
 }
 
@@ -313,6 +317,10 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 	}
 	if detailModeNext, detailModeChanged := codexConfigWithConversationDetailModeInstructions(next, input.ConversationDetailMode); detailModeChanged {
 		next = detailModeNext
+		changed = true
+	}
+	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
+		next = planNext
 		changed = true
 	}
 	if !changed {

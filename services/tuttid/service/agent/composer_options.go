@@ -250,6 +250,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			return ComposerOptions{}, err
 		}
 	}
+	options = s.applyModelPlanComposerOverlay(ctx, input, options)
 	return options, nil
 }
 

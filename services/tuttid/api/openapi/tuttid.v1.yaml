@@ -8157,6 +8157,8 @@ components:
       required:
         - imageInput
         - modelImageInputRequired
+        - modelSwitch
+        - modelPlanBinding
         - skills
         - compact
         - tokenUsage
@@ -8177,6 +8179,16 @@ components:
           type: boolean
         modelImageInputRequired:
           type: boolean
+        modelSwitch:
+          type: boolean
+          description: >-
+            The provider can apply a model change to the next call in the
+            current session.
+        modelPlanBinding:
+          type: boolean
+          description: >-
+            The provider runtime accepts a session-scoped model access plan
+            endpoint and credential.
         skills:
           type: boolean
         compact:

@@ -610,6 +610,8 @@ func validateStandardACPRuntime(descriptor StandardACPRuntimeDescriptor) error {
 var knownCapabilities = []string{
 	CapabilityImageInput,
 	CapabilityModelImageInputRequired,
+	CapabilityModelSwitch,
+	CapabilityModelPlanBinding,
 	CapabilitySkills,
 	CapabilityCompact,
 	CapabilityTokenUsage,

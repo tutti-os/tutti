@@ -88,6 +88,7 @@ func openCodeDescriptor() ProviderDescriptor {
 				CapabilityModelImageInputRequired,
 				CapabilityPlanMode,
 				CapabilityInterrupt,
+				CapabilityModelSwitch,
 			},
 			ConfigOptionIDs: ComposerConfigOptionIDs{
 				Model:     "model",

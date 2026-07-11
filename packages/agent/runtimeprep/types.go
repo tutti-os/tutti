@@ -32,7 +32,12 @@ type PrepareInput struct {
 	ConversationDetailMode string
 	ExtraSkills            []ProviderSkillBundle
 	Metadata               map[string]any
-	resolved               *resolvedCapabilities
+	// ModelEndpoint routes the session through a managed model access plan
+	// endpoint when the agent target is bound to one. Nil keeps the
+	// provider's native credential source. Credentials must never reach
+	// logs, manifests, or generated instructions.
+	ModelEndpoint *ModelEndpointConfig
+	resolved      *resolvedCapabilities
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from (Codex CLI's
 	// own on-disk conversation transcript under the user's real

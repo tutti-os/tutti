@@ -56,6 +56,9 @@ type Service struct {
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
 	liveModelPersistedScanMissAtUnixMS map[string]int64
+	// modelPlanBinding wires the optional workspace model access plan
+	// integration; see ConfigureModelPlanBinding.
+	modelPlanBinding modelPlanBindingRuntime
 }
 
 type SubmitClaimStore interface {
