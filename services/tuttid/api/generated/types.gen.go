@@ -629,6 +629,8 @@ func (e AgentTargetSource) Valid() bool {
 const (
 	InvalidRequest                 ApiErrorDetailsCode = "invalid_request"
 	MethodNotAllowed               ApiErrorDetailsCode = "method_not_allowed"
+	ModelPlanNotFound              ApiErrorDetailsCode = "model_plan_not_found"
+	ModelPlanReferenced            ApiErrorDetailsCode = "model_plan_referenced"
 	PreferencesOperationFailed     ApiErrorDetailsCode = "preferences_operation_failed"
 	ServiceUnavailable             ApiErrorDetailsCode = "service_unavailable"
 	Unauthorized                   ApiErrorDetailsCode = "unauthorized"
@@ -647,6 +649,10 @@ func (e ApiErrorDetailsCode) Valid() bool {
 	case InvalidRequest:
 		return true
 	case MethodNotAllowed:
+		return true
+	case ModelPlanNotFound:
+		return true
+	case ModelPlanReferenced:
 		return true
 	case PreferencesOperationFailed:
 		return true
@@ -1249,6 +1255,168 @@ const (
 func (e IssueManagerTaskContextRefParentKind) Valid() bool {
 	switch e {
 	case IssueManagerTaskContextRefParentKindTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanDetectionStage.
+const (
+	AgentRuntime   ModelPlanDetectionStage = "agent_runtime"
+	Auth           ModelPlanDetectionStage = "auth"
+	Inference      ModelPlanDetectionStage = "inference"
+	ModelDiscovery ModelPlanDetectionStage = "model_discovery"
+	Network        ModelPlanDetectionStage = "network"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanDetectionStage enum.
+func (e ModelPlanDetectionStage) Valid() bool {
+	switch e {
+	case AgentRuntime:
+		return true
+	case Auth:
+		return true
+	case Inference:
+		return true
+	case ModelDiscovery:
+		return true
+	case Network:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanFirstUseStatus.
+const (
+	ModelPlanFirstUseStatusCompleted ModelPlanFirstUseStatus = "completed"
+	ModelPlanFirstUseStatusPending   ModelPlanFirstUseStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanFirstUseStatus enum.
+func (e ModelPlanFirstUseStatus) Valid() bool {
+	switch e {
+	case ModelPlanFirstUseStatusCompleted:
+		return true
+	case ModelPlanFirstUseStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanProtocol.
+const (
+	Anthropic ModelPlanProtocol = "anthropic"
+	Openai    ModelPlanProtocol = "openai"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanProtocol enum.
+func (e ModelPlanProtocol) Valid() bool {
+	switch e {
+	case Anthropic:
+		return true
+	case Openai:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanReferenceKind.
+const (
+	ModelPlanReferenceKindAgentTarget  ModelPlanReferenceKind = "agent_target"
+	ModelPlanReferenceKindModelPolicy  ModelPlanReferenceKind = "model_policy"
+	ModelPlanReferenceKindWorkspaceApp ModelPlanReferenceKind = "workspace_app"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanReferenceKind enum.
+func (e ModelPlanReferenceKind) Valid() bool {
+	switch e {
+	case ModelPlanReferenceKindAgentTarget:
+		return true
+	case ModelPlanReferenceKindModelPolicy:
+		return true
+	case ModelPlanReferenceKindWorkspaceApp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanStageStatus.
+const (
+	ModelPlanStageStatusFailed  ModelPlanStageStatus = "failed"
+	ModelPlanStageStatusPassed  ModelPlanStageStatus = "passed"
+	ModelPlanStageStatusPending ModelPlanStageStatus = "pending"
+	ModelPlanStageStatusSkipped ModelPlanStageStatus = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanStageStatus enum.
+func (e ModelPlanStageStatus) Valid() bool {
+	switch e {
+	case ModelPlanStageStatusFailed:
+		return true
+	case ModelPlanStageStatusPassed:
+		return true
+	case ModelPlanStageStatusPending:
+		return true
+	case ModelPlanStageStatusSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanStatus.
+const (
+	DetectionFailed ModelPlanStatus = "detection_failed"
+	Disabled        ModelPlanStatus = "disabled"
+	PendingFirstUse ModelPlanStatus = "pending_first_use"
+	Ready           ModelPlanStatus = "ready"
+	Undetected      ModelPlanStatus = "undetected"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanStatus enum.
+func (e ModelPlanStatus) Valid() bool {
+	switch e {
+	case DetectionFailed:
+		return true
+	case Disabled:
+		return true
+	case PendingFirstUse:
+		return true
+	case Ready:
+		return true
+	case Undetected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ModelPlanTemplateKind.
+const (
+	CodingPlan           ModelPlanTemplateKind = "coding_plan"
+	Custom               ModelPlanTemplateKind = "custom"
+	Domestic             ModelPlanTemplateKind = "domestic"
+	OfficialSubscription ModelPlanTemplateKind = "official_subscription"
+	Relay                ModelPlanTemplateKind = "relay"
+)
+
+// Valid indicates whether the value is a known member of the ModelPlanTemplateKind enum.
+func (e ModelPlanTemplateKind) Valid() bool {
+	switch e {
+	case CodingPlan:
+		return true
+	case Custom:
+		return true
+	case Domestic:
+		return true
+	case OfficialSubscription:
+		return true
+	case Relay:
 		return true
 	default:
 		return false
@@ -2343,6 +2511,16 @@ type AgentActivityMessageSemantics struct {
 	UserVisibleAssistantResponse *bool   `json:"userVisibleAssistantResponse,omitempty"`
 }
 
+// AgentModelBinding Per-workspace default model configuration for one agent target. Empty modelPlanId means the target keeps its provider-native model source.
+type AgentModelBinding struct {
+	AgentTargetId string     `json:"agentTargetId"`
+	DefaultModel  *string    `json:"defaultModel,omitempty"`
+	ModelPlanId   *string    `json:"modelPlanId,omitempty"`
+	ModelPolicyId *string    `json:"modelPolicyId,omitempty"`
+	UpdatedAt     *time.Time `json:"updatedAt,omitempty"`
+	WorkspaceId   string     `json:"workspaceId"`
+}
+
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
 type AgentPromptContentBlock struct {
 	AttachmentId *string `json:"attachmentId,omitempty"`
@@ -3205,6 +3383,11 @@ type DeleteIssueManagerTopicResponse struct {
 	Removed bool `json:"removed"`
 }
 
+// DeleteModelPlanResponse defines model for DeleteModelPlanResponse.
+type DeleteModelPlanResponse struct {
+	ModelPlanId string `json:"modelPlanId"`
+}
+
 // DeleteUserProjectRequest defines model for DeleteUserProjectRequest.
 type DeleteUserProjectRequest struct {
 	Path string `json:"path"`
@@ -3394,9 +3577,34 @@ type DesktopWorkbenchWindowSnapping struct {
 // DesktopWorkbenchWindowSnappingShortcutPreset defines model for DesktopWorkbenchWindowSnappingShortcutPreset.
 type DesktopWorkbenchWindowSnappingShortcutPreset string
 
+// DetectModelPlanRequest defines model for DetectModelPlanRequest.
+type DetectModelPlanRequest struct {
+	ApiKey  *string `json:"apiKey,omitempty"`
+	BaseUrl *string `json:"baseUrl,omitempty"`
+
+	// Model Model id for the inference stage; defaults to the plan default model, then the first known model.
+	Model  *string           `json:"model,omitempty"`
+	Models *[]ModelPlanModel `json:"models,omitempty"`
+
+	// PlanId When set, omitted fields fall back to the stored plan and the outcome persists onto it.
+	PlanId   *string            `json:"planId,omitempty"`
+	Protocol *ModelPlanProtocol `json:"protocol,omitempty"`
+}
+
+// DetectModelPlanResponse defines model for DetectModelPlanResponse.
+type DetectModelPlanResponse struct {
+	Detection        ModelPlanDetection `json:"detection"`
+	DiscoveredModels []ModelPlanModel   `json:"discoveredModels"`
+}
+
 // DismissAccountRegistrationCreditsRewardRequest defines model for DismissAccountRegistrationCreditsRewardRequest.
 type DismissAccountRegistrationCreditsRewardRequest struct {
 	RewardId string `json:"reward_id"`
+}
+
+// DuplicateModelPlanRequest defines model for DuplicateModelPlanRequest.
+type DuplicateModelPlanRequest struct {
+	Name *string `json:"name,omitempty"`
 }
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
@@ -3806,9 +4014,19 @@ type IssueManagerTopicResponse struct {
 	Topic IssueManagerTopic `json:"topic"`
 }
 
+// ListAgentModelBindingsResponse defines model for ListAgentModelBindingsResponse.
+type ListAgentModelBindingsResponse struct {
+	Bindings []AgentModelBinding `json:"bindings"`
+}
+
 // ListAgentTargetsResponse defines model for ListAgentTargetsResponse.
 type ListAgentTargetsResponse struct {
 	Targets []AgentTarget `json:"targets"`
+}
+
+// ListModelPlansResponse defines model for ListModelPlansResponse.
+type ListModelPlansResponse struct {
+	Plans []ModelPlan `json:"plans"`
 }
 
 // ListWorkspacesResponse defines model for ListWorkspacesResponse.
@@ -3823,6 +4041,107 @@ type LoadLocalWorkspaceAppRequest struct {
 	RestartRunning *bool  `json:"restartRunning,omitempty"`
 	SourceDir      string `json:"sourceDir"`
 }
+
+// ModelPlan Workspace-level model access plan. Credentials are stored daemon-side only; hasApiKey is the only credential signal in responses.
+type ModelPlan struct {
+	BaseUrl      *string            `json:"baseUrl,omitempty"`
+	CreatedAt    time.Time          `json:"createdAt"`
+	DefaultModel *string            `json:"defaultModel,omitempty"`
+	Detection    ModelPlanDetection `json:"detection"`
+	Enabled      bool               `json:"enabled"`
+	FirstUse     ModelPlanFirstUse  `json:"firstUse"`
+	HasApiKey    bool               `json:"hasApiKey"`
+	Id           string             `json:"id"`
+	Models       []ModelPlanModel   `json:"models"`
+	Name         string             `json:"name"`
+
+	// Protocol Wire protocol family used to call the plan's models.
+	Protocol ModelPlanProtocol `json:"protocol"`
+
+	// Status Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+	Status ModelPlanStatus `json:"status"`
+
+	// TemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+	TemplateKind ModelPlanTemplateKind `json:"templateKind"`
+	UpdatedAt    time.Time             `json:"updatedAt"`
+	WorkspaceId  string                `json:"workspaceId"`
+}
+
+// ModelPlanDetection defines model for ModelPlanDetection.
+type ModelPlanDetection struct {
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+
+	// Model Model id exercised by the inference stage.
+	Model  *string                `json:"model,omitempty"`
+	Stages []ModelPlanStageResult `json:"stages"`
+}
+
+// ModelPlanDetectionStage defines model for ModelPlanDetectionStage.
+type ModelPlanDetectionStage string
+
+// ModelPlanFirstUse defines model for ModelPlanFirstUse.
+type ModelPlanFirstUse struct {
+	AgentSessionId *string                 `json:"agentSessionId,omitempty"`
+	AgentTargetId  *string                 `json:"agentTargetId,omitempty"`
+	CompletedAt    *time.Time              `json:"completedAt,omitempty"`
+	Model          *string                 `json:"model,omitempty"`
+	Status         ModelPlanFirstUseStatus `json:"status"`
+}
+
+// ModelPlanFirstUseStatus defines model for ModelPlanFirstUse.Status.
+type ModelPlanFirstUseStatus string
+
+// ModelPlanModel defines model for ModelPlanModel.
+type ModelPlanModel struct {
+	Capabilities *[]string `json:"capabilities,omitempty"`
+	Id           string    `json:"id"`
+	Name         string    `json:"name"`
+}
+
+// ModelPlanProtocol Wire protocol family used to call the plan's models.
+type ModelPlanProtocol string
+
+// ModelPlanReference defines model for ModelPlanReference.
+type ModelPlanReference struct {
+	Id   string                 `json:"id"`
+	Kind ModelPlanReferenceKind `json:"kind"`
+	Name *string                `json:"name,omitempty"`
+
+	// Role How the consumer uses the plan, for example default, planning, review.
+	Role *string `json:"role,omitempty"`
+}
+
+// ModelPlanReferenceKind defines model for ModelPlanReference.Kind.
+type ModelPlanReferenceKind string
+
+// ModelPlanReferencesResponse defines model for ModelPlanReferencesResponse.
+type ModelPlanReferencesResponse struct {
+	References []ModelPlanReference `json:"references"`
+}
+
+// ModelPlanStageResult defines model for ModelPlanStageResult.
+type ModelPlanStageResult struct {
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+	Detail    *string    `json:"detail,omitempty"`
+
+	// FailureReason Machine-readable failure code such as connection_failed, unauthorized, model_catalog_unavailable, model_rejected, inference_failed.
+	FailureReason *string `json:"failureReason,omitempty"`
+	LatencyMs     *int64  `json:"latencyMs,omitempty"`
+
+	// Remedy Machine-readable remedy code such as check_network_or_base_url, check_api_key, add_models_manually, check_model_id, select_model. UI layers localize.
+	Remedy *string                 `json:"remedy,omitempty"`
+	Stage  ModelPlanDetectionStage `json:"stage"`
+	Status ModelPlanStageStatus    `json:"status"`
+}
+
+// ModelPlanStageStatus defines model for ModelPlanStageStatus.
+type ModelPlanStageStatus string
+
+// ModelPlanStatus Derived plan lifecycle status. pending_first_use means detection passed but no real agent call has completed yet; only ready plans are fully usable.
+type ModelPlanStatus string
+
+// ModelPlanTemplateKind Access-scheme template the plan was created from. Presentation and guidance hint; runtime behavior derives from protocol.
+type ModelPlanTemplateKind string
 
 // MoveUserProjectRequest defines model for MoveUserProjectRequest.
 type MoveUserProjectRequest struct {
@@ -3898,6 +4217,21 @@ type PublishWorkspaceAppFactoryJobResponse struct {
 // PutDesktopPreferencesRequest defines model for PutDesktopPreferencesRequest.
 type PutDesktopPreferencesRequest struct {
 	Preferences DesktopPreferences `json:"preferences"`
+}
+
+// PutModelPlanRequest defines model for PutModelPlanRequest.
+type PutModelPlanRequest struct {
+	// ApiKey Omitted or null keeps the stored credential on update; a value replaces it. Never echoed back.
+	ApiKey       *string           `json:"apiKey,omitempty"`
+	BaseUrl      *string           `json:"baseUrl,omitempty"`
+	DefaultModel *string           `json:"defaultModel,omitempty"`
+	Enabled      *bool             `json:"enabled,omitempty"`
+	Models       *[]ModelPlanModel `json:"models,omitempty"`
+	Name         string            `json:"name"`
+
+	// Protocol Wire protocol family used to call the plan's models.
+	Protocol     ModelPlanProtocol      `json:"protocol"`
+	TemplateKind *ModelPlanTemplateKind `json:"templateKind,omitempty"`
 }
 
 // PutWorkspaceWorkbenchRequest defines model for PutWorkspaceWorkbenchRequest.
@@ -3977,6 +4311,19 @@ type SendWorkspaceAgentSessionInputTurnResponse struct {
 
 // SendWorkspaceAgentSessionInputTurnResponseKind defines model for SendWorkspaceAgentSessionInputTurnResponse.Kind.
 type SendWorkspaceAgentSessionInputTurnResponseKind string
+
+// SetAgentModelBindingRequest defines model for SetAgentModelBindingRequest.
+type SetAgentModelBindingRequest struct {
+	// DefaultModel Must belong to the referenced plan's model list when a plan is set.
+	DefaultModel  *string `json:"defaultModel,omitempty"`
+	ModelPlanId   *string `json:"modelPlanId,omitempty"`
+	ModelPolicyId *string `json:"modelPolicyId,omitempty"`
+}
+
+// SetModelPlanEnabledRequest defines model for SetModelPlanEnabledRequest.
+type SetModelPlanEnabledRequest struct {
+	Enabled bool `json:"enabled"`
+}
 
 // SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
 type SetSystemAgentTargetEnabledRequest struct {
@@ -5107,6 +5454,9 @@ type IssueManagerTopicID = string
 // IssueManagerTopicIDQuery defines model for IssueManagerTopicIDQuery.
 type IssueManagerTopicIDQuery = string
 
+// ModelPlanID defines model for ModelPlanID.
+type ModelPlanID = string
+
 // TerminalAfterSeq defines model for TerminalAfterSeq.
 type TerminalAfterSeq = int64
 
@@ -5157,6 +5507,9 @@ type InvalidRequestError = ApiErrorResponse
 
 // MethodNotAllowedError defines model for MethodNotAllowedError.
 type MethodNotAllowedError = ApiErrorResponse
+
+// ModelPlanReferencedError defines model for ModelPlanReferencedError.
+type ModelPlanReferencedError = ApiErrorResponse
 
 // PreferencesOperationError defines model for PreferencesOperationError.
 type PreferencesOperationError = ApiErrorResponse
@@ -5421,6 +5774,9 @@ type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
 // UpdateWorkspaceJSONRequestBody defines body for UpdateWorkspace for application/json ContentType.
 type UpdateWorkspaceJSONRequestBody = UpdateWorkspaceRequest
 
+// SetAgentModelBindingJSONRequestBody defines body for SetAgentModelBinding for application/json ContentType.
+type SetAgentModelBindingJSONRequestBody = SetAgentModelBindingRequest
+
 // CreateWorkspaceAgentSessionJSONRequestBody defines body for CreateWorkspaceAgentSession for application/json ContentType.
 type CreateWorkspaceAgentSessionJSONRequestBody = CreateWorkspaceAgentSessionRequest
 
@@ -5576,6 +5932,21 @@ type CreateWorkspaceIssueTaskRunJSONRequestBody = CreateIssueManagerRunRequest
 
 // CompleteWorkspaceIssueTaskRunJSONRequestBody defines body for CompleteWorkspaceIssueTaskRun for application/json ContentType.
 type CompleteWorkspaceIssueTaskRunJSONRequestBody = CompleteIssueManagerRunRequest
+
+// CreateModelPlanJSONRequestBody defines body for CreateModelPlan for application/json ContentType.
+type CreateModelPlanJSONRequestBody = PutModelPlanRequest
+
+// DetectModelPlanJSONRequestBody defines body for DetectModelPlan for application/json ContentType.
+type DetectModelPlanJSONRequestBody = DetectModelPlanRequest
+
+// UpdateModelPlanJSONRequestBody defines body for UpdateModelPlan for application/json ContentType.
+type UpdateModelPlanJSONRequestBody = PutModelPlanRequest
+
+// DuplicateModelPlanJSONRequestBody defines body for DuplicateModelPlan for application/json ContentType.
+type DuplicateModelPlanJSONRequestBody = DuplicateModelPlanRequest
+
+// SetModelPlanEnabledJSONRequestBody defines body for SetModelPlanEnabled for application/json ContentType.
+type SetModelPlanEnabledJSONRequestBody = SetModelPlanEnabledRequest
 
 // CreateWorkspaceTerminalJSONRequestBody defines body for CreateWorkspaceTerminal for application/json ContentType.
 type CreateWorkspaceTerminalJSONRequestBody = CreateWorkspaceTerminalRequest

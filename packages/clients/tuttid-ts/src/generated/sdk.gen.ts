@@ -52,6 +52,9 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CreateModelPlanData,
+  CreateModelPlanErrors,
+  CreateModelPlanResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -88,6 +91,9 @@ import type {
   CreateWorkspaceTerminalData,
   CreateWorkspaceTerminalErrors,
   CreateWorkspaceTerminalResponses,
+  DeleteModelPlanData,
+  DeleteModelPlanErrors,
+  DeleteModelPlanResponses,
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
@@ -118,9 +124,15 @@ import type {
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
   DeleteWorkspaceResponses,
+  DetectModelPlanData,
+  DetectModelPlanErrors,
+  DetectModelPlanResponses,
   DismissAccountRegistrationCreditsRewardData,
   DismissAccountRegistrationCreditsRewardErrors,
   DismissAccountRegistrationCreditsRewardResponses,
+  DuplicateModelPlanData,
+  DuplicateModelPlanErrors,
+  DuplicateModelPlanResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
@@ -151,6 +163,9 @@ import type {
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
+  GetModelPlanData,
+  GetModelPlanErrors,
+  GetModelPlanResponses,
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
@@ -223,12 +238,21 @@ import type {
   LaunchWorkspaceAppData,
   LaunchWorkspaceAppErrors,
   LaunchWorkspaceAppResponses,
+  ListAgentModelBindingsData,
+  ListAgentModelBindingsErrors,
+  ListAgentModelBindingsResponses,
   ListAgentTargetsData,
   ListAgentTargetsErrors,
   ListAgentTargetsResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
+  ListModelPlanReferencesData,
+  ListModelPlanReferencesErrors,
+  ListModelPlanReferencesResponses,
+  ListModelPlansData,
+  ListModelPlansErrors,
+  ListModelPlansResponses,
   ListUserProjectsData,
   ListUserProjectsErrors,
   ListUserProjectsResponses,
@@ -403,6 +427,12 @@ import type {
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
+  SetAgentModelBindingData,
+  SetAgentModelBindingErrors,
+  SetAgentModelBindingResponses,
+  SetModelPlanEnabledData,
+  SetModelPlanEnabledErrors,
+  SetModelPlanEnabledResponses,
   SetSystemAgentTargetEnabledData,
   SetSystemAgentTargetEnabledErrors,
   SetSystemAgentTargetEnabledResponses,
@@ -430,6 +460,9 @@ import type {
   UninstallWorkspaceAppData,
   UninstallWorkspaceAppErrors,
   UninstallWorkspaceAppResponses,
+  UpdateModelPlanData,
+  UpdateModelPlanErrors,
+  UpdateModelPlanResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -1116,6 +1149,226 @@ export const putWorkspaceWorkbench = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/workbench",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List workspace model access plans
+ *
+ * Returns every named model access plan for the workspace. Credentials never appear in responses; only hasApiKey is exposed.
+ */
+export const listModelPlans = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPlansData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPlansResponses,
+    ListModelPlansErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans",
+    ...options
+  });
+
+/**
+ * Create one named model access plan
+ *
+ * Creates a plan for one access scheme (official subscription, coding plan, relay, or custom compatible endpoint). Multiple named plans may share one protocol. New plans start undetected and pending first use.
+ */
+export const createModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<CreateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateModelPlanResponses,
+    CreateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Run the staged connection detection for a plan or draft
+ *
+ * Runs the network, auth, model discovery, and minimal real inference stages in order and reports one structured result per stage. The agent_runtime stage stays pending until the plan completes its first real agent call. With planId the outcome persists onto the stored plan; omitted fields fall back to stored values. Without planId the request verifies an unsaved draft.
+ */
+export const detectModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DetectModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DetectModelPlanResponses,
+    DetectModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/detect",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one model access plan
+ *
+ * Deletion is blocked with a 409 while any agent target, model usage policy, or workspace app still references the plan. Callers rebind or disable those consumers first; the references endpoint lists them.
+ */
+export const deleteModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteModelPlanResponses,
+    DeleteModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options
+  });
+
+/**
+ * Get one model access plan
+ */
+export const getModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<GetModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetModelPlanResponses,
+    GetModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options
+  });
+
+/**
+ * Update one model access plan
+ *
+ * Replaces the mutable plan fields. Omitting apiKey keeps the stored credential. Changing the credential, base URL, or protocol resets detection and first-use state, so the plan must be re-verified before it reads as usable. Changes affect only calls that have not started yet.
+ */
+export const updateModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateModelPlanResponses,
+    UpdateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Duplicate one model access plan
+ *
+ * Clones the plan, including its credential, into a new disabled plan that must be re-detected before use.
+ */
+export const duplicateModelPlan = <ThrowOnError extends boolean = false>(
+  options: Options<DuplicateModelPlanData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    DuplicateModelPlanResponses,
+    DuplicateModelPlanErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Enable or disable one model access plan
+ *
+ * Disabling a plan blocks new calls through it without deleting the configuration. Running calls are never interrupted.
+ */
+export const setModelPlanEnabled = <ThrowOnError extends boolean = false>(
+  options: Options<SetModelPlanEnabledData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    SetModelPlanEnabledResponses,
+    SetModelPlanEnabledErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * List consumers that reference one model access plan
+ *
+ * Returns the agent targets, model usage policies, and workspace apps that currently reference the plan so change and delete impact can be shown before committing.
+ */
+export const listModelPlanReferences = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPlanReferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPlanReferencesResponses,
+    ListModelPlanReferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references",
+    ...options
+  });
+
+/**
+ * List per-workspace agent target model bindings
+ *
+ * Returns the default model plan, default model, and model usage policy bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
+ */
+export const listAgentModelBindings = <ThrowOnError extends boolean = false>(
+  options: Options<ListAgentModelBindingsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListAgentModelBindingsResponses,
+    ListAgentModelBindingsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-model-bindings",
+    ...options
+  });
+
+/**
+ * Set or clear one agent target model binding
+ *
+ * Binds the agent target to a default model plan, model, and model usage policy for the workspace. An all-empty body clears the binding. Changes affect only sessions that have not started; running sessions keep their recorded configuration.
+ */
+export const setAgentModelBinding = <ThrowOnError extends boolean = false>(
+  options: Options<SetAgentModelBindingData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentModelBindingResponses,
+    SetAgentModelBindingErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}",
     ...options,
     headers: {
       "Content-Type": "application/json",

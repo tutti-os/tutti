@@ -46,6 +46,8 @@ const schemaMigrationWorkspaceAppsV1 = "workspace_apps_v1"
 const schemaMigrationWorkspaceAppsV2 = "workspace_apps_v2"
 const schemaMigrationWorkspaceAppsV3 = "workspace_apps_v3"
 const schemaMigrationManagedCredentialsV1 = "managed_credentials_v1"
+const schemaMigrationModelPlansV1 = "model_plans_v1"
+const schemaMigrationAgentModelBindingsV1 = "agent_model_bindings_v1"
 const schemaMigrationAppFactoryJobsV1 = "app_factory_jobs_v1"
 const schemaMigrationAppFactoryJobsV2 = "app_factory_jobs_v2"
 const schemaMigrationAppFactoryJobsV3 = "app_factory_jobs_v3"
@@ -205,6 +207,12 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 		return err
 	}
 	if err := s.applyManagedCredentialsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyModelPlansV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentModelBindingsV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAppFactoryJobsV1(ctx); err != nil {
