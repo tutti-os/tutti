@@ -21,30 +21,26 @@ export class DesktopApiError extends Error {
 }
 
 export function normalizeDesktopApiErrorDetails(
-  error: unknown
+  error: unknown,
+  unknownErrorMessage = "Unknown desktop API error."
 ): DesktopApiErrorDetails {
   try {
-    const structured = readDesktopApiErrorDetails(error);
-    if (structured) {
-      return structured;
+    const inspection = inspectDesktopApiError(error);
+    if (inspection.details) {
+      return inspection.details;
     }
-    const value = isRecord(error) ? error : undefined;
-    const message =
-      error instanceof Error
-        ? readNonEmptyString(error.message)
-        : readNonEmptyString(value?.message);
     return {
       code: "UNKNOWN",
       message:
-        message ??
-        (error instanceof Error
-          ? "Unknown desktop API error."
-          : safelyStringifyError(error))
+        inspection.message ??
+        (inspection.isRecord
+          ? unknownErrorMessage
+          : safelyStringifyError(error, unknownErrorMessage))
     };
   } catch {
     return {
       code: "UNKNOWN",
-      message: "Unknown desktop API error."
+      message: unknownErrorMessage
     };
   }
 }
@@ -52,45 +48,87 @@ export function normalizeDesktopApiErrorDetails(
 export function readDesktopApiErrorDetails(
   error: unknown
 ): DesktopApiErrorDetails | undefined {
-  try {
-    const value = isRecord(error) ? error : undefined;
-    const code = readNonEmptyString(value?.code);
-    const message =
-      error instanceof Error
-        ? readNonEmptyString(error.message)
-        : readNonEmptyString(value?.message);
-    if (!value || !code || !message) {
-      return undefined;
-    }
-    const reason = readNonEmptyString(value?.reason);
-    const developerMessage = readNonEmptyString(value?.developerMessage);
-    const correlationId = readNonEmptyString(value?.correlationId);
-    const params = value.params;
-    const retryable = value.retryable;
-    return {
+  return inspectDesktopApiError(error).details;
+}
+
+function inspectDesktopApiError(error: unknown): {
+  details?: DesktopApiErrorDetails;
+  isRecord: boolean;
+  message?: string;
+} {
+  const value = safelyReadRecord(error);
+  const code = readNonEmptyString(safelyReadProperty(value, "code"));
+  const message = readNonEmptyString(safelyReadProperty(value, "message"));
+  if (!value || !code || !message) {
+    return { isRecord: value !== undefined, ...(message ? { message } : {}) };
+  }
+  const reason = readNonEmptyString(safelyReadProperty(value, "reason"));
+  const developerMessage = readNonEmptyString(
+    safelyReadProperty(value, "developerMessage")
+  );
+  const correlationId = readNonEmptyString(
+    safelyReadProperty(value, "correlationId")
+  );
+  const params = safelyCloneRecord(safelyReadProperty(value, "params"));
+  const retryable = safelyReadProperty(value, "retryable");
+  return {
+    details: {
       code,
       message,
       ...(reason ? { reason } : {}),
-      ...(isRecord(params) ? { params } : {}),
+      ...(params ? { params } : {}),
       ...(typeof retryable === "boolean" ? { retryable } : {}),
       ...(developerMessage ? { developerMessage } : {}),
       ...(correlationId ? { correlationId } : {})
-    };
-  } catch {
-    return undefined;
-  }
+    },
+    isRecord: true,
+    message
+  };
 }
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function safelyStringifyError(value: unknown): string {
+function safelyReadProperty(
+  value: Record<string, unknown> | undefined,
+  key: string
+): unknown {
+  try {
+    return value?.[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function safelyReadRecord(value: unknown): Record<string, unknown> | undefined {
+  try {
+    return isRecord(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function safelyCloneRecord(
+  value: unknown
+): Record<string, unknown> | undefined {
+  try {
+    if (!isRecord(value)) {
+      return undefined;
+    }
+    const snapshot: unknown = structuredClone(value);
+    return isRecord(snapshot) ? snapshot : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function safelyStringifyError(value: unknown, fallbackMessage: string): string {
   try {
     const message = String(value).trim();
-    return message || "Unknown desktop API error.";
+    return message || fallbackMessage;
   } catch {
-    return "Unknown desktop API error.";
+    return fallbackMessage;
   }
 }
 

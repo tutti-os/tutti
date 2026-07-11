@@ -127,11 +127,11 @@ bridge; later intents are delivered only to active subscribers.
 Desktop hosts must keep pre-ready/reload launch queues FIFO but bounded by
 count and lifetime, and clear owner-scoped queues when the owner is destroyed.
 The Desktop canonical defaults (`workspaceAppLaunchIntentQueueDefaults`) are
-32 intents per target, 128 target queues, 512 intents in total, and a five-minute
-TTL. Invalid or zero queue capacities are rejected at construction. When one
-target has multiple guest subscribers, delivery failure and pre-ready buffering
-are tracked per guest so a successful sibling cannot consume another guest's
-backlog.
+32 intents per queue lane, 128 lanes, 512 intents in total, and a five-minute
+TTL. A logical target has one shared lane plus a separate backlog lane for each
+guest that needs pre-ready or failed-delivery buffering. Invalid or zero queue
+capacities are rejected at construction. When one target has multiple guest
+subscribers, a successful sibling cannot consume another guest's backlog.
 
 User-project snapshot staleness is guarded by the local stream generation and
 arrival order. A business `revision` is not assumed to be globally monotonic

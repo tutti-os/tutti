@@ -181,13 +181,15 @@ export function registerWorkspaceAppContextIpc(
     sessionID,
     workspaceAppGuestLogRateLimiter
   );
-  registerDesktopIpcHandler(desktopIpcChannels.appContext.get, (event) =>
-    createWorkspaceAppContext(
+  registerDesktopIpcHandler(desktopIpcChannels.appContext.get, (event) => {
+    const context = workspaceAppGuestContexts.get(event.sender.id);
+    return createWorkspaceAppContext(
       endpoint,
       preferences.getLocale(),
-      workspaceAppGuestContexts.get(event.sender.id)
-    )
-  );
+      context,
+      event.sender
+    );
+  });
   registerDesktopIpcHandler(
     desktopIpcChannels.appExternal.activityReportActive,
     async (event) => {
@@ -1301,17 +1303,34 @@ const workspaceAppLegacyContextCapabilities = Object.freeze(
 function createWorkspaceAppContext(
   endpoint: DesktopDaemonEndpoint,
   locale: DesktopLocale,
-  context: WorkspaceAppGuestContext | undefined
+  context: WorkspaceAppGuestContext | undefined,
+  contents: WebContents
 ): DesktopWorkspaceAppContext {
   if (!context) {
     return { locale };
   }
   const issuer = new URL(resolveDesktopDaemonBaseUrl(endpoint)).origin;
   const installationId = `${context.workspaceID}:${context.appID}`;
-  const launchIntent = workspaceAppLaunchIntents.consumeInitialDelivery(
+  const initialConsumption = workspaceAppLaunchIntents.consumeInitialDelivery(
+    contents.id,
     context.launchIntentDelivery
   );
   delete context.launchIntentDelivery;
+  if (initialConsumption.readyGeneration !== undefined) {
+    const readyGeneration = initialConsumption.readyGeneration;
+    setImmediate(() => {
+      if (!contents.isDestroyed()) {
+        sendWorkspaceAppLaunchIntentDeliveries(
+          contents,
+          context,
+          workspaceAppLaunchIntents.drainReadyGeneration(
+            contents.id,
+            readyGeneration
+          )
+        );
+      }
+    });
+  }
   return {
     appId: context.appID,
     capabilities: [...workspaceAppLegacyContextCapabilities],
@@ -1321,7 +1340,9 @@ function createWorkspaceAppContext(
     }),
     installationId,
     issuer,
-    ...(launchIntent ? { launchIntent } : {}),
+    ...(initialConsumption.intent
+      ? { launchIntent: initialConsumption.intent }
+      : {}),
     locale,
     workspaceId: context.workspaceID
   };
@@ -1396,7 +1417,18 @@ function drainWorkspaceAppInitialLaunchIntents(
   contents: WebContents,
   context: WorkspaceAppGuestContext
 ): void {
-  const pending = workspaceAppLaunchIntents.markReady(contents.id);
+  sendWorkspaceAppLaunchIntentDeliveries(
+    contents,
+    context,
+    workspaceAppLaunchIntents.markReady(contents.id)
+  );
+}
+
+function sendWorkspaceAppLaunchIntentDeliveries(
+  contents: WebContents,
+  context: WorkspaceAppGuestContext,
+  pending: readonly WorkspaceAppLaunchIntentDelivery[]
+): void {
   for (const [index, delivery] of pending.entries()) {
     try {
       contents.send(desktopIpcChannels.appExternal.guestEvent, {

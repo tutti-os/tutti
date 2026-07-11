@@ -116,3 +116,69 @@ test("reads structured params and retryable accessors only once", () => {
   assert.equal(paramsReads, 1);
   assert.equal(retryableReads, 1);
 });
+
+test("omits throwing optional metadata without losing structured details", () => {
+  const error = {
+    code: "COMMON.UNAVAILABLE",
+    message: "offline",
+    params: { authorityId: "device-1" },
+    get reason() {
+      throw new Error("reason unavailable");
+    },
+    retryable: true
+  };
+
+  assert.deepEqual(normalizeDesktopApiErrorDetails(error), {
+    code: "COMMON.UNAVAILABLE",
+    message: "offline",
+    params: { authorityId: "device-1" },
+    retryable: true
+  });
+});
+
+test("uses the caller-localized unknown error fallback", () => {
+  assert.deepEqual(
+    normalizeDesktopApiErrorDetails(
+      {
+        get message() {
+          throw new Error("message unavailable");
+        }
+      },
+      "未知错误"
+    ),
+    { code: "UNKNOWN", message: "未知错误" }
+  );
+});
+
+test("omits hostile params without downgrading required error details", () => {
+  const revoked = Proxy.revocable({}, {});
+  revoked.revoke();
+  assert.deepEqual(
+    normalizeDesktopApiErrorDetails({
+      code: "COMMON.UNAVAILABLE",
+      message: "offline",
+      params: revoked.proxy,
+      retryable: true
+    }),
+    {
+      code: "COMMON.UNAVAILABLE",
+      message: "offline",
+      retryable: true
+    }
+  );
+});
+
+test("reuses one required message snapshot for UNKNOWN fallback", () => {
+  let reads = 0;
+  const error = {
+    get message() {
+      reads += 1;
+      return reads === 1 ? "first message" : "second message";
+    }
+  };
+  assert.deepEqual(normalizeDesktopApiErrorDetails(error), {
+    code: "UNKNOWN",
+    message: "first message"
+  });
+  assert.equal(reads, 1);
+});

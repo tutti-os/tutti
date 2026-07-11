@@ -303,8 +303,16 @@ export class WorkspaceAppLaunchIntentQueue {
 }
 
 interface WorkspaceAppLaunchIntentGuest {
+  documentGeneration: number;
+  documentReady: boolean;
+  initialDeliveryOrder?: number;
   ready: boolean;
   target: WorkspaceAppLaunchIntentTarget;
+}
+
+export interface WorkspaceAppInitialLaunchIntentConsumption {
+  intent?: TuttiExternalWorkspaceOpenRouteIntent;
+  readyGeneration?: number;
 }
 
 interface WorkspaceAppLaunchIntentReplacementBacklogs {
@@ -348,16 +356,27 @@ export class WorkspaceAppLaunchIntentDeliveryState {
   }
 
   consumeInitialDelivery(
+    guestWebContentsId: number,
     delivery: WorkspaceAppLaunchIntentDelivery | undefined
-  ): TuttiExternalWorkspaceOpenRouteIntent | undefined {
-    return delivery && !this.#queue.isExpired(delivery)
-      ? delivery.intent
-      : undefined;
+  ): WorkspaceAppInitialLaunchIntentConsumption {
+    const guest = this.#guests.get(guestWebContentsId);
+    if (!guest || !delivery || guest.initialDeliveryOrder !== delivery.order) {
+      return {};
+    }
+    delete guest.initialDeliveryOrder;
+    return {
+      ...(!this.#queue.isExpired(delivery) ? { intent: delivery.intent } : {}),
+      ...(guest.documentReady
+        ? { readyGeneration: guest.documentGeneration }
+        : {})
+    };
   }
 
   markNotReady(guestWebContentsId: number): void {
     const guest = this.#guests.get(guestWebContentsId);
     if (guest) {
+      guest.documentGeneration += 1;
+      guest.documentReady = false;
       guest.ready = false;
     }
   }
@@ -397,6 +416,32 @@ export class WorkspaceAppLaunchIntentDeliveryState {
     if (!guest) {
       return [];
     }
+    guest.documentReady = true;
+    if (guest.initialDeliveryOrder !== undefined) {
+      return [];
+    }
+    guest.ready = true;
+    return [
+      ...this.#queue.drainDeliveries(guest.target),
+      ...this.#queue.drainDeliveries(
+        recipientTarget(guest.target, guestWebContentsId)
+      )
+    ];
+  }
+
+  drainReadyGeneration(
+    guestWebContentsId: number,
+    documentGeneration: number
+  ): WorkspaceAppLaunchIntentDelivery[] {
+    const guest = this.#guests.get(guestWebContentsId);
+    if (
+      !guest ||
+      !guest.documentReady ||
+      guest.documentGeneration !== documentGeneration ||
+      guest.initialDeliveryOrder !== undefined
+    ) {
+      return [];
+    }
     guest.ready = true;
     return [
       ...this.#queue.drainDeliveries(guest.target),
@@ -410,15 +455,19 @@ export class WorkspaceAppLaunchIntentDeliveryState {
     guestWebContentsId: number,
     target: WorkspaceAppLaunchIntentTarget
   ): WorkspaceAppLaunchIntentDelivery | undefined {
-    this.#guests.set(guestWebContentsId, { ready: false, target });
-    const replacementInitial = this.#claimReplacementBacklog(
-      guestWebContentsId,
+    const initialDelivery =
+      this.#claimReplacementBacklog(guestWebContentsId, target) ??
+      this.#queue.shiftDelivery(target);
+    this.#guests.set(guestWebContentsId, {
+      documentGeneration: 0,
+      documentReady: false,
+      ...(initialDelivery
+        ? { initialDeliveryOrder: initialDelivery.order }
+        : {}),
+      ready: false,
       target
-    );
-    if (replacementInitial) {
-      return replacementInitial;
-    }
-    return this.#queue.shiftDelivery(target);
+    });
+    return initialDelivery;
   }
 
   removeGuest(

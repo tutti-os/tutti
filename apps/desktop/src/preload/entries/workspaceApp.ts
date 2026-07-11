@@ -8,7 +8,7 @@ import type {
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import { normalizeTuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/core";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
-import { DesktopApiError } from "../api/desktopApiError.ts";
+import { WorkspaceAppDesktopApiError } from "./workspaceAppDesktopApiError.ts";
 import { installWorkspaceAppInteractionForwarding } from "./workspaceAppInteractionForwarding.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 import { createWorkspaceAppUserProjectSnapshotBridge } from "./workspaceAppUserProjectSnapshots.ts";
@@ -154,7 +154,7 @@ function installWorkspaceAppMainFrameBridge(): void {
       : result.error.message;
     sendDiagnostic("get-context-failed", { message });
     if (!result.ok) {
-      throw new DesktopApiError(result.error);
+      throw new WorkspaceAppDesktopApiError(result.error);
     }
     throw new Error(message);
   }
@@ -167,7 +167,7 @@ function installWorkspaceAppMainFrameBridge(): void {
     if (result.ok) {
       return result.data;
     }
-    throw new DesktopApiError(result.error);
+    throw new WorkspaceAppDesktopApiError(result.error);
   }
 
   async function invokeWorkspaceAppRaw<TResult>(

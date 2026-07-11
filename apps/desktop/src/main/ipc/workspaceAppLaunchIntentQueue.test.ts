@@ -108,6 +108,11 @@ test("buffers launch intents until the registered guest is ready", () => {
   const initial = state.registerGuest(10, target);
   assert.equal(initial?.intent.route, "/a");
   assert.deepEqual(state.route(target, intent("/b")), []);
+  assert.deepEqual(state.markReady(10), []);
+  assert.deepEqual(state.consumeInitialDelivery(10, initial), {
+    intent: intent("/a"),
+    readyGeneration: 0
+  });
   assert.deepEqual(
     state.markReady(10).map((value) => value.intent.route),
     ["/b"]
@@ -124,6 +129,11 @@ test("buffers during reload and restores unconsumed initial intent", () => {
 
   const replacementInitial = state.registerGuest(11, target);
   assert.equal(replacementInitial?.intent.route, "/a");
+  assert.deepEqual(state.markReady(11), []);
+  assert.equal(
+    state.consumeInitialDelivery(11, replacementInitial).intent?.route,
+    "/a"
+  );
   assert.deepEqual(
     state.markReady(11).map((value) => value.intent.route),
     ["/b"]
@@ -228,7 +238,9 @@ test("does not let a surviving sibling consume a removed guest backlog", () => {
 
   state.markNotReady(11);
   assert.deepEqual(state.markReady(11), []);
-  assert.equal(state.registerGuest(12, target)?.intent.route, "/a");
+  const replacementInitial = state.registerGuest(12, target);
+  assert.equal(replacementInitial?.intent.route, "/a");
+  state.consumeInitialDelivery(12, replacementInitial);
   assert.deepEqual(
     state.markReady(12).map((value) => value.intent.route),
     ["/b"]
@@ -266,7 +278,9 @@ test("preserves failed guest backlog age and FIFO during replacement", () => {
   state.markDeliveryFailed(10, intent("/failed"));
   state.removeGuest(10, initial);
 
-  assert.equal(state.registerGuest(11, target)?.intent.route, "/initial");
+  const replacementInitial = state.registerGuest(11, target);
+  assert.equal(replacementInitial?.intent.route, "/initial");
+  state.consumeInitialDelivery(11, replacementInitial);
   assert.deepEqual(
     state.markReady(11).map((value) => value.intent.route),
     ["/before-ready", "/failed"]
@@ -320,8 +334,30 @@ test("expires an initial delivery held until a delayed context request", () => {
   });
   state.enqueue(target, intent("/initial"));
   const initial = state.registerGuest(10, target);
-  assert.equal(state.consumeInitialDelivery(initial)?.route, "/initial");
 
   nowMs = 1_101;
-  assert.equal(state.consumeInitialDelivery(initial), undefined);
+  assert.deepEqual(state.consumeInitialDelivery(10, initial), {
+    // Expired initial deliveries still clear the initial FIFO gate.
+  });
+});
+
+test("does not let a deferred initial drain cross a new document navigation", () => {
+  const state = new WorkspaceAppLaunchIntentDeliveryState();
+  state.enqueue(target, intent("/initial"));
+  const initial = state.registerGuest(10, target);
+  state.route(target, intent("/later"));
+  assert.deepEqual(state.markReady(10), []);
+  const consumption = state.consumeInitialDelivery(10, initial);
+  assert.equal(consumption.readyGeneration, 0);
+
+  state.markNotReady(10);
+  assert.deepEqual(
+    state.drainReadyGeneration(10, consumption.readyGeneration ?? -1),
+    []
+  );
+  assert.deepEqual(state.route(target, intent("/new-document")), []);
+  assert.deepEqual(
+    state.markReady(10).map((delivery) => delivery.intent.route),
+    ["/later", "/new-document"]
+  );
 });

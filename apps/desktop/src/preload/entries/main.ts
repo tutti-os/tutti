@@ -10,6 +10,8 @@ import { createUpdateDesktopApi } from "../api/update";
 import { createWallpaperDesktopApi } from "../api/wallpaper";
 import { createWorkspaceAppExternalDesktopApi } from "../api/workspaceAppExternal";
 import type { DesktopApi } from "../types";
+import { en } from "../../shared/i18n/locales/en.ts";
+import { zhCN } from "../../shared/i18n/locales/zh-CN.ts";
 import {
   desktopIpcChannels,
   type DesktopHostWindowLayoutPayload,
@@ -29,7 +31,9 @@ const desktopApi: DesktopApi = {
 
 if (isWorkspaceWindowPreload()) {
   desktopApi.browser = createBrowserDesktopApi();
-  desktopApi.workspaceAppExternal = createWorkspaceAppExternalDesktopApi();
+  desktopApi.workspaceAppExternal = createWorkspaceAppExternalDesktopApi(
+    resolveWorkspaceWindowUnknownErrorMessage()
+  );
 }
 
 ipcRenderer.on(
@@ -78,4 +82,14 @@ function isWorkspaceWindowPreload(): boolean {
   return (
     new URLSearchParams(globalThis.location.search).get("view") === "workspace"
   );
+}
+
+function resolveWorkspaceWindowUnknownErrorMessage(): string {
+  const locale = new URLSearchParams(globalThis.location.search)
+    .get("locale")
+    ?.trim()
+    .toLowerCase();
+  return locale?.startsWith("zh")
+    ? zhCN.common.unknownError
+    : en.common.unknownError;
 }

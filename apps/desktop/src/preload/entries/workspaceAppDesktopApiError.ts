@@ -1,9 +1,9 @@
 import type { DesktopApiErrorDetails } from "../../shared/contracts/ipc";
 
-// Keep the preload error class local to the preload graph. Re-exporting the
-// main-process error module makes Rollup create a shared chunk that controlled
-// guest preload entries are not allowed to require.
-export class DesktopApiError extends Error {
+// Guest preload entries must not require Rollup shared chunks. Keep this small
+// transport error class inside the workspace-app entry graph instead of
+// importing the desktop preload's copy.
+export class WorkspaceAppDesktopApiError extends Error {
   readonly code: string;
   readonly reason?: string;
   readonly params?: Record<string, unknown>;

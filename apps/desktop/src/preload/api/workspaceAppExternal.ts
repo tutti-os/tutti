@@ -11,7 +11,9 @@ import type {
 import { ipcRenderer, type IpcRendererEvent } from "electron";
 import { normalizeDesktopApiErrorDetails } from "../../shared/desktopApiError.ts";
 
-export function createWorkspaceAppExternalDesktopApi(): DesktopWorkspaceAppExternalHostApi {
+export function createWorkspaceAppExternalDesktopApi(
+  unknownErrorMessage: string
+): DesktopWorkspaceAppExternalHostApi {
   return {
     onRequest(listener) {
       const handler = (
@@ -23,7 +25,7 @@ export function createWorkspaceAppExternalDesktopApi(): DesktopWorkspaceAppExter
             sendResponse(request.requestId, data);
           })
           .catch((error: unknown) => {
-            sendErrorResponse(request.requestId, error);
+            sendErrorResponse(request.requestId, error, unknownErrorMessage);
           });
       };
 
@@ -55,12 +57,16 @@ function sendResponse(
   ipcRenderer.send(desktopIpcChannels.appExternal.rendererResponse, response);
 }
 
-function sendErrorResponse(requestId: string, error: unknown): void {
+function sendErrorResponse(
+  requestId: string,
+  error: unknown,
+  unknownErrorMessage: string
+): void {
   const response: DesktopWorkspaceAppExternalRendererResponse = {
     requestId,
     result: {
       ok: false,
-      error: normalizeDesktopApiErrorDetails(error)
+      error: normalizeDesktopApiErrorDetails(error, unknownErrorMessage)
     }
   };
   ipcRenderer.send(desktopIpcChannels.appExternal.rendererResponse, response);
