@@ -16,6 +16,7 @@ import {
   isToolTestRelevant,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+import { formatFailureExcerpt } from "./run-validation-lanes.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
@@ -566,51 +567,13 @@ function failureExcerpt(path, lineCount) {
     return { label: "full log", text: "", truncated: false };
   }
 
-  const content = readFileSync(path, "utf8");
-  const lines = splitLines(content);
-  const failureMarkerIndex = lines.findIndex((line) =>
-    line.includes("✖ failing tests:")
-  );
-  if (failureMarkerIndex !== -1) {
-    const excerpt = stripPnpmFailureBoilerplate(
-      lines.slice(failureMarkerIndex)
-    );
-    const truncated = excerpt.length > lineCount;
-    return {
-      label: truncated
-        ? `failure excerpt last ${lineCount} lines`
-        : "failure excerpt",
-      text: excerpt.slice(-lineCount).join("\n"),
-      truncated
-    };
-  }
-
-  const commandlessLines =
-    lines[0]?.startsWith("$ ") && lines[1] === "" ? lines.slice(2) : lines;
-  const truncated = commandlessLines.length > lineCount;
+  const excerpt = formatFailureExcerpt(readFileSync(path, "utf8"), lineCount);
   return {
-    label: truncated ? `tail last ${lineCount} lines` : "full log",
-    text: commandlessLines.slice(-lineCount).join("\n"),
-    truncated
+    ...excerpt,
+    label: excerpt.truncated
+      ? `failure excerpt last ${lineCount} lines`
+      : "failure output"
   };
-}
-
-function splitLines(content) {
-  if (content.length === 0) {
-    return [];
-  }
-  return content.endsWith("\n")
-    ? content.slice(0, -1).split("\n")
-    : content.split("\n");
-}
-
-function stripPnpmFailureBoilerplate(lines) {
-  return lines.filter(
-    (line) =>
-      !line.includes("ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL") &&
-      !line.startsWith("Exit status ") &&
-      !/^\/.*:$/.test(line)
-  );
 }
 
 const currentPath = fileURLToPath(import.meta.url);

@@ -8,13 +8,16 @@ import {
 import readline from "node:readline";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { formatSlowestLanes } from "./run-validation-lanes.mjs";
+import {
+  formatFailureExcerpt,
+  formatSlowestLanes
+} from "./run-validation-lanes.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = join(scriptDirectory, "..", "..");
 const pnpmCommand = resolvePnpmCommand();
 const verbose = process.argv.includes("--verbose");
-const failureLineLimit = readPositiveIntegerOption("--tail-lines", 120);
+const failureLinesPerTask = readPositiveIntegerOption("--tail-lines", 120);
 const tmpRoot = join(workspaceRoot, ".tmp", "check-full-runs");
 
 const phases = [
@@ -91,7 +94,7 @@ export async function main() {
   const durationMs = Date.now() - startedAt;
   const summary = {
     durationMs,
-    failureLineLimit,
+    failureLinesPerTask,
     runDirectory,
     startedAt: new Date(startedAt).toISOString(),
     verbose,
@@ -180,6 +183,8 @@ function runTask(task, phase, runDirectory) {
           console.log(
             `[${task.label}] ${exitCode === 0 ? "passed" : "failed"} ${formatDuration(result.durationMs)}`
           );
+        } else if (exitCode !== 0) {
+          printTaskFailure(result);
         }
         resolveResult(result);
       });
@@ -191,90 +196,24 @@ function printFailureSummary(failures, runDirectory) {
   console.error(
     `failed tasks: ${failures.map((failure) => failure.label).join(", ")}`
   );
-
-  const failureLines = failures.map((failure) =>
-    readFailureLines(failure.logPath)
-  );
-  const budgets = allocateFailureLineBudgets(
-    failureLines.map((lines) => lines.length),
-    failureLineLimit
-  );
-
-  for (const [index, failure] of failures.entries()) {
-    const lines = failureLines[index];
-    const budget = budgets[index];
-    const truncated = lines.length > budget;
-    const label = truncated
-      ? `tail last ${budget} line(s)`
-      : `${budget} failure line(s)`;
-    console.error(
-      `\n--- ${failure.label} ${label} (full log: ${failure.logPathRelative}) ---`
-    );
-    if (budget > 0) {
-      console.error(lines.slice(-budget).join("\n"));
-    }
-  }
-
   console.error(
     `\nfull logs: ${relative(workspaceRoot, runDirectory)}\nRerun with live output: pnpm check:full -- --verbose`
   );
 }
 
-function readFailureLines(path) {
-  const content = readFileSync(path, "utf8");
-  const lines = splitLines(content);
-  const failureMarkerIndex = lines.findIndex((line) =>
-    line.includes("✖ failing tests:")
+function printTaskFailure(failure) {
+  const excerpt = formatFailureExcerpt(
+    readFileSync(failure.logPath, "utf8"),
+    failureLinesPerTask
   );
-  const relevantLines =
-    failureMarkerIndex === -1
-      ? lines[0]?.startsWith("$ ") && lines[1] === ""
-        ? lines.slice(2)
-        : lines
-      : lines.slice(failureMarkerIndex);
-  return relevantLines.filter(
-    (line) =>
-      !line.includes("ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL") &&
-      !line.startsWith("Exit status ") &&
-      !/^\/.*:$/u.test(line)
+  const label = excerpt.truncated
+    ? `failure excerpt last ${failureLinesPerTask} lines`
+    : "failure output";
+  console.error(
+    `\n[${failure.label}] failed in ${formatDuration(failure.durationMs)}`
   );
-}
-
-export function allocateFailureLineBudgets(lengths, totalLineLimit) {
-  const normalizedLengths = lengths.map((length) =>
-    Math.max(0, Number.isFinite(length) ? Math.floor(length) : 0)
-  );
-  const budgets = normalizedLengths.map(() => 0);
-  let remaining = Math.max(
-    0,
-    Number.isFinite(totalLineLimit) ? Math.floor(totalLineLimit) : 0
-  );
-  let active = normalizedLengths
-    .map((length, index) => ({ index, length }))
-    .filter(({ length }) => length > 0);
-
-  for (const { index } of active) {
-    if (remaining === 0) {
-      return budgets;
-    }
-    budgets[index] = 1;
-    remaining -= 1;
-  }
-
-  while (remaining > 0 && active.length > 0) {
-    const share = Math.max(1, Math.floor(remaining / active.length));
-    for (const { index, length } of active) {
-      if (remaining === 0) {
-        break;
-      }
-      const granted = Math.min(share, length - budgets[index], remaining);
-      budgets[index] += granted;
-      remaining -= granted;
-    }
-    active = active.filter(({ index, length }) => budgets[index] < length);
-  }
-
-  return budgets;
+  console.error(`--- ${label} (full log: ${failure.logPathRelative}) ---`);
+  console.error(excerpt.text);
 }
 
 function resolvePnpmCommand() {
@@ -318,15 +257,6 @@ function shellQuote(value) {
 
 function sanitizeFileName(value) {
   return value.replace(/[^A-Za-z0-9_.-]+/gu, "-");
-}
-
-function splitLines(content) {
-  if (content.length === 0) {
-    return [];
-  }
-  return content.endsWith("\n")
-    ? content.slice(0, -1).split("\n")
-    : content.split("\n");
 }
 
 function formatDuration(durationMs) {

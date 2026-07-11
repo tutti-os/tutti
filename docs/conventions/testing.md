@@ -14,8 +14,8 @@ This document defines the repository-managed test discovery and gate policy.
 lint and test entrypoints. This prevents concurrent validation lanes from
 writing the same generated assets. It captures complete task output under
 `.tmp/check-full-runs` and prints compact phase summaries by default. Its failed
-tasks share a global 120-line output budget; use `--verbose` for live output or
-`--tail-lines <n>` to change the shared budget.
+tasks print filtered error excerpts as soon as they finish; use `--verbose` for
+live output or `--tail-lines <n>` to change each failed task's excerpt size.
 
 ## Workspace Test Discovery
 
@@ -82,8 +82,11 @@ path, plus a timestamped run directory containing the same `summary.json`.
 Inspect that manifest first when an AI agent needs to identify the slow or
 failed owner without scanning every log.
 
-Failures print a bounded tail and the full log path. Use `--tail-lines <n>` to
-change the displayed failure tail and `--max-parallel <n>` to reduce local
+Failures print a filtered, bounded excerpt and the full log path as soon as the
+lane finishes. Command echoes, package-manager failure wrappers, terminal color
+escapes, and consecutive duplicate lines are removed while assertion text,
+source locations, and stack frames are preserved. Use `--tail-lines <n>` to
+change each displayed failure excerpt and `--max-parallel <n>` to reduce local
 resource pressure.
 
 The TypeScript runner uses up to four package lanes locally. CI runs one package

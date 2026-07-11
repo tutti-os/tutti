@@ -61,9 +61,11 @@ That root command now uses a repository-owned Node orchestration script so the s
 
 Compact output is the default for both local and automated callers. Each task
 writes its complete output under `.tmp/check-full-runs`; successful phases print
-only timing summaries, and failed tasks share one 120-line terminal output
-budget. Use `pnpm check:full -- --verbose` only when live child-process output is
-needed, or `--tail-lines <n>` to adjust the shared failure budget. The latest
+only timing summaries. A failed task immediately prints up to 120 filtered
+lines, preserving its assertion, location, and stack context while removing
+runner boilerplate and repeated consecutive lines. Use
+`pnpm check:full -- --verbose` only when live child-process output is needed, or
+`--tail-lines <n>` to adjust each failed task's excerpt. The latest
 machine-readable task results and log paths are recorded in
 `.tmp/check-full-runs/latest.json`.
 

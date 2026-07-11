@@ -7,6 +7,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { join, relative } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 export async function runValidationLanes({
   lanes,
@@ -31,6 +32,7 @@ export async function runValidationLanes({
     lanes,
     maxParallel,
     runDirectory,
+    tailLines,
     workspaceRoot
   });
   const durationMs = Date.now() - startedAt;
@@ -70,20 +72,18 @@ export async function runValidationLanes({
     `failed lanes: ${failures.map((failure) => failure.label).join(", ")}`
   );
 
-  for (const failure of failures) {
-    const tail = tailFile(failure.logPath, tailLines);
-    const header = tail.truncated
-      ? `${failure.label} tail last ${tailLines} lines (full log: ${failure.logPathRelative})`
-      : `${failure.label} full log`;
-    console.error(`\n--- ${header} ---`);
-    console.error(tail.text);
-  }
   console.error(`\nfull logs: ${relative(workspaceRoot, runDirectory)}`);
 
   return { exitCode: 1, results };
 }
 
-async function runLanes({ lanes, maxParallel, runDirectory, workspaceRoot }) {
+async function runLanes({
+  lanes,
+  maxParallel,
+  runDirectory,
+  tailLines,
+  workspaceRoot
+}) {
   const results = [];
   let nextIndex = 0;
   const workerCount = Math.max(1, Math.min(maxParallel, lanes.length));
@@ -97,6 +97,7 @@ async function runLanes({ lanes, maxParallel, runDirectory, workspaceRoot }) {
             index,
             lane: lanes[index],
             runDirectory,
+            tailLines,
             workspaceRoot
           })
         );
@@ -107,7 +108,7 @@ async function runLanes({ lanes, maxParallel, runDirectory, workspaceRoot }) {
   return results.sort((left, right) => left.index - right.index);
 }
 
-function runLane({ index, lane, runDirectory, workspaceRoot }) {
+function runLane({ index, lane, runDirectory, tailLines, workspaceRoot }) {
   const logPath = join(runDirectory, `${sanitizeFileName(lane.key)}.log`);
   const logStream = createWriteStream(logPath, { flags: "w" });
   const startedAt = Date.now();
@@ -143,7 +144,7 @@ function runLane({ index, lane, runDirectory, workspaceRoot }) {
 
     function finish(exitCode) {
       logStream.end(() => {
-        resolve({
+        const result = {
           durationMs: Date.now() - startedAt,
           exitCode,
           index,
@@ -151,7 +152,11 @@ function runLane({ index, lane, runDirectory, workspaceRoot }) {
           label: lane.label,
           logPath,
           logPathRelative: relative(workspaceRoot, logPath)
-        });
+        };
+        if (exitCode !== 0) {
+          printFailure(result, tailLines);
+        }
+        resolve(result);
       });
     }
   });
@@ -212,19 +217,80 @@ function printLaneTimingSummary(
   write(`slowest lanes: ${slowest} (details: ${latestPath})`);
 }
 
-function tailFile(path, lineCount) {
+function printFailure(failure, lineCount) {
+  const excerpt = failureExcerptFromFile(failure.logPath, lineCount);
+  const header = excerpt.truncated
+    ? `${failure.label} failure excerpt last ${lineCount} lines (full log: ${failure.logPathRelative})`
+    : `${failure.label} failure output`;
+  console.error(`\n--- ${header} ---`);
+  console.error(excerpt.text);
+}
+
+function failureExcerptFromFile(path, lineCount) {
   if (!existsSync(path)) {
     return { text: "", truncated: false };
   }
-  const content = readFileSync(path, "utf8");
-  const lines =
-    content.length === 0
-      ? []
-      : content.endsWith("\n")
-        ? content.slice(0, -1).split("\n")
-        : content.split("\n");
+  return formatFailureExcerpt(readFileSync(path, "utf8"), lineCount);
+}
+
+export function formatFailureExcerpt(content, lineCount) {
+  const lines = splitLines(content).map((line) =>
+    stripVTControlCharacters(line)
+  );
+  const failureMarkerIndex = lines.findIndex((line) =>
+    line.includes("✖ failing tests:")
+  );
+  const relevantLines =
+    failureMarkerIndex === -1
+      ? lines[0]?.startsWith("$ ") && lines[1] === ""
+        ? lines.slice(2)
+        : lines
+      : lines.slice(failureMarkerIndex);
+  const filteredLines = collapseRepeatedLines(
+    relevantLines.filter((line) => !isFailureBoilerplate(line))
+  );
+  const limit = Math.max(
+    0,
+    Number.isFinite(lineCount) ? Math.floor(lineCount) : 0
+  );
   return {
-    text: lines.slice(-lineCount).join("\n"),
-    truncated: lines.length > lineCount
+    text: limit === 0 ? "" : filteredLines.slice(-limit).join("\n"),
+    truncated: filteredLines.length > limit
   };
+}
+
+function isFailureBoilerplate(line) {
+  return (
+    line.includes("ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL") ||
+    line.startsWith("Exit status ") ||
+    /^\s*ELIFECYCLE\s+Command failed/u.test(line) ||
+    /^>\s+\S+@\S+\s+\S+\s+(?:\/|[A-Za-z]:\\)/u.test(line) ||
+    /^>\s+(?:go|jest|node|npm|pnpm|tsx|vitest|yarn)\b/u.test(line)
+  );
+}
+
+function collapseRepeatedLines(lines) {
+  const collapsed = [];
+  for (let index = 0; index < lines.length; ) {
+    const line = lines[index];
+    let nextIndex = index + 1;
+    while (nextIndex < lines.length && lines[nextIndex] === line) {
+      nextIndex += 1;
+    }
+    const count = nextIndex - index;
+    collapsed.push(
+      count > 1 && line !== "" ? `${line} (repeated ${count} times)` : line
+    );
+    index = nextIndex;
+  }
+  return collapsed;
+}
+
+function splitLines(content) {
+  if (content.length === 0) {
+    return [];
+  }
+  return content.endsWith("\n")
+    ? content.slice(0, -1).split("\n")
+    : content.split("\n");
 }
