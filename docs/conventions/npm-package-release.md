@@ -247,6 +247,7 @@ The stable package entrypoints are:
 @tutti-os/workspace-external-core/contracts
 @tutti-os/workspace-external-core/core
 @tutti-os/workspace-external-core/host
+@tutti-os/workspace-external-core/host/conformance
 @tutti-os/workspace-external-core/rich-text
 @tutti-os/workspace-file-preview
 @tutti-os/workspace-file-preview/core

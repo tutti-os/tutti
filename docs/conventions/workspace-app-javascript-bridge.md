@@ -152,3 +152,25 @@ product transport tests. Release gates cover:
 
 Public subpaths, package manifests, the fixed release roster, README examples,
 and consumer dependency versions must be updated together.
+
+The public harness is available from
+`@tutti-os/workspace-external-core/host/conformance`. It is runner-neutral: a
+product test runner registers the exported cases and supplies a driver whose
+`createHost()` calls the product's real bridge factory. The returned HostPort
+controls and observes the real product transport; it must not be implemented by
+passing the controller directly to `createTuttiExternalBridge`. Stable release
+qualification uses the fixed `stable26` profile and may not remove operations
+or provider/feature values. Partial migration profiles, when needed, must be
+separate named profiles rather than caller mutations of `stable26`.
+The driver does not receive the expected profile as input, so capability
+rosters must come from the same product configuration used outside tests.
+
+The stable cases actively invoke every value-domain member and all ten
+activation-gated operations; comparing capability arrays alone is insufficient.
+They also inject invalid results for every constrained request/upload result,
+exercise structured request and notification failures, and verify each event
+stream's initial/live ordering and cleanup. Context and user-project streams
+must replay their latest value; repeated equal launch intents must remain
+distinct events.
+Upload qualification includes an in-flight abort after prepare and requires the
+product transport to observe transfer abort, one cancel, and no completion.

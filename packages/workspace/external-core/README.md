@@ -62,6 +62,60 @@ synchronously when absent; Promise-returning methods reject.
 The package root intentionally does not re-export the `./host` runtime, so
 ordinary Workspace Apps do not bundle host construction code.
 
+## Host Conformance
+
+Stable host integrations must also run the public, test-runner-neutral suite:
+
+```ts
+import {
+  createTuttiExternalConformanceController,
+  type TuttiExternalConformanceDriver
+} from "@tutti-os/workspace-external-core/host/conformance";
+
+const driver: TuttiExternalConformanceDriver = {
+  createHost() {
+    // Construct the product's real bridge and transport here. `port` controls
+    // that transport; it must not replace the product adapter.
+    return createProductConformanceHost();
+  }
+};
+
+const controller = createTuttiExternalConformanceController(driver);
+
+// Register each case with node:test, Vitest, Jest, or another runner.
+for (const conformanceCase of controller.cases) {
+  test(conformanceCase.title, () => controller.runCase(conformanceCase));
+}
+```
+
+The driver is not given the expected profile: it must construct capabilities
+from the product's normal production factory/configuration. The fixed
+`stable26` profile cannot be narrowed by a host. It requires exactly
+26 operations, all six mention providers, all six workspace features, all six
+Agent providers, and every managed-AI provider in the public contract. The
+exhaustive typed fixtures and framework-neutral cases cover operation routing,
+value domains, input/result normalization, structured errors, event ordering,
+listener isolation, cleanup, and upload progress/abort behavior. Product tests
+must map `TuttiExternalConformanceHostPort` to their real transport and factory;
+using a host adapter directly in place of the product factory does not prove
+integration conformance.
+
+The exported cases, including each `run` function, are deeply frozen. Their
+public case type is readonly, and the exported `stable26` profile type preserves
+the exact required readonly operation/provider/feature tuples rather than the
+optional capability shape used by general hosts.
+
+Concretely, the stable suite calls all ten activation-gated operations while
+inactive and requires zero transport calls; rejects an invalid result for every
+request and upload operation whose result is constrained (while preserving the
+unknown `app.getContext()` result); routes every public mention, workspace,
+Agent, and managed-AI value; checks request and notification error mapping; and
+exercises initial-before-live ordering and cleanup for all three event streams.
+It additionally verifies latest-value replay for app context and user projects,
+and verifies that equal launch intents are not deduplicated.
+The upload case also pauses a real product transfer after prepare, aborts it
+through `AbortSignal`, and requires exactly one cancel with no completion.
+
 ## Rich Text At Providers
 
 Workspace apps that use `@tutti-os/ui-rich-text` can adapt host mention
