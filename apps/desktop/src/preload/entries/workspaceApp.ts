@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
   DesktopIpcResult,
   DesktopWorkspaceAppContext,
+  DesktopWorkspaceAppContextPatch,
   DesktopWorkspaceAppExternalRendererEvent
 } from "../../shared/contracts/ipc";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
@@ -9,6 +10,11 @@ import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.t
 import { installWorkspaceAppInteractionForwarding } from "./workspaceAppInteractionForwarding.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 import { createWorkspaceAppUserProjectSnapshotBridge } from "./workspaceAppUserProjectSnapshots.ts";
+import {
+  createWorkspaceAppContextStore,
+  isWorkspaceAppContext,
+  isWorkspaceAppContextPatch
+} from "./workspaceAppContextStore.ts";
 
 const appContextChannels = {
   changed: "workspace-app-context:changed",
@@ -53,53 +59,24 @@ function installWorkspaceAppMainFrameBridge(): void {
     }
   });
 
-  const contextListeners = new Set<
-    (context: DesktopWorkspaceAppContext) => void
-  >();
   const launchIntentListeners = new Set<
     (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
   >();
   const pendingLaunchIntents: TuttiExternalWorkspaceOpenRouteIntent[] = [];
   const userProjectSnapshots = createWorkspaceAppUserProjectSnapshotBridge();
-  let cachedContext: DesktopWorkspaceAppContext | null = null;
-  let pendingContext: Promise<DesktopWorkspaceAppContext> | null = null;
-
+  const contextStore = createWorkspaceAppContextStore({
+    load: resolveHostContext
+  });
   const appContext: WorkspaceAppHostContext = {
-    async get() {
-      if (cachedContext) {
-        return cachedContext;
-      }
-      if (pendingContext) {
-        return pendingContext;
-      }
-
-      pendingContext = resolveHostContext();
-      try {
-        const context = await pendingContext;
-        cachedContext = context;
-        return context;
-      } finally {
-        pendingContext = null;
-      }
-    },
+    get: contextStore.get,
     subscribe(listener) {
-      contextListeners.add(listener);
-      void appContext
-        .get()
-        .then((context) => {
-          if (contextListeners.has(listener)) {
-            listener(context);
-          }
-        })
-        .catch((error: unknown) => {
-          sendDiagnostic("subscribe-replay-failed", {
-            message: error instanceof Error ? error.message : String(error)
-          });
+      const unsubscribe = contextStore.subscribe(listener);
+      void contextStore.get().catch((error: unknown) => {
+        sendDiagnostic("subscribe-replay-failed", {
+          message: error instanceof Error ? error.message : String(error)
         });
-
-      return () => {
-        contextListeners.delete(listener);
-      };
+      });
+      return unsubscribe;
     }
   };
 
@@ -127,12 +104,9 @@ function installWorkspaceAppMainFrameBridge(): void {
 
   ipcRenderer.on(
     appContextChannels.changed,
-    (_event: IpcRendererEvent, payload: DesktopWorkspaceAppContext) => {
-      if (isWorkspaceAppContext(payload)) {
-        cachedContext = payload;
-        for (const listener of contextListeners) {
-          listener(payload);
-        }
+    (_event: IpcRendererEvent, payload: DesktopWorkspaceAppContextPatch) => {
+      if (isWorkspaceAppContextPatch(payload)) {
+        contextStore.publish(payload);
       }
     }
   );
@@ -207,16 +181,6 @@ function installWorkspaceAppMainFrameBridge(): void {
       event
     });
   }
-}
-
-function isWorkspaceAppContext(
-  value: unknown
-): value is DesktopWorkspaceAppContext {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as DesktopWorkspaceAppContext).locale === "string"
-  );
 }
 
 function isWorkspaceAppExternalRendererEvent(

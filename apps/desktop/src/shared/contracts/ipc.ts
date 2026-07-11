@@ -436,6 +436,10 @@ export interface DesktopWorkspaceAppContext {
   workspaceId?: string;
 }
 
+export type DesktopWorkspaceAppContextPatch = Partial<
+  Pick<DesktopWorkspaceAppContext, "agentBound" | "locale">
+>;
+
 export type DesktopWorkspaceOpenFeatureRequest =
   TuttiExternalWorkspaceOpenFeatureInput;
 

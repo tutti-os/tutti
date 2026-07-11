@@ -14,6 +14,7 @@ import {
   type DesktopWorkspaceAppExternalRendererResponse,
   type DesktopWorkspaceAppExternalRendererResult,
   type DesktopWorkspaceAppContext,
+  type DesktopWorkspaceAppContextPatch,
   type DesktopWorkspaceAppFileUploadCancelInput,
   type DesktopWorkspaceAppFileUploadCompleteInput,
   type DesktopWorkspaceAppFileUploadPrepareInput,
@@ -1472,7 +1473,7 @@ function normalizeWorkspaceAppOpenUrlLogPayload(
 }
 
 function broadcastWorkspaceAppContext(
-  payload: Partial<DesktopWorkspaceAppContext>
+  payload: DesktopWorkspaceAppContextPatch
 ): void {
   for (const contents of [...workspaceAppGuestWebContents]) {
     if (contents.isDestroyed()) {
