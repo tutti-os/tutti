@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 )
 
@@ -24,14 +25,19 @@ func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContent
 		case "image":
 			mimeType := strings.TrimSpace(block.MimeType)
 			data := strings.TrimSpace(block.Data)
+			imageURL := strings.TrimSpace(block.URL)
 			attachmentID := strings.TrimSpace(block.AttachmentID)
-			if !runtimePromptImageMimeTypeSupported(mimeType) || (data == "" && attachmentID == "") {
+			if !runtimePromptImageMimeTypeSupported(mimeType) ||
+				(data == "" && imageURL == "" && attachmentID == "") ||
+				(data != "" && imageURL != "") ||
+				(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 				continue
 			}
 			out = append(out, PromptContentBlock{
 				Type:         "image",
 				MimeType:     mimeType,
 				Data:         data,
+				URL:          imageURL,
 				AttachmentID: attachmentID,
 				Name:         strings.TrimSpace(block.Name),
 			})
@@ -63,14 +69,19 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 			out = append(out, PromptContentBlock{Type: "text", Text: text})
 		case "image":
 			mimeType := strings.TrimSpace(block.MimeType)
+			data := strings.TrimSpace(block.Data)
+			imageURL := strings.TrimSpace(block.URL)
 			if !runtimePromptImageMimeTypeSupported(mimeType) ||
-				(strings.TrimSpace(block.Data) == "" && strings.TrimSpace(block.AttachmentID) == "") {
+				(data == "" && imageURL == "" && strings.TrimSpace(block.AttachmentID) == "") ||
+				(data != "" && imageURL != "") ||
+				(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 				continue
 			}
 			out = append(out, PromptContentBlock{
 				Type:         "image",
 				MimeType:     mimeType,
-				Data:         strings.TrimSpace(block.Data),
+				Data:         data,
+				URL:          imageURL,
 				AttachmentID: strings.TrimSpace(block.AttachmentID),
 				Name:         strings.TrimSpace(block.Name),
 			})
@@ -88,6 +99,29 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 		}
 	}
 	return out
+}
+
+func validateRuntimePromptContentImages(content []PromptContentBlock) error {
+	for _, block := range content {
+		if strings.TrimSpace(block.Type) != "image" {
+			continue
+		}
+		data := strings.TrimSpace(block.Data)
+		imageURL := strings.TrimSpace(block.URL)
+		attachmentID := strings.TrimSpace(block.AttachmentID)
+		if !runtimePromptImageMimeTypeSupported(block.MimeType) ||
+			(data == "" && imageURL == "" && attachmentID == "") ||
+			(data != "" && imageURL != "") ||
+			(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
+			return ErrPromptImageUnsupported
+		}
+	}
+	return nil
+}
+
+func runtimePromptImageURLSafe(value string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil && parsed.Opaque == ""
 }
 
 func runtimePromptImageMimeTypeSupported(mimeType string) bool {

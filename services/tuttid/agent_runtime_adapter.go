@@ -181,6 +181,7 @@ func runtimePromptContentFromService(content []agentservice.PromptContentBlock) 
 			Text:         block.Text,
 			MimeType:     block.MimeType,
 			Data:         block.Data,
+			URL:          block.URL,
 			AttachmentID: block.AttachmentID,
 			Name:         block.Name,
 			Path:         block.Path,

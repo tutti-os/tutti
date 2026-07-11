@@ -402,6 +402,43 @@ describe("AgentQueuedPromptPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not hydrate or fetch queued HTTPS image URLs in the owner", () => {
+    const readSessionAttachment = vi.fn();
+    const url = "https://bucket.example/image.webp?token=secret";
+    setAgentActivityRuntimeForTests({ readSessionAttachment } as never);
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          {
+            id: "queued-url",
+            content: [
+              {
+                type: "image",
+                mimeType: "image/webp",
+                url,
+                attachmentId: "remote-image",
+                name: "image.webp"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        agentSessionId="session-1"
+        workspaceId="workspace-1"
+      />
+    );
+
+    expect(
+      container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+    ).not.toBeInTheDocument();
+    expect(readSessionAttachment).not.toHaveBeenCalled();
+  });
+
   it("emits queued mention link clicks without toggling the queue panel", () => {
     const onLinkClick = vi.fn();
     const { container } = render(

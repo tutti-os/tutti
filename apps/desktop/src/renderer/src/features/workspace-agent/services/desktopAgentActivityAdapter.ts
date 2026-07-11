@@ -545,6 +545,9 @@ function toTuttidPromptContentBlocks(
     if (block.data !== undefined) {
       nextBlock.data = block.data;
     }
+    if (block.url !== undefined) {
+      nextBlock.url = block.url;
+    }
     if (block.mimeType !== undefined) {
       nextBlock.mimeType =
         block.mimeType as TuttidAgentPromptContentBlock["mimeType"];

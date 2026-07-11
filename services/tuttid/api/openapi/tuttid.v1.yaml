@@ -7646,6 +7646,12 @@ components:
             - image/webp
         data:
           type: string
+          description: Base64-encoded image bytes. Mutually exclusive with url.
+        url:
+          type: string
+          format: uri
+          pattern: '^https://[^@/?#\s]+([/?#]|$)'
+          description: HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
         attachmentId:
           type: string
         name:

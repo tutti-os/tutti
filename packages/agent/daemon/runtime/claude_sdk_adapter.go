@@ -276,19 +276,7 @@ func (a *ClaudeCodeSDKAdapter) Close(_ context.Context, session Session) error {
 }
 
 func (*ClaudeCodeSDKAdapter) ValidatePromptContent(_ Session, content []PromptContentBlock) error {
-	if !promptContentHasImage(content) {
-		return nil
-	}
-	for _, block := range content {
-		if strings.TrimSpace(block.Type) != "image" {
-			continue
-		}
-		if !runtimePromptImageMimeTypeSupported(strings.TrimSpace(block.MimeType)) ||
-			(strings.TrimSpace(block.Data) == "" && strings.TrimSpace(block.AttachmentID) == "") {
-			return ErrPromptImageUnsupported
-		}
-	}
-	return nil
+	return validateRuntimePromptContentImages(content)
 }
 
 func (a *ClaudeCodeSDKAdapter) Exec(
@@ -2696,7 +2684,16 @@ func promptContentForClaudeSDK(content []PromptContentBlock, fallback string) []
 		case "image":
 			mimeType := strings.TrimSpace(block.MimeType)
 			data := strings.TrimSpace(block.Data)
-			if !runtimePromptImageMimeTypeSupported(mimeType) || data == "" {
+			imageURL := strings.TrimSpace(block.URL)
+			if !runtimePromptImageMimeTypeSupported(mimeType) || (data == "" && imageURL == "") {
+				continue
+			}
+			if imageURL != "" {
+				blocks = append(blocks, map[string]any{
+					"type":     "image",
+					"mimeType": mimeType,
+					"url":      imageURL,
+				})
 				continue
 			}
 			blocks = append(blocks, map[string]any{

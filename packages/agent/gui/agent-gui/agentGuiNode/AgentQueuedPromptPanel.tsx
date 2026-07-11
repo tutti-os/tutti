@@ -43,6 +43,7 @@ type QueuedPromptImageBlock = AgentPromptContentBlock & {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   attachmentId?: string;
   data?: string;
+  url?: string;
   path?: string;
 };
 
@@ -82,6 +83,23 @@ function queuedPromptImageDataUrl(
   return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
 }
 
+function queuedPromptImageHasSafeRemoteUrl(
+  image: QueuedPromptImageBlock
+): boolean {
+  const value = image.url?.trim() ?? "";
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 function queuedPromptImageKey(
   queuedPrompt: AgentGUIQueuedPromptVM,
   image: QueuedPromptImageBlock,
@@ -116,6 +134,7 @@ function useQueuedPromptImageSources(input: {
         const path = image.path?.trim() ?? "";
         return (
           !queuedPromptImageDataUrl(image) &&
+          !queuedPromptImageHasSafeRemoteUrl(image) &&
           !sources.has(key) &&
           Boolean(attachmentId || path) &&
           Boolean(workspaceId)

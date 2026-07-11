@@ -9,6 +9,16 @@ import (
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt := time.Now()
+	normalizedContent, _, err := normalizePromptContent(input.Content)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
+	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
+	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
+		"content_block_count": len(normalizedContent),
+	})
+	nodeStartedAt = time.Now()
 	runtimeSession, err := s.ensureRuntimeSession(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_session_ready", "", nodeStartedAt, err)
@@ -17,16 +27,6 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	provider := strings.TrimSpace(runtimeSession.Provider)
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "runtime_session_ready", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.send.runtime_session_ready", workspaceID, agentSessionID, input.Metadata, nil)
-	nodeStartedAt = time.Now()
-	normalizedContent, _, err := normalizePromptContent(input.Content)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", provider, nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
-		"content_block_count": len(normalizedContent),
-	})
 	nodeStartedAt = time.Now()
 	if err := s.validatePromptContentForExec(ctx, workspaceID, agentSessionID, normalizedContent); err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt, err)

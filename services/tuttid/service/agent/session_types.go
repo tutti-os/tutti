@@ -520,6 +520,7 @@ type PromptContentBlock struct {
 	Text         string `json:"text,omitempty"`
 	MimeType     string `json:"mimeType,omitempty"`
 	Data         string `json:"data,omitempty"`
+	URL          string `json:"url,omitempty"`
 	AttachmentID string `json:"attachmentId,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Path         string `json:"path,omitempty"`

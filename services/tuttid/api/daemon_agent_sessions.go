@@ -617,6 +617,9 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 		if block.Data != nil {
 			item.Data = *block.Data
 		}
+		if block.Url != nil {
+			item.URL = *block.Url
+		}
 		if block.AttachmentId != nil {
 			item.AttachmentID = *block.AttachmentId
 		}

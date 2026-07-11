@@ -123,9 +123,12 @@ export function normalizeAgentPromptContentBlocks(
       const mimeType = block.mimeType?.trim();
       const attachmentId = block.attachmentId?.trim();
       const data = block.data?.trim();
+      const url = block.url?.trim();
       const imagePath = block.path?.trim();
       if (
-        (!attachmentId && !data && !imagePath) ||
+        (!attachmentId && !data && !url && !imagePath) ||
+        (data && url) ||
+        (url && !isSafePromptImageUrl(url)) ||
         (mimeType !== "image/png" &&
           mimeType !== "image/jpeg" &&
           mimeType !== "image/webp")
@@ -135,11 +138,14 @@ export function normalizeAgentPromptContentBlocks(
       result.push({
         type: "image",
         mimeType,
-        ...(attachmentId
-          ? { attachmentId }
-          : imagePath
-            ? { path: imagePath }
-            : { data }),
+        ...(attachmentId ? { attachmentId } : {}),
+        ...(url
+          ? { url }
+          : data
+            ? { data }
+            : imagePath
+              ? { path: imagePath }
+              : {}),
         ...(block.name?.trim() ? { name: block.name.trim() } : {})
       });
       continue;
@@ -182,6 +188,20 @@ export function normalizeAgentPromptContentBlocks(
   return result;
 }
 
+function isSafePromptImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function agentPromptContentDisplayText(
   content: readonly AgentPromptContentBlock[]
 ): string {
@@ -212,6 +232,7 @@ export function agentPromptContentImageBlocks(
       block.type === "image" &&
       (typeof block.attachmentId === "string" ||
         typeof block.data === "string" ||
+        typeof block.url === "string" ||
         typeof block.path === "string") &&
       typeof block.mimeType === "string"
   );
@@ -276,8 +297,9 @@ export function agentComposerDraftToPromptContent(input: {
       .map((image) => ({
         type: "image" as const,
         mimeType: image.mimeType,
-        ...(image.attachmentId
-          ? { attachmentId: image.attachmentId }
+        ...(image.attachmentId ? { attachmentId: image.attachmentId } : {}),
+        ...(image.url
+          ? { url: image.url }
           : image.path
             ? { path: image.path }
             : { data: image.data }),
@@ -598,11 +620,12 @@ function agentPromptImageBlockToDraftImage(
     mimeType: image.mimeType,
     ...(image.attachmentId ? { attachmentId: image.attachmentId } : {}),
     ...(image.data ? { data: image.data } : {}),
+    ...(image.url ? { url: image.url } : {}),
     ...(image.path ? { path: image.path } : {}),
     previewUrl:
       typeof image.data === "string" && image.data
         ? `data:${image.mimeType};base64,${image.data}`
-        : (image.path ?? "")
+        : (image.url ?? image.path ?? "")
   };
 }
 

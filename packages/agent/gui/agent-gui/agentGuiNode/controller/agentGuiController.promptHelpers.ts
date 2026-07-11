@@ -109,8 +109,11 @@ export function normalizePromptContentBlocks(
     if (block.type === "image") {
       const mimeType = block.mimeType?.trim();
       const data = block.data?.trim();
+      const url = block.url?.trim();
       if (
-        !data ||
+        (!data && !url) ||
+        (data && url) ||
+        (url && !isSafePromptImageUrl(url)) ||
         (mimeType !== "image/png" &&
           mimeType !== "image/jpeg" &&
           mimeType !== "image/webp")
@@ -120,7 +123,10 @@ export function normalizePromptContentBlocks(
       result.push({
         type: "image",
         mimeType,
-        data,
+        ...(url ? { url } : { data }),
+        ...(block.attachmentId?.trim()
+          ? { attachmentId: block.attachmentId.trim() }
+          : {}),
         ...(block.name?.trim() ? { name: block.name.trim() } : {})
       });
       continue;
@@ -134,6 +140,20 @@ export function normalizePromptContentBlocks(
     }
   }
   return result;
+}
+
+function isSafePromptImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function promptContentDisplayText(

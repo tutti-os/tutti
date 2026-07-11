@@ -42,7 +42,7 @@ test("desktop workspace workbench repository preserves wallpaper metadata on hos
         createSnapshot(),
         "sky"
       ),
-      onSave(snapshot) {
+      onSave(_workspaceID, snapshot) {
         savedSnapshot = snapshot;
       }
     })
@@ -62,7 +62,7 @@ test("desktop workspace workbench repository preserves onboarding metadata on ho
         createSnapshot(),
         "2026-06-19T10:00:00.000Z"
       ),
-      onSave(snapshot) {
+      onSave(_workspaceID, snapshot) {
         savedSnapshot = snapshot;
       }
     })
@@ -74,16 +74,60 @@ test("desktop workspace workbench repository preserves onboarding metadata on ho
   assert.equal(hasWorkspaceOnboardingAutoOpened(savedSnapshot), true);
 });
 
+test("desktop workspace workbench repository keeps daemon calls workspace-scoped and preserves product metadata", async () => {
+  const calls: string[] = [];
+  const persistedSnapshots: WorkbenchSnapshot[] = [];
+  const authoritySnapshot = writeWorkspaceOnboardingAutoOpenedToSnapshot(
+    writeWorkspaceWallpaperIdToSnapshot(createSnapshot(), "sky"),
+    "2026-07-11T00:00:00.000Z"
+  );
+  const repository = createDesktopWorkspaceWorkbenchRepository(
+    createTuttidClient({
+      initialSnapshot: authoritySnapshot,
+      onLoad(workspaceID) {
+        calls.push(`get:${workspaceID}`);
+      },
+      onSave(workspaceID, snapshot) {
+        calls.push(`put:${workspaceID}`);
+        persistedSnapshots.push(snapshot);
+      }
+    })
+  );
+  const hostSnapshot: WorkbenchSnapshot = {
+    ...createSnapshot(),
+    metadata: { workbenchHostInitialized: true }
+  };
+
+  await repository.load("workspace-characterization");
+  const saved = await repository.save(
+    "workspace-characterization",
+    hostSnapshot
+  );
+
+  assert.deepEqual(calls, [
+    "get:workspace-characterization",
+    "put:workspace-characterization"
+  ]);
+  const persistedSnapshot = persistedSnapshots[0];
+  assert.ok(persistedSnapshot);
+  assert.equal(readWorkspaceWallpaperIdFromSnapshot(persistedSnapshot), "sky");
+  assert.equal(hasWorkspaceOnboardingAutoOpened(persistedSnapshot), true);
+  assert.equal(persistedSnapshot.metadata?.workbenchHostInitialized, true);
+  assert.equal(repository.readCached("workspace-characterization"), saved);
+});
+
 function createTuttidClient(input: {
   initialSnapshot: WorkbenchSnapshot;
-  onSave?: (snapshot: WorkbenchSnapshot) => void;
+  onLoad?: (workspaceID: string) => void;
+  onSave?: (workspaceID: string, snapshot: WorkbenchSnapshot) => void;
 }): TuttidClient {
   return {
-    async getWorkspaceWorkbench() {
+    async getWorkspaceWorkbench(workspaceID) {
+      input.onLoad?.(workspaceID);
       return input.initialSnapshot;
     },
-    async putWorkspaceWorkbench(_workspaceID, snapshot) {
-      input.onSave?.(snapshot);
+    async putWorkspaceWorkbench(workspaceID, snapshot) {
+      input.onSave?.(workspaceID, snapshot);
       return snapshot;
     }
   } as Partial<TuttidClient> as TuttidClient;

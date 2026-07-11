@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,8 +60,12 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 				return nil, "", ErrInvalidArgument
 			}
 			data := strings.TrimSpace(block.Data)
+			imageURL := strings.TrimSpace(block.URL)
 			path := strings.TrimSpace(block.Path)
-			if data == "" && strings.TrimSpace(block.AttachmentID) == "" && path == "" {
+			if data != "" && imageURL != "" {
+				return nil, "", ErrInvalidArgument
+			}
+			if data == "" && imageURL == "" && strings.TrimSpace(block.AttachmentID) == "" && path == "" {
 				return nil, "", ErrInvalidArgument
 			}
 			if data != "" {
@@ -68,11 +73,15 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 					return nil, "", ErrInvalidArgument
 				}
 			}
+			if imageURL != "" && !safePromptImageURL(imageURL) {
+				return nil, "", ErrInvalidArgument
+			}
 			hasInput = true
 			normalized = append(normalized, PromptContentBlock{
 				Type:         "image",
 				MimeType:     mimeType,
 				Data:         data,
+				URL:          imageURL,
 				AttachmentID: strings.TrimSpace(block.AttachmentID),
 				Name:         strings.TrimSpace(block.Name),
 				Path:         path,
@@ -98,6 +107,14 @@ func normalizePromptContent(content []PromptContentBlock) ([]PromptContentBlock,
 	return normalized, strings.Join(textParts, "\n"), nil
 }
 
+func safePromptImageURL(value string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	return parsed.Opaque == ""
+}
+
 func supportedPromptImageMimeType(mimeType string) bool {
 	switch strings.TrimSpace(mimeType) {
 	case "image/png", "image/jpeg", "image/webp":
@@ -114,8 +131,9 @@ func (s PromptAttachmentStore) PersistRequestContent(workspaceID, agentSessionID
 	out := make([]PromptContentBlock, 0, len(content))
 	for _, block := range content {
 		dataBase64 := strings.TrimSpace(block.Data)
+		imageURL := strings.TrimSpace(block.URL)
 		sourcePath := strings.TrimSpace(block.Path)
-		if block.Type != "image" || (dataBase64 == "" && sourcePath == "") {
+		if block.Type != "image" || imageURL != "" || (dataBase64 == "" && sourcePath == "") {
 			out = append(out, block)
 			continue
 		}
@@ -244,6 +262,10 @@ func (s PromptAttachmentStore) HydrateRuntimeContent(workspaceID, agentSessionID
 			continue
 		}
 		if strings.TrimSpace(block.Data) != "" {
+			out = append(out, block)
+			continue
+		}
+		if strings.TrimSpace(block.URL) != "" {
 			out = append(out, block)
 			continue
 		}

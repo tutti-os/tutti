@@ -1578,7 +1578,14 @@ export type AgentPromptContentBlock = {
   type: "text" | "image" | "skill" | "mention";
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
+  /**
+   * Base64-encoded image bytes. Mutually exclusive with url.
+   */
   data?: string;
+  /**
+   * HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
+   */
+  url?: string;
   attachmentId?: string;
   name?: string;
   path?: string;

@@ -1922,6 +1922,41 @@ func TestServiceSendInputRejectsUnsupportedImageBeforePersistingAttachment(t *te
 	}
 }
 
+func TestServiceSendInputRejectsInvalidImageURLBeforeResumingRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "thread-1",
+				Status:            "completed",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: []PromptContentBlock{{
+			Type:     "image",
+			MimeType: "image/png",
+			URL:      "http://bucket.example/image.png",
+		}},
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("SendInput error = %v, want ErrInvalidArgument", err)
+	}
+	if len(runtime.resumeCalls) != 0 {
+		t.Fatalf("resume calls = %d, want 0", len(runtime.resumeCalls))
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want 0", len(runtime.execCalls))
+	}
+}
+
 func TestServiceLocalAttachmentPathRequiresWorkspaceSession(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
@@ -5167,8 +5202,8 @@ func TestServiceSendInputReportsNodeResults(t *testing.T) {
 	}
 
 	assertAgentNodeSequence(t, reporter.events, []string{
-		"runtime_session_ready",
 		"content_normalized",
+		"runtime_session_ready",
 		"prompt_validated",
 		"prompt_prepared",
 		"runtime_exec",

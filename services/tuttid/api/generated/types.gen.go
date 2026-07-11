@@ -1916,13 +1916,18 @@ type AgentActivityTurnLifecycle struct {
 
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
 type AgentPromptContentBlock struct {
-	AttachmentId *string                          `json:"attachmentId,omitempty"`
-	Data         *string                          `json:"data,omitempty"`
-	MimeType     *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
-	Name         *string                          `json:"name,omitempty"`
-	Path         *string                          `json:"path,omitempty"`
-	Text         *string                          `json:"text,omitempty"`
-	Type         AgentPromptContentBlockType      `json:"type"`
+	AttachmentId *string `json:"attachmentId,omitempty"`
+
+	// Data Base64-encoded image bytes. Mutually exclusive with url.
+	Data     *string                          `json:"data,omitempty"`
+	MimeType *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
+	Name     *string                          `json:"name,omitempty"`
+	Path     *string                          `json:"path,omitempty"`
+	Text     *string                          `json:"text,omitempty"`
+	Type     AgentPromptContentBlockType      `json:"type"`
+
+	// Url HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
+	Url *string `json:"url,omitempty"`
 }
 
 // AgentPromptContentBlockMimeType defines model for AgentPromptContentBlock.MimeType.

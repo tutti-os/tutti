@@ -8,6 +8,61 @@ import { createWorkspaceFilesContribution } from "./workspaceFilesContribution.t
 import { workspaceFilesNodeID } from "./workspaceWorkbenchComposition.ts";
 const renderTrafficLights = () => null;
 
+test("workspace files contribution keeps its contribution, node, dock, and launch identities", async () => {
+  const contribution = createWorkspaceFilesContribution({
+    filesLabel: "Files",
+    icon: null,
+    renderFilesNodeBody: () => null,
+    renderTrafficLights,
+    workspaceFileManagerService: createFileManagerServiceStub(null),
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(contribution.id, "workspace-files");
+  assert.deepEqual(
+    contribution.nodes?.map(({ typeId }) => typeId),
+    ["workspace-files"]
+  );
+  assert.deepEqual(
+    contribution.dockEntries?.map(({ id, order, sectionId, typeId }) => ({
+      id,
+      order,
+      sectionId,
+      typeId
+    })),
+    [
+      {
+        id: "workspace-files",
+        order: 10,
+        sectionId: "apps",
+        typeId: "workspace-files"
+      }
+    ]
+  );
+
+  const launch = await Promise.resolve(
+    contribution.onLaunchRequest?.({
+      ...createLaunchRequestContext(),
+      dockEntryId: "workspace-files",
+      reason: "dock",
+      typeId: "workspace-files",
+      workspaceId: "workspace-1"
+    })
+  );
+  assert.deepEqual(
+    launch && {
+      dockEntryId: launch.dockEntryId,
+      instanceId: launch.instanceId,
+      typeId: launch.typeId
+    },
+    {
+      dockEntryId: "workspace-files",
+      instanceId: "workspace-files",
+      typeId: "workspace-files"
+    }
+  );
+});
+
 test("workspace files contribution exposes file manager state through runtime and snapshot node state", () => {
   const snapshotState: WorkspaceFileManagerPersistedState = {
     currentDirectoryPath: "/workspace/docs",

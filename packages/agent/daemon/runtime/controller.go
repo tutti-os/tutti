@@ -633,6 +633,9 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
 		session = refreshed
 	}
+	if err := validateRuntimePromptContentImages(input.Content); err != nil {
+		return ExecResult{}, err
+	}
 	content := normalizeRuntimePromptContent(input.Content)
 	if len(content) == 0 {
 		return ExecResult{}, fmt.Errorf("prompt is required")
@@ -1131,6 +1134,9 @@ func sessionRecreatedNoticeEvent(session Session) (activityshared.Event, bool) {
 func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) error {
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
+		return err
+	}
+	if err := validateRuntimePromptContentImages(input.Content); err != nil {
 		return err
 	}
 	content := normalizeRuntimePromptContentForValidation(input.Content)

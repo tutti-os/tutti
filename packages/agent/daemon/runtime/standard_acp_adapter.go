@@ -181,6 +181,16 @@ func (a *standardACPAdapter) ValidatePromptContent(session Session, content []Pr
 	if !promptContentHasImage(content) {
 		return nil
 	}
+	if err := validateRuntimePromptContentImages(content); err != nil {
+		return err
+	}
+	for _, block := range content {
+		if block.Type == "image" && strings.TrimSpace(block.URL) != "" {
+			// ACP image prompt blocks carry inline base64 data and have no URL
+			// source variant. Never download or rewrite the remote image here.
+			return ErrPromptImageUnsupported
+		}
+	}
 	acpSession := a.getSession(session.AgentSessionID)
 	if acpSession != nil && acpSession.promptImage {
 		return nil

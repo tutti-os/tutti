@@ -1112,6 +1112,24 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdapterRejectsURLImageEvenWithImageCapability(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-url")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "claude-session-url"
+	content := []PromptContentBlock{{
+		Type: "image", MimeType: "image/png", URL: "https://bucket.example/image.png?token=secret",
+	}}
+	if err := adapter.ValidatePromptContent(session, content); !errors.Is(err, ErrPromptImageUnsupported) {
+		t.Fatalf("ValidatePromptContent URL image error = %v, want ErrPromptImageUnsupported", err)
+	}
+}
+
 func TestClaudeCodeAdapterPermissionRequestAcceptsInteractiveSelection(t *testing.T) {
 	t.Parallel()
 

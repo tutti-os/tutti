@@ -12,6 +12,7 @@ implemented now.
 - [ADR 0006: Durable approval resolver projection](./0006-step6-approval-resolver-durable-projection.md)
 - [ADR 0007: Sub-agent lane ownership](./0007-subagent-lane-owner-callid.md)
 - [ADR 0008: Turn lifecycle snapshot authority](./0008-turn-lifecycle-snapshot-authority.md)
+- [ADR 0009: Cross-product Workbench host kernel](./0009-cross-product-workbench-host-kernel.md)
 - [Codex App-Server Refactor Glossary](./glossary.md)
 
 New ADRs should state `Proposed`, `Accepted`, `Superseded`, or `Rejected` near

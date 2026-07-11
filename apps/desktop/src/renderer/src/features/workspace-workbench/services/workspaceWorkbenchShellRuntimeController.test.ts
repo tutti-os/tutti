@@ -291,6 +291,28 @@ test("workspace workbench shell runtime controller publishes host input updates"
   assert.deepEqual(workspaceIds, ["workspace-2"]);
 });
 
+test("workspace workbench shell runtime controller does not publish when host input identity is stable", () => {
+  const stableHostInput = createHostInput("workspace-stable");
+  const controller = createWorkspaceWorkbenchShellRuntimeController({
+    hostInput: createShellHostInput({ hostInput: stableHostInput }),
+    wallpaperSelection: createWallpaperInput({
+      workspaceId: "workspace-stable",
+      wallpaperId: "default"
+    })
+  });
+  let notificationCount = 0;
+  controller.subscribe(() => {
+    notificationCount += 1;
+  });
+
+  controller.updateHostInput(
+    createShellHostInput({ hostInput: stableHostInput })
+  );
+
+  assert.equal(controller.getSnapshot().hostInput, stableHostInput);
+  assert.equal(notificationCount, 0);
+});
+
 function createWallpaperInput(input: {
   displayMode?: WorkspaceWallpaperDisplayMode;
   wallpaperId: WorkspaceWallpaperId;

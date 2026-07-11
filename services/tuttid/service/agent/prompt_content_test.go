@@ -30,6 +30,44 @@ func TestNormalizePromptContentAcceptsImagePath(t *testing.T) {
 	}
 }
 
+func TestNormalizePromptContentAcceptsHTTPSImageURL(t *testing.T) {
+	signedURL := "https://bucket.example/image.png?X-Amz-Signature=secret"
+	content, _, err := normalizePromptContent([]PromptContentBlock{{
+		Type: "image", MimeType: "image/png", URL: " " + signedURL + " ", AttachmentID: "attachment-1", Name: "screen.png",
+	}})
+	if err != nil {
+		t.Fatalf("normalizePromptContent() error = %v, want nil", err)
+	}
+	if len(content) != 1 || content[0].URL != signedURL || content[0].AttachmentID != "attachment-1" {
+		t.Fatalf("content = %#v, want URL-backed image metadata", content)
+	}
+
+	store := PromptAttachmentStore{RootDir: t.TempDir()}
+	persisted, err := store.PersistRequestContent("workspace-1", "session-1", content)
+	if err != nil {
+		t.Fatalf("PersistRequestContent() error = %v", err)
+	}
+	hydrated, err := store.HydrateRuntimeContent("workspace-1", "session-1", persisted)
+	if err != nil {
+		t.Fatalf("HydrateRuntimeContent() error = %v", err)
+	}
+	if hydrated[0].URL != signedURL || hydrated[0].Data != "" {
+		t.Fatalf("hydrated image = %#v, want URL without owner hydration", hydrated[0])
+	}
+}
+
+func TestNormalizePromptContentRejectsUnsafeOrAmbiguousImageURL(t *testing.T) {
+	for _, block := range []PromptContentBlock{
+		{Type: "image", MimeType: "image/png", URL: "http://bucket.example/image.png"},
+		{Type: "image", MimeType: "image/png", URL: "https://user:pass@bucket.example/image.png"},
+		{Type: "image", MimeType: "image/png", URL: "https://bucket.example/image.png", Data: "aW1hZ2U="},
+	} {
+		if _, _, err := normalizePromptContent([]PromptContentBlock{block}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("normalizePromptContent(%#v) error = %v, want ErrInvalidArgument", block, err)
+		}
+	}
+}
+
 func TestPromptAttachmentStoreRejectsDotPathSegments(t *testing.T) {
 	store := PromptAttachmentStore{RootDir: t.TempDir()}
 	for _, input := range []struct {

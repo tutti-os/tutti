@@ -328,6 +328,48 @@ test("desktop agent activity adapter marks empty-cwd creates as no-project", asy
   );
 });
 
+test("desktop agent activity adapter forwards HTTPS image URLs structurally", async () => {
+  let createBody: unknown = null;
+  const url = "https://bucket.example/image.png?X-Amz-Signature=secret";
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, body) {
+        createBody = body;
+        return createSession({ id: body.agentSessionId, status: "created" });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await adapter.createSession({
+    agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:codex",
+    initialContent: [
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        attachmentId: "remote-image",
+        name: "image.png"
+      }
+    ],
+    workspaceId
+  });
+
+  assert.deepEqual(
+    (createBody as { initialContent?: unknown }).initialContent,
+    [
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        attachmentId: "remote-image",
+        name: "image.png"
+      }
+    ]
+  );
+});
+
 test("desktop agent activity adapter localizes adapter mismatch create failures", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
