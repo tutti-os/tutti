@@ -5,40 +5,30 @@ import type {
   DesktopWorkspaceAppFileUploadPrepareResult
 } from "../../shared/contracts/ipc";
 import type {
-  TuttiExternalAtQueryInput,
-  TuttiExternalAtQueryResult,
   TuttiExternalBridge,
-  TuttiExternalFileOpenInput,
-  TuttiExternalFileSelectInput,
-  TuttiExternalFileSelectResult,
   TuttiExternalFileUploadInput,
   TuttiExternalFileUploadProgress,
   TuttiExternalUploadedFile,
-  TuttiExternalLogInput,
-  TuttiExternalPermissionRequestInput,
-  TuttiExternalPermissionRequestResult,
-  TuttiExternalPdfPrintHtmlInput,
-  TuttiExternalPdfPrintHtmlResult,
-  TuttiExternalReferenceOpenInput,
-  TuttiExternalSettingsOpenInput,
-  TuttiExternalUserProjectCreateInput,
-  TuttiExternalUserProjectPathInput,
-  TuttiExternalUserProjectRememberDefaultSelectionInput,
-  TuttiExternalWorkspaceOpenRouteIntent,
-  TuttiExternalWorkspaceOpenFeatureInput
+  TuttiExternalWorkspaceOpenRouteIntent
 } from "@tutti-os/workspace-external-core/contracts";
 import {
   normalizeTuttiExternalFileUploadInput,
-  normalizeTuttiExternalLogInput
+  tuttiExternalAtProviderIds,
+  tuttiExternalManagedAiModelProviderIds,
+  tuttiExternalWorkspaceAgentProviders,
+  tuttiExternalWorkspaceFeatures
 } from "@tutti-os/workspace-external-core/core";
-import type {
-  WorkspaceUserProject,
-  WorkspaceUserProjectDefaultSelection,
-  WorkspaceUserProjectPathCheck,
-  WorkspaceUserProjectSelectionPreparation,
-  WorkspaceUserProjectSelectionPreparationInput,
-  WorkspaceUserProjectServiceSnapshot
-} from "@tutti-os/workspace-user-project/contracts";
+import {
+  createTuttiExternalBridge,
+  tuttiExternalOperations,
+  type TuttiExternalHostAdapter,
+  type TuttiExternalHostEvent,
+  type TuttiExternalHostEventPayloadMap,
+  type TuttiExternalRequestInputMap,
+  type TuttiExternalRequestOperation,
+  type TuttiExternalRequestResultMap
+} from "@tutti-os/workspace-external-core/host";
+import type { WorkspaceUserProjectServiceSnapshot } from "@tutti-os/workspace-user-project/contracts";
 
 export interface WorkspaceAppExternalBridgeDependencies {
   appContext: {
@@ -109,275 +99,182 @@ export const workspaceAppExternalChannels = {
   workspaceFeatureOpen: "workspace-app-feature:open"
 } as const;
 
-const noop = () => {};
-
 export function createWorkspaceAppExternalBridge(
   dependencies: WorkspaceAppExternalBridgeDependencies
 ): TuttiExternalBridge {
-  let initialLaunchIntentConsumed = false;
+  const adapter = createWorkspaceAppExternalHostAdapter(dependencies);
+  return createTuttiExternalBridge({
+    adapter,
+    isUserActivationActive: dependencies.isUserActivationActive
+  });
+}
+
+function createWorkspaceAppExternalHostAdapter(
+  dependencies: WorkspaceAppExternalBridgeDependencies
+): TuttiExternalHostAdapter {
   return {
-    app: {
-      getContext() {
-        return dependencies.appContext.get();
-      },
-      subscribe(listener) {
-        return dependencies.appContext.subscribe(listener);
-      }
+    capabilities: {
+      operations: tuttiExternalOperations,
+      atProviders: tuttiExternalAtProviderIds,
+      managedAiProviders: tuttiExternalManagedAiModelProviderIds,
+      workspaceAgentProviders: tuttiExternalWorkspaceAgentProviders,
+      workspaceFeatures: tuttiExternalWorkspaceFeatures
     },
-    activity: {
-      reportActive() {
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.activityReportActive
-        );
-      }
+    request(operation, input) {
+      return invokeWorkspaceAppExternalRequest(dependencies, operation, input);
     },
-    browser: {
-      openUrl(input) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "browser.openUrl"
-        );
-        dependencies.send(workspaceAppExternalChannels.browserOpenUrl, input);
-        return Promise.resolve();
-      }
+    notify(operation, input) {
+      const channel =
+        operation === "browser.openUrl"
+          ? workspaceAppExternalChannels.browserOpenUrl
+          : workspaceAppExternalChannels.logsWrite;
+      dependencies.send(channel, input);
     },
-    at: {
-      query(input: TuttiExternalAtQueryInput) {
-        return dependencies.invoke<TuttiExternalAtQueryResult[]>(
-          workspaceAppExternalChannels.atQuery,
-          input
-        );
-      }
+    openEventStream(operation, listener) {
+      return openWorkspaceAppExternalEventStream(
+        dependencies,
+        operation,
+        listener
+      );
     },
-    files: {
-      select(input?: TuttiExternalFileSelectInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "files.select"
-        );
-        return dependencies.invoke<TuttiExternalFileSelectResult>(
-          workspaceAppExternalChannels.filesSelect,
-          input ?? {}
-        );
-      },
-      open(input: TuttiExternalFileOpenInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "files.open"
-        );
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.filesOpen,
-          input
-        );
-      },
-      async upload(file: Blob | File, input?: TuttiExternalFileUploadInput) {
-        const fileMetadata = normalizeWorkspaceAppUploadFile(file);
-        const uploadInput = normalizeTuttiExternalFileUploadInput(input);
-        throwIfWorkspaceAppUploadAborted(uploadInput.signal);
-        const prepareInput: DesktopWorkspaceAppFileUploadPrepareInput = {
-          purpose: uploadInput.purpose,
-          name: uploadInput.name ?? fileMetadata.name,
-          mimeType: uploadInput.mimeType ?? fileMetadata.mimeType,
-          sizeBytes: fileMetadata.sizeBytes
-        };
-        let prepared: DesktopWorkspaceAppFileUploadPrepareResult | undefined;
-        try {
-          prepared =
-            await dependencies.invoke<DesktopWorkspaceAppFileUploadPrepareResult>(
-              workspaceAppExternalChannels.filesUploadPrepare,
-              prepareInput
-            );
-          throwIfWorkspaceAppUploadAborted(uploadInput.signal);
-          await uploadWorkspaceAppFileContent(dependencies, prepared, file, {
-            onProgress: uploadInput.onProgress,
-            signal: uploadInput.signal,
-            totalBytes: fileMetadata.sizeBytes
-          });
-          throwIfWorkspaceAppUploadAborted(uploadInput.signal);
-          const uploaded = await dependencies.invoke<TuttiExternalUploadedFile>(
-            workspaceAppExternalChannels.filesUploadComplete,
-            { uploadId: prepared.uploadId }
-          );
-          throwIfWorkspaceAppUploadAborted(uploadInput.signal);
-          return uploaded;
-        } catch (error) {
-          if (prepared) {
-            await cancelWorkspaceAppUpload(dependencies, prepared.uploadId);
-          }
-          if (isWorkspaceAppUploadAbortError(error, uploadInput.signal)) {
-            throw createWorkspaceAppUploadAbortError();
-          }
-          throw error;
-        }
-      }
-    },
-    permissions: {
-      request(input: TuttiExternalPermissionRequestInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "permissions.request"
-        );
-        return dependencies.invoke<TuttiExternalPermissionRequestResult>(
-          workspaceAppExternalChannels.permissionsRequest,
-          input
-        );
-      }
-    },
-    settings: {
-      open(input?: TuttiExternalSettingsOpenInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "settings.open"
-        );
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.settingsOpen,
-          input ?? {}
-        );
-      }
-    },
-    references: {
-      open(input: TuttiExternalReferenceOpenInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "references.open"
-        );
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.referencesOpen,
-          input
-        );
-      }
-    },
-    // Workspace apps are trusted installed packages. User activation gates
-    // disruptive host UI, not the trusted project-state integration surface.
-    userProjects: {
-      checkPath(input: TuttiExternalUserProjectPathInput) {
-        return dependencies.invoke<WorkspaceUserProjectPathCheck>(
-          workspaceAppExternalChannels.userProjectsCheckPath,
-          input
-        );
-      },
-      create(input: TuttiExternalUserProjectCreateInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "userProjects.create"
-        );
-        return dependencies.invoke<WorkspaceUserProject>(
-          workspaceAppExternalChannels.userProjectsCreate,
-          input
-        );
-      },
-      getDefaultSelection() {
-        return dependencies.invoke<WorkspaceUserProjectDefaultSelection | null>(
-          workspaceAppExternalChannels.userProjectsGetDefaultSelection
-        );
-      },
-      getSnapshot() {
-        return dependencies.invoke<WorkspaceUserProjectServiceSnapshot>(
-          workspaceAppExternalChannels.userProjectsGetSnapshot
-        );
-      },
-      list() {
-        return dependencies.invoke<{ projects: WorkspaceUserProject[] }>(
-          workspaceAppExternalChannels.userProjectsList
-        );
-      },
-      prepareSelection(input: WorkspaceUserProjectSelectionPreparationInput) {
-        return dependencies.invoke<WorkspaceUserProjectSelectionPreparation>(
-          workspaceAppExternalChannels.userProjectsPrepareSelection,
-          input
-        );
-      },
-      refresh() {
-        return dependencies.invoke<WorkspaceUserProjectServiceSnapshot>(
-          workspaceAppExternalChannels.userProjectsRefresh
-        );
-      },
-      rememberDefaultSelection(
-        input: TuttiExternalUserProjectRememberDefaultSelectionInput
-      ) {
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.userProjectsRememberDefaultSelection,
-          input
-        );
-      },
-      selectDirectory() {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "userProjects.selectDirectory"
-        );
-        return dependencies.invoke<{ path: string } | null>(
-          workspaceAppExternalChannels.userProjectsSelectDirectory
-        );
-      },
-      subscribe(listener) {
-        return dependencies.subscribeToUserProjects?.(listener) ?? (() => {});
-      },
-      use(input: TuttiExternalUserProjectPathInput) {
-        return dependencies.invoke<WorkspaceUserProject>(
-          workspaceAppExternalChannels.userProjectsUse,
-          input
-        );
-      }
-    },
-    workspace: {
-      onLaunchIntent(listener) {
-        let active = true;
-        const unsubscribe =
-          dependencies.subscribeToWorkspaceLaunchIntents?.(listener) ?? noop;
-        void dependencies.appContext
-          .get()
-          .then((context) => {
-            if (
-              active &&
-              context.launchIntent &&
-              !initialLaunchIntentConsumed
-            ) {
-              initialLaunchIntentConsumed = true;
-              listener(context.launchIntent);
-            }
-          })
-          .catch(() => {});
-        return () => {
-          active = false;
-          unsubscribe();
-        };
-      },
-      openFeature(input: TuttiExternalWorkspaceOpenFeatureInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "workspace.openFeature"
-        );
-        return dependencies.invoke<void>(
-          workspaceAppExternalChannels.workspaceFeatureOpen,
-          input
-        );
-      }
-    },
-    pdf: {
-      printHtmlToPdf(input: TuttiExternalPdfPrintHtmlInput) {
-        requireUserActivation(
-          dependencies.isUserActivationActive(),
-          "pdf.printHtmlToPdf"
-        );
-        return dependencies.invoke<TuttiExternalPdfPrintHtmlResult>(
-          workspaceAppExternalChannels.pdfPrintHtml,
-          input
-        );
-      }
-    },
-    logs: {
-      write(input: TuttiExternalLogInput) {
-        try {
-          dependencies.send(
-            workspaceAppExternalChannels.logsWrite,
-            normalizeTuttiExternalLogInput(input)
-          );
-        } catch {
-          // Fire-and-forget: invalid app payloads are silently ignored.
-        }
-      }
+    upload(file, input) {
+      return uploadWorkspaceAppFile(dependencies, file, input);
     }
   };
+}
+
+function invokeWorkspaceAppExternalRequest<
+  TOperation extends TuttiExternalRequestOperation
+>(
+  dependencies: WorkspaceAppExternalBridgeDependencies,
+  operation: TOperation,
+  input: TuttiExternalRequestInputMap[TOperation]
+): Promise<TuttiExternalRequestResultMap[TOperation]> {
+  if (operation === "app.getContext") {
+    return dependencies.appContext.get() as Promise<
+      TuttiExternalRequestResultMap[TOperation]
+    >;
+  }
+  const channel =
+    workspaceAppExternalRequestChannels[
+      operation as Exclude<TuttiExternalRequestOperation, "app.getContext">
+    ];
+  return dependencies.invoke<TuttiExternalRequestResultMap[TOperation]>(
+    channel,
+    input
+  );
+}
+
+const workspaceAppExternalRequestChannels = {
+  "activity.reportActive": workspaceAppExternalChannels.activityReportActive,
+  "at.query": workspaceAppExternalChannels.atQuery,
+  "files.open": workspaceAppExternalChannels.filesOpen,
+  "files.select": workspaceAppExternalChannels.filesSelect,
+  "pdf.printHtmlToPdf": workspaceAppExternalChannels.pdfPrintHtml,
+  "permissions.request": workspaceAppExternalChannels.permissionsRequest,
+  "references.open": workspaceAppExternalChannels.referencesOpen,
+  "settings.open": workspaceAppExternalChannels.settingsOpen,
+  "userProjects.checkPath": workspaceAppExternalChannels.userProjectsCheckPath,
+  "userProjects.create": workspaceAppExternalChannels.userProjectsCreate,
+  "userProjects.getDefaultSelection":
+    workspaceAppExternalChannels.userProjectsGetDefaultSelection,
+  "userProjects.getSnapshot":
+    workspaceAppExternalChannels.userProjectsGetSnapshot,
+  "userProjects.list": workspaceAppExternalChannels.userProjectsList,
+  "userProjects.prepareSelection":
+    workspaceAppExternalChannels.userProjectsPrepareSelection,
+  "userProjects.refresh": workspaceAppExternalChannels.userProjectsRefresh,
+  "userProjects.rememberDefaultSelection":
+    workspaceAppExternalChannels.userProjectsRememberDefaultSelection,
+  "userProjects.selectDirectory":
+    workspaceAppExternalChannels.userProjectsSelectDirectory,
+  "userProjects.use": workspaceAppExternalChannels.userProjectsUse,
+  "workspace.openFeature": workspaceAppExternalChannels.workspaceFeatureOpen
+} as const satisfies Record<
+  Exclude<TuttiExternalRequestOperation, "app.getContext">,
+  string
+>;
+
+function openWorkspaceAppExternalEventStream<
+  TEvent extends TuttiExternalHostEvent
+>(
+  dependencies: WorkspaceAppExternalBridgeDependencies,
+  event: TEvent,
+  listener: (payload: TuttiExternalHostEventPayloadMap[TEvent]) => void
+) {
+  if (event === "app.contextChanged") {
+    return {
+      initial: Promise.resolve(undefined),
+      unsubscribe: dependencies.appContext.subscribe(
+        listener as (context: DesktopWorkspaceAppContext) => void
+      )
+    };
+  }
+  if (event === "workspace.launchIntent") {
+    return {
+      initial: dependencies.appContext
+        .get()
+        .then((context) => context.launchIntent) as Promise<
+        TuttiExternalHostEventPayloadMap[TEvent] | undefined
+      >,
+      unsubscribe:
+        dependencies.subscribeToWorkspaceLaunchIntents?.(
+          listener as (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
+        ) ?? (() => {})
+    };
+  }
+  return {
+    initial: Promise.resolve(undefined),
+    unsubscribe:
+      dependencies.subscribeToUserProjects?.(
+        listener as (snapshot: WorkspaceUserProjectServiceSnapshot) => void
+      ) ?? (() => {})
+  };
+}
+
+async function uploadWorkspaceAppFile(
+  dependencies: WorkspaceAppExternalBridgeDependencies,
+  file: Blob | File,
+  input: TuttiExternalFileUploadInput
+): Promise<TuttiExternalUploadedFile> {
+  const fileMetadata = normalizeWorkspaceAppUploadFile(file);
+  const uploadInput = normalizeTuttiExternalFileUploadInput(input);
+  throwIfWorkspaceAppUploadAborted(uploadInput.signal);
+  const prepareInput: DesktopWorkspaceAppFileUploadPrepareInput = {
+    purpose: uploadInput.purpose,
+    name: uploadInput.name ?? fileMetadata.name,
+    mimeType: uploadInput.mimeType ?? fileMetadata.mimeType,
+    sizeBytes: fileMetadata.sizeBytes
+  };
+  let prepared: DesktopWorkspaceAppFileUploadPrepareResult | undefined;
+  try {
+    prepared =
+      await dependencies.invoke<DesktopWorkspaceAppFileUploadPrepareResult>(
+        workspaceAppExternalChannels.filesUploadPrepare,
+        prepareInput
+      );
+    throwIfWorkspaceAppUploadAborted(uploadInput.signal);
+    await uploadWorkspaceAppFileContent(dependencies, prepared, file, {
+      onProgress: uploadInput.onProgress,
+      signal: uploadInput.signal,
+      totalBytes: fileMetadata.sizeBytes
+    });
+    throwIfWorkspaceAppUploadAborted(uploadInput.signal);
+    const uploaded = await dependencies.invoke<TuttiExternalUploadedFile>(
+      workspaceAppExternalChannels.filesUploadComplete,
+      { uploadId: prepared.uploadId }
+    );
+    throwIfWorkspaceAppUploadAborted(uploadInput.signal);
+    return uploaded;
+  } catch (error) {
+    if (prepared) {
+      await cancelWorkspaceAppUpload(dependencies, prepared.uploadId);
+    }
+    if (isWorkspaceAppUploadAbortError(error, uploadInput.signal)) {
+      throw createWorkspaceAppUploadAbortError();
+    }
+    throw error;
+  }
 }
 
 function normalizeWorkspaceAppUploadFile(file: Blob | File): {
@@ -604,13 +501,4 @@ function createWorkspaceAppUploadAbortError(): Error {
   const error = new Error("files.upload was aborted.");
   error.name = "AbortError";
   return error;
-}
-
-export function requireUserActivation(
-  isActive: boolean,
-  operation: string
-): void {
-  if (!isActive) {
-    throw new Error(`${operation} requires a user action.`);
-  }
 }

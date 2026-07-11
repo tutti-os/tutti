@@ -252,7 +252,61 @@ export interface TuttiExternalPdfPrintHtmlResult {
   bytes: Uint8Array;
 }
 
+export type TuttiExternalUserProjectOperation =
+  | "checkPath"
+  | "create"
+  | "getDefaultSelection"
+  | "getSnapshot"
+  | "list"
+  | "prepareSelection"
+  | "refresh"
+  | "rememberDefaultSelection"
+  | "selectDirectory"
+  | "subscribe"
+  | "use";
+
+export type TuttiExternalOperation =
+  | "app.getContext"
+  | "app.subscribe"
+  | "activity.reportActive"
+  | "browser.openUrl"
+  | "at.query"
+  | "files.select"
+  | "files.open"
+  | "files.upload"
+  | "permissions.request"
+  | "settings.open"
+  | "workspace.onLaunchIntent"
+  | "workspace.openFeature"
+  | "references.open"
+  | "pdf.printHtmlToPdf"
+  | `userProjects.${TuttiExternalUserProjectOperation}`
+  | "logs.write";
+
+export interface TuttiExternalCapabilities {
+  operations: readonly TuttiExternalOperation[];
+  atProviders?: readonly TuttiExternalAtProviderId[];
+  workspaceFeatures?: readonly TuttiExternalWorkspaceFeature[];
+  workspaceAgentProviders?: readonly TuttiExternalWorkspaceAgentProvider[];
+  managedAiProviders?: readonly TuttiExternalManagedAiModelProviderId[];
+}
+
+export type TuttiExternalErrorCode =
+  | "unsupported_operation"
+  | "invalid_input"
+  | "user_activation_required"
+  | "unauthorized"
+  | "unavailable"
+  | "operation_failed";
+
+export interface TuttiExternalOperationError extends Error {
+  readonly code: TuttiExternalErrorCode;
+  readonly operation: TuttiExternalOperation;
+  readonly hostCode?: string;
+}
+
 export interface TuttiExternalBridge {
+  readonly capabilities?: TuttiExternalCapabilities;
   app: {
     getContext(): Promise<unknown>;
     subscribe(listener: (context: unknown) => void): () => void;

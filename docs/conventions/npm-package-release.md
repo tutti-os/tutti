@@ -19,6 +19,7 @@ The current fixed release group is:
 @tutti-os/agent-activity-core
 @tutti-os/agent-gui
 @tutti-os/browser-node
+@tutti-os/workspace-external-core
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-file-preview
 @tutti-os/workspace-file-manager
@@ -242,6 +243,11 @@ The stable package entrypoints are:
 @tutti-os/workspace-app-center/core
 @tutti-os/workspace-app-center/i18n
 @tutti-os/workspace-app-center/ui
+@tutti-os/workspace-external-core
+@tutti-os/workspace-external-core/contracts
+@tutti-os/workspace-external-core/core
+@tutti-os/workspace-external-core/host
+@tutti-os/workspace-external-core/rich-text
 @tutti-os/workspace-file-preview
 @tutti-os/workspace-file-preview/core
 @tutti-os/workspace-file-preview/react

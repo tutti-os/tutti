@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./contracts": "./src/contracts/index.ts",
     "./core": "./src/core/index.ts",
+    "./host": "./src/host/index.ts",
     "./rich-text": "./src/rich-text/index.ts"
   },
   "files": [
@@ -49,6 +50,10 @@
         "types": "./dist/core/index.d.ts",
         "import": "./dist/core/index.js"
       },
+      "./host": {
+        "types": "./dist/host/index.d.ts",
+        "import": "./dist/host/index.js"
+      },
       "./rich-text": {
         "types": "./dist/rich-text/index.d.ts",
         "import": "./dist/rich-text/index.js"
@@ -62,6 +67,9 @@
         ],
         "core": [
           "./dist/core/index.d.ts"
+        ],
+        "host": [
+          "./dist/host/index.d.ts"
         ],
         "rich-text": [
           "./dist/rich-text/index.d.ts"

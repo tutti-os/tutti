@@ -7,6 +7,7 @@ export default defineConfig({
     index: "src/index.ts",
     "contracts/index": "src/contracts/index.ts",
     "core/index": "src/core/index.ts",
+    "host/index": "src/host/index.ts",
     "rich-text/index": "src/rich-text/index.ts"
   },
   format: ["esm"],

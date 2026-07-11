@@ -26,6 +26,12 @@ import {
 import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/workspace-user-project/contracts";
 
 export {
+  createTuttiExternalOperationError,
+  isTuttiExternalOperationError,
+  type CreateTuttiExternalOperationErrorInput
+} from "./errors.ts";
+
+export {
   tuttiExternalAtProviderIds,
   tuttiExternalManagedAiModelProviderIds,
   tuttiExternalWorkspaceAgentProviders

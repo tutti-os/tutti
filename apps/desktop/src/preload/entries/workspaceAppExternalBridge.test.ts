@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createWorkspaceAppExternalBridge,
-  requireUserActivation,
   workspaceAppExternalChannels
 } from "./workspaceAppExternalBridge.ts";
 import type { DesktopWorkspaceAppContext } from "../../shared/contracts/ipc.ts";
@@ -36,7 +35,7 @@ test("workspace app external bridge proxies app context", async () => {
   assert.equal(await bridge.app.getContext(), context);
 });
 
-test("workspace app external bridge subscribes to app context", () => {
+test("workspace app external bridge subscribes to app context", async () => {
   const context: DesktopWorkspaceAppContext = {
     appId: "automation",
     locale: "zh-CN",
@@ -62,6 +61,7 @@ test("workspace app external bridge subscribes to app context", () => {
   const unsubscribe = bridge.app.subscribe((nextContext) => {
     contexts.push(nextContext);
   });
+  await new Promise((resolve) => setImmediate(resolve));
 
   unsubscribe();
   assert.deepEqual(contexts, [context]);
@@ -159,7 +159,7 @@ test("workspace app external bridge invokes at query without user activation", a
   assert.deepEqual(calls, [
     {
       channel: workspaceAppExternalChannels.atQuery,
-      payload: { keyword: "readme" }
+      payload: { keyword: "readme", maxResults: 20, providers: undefined }
     }
   ]);
 });
@@ -255,7 +255,7 @@ test("workspace app external bridge sends browser open URL requests", async () =
   ]);
 });
 
-test("workspace app external bridge requires activation for browser open URL", () => {
+test("workspace app external bridge requires activation for browser open URL", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -272,13 +272,13 @@ test("workspace app external bridge requires activation for browser open URL", (
     }
   });
 
-  assert.throws(
-    () => bridge.browser.openUrl({ url: "https://example.com/design" }),
-    /browser\.openUrl requires a user action/
+  await assert.rejects(
+    bridge.browser.openUrl({ url: "https://example.com/design" }),
+    /browser\.openUrl requires user activation/
   );
 });
 
-test("workspace app external bridge requires activation for workspace feature open", () => {
+test("workspace app external bridge requires activation for workspace feature open", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -295,9 +295,9 @@ test("workspace app external bridge requires activation for workspace feature op
     }
   });
 
-  assert.throws(
-    () => bridge.workspace.openFeature({ feature: "message-center" }),
-    /workspace\.openFeature requires a user action/
+  await assert.rejects(
+    bridge.workspace.openFeature({ feature: "message-center" }),
+    /workspace\.openFeature requires user activation/
   );
 });
 
@@ -318,9 +318,9 @@ test("workspace app external bridge requires activation for file select", async 
     }
   });
 
-  assert.throws(
-    () => bridge.files.select({ multiple: true }),
-    /files\.select requires a user action/
+  await assert.rejects(
+    bridge.files.select({ multiple: true }),
+    /files\.select requires user activation/
   );
 });
 
@@ -341,9 +341,9 @@ test("workspace app external bridge requires activation for file open", async ()
     }
   });
 
-  assert.throws(
-    () => bridge.files.open({ path: "README.md" }),
-    /files\.open requires a user action/
+  await assert.rejects(
+    bridge.files.open({ path: "README.md" }),
+    /files\.open requires user activation/
   );
 });
 
@@ -897,7 +897,7 @@ test("workspace app external bridge invokes PDF print with activation", async ()
   ]);
 });
 
-test("workspace app external bridge requires activation for PDF print", () => {
+test("workspace app external bridge requires activation for PDF print", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -914,13 +914,13 @@ test("workspace app external bridge requires activation for PDF print", () => {
     }
   });
 
-  assert.throws(
-    () => bridge.pdf.printHtmlToPdf({ html: "<h1>Hello</h1>" }),
-    /pdf\.printHtmlToPdf requires a user action/
+  await assert.rejects(
+    bridge.pdf.printHtmlToPdf({ html: "<h1>Hello</h1>" }),
+    /pdf\.printHtmlToPdf requires user activation/
   );
 });
 
-test("workspace app external bridge requires activation for permission request", () => {
+test("workspace app external bridge requires activation for permission request", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -937,15 +937,14 @@ test("workspace app external bridge requires activation for permission request",
     }
   });
 
-  assert.throws(
-    () =>
-      bridge.permissions.request({
-        nonce: "nonce-1",
-        permission: "managed-ai-models",
-        scopes: ["model:invoke"],
-        state: "state-1"
-      }),
-    /permissions\.request requires a user action/
+  await assert.rejects(
+    bridge.permissions.request({
+      nonce: "nonce-1",
+      permission: "managed-ai-models",
+      scopes: ["model:invoke"],
+      state: "state-1"
+    }),
+    /permissions\.request requires user activation/
   );
 });
 
@@ -995,7 +994,7 @@ test("workspace app external bridge invokes permission request with activation",
   ]);
 });
 
-test("workspace app external bridge requires activation for settings open", () => {
+test("workspace app external bridge requires activation for settings open", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -1012,9 +1011,9 @@ test("workspace app external bridge requires activation for settings open", () =
     }
   });
 
-  assert.throws(
-    () => bridge.settings.open({ tab: "models" }),
-    /settings\.open requires a user action/
+  await assert.rejects(
+    bridge.settings.open({ tab: "models" }),
+    /settings\.open requires user activation/
   );
 });
 
@@ -1118,7 +1117,7 @@ test("workspace app external bridge invokes user project snapshot reads without 
   ]);
 });
 
-test("workspace app external bridge subscribes to user project snapshots", () => {
+test("workspace app external bridge subscribes to user project snapshots", async () => {
   const snapshot = {
     error: null,
     initialized: true,
@@ -1153,6 +1152,7 @@ test("workspace app external bridge subscribes to user project snapshots", () =>
   const unsubscribe = bridge.userProjects.subscribe((nextSnapshot) => {
     snapshots.push(nextSnapshot);
   });
+  await new Promise((resolve) => setImmediate(resolve));
   unsubscribe();
 
   assert.deepEqual(snapshots, [snapshot]);
@@ -1191,7 +1191,7 @@ test("workspace app external bridge invokes user project use without activation"
   ]);
 });
 
-test("workspace app external bridge requires activation for user project create", () => {
+test("workspace app external bridge requires activation for user project create", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -1208,13 +1208,13 @@ test("workspace app external bridge requires activation for user project create"
     }
   });
 
-  assert.throws(
-    () => bridge.userProjects.create({ name: "repo" }),
-    /userProjects\.create requires a user action/
+  await assert.rejects(
+    bridge.userProjects.create({ name: "repo" }),
+    /userProjects\.create requires user activation/
   );
 });
 
-test("workspace app external bridge requires activation for user project directory select", () => {
+test("workspace app external bridge requires activation for user project directory select", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
       async get() {
@@ -1231,9 +1231,9 @@ test("workspace app external bridge requires activation for user project directo
     }
   });
 
-  assert.throws(
-    () => bridge.userProjects.selectDirectory(),
-    /userProjects\.selectDirectory requires a user action/
+  await assert.rejects(
+    bridge.userProjects.selectDirectory(),
+    /userProjects\.selectDirectory requires user activation/
   );
 });
 
@@ -1297,12 +1297,4 @@ test("workspace app external bridge ignores invalid log payloads", () => {
 
   assert.doesNotThrow(() => bridge.logs.write({ event: "" } as never));
   assert.deepEqual(calls, []);
-});
-
-test("requireUserActivation throws only when inactive", () => {
-  assert.doesNotThrow(() => requireUserActivation(true, "files.select"));
-  assert.throws(
-    () => requireUserActivation(false, "files.select"),
-    /files\.select requires a user action/
-  );
 });
