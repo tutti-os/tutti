@@ -82,6 +82,8 @@ func claudeCodeDescriptor() ProviderDescriptor {
 				"planMode",
 				CapabilityInterrupt,
 				CapabilityActiveTurnGuidance,
+				CapabilityModelSwitch,
+				CapabilityModelPlanBinding,
 				"permissionModeChangeDuringTurn",
 			},
 			PermissionConfigurable:  true,

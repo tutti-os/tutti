@@ -18,7 +18,7 @@ func (s *SQLiteStore) applyModelPlansV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS model_plans (
   workspace_id TEXT NOT NULL,
   plan_id TEXT NOT NULL,
@@ -61,7 +61,7 @@ func (s *SQLiteStore) applyAgentModelBindingsV1(ctx context.Context) error {
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS agent_target_model_bindings (
   workspace_id TEXT NOT NULL,
   agent_target_id TEXT NOT NULL,
@@ -90,7 +90,7 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 // keep working after the upgrade. The legacy tables stay in place for the
 // workspace-app grant broker.
 func (s *SQLiteStore) backfillModelPlansFromManagedCredentials(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.writeDB.QueryContext(ctx, `
 SELECT workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
 FROM managed_model_provider_credentials
 `)
@@ -128,7 +128,7 @@ FROM managed_model_provider_credentials
 			return err
 		}
 		firstUseJSON := `{"status":"pending"}`
-		_, err = s.db.ExecContext(ctx, `
+		_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO model_plans (
   workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,

@@ -15,10 +15,10 @@ import (
 var ErrModelPlanNotFound = errors.New("model plan not found")
 
 func (s *SQLiteStore) ListModelPlans(ctx context.Context, workspaceID string) ([]modelplanbiz.Plan, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
   created_at_unix_ms, updated_at_unix_ms
@@ -46,10 +46,10 @@ ORDER BY created_at_unix_ms ASC, plan_id ASC
 }
 
 func (s *SQLiteStore) GetModelPlan(ctx context.Context, workspaceID string, planID string) (modelplanbiz.Plan, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return modelplanbiz.Plan{}, errors.New("workspace database is not initialized")
 	}
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
   created_at_unix_ms, updated_at_unix_ms
@@ -67,7 +67,7 @@ WHERE workspace_id = ? AND plan_id = ?
 }
 
 func (s *SQLiteStore) PutModelPlan(ctx context.Context, plan modelplanbiz.Plan) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
 	modelsJSON, err := json.Marshal(modelplanbiz.CloneModels(plan.Models))
@@ -86,7 +86,7 @@ func (s *SQLiteStore) PutModelPlan(ctx context.Context, plan modelplanbiz.Plan) 
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.writeDB.ExecContext(ctx, `
 INSERT INTO model_plans (
   workspace_id, plan_id, name, template_kind, protocol, api_key_ciphertext,
   base_url, models_json, default_model, enabled, detection_json, first_use_json,
@@ -114,10 +114,10 @@ ON CONFLICT(workspace_id, plan_id) DO UPDATE SET
 }
 
 func (s *SQLiteStore) DeleteModelPlan(ctx context.Context, workspaceID string, planID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	result, err := s.db.ExecContext(ctx, `
+	result, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM model_plans
 WHERE workspace_id = ? AND plan_id = ?
 `, workspaceID, planID)

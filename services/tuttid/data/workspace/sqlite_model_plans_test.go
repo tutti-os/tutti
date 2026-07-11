@@ -75,7 +75,7 @@ func TestSQLiteStoreModelPlanRoundTrip(t *testing.T) {
 
 	// The ciphertext column must never contain the raw key.
 	var ciphertext string
-	if err := store.db.QueryRowContext(ctx, `SELECT api_key_ciphertext FROM model_plans WHERE plan_id = 'mp-test'`).Scan(&ciphertext); err != nil {
+	if err := store.writeDB.QueryRowContext(ctx, `SELECT api_key_ciphertext FROM model_plans WHERE plan_id = 'mp-test'`).Scan(&ciphertext); err != nil {
 		t.Fatalf("read ciphertext error = %v", err)
 	}
 	if ciphertext == "" || ciphertext == "sk-secret-value" {
@@ -112,7 +112,7 @@ func TestModelPlansMigrationBackfillsLegacyManagedCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encryptManagedCredential() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 INSERT INTO managed_model_provider_credentials (
   workspace_id, provider_id, enabled, api_key_ciphertext, base_url, models_json, updated_at_unix_ms
 ) VALUES ('ws-legacy', 'anthropic', 1, ?, 'https://relay.example/api/anthropic', '[{"id":"claude-x","name":"Claude X","provider":"anthropic"}]', 1700000000000)
@@ -121,10 +121,10 @@ INSERT INTO managed_model_provider_credentials (
 	}
 
 	// Simulate the upgrade path: reset the migration marker and re-apply.
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id = ?`, schemaMigrationModelPlansV1); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, `DELETE FROM tuttid_schema_migrations WHERE id = ?`, schemaMigrationModelPlansV1); err != nil {
 		t.Fatalf("reset migration marker error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `DROP TABLE model_plans`); err != nil {
+	if _, err := store.writeDB.ExecContext(ctx, `DROP TABLE model_plans`); err != nil {
 		t.Fatalf("drop model_plans error = %v", err)
 	}
 	if err := store.applyModelPlansV1(ctx); err != nil {

@@ -46,9 +46,13 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		input.Manifest.RecordManagedFile(home, "tutti-agent-home", true)
 	}
 	logRuntimePrepareTrace("runtime_prepare.tutti_agent.resolved", input.PrepareInput, nil)
+	env := []string{"TUTTI_AGENT_HOME=" + home}
+	if input.ModelEndpoint.supportsCodex() {
+		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
+	}
 	return ProviderPrepareResult{
 		Cwd: input.Cwd,
-		Env: []string{"TUTTI_AGENT_HOME=" + home},
+		Env: env,
 	}, nil
 }
 
@@ -107,6 +111,10 @@ func ensureTuttiAgentSessionConfig(configPath string, input PrepareInput) error 
 	}
 	if providerNext, providerChanged := tuttiAgentConfigWithLLMProvider(next); providerChanged {
 		next = providerNext
+		changed = true
+	}
+	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
+		next = planNext
 		changed = true
 	}
 	if !changed {

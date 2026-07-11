@@ -83,6 +83,7 @@ func openCodeDescriptor() ProviderDescriptor {
 				CapabilityPlanMode,
 				CapabilityInterrupt,
 				CapabilityPermissionModeChangeDuringTurn,
+				CapabilityModelSwitch,
 			},
 			PermissionConfigurable:  true,
 			DefaultPermissionModeID: "ask",

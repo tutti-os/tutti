@@ -14,10 +14,10 @@ import (
 var ErrAgentModelBindingNotFound = errors.New("agent model binding not found")
 
 func (s *SQLiteStore) ListAgentModelBindings(ctx context.Context, workspaceID string) ([]modelbindingbiz.Binding, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, agent_target_id, model_plan_id, default_model, model_policy_id, updated_at_unix_ms
 FROM agent_target_model_bindings
 WHERE workspace_id = ?
@@ -43,10 +43,10 @@ ORDER BY agent_target_id ASC
 }
 
 func (s *SQLiteStore) GetAgentModelBinding(ctx context.Context, workspaceID string, agentTargetID string) (modelbindingbiz.Binding, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return modelbindingbiz.Binding{}, errors.New("workspace database is not initialized")
 	}
-	row := s.db.QueryRowContext(ctx, `
+	row := s.readDB.QueryRowContext(ctx, `
 SELECT workspace_id, agent_target_id, model_plan_id, default_model, model_policy_id, updated_at_unix_ms
 FROM agent_target_model_bindings
 WHERE workspace_id = ? AND agent_target_id = ?
@@ -62,10 +62,10 @@ WHERE workspace_id = ? AND agent_target_id = ?
 }
 
 func (s *SQLiteStore) PutAgentModelBinding(ctx context.Context, binding modelbindingbiz.Binding) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 INSERT INTO agent_target_model_bindings (
   workspace_id, agent_target_id, model_plan_id, default_model, model_policy_id, updated_at_unix_ms
 ) VALUES (?, ?, ?, ?, ?, ?)
@@ -82,10 +82,10 @@ ON CONFLICT(workspace_id, agent_target_id) DO UPDATE SET
 }
 
 func (s *SQLiteStore) DeleteAgentModelBinding(ctx context.Context, workspaceID string, agentTargetID string) error {
-	if s == nil || s.db == nil {
+	if s == nil || s.writeDB == nil {
 		return errors.New("workspace database is not initialized")
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.writeDB.ExecContext(ctx, `
 DELETE FROM agent_target_model_bindings
 WHERE workspace_id = ? AND agent_target_id = ?
 `, workspaceID, agentTargetID)
@@ -98,10 +98,10 @@ WHERE workspace_id = ? AND agent_target_id = ?
 // ListAgentModelBindingsByPlan reports every binding referencing one plan so
 // plan deletion can be blocked while consumers remain.
 func (s *SQLiteStore) ListAgentModelBindingsByPlan(ctx context.Context, workspaceID string, planID string) ([]modelbindingbiz.Binding, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.readDB == nil {
 		return nil, errors.New("workspace database is not initialized")
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB.QueryContext(ctx, `
 SELECT workspace_id, agent_target_id, model_plan_id, default_model, model_policy_id, updated_at_unix_ms
 FROM agent_target_model_bindings
 WHERE workspace_id = ? AND model_plan_id = ?
