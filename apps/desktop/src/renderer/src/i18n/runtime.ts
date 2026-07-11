@@ -37,6 +37,10 @@ export function syncDocumentLanguage(locale: DesktopLocale): void {
   document.documentElement.lang = toDocumentLanguage(locale);
 }
 
+// Keep the shared DOM locale authoritative before React effects or preload
+// request handlers can observe the static index.html fallback.
+syncDocumentLanguage(activeLocale);
+
 function setActiveLocale(locale: DesktopLocale): void {
   if (activeLocale === locale) {
     return;

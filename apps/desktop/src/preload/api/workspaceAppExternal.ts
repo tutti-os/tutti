@@ -9,10 +9,10 @@ import type {
   DesktopWorkspaceAppExternalHostRequestResult
 } from "../types";
 import { ipcRenderer, type IpcRendererEvent } from "electron";
-import { normalizeDesktopApiErrorDetails } from "../../shared/desktopApiError.ts";
+import { normalizeWorkspaceAppExternalErrorDetails } from "./workspaceAppExternalError.ts";
 
 export function createWorkspaceAppExternalDesktopApi(
-  unknownErrorMessage: string
+  getUnknownErrorMessage: () => string
 ): DesktopWorkspaceAppExternalHostApi {
   return {
     onRequest(listener) {
@@ -25,7 +25,7 @@ export function createWorkspaceAppExternalDesktopApi(
             sendResponse(request.requestId, data);
           })
           .catch((error: unknown) => {
-            sendErrorResponse(request.requestId, error, unknownErrorMessage);
+            sendErrorResponse(request.requestId, error, getUnknownErrorMessage);
           });
       };
 
@@ -60,13 +60,16 @@ function sendResponse(
 function sendErrorResponse(
   requestId: string,
   error: unknown,
-  unknownErrorMessage: string
+  getUnknownErrorMessage: () => string
 ): void {
   const response: DesktopWorkspaceAppExternalRendererResponse = {
     requestId,
     result: {
       ok: false,
-      error: normalizeDesktopApiErrorDetails(error, unknownErrorMessage)
+      error: normalizeWorkspaceAppExternalErrorDetails(
+        error,
+        getUnknownErrorMessage
+      )
     }
   };
   ipcRenderer.send(desktopIpcChannels.appExternal.rendererResponse, response);
