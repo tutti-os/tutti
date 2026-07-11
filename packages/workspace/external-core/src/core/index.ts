@@ -183,8 +183,7 @@ export function normalizeTuttiExternalFileOpenInput(
   const mode = normalizeFileOpenMode(input.mode);
   const location = normalizeFileOpenLocation(input.location);
   const packageVersion = normalizeFileOpenPackageVersion(input.packageVersion);
-  return {
-    ...(location ? { location } : {}),
+  const normalized = {
     ...(mode ? { mode } : {}),
     ...(typeof input.mtimeMs === "number" || input.mtimeMs === null
       ? { mtimeMs: input.mtimeMs }
@@ -192,11 +191,27 @@ export function normalizeTuttiExternalFileOpenInput(
     ...(typeof input.name === "string" && input.name.trim() !== ""
       ? { name: input.name.trim() }
       : {}),
-    ...(packageVersion !== undefined ? { packageVersion } : {}),
     path: input.path.trim(),
     ...(typeof input.sizeBytes === "number" || input.sizeBytes === null
       ? { sizeBytes: input.sizeBytes }
       : {})
+  };
+  if (location?.type === "app-package-relative") {
+    if (typeof packageVersion !== "string") {
+      throw new Error(
+        "files.open packageVersion is required for app-package-relative locations."
+      );
+    }
+    return {
+      ...normalized,
+      location,
+      packageVersion
+    };
+  }
+  return {
+    ...normalized,
+    ...(location ? { location } : {}),
+    ...(packageVersion !== undefined ? { packageVersion } : {})
   };
 }
 
@@ -353,7 +368,8 @@ export function normalizeTuttiExternalWorkspaceOpenRouteIntent(
   if (
     !route.startsWith("/") ||
     route.startsWith("//") ||
-    route.includes("://")
+    route.includes("://") ||
+    route.includes("\\")
   ) {
     throw new Error(
       "workspace launch intent route must be an origin-root path."

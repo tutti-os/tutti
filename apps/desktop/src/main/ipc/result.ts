@@ -7,6 +7,10 @@ import {
   classifyDesktopErrorCode,
   formatErrorMessage
 } from "../../shared/errors/desktopErrors.ts";
+import {
+  DesktopApiError,
+  readDesktopApiErrorDetails
+} from "../../shared/desktopApiError.ts";
 
 export async function toDesktopIpcResult<TResult>(
   operation: () => Promise<TResult>
@@ -39,6 +43,14 @@ function toDesktopIpcError(error: unknown): DesktopApiErrorDetails {
       developerMessage: protocolError.developerMessage,
       correlationId: protocolError.correlationId
     };
+  }
+
+  const desktopError =
+    error instanceof DesktopApiError
+      ? readDesktopApiErrorDetails(error)
+      : undefined;
+  if (desktopError) {
+    return desktopError;
   }
 
   return {

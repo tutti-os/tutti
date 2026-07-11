@@ -6,7 +6,9 @@ import type {
   DesktopWorkspaceAppExternalRendererEvent
 } from "../../shared/contracts/ipc";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
+import { normalizeTuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/core";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
+import { DesktopApiError } from "../api/desktopApiError.ts";
 import { installWorkspaceAppInteractionForwarding } from "./workspaceAppInteractionForwarding.ts";
 import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 import { createWorkspaceAppUserProjectSnapshotBridge } from "./workspaceAppUserProjectSnapshots.ts";
@@ -21,6 +23,7 @@ const appContextChannels = {
   diagnostic: "workspace-app-context:diagnostic",
   get: "workspace-app-context:get"
 } as const;
+const maxPendingWorkspaceAppLaunchIntents = 64;
 
 installWorkspaceAppInteractionForwarding({
   scope: globalThis.window,
@@ -124,9 +127,14 @@ function installWorkspaceAppMainFrameBridge(): void {
       if (payload.type === "workspace.launchIntent") {
         if (launchIntentListeners.size === 0) {
           pendingLaunchIntents.push(payload.intent);
+          while (
+            pendingLaunchIntents.length > maxPendingWorkspaceAppLaunchIntents
+          ) {
+            pendingLaunchIntents.shift();
+          }
           return;
         }
-        for (const listener of launchIntentListeners) {
+        for (const listener of [...launchIntentListeners]) {
           listener(payload.intent);
         }
       }
@@ -145,6 +153,9 @@ function installWorkspaceAppMainFrameBridge(): void {
       ? "invalid workspace app context"
       : result.error.message;
     sendDiagnostic("get-context-failed", { message });
+    if (!result.ok) {
+      throw new DesktopApiError(result.error);
+    }
     throw new Error(message);
   }
 
@@ -156,7 +167,7 @@ function installWorkspaceAppMainFrameBridge(): void {
     if (result.ok) {
       return result.data;
     }
-    throw new Error(result.error.message);
+    throw new DesktopApiError(result.error);
   }
 
   async function invokeWorkspaceAppRaw<TResult>(
@@ -219,38 +230,10 @@ function isWorkspaceAppExternalRendererEvent(
 function isWorkspaceAppOpenRouteIntent(
   value: unknown
 ): value is TuttiExternalWorkspaceOpenRouteIntent {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  try {
+    normalizeTuttiExternalWorkspaceOpenRouteIntent(value);
+    return true;
+  } catch {
     return false;
   }
-  const record = value as Record<string, unknown>;
-  if (record.kind !== "open-route" || typeof record.route !== "string") {
-    return false;
-  }
-  const route = record.route.trim();
-  if (
-    !route.startsWith("/") ||
-    route.startsWith("//") ||
-    route.includes("://")
-  ) {
-    return false;
-  }
-  if (record.params !== undefined && !isStringRecord(record.params)) {
-    return false;
-  }
-  if (
-    record.state !== undefined &&
-    (!record.state ||
-      typeof record.state !== "object" ||
-      Array.isArray(record.state))
-  ) {
-    return false;
-  }
-  return true;
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
 }

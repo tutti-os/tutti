@@ -11,12 +11,29 @@ export async function uploadTuttiExternalFile(
   file: Blob | File,
   input?: TuttiExternalFileUploadInput
 ): Promise<TuttiExternalUploadedFile> {
-  assertUploadFile(file);
+  const normalized = normalizeTuttiExternalFileUploadRequest(file, input);
+  return uploadNormalizedTuttiExternalFile(adapter, file, normalized);
+}
+
+export function normalizeTuttiExternalFileUploadRequest(
+  file: unknown,
+  input?: TuttiExternalFileUploadInput
+): TuttiExternalFileUploadInput & { purpose: "app-asset" } {
+  assertTuttiExternalUploadFile(file);
   const normalized = normalizeTuttiExternalFileUploadInput(input);
   throwIfAborted(normalized.signal);
-  const onProgress = normalized.onProgress;
+  return normalized;
+}
+
+export async function uploadNormalizedTuttiExternalFile(
+  adapter: TuttiExternalHostAdapter,
+  file: Blob | File,
+  input: TuttiExternalFileUploadInput & { purpose: "app-asset" }
+): Promise<TuttiExternalUploadedFile> {
+  throwIfAborted(input.signal);
+  const onProgress = input.onProgress;
   const uploaded = await adapter.upload(file, {
-    ...normalized,
+    ...input,
     ...(onProgress
       ? {
           onProgress(progress) {
@@ -29,13 +46,40 @@ export async function uploadTuttiExternalFile(
         }
       : {})
   });
-  throwIfAborted(normalized.signal);
+  throwIfAborted(input.signal);
   return normalizeTuttiExternalUploadedFileResult(uploaded);
 }
 
-function assertUploadFile(file: Blob | File): void {
-  const size = (file as { size?: unknown } | undefined)?.size;
-  if (typeof size !== "number" || !Number.isFinite(size) || size < 0) {
+export function assertTuttiExternalUploadFile(
+  file: unknown
+): asserts file is Blob | File {
+  if (typeof file !== "object" || file === null) {
+    throw new Error("files.upload file must be a Blob or File.");
+  }
+  const blobPrototype = globalThis.Blob?.prototype;
+  const sizeGetter = blobPrototype
+    ? Object.getOwnPropertyDescriptor(blobPrototype, "size")?.get
+    : undefined;
+  if (!blobPrototype || !sizeGetter) {
+    throw new Error("files.upload Blob support is unavailable.");
+  }
+  try {
+    sizeGetter.call(file);
+    blobPrototype.slice.call(file, 0, 0);
+  } catch {
+    throw new Error("files.upload file must be a Blob or File.");
+  }
+  const candidate = file as Record<string, unknown>;
+  if (
+    typeof candidate.size !== "number" ||
+    !Number.isFinite(candidate.size) ||
+    candidate.size < 0 ||
+    typeof candidate.type !== "string" ||
+    typeof candidate.arrayBuffer !== "function" ||
+    typeof candidate.slice !== "function" ||
+    typeof candidate.stream !== "function" ||
+    typeof candidate.text !== "function"
+  ) {
     throw new Error("files.upload file must be a Blob or File.");
   }
 }

@@ -95,15 +95,31 @@ export interface TuttiExternalFileOpenLocation {
   type: TuttiExternalFileOpenLocationType;
 }
 
-export interface TuttiExternalFileOpenInput {
-  location?: TuttiExternalFileOpenLocation;
+interface TuttiExternalFileOpenInputBase {
   mode?: "auto" | "preview" | "reveal";
   mtimeMs?: number | null;
   name?: string;
-  packageVersion?: string | null;
   path: string;
   sizeBytes?: number | null;
 }
+
+type TuttiExternalNonPackageFileOpenLocation = TuttiExternalFileOpenLocation & {
+  type: Exclude<TuttiExternalFileOpenLocationType, "app-package-relative">;
+};
+
+export type TuttiExternalFileOpenInput = TuttiExternalFileOpenInputBase &
+  (
+    | {
+        location: TuttiExternalFileOpenLocation & {
+          type: "app-package-relative";
+        };
+        packageVersion: string;
+      }
+    | {
+        location?: TuttiExternalNonPackageFileOpenLocation;
+        packageVersion?: string | null;
+      }
+  );
 
 export interface TuttiExternalFileUploadInput {
   purpose?: "app-asset";
@@ -264,36 +280,46 @@ export interface TuttiExternalPdfPrintHtmlResult {
   bytes: Uint8Array;
 }
 
-export type TuttiExternalUserProjectOperation =
-  | "checkPath"
-  | "create"
-  | "getDefaultSelection"
-  | "getSnapshot"
-  | "list"
-  | "prepareSelection"
-  | "refresh"
-  | "rememberDefaultSelection"
-  | "selectDirectory"
-  | "subscribe"
-  | "use";
+export const tuttiExternalOperations = [
+  "app.getContext",
+  "app.subscribe",
+  "activity.reportActive",
+  "browser.openUrl",
+  "at.query",
+  "files.select",
+  "files.open",
+  "files.upload",
+  "permissions.request",
+  "settings.open",
+  "workspace.onLaunchIntent",
+  "workspace.openFeature",
+  "references.open",
+  "pdf.printHtmlToPdf",
+  "userProjects.checkPath",
+  "userProjects.create",
+  "userProjects.getDefaultSelection",
+  "userProjects.getSnapshot",
+  "userProjects.list",
+  "userProjects.prepareSelection",
+  "userProjects.refresh",
+  "userProjects.rememberDefaultSelection",
+  "userProjects.selectDirectory",
+  "userProjects.subscribe",
+  "userProjects.use",
+  "logs.write"
+] as const;
 
-export type TuttiExternalOperation =
-  | "app.getContext"
-  | "app.subscribe"
-  | "activity.reportActive"
-  | "browser.openUrl"
-  | "at.query"
-  | "files.select"
-  | "files.open"
-  | "files.upload"
-  | "permissions.request"
-  | "settings.open"
-  | "workspace.onLaunchIntent"
-  | "workspace.openFeature"
-  | "references.open"
-  | "pdf.printHtmlToPdf"
-  | `userProjects.${TuttiExternalUserProjectOperation}`
-  | "logs.write";
+export type TuttiExternalOperation = (typeof tuttiExternalOperations)[number];
+
+type TuttiExternalOperationSuffix<
+  TOperation extends TuttiExternalOperation,
+  TPrefix extends string
+> = TOperation extends `${TPrefix}.${infer TSuffix}` ? TSuffix : never;
+
+export type TuttiExternalUserProjectOperation = TuttiExternalOperationSuffix<
+  TuttiExternalOperation,
+  "userProjects"
+>;
 
 export interface TuttiExternalCapabilities {
   operations: readonly TuttiExternalOperation[];

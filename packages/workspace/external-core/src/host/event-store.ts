@@ -4,6 +4,7 @@ export interface HostEventStore<TPayload> {
 
 export function createHostEventStore<TPayload>(options: {
   consumeInitialOnce?: boolean;
+  normalizeInitial?(payload: unknown): TPayload;
   open(listener: (payload: TPayload) => void): {
     initial: Promise<TPayload | undefined>;
     unsubscribe(): void;
@@ -18,12 +19,13 @@ export function createHostEventStore<TPayload>(options: {
   let ready = false;
   let generation = 0;
   let initialConsumed = false;
+  let consumableInitial: Promise<TPayload | undefined> | undefined;
   let unsubscribeHost: (() => void) | undefined;
 
   function publish(payload: TPayload): void {
     latest = payload;
     hasLatest = true;
-    for (const listener of listeners) {
+    for (const listener of [...listeners]) {
       notifyListener(listener, payload);
     }
   }
@@ -35,26 +37,96 @@ export function createHostEventStore<TPayload>(options: {
     opened = true;
     generation += 1;
     const openedGeneration = generation;
-    const stream = options.open((payload) => {
-      if (openedGeneration !== generation) {
-        return;
+    const bufferedBeforeOpen = buffered.length;
+    let initial: Promise<TPayload | undefined>;
+    let closeHost: () => void;
+    let rollbackHost: (() => void) | undefined;
+    let retainedInitialForGeneration: Promise<TPayload | undefined> | undefined;
+    try {
+      const stream = options.open((payload) => {
+        if (openedGeneration !== generation) {
+          return;
+        }
+        if (!ready) {
+          buffered.push(payload);
+          return;
+        }
+        publish(payload);
+      });
+      const unsubscribe = stream.unsubscribe;
+      if (typeof unsubscribe === "function") {
+        rollbackHost = () => unsubscribe.call(stream);
       }
-      if (!ready) {
-        buffered.push(payload);
-        return;
+      const initialValue = stream.initial;
+      if (
+        !initialValue ||
+        typeof initialValue.then !== "function" ||
+        typeof unsubscribe !== "function"
+      ) {
+        throw new Error("tuttiExternal host event stream is invalid.");
       }
-      publish(payload);
-    });
-    unsubscribeHost = stream.unsubscribe;
-    void stream.initial
+      const openedInitial = Promise.resolve(initialValue).then((value) => {
+        if (value === undefined) {
+          return undefined;
+        }
+        return options.normalizeInitial
+          ? options.normalizeInitial(value)
+          : value;
+      });
+      if (options.consumeInitialOnce && !initialConsumed) {
+        if (!consumableInitial) {
+          const retainedInitial = openedInitial;
+          consumableInitial = retainedInitial;
+          void retainedInitial.catch(() => {
+            if (consumableInitial === retainedInitial) {
+              consumableInitial = undefined;
+            }
+          });
+        }
+        retainedInitialForGeneration = consumableInitial;
+        if (retainedInitialForGeneration !== openedInitial) {
+          void openedInitial.catch(() => undefined);
+        }
+        initial = retainedInitialForGeneration.then(
+          (value) => (value === undefined ? openedInitial : value),
+          () => openedInitial
+        );
+      } else {
+        initial = openedInitial;
+      }
+      closeHost = () => unsubscribe.call(stream);
+    } catch (error) {
+      if (openedGeneration === generation) {
+        generation += 1;
+        opened = false;
+        ready = false;
+        buffered.splice(bufferedBeforeOpen);
+        unsubscribeHost = undefined;
+      }
+      try {
+        rollbackHost?.();
+      } catch {
+        // Best-effort cleanup for a partially constructed host stream.
+      }
+      throw error;
+    }
+    unsubscribeHost = closeHost;
+    const initialPromise = initial;
+    void initialPromise
       .then((initial) => {
         if (openedGeneration !== generation) {
           return;
         }
         if (
-          initial !== undefined &&
-          (!options.consumeInitialOnce || !initialConsumed)
+          options.consumeInitialOnce &&
+          consumableInitial === retainedInitialForGeneration
         ) {
+          consumableInitial = undefined;
+        }
+        if (initial === undefined) {
+          return;
+        }
+        if (!options.consumeInitialOnce || !initialConsumed) {
           initialConsumed = true;
           publish(initial);
         }
@@ -75,14 +147,14 @@ export function createHostEventStore<TPayload>(options: {
     subscribe(listener) {
       listeners.add(listener);
       if (options.replayLatest && hasLatest) {
-        const replay = latest as TPayload;
-        queueMicrotask(() => {
-          if (listeners.has(listener)) {
-            notifyListener(listener, replay);
-          }
-        });
+        notifyListener(listener, latest as TPayload);
       }
-      ensureOpen();
+      try {
+        ensureOpen();
+      } catch (error) {
+        listeners.delete(listener);
+        throw error;
+      }
       let active = true;
       return () => {
         if (!active) {
@@ -91,14 +163,23 @@ export function createHostEventStore<TPayload>(options: {
         active = false;
         listeners.delete(listener);
         if (listeners.size === 0) {
-          unsubscribeHost?.();
+          const closeHost = unsubscribeHost;
+          const preservePreReadyEvents =
+            options.consumeInitialOnce && !ready && buffered.length > 0;
           unsubscribeHost = undefined;
           generation += 1;
           opened = false;
           ready = false;
-          buffered.splice(0);
+          if (!preservePreReadyEvents) {
+            buffered.splice(0);
+          }
           hasLatest = false;
           latest = undefined;
+          try {
+            closeHost?.();
+          } catch {
+            // Host cleanup is best-effort; local state is already closed.
+          }
         }
       };
     }

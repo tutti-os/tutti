@@ -345,36 +345,38 @@ test("workspace app open-route resolves from the app origin root", async () => {
   });
 });
 
-test("workspace app open-route rejects protocol-relative routes", async () => {
+test("workspace app open-route rejects routes that can escape the origin", async () => {
   const app = createApp({
     appId: "docs",
     runtimeStatus: "running",
     launchUrl: "http://127.0.0.1:51234/app-shell/"
   });
 
-  const result = await resolveWorkspaceAppCenterLaunchRequest({
-    appCenterService: createAppCenterService([app]),
-    request: {
-      ...createLaunchRequestContext(),
-      payload: {
-        appId: "docs",
-        intent: {
-          kind: "open-route",
-          route: "//example.com/files"
-        }
-      },
-      reason: "host",
-      typeId: workspaceAppWebviewTypeID,
-      workspaceId: "workspace-1"
-    }
-  });
+  for (const route of ["//example.com/files", "/\\example.com/files"]) {
+    const result = await resolveWorkspaceAppCenterLaunchRequest({
+      appCenterService: createAppCenterService([app]),
+      request: {
+        ...createLaunchRequestContext(),
+        payload: {
+          appId: "docs",
+          intent: {
+            kind: "open-route",
+            route
+          }
+        },
+        reason: "host",
+        typeId: workspaceAppWebviewTypeID,
+        workspaceId: "workspace-1"
+      }
+    });
 
-  assert.equal(result?.activation?.type, "open-url");
-  assert.deepEqual(result?.activation?.payload, {
-    appId: "docs",
-    title: "Ready",
-    url: "http://127.0.0.1:51234/app-shell/"
-  });
+    assert.equal(result?.activation?.type, "open-url");
+    assert.deepEqual(result?.activation?.payload, {
+      appId: "docs",
+      title: "Ready",
+      url: "http://127.0.0.1:51234/app-shell/"
+    });
+  }
 });
 
 test("workspace app webview stays mounted during running app update handoff", () => {

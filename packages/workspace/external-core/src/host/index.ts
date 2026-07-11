@@ -7,6 +7,7 @@ export {
   tuttiExternalOperations,
   tuttiExternalUserActivationOperations
 } from "./operation-map.ts";
+export { assertTuttiExternalUploadFile } from "./upload.ts";
 export type {
   CreateTuttiExternalBridgeOptions,
   TuttiExternalHostAdapter,

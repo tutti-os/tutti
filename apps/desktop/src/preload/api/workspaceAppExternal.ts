@@ -9,6 +9,7 @@ import type {
   DesktopWorkspaceAppExternalHostRequestResult
 } from "../types";
 import { ipcRenderer, type IpcRendererEvent } from "electron";
+import { normalizeDesktopApiErrorDetails } from "../../shared/desktopApiError.ts";
 
 export function createWorkspaceAppExternalDesktopApi(): DesktopWorkspaceAppExternalHostApi {
   return {
@@ -59,10 +60,7 @@ function sendErrorResponse(requestId: string, error: unknown): void {
     requestId,
     result: {
       ok: false,
-      error: {
-        code: "UNKNOWN",
-        message: error instanceof Error ? error.message : String(error)
-      }
+      error: normalizeDesktopApiErrorDetails(error)
     }
   };
   ipcRenderer.send(desktopIpcChannels.appExternal.rendererResponse, response);

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { TuttiExternalFileOpenInput } from "../contracts/index.ts";
 import {
+  createTuttiExternalOperationError,
   deriveTuttiExternalLegacyContextCapabilities,
+  isTuttiExternalOperationError,
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalBrowserOpenUrlInput,
   normalizeTuttiExternalFileOpenInput,
@@ -40,11 +43,41 @@ test("normalizes workspace launch route intents", () => {
       state: { selected: 42 }
     }
   );
-  assert.throws(() =>
-    normalizeTuttiExternalWorkspaceOpenRouteIntent({
-      kind: "open-route",
-      route: "//example.com/path"
-    })
+  for (const route of [
+    "//example.com/path",
+    "/\\example.com/path",
+    "/https://example.com/path"
+  ]) {
+    assert.throws(
+      () =>
+        normalizeTuttiExternalWorkspaceOpenRouteIntent({
+          kind: "open-route",
+          route
+        }),
+      /origin-root path/
+    );
+  }
+});
+
+test("validates structured external operation error operations", () => {
+  assert.equal(
+    isTuttiExternalOperationError(
+      createTuttiExternalOperationError({
+        code: "operation_failed",
+        message: "failed",
+        operation: "files.open"
+      })
+    ),
+    true
+  );
+  assert.equal(
+    isTuttiExternalOperationError({
+      code: "operation_failed",
+      message: "failed",
+      name: "TuttiExternalOperationError",
+      operation: "files.not-real"
+    }),
+    false
   );
 });
 
@@ -155,6 +188,21 @@ test("normalizes file open input", () => {
   );
 });
 
+test("requires packageVersion in typed app-package file opens", () => {
+  const valid: TuttiExternalFileOpenInput = {
+    location: { path: "README.md", type: "app-package-relative" },
+    packageVersion: "v1",
+    path: "README.md"
+  };
+  // @ts-expect-error app-package-relative locations require packageVersion.
+  const invalid: TuttiExternalFileOpenInput = {
+    location: { path: "README.md", type: "app-package-relative" },
+    path: "README.md"
+  };
+  assert.equal(valid.packageVersion, "v1");
+  assert.equal(invalid.packageVersion, undefined);
+});
+
 test("rejects invalid file open input", () => {
   assert.throws(
     () => normalizeTuttiExternalFileOpenInput({ path: "" }),
@@ -188,6 +236,20 @@ test("rejects invalid file open input", () => {
       }),
     /packageVersion must be a non-empty string or null/
   );
+  for (const packageVersion of [undefined, null]) {
+    assert.throws(
+      () =>
+        normalizeTuttiExternalFileOpenInput({
+          location: {
+            path: "README.md",
+            type: "app-package-relative"
+          },
+          packageVersion,
+          path: "README.md"
+        }),
+      /packageVersion is required for app-package-relative locations/
+    );
+  }
 });
 
 test("normalizes file upload input defaults", () => {

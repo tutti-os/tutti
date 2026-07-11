@@ -2,27 +2,64 @@ import type {
   TuttiExternalCapabilities,
   TuttiExternalOperation
 } from "../contracts/index.ts";
+import { tuttiExternalOperations } from "../contracts/index.ts";
+import {
+  isTuttiExternalAtProviderId,
+  isTuttiExternalManagedAiModelProviderId,
+  isTuttiExternalWorkspaceAgentProvider,
+  isTuttiExternalWorkspaceFeature
+} from "../core/index.ts";
+
+const tuttiExternalOperationSet = new Set<string>(tuttiExternalOperations);
 
 export function normalizeTuttiExternalCapabilities(
   capabilities: TuttiExternalCapabilities
 ): TuttiExternalCapabilities {
+  if (typeof capabilities !== "object" || capabilities === null) {
+    throw new Error("tuttiExternal host capabilities must be an object.");
+  }
   return Object.freeze({
-    operations: freezeUnique(capabilities.operations),
-    ...(capabilities.atProviders
-      ? { atProviders: freezeUnique(capabilities.atProviders) }
-      : {}),
-    ...(capabilities.workspaceFeatures
-      ? { workspaceFeatures: freezeUnique(capabilities.workspaceFeatures) }
-      : {}),
-    ...(capabilities.workspaceAgentProviders
+    operations: normalizeCapabilityArray(
+      capabilities.operations,
+      "operations",
+      (value): value is TuttiExternalOperation =>
+        typeof value === "string" && tuttiExternalOperationSet.has(value)
+    ),
+    ...(capabilities.atProviders !== undefined
       ? {
-          workspaceAgentProviders: freezeUnique(
-            capabilities.workspaceAgentProviders
+          atProviders: normalizeCapabilityArray(
+            capabilities.atProviders,
+            "atProviders",
+            isTuttiExternalAtProviderId
           )
         }
       : {}),
-    ...(capabilities.managedAiProviders
-      ? { managedAiProviders: freezeUnique(capabilities.managedAiProviders) }
+    ...(capabilities.workspaceFeatures !== undefined
+      ? {
+          workspaceFeatures: normalizeCapabilityArray(
+            capabilities.workspaceFeatures,
+            "workspaceFeatures",
+            isTuttiExternalWorkspaceFeature
+          )
+        }
+      : {}),
+    ...(capabilities.workspaceAgentProviders !== undefined
+      ? {
+          workspaceAgentProviders: normalizeCapabilityArray(
+            capabilities.workspaceAgentProviders,
+            "workspaceAgentProviders",
+            isTuttiExternalWorkspaceAgentProvider
+          )
+        }
+      : {}),
+    ...(capabilities.managedAiProviders !== undefined
+      ? {
+          managedAiProviders: normalizeCapabilityArray(
+            capabilities.managedAiProviders,
+            "managedAiProviders",
+            isTuttiExternalManagedAiModelProviderId
+          )
+        }
       : {})
   });
 }
@@ -34,6 +71,13 @@ export function supportsTuttiExternalOperation(
   return capabilities.operations.includes(operation);
 }
 
-function freezeUnique<T>(values: readonly T[]): readonly T[] {
+function normalizeCapabilityArray<T>(
+  values: unknown,
+  field: string,
+  guard: (value: unknown) => value is T
+): readonly T[] {
+  if (!Array.isArray(values) || values.some((value) => !guard(value))) {
+    throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
+  }
   return Object.freeze([...new Set(values)]);
 }

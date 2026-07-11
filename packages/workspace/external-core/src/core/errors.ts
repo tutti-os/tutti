@@ -3,6 +3,9 @@ import type {
   TuttiExternalOperation,
   TuttiExternalOperationError
 } from "../contracts/index.ts";
+import { tuttiExternalOperations } from "../contracts/index.ts";
+
+const tuttiExternalOperationSet = new Set<string>(tuttiExternalOperations);
 
 export interface CreateTuttiExternalOperationErrorInput {
   cause?: unknown;
@@ -40,6 +43,7 @@ export function isTuttiExternalOperationError(
     value.name === "TuttiExternalOperationError" &&
     isTuttiExternalErrorCode(value.code) &&
     typeof value.operation === "string" &&
+    tuttiExternalOperationSet.has(value.operation) &&
     typeof value.message === "string" &&
     (value.hostCode === undefined || typeof value.hostCode === "string")
   );

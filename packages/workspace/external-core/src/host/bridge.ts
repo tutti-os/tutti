@@ -2,6 +2,7 @@ import type {
   TuttiExternalAtQueryInput,
   TuttiExternalBridge,
   TuttiExternalCapabilities,
+  TuttiExternalFileUploadInput,
   TuttiExternalOperation,
   TuttiExternalPermissionRequestInput,
   TuttiExternalWorkspaceOpenFeatureInput
@@ -42,7 +43,10 @@ import type {
   TuttiExternalRequestOperation,
   TuttiExternalRequestResultMap
 } from "./types.ts";
-import { uploadTuttiExternalFile } from "./upload.ts";
+import {
+  normalizeTuttiExternalFileUploadRequest,
+  uploadNormalizedTuttiExternalFile
+} from "./upload.ts";
 
 export function createTuttiExternalBridge(
   options: CreateTuttiExternalBridgeOptions
@@ -88,35 +92,19 @@ export function createTuttiExternalBridge(
     operation: TOperation,
     normalize: () => TuttiExternalRequestInputMap[TOperation]
   ): Promise<TuttiExternalRequestResultMap[TOperation]> {
-    let input: TuttiExternalRequestInputMap[TOperation];
-    try {
-      input = normalize();
-    } catch (error) {
-      if (isTuttiExternalOperationError(error)) {
-        throw error;
-      }
-      throw createTuttiExternalOperationError({
-        cause: error,
-        code: "invalid_input",
-        operation,
-        message:
-          error instanceof Error
-            ? error.message
-            : `tuttiExternal.${operation} input is invalid.`
-      });
-    }
+    const input = normalizeInput(operation, normalize);
     return request(operation, input);
   }
 
   async function notifyBrowser(input: unknown): Promise<void> {
     const operation = "browser.openUrl";
+    const normalized = normalizeInput(operation, () =>
+      normalizeTuttiExternalBrowserOpenUrlInput(input)
+    );
     try {
       ensureSupported(capabilities, operation);
       ensureUserActivation(options, operation);
-      adapter.notify(
-        operation,
-        normalizeTuttiExternalBrowserOpenUrlInput(input)
-      );
+      adapter.notify(operation, normalized);
     } catch (error) {
       throw mapOperationError(operation, error);
     }
@@ -127,8 +115,12 @@ export function createTuttiExternalBridge(
     app: {
       getContext: () => request("app.getContext", undefined),
       subscribe(listener) {
-        ensureSubscriptionSupported(capabilities, "app.subscribe");
-        return contextStore.subscribe(listener);
+        return subscribeToEventStore(
+          capabilities,
+          "app.subscribe",
+          contextStore,
+          listener
+        );
       }
     },
     activity: {
@@ -156,9 +148,24 @@ export function createTuttiExternalBridge(
         ),
       async upload(file, input) {
         const operation = "files.upload";
+        let normalized: TuttiExternalFileUploadInput & {
+          purpose: "app-asset";
+        };
+        try {
+          normalized = normalizeTuttiExternalFileUploadRequest(file, input);
+        } catch (error) {
+          if (isAbortError(error)) {
+            throw error;
+          }
+          throw mapInvalidInputError(operation, error);
+        }
         try {
           ensureSupported(capabilities, operation);
-          return await uploadTuttiExternalFile(adapter, file, input);
+          return await uploadNormalizedTuttiExternalFile(
+            adapter,
+            file,
+            normalized
+          );
         } catch (error) {
           if (isAbortError(error)) {
             throw error;
@@ -192,8 +199,12 @@ export function createTuttiExternalBridge(
     },
     workspace: {
       onLaunchIntent(listener) {
-        ensureSubscriptionSupported(capabilities, "workspace.onLaunchIntent");
-        return launchIntentStore.subscribe(listener);
+        return subscribeToEventStore(
+          capabilities,
+          "workspace.onLaunchIntent",
+          launchIntentStore,
+          listener
+        );
       },
       openFeature: (input) =>
         normalizeAndRequest("workspace.openFeature", () => {
@@ -239,8 +250,12 @@ export function createTuttiExternalBridge(
         ),
       selectDirectory: () => request("userProjects.selectDirectory", undefined),
       subscribe(listener) {
-        ensureSubscriptionSupported(capabilities, "userProjects.subscribe");
-        return userProjectStore.subscribe(listener);
+        return subscribeToEventStore(
+          capabilities,
+          "userProjects.subscribe",
+          userProjectStore,
+          listener
+        );
       },
       use: (input) =>
         normalizeAndRequest("userProjects.use", () =>
@@ -262,6 +277,35 @@ export function createTuttiExternalBridge(
   };
 }
 
+function normalizeInput<TOperation extends TuttiExternalOperation, TInput>(
+  operation: TOperation,
+  normalize: () => TInput
+): TInput {
+  try {
+    return normalize();
+  } catch (error) {
+    if (isTuttiExternalOperationError(error) && error.operation === operation) {
+      throw error;
+    }
+    throw mapInvalidInputError(operation, error);
+  }
+}
+
+function mapInvalidInputError(
+  operation: TuttiExternalOperation,
+  error: unknown
+): Error {
+  return createTuttiExternalOperationError({
+    cause: error,
+    code: "invalid_input",
+    operation,
+    message:
+      error instanceof Error
+        ? error.message
+        : `tuttiExternal.${operation} input is invalid.`
+  });
+}
+
 function createEventStore<
   TEvent extends keyof TuttiExternalHostEventPayloadMap
 >(
@@ -280,15 +324,31 @@ function createEventStore<
           // Invalid host events are ignored at the trust boundary.
         }
       });
-      return {
-        initial: stream.initial.then((payload) =>
-          payload === undefined
-            ? undefined
-            : normalizeTuttiExternalHostEventPayload(event, payload)
-        ),
-        unsubscribe: stream.unsubscribe
-      };
+      try {
+        const initial = stream.initial;
+        const unsubscribe = stream.unsubscribe;
+        if (
+          !initial ||
+          typeof initial.then !== "function" ||
+          typeof unsubscribe !== "function"
+        ) {
+          throw new Error("tuttiExternal host event stream is invalid.");
+        }
+        return {
+          initial,
+          unsubscribe: () => unsubscribe.call(stream)
+        };
+      } catch (error) {
+        try {
+          stream.unsubscribe();
+        } catch {
+          // Best-effort rollback for a malformed adapter stream.
+        }
+        throw error;
+      }
     },
+    normalizeInitial: (payload) =>
+      normalizeTuttiExternalHostEventPayload(event, payload),
     replayLatest
   });
 }
@@ -316,6 +376,29 @@ function ensureSubscriptionSupported(
   ensureSupported(capabilities, operation);
 }
 
+function subscribeToEventStore<TPayload>(
+  capabilities: TuttiExternalCapabilities,
+  operation:
+    | "app.subscribe"
+    | "workspace.onLaunchIntent"
+    | "userProjects.subscribe",
+  store: { subscribe(listener: (payload: TPayload) => void): () => void },
+  listener: (payload: TPayload) => void
+): () => void {
+  ensureSubscriptionSupported(capabilities, operation);
+  if (typeof listener !== "function") {
+    throw mapInvalidInputError(
+      operation,
+      new Error(`tuttiExternal.${operation} listener must be a function.`)
+    );
+  }
+  try {
+    return store.subscribe(listener);
+  } catch (error) {
+    throw mapOperationError(operation, error);
+  }
+}
+
 function ensureUserActivation(
   options: CreateTuttiExternalBridgeOptions,
   operation: TuttiExternalOperation
@@ -338,8 +421,17 @@ function mapOperationError(
   operation: TuttiExternalOperation,
   error: unknown
 ): Error {
-  if (isTuttiExternalOperationError(error)) {
+  if (isTuttiExternalOperationError(error) && error.operation === operation) {
     return error;
+  }
+  if (isTuttiExternalOperationError(error)) {
+    return createTuttiExternalOperationError({
+      cause: error,
+      code: error.code,
+      ...(error.hostCode ? { hostCode: error.hostCode } : {}),
+      operation,
+      message: `tuttiExternal.${operation} failed.`
+    });
   }
   const hostCode = readHostErrorCode(error);
   return createTuttiExternalOperationError({
@@ -360,20 +452,54 @@ function readHostErrorCode(error: unknown): string | undefined {
 }
 
 function mapHostErrorCode(hostCode: string | undefined) {
-  if (hostCode?.includes("invalid_input")) {
+  const normalized = hostCode?.trim().toLowerCase();
+  if (matchesHostErrorCode(normalized, ["invalid_input", "invalid_request"])) {
     return "invalid_input" as const;
   }
-  if (hostCode?.includes("unauthorized")) {
+  if (
+    matchesHostErrorCode(normalized, [
+      "unauthorized",
+      "forbidden",
+      "permission_denied"
+    ])
+  ) {
     return "unauthorized" as const;
   }
-  if (hostCode?.includes("unavailable")) {
+  if (
+    matchesHostErrorCode(normalized, [
+      "unavailable",
+      "transport_timeout",
+      "timeout"
+    ])
+  ) {
     return "unavailable" as const;
   }
   return "operation_failed" as const;
 }
 
+function matchesHostErrorCode(
+  hostCode: string | undefined,
+  codes: readonly string[]
+): boolean {
+  if (!hostCode) {
+    return false;
+  }
+  return codes.some(
+    (code) =>
+      hostCode === code ||
+      hostCode.endsWith(`.${code}`) ||
+      hostCode.endsWith(`/${code}`) ||
+      hostCode.endsWith(`:${code}`)
+  );
+}
+
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
+  return (
+    (typeof error === "object" || typeof error === "function") &&
+    error !== null &&
+    "name" in error &&
+    error.name === "AbortError"
+  );
 }
 
 function assertAtProvidersSupported(

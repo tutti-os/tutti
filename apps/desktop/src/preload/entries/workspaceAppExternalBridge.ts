@@ -19,6 +19,7 @@ import {
   tuttiExternalWorkspaceFeatures
 } from "@tutti-os/workspace-external-core/core";
 import {
+  assertTuttiExternalUploadFile,
   createTuttiExternalBridge,
   tuttiExternalOperations,
   type TuttiExternalHostAdapter,
@@ -282,6 +283,7 @@ function normalizeWorkspaceAppUploadFile(file: Blob | File): {
   name: string;
   sizeBytes: number;
 } {
+  assertTuttiExternalUploadFile(file);
   const value = file as {
     name?: unknown;
     size?: unknown;

@@ -4,6 +4,7 @@ import type {
 } from "../../shared/contracts/ipc.ts";
 import { isDesktopLocale } from "../../shared/i18n/core/locale.ts";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
+import { normalizeTuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/core";
 
 interface WorkspaceAppContextStoreOptions {
   load(): Promise<DesktopWorkspaceAppContext>;
@@ -156,29 +157,10 @@ function isOptionalWorkspaceOpenRouteIntent(
   if (value === undefined) {
     return true;
   }
-  if (!isRecord(value) || value.kind !== "open-route") {
+  try {
+    normalizeTuttiExternalWorkspaceOpenRouteIntent(value);
+    return true;
+  } catch {
     return false;
   }
-  if (typeof value.route !== "string") {
-    return false;
-  }
-  const route = value.route.trim();
-  if (
-    !route.startsWith("/") ||
-    route.startsWith("//") ||
-    route.includes("://")
-  ) {
-    return false;
-  }
-  return (
-    (value.params === undefined || isStringRecord(value.params)) &&
-    (value.state === undefined || isRecord(value.state))
-  );
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    isRecord(value) &&
-    Object.values(value).every((item) => typeof item === "string")
-  );
 }

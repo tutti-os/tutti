@@ -133,3 +133,19 @@ export type TuttiExternalSubscriptionOperation = Extract<
   TuttiExternalOperation,
   "app.subscribe" | "workspace.onLaunchIntent" | "userProjects.subscribe"
 >;
+
+type TuttiExternalRoutedOperation =
+  | TuttiExternalRequestOperation
+  | TuttiExternalNotifyOperation
+  | TuttiExternalSubscriptionOperation
+  | "files.upload";
+
+type AssertNoOperation<T extends never> = T;
+
+export type TuttiExternalUnroutedOperation = AssertNoOperation<
+  Exclude<TuttiExternalOperation, TuttiExternalRoutedOperation>
+>;
+
+export type TuttiExternalUnknownRoutedOperation = AssertNoOperation<
+  Exclude<TuttiExternalRoutedOperation, TuttiExternalOperation>
+>;

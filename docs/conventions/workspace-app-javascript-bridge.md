@@ -115,9 +115,17 @@ The kernel emits the initial value first and buffers later events until that
 initial handshake completes. This prevents get-then-subscribe gaps and
 subscribe-then-get reordering.
 
+An adapter must represent one event occurrence in exactly one lane: either the
+`initial` promise or the live listener, never both. Stream setup is
+transactional: synchronous setup failure must not retain listeners, and host
+unsubscribe failure must not prevent a later subscription from reopening the
+stream. Replay to a newly added listener precedes any newer live event.
+
 Launch intents are events, not state deduplicated by content. Consecutive equal
 routes represent two launches. The initial launch intent is consumed once per
 bridge; later intents are delivered only to active subscribers.
+Desktop hosts must keep pre-ready/reload launch queues FIFO but bounded by
+count and lifetime, and clear owner-scoped queues when the owner is destroyed.
 
 User-project snapshot staleness is guarded by the local stream generation and
 arrival order. A business `revision` is not assumed to be globally monotonic

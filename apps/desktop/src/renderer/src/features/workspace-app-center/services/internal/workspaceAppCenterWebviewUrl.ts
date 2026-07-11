@@ -1,16 +1,13 @@
 import type { WorkbenchHostActivation } from "@tutti-os/workbench-surface";
+import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
+import { normalizeTuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/core";
 
 export interface WorkspaceAppWebviewExternalState {
   title: string | null;
   url: string | null;
 }
 
-export interface WorkspaceAppOpenRouteIntent {
-  kind: "open-route";
-  params?: Record<string, string>;
-  route: string;
-  state?: Record<string, unknown>;
-}
+export type WorkspaceAppOpenRouteIntent = TuttiExternalWorkspaceOpenRouteIntent;
 
 export interface WorkspaceAppOpenPayload {
   appId: string;
@@ -94,36 +91,9 @@ export function readWorkspaceAppOpenPayload(
 function readWorkspaceAppOpenRouteIntent(
   value: unknown
 ): WorkspaceAppOpenRouteIntent | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  try {
+    return normalizeTuttiExternalWorkspaceOpenRouteIntent(value);
+  } catch {
     return null;
   }
-  const record = value as Record<string, unknown>;
-  if (record.kind !== "open-route" || typeof record.route !== "string") {
-    return null;
-  }
-  const route = record.route.trim();
-  if (
-    !route.startsWith("/") ||
-    route.startsWith("//") ||
-    route.includes("://")
-  ) {
-    return null;
-  }
-  return {
-    kind: "open-route",
-    ...(isStringRecord(record.params) ? { params: record.params } : {}),
-    route,
-    ...(isRecord(record.state) ? { state: record.state } : {})
-  };
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

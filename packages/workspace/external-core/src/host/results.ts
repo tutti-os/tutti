@@ -2,12 +2,12 @@ import type {
   TuttiExternalAtQueryResult,
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalPermissionRequestResult,
-  TuttiExternalUploadedFile,
-  TuttiExternalWorkspaceOpenRouteIntent
+  TuttiExternalUploadedFile
 } from "../contracts/index.ts";
 import {
   isTuttiExternalAtProviderId,
-  isTuttiExternalManagedAiModelProviderId
+  isTuttiExternalManagedAiModelProviderId,
+  normalizeTuttiExternalWorkspaceOpenRouteIntent
 } from "../core/index.ts";
 import type {
   TuttiExternalHostEvent,
@@ -27,12 +27,22 @@ export function normalizeTuttiExternalRequestResult<
   value: unknown
 ): TuttiExternalRequestResultMap[TOperation] {
   switch (operation) {
+    case "app.getContext":
+      break;
     case "at.query":
       return normalizeAtQueryResults(
         value
       ) as TuttiExternalRequestResultMap[TOperation];
     case "files.select":
       assertFileReferences(value);
+      break;
+    case "activity.reportActive":
+    case "files.open":
+    case "settings.open":
+    case "workspace.openFeature":
+    case "references.open":
+    case "userProjects.rememberDefaultSelection":
+      assertVoidResult(operation, value);
       break;
     case "permissions.request":
       normalizePermissionResult(value);
@@ -64,9 +74,19 @@ export function normalizeTuttiExternalRequestResult<
       assertDirectorySelection(value);
       break;
     default:
-      break;
+      assertNever(operation);
   }
   return value as TuttiExternalRequestResultMap[TOperation];
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported tuttiExternal result operation: ${value}`);
+}
+
+function assertVoidResult(operation: string, value: unknown): void {
+  if (value !== undefined) {
+    throw new Error(`${operation} host result must be undefined.`);
+  }
 }
 
 export function normalizeTuttiExternalUploadedFileResult(
@@ -89,7 +109,9 @@ export function normalizeTuttiExternalHostEventPayload<
   TEvent extends TuttiExternalHostEvent
 >(event: TEvent, value: unknown): TuttiExternalHostEventPayloadMap[TEvent] {
   if (event === "workspace.launchIntent") {
-    assertLaunchIntent(value);
+    return normalizeTuttiExternalWorkspaceOpenRouteIntent(
+      value
+    ) as TuttiExternalHostEventPayloadMap[TEvent];
   } else if (event === "userProjects.changed") {
     assertUserProjectSnapshot(value);
   }
@@ -106,7 +128,9 @@ function normalizeAtQueryResults(value: unknown): TuttiExternalAtQueryResult[] {
       !isTuttiExternalAtProviderId(result.providerId) ||
       !isString(result.itemId) ||
       !isString(result.label) ||
-      !isRecord(result.insert)
+      !isRecord(result.insert) ||
+      !isOptionalString(result.subtitle) ||
+      !isOptionalNullableString(result.thumbnailUrl)
     ) {
       throw new Error("at.query host result contains an invalid item.");
     }
@@ -130,11 +154,39 @@ function assertAtInsertResult(value: Record<string, unknown>): void {
     value.kind === "mention" &&
     isRecord(value.mention) &&
     isString(value.mention.entityId) &&
-    isString(value.mention.label)
+    isString(value.mention.label) &&
+    (value.mention.scope === undefined ||
+      isStringRecord(value.mention.scope)) &&
+    isAtMentionPresentation(value.mention.presentation)
   ) {
     return;
   }
   throw new Error("at.query host result contains an invalid insert payload.");
+}
+
+const atMentionPresentationFields = [
+  "agentProviderId",
+  "agentIconUrl",
+  "iconUrl",
+  "thumbnailUrl",
+  "subtitle",
+  "description",
+  "participant",
+  "status",
+  "statusDataStatus",
+  "statusLabel",
+  "statusPulse",
+  "userAvatarPlaceholderUrl"
+] as const;
+
+function isAtMentionPresentation(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      atMentionPresentationFields.every((field) =>
+        isOptionalString(value[field])
+      ))
+  );
 }
 
 function assertFileReferences(value: unknown): void {
@@ -144,7 +196,13 @@ function assertFileReferences(value: unknown): void {
       (reference) =>
         !isRecord(reference) ||
         !isString(reference.path) ||
-        !isString(reference.kind)
+        !isString(reference.kind) ||
+        !isOptionalNullableFiniteNumber(reference.createdTimeMs) ||
+        !isOptionalString(reference.displayName) ||
+        !isOptionalString(reference.hostPath) ||
+        !isOptionalNullableFiniteNumber(reference.mtimeMs) ||
+        !isOptionalNullableFiniteNumber(reference.sizeBytes) ||
+        !isOptionalString(reference.sourceId)
     )
   ) {
     throw new Error("files.select host result is invalid.");
@@ -156,6 +214,12 @@ function normalizePermissionResult(
 ): TuttiExternalPermissionRequestResult {
   if (!isRecord(value) || !isString(value.code)) {
     throw new Error("permissions.request host result is invalid.");
+  }
+  if (
+    !isOptionalString(value.contextToken) ||
+    !isOptionalString(value.expiresAt)
+  ) {
+    throw new Error("permissions.request host metadata is invalid.");
   }
   if (
     value.providers !== undefined &&
@@ -173,6 +237,7 @@ function normalizePermissionResult(
         (model) =>
           !isRecord(model) ||
           !isString(model.id) ||
+          !isOptionalString(model.name) ||
           !isTuttiExternalManagedAiModelProviderId(model.provider)
       ))
   ) {
@@ -206,7 +271,11 @@ function assertUserProject(
     !isRecord(value) ||
     !isString(value.id) ||
     !isString(value.label) ||
-    !isString(value.path)
+    !isString(value.path) ||
+    !isOptionalFiniteNumber(value.createdAtUnixMs) ||
+    !isOptionalNullableFiniteNumber(value.lastUsedAtUnixMs) ||
+    !isOptionalString(value.sectionKey) ||
+    !isOptionalFiniteNumber(value.updatedAtUnixMs)
   ) {
     throw new Error("userProjects host project is invalid.");
   }
@@ -278,26 +347,31 @@ function assertDirectorySelection(value: unknown): void {
   }
 }
 
-function assertLaunchIntent(
-  value: unknown
-): asserts value is TuttiExternalWorkspaceOpenRouteIntent {
-  if (
-    !isRecord(value) ||
-    value.kind !== "open-route" ||
-    !isString(value.route) ||
-    !value.route.startsWith("/") ||
-    (value.params !== undefined && !isStringRecord(value.params)) ||
-    (value.state !== undefined && !isRecord(value.state))
-  ) {
-    throw new Error("workspace launch intent is invalid.");
-  }
-}
-
-function isStringRecord(value: unknown): boolean {
+function isStringRecord(value: unknown): value is Record<string, string> {
   return (
     isRecord(value) &&
     Object.values(value).every((entry) => typeof entry === "string")
   );
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalNullableString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+function isOptionalFiniteNumber(value: unknown): boolean {
+  return value === undefined || isFiniteNumber(value);
+}
+
+function isOptionalNullableFiniteNumber(value: unknown): boolean {
+  return value === undefined || value === null || isFiniteNumber(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function isString(value: unknown): value is string {

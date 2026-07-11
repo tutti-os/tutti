@@ -36,7 +36,8 @@ import {
   normalizeTuttiExternalUserProjectPathInput,
   normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
-  normalizeTuttiExternalWorkspaceOpenFeatureInput
+  normalizeTuttiExternalWorkspaceOpenFeatureInput,
+  normalizeTuttiExternalWorkspaceOpenRouteIntent
 } from "@tutti-os/workspace-external-core/core";
 import { tuttiExternalOperations } from "@tutti-os/workspace-external-core/host";
 import type {
@@ -55,6 +56,7 @@ import type {
 } from "@tutti-os/workspace-external-core/contracts";
 import { isTuttiExternalManagedAiModelProviderId } from "@tutti-os/workspace-external-core/core";
 import type { DesktopLocale } from "../../shared/i18n";
+import { DesktopApiError } from "../../shared/desktopApiError.ts";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
 import type { DesktopLogger } from "../logging";
 import {
@@ -73,13 +75,17 @@ import {
   WorkspaceAppGuestLogRateLimiter
 } from "./workspaceAppFrontendLogging.ts";
 import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
+import {
+  WorkspaceAppLaunchIntentDeliveryState,
+  shouldResetWorkspaceAppLaunchIntentReadiness
+} from "./workspaceAppLaunchIntentQueue.ts";
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
+const workspaceAppExternalRequestTimeoutMessage =
+  "Workspace app external request timed out.";
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
-const workspaceAppInitialLaunchIntents = new Map<
-  string,
-  TuttiExternalWorkspaceOpenRouteIntent[]
->();
+const workspaceAppLaunchIntentCleanupOwners = new WeakSet<WebContents>();
+const workspaceAppLaunchIntents = new WorkspaceAppLaunchIntentDeliveryState();
 let workspaceAppFrontendLogWriter: WorkspaceAppFrontendLogWriter | null = null;
 let workspaceAppGuestLogRateLimiter: WorkspaceAppGuestLogRateLimiter | null =
   null;
@@ -104,11 +110,31 @@ export function registerWorkspaceAppGuestWebContents(
   logger?: DesktopLogger,
   partition?: string | null
 ): void {
+  ensureWorkspaceAppLaunchIntentOwnerCleanup(ownerWindow.webContents);
   workspaceAppGuestWebContents.add(contents);
+  let preloadFailed = false;
   const context = readWorkspaceAppGuestContext(ownerWindow, partition);
   if (context) {
+    context.launchIntent = workspaceAppLaunchIntents.registerGuest(
+      contents.id,
+      workspaceAppLaunchIntentTarget(context)
+    );
     workspaceAppGuestContexts.set(contents.id, context);
-    contents.once("did-finish-load", () => {
+    contents.on("did-start-navigation", (details) => {
+      if (!shouldResetWorkspaceAppLaunchIntentReadiness(details)) {
+        return;
+      }
+      preloadFailed = false;
+      workspaceAppLaunchIntents.markNotReady(contents.id);
+    });
+    contents.on("render-process-gone", () => {
+      preloadFailed = true;
+      workspaceAppLaunchIntents.markNotReady(contents.id);
+    });
+    contents.on("did-finish-load", () => {
+      if (preloadFailed) {
+        return;
+      }
       drainWorkspaceAppInitialLaunchIntents(contents, context);
     });
   } else {
@@ -119,6 +145,8 @@ export function registerWorkspaceAppGuestWebContents(
   }
   installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
   contents.on("preload-error", (_event, preloadPath, error) => {
+    preloadFailed = true;
+    workspaceAppLaunchIntents.markNotReady(contents.id);
     logger?.warn("workspace app guest preload failed", {
       error: error.message,
       preloadPath,
@@ -126,6 +154,11 @@ export function registerWorkspaceAppGuestWebContents(
     });
   });
   contents.once("destroyed", () => {
+    const destroyedContext = workspaceAppGuestContexts.get(contents.id);
+    workspaceAppLaunchIntents.removeGuest(
+      contents.id,
+      destroyedContext?.launchIntent
+    );
     workspaceAppGuestWebContents.delete(contents);
     workspaceAppGuestContexts.delete(contents.id);
     workspaceAppGuestLogRateLimiter?.forget(contents.id);
@@ -707,16 +740,45 @@ function forwardWorkspaceAppExternalRendererEvent(
   rendererEvent: DesktopWorkspaceAppExternalRendererEvent
 ): void {
   if (rendererEvent.type === "workspace.launchIntent") {
-    persistWorkspaceAppInitialLaunchIntent(ownerContents.id, rendererEvent);
+    ensureWorkspaceAppLaunchIntentOwnerCleanup(ownerContents);
+    const target = {
+      appID: rendererEvent.appId,
+      ownerWebContentsId: ownerContents.id,
+      workspaceID: rendererEvent.workspaceId
+    };
+    const readyGuestIds = workspaceAppLaunchIntents.route(
+      target,
+      rendererEvent.intent
+    );
+    let delivered = false;
+    for (const guestWebContentsId of readyGuestIds) {
+      const guestContents = webContents.fromId(guestWebContentsId);
+      if (
+        !guestContents ||
+        guestContents.isDestroyed() ||
+        !workspaceAppGuestWebContents.has(guestContents)
+      ) {
+        workspaceAppLaunchIntents.markNotReady(guestWebContentsId);
+        continue;
+      }
+      try {
+        guestContents.send(
+          desktopIpcChannels.appExternal.guestEvent,
+          rendererEvent
+        );
+        delivered = true;
+      } catch {
+        workspaceAppLaunchIntents.markNotReady(guestWebContentsId);
+        // Preserve the intent for a replacement/reloaded guest below.
+      }
+    }
+    if (readyGuestIds.length > 0 && !delivered) {
+      workspaceAppLaunchIntents.enqueue(target, rendererEvent.intent);
+    }
+    return;
   }
   for (const [guestWebContentsId, context] of workspaceAppGuestContexts) {
     if (context.workspaceID !== rendererEvent.workspaceId) {
-      continue;
-    }
-    if (
-      rendererEvent.type === "workspace.launchIntent" &&
-      context.appID !== rendererEvent.appId
-    ) {
       continue;
     }
     if (context.ownerWindow.webContents.id !== ownerContents.id) {
@@ -737,33 +799,17 @@ function forwardWorkspaceAppExternalRendererEvent(
   }
 }
 
-function persistWorkspaceAppInitialLaunchIntent(
-  ownerWebContentsId: number,
-  event: Extract<
-    DesktopWorkspaceAppExternalRendererEvent,
-    { type: "workspace.launchIntent" }
-  >
+function ensureWorkspaceAppLaunchIntentOwnerCleanup(
+  ownerContents: WebContents
 ): void {
-  const key = workspaceAppInitialLaunchIntentKey({
-    appID: event.appId,
-    ownerWebContentsId,
-    workspaceID: event.workspaceId
+  if (workspaceAppLaunchIntentCleanupOwners.has(ownerContents)) {
+    return;
+  }
+  workspaceAppLaunchIntentCleanupOwners.add(ownerContents);
+  const ownerWebContentsId = ownerContents.id;
+  ownerContents.once("destroyed", () => {
+    workspaceAppLaunchIntents.clearOwner(ownerWebContentsId);
   });
-  let matchedGuest = false;
-  for (const context of workspaceAppGuestContexts.values()) {
-    if (
-      context.appID === event.appId &&
-      context.workspaceID === event.workspaceId &&
-      context.ownerWindow.webContents.id === ownerWebContentsId
-    ) {
-      matchedGuest = true;
-    }
-  }
-  if (!matchedGuest) {
-    const pending = workspaceAppInitialLaunchIntents.get(key) ?? [];
-    pending.push(event.intent);
-    workspaceAppInitialLaunchIntents.set(key, pending);
-  }
 }
 
 function requireWorkspaceAppGuestContext(
@@ -796,7 +842,13 @@ function requestWorkspaceAppExternalRenderer<
   return new Promise<TResult>((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error("Workspace app external request timed out."));
+      reject(
+        new DesktopApiError({
+          code: "transport_timeout",
+          message: workspaceAppExternalRequestTimeoutMessage,
+          retryable: true
+        })
+      );
     }, 30_000);
 
     const handleResponse = (event: IpcMainEvent, payload: unknown): void => {
@@ -811,7 +863,7 @@ function requestWorkspaceAppExternalRenderer<
         resolve(payload.result.data as TResult);
         return;
       }
-      reject(new Error(payload.result.error.message));
+      reject(new DesktopApiError(payload.result.error));
     };
 
     const cleanup = (): void => {
@@ -1226,10 +1278,19 @@ function isDesktopIpcResult(
   if (ok === true) {
     return "data" in value;
   }
+  const error = (value as { error?: unknown }).error;
   return (
     ok === false &&
-    typeof (value as { error?: { message?: unknown } }).error?.message ===
-      "string"
+    isRecord(error) &&
+    typeof error.code === "string" &&
+    typeof error.message === "string" &&
+    (error.reason === undefined || typeof error.reason === "string") &&
+    (error.params === undefined || isRecord(error.params)) &&
+    (error.retryable === undefined || typeof error.retryable === "boolean") &&
+    (error.developerMessage === undefined ||
+      typeof error.developerMessage === "string") &&
+    (error.correlationId === undefined ||
+      typeof error.correlationId === "string")
   );
 }
 
@@ -1322,20 +1383,7 @@ function readWorkspaceAppGuestContext(
   }
   const workspaceID = decodeURIComponent(value.slice(0, separator));
   const appID = decodeURIComponent(value.slice(separator + 1));
-  const intentKey = workspaceAppInitialLaunchIntentKey({
-    appID,
-    ownerWebContentsId: ownerWindow.webContents.id,
-    workspaceID
-  });
-  const pending = workspaceAppInitialLaunchIntents.get(intentKey) ?? [];
-  const launchIntent = pending.shift();
-  if (pending.length > 0) {
-    workspaceAppInitialLaunchIntents.set(intentKey, pending);
-  } else {
-    workspaceAppInitialLaunchIntents.delete(intentKey);
-  }
   return {
-    ...(launchIntent ? { launchIntent } : {}),
     appID,
     ownerWindow,
     workspaceID
@@ -1346,33 +1394,34 @@ function drainWorkspaceAppInitialLaunchIntents(
   contents: WebContents,
   context: WorkspaceAppGuestContext
 ): void {
-  const key = workspaceAppInitialLaunchIntentKey({
-    appID: context.appID,
-    ownerWebContentsId: context.ownerWindow.webContents.id,
-    workspaceID: context.workspaceID
-  });
-  const pending = workspaceAppInitialLaunchIntents.get(key) ?? [];
-  workspaceAppInitialLaunchIntents.delete(key);
-  for (const intent of pending) {
-    contents.send(desktopIpcChannels.appExternal.guestEvent, {
-      appId: context.appID,
-      intent,
-      type: "workspace.launchIntent",
-      workspaceId: context.workspaceID
-    } satisfies DesktopWorkspaceAppExternalRendererEvent);
+  const pending = workspaceAppLaunchIntents.markReady(contents.id);
+  for (const [index, intent] of pending.entries()) {
+    try {
+      contents.send(desktopIpcChannels.appExternal.guestEvent, {
+        appId: context.appID,
+        intent,
+        type: "workspace.launchIntent",
+        workspaceId: context.workspaceID
+      } satisfies DesktopWorkspaceAppExternalRendererEvent);
+    } catch {
+      workspaceAppLaunchIntents.markNotReady(contents.id);
+      for (const undelivered of pending.slice(index)) {
+        workspaceAppLaunchIntents.enqueue(
+          workspaceAppLaunchIntentTarget(context),
+          undelivered
+        );
+      }
+      return;
+    }
   }
 }
 
-function workspaceAppInitialLaunchIntentKey(input: {
-  appID: string;
-  ownerWebContentsId: number;
-  workspaceID: string;
-}): string {
-  return [
-    String(input.ownerWebContentsId),
-    encodeURIComponent(input.workspaceID),
-    encodeURIComponent(input.appID)
-  ].join(":");
+function workspaceAppLaunchIntentTarget(context: WorkspaceAppGuestContext) {
+  return {
+    appID: context.appID,
+    ownerWebContentsId: context.ownerWindow.webContents.id,
+    workspaceID: context.workspaceID
+  };
 }
 
 function isWorkspaceAppDiagnosticPayload(
@@ -1413,34 +1462,12 @@ function isWorkspaceAppExternalRendererEvent(
 }
 
 function isWorkspaceAppOpenRouteIntent(value: unknown): boolean {
-  if (!isRecord(value)) {
+  try {
+    normalizeTuttiExternalWorkspaceOpenRouteIntent(value);
+    return true;
+  } catch {
     return false;
   }
-  if (value.kind !== "open-route" || typeof value.route !== "string") {
-    return false;
-  }
-  const route = value.route.trim();
-  if (
-    !route.startsWith("/") ||
-    route.startsWith("//") ||
-    route.includes("://")
-  ) {
-    return false;
-  }
-  if (value.params !== undefined && !isStringRecord(value.params)) {
-    return false;
-  }
-  if (value.state !== undefined && !isRecord(value.state)) {
-    return false;
-  }
-  return true;
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

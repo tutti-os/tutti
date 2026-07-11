@@ -3,6 +3,7 @@ import type { AppCenterAppOpenedParams } from "../../../analytics/reporters/app-
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { resolveWorkspaceAppCatalogMetadata } from "@tutti-os/workspace-app-center/core";
+import { normalizeTuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/core";
 import type {
   WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult
@@ -211,27 +212,11 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
 function readWorkspaceAppOpenRouteIntent(
   value: unknown
 ): WorkspaceAppOpenRouteIntent | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  try {
+    return normalizeTuttiExternalWorkspaceOpenRouteIntent(value);
+  } catch {
     return null;
   }
-  const record = value as Record<string, unknown>;
-  if (record.kind !== "open-route" || typeof record.route !== "string") {
-    return null;
-  }
-  const route = record.route.trim();
-  if (
-    !route.startsWith("/") ||
-    route.startsWith("//") ||
-    route.includes("://")
-  ) {
-    return null;
-  }
-  return {
-    kind: "open-route",
-    ...(isStringRecord(record.params) ? { params: record.params } : {}),
-    route,
-    ...(isRecord(record.state) ? { state: record.state } : {})
-  };
 }
 
 function resolveWorkspaceAppOpenUrl(
@@ -252,17 +237,6 @@ function resolveWorkspaceAppOpenUrl(
   } catch {
     return launchUrl;
   }
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWorkspaceAppOpenPrevStatus(

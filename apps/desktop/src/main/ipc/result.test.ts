@@ -5,6 +5,7 @@ import {
   workspaceProtocolErrorCodes
 } from "@tutti-os/client-tuttid-ts";
 import { toDesktopIpcResult } from "./result.ts";
+import { DesktopApiError } from "../../shared/desktopApiError.ts";
 
 test("toDesktopIpcResult preserves protocol error details for renderer i18n", async () => {
   const result = await toDesktopIpcResult(async () => {
@@ -45,4 +46,47 @@ test("toDesktopIpcResult preserves non-protocol errors as plain desktop errors",
       message: "plain failure"
     }
   });
+});
+
+test("toDesktopIpcResult preserves structured desktop host errors", async () => {
+  const result = await toDesktopIpcResult(async () => {
+    throw new DesktopApiError({
+      code: "COMMON.UNAVAILABLE",
+      correlationId: "corr-host-1",
+      developerMessage: "owner tunnel offline",
+      message: "Provider device is offline.",
+      params: { authorityId: "device-1" },
+      reason: "owner_offline",
+      retryable: true
+    });
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "COMMON.UNAVAILABLE",
+      correlationId: "corr-host-1",
+      developerMessage: "owner tunnel offline",
+      message: "Provider device is offline.",
+      params: { authorityId: "device-1" },
+      reason: "owner_offline",
+      retryable: true
+    }
+  });
+});
+
+test("toDesktopIpcResult keeps Node errors on the existing classifier path", async () => {
+  for (const [nodeCode, expectedCode] of [
+    ["ENOENT", "daemon_unavailable"],
+    ["ETIMEDOUT", "transport_timeout"],
+    ["ECONNREFUSED", "transport_connect_failed"]
+  ] as const) {
+    const result = await toDesktopIpcResult(async () => {
+      throw Object.assign(new Error("node failure"), { code: nodeCode });
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.code, expectedCode);
+    }
+  }
 });
