@@ -254,14 +254,22 @@ function assertSelectionPreparation(value: unknown): void {
     !isRecord(value) ||
     typeof value.isSelectedPathMissing !== "boolean" ||
     !Array.isArray(value.projects) ||
-    !isRecord(value.selection) ||
-    !isString(value.selection.kind)
+    !isRecord(value.selection)
   ) {
     throw new Error("userProjects.prepareSelection host result is invalid.");
   }
   for (const project of value.projects) {
     assertUserProject(project);
   }
+  const selection = value.selection;
+  if (
+    selection.kind === "none" ||
+    (selection.kind === "clear" && isString(selection.suppressedPath)) ||
+    (selection.kind === "select" && isString(selection.path))
+  ) {
+    return;
+  }
+  throw new Error("userProjects.prepareSelection host result is invalid.");
 }
 
 function assertDirectorySelection(value: unknown): void {

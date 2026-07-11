@@ -21,7 +21,8 @@ import {
   type TuttiExternalUserProjectRememberDefaultSelectionInput,
   type TuttiExternalWorkspaceAgentProvider,
   type TuttiExternalWorkspaceFeature,
-  type TuttiExternalWorkspaceOpenFeatureInput
+  type TuttiExternalWorkspaceOpenFeatureInput,
+  type TuttiExternalWorkspaceOpenRouteIntent
 } from "../contracts/index.ts";
 import type { WorkspaceUserProjectSelectionPreparationInput } from "@tutti-os/workspace-user-project/contracts";
 
@@ -267,6 +268,47 @@ export function normalizeTuttiExternalWorkspaceOpenFeatureInput(
           provider: normalizeTuttiExternalWorkspaceAgentProvider(input.provider)
         }
       : {})
+  };
+}
+
+export function normalizeTuttiExternalWorkspaceOpenRouteIntent(
+  input: unknown
+): TuttiExternalWorkspaceOpenRouteIntent {
+  if (!isRecord(input) || input.kind !== "open-route") {
+    throw new Error("workspace launch intent must be an open-route object.");
+  }
+  const route = normalizeRequiredString(
+    input.route,
+    "workspace launch intent route"
+  );
+  if (
+    !route.startsWith("/") ||
+    route.startsWith("//") ||
+    route.includes("://")
+  ) {
+    throw new Error(
+      "workspace launch intent route must be an origin-root path."
+    );
+  }
+  let params: Record<string, string> | undefined;
+  if (input.params !== undefined) {
+    if (!isRecord(input.params)) {
+      throw new Error("workspace launch intent params must be an object.");
+    }
+    const entries = Object.entries(input.params);
+    if (entries.some(([, value]) => typeof value !== "string")) {
+      throw new Error("workspace launch intent params values must be strings.");
+    }
+    params = Object.fromEntries(entries) as Record<string, string>;
+  }
+  if (input.state !== undefined && !isRecord(input.state)) {
+    throw new Error("workspace launch intent state must be an object.");
+  }
+  return {
+    kind: "open-route",
+    route,
+    ...(params ? { params } : {}),
+    ...(input.state ? { state: input.state } : {})
   };
 }
 

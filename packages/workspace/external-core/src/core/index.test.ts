@@ -16,12 +16,36 @@ import {
   normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
   normalizeTuttiExternalWorkspaceOpenFeatureInput,
+  normalizeTuttiExternalWorkspaceOpenRouteIntent,
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit,
   tuttiExternalAtProviderIds,
   tuttiExternalWorkspaceAgentProviders,
   tuttiExternalManagedAiModelProviderIds
 } from "./index.ts";
+
+test("normalizes workspace launch route intents", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalWorkspaceOpenRouteIntent({
+      kind: "open-route",
+      route: " /canvas/42 ",
+      params: { mode: "edit" },
+      state: { selected: 42 }
+    }),
+    {
+      kind: "open-route",
+      route: "/canvas/42",
+      params: { mode: "edit" },
+      state: { selected: 42 }
+    }
+  );
+  assert.throws(() =>
+    normalizeTuttiExternalWorkspaceOpenRouteIntent({
+      kind: "open-route",
+      route: "//example.com/path"
+    })
+  );
+});
 
 test("normalizes at query defaults", () => {
   assert.deepEqual(normalizeTuttiExternalAtQueryInput({ keyword: "readme" }), {

@@ -74,6 +74,46 @@ test("maps invalid input to a structured rejected Promise", async () => {
   );
 });
 
+test("rejects unsupported managed model providers for settings", async () => {
+  const harness = createAdapterHarness({ managedAiProviders: ["openai"] });
+  const bridge = createTuttiExternalBridge({
+    adapter: harness.adapter,
+    isUserActivationActive: () => true
+  });
+
+  await assert.rejects(
+    bridge.settings.open({ tab: "models", provider: "anthropic" }),
+    (error: unknown) =>
+      isTuttiExternalOperationError(error) &&
+      error.code === "unsupported_operation" &&
+      error.operation === "settings.open"
+  );
+});
+
+test("rejects invalid user project selection results", async () => {
+  const harness = createAdapterHarness();
+  harness.setResult("userProjects.prepareSelection", {
+    isSelectedPathMissing: false,
+    projects: [],
+    selection: { kind: "unexpected" }
+  });
+  const bridge = createTuttiExternalBridge({
+    adapter: harness.adapter,
+    isUserActivationActive: () => true
+  });
+
+  await assert.rejects(
+    bridge.userProjects.prepareSelection({
+      projectLocked: false,
+      selectedPath: null
+    }),
+    (error: unknown) =>
+      isTuttiExternalOperationError(error) &&
+      error.code === "operation_failed" &&
+      error.operation === "userProjects.prepareSelection"
+  );
+});
+
 test("throws structured unsupported errors for synchronous subscriptions", () => {
   const harness = createAdapterHarness({ operations: ["app.getContext"] });
   const bridge = createTuttiExternalBridge({
@@ -139,6 +179,7 @@ test("freezes public capabilities and keeps log failures silent", () => {
 });
 
 function createAdapterHarness(options?: {
+  managedAiProviders?: TuttiExternalHostAdapter["capabilities"]["managedAiProviders"];
   operations?: TuttiExternalHostAdapter["capabilities"]["operations"];
 }) {
   const requests: Array<{ input: unknown; operation: string }> = [];
@@ -163,6 +204,9 @@ function createAdapterHarness(options?: {
       initial: Promise<TuttiExternalHostEventPayloadMap[TEvent] | undefined>
     ) {
       initials.set(event, initial);
+    },
+    setResult(operation: string, result: unknown) {
+      results.set(operation, result);
     }
   };
 
@@ -170,7 +214,8 @@ function createAdapterHarness(options?: {
     capabilities: {
       operations: options?.operations ?? tuttiExternalOperations,
       atProviders: tuttiExternalAtProviderIds,
-      managedAiProviders: tuttiExternalManagedAiModelProviderIds,
+      managedAiProviders:
+        options?.managedAiProviders ?? tuttiExternalManagedAiModelProviderIds,
       workspaceAgentProviders: tuttiExternalWorkspaceAgentProviders,
       workspaceFeatures: tuttiExternalWorkspaceFeatures
     },

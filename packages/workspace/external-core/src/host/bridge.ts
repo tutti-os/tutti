@@ -178,9 +178,17 @@ export function createTuttiExternalBridge(
     },
     settings: {
       open: (input) =>
-        normalizeAndRequest("settings.open", () =>
-          normalizeTuttiExternalSettingsOpenInput(input)
-        )
+        normalizeAndRequest("settings.open", () => {
+          const normalized = normalizeTuttiExternalSettingsOpenInput(input);
+          if (
+            normalized.provider &&
+            capabilities.managedAiProviders &&
+            !capabilities.managedAiProviders.includes(normalized.provider)
+          ) {
+            throw createUnsupportedValueError("settings.open", "provider");
+          }
+          return normalized;
+        })
     },
     workspace: {
       onLaunchIntent(listener) {
