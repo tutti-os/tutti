@@ -59,20 +59,26 @@ export function useElapsedSeconds(
   completedAtUnixMs: number | null,
   live: boolean
 ): number | null {
-  const [nowUnixMs, setNowUnixMs] = useState(() => Date.now());
+  // State exists only to force a re-render when the heartbeat ticks.
+  // The elapsed time is always computed from the real Date.now() on every
+  // render so the display never shows a stale cached value — even when the
+  // heartbeat is throttled (e.g. during AskUserQuestion / interactive
+  // prompts in Electron).
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
     if (!isPositiveUnixMs(startedAtUnixMs) || !live) {
       return;
     }
-    setNowUnixMs(Date.now());
-    return subscribeHeartbeat(setNowUnixMs);
+    // Sync at least one render immediately with the current wall-clock time.
+    forceRender((n) => n + 1);
+    return subscribeHeartbeat(() => forceRender((n) => n + 1));
   }, [live, startedAtUnixMs]);
 
   return computeElapsedSeconds(
     startedAtUnixMs,
     completedAtUnixMs,
-    nowUnixMs,
+    Date.now(),
     live
   );
 }
