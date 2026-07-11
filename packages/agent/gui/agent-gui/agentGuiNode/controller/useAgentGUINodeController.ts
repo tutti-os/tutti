@@ -385,6 +385,11 @@ interface AgentGUIComposerTargetResolution {
   missingAgentTargetId: string | null;
 }
 
+interface AgentGUIHomeDirectorySelection {
+  status: AgentGUIComposerTargetResolutionStatus;
+  target: AgentGUIProviderTarget;
+}
+
 function isExplicitAgentGUIProviderTarget(
   target: AgentGUIProviderTarget,
   explicitTargets: readonly AgentGUIProviderTarget[]
@@ -425,6 +430,57 @@ function resolveAgentGUIDirectorySelection(input: {
     input.targets[0] ??
     null
   );
+}
+
+function resolveAgentGUIHomeDirectorySelection(input: {
+  data: AgentGUINodeData;
+  defaultAgentTargetId?: string | null;
+  directory: readonly AgentGUIProviderTarget[];
+  directoryLoading: boolean;
+}): AgentGUIHomeDirectorySelection {
+  const explicitAgentTargetId =
+    normalizeOptionalText(input.data.agentTargetId) ??
+    normalizeOptionalText(input.defaultAgentTargetId);
+  if (explicitAgentTargetId) {
+    const exact = findAgentGUIDirectoryTarget(
+      input.directory,
+      explicitAgentTargetId
+    );
+    if (exact) {
+      return { status: "resolved", target: exact };
+    }
+    return {
+      status: input.directoryLoading ? "loading" : "missing",
+      target: {
+        targetId: explicitAgentTargetId,
+        agentTargetId: explicitAgentTargetId,
+        provider: input.data.provider,
+        ref: {
+          kind: input.directoryLoading ? "loading" : "missing-agent",
+          provider: input.data.provider,
+          agentTargetId: explicitAgentTargetId
+        },
+        label: input.data.provider,
+        disabled: true
+      }
+    };
+  }
+
+  const fallback =
+    input.directory.find((target) => target.disabled !== true) ??
+    input.directory[0];
+  return {
+    status: input.directoryLoading ? "loading" : "resolved",
+    target:
+      fallback ??
+      ({
+        targetId: "__loading__",
+        provider: input.data.provider,
+        ref: { kind: "loading", provider: input.data.provider },
+        label: input.data.provider,
+        disabled: true
+      } satisfies AgentGUIProviderTarget)
+  };
 }
 
 // The node/session carries `agentTargetId` only as a foreign key. When a
@@ -3958,34 +4014,20 @@ export function useAgentGUINodeController({
           ),
     [normalizedExplicitProviderTargets, providerTargetsLoading]
   );
-  const selectedProviderTarget = useMemo(() => {
-    const selectedAgentTargetId =
-      normalizeOptionalText(data.agentTargetId) ??
-      normalizeOptionalText(defaultAgentTargetId);
-    const resolved =
-      normalizedProviderTargets.find(
-        (target) => target.agentTargetId === selectedAgentTargetId
-      ) ??
-      normalizedProviderTargets.find((target) => target.disabled !== true) ??
-      normalizedProviderTargets[0];
-    return (
-      resolved ?? {
-        targetId: data.agentTargetId ?? "__loading__",
-        provider: data.provider,
-        ref: {
-          kind: "loading",
-          provider: data.provider
-        },
-        label: data.provider,
-        disabled: true
-      }
-    );
+  const homeDirectorySelection = useMemo(() => {
+    return resolveAgentGUIHomeDirectorySelection({
+      data,
+      defaultAgentTargetId,
+      directory: normalizedProviderTargets,
+      directoryLoading: providerTargetsLoading
+    });
   }, [
-    data.agentTargetId,
-    data.provider,
+    data,
     defaultAgentTargetId,
-    normalizedProviderTargets
+    normalizedProviderTargets,
+    providerTargetsLoading
   ]);
+  const selectedProviderTarget = homeDirectorySelection.target;
   const selectedProviderTargetIsExplicit = useMemo(
     () =>
       normalizedExplicitProviderTargets.some(
@@ -12454,10 +12496,18 @@ export function useAgentGUINodeController({
   );
   const viewData =
     activeConversationId === null ? selectedComposerTargetData.data : data;
-  const providerReadinessGate =
+  const effectiveHomeDirectorySelectionStatus = homeComposerTargetOverride
+    ? "resolved"
+    : homeDirectorySelection.status;
+  const providerReadinessGate: AgentGUIProviderReadinessGate | null =
     activeConversationId === null
-      ? (providerReadinessGates?.[effectiveSelectedProviderTarget.provider] ??
-        null)
+      ? effectiveHomeDirectorySelectionStatus === "loading"
+        ? { status: "checking" }
+        : effectiveHomeDirectorySelectionStatus === "missing"
+          ? { status: "unavailable" }
+          : (providerReadinessGates?.[
+              effectiveSelectedProviderTarget.provider
+            ] ?? null)
       : null;
   const controllerActions = useMemo(
     () => ({

@@ -3481,6 +3481,7 @@ describe("useAgentGUINodeController", () => {
       activate
     });
     const onDataChange = vi.fn();
+    const initialData = agentGuiData(null, "codex", { agentTargetId: null });
 
     const { result } = renderHook(() =>
       useAgentGUINodeController({
@@ -3488,7 +3489,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
-        data: agentGuiData(null),
+        data: initialData,
         providerTargets: [
           {
             targetId: "shared-agent:agent-1",
@@ -3498,7 +3499,7 @@ describe("useAgentGUINodeController", () => {
             label: "Alice's Codex"
           }
         ],
-        defaultAgentTargetId: "shared-agent:agent-1",
+        defaultAgentTargetId: "agent-target-1",
         onDataChange
       })
     );
@@ -3522,10 +3523,10 @@ describe("useAgentGUINodeController", () => {
     });
     expect(onDataChange).toHaveBeenCalled();
     const persistTargetUpdate = onDataChange.mock.calls.find(([updater]) => {
-      const next = updater(agentGuiData(null));
+      const next = updater(initialData);
       return next.agentTargetId === "agent-target-1";
     })?.[0];
-    expect(persistTargetUpdate?.(agentGuiData(null))).toMatchObject({
+    expect(persistTargetUpdate?.(initialData)).toMatchObject({
       provider: "codex",
       agentTargetId: "agent-target-1"
     });
@@ -3801,7 +3802,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("falls back to the first explicit agent when persisted selection is stale", async () => {
+  it("keeps a stale explicit target missing instead of falling back to the first agent", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
         session: agentSession(input.agentSessionId, {
@@ -3843,16 +3844,115 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
-    expect(result.current.viewModel.canSubmit).toBe(true);
+    expect(result.current.viewModel.canSubmit).toBe(false);
+    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      agentTargetId: "local:claude-code",
+      disabled: true,
+      provider: "claude-code",
+      ref: { kind: "missing-agent" }
+    });
+    expect(result.current.viewModel.providerReadinessGate).toEqual({
+      status: "unavailable"
+    });
 
     act(() => {
       result.current.actions.submitPrompt(promptBlocks("start local claude"));
     });
+    await Promise.resolve();
+    expect(activate).not.toHaveBeenCalled();
+  });
 
+  it("keeps a delayed explicit target exact across same-provider siblings", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+    const targetA = {
+      targetId: "codex-a",
+      agentTargetId: "codex-a",
+      provider: "codex" as const,
+      ref: { kind: "agent-directory", provider: "codex" as const },
+      label: "Codex A"
+    };
+    const targetB = {
+      targetId: "codex-b",
+      agentTargetId: "codex-b",
+      provider: "codex" as const,
+      ref: { kind: "agent-directory", provider: "codex" as const },
+      label: "Codex B"
+    };
+    const { result, rerender } = renderHook(
+      (props: {
+        providerTargets: readonly (typeof targetA)[];
+        providerTargetsLoading: boolean;
+      }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData(null, "codex", { agentTargetId: "codex-b" }),
+          onDataChange: vi.fn(),
+          ...props
+        }),
+      {
+        initialProps: {
+          providerTargets: [targetA],
+          providerTargetsLoading: true
+        }
+      }
+    );
+
+    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      agentTargetId: "codex-b",
+      disabled: true,
+      ref: { kind: "loading" }
+    });
+    expect(result.current.viewModel.providerReadinessGate).toEqual({
+      status: "checking"
+    });
+    expect(result.current.viewModel.canSubmit).toBe(false);
+
+    rerender({ providerTargets: [targetA], providerTargetsLoading: false });
+    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      agentTargetId: "codex-b",
+      disabled: true,
+      ref: { kind: "missing-agent" }
+    });
+    expect(result.current.viewModel.providerReadinessGate).toEqual({
+      status: "unavailable"
+    });
+    expect(result.current.viewModel.canSubmit).toBe(false);
+
+    rerender({
+      providerTargets: [targetA, targetB],
+      providerTargetsLoading: false
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+        agentTargetId: "codex-b"
+      });
+      expect(
+        result.current.viewModel.selectedProviderTarget?.disabled
+      ).toBeUndefined();
+      expect(result.current.viewModel.canSubmit).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start exact B"));
+    });
     await waitFor(() => {
       expect(activate).toHaveBeenCalledWith(
         expect.objectContaining({
-          agentTargetId: "shared-agent:codex-1",
+          agentTargetId: "codex-b",
           mode: "new"
         })
       );
@@ -4127,6 +4227,59 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "codex-b"
       });
     });
+  });
+
+  it("does not apply an exact-target prefill to a same-provider sibling", async () => {
+    const activate = vi.fn();
+    const unactivate = vi.fn(async () => undefined);
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          agentTargetId: "codex-a",
+          provider: "codex"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      unactivate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex", {
+          agentTargetId: "codex-a"
+        }),
+        providerTargets: [
+          {
+            targetId: "codex-a",
+            agentTargetId: "codex-a",
+            provider: "codex",
+            ref: { kind: "agent-directory", provider: "codex" },
+            label: "Codex A"
+          }
+        ],
+        prefillPromptRequest: {
+          agentTargetId: "codex-b",
+          autoSubmit: true,
+          draftPrompt: "must stay on B",
+          provider: "codex",
+          sequence: 12
+        },
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    expect(result.current.viewModel.draftPrompt).not.toBe("must stay on B");
+    expect(unactivate).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
   });
 
   it("tracks active conversation project setting changes through the host reporter", async () => {

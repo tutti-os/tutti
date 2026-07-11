@@ -59,6 +59,27 @@ export function agentGUIAgentIsReady(agent: AgentGUIAgent): boolean {
   return agent.availability.status === "ready";
 }
 
+export function resolveAgentGUISelectedDirectoryAgent(input: {
+  agents: readonly AgentGUIAgent[];
+  agentTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
+}): AgentGUIAgent | null {
+  const explicitAgentTargetId =
+    input.agentTargetId?.trim() || input.defaultAgentTargetId?.trim() || "";
+  if (explicitAgentTargetId) {
+    return (
+      input.agents.find(
+        (agent) => agent.agentTargetId === explicitAgentTargetId
+      ) ?? null
+    );
+  }
+  return (
+    input.agents.find((agent) => agentGUIAgentIsReady(agent)) ??
+    input.agents[0] ??
+    null
+  );
+}
+
 /** Package-internal bridge while the carried node is migrated to agent names. */
 export function projectAgentGUIAgentsToInternalTargets(
   agents: readonly AgentGUIAgent[]

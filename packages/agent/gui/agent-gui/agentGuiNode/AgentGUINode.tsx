@@ -60,7 +60,8 @@ import {
 } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets
+  projectAgentGUIAgentsToInternalTargets,
+  resolveAgentGUISelectedDirectoryAgent
 } from "../../agents";
 import type { AgentGUIAccountMenuState } from "./accountMenuState";
 import {
@@ -790,18 +791,15 @@ export const AgentGUINode = memo(function AgentGUINode({
       ),
     [normalizedAgents]
   );
-  const selectedDirectoryAgent = useMemo(() => {
-    const selectedAgentTargetId =
-      state.agentTargetId?.trim() || defaultAgentTargetId?.trim() || "";
-    return (
-      agentByTargetId.get(selectedAgentTargetId) ?? normalizedAgents[0] ?? null
-    );
-  }, [
-    agentByTargetId,
-    defaultAgentTargetId,
-    normalizedAgents,
-    state.agentTargetId
-  ]);
+  const selectedDirectoryAgent = useMemo(
+    () =>
+      resolveAgentGUISelectedDirectoryAgent({
+        agents: normalizedAgents,
+        agentTargetId: state.agentTargetId,
+        defaultAgentTargetId
+      }),
+    [defaultAgentTargetId, normalizedAgents, state.agentTargetId]
+  );
   const internalProviderReadinessGates = useMemo<
     Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>>
   >(() => {
@@ -841,7 +839,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const renderInternalAgentReadinessState = useMemo<
     AgentGUIProviderReadinessGateStateRenderer | undefined
   >(() => {
-    if (!renderAgentReadinessState) {
+    if (!renderAgentReadinessState || !selectedDirectoryAgent) {
       return undefined;
     }
     return ({ target, showAllProviders }) => {
