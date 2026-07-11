@@ -124,7 +124,11 @@ import {
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
 import { AgentGuiAgentsLoader } from "./agentGuiAgentsLoader.ts";
-import { WorkbenchHostCoordinator } from "./workbenchHostCoordinator.ts";
+import {
+  createWorkbenchHostSessionConfiguration,
+  WorkbenchHostCoordinator,
+  type WorkbenchHostSessionConfiguration
+} from "./workbenchHostCoordinator.ts";
 import {
   WorkbenchHostSession,
   type WorkbenchHostSessionResolution,
@@ -198,7 +202,11 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   readonly _serviceBrand = undefined;
   private readonly dependencies: WorkspaceWorkbenchHostServiceDependencies;
   private hostSessionBindingSequence = 0;
-  private readonly hostSessionOwner = {};
+  private readonly hostSessionConfiguration: WorkbenchHostSessionConfiguration<
+    WorkspaceWorkbenchHostSessionUpdate,
+    WorkspaceWorkbenchHostInput,
+    CachedWorkspaceWorkbenchHostInput
+  >;
   private readonly pendingWallpaperDisplayModes = new Map<
     string,
     WorkspaceWallpaperDisplayMode
@@ -268,6 +276,27 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       runtimeApi: externalDependencies.runtimeApi,
       wallpaperApi: externalDependencies.wallpaperApi
     };
+    this.hostSessionConfiguration = createWorkbenchHostSessionConfiguration({
+      createSession: (partition) =>
+        new WorkbenchHostSession<
+          WorkspaceWorkbenchHostSessionUpdate,
+          WorkspaceWorkbenchHostInput,
+          CachedWorkspaceWorkbenchHostInput
+        >({
+          onDisposalError: (error) =>
+            this.dependencies.runtimeApi
+              .logRendererDiagnostic({
+                details: { error: formatDiagnosticError(error) },
+                event: "workbench.host.session.dispose_failed",
+                level: "warn",
+                source: "workbench-host-session",
+                workspaceId: partition.scope.id
+              })
+              .catch(() => undefined),
+          partition,
+          resolve: (update, current) => this.resolveHostInput(update, current)
+        })
+    });
     this.agentGuiAgentsLoader = new AgentGuiAgentsLoader(() =>
       this.dependencies.agentsService.load().then((snapshot) => snapshot.agents)
     );
@@ -752,30 +781,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding {
-    const lease = this.workbenchHostCoordinator.open<
-      WorkspaceWorkbenchHostSessionUpdate,
-      WorkspaceWorkbenchHostInput,
-      CachedWorkspaceWorkbenchHostInput
-    >({
-      createSession: (sessionPartition) =>
-        new WorkbenchHostSession<
-          WorkspaceWorkbenchHostSessionUpdate,
-          WorkspaceWorkbenchHostInput,
-          CachedWorkspaceWorkbenchHostInput
-        >({
-          onDisposalError: (error) => {
-            void this.dependencies.runtimeApi.logRendererDiagnostic({
-              details: { error: formatDiagnosticError(error) },
-              event: "workbench.host.session.dispose_failed",
-              level: "warn",
-              source: "workbench-host-session",
-              workspaceId
-            });
-          },
-          partition: sessionPartition,
-          resolve: (update, current) => this.resolveHostInput(update, current)
-        }),
-      owner: this.hostSessionOwner,
+    const lease = this.workbenchHostCoordinator.open({
+      configuration: this.hostSessionConfiguration,
       partition: createWorkspaceWorkbenchPartition(workspaceId)
     });
     this.hostSessionBindingSequence += 1;

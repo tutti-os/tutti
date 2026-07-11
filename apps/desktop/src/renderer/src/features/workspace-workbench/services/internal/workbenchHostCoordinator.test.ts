@@ -7,29 +7,35 @@ import {
   SyncDescriptor
 } from "@tutti-os/infra/di";
 import { IWorkbenchHostCoordinator } from "../workbenchHostCoordinator.interface.ts";
-import { WorkbenchHostCoordinator } from "./workbenchHostCoordinator.ts";
+import {
+  createWorkbenchHostSessionConfiguration,
+  WorkbenchHostCoordinator
+} from "./workbenchHostCoordinator.ts";
 import {
   WorkbenchHostSession,
   type WorkbenchSnapshotPartition
 } from "./workbenchHostSession.ts";
 
-const owner = {};
+const configuration = createWorkbenchHostSessionConfiguration({
+  createSession
+});
 
 test("workbench host coordinator leases one session for the same partition", () => {
   const coordinator = new WorkbenchHostCoordinator();
   const partition = workspacePartition("workspace-1");
   let createCount = 0;
-  const first = coordinator.open({
+  const countingConfiguration = createWorkbenchHostSessionConfiguration({
     createSession: (sessionPartition) => {
       createCount += 1;
       return createSession(sessionPartition);
-    },
-    owner,
+    }
+  });
+  const first = coordinator.open({
+    configuration: countingConfiguration,
     partition
   });
   const second = coordinator.open({
-    createSession: () => assert.fail("same partition must reuse the session"),
-    owner,
+    configuration: countingConfiguration,
     partition
   });
 
@@ -38,10 +44,13 @@ test("workbench host coordinator leases one session for the same partition", () 
   first.release();
   first.release();
   assert.equal(first.session.isDisposed, false);
-  assert.equal(coordinator.get(partition), first.session);
+  assert.equal(
+    coordinator.get(countingConfiguration, partition),
+    first.session
+  );
   second.release();
   assert.equal(first.session.isDisposed, true);
-  assert.equal(coordinator.get(partition), null);
+  assert.equal(coordinator.get(countingConfiguration, partition), null);
 });
 
 test("workbench host coordinator replaces a scope when its principal snapshot changes", () => {
@@ -49,8 +58,7 @@ test("workbench host coordinator replaces a scope when its principal snapshot ch
   const firstPartition = roomPartition("room-1", "user-1");
   const secondPartition = roomPartition("room-1", "user-2");
   const first = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: firstPartition
   });
   const events: string[] = [];
@@ -59,16 +67,15 @@ test("workbench host coordinator replaces a scope when its principal snapshot ch
   });
 
   const second = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: secondPartition
   });
 
   assert.deepEqual(events, ["first-disposed"]);
   assert.equal(first.session.isDisposed, true);
   assert.notEqual(first.session, second.session);
-  assert.equal(coordinator.get(firstPartition), null);
-  assert.equal(coordinator.get(secondPartition), second.session);
+  assert.equal(coordinator.get(configuration, firstPartition), null);
+  assert.equal(coordinator.get(configuration, secondPartition), second.session);
   first.release();
   assert.equal(second.session.isDisposed, false);
   second.release();
@@ -78,13 +85,11 @@ test("workbench host coordinator replaces a scope when its principal snapshot ch
 test("workbench host coordinator keeps different scopes independent", () => {
   const coordinator = new WorkbenchHostCoordinator();
   const first = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: workspacePartition("workspace-1")
   });
   const second = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: workspacePartition("workspace-2")
   });
 
@@ -95,12 +100,14 @@ test("workbench host coordinator keeps different scopes independent", () => {
   coordinator.dispose();
   coordinator.dispose();
   assert.equal(second.session.isDisposed, true);
-  assert.equal(coordinator.get(workspacePartition("workspace-2")), null);
+  assert.equal(
+    coordinator.get(configuration, workspacePartition("workspace-2")),
+    null
+  );
   assert.throws(
     () =>
       coordinator.open({
-        createSession,
-        owner,
+        configuration,
         partition: workspacePartition("workspace-3")
       }),
     /coordinator is disposed/
@@ -110,39 +117,45 @@ test("workbench host coordinator keeps different scopes independent", () => {
 test("workbench host coordinator rejects a session for another partition", () => {
   const coordinator = new WorkbenchHostCoordinator();
   const mismatchedSession = createSession(workspacePartition("workspace-2"));
-
-  assert.throws(
-    () =>
-      coordinator.open({
-        createSession: () => mismatchedSession,
-        owner,
-        partition: workspacePartition("workspace-1")
-      }),
-    /partition does not match/
-  );
-  assert.equal(mismatchedSession.isDisposed, true);
-  assert.equal(coordinator.get(workspacePartition("workspace-1")), null);
-});
-
-test("workbench host coordinator rejects another owner for the same partition", () => {
-  const coordinator = new WorkbenchHostCoordinator();
-  const first = coordinator.open({
-    createSession,
-    owner: {},
-    partition: workspacePartition("workspace-1")
+  const mismatchedConfiguration = createWorkbenchHostSessionConfiguration({
+    createSession: () => mismatchedSession
   });
 
   assert.throws(
     () =>
       coordinator.open({
-        createSession,
-        owner: {},
+        configuration: mismatchedConfiguration,
+        partition: workspacePartition("workspace-1")
+      }),
+    /partition does not match/
+  );
+  assert.equal(mismatchedSession.isDisposed, true);
+  assert.equal(
+    coordinator.get(mismatchedConfiguration, workspacePartition("workspace-1")),
+    null
+  );
+});
+
+test("workbench host coordinator rejects another configuration for the same partition", () => {
+  const coordinator = new WorkbenchHostCoordinator();
+  const first = coordinator.open({
+    configuration,
+    partition: workspacePartition("workspace-1")
+  });
+  const anotherConfiguration = createWorkbenchHostSessionConfiguration({
+    createSession
+  });
+
+  assert.throws(
+    () =>
+      coordinator.open({
+        configuration: anotherConfiguration,
         partition: workspacePartition("workspace-1")
       }),
     /owned by another configuration/
   );
   assert.equal(
-    coordinator.get(workspacePartition("workspace-1")),
+    coordinator.get(configuration, workspacePartition("workspace-1")),
     first.session
   );
   first.release();
@@ -155,14 +168,15 @@ test("workbench host coordinator continues disposing sessions after one throws",
       errors.push(error);
     }
   });
+  const throwingConfiguration = createWorkbenchHostSessionConfiguration({
+    createSession: (partition) => createThrowingSession(partition)
+  });
   const first = coordinator.open({
-    createSession: (partition) => createThrowingSession(partition),
-    owner,
+    configuration: throwingConfiguration,
     partition: workspacePartition("workspace-1")
   });
   const second = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: workspacePartition("workspace-2")
   });
 
@@ -184,8 +198,7 @@ test("renderer DI owns one coordinator and disposes all of its sessions", () => 
   const coordinator = getService(container, IWorkbenchHostCoordinator);
   const sameCoordinator = getService(container, IWorkbenchHostCoordinator);
   const lease = coordinator.open({
-    createSession,
-    owner,
+    configuration,
     partition: workspacePartition("workspace-1")
   });
 

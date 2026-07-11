@@ -5,42 +5,49 @@ import type {
   WorkspaceWorkbenchHostInput,
   WorkspaceWorkbenchHostSessionUpdate
 } from "../workspaceWorkbenchHostService.interface.ts";
-import { WorkbenchHostCoordinator } from "./workbenchHostCoordinator.ts";
+import {
+  createWorkbenchHostSessionConfiguration,
+  WorkbenchHostCoordinator,
+  type WorkbenchHostSessionConfiguration
+} from "./workbenchHostCoordinator.ts";
 import { WorkbenchHostSession } from "./workbenchHostSession.ts";
 import { createWorkspaceWorkbenchHostSessionBinding } from "./workspaceWorkbenchHostSessionBinding.ts";
 
 test("workspace session bindings release only their own lease", () => {
   const coordinator = new WorkbenchHostCoordinator();
-  const owner = {};
-  const first = createBinding(coordinator, owner);
-  const second = createBinding(coordinator, owner);
+  const configuration = createConfiguration();
+  const first = createBinding(coordinator, configuration);
+  const second = createBinding(coordinator, configuration);
   const firstHandle = {} as WorkbenchHostHandle;
   const secondHandle = {} as WorkbenchHostHandle;
+  let staleNotificationCount = 0;
 
   first.attachSurface(firstHandle);
+  first.subscribe(() => {
+    staleNotificationCount += 1;
+  });
   second.attachSurface(secondHandle);
+  first.attachSurface(null);
   first.release();
   first.release();
   first.attachSurface(firstHandle);
+  second.createHostInput(createUpdate("workspace-1"));
 
   assert.equal(first.isActive, false);
   assert.equal(second.isActive, true);
-  const session = coordinator.get<
-    WorkspaceWorkbenchHostSessionUpdate,
-    WorkspaceWorkbenchHostInput,
-    undefined
-  >(workspacePartition());
+  const session = coordinator.get(configuration, workspacePartition());
   assert.ok(session);
   assert.equal(session.getAttachedSurface(), secondHandle);
+  assert.equal(staleNotificationCount, 0);
 
   second.release();
   assert.equal(session.isDisposed, true);
-  assert.equal(coordinator.get(workspacePartition()), null);
+  assert.equal(coordinator.get(configuration, workspacePartition()), null);
 });
 
 test("workspace session bindings reject cross-workspace and released updates", () => {
   const coordinator = new WorkbenchHostCoordinator();
-  const binding = createBinding(coordinator, {});
+  const binding = createBinding(coordinator, createConfiguration());
 
   assert.throws(
     () => binding.createHostInput(createUpdate("workspace-2")),
@@ -55,8 +62,7 @@ test("workspace session bindings reject cross-workspace and released updates", (
 
 test("a failed initial update remains owned by its exact binding", () => {
   const coordinator = new WorkbenchHostCoordinator();
-  const owner = {};
-  const lease = coordinator.open<
+  const configuration = createWorkbenchHostSessionConfiguration<
     WorkspaceWorkbenchHostSessionUpdate,
     WorkspaceWorkbenchHostInput,
     undefined
@@ -67,8 +73,10 @@ test("a failed initial update remains owned by its exact binding", () => {
         resolve() {
           throw new Error("resolution failed");
         }
-      }),
-    owner,
+      })
+  });
+  const lease = coordinator.open({
+    configuration,
     partition: workspacePartition()
   });
   const binding = createWorkspaceWorkbenchHostSessionBinding({
@@ -81,14 +89,47 @@ test("a failed initial update remains owned by its exact binding", () => {
     () => binding.createHostInput(createUpdate("workspace-1")),
     /resolution failed/
   );
-  assert.equal(coordinator.get(workspacePartition()), lease.session);
+  assert.equal(
+    coordinator.get(configuration, workspacePartition()),
+    lease.session
+  );
   binding.release();
   assert.equal(lease.session.isDisposed, true);
-  assert.equal(coordinator.get(workspacePartition()), null);
+  assert.equal(coordinator.get(configuration, workspacePartition()), null);
 });
 
-function createBinding(coordinator: WorkbenchHostCoordinator, owner: object) {
-  const lease = coordinator.open<
+test("a binding releases safely after coordinator-first disposal", () => {
+  const coordinator = new WorkbenchHostCoordinator();
+  const binding = createBinding(coordinator, createConfiguration());
+
+  coordinator.dispose();
+  binding.attachSurface(null);
+  binding.release();
+
+  assert.equal(binding.isActive, false);
+});
+
+function createBinding(
+  coordinator: WorkbenchHostCoordinator,
+  configuration: WorkbenchHostSessionConfiguration<
+    WorkspaceWorkbenchHostSessionUpdate,
+    WorkspaceWorkbenchHostInput,
+    undefined
+  >
+) {
+  const lease = coordinator.open({
+    configuration,
+    partition: workspacePartition()
+  });
+  return createWorkspaceWorkbenchHostSessionBinding({
+    bindingId: 1,
+    lease,
+    workspaceId: "workspace-1"
+  });
+}
+
+function createConfiguration() {
+  return createWorkbenchHostSessionConfiguration<
     WorkspaceWorkbenchHostSessionUpdate,
     WorkspaceWorkbenchHostInput,
     undefined
@@ -106,14 +147,7 @@ function createBinding(coordinator: WorkbenchHostCoordinator, owner: object) {
             state: undefined
           };
         }
-      }),
-    owner,
-    partition: workspacePartition()
-  });
-  return createWorkspaceWorkbenchHostSessionBinding({
-    bindingId: 1,
-    lease,
-    workspaceId: "workspace-1"
+      })
   });
 }
 

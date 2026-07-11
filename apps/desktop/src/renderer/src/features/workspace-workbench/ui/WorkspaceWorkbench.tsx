@@ -218,7 +218,6 @@ function ReadyWorkspaceWorkbench(props: ReadyWorkspaceWorkbenchProps) {
     const binding = workbenchHostService.openHostSession(workspaceId);
     setHostSession(binding);
     return () => {
-      binding.attachSurface(null);
       binding.release();
     };
   }, [workbenchHostService, workspaceId]);

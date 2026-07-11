@@ -53,11 +53,15 @@ test("workspace workbench host keeps deterministic composition and close prepara
 test("workspace workbench host delegates workspace lifecycle to the DI coordinator", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /openHostSession\([\s\S]*?this\.workbenchHostCoordinator\.open<[\s\S]*?>\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition: sessionPartition/
+    /this\.hostSessionConfiguration = createWorkbenchHostSessionConfiguration\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition,/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /owner: this\.hostSessionOwner,[\s\S]*?return createWorkspaceWorkbenchHostSessionBinding\(\{[\s\S]*?bindingId: this\.hostSessionBindingSequence,[\s\S]*?lease,[\s\S]*?workspaceId/
+    /openHostSession\([\s\S]*?configuration: this\.hostSessionConfiguration,[\s\S]*?return createWorkspaceWorkbenchHostSessionBinding\(\{[\s\S]*?bindingId: this\.hostSessionBindingSequence,[\s\S]*?lease,[\s\S]*?workspaceId/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /\.logRendererDiagnostic\([\s\S]*?\)\s+\.catch\(\(\) => undefined\)/
   );
   assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cachedHostInputs/);
   assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /hostSessionLeases/);

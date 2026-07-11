@@ -20,7 +20,7 @@ export interface WorkbenchHostSessionResolution<THostInput, TState> {
 }
 
 export interface WorkbenchHostSessionOptions<TUpdate, THostInput, TState> {
-  readonly onDisposalError?: (error: unknown) => void;
+  readonly onDisposalError?: (error: unknown) => Promise<void> | void;
   readonly partition: WorkbenchSnapshotPartition;
   readonly resolve: (
     update: TUpdate,
@@ -35,13 +35,14 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
   private disposed = false;
   private readonly disposalCallbacks: Array<() => void> = [];
   private readonly listeners = new Set<() => void>();
-  private readonly onDisposalError?: (error: unknown) => void;
+  private readonly onDisposalError?: (error: unknown) => Promise<void> | void;
   private readonly resolve: WorkbenchHostSessionOptions<
     TUpdate,
     THostInput,
     TState
   >["resolve"];
   private surfaceHandle: WorkbenchHostHandle | null = null;
+  private surfaceOwner: object | null = null;
 
   constructor(
     options: WorkbenchHostSessionOptions<TUpdate, THostInput, TState>
@@ -55,9 +56,17 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     return this.disposed;
   }
 
-  attachSurface(handle: WorkbenchHostHandle | null): void {
+  attachSurface(handle: WorkbenchHostHandle | null, owner: object): void {
     this.assertActive();
+    if (handle === null) {
+      if (this.surfaceOwner === owner) {
+        this.surfaceHandle = null;
+        this.surfaceOwner = null;
+      }
+      return;
+    }
     this.surfaceHandle = handle;
+    this.surfaceOwner = owner;
   }
 
   getAttachedSurface(): WorkbenchHostHandle | null {
@@ -118,6 +127,7 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     }
     this.disposed = true;
     this.surfaceHandle = null;
+    this.surfaceOwner = null;
     this.listeners.clear();
     const disposalCallbacks = this.disposalCallbacks.splice(0);
     this.disposalCallbacks.length = 0;
@@ -139,7 +149,8 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
 
   private reportDisposalError(error: unknown): void {
     try {
-      this.onDisposalError?.(error);
+      const result = this.onDisposalError?.(error);
+      void result?.catch(() => undefined);
     } catch {
       // Disposal must continue even when diagnostics fail.
     }

@@ -67,7 +67,8 @@ test("workbench host session publishes only referential host input changes", () 
 test("workbench host session detaches its surface and disposes resources once", () => {
   const events: string[] = [];
   const session = createSession(workspacePartition("workspace-1"));
-  session.attachSurface({} as WorkbenchHostHandle);
+  const surfaceOwner = {};
+  session.attachSurface({} as WorkbenchHostHandle, surfaceOwner);
   session.subscribe(() => {
     events.push("listener");
   });
@@ -91,7 +92,25 @@ test("workbench host session detaches its surface and disposes resources once", 
   assert.equal(disposedListenerCalled, false);
   assert.throws(() => session.update("late"), /session is disposed/);
   assert.throws(() => session.getHostInput(), /session is disposed/);
-  assert.throws(() => session.attachSurface(null), /session is disposed/);
+  assert.throws(
+    () => session.attachSurface(null, surfaceOwner),
+    /session is disposed/
+  );
+});
+
+test("workbench host session ignores detach from a stale surface owner", () => {
+  const session = createSession(workspacePartition("workspace-1"));
+  const firstOwner = {};
+  const secondOwner = {};
+  const firstHandle = {} as WorkbenchHostHandle;
+  const secondHandle = {} as WorkbenchHostHandle;
+
+  session.attachSurface(firstHandle, firstOwner);
+  session.attachSurface(secondHandle, secondOwner);
+  session.attachSurface(null, firstOwner);
+  assert.equal(session.getAttachedSurface(), secondHandle);
+  session.attachSurface(null, secondOwner);
+  assert.equal(session.getAttachedSurface(), null);
 });
 
 test("workbench host session disposable registrations can be released", () => {
@@ -135,6 +154,26 @@ test("workbench host session continues cleanup after a disposer throws", () => {
   assert.deepEqual(events, ["throwing", "first"]);
   assert.equal(errors.length, 1);
   assert.match(String(errors[0]), /cleanup failed/);
+  assert.equal(session.isDisposed, true);
+});
+
+test("workbench host session isolates rejected async disposal diagnostics", async () => {
+  const session = new WorkbenchHostSession<string, string, undefined>({
+    async onDisposalError() {
+      throw new Error("diagnostics failed");
+    },
+    partition: workspacePartition("workspace-1"),
+    resolve(update) {
+      return { hostInput: update, state: undefined };
+    }
+  });
+  session.registerDisposable(() => {
+    throw new Error("cleanup failed");
+  });
+
+  session.dispose();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
   assert.equal(session.isDisposed, true);
 });
 

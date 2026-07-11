@@ -69,8 +69,9 @@ The approved Tutti-private proof keeps the extraction boundary reviewable:
   and
 - focused unit tests cover DI singleton ownership, lease reuse, multi-scope
   isolation, principal-partition replacement, referential publication,
-  attachment cleanup, failed initial resolution ownership, owner mismatch,
-  exception-safe teardown, and idempotent disposal.
+  per-binding attachment/subscription cleanup, failed initial resolution
+  ownership, branded-configuration mismatch, sync/async exception-safe
+  teardown, and idempotent disposal.
 
 This proof does not introduce Product Profile or Ports, move product adapters,
 create a package, change public Workbench contracts, or authorize any release or

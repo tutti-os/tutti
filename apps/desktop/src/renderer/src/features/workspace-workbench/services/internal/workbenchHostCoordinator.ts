@@ -5,11 +5,29 @@ import {
   type WorkbenchSnapshotPartition
 } from "./workbenchHostSession.ts";
 
-export interface WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState> {
+declare const workbenchHostSessionConfigurationBrand: unique symbol;
+
+export interface WorkbenchHostSessionConfiguration<
+  TUpdate,
+  THostInput,
+  TState
+> {
+  readonly [workbenchHostSessionConfigurationBrand]: {
+    readonly hostInput: THostInput;
+    readonly state: TState;
+    readonly update: TUpdate;
+  };
   readonly createSession: (
     partition: WorkbenchSnapshotPartition
   ) => WorkbenchHostSession<TUpdate, THostInput, TState>;
-  readonly owner: object;
+}
+
+export interface WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState> {
+  readonly configuration: WorkbenchHostSessionConfiguration<
+    TUpdate,
+    THostInput,
+    TState
+  >;
   readonly partition: WorkbenchSnapshotPartition;
 }
 
@@ -19,13 +37,29 @@ export interface WorkbenchHostSessionLease<TUpdate, THostInput, TState> {
 }
 
 interface WorkbenchHostCoordinatorEntry {
+  readonly configuration: object;
   leaseCount: number;
-  readonly owner: object;
   readonly session: WorkbenchHostSession<unknown, unknown, unknown>;
 }
 
 export interface WorkbenchHostCoordinatorOptions {
-  readonly onDisposalError?: (error: unknown) => void;
+  readonly onDisposalError?: (error: unknown) => Promise<void> | void;
+}
+
+export function createWorkbenchHostSessionConfiguration<
+  TUpdate,
+  THostInput,
+  TState
+>(input: {
+  readonly createSession: (
+    partition: WorkbenchSnapshotPartition
+  ) => WorkbenchHostSession<TUpdate, THostInput, TState>;
+}): WorkbenchHostSessionConfiguration<TUpdate, THostInput, TState> {
+  return input as WorkbenchHostSessionConfiguration<
+    TUpdate,
+    THostInput,
+    TState
+  >;
 }
 
 export class WorkbenchHostCoordinator {
@@ -59,14 +93,14 @@ export class WorkbenchHostCoordinator {
       entry = undefined;
     }
 
-    if (entry && entry.owner !== input.owner) {
+    if (entry && entry.configuration !== input.configuration) {
       throw new Error(
         "Workbench host session partition is already owned by another configuration."
       );
     }
 
     if (!entry || entry.session.isDisposed) {
-      const session = input.createSession(input.partition);
+      const session = input.configuration.createSession(input.partition);
       if (
         !areWorkbenchSnapshotPartitionsEqual(session.partition, input.partition)
       ) {
@@ -76,8 +110,8 @@ export class WorkbenchHostCoordinator {
         );
       }
       entry = {
+        configuration: input.configuration,
         leaseCount: 0,
-        owner: input.owner,
         session: session as WorkbenchHostSession<unknown, unknown, unknown>
       };
       this.sessionsByScope.set(scopeKey, entry);
@@ -104,6 +138,11 @@ export class WorkbenchHostCoordinator {
   }
 
   get<TUpdate, THostInput, TState>(
+    configuration: WorkbenchHostSessionConfiguration<
+      TUpdate,
+      THostInput,
+      TState
+    >,
     partition: WorkbenchSnapshotPartition
   ): WorkbenchHostSession<TUpdate, THostInput, TState> | null {
     if (this.disposed) {
@@ -112,6 +151,9 @@ export class WorkbenchHostCoordinator {
     const scopeKey = createWorkbenchScopeKey(partition.scope);
     const entry = this.sessionsByScope.get(scopeKey);
     if (!entry) {
+      return null;
+    }
+    if (entry.configuration !== configuration) {
       return null;
     }
     if (entry.session.isDisposed) {
@@ -172,7 +214,8 @@ export class WorkbenchHostCoordinator {
 
   private reportDisposalError(error: unknown): void {
     try {
-      this.options.onDisposalError?.(error);
+      const result = this.options.onDisposalError?.(error);
+      void result?.catch(() => undefined);
     } catch {
       // Disposal must continue even when diagnostics fail.
     }
