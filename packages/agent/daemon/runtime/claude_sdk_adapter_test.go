@@ -1701,7 +1701,6 @@ func TestClaudeCodeSDKAdapterAcceptsImagePromptContent(t *testing.T) {
 }
 
 func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
-	signedURL := "https://bucket.example/image.webp?token=secret"
 	conn := &scriptedClaudeSDKConnection{
 		frames: []ProcessFrame{{
 			Stdout: []byte(`{"type":"turn_completed","payload":{"turnId":"turn-image","stopReason":"end_turn"}}` + "\n"),
@@ -1723,7 +1722,6 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 		[]PromptContentBlock{
 			{Type: "text", Text: "what is in this image?"},
 			{Type: "image", MimeType: "image/png", Data: "aW1hZ2U="},
-			{Type: "image", MimeType: "image/webp", URL: signedURL},
 		},
 		"what is in this image?",
 		"turn-image",
@@ -1741,8 +1739,8 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 		t.Fatalf("exec prompt = %#v, want legacy text prompt", sent[0].Payload["prompt"])
 	}
 	content, ok := sent[0].Payload["content"].([]any)
-	if !ok || len(content) != 3 {
-		t.Fatalf("exec content = %#v, want text, data image, and URL image blocks", sent[0].Payload["content"])
+	if !ok || len(content) != 2 {
+		t.Fatalf("exec content = %#v, want text and data image blocks", sent[0].Payload["content"])
 	}
 	textBlock, _ := content[0].(map[string]any)
 	if textBlock["type"] != "text" || textBlock["text"] != "what is in this image?" {
@@ -1751,10 +1749,6 @@ func TestClaudeCodeSDKAdapterExecSendsStructuredPromptContent(t *testing.T) {
 	imageBlock, _ := content[1].(map[string]any)
 	if imageBlock["type"] != "image" || imageBlock["mimeType"] != "image/png" || imageBlock["data"] != "aW1hZ2U=" {
 		t.Fatalf("image block = %#v", imageBlock)
-	}
-	urlImageBlock, _ := content[2].(map[string]any)
-	if urlImageBlock["type"] != "image" || urlImageBlock["mimeType"] != "image/webp" || urlImageBlock["url"] != signedURL {
-		t.Fatalf("URL image block = %#v", urlImageBlock)
 	}
 }
 

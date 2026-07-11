@@ -1436,6 +1436,10 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	if mentionRoutingApplied {
 		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
 	}
+	providerContent, err := materializeProviderPromptImages(ctx, providerContent)
+	if err != nil {
+		return nil, err
+	}
 	return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
 }
 
@@ -1574,6 +1578,10 @@ func (a *CodexAppServerAdapter) execBlocking(
 	providerContent := content
 	if mentionRoutingApplied {
 		providerContent = appendTuttiMentionRoutingContent(providerContent, mentionRoutingSkills)
+	}
+	providerContent, err := materializeProviderPromptImages(ctx, providerContent)
+	if err != nil {
+		return nil, err
 	}
 
 	if activeTurnID := a.sessionActiveTurnID(session.AgentSessionID); activeTurnID != "" {

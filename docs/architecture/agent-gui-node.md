@@ -856,6 +856,14 @@ type without recording base64 data or full signed URLs. UI-local composer
 drafts and optimistic overlays may retain the URL when needed for preview and
 submission; they must not convert it to base64 or persist it as a local prompt
 attachment.
+Provider transport adapters may materialize that HTTPS resource into inline
+image data only at their final request boundary when the upstream protocol does
+not accept remote image URLs. Codex app-server, standard ACP, and the Claude SDK
+sidecar currently do this immediately before their turn/prompt request; the
+AgentGUI draft, submitted content, and durable activity payload remain
+URL-backed. When a provider gains native remote-image support, remove the
+compatibility conversion only from that provider adapter rather than changing
+the shared composer contract.
 When `uploadPromptContent` returns an image, the composer upload continuation
 must accept every normalized image reference shape: `url`, `attachmentId`,
 `path`, or `data`. A URL-backed result replaces the pre-upload base64 runtime

@@ -294,6 +294,10 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	providerContent, err := materializeProviderPromptImages(ctx, content)
+	if err != nil {
+		return nil, err
+	}
 	events := make([]activityshared.Event, 0, 4)
 	emitEvents := func(next []activityshared.Event) {
 		if len(next) == 0 {
@@ -335,7 +339,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			"turnId":         turnID,
 			// Keep prompt as a short-lived text fallback for older sidecars.
 			"prompt":  promptTextForClaudeSDK(content, visibleText),
-			"content": promptContentForClaudeSDK(content, visibleText),
+			"content": promptContentForClaudeSDK(providerContent, visibleText),
 		},
 	}); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
@@ -369,6 +373,10 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	providerContent, err := materializeProviderPromptImages(ctx, content)
+	if err != nil {
+		return nil, err
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"adapter":  claudeSDKSidecarAdapterName,
@@ -387,7 +395,7 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 		Payload: map[string]any{
 			"agentSessionId": session.AgentSessionID,
 			"prompt":         promptTextForClaudeSDK(content, visibleText),
-			"content":        promptContentForClaudeSDK(content, visibleText),
+			"content":        promptContentForClaudeSDK(providerContent, visibleText),
 		},
 	}); err != nil {
 		return events, err

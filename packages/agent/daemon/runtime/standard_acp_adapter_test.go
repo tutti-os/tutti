@@ -1112,7 +1112,7 @@ func TestStandardACPAdapterRejectsImagePromptWithoutCapability(t *testing.T) {
 	}
 }
 
-func TestStandardACPAdapterRejectsURLImageEvenWithImageCapability(t *testing.T) {
+func TestStandardACPAdapterAcceptsURLImageWithImageCapability(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Claude Agent", "claude-session-url")
@@ -1125,8 +1125,8 @@ func TestStandardACPAdapterRejectsURLImageEvenWithImageCapability(t *testing.T) 
 	content := []PromptContentBlock{{
 		Type: "image", MimeType: "image/png", URL: "https://bucket.example/image.png?token=secret",
 	}}
-	if err := adapter.ValidatePromptContent(session, content); !errors.Is(err, ErrPromptImageUnsupported) {
-		t.Fatalf("ValidatePromptContent URL image error = %v, want ErrPromptImageUnsupported", err)
+	if err := adapter.ValidatePromptContent(session, content); err != nil {
+		t.Fatalf("ValidatePromptContent URL image error = %v, want nil", err)
 	}
 }
 
