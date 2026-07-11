@@ -470,9 +470,34 @@ test("workspace settings release channel control lives in developer settings", (
   assert.match(developerSection, /<ReleaseChannelControl/);
 });
 
-test("workspace managed provider API key is masked until toggled visible", () => {
-  assert.match(source, /type=\{apiKeyVisible \? "text" : "password"\}/);
-  assert.match(source, /setVisibleAPIKeyProviderID/);
-  assert.match(source, /workspace\.settings\.apps\.managedModels\.showApiKey/);
-  assert.match(source, /workspace\.settings\.apps\.managedModels\.hideApiKey/);
+test("workspace settings apps section hosts model plans and agent bindings", () => {
+  assert.match(
+    source,
+    /function WorkspaceAppsSettingsSection\(\) \{\s*return \(\s*<SettingsRows>\s*<WorkspaceModelPlansSection \/>\s*<WorkspaceAgentModelBindingSection \/>/
+  );
+  assert.doesNotMatch(source, /managedModels/);
+});
+
+test("workspace model plan API key is masked until toggled visible", () => {
+  const editorSource = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "WorkspaceModelPlanEditor.tsx"
+    ),
+    "utf8"
+  );
+  assert.match(editorSource, /type=\{apiKeyVisible \? "text" : "password"\}/);
+  assert.match(editorSource, /setApiKeyVisible/);
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.showApiKey/
+  );
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.hideApiKey/
+  );
+  assert.match(
+    editorSource,
+    /workspace\.settings\.apps\.modelPlans\.keepExistingKey/
+  );
 });

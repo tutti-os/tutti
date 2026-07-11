@@ -30,14 +30,45 @@ import type {
   WorkspaceSettingsReadableStoreState,
   WorkspaceSettingsGeneralFocusAnchor,
   WorkspaceSettingsSectionID,
-  WorkspaceManagedModelProviderDraft,
-  WorkspaceManagedModelProviderID
+  WorkspaceModelPlanDraft,
+  WorkspaceModelPlanDraftSeed
 } from "./workspaceSettingsTypes";
 
 export type { WorkspaceSettingsSectionID } from "./workspaceSettingsTypes";
 
 export interface WorkspaceSettingsWorkspaceInput {
   id: string;
+}
+
+export interface WorkspaceAgentModelBindingChange {
+  defaultModel?: string | null;
+  modelPlanID?: string | null;
+}
+
+/**
+ * Model access plan operations exposed by the settings service. All state
+ * lives on the settings store's `modelPlans` slice.
+ */
+export interface IWorkspaceModelPlansController {
+  addDiscoveredModelToDraft(modelID: string): void;
+  beginDraft(seed: WorkspaceModelPlanDraftSeed): void;
+  beginEditPlan(planID: string): void;
+  cancelDeletePlan(): void;
+  cancelDraft(): void;
+  confirmDeletePlan(planID: string): Promise<void>;
+  detectDraft(): Promise<void>;
+  duplicatePlan(planID: string): Promise<void>;
+  refresh(): Promise<void>;
+  refreshBindings(): Promise<void>;
+  refreshPlans(): Promise<void>;
+  requestDeletePlan(planID: string): Promise<void>;
+  saveDraft(): Promise<void>;
+  setAgentBinding(
+    agentTargetID: string,
+    change: WorkspaceAgentModelBindingChange
+  ): Promise<void>;
+  setPlanEnabled(planID: string, enabled: boolean): Promise<void>;
+  updateDraft(patch: Partial<WorkspaceModelPlanDraft>): void;
 }
 
 export interface WorkspaceSettingsOpenOptions {
@@ -49,6 +80,7 @@ export interface WorkspaceSettingsOpenOptions {
 
 export interface IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
+  readonly modelPlans: IWorkspaceModelPlansController;
   readonly store: WorkspaceSettingsReadableStoreState;
 
   checkComputerUseStatus(): Promise<DesktopComputerUseStatus>;
@@ -76,18 +108,6 @@ export interface IWorkspaceSettingsService {
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
   setDeveloperPanelVisible(visible: boolean): void;
   setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void>;
-  beginManagedModelProviderDraft(
-    provider: WorkspaceManagedModelProviderID
-  ): void;
-  updateManagedModelDraft(
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void;
-  cancelManagedModelProviderDraft(): void;
-  saveManagedModelDraft(): Promise<void>;
-  setManagedModelProviderEnabled(
-    providerID: WorkspaceManagedModelProviderID,
-    enabled: boolean
-  ): Promise<void>;
   changeDefaultAgentProvider(
     provider: DesktopDefaultAgentProvider
   ): Promise<void>;
@@ -121,24 +141,7 @@ export interface IWorkspaceSettingsService {
   openLogDirectory(): Promise<void>;
   openLogFile(kind: DesktopDeveloperLogKind): Promise<void>;
   refreshDeveloperLogs(): Promise<void>;
-  refreshManagedModelProviders(): Promise<void>;
-  detectManagedModelProviderModels(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void>;
-  removeManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void>;
-  saveManagedModelProvider(
-    provider: WorkspaceManagedModelProviderDraft
-  ): Promise<void>;
   syncWorkspace(workspace: WorkspaceSettingsWorkspaceInput): void;
-  testManagedModelProvider(
-    providerID: WorkspaceManagedModelProviderID
-  ): Promise<void>;
-  updateManagedModelProviderDraft(
-    providerID: WorkspaceManagedModelProviderID,
-    patch: Partial<WorkspaceManagedModelProviderDraft>
-  ): void;
 }
 
 export const IWorkspaceSettingsService =
