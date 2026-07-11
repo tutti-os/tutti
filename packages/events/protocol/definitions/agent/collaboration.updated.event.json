@@ -1,0 +1,66 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "agent.collaboration.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "agent",
+  "scope": "workspace",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "workspaceId",
+      "runId",
+      "mode",
+      "status",
+      "triggerSource",
+      "occurredAtUnixMs"
+    ],
+    "properties": {
+      "workspaceId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "runId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["consult", "fork", "delegate", "handoff"]
+      },
+      "status": {
+        "type": "string",
+        "enum": ["running", "completed", "failed", "canceled"]
+      },
+      "sourceSessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "targetSessionId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "modelPlanId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "model": {
+        "type": "string",
+        "minLength": 1
+      },
+      "triggerSource": {
+        "type": "string",
+        "enum": ["user", "agent", "policy"]
+      },
+      "adoption": {
+        "type": "string",
+        "enum": ["pending", "adopted", "rejected", "not_applicable"]
+      },
+      "occurredAtUnixMs": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

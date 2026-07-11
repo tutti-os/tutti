@@ -7,6 +7,9 @@ import type {
 } from "./client/index.ts";
 import { client } from "./client.gen.ts";
 import type {
+  AcceptAgentSessionWorkData,
+  AcceptAgentSessionWorkErrors,
+  AcceptAgentSessionWorkResponses,
   AddWorkspaceIssueContextRefsData,
   AddWorkspaceIssueContextRefsErrors,
   AddWorkspaceIssueContextRefsResponses,
@@ -22,6 +25,9 @@ import type {
   AuthenticateAgentTargetRuntimeData,
   AuthenticateAgentTargetRuntimeErrors,
   AuthenticateAgentTargetRuntimeResponses,
+  CancelCollaborationRunData,
+  CancelCollaborationRunErrors,
+  CancelCollaborationRunResponses,
   CancelWorkspaceAgentTurnData,
   CancelWorkspaceAgentTurnErrors,
   CancelWorkspaceAgentTurnResponses,
@@ -52,9 +58,15 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CreateCollaborationRunData,
+  CreateCollaborationRunErrors,
+  CreateCollaborationRunResponses,
   CreateModelPlanData,
   CreateModelPlanErrors,
   CreateModelPlanResponses,
+  CreateModelPolicyData,
+  CreateModelPolicyErrors,
+  CreateModelPolicyResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -94,6 +106,9 @@ import type {
   DeleteModelPlanData,
   DeleteModelPlanErrors,
   DeleteModelPlanResponses,
+  DeleteModelPolicyData,
+  DeleteModelPolicyErrors,
+  DeleteModelPolicyResponses,
   DeleteUserProjectData,
   DeleteUserProjectErrors,
   DeleteUserProjectResponses,
@@ -154,6 +169,12 @@ import type {
   GetAgentProviderStatusesData,
   GetAgentProviderStatusesErrors,
   GetAgentProviderStatusesResponses,
+  GetAgentSessionAcceptanceData,
+  GetAgentSessionAcceptanceErrors,
+  GetAgentSessionAcceptanceResponses,
+  GetAgentSessionModelPolicyOverrideData,
+  GetAgentSessionModelPolicyOverrideErrors,
+  GetAgentSessionModelPolicyOverrideResponses,
   GetAgentTargetSetupData,
   GetAgentTargetSetupErrors,
   GetAgentTargetSetupResponses,
@@ -166,6 +187,9 @@ import type {
   GetModelPlanData,
   GetModelPlanErrors,
   GetModelPlanResponses,
+  GetModelPolicyData,
+  GetModelPolicyErrors,
+  GetModelPolicyResponses,
   GetStartupWorkspaceData,
   GetStartupWorkspaceErrors,
   GetStartupWorkspaceResponses,
@@ -247,12 +271,18 @@ import type {
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
+  ListCollaborationRunsData,
+  ListCollaborationRunsErrors,
+  ListCollaborationRunsResponses,
   ListModelPlanReferencesData,
   ListModelPlanReferencesErrors,
   ListModelPlanReferencesResponses,
   ListModelPlansData,
   ListModelPlansErrors,
   ListModelPlansResponses,
+  ListModelPoliciesData,
+  ListModelPoliciesErrors,
+  ListModelPoliciesResponses,
   ListUserProjectsData,
   ListUserProjectsErrors,
   ListUserProjectsResponses,
@@ -430,6 +460,12 @@ import type {
   SetAgentModelBindingData,
   SetAgentModelBindingErrors,
   SetAgentModelBindingResponses,
+  SetAgentSessionModelPolicyOverrideData,
+  SetAgentSessionModelPolicyOverrideErrors,
+  SetAgentSessionModelPolicyOverrideResponses,
+  SetCollaborationRunAdoptionData,
+  SetCollaborationRunAdoptionErrors,
+  SetCollaborationRunAdoptionResponses,
   SetModelPlanEnabledData,
   SetModelPlanEnabledErrors,
   SetModelPlanEnabledResponses,
@@ -463,6 +499,9 @@ import type {
   UpdateModelPlanData,
   UpdateModelPlanErrors,
   UpdateModelPlanResponses,
+  UpdateModelPolicyData,
+  UpdateModelPolicyErrors,
+  UpdateModelPolicyResponses,
   UpdateWorkspaceAgentSessionPinData,
   UpdateWorkspaceAgentSessionPinErrors,
   UpdateWorkspaceAgentSessionPinResponses,
@@ -1337,6 +1376,88 @@ export const listModelPlanReferences = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * List workspace collaboration runs
+ *
+ * Returns collaboration runs (model consults, forks, delegations, handoffs) newest first. Credentials never appear on run records.
+ */
+export const listCollaborationRuns = <ThrowOnError extends boolean = false>(
+  options: Options<ListCollaborationRunsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListCollaborationRunsResponses,
+    ListCollaborationRunsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options
+  });
+
+/**
+ * Start or record one collaboration run
+ *
+ * Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+ */
+export const createCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateCollaborationRunResponses,
+    CreateCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Record whether a collaboration run outcome was adopted
+ *
+ * Consult and delegate outcomes track adoption (pending, adopted, rejected). Fork and handoff runs are not adoptable.
+ */
+export const setCollaborationRunAdoption = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetCollaborationRunAdoptionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    SetCollaborationRunAdoptionResponses,
+    SetCollaborationRunAdoptionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Cancel a running consult
+ *
+ * Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+ */
+export const cancelCollaborationRun = <ThrowOnError extends boolean = false>(
+  options: Options<CancelCollaborationRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelCollaborationRunResponses,
+    CancelCollaborationRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel",
+    ...options
+  });
+
+/**
  * List per-workspace agent target model bindings
  *
  * Returns the default model plan, default model, and model usage policy bound to each agent target in the workspace. Targets without a binding keep their provider-native model source.
@@ -1374,6 +1495,174 @@ export const setAgentModelBinding = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * List workspace model usage policies
+ */
+export const listModelPolicies = <ThrowOnError extends boolean = false>(
+  options: Options<ListModelPoliciesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListModelPoliciesResponses,
+    ListModelPoliciesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies",
+    ...options
+  });
+
+/**
+ * Create one model usage policy
+ *
+ * A policy binds execution, planning, and review roles to plan models and carries the fixed on_task_complete review rule with run and token limits. Automated review can never replace user acceptance.
+ */
+export const createModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<CreateModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateModelPolicyResponses,
+    CreateModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Delete one model usage policy
+ */
+export const deleteModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteModelPolicyResponses,
+    DeleteModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options
+  });
+
+/**
+ * Get one model usage policy
+ */
+export const getModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<GetModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetModelPolicyResponses,
+    GetModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options
+  });
+
+/**
+ * Update one model usage policy
+ *
+ * Changes affect only calls that have not started yet.
+ */
+export const updateModelPolicy = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateModelPolicyData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    UpdateModelPolicyResponses,
+    UpdateModelPolicyErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the session-level model policy override
+ */
+export const getAgentSessionModelPolicyOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAgentSessionModelPolicyOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionModelPolicyOverrideResponses,
+    GetAgentSessionModelPolicyOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override",
+    ...options
+  });
+
+/**
+ * Disable or replace the model usage policy for one session
+ *
+ * Session-level automation control. Disabling stops policy-triggered review for this session; a policy id override replaces the binding default. Changes affect only calls that have not started.
+ */
+export const setAgentSessionModelPolicyOverride = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetAgentSessionModelPolicyOverrideData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    SetAgentSessionModelPolicyOverrideResponses,
+    SetAgentSessionModelPolicyOverrideErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get the session acceptance ladder state
+ *
+ * States distinguish agent_claimed, auto_checked, and user_accepted. Only user_accepted may close work; automated review can reach auto_checked at most.
+ */
+export const getAgentSessionAcceptance = <ThrowOnError extends boolean = false>(
+  options: Options<GetAgentSessionAcceptanceData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAgentSessionAcceptanceResponses,
+    GetAgentSessionAcceptanceErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance",
+    ...options
+  });
+
+/**
+ * Record explicit user acceptance for the session's claimed work
+ */
+export const acceptAgentSessionWork = <ThrowOnError extends boolean = false>(
+  options: Options<AcceptAgentSessionWorkData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AcceptAgentSessionWorkResponses,
+    AcceptAgentSessionWorkErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance",
+    ...options
   });
 
 /**

@@ -299,6 +299,33 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		routes.ListModelPlanReferences(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.ListCollaborationRuns(w, r)
+		case http.MethodPost:
+			routes.CreateCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetCollaborationRunAdoption(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.CancelCollaborationRun(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.CollaborationRunID(r.PathValue("collaborationRunID")))
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -313,6 +340,59 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			return
 		}
 		routes.SetAgentModelBinding(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), r.PathValue("agentTargetID"))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-policies", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.ListModelPolicies(w, r, workspaceID)
+		case http.MethodPost:
+			routes.CreateModelPolicy(w, r, workspaceID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		modelPolicyID := r.PathValue("modelPolicyID")
+		switch r.Method {
+		case http.MethodGet:
+			routes.GetModelPolicy(w, r, workspaceID, modelPolicyID)
+		case http.MethodPut:
+			routes.UpdateModelPolicy(w, r, workspaceID, modelPolicyID)
+		case http.MethodDelete:
+			routes.DeleteModelPolicy(w, r, workspaceID, modelPolicyID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		agentSessionID := tuttigenerated.AgentSessionID(r.PathValue("agentSessionID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.GetAgentSessionModelPolicyOverride(w, r, workspaceID, agentSessionID)
+		case http.MethodPut:
+			routes.SetAgentSessionModelPolicyOverride(w, r, workspaceID, agentSessionID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		agentSessionID := tuttigenerated.AgentSessionID(r.PathValue("agentSessionID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.GetAgentSessionAcceptance(w, r, workspaceID, agentSessionID)
+		case http.MethodPost:
+			routes.AcceptAgentSessionWork(w, r, workspaceID, agentSessionID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers", func(w http.ResponseWriter, r *http.Request) {
