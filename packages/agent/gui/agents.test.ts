@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeAgentGUIAgents } from "./agents";
+import {
+  normalizeAgentGUIAgents,
+  resolveAgentGUISelectedDirectoryAgent
+} from "./agents";
 import type { AgentGUIAgent } from "./types";
 
 function createAgent(
@@ -56,5 +59,37 @@ describe("normalizeAgentGUIAgents", () => {
         provider: "codex"
       }
     ]);
+  });
+});
+
+describe("resolveAgentGUISelectedDirectoryAgent", () => {
+  const unavailable = createAgent("agent-a");
+  unavailable.availability = { status: "unavailable" };
+  const ready = createAgent("agent-b");
+
+  it("requires an exact match for an explicit target", () => {
+    expect(
+      resolveAgentGUISelectedDirectoryAgent({
+        agents: [unavailable, ready],
+        agentTargetId: "missing-agent"
+      })
+    ).toBeNull();
+  });
+
+  it("keeps a missing default target exact", () => {
+    expect(
+      resolveAgentGUISelectedDirectoryAgent({
+        agents: [unavailable, ready],
+        defaultAgentTargetId: "delayed-agent"
+      })
+    ).toBeNull();
+  });
+
+  it("uses the first ready agent only when no explicit target exists", () => {
+    expect(
+      resolveAgentGUISelectedDirectoryAgent({
+        agents: [unavailable, ready]
+      })?.agentTargetId
+    ).toBe("agent-b");
   });
 });
