@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import {
+  DesktopAgentsService,
   mapAgentTargetsToPresentations,
   mapAgentTargetPresentationsToAgents
 } from "./desktopAgentsService.ts";
@@ -58,13 +59,6 @@ test("desktop agents service maps agent targets into renderer presentations and 
       iconUrl: "tutti-asset://agent/codex.png",
       name: "Codex",
       provider: "codex"
-    },
-    {
-      agentTargetId: "local:claude-code",
-      availability: { status: "coming_soon" },
-      iconUrl: "tutti-asset://agent/claude-code.png",
-      name: "Claude Code",
-      provider: "claude-code"
     }
   ]);
 });
@@ -86,6 +80,82 @@ test("desktop agents service resolves target iconKey before provider artwork", (
   );
 
   assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
+});
+
+test("desktop agents service projects provider gates to targets and AgentGUI agents", async () => {
+  const service = new DesktopAgentsService({
+    isAgentTargetProviderGated: (provider) => provider === "codex",
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      })
+    }
+  });
+
+  const snapshot = await service.load();
+
+  assert.equal(snapshot.agentTargets[0]?.enabled, false);
+  assert.deepEqual(snapshot.agents, [
+    {
+      agentTargetId: "local:codex",
+      availability: { status: "coming_soon" },
+      iconUrl: "",
+      name: "Codex",
+      provider: "codex"
+    }
+  ]);
+});
+
+test("desktop agents service discards results from stale requests", async () => {
+  const requests: Array<(targets: AgentTarget[]) => void> = [];
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      listAgentTargets: () =>
+        new Promise((resolve) => {
+          requests.push((targets) => resolve({ targets }));
+        })
+    }
+  });
+  const emittedProviders: string[][] = [];
+  service.subscribe(() => {
+    emittedProviders.push(
+      service.getSnapshot().agentTargets.map((target) => target.provider)
+    );
+  });
+
+  const staleLoad = service.load();
+  const latestRefresh = service.refresh();
+  requests[1]?.([
+    createAgentTarget({
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex",
+      sortOrder: 10
+    })
+  ]);
+  await latestRefresh;
+  requests[0]?.([
+    createAgentTarget({
+      id: "local:claude-code",
+      name: "Claude Code",
+      provider: "claude-code",
+      sortOrder: 20
+    })
+  ]);
+  await staleLoad;
+
+  assert.deepEqual(emittedProviders, [["codex"]]);
+  assert.deepEqual(
+    service.getSnapshot().agentTargets.map((target) => target.provider),
+    ["codex"]
+  );
 });
 
 function createAgentTarget(input: {

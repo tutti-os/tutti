@@ -470,6 +470,10 @@ export type ListAgentTargetsResponse = {
   targets: Array<AgentTarget>;
 };
 
+export type SetSystemAgentTargetEnabledRequest = {
+  enabled: boolean;
+};
+
 export type ListWorkspacesResponse = {
   workspaces: Array<WorkspaceSummary>;
   totalCount: number;
@@ -3093,6 +3097,51 @@ export type ListAgentTargetsResponses = {
 
 export type ListAgentTargetsResponse2 =
   ListAgentTargetsResponses[keyof ListAgentTargetsResponses];
+
+export type SetSystemAgentTargetEnabledData = {
+  body: SetSystemAgentTargetEnabledRequest;
+  path: {
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/agent-targets/{agentTargetID}/enabled";
+};
+
+export type SetSystemAgentTargetEnabledErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetSystemAgentTargetEnabledError =
+  SetSystemAgentTargetEnabledErrors[keyof SetSystemAgentTargetEnabledErrors];
+
+export type SetSystemAgentTargetEnabledResponses = {
+  /**
+   * Updated system Agent Target
+   */
+  200: AgentTarget;
+};
+
+export type SetSystemAgentTargetEnabledResponse =
+  SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
 
 export type ListWorkspacesData = {
   body?: never;

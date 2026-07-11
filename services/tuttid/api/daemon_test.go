@@ -21,6 +21,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
@@ -618,7 +619,8 @@ func (s stubPreferencesService) Put(ctx context.Context, input preferencesservic
 }
 
 type stubAgentTargetService struct {
-	listFn func(context.Context) ([]agenttargetbiz.Target, error)
+	listFn       func(context.Context) ([]agenttargetbiz.Target, error)
+	setEnabledFn func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error)
 }
 
 func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
@@ -626,6 +628,19 @@ func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Targ
 		return agenttargetbiz.DefaultSystemTargets(1), nil
 	}
 	return s.listFn(ctx)
+}
+
+func (s stubAgentTargetService) SetEnabled(ctx context.Context, input agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+	if s.setEnabledFn != nil {
+		return s.setEnabledFn(ctx, input)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(1) {
+		if target.ID == input.ID {
+			target.Enabled = input.Enabled
+			return target, nil
+		}
+	}
+	return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
 }
 
 func TestDaemonAPIGeneratedRoutesWorkspaceTerminalsReturnServiceUnavailable(t *testing.T) {
@@ -2102,6 +2117,100 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		response.Targets[4].LaunchRef.Type != tuttigenerated.LocalCli ||
 		response.Targets[4].LaunchRef.Provider != tuttigenerated.AgentTargetProviderOpencode {
 		t.Fatalf("fifth target = %#v, want local opencode", response.Targets[4])
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabled(t *testing.T) {
+	mux := http.NewServeMux()
+	var captured agenttargetservice.SetEnabledInput
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{
+			setEnabledFn: func(_ context.Context, input agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+				captured = input
+				target := agenttargetbiz.DefaultSystemTargets(1)[2]
+				target.Enabled = input.Enabled
+				target.UpdatedAtUnixMS = 2
+				return target, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPatch,
+		"/v1/agent-targets/local:tutti-agent/enabled",
+		map[string]any{"enabled": false},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if captured.ID != agenttargetbiz.IDLocalTuttiAgent || captured.Enabled {
+		t.Fatalf("captured input = %#v", captured)
+	}
+	var response tuttigenerated.AgentTarget
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Id != agenttargetbiz.IDLocalTuttiAgent || response.Enabled {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRejectsUserTarget(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{
+			setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+				return agenttargetbiz.Target{}, agenttargetservice.ErrSystemTargetImmutable
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPatch,
+		"/v1/agent-targets/custom-codex/enabled",
+		map[string]any{"enabled": false},
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRequiresEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		body any
+	}{
+		{name: "empty object", body: map[string]any{}},
+		{name: "null", body: json.RawMessage("null")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, NewRoutes(DaemonAPI{
+				AgentTargetService: stubAgentTargetService{
+					setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+						t.Fatal("SetEnabled should not be called when enabled is missing")
+						return agenttargetbiz.Target{}, nil
+					},
+				},
+			}))
+
+			recorder := performGeneratedRouteRequest(
+				t,
+				mux,
+				http.MethodPatch,
+				"/v1/agent-targets/local:tutti-agent/enabled",
+				test.body,
+			)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
 	}
 }
 

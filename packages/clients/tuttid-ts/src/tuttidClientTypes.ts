@@ -68,6 +68,7 @@ import type {
   IssueManagerTopic,
   IssueManagerTopicListResponse,
   ListAgentTargetsResponse,
+  AgentTarget,
   ListWorkspacesResponse,
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
@@ -143,6 +144,10 @@ export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
+  setSystemAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<AgentTarget>;
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;

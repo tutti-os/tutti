@@ -52,6 +52,9 @@ type ServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(w http.ResponseWriter, r *http.Request)
+	// Enable or disable one daemon-owned system Agent Target
+	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
+	SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request, agentTargetID string)
 	// List CLI capabilities visible in the current context
 	// (GET /v1/cli/capabilities)
 	ListCliCapabilities(w http.ResponseWriter, r *http.Request, params ListCliCapabilitiesParams)
@@ -766,6 +769,38 @@ func (siw *ServerInterfaceWrapper) ListAgentTargets(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAgentTargets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSystemAgentTargetEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentTargetID" -------------
+	var agentTargetID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentTargetID", r.PathValue("agentTargetID"), &agentTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSystemAgentTargetEnabled(w, r, agentTargetID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6527,6 +6562,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/probe", wrapper.ProbeAgentProvider)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/enabled", wrapper.SetSystemAgentTargetEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events/ws", wrapper.AttachEventStream)
@@ -7585,6 +7621,107 @@ type ListAgentTargets503JSONResponse struct {
 }
 
 func (response ListAgentTargets503JSONResponse) VisitListAgentTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabledRequestObject struct {
+	AgentTargetID string `json:"agentTargetID"`
+	Body          *SetSystemAgentTargetEnabledJSONRequestBody
+}
+
+type SetSystemAgentTargetEnabledResponseObject interface {
+	VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetSystemAgentTargetEnabled200JSONResponse AgentTarget
+
+func (response SetSystemAgentTargetEnabled200JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabled400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SetSystemAgentTargetEnabled400JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabled401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SetSystemAgentTargetEnabled401JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabled405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SetSystemAgentTargetEnabled405JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabled502JSONResponse struct {
+	PreferencesOperationErrorJSONResponse
+}
+
+func (response SetSystemAgentTargetEnabled502JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSystemAgentTargetEnabled503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SetSystemAgentTargetEnabled503JSONResponse) VisitSetSystemAgentTargetEnabledResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -22805,6 +22942,9 @@ type StrictServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(ctx context.Context, request ListAgentTargetsRequestObject) (ListAgentTargetsResponseObject, error)
+	// Enable or disable one daemon-owned system Agent Target
+	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
+	SetSystemAgentTargetEnabled(ctx context.Context, request SetSystemAgentTargetEnabledRequestObject) (SetSystemAgentTargetEnabledResponseObject, error)
 	// List CLI capabilities visible in the current context
 	// (GET /v1/cli/capabilities)
 	ListCliCapabilities(ctx context.Context, request ListCliCapabilitiesRequestObject) (ListCliCapabilitiesResponseObject, error)
@@ -23521,6 +23661,41 @@ func (sh *strictHandler) ListAgentTargets(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAgentTargetsResponseObject); ok {
 		if err := validResponse.VisitListAgentTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSystemAgentTargetEnabled operation middleware
+func (sh *strictHandler) SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request, agentTargetID string) {
+	var request SetSystemAgentTargetEnabledRequestObject
+
+	request.AgentTargetID = agentTargetID
+
+	var body SetSystemAgentTargetEnabledJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSystemAgentTargetEnabled(ctx, request.(SetSystemAgentTargetEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSystemAgentTargetEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSystemAgentTargetEnabledResponseObject); ok {
+		if err := validResponse.VisitSetSystemAgentTargetEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

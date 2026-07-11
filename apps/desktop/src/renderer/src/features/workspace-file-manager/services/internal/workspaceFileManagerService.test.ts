@@ -785,6 +785,7 @@ function createDependenciesStub(): {
     },
     tuttidClient: {
       listAgentTargets: fail,
+      setSystemAgentTargetEnabled: fail,
       startAccountLogin: fail,
       getAccountLoginStatus: fail,
       getAccountUserInfo: fail,

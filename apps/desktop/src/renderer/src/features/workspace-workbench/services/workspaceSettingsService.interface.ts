@@ -74,7 +74,7 @@ export interface IWorkspaceSettingsService {
   ): void;
   selectSection(sectionID: WorkspaceSettingsSectionID): void;
   setDeveloperPanelVisible(visible: boolean): void;
-  setTuttiAgentSwitchEnabled(enabled: boolean): void;
+  setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void>;
   beginManagedModelProviderDraft(
     provider: WorkspaceManagedModelProviderID
   ): void;

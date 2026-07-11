@@ -115,3 +115,59 @@ func TestServiceAllowsUserAgentTargetMutation(t *testing.T) {
 		t.Fatalf("deleted = %#v, want custom-codex", store.deleted)
 	}
 }
+
+func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
+	t.Parallel()
+
+	var original agenttargetbiz.Target
+	for _, target := range agenttargetbiz.DefaultSystemTargets(100) {
+		if target.ID == agenttargetbiz.IDLocalTuttiAgent {
+			original = target
+			break
+		}
+	}
+	if original.ID == "" {
+		t.Fatal("default Tutti Agent target not found")
+	}
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
+	service := Service{Store: store}
+
+	updated, err := service.SetEnabled(context.Background(), SetEnabledInput{
+		ID:      agenttargetbiz.IDLocalTuttiAgent,
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("SetEnabled() error = %v", err)
+	}
+	if updated.Enabled {
+		t.Fatalf("updated target = %#v, want disabled", updated)
+	}
+	if updated.ID != original.ID || updated.Provider != original.Provider || updated.LaunchRefJSON != original.LaunchRefJSON || updated.Source != original.Source || updated.CreatedAtUnixMS != original.CreatedAtUnixMS {
+		t.Fatalf("SetEnabled() mutated system identity: before=%#v after=%#v", original, updated)
+	}
+}
+
+func TestServiceSetEnabledRejectsUserTarget(t *testing.T) {
+	t.Parallel()
+
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{
+		"custom-codex": {
+			ID:            "custom-codex",
+			Provider:      "codex",
+			LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+			Name:          "Custom Codex",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	_, err := (Service{Store: store}).SetEnabled(context.Background(), SetEnabledInput{
+		ID:      "custom-codex",
+		Enabled: false,
+	})
+	if !errors.Is(err, ErrSystemTargetImmutable) {
+		t.Fatalf("SetEnabled() error = %v, want ErrSystemTargetImmutable", err)
+	}
+	if !store.targets["custom-codex"].Enabled {
+		t.Fatal("user target was mutated")
+	}
+}

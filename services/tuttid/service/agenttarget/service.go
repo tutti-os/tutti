@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -21,6 +22,11 @@ type PutInput struct {
 
 type DeleteInput struct {
 	ID string
+}
+
+type SetEnabledInput struct {
+	ID      string
+	Enabled bool
 }
 
 func (s Service) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
@@ -63,4 +69,29 @@ func (s Service) Delete(ctx context.Context, input DeleteInput) error {
 		return ErrSystemTargetImmutable
 	}
 	return s.Store.DeleteAgentTarget(ctx, input.ID)
+}
+
+// SetEnabled is the narrow control-plane mutation for daemon-owned system
+// targets. Put and Delete intentionally keep system targets immutable; this
+// method preserves every identity and launch field and changes visibility only.
+func (s Service) SetEnabled(ctx context.Context, input SetEnabledInput) (agenttargetbiz.Target, error) {
+	if s.Store == nil {
+		return agenttargetbiz.Target{}, errors.New("agent target store is not configured")
+	}
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		return agenttargetbiz.Target{}, fmt.Errorf("%w: id is required", agenttargetbiz.ErrInvalidTarget)
+	}
+	existing, err := s.Store.GetAgentTarget(ctx, id)
+	if err != nil {
+		return agenttargetbiz.Target{}, err
+	}
+	if !agenttargetbiz.IsSystemTarget(existing) {
+		return agenttargetbiz.Target{}, ErrSystemTargetImmutable
+	}
+	if existing.Enabled == input.Enabled {
+		return existing, nil
+	}
+	existing.Enabled = input.Enabled
+	return s.Store.PutAgentTarget(ctx, existing)
 }

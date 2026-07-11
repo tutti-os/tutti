@@ -46,6 +46,9 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async setSystemAgentTargetEnabled() {
+      throw new Error("not used");
+    },
     async startAccountLogin() {
       throw new Error("not used");
     },

@@ -379,6 +379,9 @@ import type {
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
+  SetSystemAgentTargetEnabledData,
+  SetSystemAgentTargetEnabledErrors,
+  SetSystemAgentTargetEnabledResponses,
   StartAccountLoginData,
   StartAccountLoginErrors,
   StartAccountLoginResponses,
@@ -802,6 +805,30 @@ export const listAgentTargets = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-targets",
     ...options
+  });
+
+/**
+ * Enable or disable one daemon-owned system Agent Target
+ *
+ * Desktop control-plane operation that changes only the enabled field of an existing system Agent Target. It is not exposed as a Workspace App CLI capability.
+ */
+export const setSystemAgentTargetEnabled = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetSystemAgentTargetEnabledData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    SetSystemAgentTargetEnabledResponses,
+    SetSystemAgentTargetEnabledErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-targets/{agentTargetID}/enabled",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

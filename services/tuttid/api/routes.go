@@ -135,6 +135,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListAgentTargets(w, r)
 	})
 
+	mux.HandleFunc("/v1/agent-targets/{agentTargetID}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SetSystemAgentTargetEnabled(w, r)
+	})
+
 	mux.HandleFunc("/v1/user-projects", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

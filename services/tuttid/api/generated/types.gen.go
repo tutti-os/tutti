@@ -3330,6 +3330,11 @@ type SendWorkspaceAgentSessionInputResponse struct {
 	TurnLifecycle      AgentActivityTurnLifecycle      `json:"turnLifecycle"`
 }
 
+// SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
+type SetSystemAgentTargetEnabledRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
 type StartupWorkspaceResponse struct {
 	Workspace *WorkspaceSummary `json:"workspace"`
@@ -4447,6 +4452,9 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
+
+// SetSystemAgentTargetEnabledJSONRequestBody defines body for SetSystemAgentTargetEnabled for application/json ContentType.
+type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledRequest
 
 // InvokeCliCommandJSONRequestBody defines body for InvokeCliCommand for application/json ContentType.
 type InvokeCliCommandJSONRequestBody = CliInvokeRequest

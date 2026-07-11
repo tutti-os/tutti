@@ -28,7 +28,7 @@ import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
 export const localAgentRuntime = createDefaultLocalAgentRuntime();
 ```
 
-Provider IDs are canonical opaque strings. The runtime lists `claude-code`; it accepts legacy `claude` input internally. Apps must not add provider conversion helpers or register compatibility providers.
+Provider IDs are canonical opaque strings. First-party local providers are `codex`, `claude-code`, and `tutti-agent`. The runtime accepts legacy `claude` input internally. `nexight` is historical activity compatibility only: apps must not register it as a new provider or map it to/from `tutti-agent`.
 
 Read `references/dynamic-agent-providers.md` for catalog, composer, persistence, UI, and standalone behavior.
 
@@ -46,6 +46,8 @@ import {
 
 Do not pass a mode. When `TUTTI_CLI` is absent, catalog/composer use standalone runtime discovery and skill context is empty with `source: "standalone"`. When `TUTTI_CLI` exists, the kit uses it. A configured CLI failure is a typed error and never silently falls back.
 
+In a Tutti-hosted process, daemon Agent Targets own provider visibility. A disabled target is omitted by the CLI catalog, and the kit must not add that provider back from local runtime detection. Composer and Skill requests for a disabled provider fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
+
 The app does not use daemon URL, server credential, workspace identity, or app identity for Agent catalog/composer queries. Those values may still be required for unrelated app-scoped resources.
 
 ## Runtime execution
@@ -60,6 +62,8 @@ For each run:
 6. Call the local runtime with the same canonical provider ID.
 7. Adapt events to the app stream and persist only session/resume metadata.
 8. Revoke gateway tokens and clean app-owned temporary files in `finally`.
+
+Workspace apps do not present, persist, or pass a permission selection. Omit `permission` from every run input; the kit applies the Workspace App default of full access. Permission choices such as `auto` remain part of Tutti AgentGUI and interactive CLI, not the Workspace App integration surface. Never add a permission picker to an app to mirror daemon composer options.
 
 Skeleton:
 
@@ -175,6 +179,7 @@ Add tests for:
 
 - auto CLI-backed and standalone catalog/composer/skill behavior without a mode input;
 - configured-but-failing CLI returning a typed error without standalone fallback;
+- disabled Agent Targets staying absent without SDK detection adding them back;
 - full dynamic provider projection and lazy composer loading;
 - canonical IDs and one-time `claude -> claude-code` state migration;
 - direct awaited managed run context creation, with no app credential precheck;
@@ -182,5 +187,6 @@ Add tests for:
 - event normalization, cancellation, and resume metadata;
 - MCP env/path packaging and gateway token revocation;
 - absence of raw Agent catalog clients, provider alias helpers, and dependency patch scripts.
+- absence of app permission selectors, permission persistence, and run-level permission arguments.
 
 For a real smoke test inside Tutti, load the catalog, one provider's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.
