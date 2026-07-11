@@ -262,6 +262,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.agentGuiAgentsLoader = new AgentGuiAgentsLoader(() =>
       this.dependencies.agentsService.load().then((snapshot) => snapshot.agents)
     );
+    this.dependencies.agentsService.subscribe(() => {
+      this.agentGuiAgentsLoader.invalidate();
+    });
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
     });

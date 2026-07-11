@@ -3,7 +3,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore
 } from "react";
 import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
@@ -29,6 +28,7 @@ import {
   workspaceAppWebviewTypeID
 } from "@renderer/features/workspace-app-center";
 import { IReporterService } from "@renderer/features/analytics";
+import { IAgentsService } from "@renderer/features/workspace-agent";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
 import { useTranslation } from "@renderer/i18n";
@@ -133,14 +133,17 @@ export function useWorkspaceWorkbenchShellRuntime({
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const agentsService = useService(IAgentsService);
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [agentGuiAgents, setAgentGuiAgents] = useState<
-    readonly AgentGUIAgent[] | undefined
-  >(undefined);
-  const agentGuiAgentsLoading = agentGuiAgents === undefined;
+  const agentsSnapshot = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
+  );
+  const agentGuiAgentsLoading = agentsSnapshot.capturedAtUnixMs === null;
   // The daemon /agents directory is the complete new-entry source of truth.
-  const resolvedAgentGuiAgents = agentGuiAgents ?? [];
+  const resolvedAgentGuiAgents = agentsSnapshot.agents;
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
     () => [
       ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
@@ -269,28 +272,17 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
-    let disposed = false;
-    setAgentGuiAgents(undefined);
     const loadAgents = () => {
-      void workbenchHostService
-        .loadAgentGuiAgents()
-        .then((targets) => {
-          if (!disposed) {
-            setAgentGuiAgents(targets);
-          }
-        })
-        .catch(() => undefined);
+      void agentsService.load().catch(() => undefined);
     };
     loadAgents();
     window.addEventListener("focus", loadAgents);
     return () => {
-      disposed = true;
       window.removeEventListener("focus", loadAgents);
     };
-    // comingSoonAgentProviders: the provider gate disables gated targets in
-    // the daemon target list, so a gate flip must reload it (the host service
-    // cache is invalidated by the same preference change).
-  }, [comingSoonAgentProviders, state.workspace.id, workbenchHostService]);
+    // The Desktop projection applies provider gates while loading the daemon
+    // target list, so a gate flip must reload the snapshot.
+  }, [agentsService, comingSoonAgentProviders, state.workspace.id]);
 
   useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {

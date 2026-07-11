@@ -59,12 +59,12 @@ func (api DaemonAPI) SetSystemAgentTargetEnabled(ctx context.Context, request tu
 			),
 		}, nil
 	}
-	if request.Body == nil || strings.TrimSpace(request.AgentTargetID) == "" {
-		return invalidSetSystemAgentTargetEnabledRequest("agent target id and body are required"), nil
+	if request.Body == nil || request.Body.Enabled == nil || strings.TrimSpace(request.AgentTargetID) == "" {
+		return invalidSetSystemAgentTargetEnabledRequest("agent target id, body, and enabled are required"), nil
 	}
 	target, err := api.AgentTargetService.SetEnabled(ctx, agenttargetservice.SetEnabledInput{
 		ID:      request.AgentTargetID,
-		Enabled: request.Body.Enabled,
+		Enabled: *request.Body.Enabled,
 	})
 	if err != nil {
 		if errors.Is(err, workspacedata.ErrAgentTargetNotFound) ||

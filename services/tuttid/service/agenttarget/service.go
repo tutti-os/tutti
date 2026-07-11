@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -15,7 +14,6 @@ var ErrSystemTargetImmutable = errors.New("system agent target is immutable")
 
 type Service struct {
 	Store workspacedata.AgentTargetStore
-	Now   func() time.Time
 }
 
 type PutInput struct {
@@ -95,13 +93,5 @@ func (s Service) SetEnabled(ctx context.Context, input SetEnabledInput) (agentta
 		return existing, nil
 	}
 	existing.Enabled = input.Enabled
-	existing.UpdatedAtUnixMS = s.now().UnixMilli()
 	return s.Store.PutAgentTarget(ctx, existing)
-}
-
-func (s Service) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
 }

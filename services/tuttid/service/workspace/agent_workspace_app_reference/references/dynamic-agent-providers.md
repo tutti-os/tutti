@@ -80,12 +80,13 @@ const composer = await loadTuttiAgentComposerOptions({
   cwd: appLocalCwd,
   locale,
   model,
-  permissionMode,
   reasoningEffort
 });
 ```
 
 The kit first verifies that `providerId` is present in the canonical catalog. In Tutti it calls `tutti --json agent composer-options --provider <providerId>`; standalone mode derives conservative model options from runtime detection and marks unsupported controls `configurable: false`.
+
+Workspace Apps do not expose, persist, or pass a permission choice. Do not project a permission option returned by composer metadata into App UI, and omit `permission` from runtime execution input. The kit applies the Workspace App default of full access when `permission` is omitted. Interactive choices such as `auto` belong to Tutti AgentGUI and the manual CLI, not to an App-owned provider picker or composer.
 
 Do not eagerly load composer options for every provider. A failure belongs to the selected provider UI and must not delete other catalog entries.
 
@@ -124,6 +125,7 @@ Do not add:
 - daemon URL, server credential, workspace identity, or app identity reads for Agent provider catalog/composer discovery;
 - fixed provider allowlists or synthetic fallback catalogs;
 - eager composer requests for all providers;
+- permission selectors, persisted permission modes, or run-level `permission` arguments;
 - code that patches `node_modules/@tutti-os/agent-acp-kit` or its built `dist` files.
 
 ## Verification
@@ -135,4 +137,5 @@ Add app tests that verify:
 - canonical IDs round-trip through endpoint, persistence, UI selection, host bridge, and runtime input;
 - legacy persisted `claude` migrates once to `claude-code`, while `nexight` and `tutti-agent` remain distinct;
 - composer loading is lazy and one-provider failure is isolated;
+- App execution omits `permission` and relies on the kit's full-access Workspace App default;
 - no `mode`, app ID, Agent catalog token, alias helper, or dependency patch script is present.

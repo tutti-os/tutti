@@ -2177,6 +2177,43 @@ func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRejectsUserTarget(t 
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRequiresEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		body any
+	}{
+		{name: "empty object", body: map[string]any{}},
+		{name: "null", body: json.RawMessage("null")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, NewRoutes(DaemonAPI{
+				AgentTargetService: stubAgentTargetService{
+					setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+						t.Fatal("SetEnabled should not be called when enabled is missing")
+						return agenttargetbiz.Target{}, nil
+					},
+				},
+			}))
+
+			recorder := performGeneratedRouteRequest(
+				t,
+				mux,
+				http.MethodPatch,
+				"/v1/agent-targets/local:tutti-agent/enabled",
+				test.body,
+			)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesRequiresAgentConversationDetailMode(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{

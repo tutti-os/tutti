@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -120,12 +119,18 @@ func TestServiceAllowsUserAgentTargetMutation(t *testing.T) {
 func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
 	t.Parallel()
 
-	original := agenttargetbiz.DefaultSystemTargets(100)[2]
-	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
-	service := Service{
-		Store: store,
-		Now:   func() time.Time { return time.UnixMilli(200) },
+	var original agenttargetbiz.Target
+	for _, target := range agenttargetbiz.DefaultSystemTargets(100) {
+		if target.ID == agenttargetbiz.IDLocalTuttiAgent {
+			original = target
+			break
+		}
 	}
+	if original.ID == "" {
+		t.Fatal("default Tutti Agent target not found")
+	}
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
+	service := Service{Store: store}
 
 	updated, err := service.SetEnabled(context.Background(), SetEnabledInput{
 		ID:      agenttargetbiz.IDLocalTuttiAgent,
@@ -134,8 +139,8 @@ func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetEnabled() error = %v", err)
 	}
-	if updated.Enabled || updated.UpdatedAtUnixMS != 200 {
-		t.Fatalf("updated target = %#v, want disabled at 200", updated)
+	if updated.Enabled {
+		t.Fatalf("updated target = %#v, want disabled", updated)
 	}
 	if updated.ID != original.ID || updated.Provider != original.Provider || updated.LaunchRefJSON != original.LaunchRefJSON || updated.Source != original.Source || updated.CreatedAtUnixMS != original.CreatedAtUnixMS {
 		t.Fatalf("SetEnabled() mutated system identity: before=%#v after=%#v", original, updated)

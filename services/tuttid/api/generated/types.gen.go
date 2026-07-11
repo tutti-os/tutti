@@ -3327,7 +3327,7 @@ type SendWorkspaceAgentSessionInputResponse struct {
 
 // SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
 type SetSystemAgentTargetEnabledRequest struct {
-	Enabled bool `json:"enabled"`
+	Enabled *bool `json:"enabled"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.

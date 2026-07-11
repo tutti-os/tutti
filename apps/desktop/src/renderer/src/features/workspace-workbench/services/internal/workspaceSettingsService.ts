@@ -62,7 +62,9 @@ import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
 import {
+  clearTuttiAgentSwitchDaemonMigration,
   hasMigratedTuttiAgentSwitchToDaemon,
+  type LegacyTuttiAgentSwitchReadResult,
   markTuttiAgentSwitchDaemonMigrationComplete,
   readLegacyTuttiAgentSwitchEnabled
 } from "../tuttiAgentSwitchPreference.ts";
@@ -84,9 +86,10 @@ export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
   tuttiAgentSwitchMigration?: {
+    clearComplete(): void;
     hasMigrated(): boolean;
-    markComplete(): void;
-    readLegacyEnabled(): boolean | null;
+    markComplete(): boolean;
+    readLegacyEnabled(): LegacyTuttiAgentSwitchReadResult;
   };
 }
 
@@ -106,6 +109,9 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   > | null;
   private readonly reporterNow?: () => number;
   private logsLoadSequence = 0;
+  private tuttiAgentSwitchInitializationPending = false;
+  private tuttiAgentSwitchInitialized = false;
+  private tuttiAgentSwitchOperation: Promise<void> = Promise.resolve();
 
   constructor(
     dependencies: WorkspaceSettingsServiceDependencies,
@@ -124,13 +130,14 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
     this.reporterNow = reporterNow;
-    void this.initializeTuttiAgentSwitch();
+    this.scheduleTuttiAgentSwitchInitialization();
   }
 
   openPanel(
     workspace: WorkspaceSettingsWorkspaceInput,
     options?: WorkspaceSettingsOpenOptions
   ): void {
+    this.scheduleTuttiAgentSwitchInitialization();
     this.syncWorkspace(workspace);
     const managedModelsRequested = options?.pane === "managed-models";
     if (managedModelsRequested) {
@@ -256,27 +263,37 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   }
 
   async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
-    if (this.store.tuttiAgentSwitchEnabled === enabled) {
-      return;
-    }
+    return this.enqueueTuttiAgentSwitchOperation(async () => {
+      if (
+        this.tuttiAgentSwitchInitialized &&
+        this.store.tuttiAgentSwitchEnabled === enabled
+      ) {
+        return;
+      }
 
-    try {
-      const target = await this.dependencies.client.setSystemAgentTargetEnabled(
-        tuttiAgentTargetID,
-        enabled
-      );
-      this.applyTuttiAgentTargetEnabled(target.enabled);
-      await this.refreshAgentTargetConsumers();
-    } catch {
-      this.notifications.error({
-        title: createActiveTranslator().t(
-          "workspace.settings.developer.tuttiAgentSwitchSaveFailed"
-        )
-      });
-    }
+      try {
+        const target =
+          await this.dependencies.client.setSystemAgentTargetEnabled(
+            tuttiAgentTargetID,
+            enabled
+          );
+        this.tuttiAgentSwitchInitialized = true;
+        this.applyTuttiAgentTargetEnabled(target.enabled);
+        await this.refreshAgentTargetConsumers();
+      } catch {
+        this.notifications.error({
+          title: createActiveTranslator().t(
+            "workspace.settings.developer.tuttiAgentSwitchSaveFailed"
+          )
+        });
+      }
+    });
   }
 
   private async initializeTuttiAgentSwitch(): Promise<void> {
+    if (this.tuttiAgentSwitchInitialized) {
+      return;
+    }
     try {
       const targets = await this.dependencies.client.listAgentTargets();
       let target = targets.find((item) => item.id === tuttiAgentTargetID);
@@ -288,19 +305,61 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
         defaultTuttiAgentSwitchMigration;
       if (!migration.hasMigrated()) {
         const legacyEnabled = migration.readLegacyEnabled();
-        if (legacyEnabled !== null && legacyEnabled !== target.enabled) {
-          target = await this.dependencies.client.setSystemAgentTargetEnabled(
-            tuttiAgentTargetID,
-            legacyEnabled
-          );
+        if (legacyEnabled.status === "error") {
+          return;
+        }
+        // Persist the one-shot marker before mutating daemon state. If storage
+        // is unavailable, leave migration pending instead of repeatedly
+        // overwriting an explicit daemon-side choice on future launches.
+        if (!migration.markComplete()) {
+          return;
+        }
+        if (
+          legacyEnabled.status === "value" &&
+          legacyEnabled.enabled !== target.enabled
+        ) {
+          try {
+            target = await this.dependencies.client.setSystemAgentTargetEnabled(
+              tuttiAgentTargetID,
+              legacyEnabled.enabled
+            );
+          } catch (error) {
+            migration.clearComplete();
+            throw error;
+          }
           await this.refreshAgentTargetConsumers();
         }
-        migration.markComplete();
       }
+      this.tuttiAgentSwitchInitialized = true;
       this.applyTuttiAgentTargetEnabled(target.enabled);
     } catch {
       // Keep the safe hidden state until the daemon can provide authority.
     }
+  }
+
+  private scheduleTuttiAgentSwitchInitialization(): void {
+    if (
+      this.tuttiAgentSwitchInitialized ||
+      this.tuttiAgentSwitchInitializationPending
+    ) {
+      return;
+    }
+    this.tuttiAgentSwitchInitializationPending = true;
+    void this.enqueueTuttiAgentSwitchOperation(async () => {
+      try {
+        await this.initializeTuttiAgentSwitch();
+      } finally {
+        this.tuttiAgentSwitchInitializationPending = false;
+      }
+    });
+  }
+
+  private enqueueTuttiAgentSwitchOperation(
+    operation: () => Promise<void>
+  ): Promise<void> {
+    const next = this.tuttiAgentSwitchOperation.then(operation, operation);
+    this.tuttiAgentSwitchOperation = next.catch(() => undefined);
+    return next;
   }
 
   private applyTuttiAgentTargetEnabled(enabled: boolean): void {
@@ -1201,6 +1260,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
 }
 
 const defaultTuttiAgentSwitchMigration = {
+  clearComplete: clearTuttiAgentSwitchDaemonMigration,
   hasMigrated: hasMigratedTuttiAgentSwitchToDaemon,
   markComplete: markTuttiAgentSwitchDaemonMigrationComplete,
   readLegacyEnabled: readLegacyTuttiAgentSwitchEnabled
