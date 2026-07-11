@@ -81,13 +81,15 @@ export class DesktopAgentsService implements IAgentsService {
     }
     const agentTargets = mapAgentTargetsToPresentations(response.targets, {
       resolveAgentIconUrl: this.dependencies.resolveAgentIconUrl
-    }).map((target) =>
-      this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
-        ? { ...target, enabled: false }
-        : target
+    });
+    const agents = mapAgentTargetPresentationsToAgents(agentTargets).map(
+      (agent) =>
+        this.dependencies.isAgentTargetProviderGated?.(agent.provider) === true
+          ? { ...agent, availability: { status: "coming_soon" as const } }
+          : agent
     );
     const nextSnapshot: AgentsSnapshot = {
-      agents: mapAgentTargetPresentationsToAgents(agentTargets),
+      agents,
       agentTargets,
       capturedAtUnixMs: this.dependencies.now?.() ?? Date.now()
     };
@@ -125,15 +127,15 @@ export function mapAgentTargetsToPresentations(
 export function mapAgentTargetPresentationsToAgents(
   targets: readonly AgentTargetPresentation[]
 ): readonly AgentGUIAgent[] {
-  return targets.map((target) => ({
-    agentTargetId: target.agentTargetId,
-    name: target.name,
-    iconUrl: target.iconUrl,
-    availability: {
-      status: target.enabled === true ? "ready" : "coming_soon"
-    },
-    provider: target.provider as AgentGUIProvider
-  }));
+  return targets
+    .filter((target) => target.enabled)
+    .map((target) => ({
+      agentTargetId: target.agentTargetId,
+      name: target.name,
+      iconUrl: target.iconUrl,
+      availability: { status: "ready" },
+      provider: target.provider as AgentGUIProvider
+    }));
 }
 
 function resolveAgentTargetIconUrl(

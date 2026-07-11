@@ -3,6 +3,7 @@ import type {
   DesktopDeveloperApi,
   DesktopRuntimeApi
 } from "@preload/types";
+import type { AgentTarget, TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
   ClearDeveloperLogsResult,
   DesktopComputerUseActionResult,
@@ -72,6 +73,11 @@ export interface DesktopWorkspaceSettingsClient {
   restartComputerUseDriver(
     input?: DesktopComputerUseRestartDriverInput
   ): Promise<DesktopComputerUseRestartDriverResult>;
+  listAgentTargets(): Promise<AgentTarget[]>;
+  setSystemAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<AgentTarget>;
   clearLogs(): Promise<ClearDeveloperLogsResult>;
   clearWorkspaceAgentSessions(
     workspaceID: string
@@ -107,6 +113,10 @@ export function createDesktopWorkspaceSettingsClient(input: {
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
   runtimeApi: DesktopRuntimeApi;
+  tuttidClient: Pick<
+    TuttidClient,
+    "listAgentTargets" | "setSystemAgentTargetEnabled"
+  >;
 }): DesktopWorkspaceSettingsClient {
   return {
     checkComputerUseStatus() {
@@ -141,6 +151,15 @@ export function createDesktopWorkspaceSettingsClient(input: {
     },
     restartComputerUseDriver(restartInput) {
       return input.computerUseApi.restartDriver(restartInput);
+    },
+    async listAgentTargets() {
+      return (await input.tuttidClient.listAgentTargets()).targets;
+    },
+    setSystemAgentTargetEnabled(agentTargetID, enabled) {
+      return input.tuttidClient.setSystemAgentTargetEnabled(
+        agentTargetID,
+        enabled
+      );
     },
     clearLogs() {
       return input.developerApi.clearLogs();

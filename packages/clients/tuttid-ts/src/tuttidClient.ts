@@ -86,6 +86,7 @@ import {
   searchWorkspaceFiles,
   searchWorkspaceIssueReferences,
   sendWorkspaceAgentSessionInput,
+  setSystemAgentTargetEnabled,
   startAccountLogin,
   submitWorkspaceAgentInteractive,
   terminateWorkspaceTerminal,
@@ -135,6 +136,16 @@ export function createTuttidClient(
       return unwrapData(
         await listAgentTargets({ client }),
         "Agent targets request failed."
+      );
+    },
+    async setSystemAgentTargetEnabled(agentTargetID, enabled) {
+      return unwrapData(
+        await setSystemAgentTargetEnabled({
+          client,
+          body: { enabled },
+          path: { agentTargetID }
+        }),
+        "Agent target visibility update failed."
       );
     },
     async startAccountLogin() {

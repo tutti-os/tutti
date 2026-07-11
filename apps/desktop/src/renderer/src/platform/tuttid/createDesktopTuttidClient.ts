@@ -41,6 +41,12 @@ export function createDesktopTuttidClient(
     async listAgentTargets() {
       return (await resolveClient()).listAgentTargets();
     },
+    async setSystemAgentTargetEnabled(agentTargetID, enabled) {
+      return (await resolveClient()).setSystemAgentTargetEnabled(
+        agentTargetID,
+        enabled
+      );
+    },
     async startAccountLogin() {
       return (await resolveClient()).startAccountLogin();
     },

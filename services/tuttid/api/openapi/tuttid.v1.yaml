@@ -489,6 +489,43 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-targets/{agentTargetID}/enabled:
+    patch:
+      operationId: setSystemAgentTargetEnabled
+      tags:
+        - agent-target
+      summary: Enable or disable one daemon-owned system Agent Target
+      description: Desktop control-plane operation that changes only the enabled field of an existing system Agent Target. It is not exposed as a Workspace App CLI capability.
+      parameters:
+        - name: agentTargetID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSystemAgentTargetEnabledRequest"
+      responses:
+        "200":
+          description: Updated system Agent Target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTarget"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces:
     get:
       operationId: listWorkspaces
@@ -4902,6 +4939,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTarget"
+    SetSystemAgentTargetEnabledRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
     ListWorkspacesResponse:
       type: object
       additionalProperties: false

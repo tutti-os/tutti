@@ -1,5 +1,7 @@
 const tuttiAgentSwitchStorageKey =
   "tutti.workspaceSettings.tuttiAgentSwitchEnabled";
+const tuttiAgentSwitchMigrationStorageKey =
+  "tutti.workspaceSettings.tuttiAgentSwitchDaemonMigrationV1";
 
 export interface TuttiAgentSwitchStorage {
   getItem(key: string): string | null;
@@ -13,23 +15,33 @@ function resolveStorage(): TuttiAgentSwitchStorage | null {
   return globalThis.localStorage;
 }
 
-export function readTuttiAgentSwitchEnabled(
+export function readLegacyTuttiAgentSwitchEnabled(
+  storage: TuttiAgentSwitchStorage | null = resolveStorage()
+): boolean | null {
+  try {
+    const value = storage?.getItem(tuttiAgentSwitchStorageKey);
+    return value === "1" ? true : value === "0" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+export function hasMigratedTuttiAgentSwitchToDaemon(
   storage: TuttiAgentSwitchStorage | null = resolveStorage()
 ): boolean {
   try {
-    return storage?.getItem(tuttiAgentSwitchStorageKey) === "1";
+    return storage?.getItem(tuttiAgentSwitchMigrationStorageKey) === "1";
   } catch {
     return false;
   }
 }
 
-export function writeTuttiAgentSwitchEnabled(
-  enabled: boolean,
+export function markTuttiAgentSwitchDaemonMigrationComplete(
   storage: TuttiAgentSwitchStorage | null = resolveStorage()
 ): void {
   try {
-    storage?.setItem(tuttiAgentSwitchStorageKey, enabled ? "1" : "0");
+    storage?.setItem(tuttiAgentSwitchMigrationStorageKey, "1");
   } catch {
-    // Ignore persistence failures; keep the in-memory preference.
+    // The daemon remains authoritative even when the optional marker cannot be stored.
   }
 }

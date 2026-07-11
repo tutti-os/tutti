@@ -181,6 +181,41 @@ test("shared tuttid client unwraps agent target responses", async () => {
   } satisfies ListAgentTargetsResponse);
 });
 
+test("shared tuttid client updates system agent target visibility", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/agent-targets/local%3Atutti-agent/enabled"
+      );
+      assert.equal(request.method, "PATCH");
+      assert.deepEqual(await request.json(), { enabled: false });
+      return Response.json({
+        id: "local:tutti-agent",
+        provider: "tutti-agent",
+        launchRef: { type: "local_cli", provider: "tutti-agent" },
+        name: "Tutti Agent",
+        iconKey: "tutti-agent",
+        enabled: false,
+        source: "system",
+        sortOrder: 30,
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2
+      });
+    }
+  });
+
+  const target = await client.setSystemAgentTargetEnabled(
+    "local:tutti-agent",
+    false
+  );
+
+  assert.equal(target.id, "local:tutti-agent");
+  assert.equal(target.enabled, false);
+});
+
 test("shared tuttid client forwards bearer auth tokens", async () => {
   let authorizationHeader = "";
 

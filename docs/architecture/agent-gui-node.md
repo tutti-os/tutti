@@ -1556,8 +1556,10 @@ AgentGUI. Product feature gates may filter that array before rendering; a
 loaded empty result remains empty. Availability states that should stay visible
 must remain in the array with the matching non-ready status instead of becoming
 synthetic provider placeholders. OpenCode remains gated by the
-`enableOpenCodeAgent` developer preference, and Tutti Agent remains gated by
-`tuttiAgentSwitchEnabled` before the directory reaches AgentGUI.
+`enableOpenCodeAgent` developer preference. Tutti Agent visibility is owned by
+the daemon's `local:tutti-agent` Agent Target: disabled daemon targets stay in
+the presentation snapshot for history and settings, but are omitted from the
+new-session `agents` projection before the directory reaches AgentGUI.
 Provider slash commands must come from the runtime command snapshot or an
 explicit adapter-owned command seed. Do not add AgentGUI-only slash-command
 fallbacks to make providers look aligned. For OpenCode, `/compact` and
@@ -1576,12 +1578,15 @@ advertised commands: when the owner explicitly advertises a built-in name such
 as `/plan`, `/fast`, or `/status`, AgentGUI may still handle it with the same
 local composer behavior used for local sessions.
 Desktop workbench may apply product entry gates before passing target data into
-AgentGUI. The Tutti Agent switch (`tuttiAgentSwitchEnabled`) is one such gate:
-when off, desktop removes `local:tutti-agent` from new-session targets, unified
-dock launch, launchpad, provider rail/composer entry points, and workspace-app
-mention candidates. This gate must not filter session/activity snapshots or
-direct session-open paths; existing `tutti-agent` sessions remain readable and
-their provider identity stays `tutti-agent`.
+AgentGUI. The Tutti Agent settings switch writes only the daemon-owned
+`local:tutti-agent.Enabled` field, then refreshes the shared Agent Target
+snapshot. Renderer local storage is accepted only once as an upgrade migration
+input and never remains a visibility source. When disabled, the target is
+omitted from new-session targets, unified dock launch, launchpad, provider
+rail/composer entry points, Workspace App provider catalogs, and workspace-app
+mention candidates. The durable target record and session/activity snapshots
+remain intact, so existing `tutti-agent` sessions stay readable and their
+provider identity stays `tutti-agent`.
 
 `nexight` remains a historical/runtime provider identity for old activity data
 and compatibility code, but it is no longer a desktop new-entry AgentGUI

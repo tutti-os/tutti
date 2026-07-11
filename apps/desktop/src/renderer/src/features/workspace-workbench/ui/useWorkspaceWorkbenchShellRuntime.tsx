@@ -62,7 +62,6 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
-import { filterWorkspaceAgentGuiAgents } from "./workspaceAgentGuiAgentFilter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -133,8 +132,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const { service: workspaceSettingsService, state: workspaceSettingsState } =
-    useWorkspaceSettingsService();
+  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [agentGuiAgents, setAgentGuiAgents] = useState<
@@ -142,15 +140,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   >(undefined);
   const agentGuiAgentsLoading = agentGuiAgents === undefined;
   // The daemon /agents directory is the complete new-entry source of truth.
-  const resolvedAgentGuiAgents = useMemo(() => {
-    if (!agentGuiAgents) {
-      return [];
-    }
-    return filterWorkspaceAgentGuiAgents(agentGuiAgents, {
-      tuttiAgentSwitchEnabled:
-        workspaceSettingsState.tuttiAgentSwitchEnabled === true
-    });
-  }, [agentGuiAgents, workspaceSettingsState.tuttiAgentSwitchEnabled]);
+  const resolvedAgentGuiAgents = agentGuiAgents ?? [];
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
     () => [
       ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -113,5 +114,55 @@ func TestServiceAllowsUserAgentTargetMutation(t *testing.T) {
 	}
 	if len(store.deleted) != 1 || store.deleted[0] != "custom-codex" {
 		t.Fatalf("deleted = %#v, want custom-codex", store.deleted)
+	}
+}
+
+func TestServiceSetEnabledOnlyChangesSystemTargetVisibility(t *testing.T) {
+	t.Parallel()
+
+	original := agenttargetbiz.DefaultSystemTargets(100)[2]
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{original.ID: original}}
+	service := Service{
+		Store: store,
+		Now:   func() time.Time { return time.UnixMilli(200) },
+	}
+
+	updated, err := service.SetEnabled(context.Background(), SetEnabledInput{
+		ID:      agenttargetbiz.IDLocalTuttiAgent,
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("SetEnabled() error = %v", err)
+	}
+	if updated.Enabled || updated.UpdatedAtUnixMS != 200 {
+		t.Fatalf("updated target = %#v, want disabled at 200", updated)
+	}
+	if updated.ID != original.ID || updated.Provider != original.Provider || updated.LaunchRefJSON != original.LaunchRefJSON || updated.Source != original.Source || updated.CreatedAtUnixMS != original.CreatedAtUnixMS {
+		t.Fatalf("SetEnabled() mutated system identity: before=%#v after=%#v", original, updated)
+	}
+}
+
+func TestServiceSetEnabledRejectsUserTarget(t *testing.T) {
+	t.Parallel()
+
+	store := &agentTargetStoreStub{targets: map[string]agenttargetbiz.Target{
+		"custom-codex": {
+			ID:            "custom-codex",
+			Provider:      "codex",
+			LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+			Name:          "Custom Codex",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	_, err := (Service{Store: store}).SetEnabled(context.Background(), SetEnabledInput{
+		ID:      "custom-codex",
+		Enabled: false,
+	})
+	if !errors.Is(err, ErrSystemTargetImmutable) {
+		t.Fatalf("SetEnabled() error = %v, want ErrSystemTargetImmutable", err)
+	}
+	if !store.targets["custom-codex"].Enabled {
+		t.Fatal("user target was mutated")
 	}
 }

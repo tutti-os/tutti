@@ -3,7 +3,6 @@ package agentcontext
 import (
 	"context"
 
-	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -47,28 +46,11 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	canonicalProvider := agentproviderbiz.Normalize(input.Provider)
-	if canonicalProvider == "" {
-		return nil, agentservice.ErrInvalidArgument
-	}
-	targets, err := p.enabledAgentTargets(ctx)
+	target, err := p.resolveEnabledAgentTarget(ctx, input.Provider)
 	if err != nil {
 		return nil, err
 	}
-	providerEnabled := false
-	for _, target := range targets {
-		if target.Provider == canonicalProvider {
-			providerEnabled = true
-			break
-		}
-	}
-	if !providerEnabled {
-		return nil, &agentservice.ProviderUnavailableError{
-			Provider:   input.Provider,
-			ReasonCode: "agent_provider_not_enabled",
-			Message:    "agent provider is not enabled",
-		}
-	}
+	canonicalProvider := target.Provider
 	defaults := p.composerDefaultsForProvider(ctx, canonicalProvider)
 	locale := input.Locale
 	if locale == "" {

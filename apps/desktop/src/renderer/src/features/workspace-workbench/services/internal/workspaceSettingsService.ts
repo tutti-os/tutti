@@ -61,7 +61,11 @@ import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspace
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
-import { writeTuttiAgentSwitchEnabled } from "../tuttiAgentSwitchPreference.ts";
+import {
+  hasMigratedTuttiAgentSwitchToDaemon,
+  markTuttiAgentSwitchDaemonMigrationComplete,
+  readLegacyTuttiAgentSwitchEnabled
+} from "../tuttiAgentSwitchPreference.ts";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderConfig,
@@ -78,7 +82,15 @@ const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
 
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
+  onAgentTargetsChanged?: () => void | Promise<void>;
+  tuttiAgentSwitchMigration?: {
+    hasMigrated(): boolean;
+    markComplete(): void;
+    readLegacyEnabled(): boolean | null;
+  };
 }
+
+const tuttiAgentTargetID = "local:tutti-agent";
 
 export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   readonly _serviceBrand: undefined;
@@ -112,6 +124,7 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.reporterService = reporterService;
     this.appCenterService = appCenterService;
     this.reporterNow = reporterNow;
+    void this.initializeTuttiAgentSwitch();
   }
 
   openPanel(
@@ -242,15 +255,66 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
-  setTuttiAgentSwitchEnabled(enabled: boolean): void {
+  async setTuttiAgentSwitchEnabled(enabled: boolean): Promise<void> {
     if (this.store.tuttiAgentSwitchEnabled === enabled) {
       return;
     }
 
+    try {
+      const target = await this.dependencies.client.setSystemAgentTargetEnabled(
+        tuttiAgentTargetID,
+        enabled
+      );
+      this.applyTuttiAgentTargetEnabled(target.enabled);
+      await this.refreshAgentTargetConsumers();
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.tuttiAgentSwitchSaveFailed"
+        )
+      });
+    }
+  }
+
+  private async initializeTuttiAgentSwitch(): Promise<void> {
+    try {
+      const targets = await this.dependencies.client.listAgentTargets();
+      let target = targets.find((item) => item.id === tuttiAgentTargetID);
+      if (!target) {
+        return;
+      }
+      const migration =
+        this.dependencies.tuttiAgentSwitchMigration ??
+        defaultTuttiAgentSwitchMigration;
+      if (!migration.hasMigrated()) {
+        const legacyEnabled = migration.readLegacyEnabled();
+        if (legacyEnabled !== null && legacyEnabled !== target.enabled) {
+          target = await this.dependencies.client.setSystemAgentTargetEnabled(
+            tuttiAgentTargetID,
+            legacyEnabled
+          );
+          await this.refreshAgentTargetConsumers();
+        }
+        migration.markComplete();
+      }
+      this.applyTuttiAgentTargetEnabled(target.enabled);
+    } catch {
+      // Keep the safe hidden state until the daemon can provide authority.
+    }
+  }
+
+  private applyTuttiAgentTargetEnabled(enabled: boolean): void {
     this.store.tuttiAgentSwitchEnabled = enabled;
-    writeTuttiAgentSwitchEnabled(enabled);
     if (!enabled && this.store.activeSection === "account") {
       this.store.activeSection = "general";
+    }
+  }
+
+  private async refreshAgentTargetConsumers(): Promise<void> {
+    try {
+      await this.dependencies.onAgentTargetsChanged?.();
+    } catch {
+      // The daemon update is authoritative; consumers will retry on their next refresh.
     }
   }
 
@@ -1135,6 +1199,12 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }).report();
   }
 }
+
+const defaultTuttiAgentSwitchMigration = {
+  hasMigrated: hasMigratedTuttiAgentSwitchToDaemon,
+  markComplete: markTuttiAgentSwitchDaemonMigrationComplete,
+  readLegacyEnabled: readLegacyTuttiAgentSwitchEnabled
+};
 
 function createActiveTranslator() {
   return createTranslator(getActiveLocale());

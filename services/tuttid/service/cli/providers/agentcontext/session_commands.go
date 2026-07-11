@@ -107,19 +107,7 @@ func (p Provider) resolveGenericStartTarget(ctx context.Context, provider string
 	if canonicalProvider == "" {
 		return agenttargetbiz.Target{}, fmt.Errorf("%w: unsupported agent provider %q", cliservice.ErrInvalidInput, provider)
 	}
-	targets, err := p.enabledAgentTargets(ctx)
-	if err != nil {
-		return agenttargetbiz.Target{}, err
-	}
-	target, ok := agenttargetbiz.EnabledTargetForProvider(targets, canonicalProvider)
-	if !ok {
-		return agenttargetbiz.Target{}, &agentservice.ProviderUnavailableError{
-			Provider:   canonicalProvider,
-			ReasonCode: "agent_provider_not_enabled",
-			Message:    "agent provider is not enabled",
-		}
-	}
-	return target, nil
+	return p.resolveEnabledAgentTarget(ctx, canonicalProvider)
 }
 
 type providerStartCommandSpec struct {
@@ -151,7 +139,17 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 			CLIDescription: spec.Description,
 		},
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input providerStartInput) (any, error) {
-			return p.runStart(ctx, invoke, spec.Provider, spec.AgentTargetID, startFields(input))
+			targetID := spec.AgentTargetID
+			provider := spec.Provider
+			if p.agentTargets != nil {
+				target, err := p.resolveEnabledAgentTarget(ctx, spec.Provider)
+				if err != nil {
+					return nil, err
+				}
+				targetID = target.ID
+				provider = target.Provider
+			}
+			return p.runStart(ctx, invoke, provider, targetID, startFields(input))
 		},
 	})
 }

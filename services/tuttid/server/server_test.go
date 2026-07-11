@@ -145,6 +145,15 @@ func TestAuthorizeWorkspaceAppServerTokenIsLimitedToAppServerRoutes(t *testing.T
 		t.Fatal("expected app token to reject global desktop preferences")
 	}
 
+	agentTargetMutation, _ := http.NewRequest(
+		http.MethodPatch,
+		"/v1/agent-targets/local:tutti-agent/enabled",
+		nil,
+	)
+	if authorizeWorkspaceAppServerToken(agentTargetMutation, appToken, accessToken) {
+		t.Fatal("expected app token to reject system agent target mutation")
+	}
+
 	providerModels, _ := http.NewRequest(
 		http.MethodPost,
 		"/v1/workspaces/workspace-1/managed-model-providers/agnes/models",

@@ -868,6 +868,33 @@ func TestGenericStartCanonicalizesLegacyProviderAndRejectsDisabledProvider(t *te
 	}
 }
 
+func TestProviderStartRejectsDisabledAgentTarget(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		if targets[index].Provider == "codex" {
+			targets[index].Enabled = false
+		}
+	}
+	sessions := &fakeAgentSessions{}
+	command := newTestCodexStartCommand(NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	))
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"prompt": "do work"},
+	})
+	var unavailable *agentservice.ProviderUnavailableError
+	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
+		t.Fatalf("Handler() error = %v, want disabled provider", err)
+	}
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	}
+}
+
 func TestStartCommandUsesComposerDefaults(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(NewProviderWithLaunchPublisher(
@@ -1261,6 +1288,51 @@ func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
 		first["deliveryMode"] != "materialized-files" ||
 		first["materializedPath"] != nil {
 		t.Fatalf("skill bundle output = %#v", output.Value)
+	}
+}
+
+func TestSkillBundleCommandRejectsDisabledProviderBeforeRendering(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		if targets[index].Provider == "tutti-agent" {
+			targets[index].Enabled = false
+		}
+	}
+	command := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	).newSkillBundleCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "tutti-agent"},
+	})
+	var unavailable *agentservice.ProviderUnavailableError
+	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
+		t.Fatalf("Handler() error = %v, want disabled provider", err)
+	}
+	if sessions.skillBundleIn.Provider != "" {
+		t.Fatalf("skill bundle was rendered for disabled provider: %#v", sessions.skillBundleIn)
+	}
+}
+
+func TestSkillBundleCommandCanonicalizesLegacyProviderAtIngress(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions,
+	).newSkillBundleCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "claude"},
+	})
+	if err != nil {
+		t.Fatalf("Handler() error = %v", err)
+	}
+	if sessions.skillBundleIn.Provider != "claude-code" {
+		t.Fatalf("provider = %q, want claude-code", sessions.skillBundleIn.Provider)
 	}
 }
 
@@ -1726,6 +1798,34 @@ func TestProviderCapabilitiesHideAgentAppsWithoutSessions(t *testing.T) {
 	}
 	if !containsString(capabilityIDs(capabilities), appID+".agent.start") {
 		t.Fatalf("generic agent start capability missing: %#v", capabilityIDs(capabilities))
+	}
+}
+
+func TestProviderCapabilitiesHideDisabledAgentTargetEvenWhenRuntimeIsAvailable(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		if targets[index].Provider == "tutti-agent" {
+			targets[index].Enabled = false
+		}
+	}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{availability: []agentservice.ProviderAvailability{
+			availableProvider("codex"),
+			availableProvider("claude-code"),
+			availableProvider("tutti-agent"),
+		}},
+		nil,
+		fakeAgentTargetLister{targets: targets},
+	)
+	registry, err := cliservice.NewRegistryFromProviders(provider)
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
+	if got := providerAgentAppIDs(capabilities); containsString(got, tuttiAgentAppID) {
+		t.Fatalf("disabled Tutti Agent capability leaked: %#v", got)
 	}
 }
 

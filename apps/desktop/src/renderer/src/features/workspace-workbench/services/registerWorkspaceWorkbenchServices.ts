@@ -48,6 +48,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
   wallpaperApi: DesktopWallpaperApi;
+  onAgentTargetsChanged?: () => void | Promise<void>;
 }
 
 export function registerWorkspaceWorkbenchServices(
@@ -93,8 +94,10 @@ export function registerWorkspaceWorkbenchServices(
         client: createDesktopWorkspaceSettingsClient({
           computerUseApi: input.computerUseApi,
           developerApi: input.developerApi,
-          runtimeApi: input.runtimeApi
-        })
+          runtimeApi: input.runtimeApi,
+          tuttidClient: input.tuttidClient
+        }),
+        onAgentTargetsChanged: input.onAgentTargetsChanged
       }
     ])
   );

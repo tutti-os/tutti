@@ -58,13 +58,6 @@ test("desktop agents service maps agent targets into renderer presentations and 
       iconUrl: "tutti-asset://agent/codex.png",
       name: "Codex",
       provider: "codex"
-    },
-    {
-      agentTargetId: "local:claude-code",
-      availability: { status: "coming_soon" },
-      iconUrl: "tutti-asset://agent/claude-code.png",
-      name: "Claude Code",
-      provider: "claude-code"
     }
   ]);
 });
