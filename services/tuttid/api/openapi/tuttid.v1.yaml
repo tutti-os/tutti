@@ -1006,6 +1006,142 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/collaboration-runs:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listCollaborationRuns
+      tags:
+        - collaboration-run
+      summary: List workspace collaboration runs
+      description: Returns collaboration runs (model consults, forks, delegations, handoffs) newest first. Credentials never appear on run records.
+      parameters:
+        - name: sourceSessionId
+          in: query
+          required: false
+          description: Narrow to runs started from one source agent session.
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Collaboration runs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCollaborationRunsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createCollaborationRun
+      tags:
+        - collaboration-run
+      summary: Start or record one collaboration run
+      description: Mode consult executes a daemon-side advisory completion against a workspace model access plan synchronously and returns the completed or failed run; the advisor never executes tools and task ownership never changes. Modes fork, delegate, and handoff record a run for a target session the GUI already created through the session-create path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCollaborationRunRequest"
+      responses:
+        "200":
+          description: Collaboration run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollaborationRun"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/adoption:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/CollaborationRunID"
+    post:
+      operationId: setCollaborationRunAdoption
+      tags:
+        - collaboration-run
+      summary: Record whether a collaboration run outcome was adopted
+      description: Consult and delegate outcomes track adoption (pending, adopted, rejected). Fork and handoff runs are not adoptable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCollaborationRunAdoptionRequest"
+      responses:
+        "200":
+          description: Updated collaboration run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollaborationRun"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/collaboration-runs/{collaborationRunID}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/CollaborationRunID"
+    post:
+      operationId: cancelCollaborationRun
+      tags:
+        - collaboration-run
+      summary: Cancel a running consult
+      description: Marks a still-running consult canceled and aborts its in-flight completion call. Settled runs are returned unchanged.
+      responses:
+        "200":
+          description: Collaboration run after the cancel request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollaborationRun"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-model-bindings:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1066,6 +1202,249 @@ paths:
           $ref: "#/components/responses/InvalidRequestError"
         "404":
           $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-policies:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listModelPolicies
+      tags:
+        - model-plan
+      summary: List workspace model usage policies
+      responses:
+        "200":
+          description: Model usage policies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListModelPoliciesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: createModelPolicy
+      tags:
+        - model-plan
+      summary: Create one model usage policy
+      description: A policy binds execution, planning, and review roles to plan models and carries the fixed on_task_complete review rule with run and token limits. Automated review can never replace user acceptance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutModelPolicyRequest"
+      responses:
+        "200":
+          description: Created model usage policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelUsagePolicy"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/model-policies/{modelPolicyID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/ModelPolicyID"
+    get:
+      operationId: getModelPolicy
+      tags:
+        - model-plan
+      summary: Get one model usage policy
+      responses:
+        "200":
+          description: Model usage policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelUsagePolicy"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: updateModelPolicy
+      tags:
+        - model-plan
+      summary: Update one model usage policy
+      description: Changes affect only calls that have not started yet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutModelPolicyRequest"
+      responses:
+        "200":
+          description: Updated model usage policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelUsagePolicy"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteModelPolicy
+      tags:
+        - model-plan
+      summary: Delete one model usage policy
+      responses:
+        "200":
+          description: Model usage policy deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteModelPolicyResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getAgentSessionModelPolicyOverride
+      tags:
+        - model-plan
+      summary: Get the session-level model policy override
+      responses:
+        "200":
+          description: Session policy override; absent override returns disabled=false with no policy id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionModelPolicyOverride"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    put:
+      operationId: setAgentSessionModelPolicyOverride
+      tags:
+        - model-plan
+      summary: Disable or replace the model usage policy for one session
+      description: Session-level automation control. Disabling stops policy-triggered review for this session; a policy id override replaces the binding default. Changes affect only calls that have not started.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAgentSessionModelPolicyOverrideRequest"
+      responses:
+        "200":
+          description: Updated session policy override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionModelPolicyOverride"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/acceptance:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: getAgentSessionAcceptance
+      tags:
+        - model-plan
+      summary: Get the session acceptance ladder state
+      description: States distinguish agent_claimed, auto_checked, and user_accepted. Only user_accepted may close work; automated review can reach auto_checked at most.
+      responses:
+        "200":
+          description: Session acceptance state; sessions never claimed complete return no state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAcceptanceResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    post:
+      operationId: acceptAgentSessionWork
+      tags:
+        - model-plan
+      summary: Record explicit user acceptance for the session's claimed work
+      responses:
+        "200":
+          description: Acceptance recorded as user_accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSessionAcceptanceResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
@@ -4120,6 +4499,20 @@ components:
       schema:
         type: string
         minLength: 1
+    ModelPolicyID:
+      name: modelPolicyID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    CollaborationRunID:
+      name: collaborationRunID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     WorkspaceFilePath:
       name: path
       in: query
@@ -5013,6 +5406,7 @@ components:
             - preferences_operation_failed
             - model_plan_not_found
             - model_plan_referenced
+            - collaboration_run_not_found
         reason:
           type: string
         params:
@@ -5811,6 +6205,369 @@ components:
       properties:
         modelPlanId:
           type: string
+    PlanModelRef:
+      type: object
+      additionalProperties: false
+      properties:
+        modelPlanId:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+    ModelPolicyReviewRule:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+        trigger:
+          type: string
+          enum:
+            - on_task_complete
+          nullable: true
+        maxRunsPerSession:
+          type: integer
+          nullable: true
+        maxTotalTokensPerSession:
+          type: integer
+          format: int64
+          nullable: true
+    ModelUsagePolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspaceId
+        - name
+        - reviewRule
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        execution:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        planning:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        review:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        reviewRule:
+          $ref: "#/components/schemas/ModelPolicyReviewRule"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListModelPoliciesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - policies
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelUsagePolicy"
+    PutModelPolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        execution:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        planning:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        review:
+          allOf:
+            - $ref: "#/components/schemas/PlanModelRef"
+          nullable: true
+        reviewRule:
+          allOf:
+            - $ref: "#/components/schemas/ModelPolicyReviewRule"
+          nullable: true
+    DeleteModelPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - modelPolicyId
+      properties:
+        modelPolicyId:
+          type: string
+    AgentSessionModelPolicyOverride:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentSessionId
+        - disabled
+      properties:
+        workspaceId:
+          type: string
+        agentSessionId:
+          type: string
+        disabled:
+          type: boolean
+        modelPolicyId:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SetAgentSessionModelPolicyOverrideRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - disabled
+      properties:
+        disabled:
+          type: boolean
+        modelPolicyId:
+          type: string
+          nullable: true
+    AgentSessionAcceptance:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - agentSessionId
+        - state
+      properties:
+        workspaceId:
+          type: string
+        agentSessionId:
+          type: string
+        state:
+          type: string
+          enum:
+            - agent_claimed
+            - auto_checked
+            - user_accepted
+        reviewRunId:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    AgentSessionAcceptanceResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        acceptance:
+          allOf:
+            - $ref: "#/components/schemas/AgentSessionAcceptance"
+          nullable: true
+    CollaborationRunMode:
+      type: string
+      description: Collaboration kind. consult is a daemon-side advisory completion (advice only, no tools, ownership never changes); fork, delegate, and handoff link to a target session created through the session-create path.
+      enum:
+        - consult
+        - fork
+        - delegate
+        - handoff
+    CollaborationRunTriggerSource:
+      type: string
+      enum:
+        - user
+        - agent
+        - policy
+    CollaborationRunStatus:
+      type: string
+      enum:
+        - running
+        - completed
+        - failed
+        - canceled
+    CollaborationRunAdoption:
+      type: string
+      description: Whether the run outcome was taken up by the source task. Fork and handoff runs report not_applicable.
+      enum:
+        - pending
+        - adopted
+        - rejected
+        - not_applicable
+    CollaborationRunUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - inputTokens
+        - outputTokens
+      properties:
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+    CollaborationRun:
+      type: object
+      additionalProperties: false
+      description: One recorded collaboration run with full accounting. Credentials never appear on run records; consults resolve the plan credential at call time only.
+      required:
+        - id
+        - workspaceId
+        - mode
+        - triggerSource
+        - status
+        - adoption
+        - usage
+        - durationMs
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        mode:
+          $ref: "#/components/schemas/CollaborationRunMode"
+        triggerSource:
+          $ref: "#/components/schemas/CollaborationRunTriggerSource"
+        triggerReason:
+          type: string
+          nullable: true
+        sourceSessionId:
+          type: string
+          nullable: true
+        targetSessionId:
+          type: string
+          nullable: true
+        targetAgentTargetId:
+          type: string
+          nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        contextScope:
+          type: string
+          nullable: true
+          description: How much source context was carried over, for example none, summary, or full.
+        prompt:
+          type: string
+          nullable: true
+          description: Stored consult input (context plus question).
+        resultText:
+          type: string
+          nullable: true
+          description: Consult output text.
+        failureReason:
+          type: string
+          nullable: true
+          description: Machine-readable failure code such as unauthorized, model_rejected, or canceled.
+        status:
+          $ref: "#/components/schemas/CollaborationRunStatus"
+        adoption:
+          $ref: "#/components/schemas/CollaborationRunAdoption"
+        usage:
+          $ref: "#/components/schemas/CollaborationRunUsage"
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ListCollaborationRunsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - runs
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollaborationRun"
+    CreateCollaborationRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - triggerSource
+      properties:
+        mode:
+          $ref: "#/components/schemas/CollaborationRunMode"
+        sourceSessionId:
+          type: string
+          nullable: true
+          description: Required for consult runs; consults are capped per source session.
+        targetSessionId:
+          type: string
+          nullable: true
+        targetAgentTargetId:
+          type: string
+          nullable: true
+        modelPlanId:
+          type: string
+          nullable: true
+          description: Required for consult runs; the plan must exist and be enabled.
+        model:
+          type: string
+          nullable: true
+          description: Defaults to the plan default model for consult runs.
+        question:
+          type: string
+          nullable: true
+          description: Consult question; required for consult runs.
+        contextText:
+          type: string
+          nullable: true
+          description: Optional prepared context prepended to the consult question.
+        contextScope:
+          type: string
+          nullable: true
+        triggerSource:
+          $ref: "#/components/schemas/CollaborationRunTriggerSource"
+        triggerReason:
+          type: string
+          nullable: true
+        maxTokens:
+          type: integer
+          nullable: true
+          description: Consult completion output token cap.
+    SetCollaborationRunAdoptionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - adoption
+      properties:
+        adoption:
+          $ref: "#/components/schemas/CollaborationRunAdoption"
     AgentModelBinding:
       type: object
       additionalProperties: false

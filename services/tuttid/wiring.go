@@ -33,12 +33,14 @@ import (
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
+	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
 	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
+	modelpolicyservice "github.com/tutti-os/tutti/services/tuttid/service/modelpolicy"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
@@ -256,15 +258,29 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Plans:   modelPlansStore,
 		Targets: agentTargetStore,
 	}
+	modelPolicyStore, _ := store.(modelpolicyservice.Store)
+	modelPolicies := &modelpolicyservice.Service{
+		Store: modelPolicyStore,
+	}
 	modelPlans := &modelplanservice.Service{
 		Store:      modelPlansStore,
-		References: modelBindings,
+		References: modelplanservice.CompositeReferenceResolver{modelBindings, modelPolicies},
 	}
+	collabRunsStore, _ := store.(workspacedata.CollaborationRunsStore)
+	collabRuns := &collabrunservice.Service{
+		Store:     collabRunsStore,
+		Plans:     modelPlansStore,
+		Completer: modelPlans,
+		Publisher: eventstreamservice.AgentCollaborationPublisher{Service: events},
+	}
+	modelPolicies.ConfigureReviewAutomation(modelBindingsStore, nil, collabRuns, collabRuns)
 	events.RegisterIntentHandler(
 		eventstreamservice.TopicPreferencesDesktopUpdateRequested,
 		eventstreamservice.NewPreferencesDesktopUpdateRequestedHandler(preferences),
 	)
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
+	modelPolicies.Sessions = modelPolicySessionTargetResolver{projection: agentActivityProjection}
+	collabRuns.Timeline = agentservice.CollaborationTimelineReporter{Projection: agentActivityProjection}
 	agentActivityProjection.SetAnalyticsReporter(analyticsReporter)
 	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
 	if agentTargetResolver, ok := store.(agentservice.AgentTargetResolver); ok {
@@ -438,7 +454,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
-	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService})
+	agentActivityProjection.SetSessionStateObserver(agentservice.SessionStateObservers{appFactoryService, agentSessionService, modelPolicies})
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
@@ -524,6 +540,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ManagedCredentialsService: managedCredentials,
 		ModelPlanService:          modelPlans,
 		AgentModelBindingService:  modelBindings,
+		ModelPolicyService:        modelPolicies,
+		CollaborationRunService:   collabRuns,
 		EventStreamService:        events,
 		WorkspaceService:          workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
@@ -582,4 +600,22 @@ func (w *tuttiWiring) Close() error {
 		closeErr = err
 	}
 	return closeErr
+}
+
+// modelPolicySessionTargetResolver lets the review engine resolve a session's
+// agent target from the persisted activity projection when a state report
+// does not carry it.
+type modelPolicySessionTargetResolver struct {
+	projection *agentservice.ActivityProjection
+}
+
+func (r modelPolicySessionTargetResolver) ResolveSessionAgentTarget(workspaceID string, agentSessionID string) (string, bool) {
+	if r.projection == nil {
+		return "", false
+	}
+	session, ok := r.projection.GetSession(workspaceID, agentSessionID)
+	if !ok {
+		return "", false
+	}
+	return session.AgentTargetID, session.AgentTargetID != ""
 }

@@ -6,13 +6,14 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:f4b16255b2e3b578"
+	BusinessEventCatalogRevision = "sha256:46c37e89799f5ceb"
 )
 
 type Topic string
 
 const (
 	TopicAgentActivityUpdated                  Topic = "agent.activity.updated"
+	TopicAgentCollaborationUpdated             Topic = "agent.collaboration.updated"
 	TopicAgentModelCatalogInvalidated          Topic = "agent.model.catalog.invalidated"
 	TopicAnalyticsDebugReported                Topic = "analytics.debug.reported"
 	TopicPreferencesDesktopUpdateRequested     Topic = "preferences.desktop.update.requested"
@@ -232,6 +233,20 @@ type AgentActivityUpdatedPayload struct {
 	Data           any     `json:"data"`
 }
 
+type AgentCollaborationUpdatedPayload struct {
+	WorkspaceId      string  `json:"workspaceId"`
+	RunId            string  `json:"runId"`
+	Mode             string  `json:"mode"`
+	Status           string  `json:"status"`
+	SourceSessionId  *string `json:"sourceSessionId,omitempty"`
+	TargetSessionId  *string `json:"targetSessionId,omitempty"`
+	ModelPlanId      *string `json:"modelPlanId,omitempty"`
+	Model            *string `json:"model,omitempty"`
+	TriggerSource    string  `json:"triggerSource"`
+	Adoption         *string `json:"adoption,omitempty"`
+	OccurredAtUnixMs int     `json:"occurredAtUnixMs"`
+}
+
 type AgentModelCatalogInvalidatedPayload struct {
 	Providers        []string `json:"providers"`
 	OccurredAtUnixMs int      `json:"occurredAtUnixMs"`
@@ -287,6 +302,15 @@ type AgentActivityUpdatedEvent struct {
 	EmittedAt string                      `json:"emittedAt"`
 	Scope     *EventScope                 `json:"scope,omitempty"`
 	Payload   AgentActivityUpdatedPayload `json:"payload"`
+}
+
+type AgentCollaborationUpdatedEvent struct {
+	ID        string                           `json:"id"`
+	Topic     Topic                            `json:"topic"`
+	Version   int                              `json:"version"`
+	EmittedAt string                           `json:"emittedAt"`
+	Scope     *EventScope                      `json:"scope,omitempty"`
+	Payload   AgentCollaborationUpdatedPayload `json:"payload"`
 }
 
 type AgentModelCatalogInvalidatedEvent struct {
@@ -428,6 +452,13 @@ var BusinessEventDefinitions = []EventDefinition{
 		Scope:     ScopeNameWorkspace,
 	},
 	{
+		Topic:     TopicAgentCollaborationUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "agent",
+		Scope:     ScopeNameWorkspace,
+	},
+	{
 		Topic:     TopicAgentModelCatalogInvalidated,
 		Version:   1,
 		Direction: DirectionServerToClient,
@@ -487,14 +518,15 @@ var BusinessEventDefinitions = []EventDefinition{
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
 	TopicAgentActivityUpdated:                  BusinessEventDefinitions[0],
-	TopicAgentModelCatalogInvalidated:          BusinessEventDefinitions[1],
-	TopicAnalyticsDebugReported:                BusinessEventDefinitions[2],
-	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[3],
-	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[4],
-	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[5],
-	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[6],
-	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[7],
-	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[8],
+	TopicAgentCollaborationUpdated:             BusinessEventDefinitions[1],
+	TopicAgentModelCatalogInvalidated:          BusinessEventDefinitions[2],
+	TopicAnalyticsDebugReported:                BusinessEventDefinitions[3],
+	TopicPreferencesDesktopUpdateRequested:     BusinessEventDefinitions[4],
+	TopicPreferencesDesktopUpdated:             BusinessEventDefinitions[5],
+	TopicWorkspaceAppUpdated:                   BusinessEventDefinitions[6],
+	TopicWorkspaceAppfactoryJobUpdated:         BusinessEventDefinitions[7],
+	TopicWorkspaceIssueUpdated:                 BusinessEventDefinitions[8],
+	TopicWorkspaceWorkbenchNodeLaunchRequested: BusinessEventDefinitions[9],
 }
 
 var ClientToServerTopics = []Topic{
@@ -503,6 +535,7 @@ var ClientToServerTopics = []Topic{
 
 var ServerToClientTopics = []Topic{
 	TopicAgentActivityUpdated,
+	TopicAgentCollaborationUpdated,
 	TopicAgentModelCatalogInvalidated,
 	TopicAnalyticsDebugReported,
 	TopicPreferencesDesktopUpdated,
@@ -535,6 +568,8 @@ func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return true
+	case TopicAgentCollaborationUpdated:
+		return true
 	case TopicAgentModelCatalogInvalidated:
 		return true
 	case TopicAnalyticsDebugReported:
@@ -558,6 +593,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
+	case TopicAgentCollaborationUpdated:
+		return &AgentCollaborationUpdatedPayload{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedPayload{}, true
 	case TopicAnalyticsDebugReported:
@@ -583,6 +620,8 @@ func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
+	case TopicAgentCollaborationUpdated:
+		return &AgentCollaborationUpdatedEvent{}, true
 	case TopicAgentModelCatalogInvalidated:
 		return &AgentModelCatalogInvalidatedEvent{}, true
 	case TopicAnalyticsDebugReported:

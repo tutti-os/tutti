@@ -7,6 +7,7 @@ import (
 	agentstore "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	collabrunbiz "github.com/tutti-os/tutti/services/tuttid/biz/collabrun"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
@@ -71,6 +72,12 @@ type AgentModelBindingsStore interface {
 	ListAgentModelBindings(context.Context, string) ([]modelbindingbiz.Binding, error)
 	ListAgentModelBindingsByPlan(context.Context, string, string) ([]modelbindingbiz.Binding, error)
 	PutAgentModelBinding(context.Context, modelbindingbiz.Binding) error
+}
+
+type CollaborationRunsStore interface {
+	GetCollaborationRun(context.Context, string, string) (collabrunbiz.Run, error)
+	ListCollaborationRuns(context.Context, string, string, int) ([]collabrunbiz.Run, error)
+	PutCollaborationRun(context.Context, collabrunbiz.Run) error
 }
 
 type ManagedCredentialsStore interface {
