@@ -2148,14 +2148,17 @@ type AgentProviderSkillOptionSourceKind string
 
 // AgentProviderStatus defines model for AgentProviderStatus.
 type AgentProviderStatus struct {
-	Actions      []AgentProviderAction       `json:"actions"`
-	ActiveAction *AgentProviderActiveAction  `json:"activeAction,omitempty"`
-	Adapter      AgentProviderAdapterStatus  `json:"adapter"`
-	Auth         AgentProviderAuthInfo       `json:"auth"`
-	Availability AgentProviderAvailability   `json:"availability"`
-	Cli          AgentProviderCliStatus      `json:"cli"`
-	Network      *AgentProviderNetworkStatus `json:"network,omitempty"`
-	Provider     WorkspaceAgentProvider      `json:"provider"`
+	Actions      []AgentProviderAction      `json:"actions"`
+	ActiveAction *AgentProviderActiveAction `json:"activeAction,omitempty"`
+	Adapter      AgentProviderAdapterStatus `json:"adapter"`
+	Auth         AgentProviderAuthInfo      `json:"auth"`
+	Availability AgentProviderAvailability  `json:"availability"`
+	Cli          AgentProviderCliStatus     `json:"cli"`
+
+	// ManualInstallCommand Registry-owned command users can run to install or repair this provider manually.
+	ManualInstallCommand *string                     `json:"manualInstallCommand,omitempty"`
+	Network              *AgentProviderNetworkStatus `json:"network,omitempty"`
+	Provider             WorkspaceAgentProvider      `json:"provider"`
 }
 
 // AgentProviderStatusListResponse defines model for AgentProviderStatusListResponse.

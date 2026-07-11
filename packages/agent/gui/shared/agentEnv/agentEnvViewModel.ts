@@ -24,14 +24,6 @@ export interface NetworkCheck {
   configured?: boolean;
 }
 
-const MANUAL_INSTALL_COMMANDS: Partial<Record<WorkspaceAgentProvider, string>> =
-  {
-    codex: "npm install -g @openai/codex --include=optional",
-    "claude-code": "curl -fsSL https://claude.ai/install.sh | bash",
-    cursor: "curl https://cursor.com/install -fsS | bash",
-    opencode: "curl -fsSL https://opencode.ai/install | bash"
-  };
-
 function endpointHost(endpoint: string | null | undefined): string | null {
   if (!endpoint) {
     return null;
@@ -104,7 +96,7 @@ export interface AgentEnvWizardViewModel {
 export function buildAgentEnvWizardViewModel(
   input: AgentEnvWizardViewModelInput
 ): AgentEnvWizardViewModel {
-  const { status, activeAction, provider } = input;
+  const { status, activeAction } = input;
   const ready = status?.availability.status === "ready";
   const installPending = input.installActionPending;
   const loginPending = input.loginPending;
@@ -253,7 +245,7 @@ export function buildAgentEnvWizardViewModel(
     log: activeAction?.log ?? [],
     registry,
     error: activeAction?.error ?? null,
-    manualCommand: MANUAL_INSTALL_COMMANDS[provider] ?? null,
+    manualCommand: status?.manualInstallCommand ?? null,
     installPending,
     loginPending
   };

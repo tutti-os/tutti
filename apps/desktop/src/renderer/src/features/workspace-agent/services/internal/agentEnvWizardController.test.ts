@@ -227,10 +227,10 @@ test("anomaly without consent moves to confirming and does not report", () => {
   assert.equal(getAgentEnvWizardSnapshot().reportState, "confirming");
 });
 
-test("attach with a focus refreshes; detect focus uses ensureLoaded only when no focus", () => {
+test("attach refreshes the active provider even without a focused action", () => {
   resetAgentEnvWizardStoreForTests();
   const service = new FakeService(readyStatus());
-  const detach = attachAgentEnvWizard(params(service, { focus: "install" }));
+  const detach = attachAgentEnvWizard(params(service, { focus: null }));
   detach();
   assert.equal(service.refreshCalls, 1);
   assert.equal(service.ensureCalls, 0);

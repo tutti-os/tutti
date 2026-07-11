@@ -19,6 +19,7 @@ test("agent provider dock status shows loading only while status is loading", ()
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: true,
+    provider: "codex",
     status: null
   });
 
@@ -34,6 +35,7 @@ test("agent provider dock status falls back to unavailable when status is missin
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
+    provider: "codex",
     status: null
   });
 
@@ -50,6 +52,7 @@ test("agent provider dock status shows connect and refresh for not installed pro
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
+    provider: "codex",
     status: createStatus({
       actions: [
         { id: "install", kind: "daemon_action" },
@@ -72,6 +75,7 @@ test("agent provider dock status shows loading while install is pending", () => 
     copy,
     isLoading: false,
     pendingActionIds: new Set(["install"]),
+    provider: "codex",
     status: createStatus({
       actions: [
         { id: "install", kind: "daemon_action" },
@@ -98,10 +102,11 @@ test("agent provider dock status shows loading while install is pending", () => 
   });
 });
 
-test("agent provider dock status shows connect and refresh actions for auth required providers", () => {
+test("agent provider dock status shows login and refresh actions for auth required providers", () => {
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
+    provider: "codex",
     status: createStatus({
       actions: [
         { id: "login", kind: "terminal_command" },
@@ -113,21 +118,22 @@ test("agent provider dock status shows connect and refresh actions for auth requ
 
   assert.deepEqual(props, {
     hoverActions: [
-      { id: "login", label: "Connect" },
+      { id: "login", label: "login" },
       { id: "refresh", label: "refresh" }
     ],
     state: {
       kind: "disabled",
-      reason: "Connect local agent to continue"
+      reason: "login required"
     }
   });
 });
 
-test("agent provider dock status shows loading while login connect is pending", () => {
+test("agent provider dock status shows loading while login is pending", () => {
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
     pendingActionIds: new Set(["login"]),
+    provider: "codex",
     status: createStatus({
       actions: [
         { id: "login", kind: "terminal_command" },
@@ -142,7 +148,7 @@ test("agent provider dock status shows loading while login connect is pending", 
       {
         disabled: true,
         id: "login",
-        label: "Connect"
+        label: "login"
       },
       { id: "refresh", label: "refresh" }
     ],
@@ -157,6 +163,7 @@ test("agent provider dock status shows unsupported providers as coming soon", ()
   const props = resolveAgentProviderDockStatusProps({
     copy,
     isLoading: false,
+    provider: "codex",
     status: createStatus({
       actions: [{ id: "install", kind: "daemon_action" }],
       availability: "unsupported"

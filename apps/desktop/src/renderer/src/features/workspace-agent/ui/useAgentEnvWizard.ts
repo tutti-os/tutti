@@ -11,7 +11,7 @@ import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import {
   desktopManagedAgentProviders,
-  isDesktopManagedAgentProvider
+  isDesktopManagedAgentProviderSetupSupported
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import {
   attachAgentEnvWizard,
@@ -56,10 +56,13 @@ function resolveActiveProvider(
   if (requested) {
     return {
       provider: requested as WorkspaceAgentProvider,
-      isSupported: isDesktopManagedAgentProvider(requested)
+      isSupported: isDesktopManagedAgentProviderSetupSupported(requested)
     };
   }
-  if (defaultProvider && isDesktopManagedAgentProvider(defaultProvider)) {
+  if (
+    defaultProvider &&
+    isDesktopManagedAgentProviderSetupSupported(defaultProvider)
+  ) {
     return { provider: defaultProvider, isSupported: true };
   }
   const fallback = desktopManagedAgentProviders.includes("codex")
@@ -78,6 +81,7 @@ export interface AgentEnvWizardActions {
 }
 
 export function useAgentEnvWizard(input: {
+  activeProvider?: WorkspaceAgentProvider;
   service: IAgentProviderStatusService;
   workspaceId: string;
   workbenchHost?: unknown;
@@ -91,7 +95,7 @@ export function useAgentEnvWizard(input: {
   logExpanded: boolean;
   actions: AgentEnvWizardActions;
 } {
-  const { service, workspaceId, workbenchHost } = input;
+  const { activeProvider, service, workspaceId, workbenchHost } = input;
   const { t } = useTranslation();
   const { service: accountService } = useAccountService();
   const request = useAgentEnvPanelRequest();
@@ -99,8 +103,12 @@ export function useAgentEnvWizard(input: {
   const wizard = useAgentEnvWizardState();
 
   const { provider, isSupported } = useMemo(
-    () => resolveActiveProvider(request.provider, snapshot.defaultProvider),
-    [request.provider, snapshot.defaultProvider]
+    () =>
+      resolveActiveProvider(
+        activeProvider ?? request.provider,
+        snapshot.defaultProvider
+      ),
+    [activeProvider, request.provider, snapshot.defaultProvider]
   );
 
   const status = useMemo(

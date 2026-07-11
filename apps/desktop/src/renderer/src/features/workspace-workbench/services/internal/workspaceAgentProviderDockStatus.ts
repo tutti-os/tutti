@@ -1,7 +1,9 @@
 import type {
-  AgentProviderAction,
-  AgentProviderStatus
+  AgentProviderActionId,
+  AgentProviderStatus,
+  WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
+import { projectAgentEnvProvider } from "@tutti-os/agent-gui/agent-env";
 import type { WorkbenchHostDockEntry } from "@tutti-os/workbench-surface";
 
 export interface WorkspaceAgentProviderDockStatusCopy {
@@ -21,10 +23,18 @@ export function resolveAgentProviderDockStatusProps(input: {
   isLoading: boolean;
   order?: number;
   pendingActionIds?: ReadonlySet<string>;
+  provider: WorkspaceAgentProvider;
   status: AgentProviderStatus | null;
 }): Pick<WorkbenchHostDockEntry, "hoverActions" | "order" | "state"> {
-  if (!input.status) {
-    if (input.isLoading) {
+  const projection = projectAgentEnvProvider({
+    isLoading: input.isLoading,
+    pendingActionIds: input.pendingActionIds,
+    provider: input.provider,
+    status: input.status
+  });
+
+  switch (projection.status) {
+    case "checking":
       return {
         ...dockOrderProp(input.order),
         state: {
@@ -32,37 +42,20 @@ export function resolveAgentProviderDockStatusProps(input: {
           reason: input.copy.checking
         }
       };
-    }
-    return {
-      hoverActions: agentProviderDockActions(
-        [{ id: "refresh", kind: "refresh" }],
-        input.copy,
-        input.pendingActionIds
-      ),
-      ...dockOrderProp(input.order),
-      state: {
-        kind: "unavailable",
-        reason: input.copy.unknown
-      }
-    };
-  }
-
-  switch (input.status.availability.status) {
-    case "ready":
+    case "connected":
       return {
         ...dockOrderProp(input.order),
         state: {
           kind: "enabled"
         }
       };
-    case "not_installed":
+    case "available":
       const isInstallPending = input.pendingActionIds?.has("install") === true;
       return {
         hoverActions: agentProviderDockActions(
-          input.status.actions,
+          projection.actionIds,
           input.copy,
-          input.pendingActionIds,
-          new Set(["install", "refresh"])
+          input.pendingActionIds
         ),
         ...dockOrderProp(input.order),
         state: {
@@ -76,17 +69,16 @@ export function resolveAgentProviderDockStatusProps(input: {
       const isLoginPending = input.pendingActionIds?.has("login") === true;
       return {
         hoverActions: agentProviderDockActions(
-          input.status.actions,
+          projection.actionIds,
           input.copy,
-          input.pendingActionIds,
-          new Set(["login", "refresh"])
+          input.pendingActionIds
         ),
         ...dockOrderProp(input.order),
         state: {
           kind: isLoginPending ? "loading" : "disabled",
           reason: isLoginPending
             ? input.copy.installing
-            : input.copy.installRequired
+            : input.copy.loginRequired
         }
       };
     case "unsupported":
@@ -97,10 +89,12 @@ export function resolveAgentProviderDockStatusProps(input: {
           reason: input.copy.unsupported
         }
       };
-    default:
+    case "unknown":
       return {
         hoverActions: agentProviderDockActions(
-          input.status.actions,
+          projection.actionIds.length > 0
+            ? projection.actionIds
+            : (["refresh"] satisfies AgentProviderActionId[]),
           input.copy,
           input.pendingActionIds
         ),
@@ -120,38 +114,35 @@ function dockOrderProp(
 }
 
 function agentProviderDockActions(
-  actions: readonly AgentProviderAction[],
+  actionIds: readonly AgentProviderActionId[],
   copy: WorkspaceAgentProviderDockStatusCopy,
-  pendingActionIds: ReadonlySet<string> | undefined,
-  allowedActionIds?: ReadonlySet<AgentProviderAction["id"]>
+  pendingActionIds: ReadonlySet<string> | undefined
 ) {
-  return actions
-    .filter((action) => allowedActionIds?.has(action.id) ?? true)
-    .map((action) => {
-      const isPending = pendingActionIds?.has(action.id) === true;
-      const pendingProps =
-        isPending && action.id === "install"
-          ? { disabled: true, pendingLabel: copy.installing }
-          : isPending
-            ? { disabled: true }
-            : {};
-      return {
-        ...pendingProps,
-        id: action.id,
-        label: agentProviderDockActionLabel(action.id, copy)
-      };
-    });
+  return actionIds.map((actionId) => {
+    const isPending = pendingActionIds?.has(actionId) === true;
+    const pendingProps =
+      isPending && actionId === "install"
+        ? { disabled: true, pendingLabel: copy.installing }
+        : isPending
+          ? { disabled: true }
+          : {};
+    return {
+      ...pendingProps,
+      id: actionId,
+      label: agentProviderDockActionLabel(actionId, copy)
+    };
+  });
 }
 
 function agentProviderDockActionLabel(
-  actionId: AgentProviderAction["id"],
+  actionId: AgentProviderActionId,
   copy: WorkspaceAgentProviderDockStatusCopy
 ): string {
   switch (actionId) {
     case "install":
       return copy.install;
     case "login":
-      return copy.install;
+      return copy.login;
     default:
       return copy.refresh;
   }

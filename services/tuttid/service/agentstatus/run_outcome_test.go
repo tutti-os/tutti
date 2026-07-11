@@ -2,6 +2,8 @@ package agentstatus
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -62,9 +64,17 @@ func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
 	store := NewRunOutcomeStore()
 	store.RecordAuthFailure(agentprovider.Codex)
 	refreshed := time.Now().Add(time.Hour) // marker newer than the recorded failure
+	home := t.TempDir()
+	marker := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(marker, []byte(`{"OPENAI_API_KEY":"sk-fresh"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	svc := Service{
 		RunOutcomes: store,
-		HomeDir:     func() (string, error) { return t.TempDir(), nil },
+		HomeDir:     func() (string, error) { return home, nil },
 		FileExists:  func(string) bool { return true },
 		FileModTime: func(string) (time.Time, bool) { return refreshed, true },
 	}
@@ -75,6 +85,33 @@ func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
 	}
 	if store.AuthInvalidated(agentprovider.Codex) {
 		t.Fatal("the stale flag should be cleared once credentials are refreshed")
+	}
+}
+
+func TestResolveAuthSelfHealsFromAuthenticatedCommandWithoutMtimeChange(t *testing.T) {
+	store := NewRunOutcomeStore()
+	store.RecordAuthFailure(agentprovider.Codex)
+	svc := Service{
+		RunOutcomes: store,
+		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "fresh login"}, true
+		},
+		FileModTime: func(string) (time.Time, bool) {
+			return time.Now().Add(-time.Hour), true
+		},
+	}
+	spec := ProviderSpec{
+		Provider:          agentprovider.Codex,
+		AuthMarkerPaths:   []string{"~/.codex/auth.json"},
+		AuthStatusCommand: []string{"login", "status"},
+	}
+
+	auth := svc.resolveAuth(context.Background(), spec, true, "/usr/bin/codex")
+	if auth.Status != AuthAuthenticated {
+		t.Fatalf("auth = %#v, want authenticated command self-heal", auth)
+	}
+	if store.AuthInvalidated(agentprovider.Codex) {
+		t.Fatal("authenticated command should clear the stale runtime override")
 	}
 }
 

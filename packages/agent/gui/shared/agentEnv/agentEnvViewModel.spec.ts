@@ -40,6 +40,7 @@ function status(
       authMethod: "oauth"
     },
     actions: [],
+    manualInstallCommand: "npm install -g @openai/codex --include=optional",
     network: null,
     activeAction: null,
     ...overrides
@@ -235,9 +236,32 @@ describe("buildAgentEnvWizardViewModel", () => {
 
   it("exposes the daemon-matching manual install command for claude code", () => {
     expect(
-      buildAgentEnvWizardViewModel(input({ provider: "claude-code" }))
-        .manualCommand
+      buildAgentEnvWizardViewModel(
+        input({
+          provider: "claude-code",
+          status: status({
+            provider: "claude-code",
+            manualInstallCommand:
+              "curl -fsSL https://claude.ai/install.sh | bash"
+          })
+        })
+      ).manualCommand
     ).toBe("curl -fsSL https://claude.ai/install.sh | bash");
+  });
+
+  it("exposes the registry-owned Tutti Agent repair command", () => {
+    expect(
+      buildAgentEnvWizardViewModel(
+        input({
+          provider: "tutti-agent",
+          status: status({
+            provider: "tutti-agent",
+            manualInstallCommand:
+              "npm install -g @tutti-os/tutti-agent@0.0.3 --include=optional"
+          })
+        })
+      ).manualCommand
+    ).toBe("npm install -g @tutti-os/tutti-agent@0.0.3 --include=optional");
   });
 
   it("flags the install stage pending with a platform-incomplete problem when the launcher is present but the platform subpackage is missing", () => {

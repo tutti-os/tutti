@@ -924,7 +924,7 @@ export const en = {
         manageStatusChecking: "Checking",
         manageStatusConnected: "Connected",
         manageStatusUnknown: "Status unavailable",
-        manageStatusUnsupported: "Updating in background",
+        manageStatusUnsupported: "Temporarily unsupported",
         manageTitle: "Manage Agents",
         manageUnsupportedTooltip:
           "This agent is temporarily unavailable while local support updates.",

@@ -51,16 +51,17 @@ func compareCodexVersions(a, b string) (int, bool) {
 	}
 }
 
-// codexVersionMeetsMinimum reports whether version satisfies
-// MinSupportedCodexVersion. An empty or unparseable version is treated as
-// "unknown" and is NOT flagged as too old here — binary/CLI presence checks
-// cover the missing case, and the server-side error is the backstop.
+// codexVersionMeetsMinimum reports whether a parseable version satisfies the
+// floor. Unknown versions return false and are classified separately by the
+// caller so they cannot silently bypass the compatibility check.
 func codexVersionMeetsMinimum(version string) bool {
 	cmp, ok := compareCodexVersions(version, MinSupportedCodexVersion)
-	if !ok {
-		return true
-	}
-	return cmp >= 0
+	return ok && cmp >= 0
+}
+
+func codexVersionParseable(version string) bool {
+	_, _, ok := parseCodexVersion(version)
+	return ok
 }
 
 // parseCodexVersion returns the [major, minor, patch] core, whether a

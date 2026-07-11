@@ -6736,6 +6736,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderAction"
+        manualInstallCommand:
+          type: string
+          nullable: true
+          description: Registry-owned command users can run to install or repair this provider manually.
         network:
           allOf:
             - $ref: "#/components/schemas/AgentProviderNetworkStatus"

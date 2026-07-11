@@ -262,11 +262,10 @@ the selected entry by exact `agentTargetId`; provider may supply runtime status
 metadata but never selection fallback. A non-ready agent replaces only the
 empty-home composer with a friendly gate; active/history conversations and
 existing-session composer behavior remain outside this gate.
-When the desktop status list returns an ambiguous startup result for a provider
-whose runtime command is more authoritative than its lightweight status check
-(for example Cursor), the desktop status service may run a provider-specific
-runtime probe and fold a ready result back into the provider status snapshot
-before projecting the empty-home readiness gate.
+Provider runtime probes belong to the daemon status service. Cursor's resolved
+ACP command is probed during daemon status detection (except while its install
+is in flight), so every status consumer receives the same result; desktop must
+not patch provider availability with a second renderer-only probe.
 Startup provider detection should be progressive: desktop may publish the first
 ready managed provider as soon as it is confirmed, then continue detecting the
 remaining providers in the background. When the empty-home rail is still on
@@ -1207,12 +1206,26 @@ other desktop feature orchestration:
   `useAgentEnvWizard`; these subscribe to the provider-status service, dedupe
   per-open automatic actions, and coordinate anomaly reporting and progressive
   reveal.
-- `AgentEnvPanel` subscribes and renders. It must not duplicate readiness
-  detection, installation, login, or reporting workflows in React effects.
+- `AgentEnvPanel` is the single desktop environment-management surface. Its
+  provider tabs reuse the local provider-status snapshot for badges, while
+  only the selected tab attaches `useAgentEnvWizard` and opts into the deeper
+  network-enabled detection. Opening the panel must not launch a network probe
+  for every tab.
+- All provider status-to-remediation projection is owned by the pure
+  `shared/agentEnv` model. Dock hover state is a thin presentation adapter over
+  that projection; desktop React views must not derive a second action policy.
+- The singleton `openAgentEnvPanel({ provider, focus })` request remains the
+  entry contract for dock, AgentGUI notices/settings, transcript errors, and
+  host `agent-manage` requests. A requested provider selects its tab; a casual
+  open restores the previous visible tab or the daemon default.
 
 The provider-status service remains the source of truth for installed,
 authenticated, network, and active-action state. Wizard-local state is
 ephemeral presentation state and resets with the panel lifecycle.
+Manual install/repair commands also come from the daemon provider registry via
+the status contract; do not add a second frontend provider-command table.
+Providers marked temporarily unsupported remain visible as tabs but never
+attach the deep wizard or run local/network probes.
 
 ### Busy Queued Prompts
 

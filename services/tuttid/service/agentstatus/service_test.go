@@ -148,6 +148,9 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
+	if install.DisplayCommand != "npm install -g @tutti-os/tutti-agent@"+minTuttiAgentVersion+" --include=optional" {
+		t.Fatalf("DisplayCommand = %q, want Tutti Agent manual repair command", install.DisplayCommand)
+	}
 	if specs[0].AdapterPackage.Name != "@tutti-os/tutti-agent" || specs[0].AdapterPackage.Version != minTuttiAgentVersion {
 		t.Fatalf("AdapterPackage = %+v, want @tutti-os/tutti-agent >= %s", specs[0].AdapterPackage, minTuttiAgentVersion)
 	}
@@ -508,6 +511,9 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{"/home/test/.codex/auth.json": true})
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
@@ -641,6 +647,42 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	assertProviderCheck(t, status.Checks, "platform_binary", true)
 	assertProviderCheck(t, status.Checks, "version_floor", false)
 	assertProviderCheck(t, status.Checks, "auth", true)
+}
+
+func TestServiceListWarnsWhenCodexVersionCannotBeParsed(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex unknown-build'; exit 0; fi\nsleep 5\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, requireTestCodexPlatformBinaryPath(t, pkgDir), "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string { return []string{"PATH=" + binDir} }
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityUnknown || status.Availability.ReasonCode != "codex_version_unparseable" {
+		t.Fatalf("availability = %#v, want version warning", status.Availability)
+	}
+	if status.LastError == nil || status.LastError.Code != string(CodexErrVersionUnknown) {
+		t.Fatalf("last error = %#v, want version unknown", status.LastError)
+	}
+	assertProviderCheck(t, status.Checks, "version_floor", false)
 }
 
 func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
@@ -1246,6 +1288,7 @@ func TestServiceListTreatsTemporarilyUnsupportedProvidersAsUnsupported(t *testin
 
 func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T) {
 	home := t.TempDir()
+	writeCodexTestAuth(t, home)
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -1273,6 +1316,12 @@ func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		ResolveCLIVersion: func(context.Context, string, []string) string {
+			return MinSupportedCodexVersion
+		},
+		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+			return AuthInfo{Status: AuthAuthenticated}, true
+		},
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -1294,6 +1343,7 @@ func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T
 
 func TestServiceProbeReportsReadyWhenAdapterStarts(t *testing.T) {
 	home := t.TempDir()
+	writeCodexTestAuth(t, home)
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -1304,6 +1354,12 @@ func TestServiceProbeReportsReadyWhenAdapterStarts(t *testing.T) {
 
 	service := probeTestService(home)
 	service.Registry = Registry{Specs: []ProviderSpec{specWithSeparateAdapter()}}
+	service.ResolveCLIVersion = func(context.Context, string, []string) string {
+		return MinSupportedCodexVersion
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
 	result, err := service.Probe(context.Background(), ProbeInput{Provider: "codex"})
 	if err != nil {
 		t.Fatalf("Probe() error = %v", err)
@@ -1384,6 +1440,7 @@ func TestServiceProbeTreatsTemporarilyUnsupportedProviderAsUnsupported(t *testin
 
 func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	home := t.TempDir()
+	writeCodexTestAuth(t, home)
 	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -1402,6 +1459,12 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	defer installerServer.Close()
 	commands := []InstallCommandInput{}
 	service := probeTestService(home)
+	service.ResolveCLIVersion = func(context.Context, string, []string) string {
+		return MinSupportedCodexVersion
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
 	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
 		commands = append(commands, input)
 		writeExecutable(t, filepath.Join(binDir, "codex"), "#!/bin/sh\nexit 0\n")
@@ -2547,7 +2610,7 @@ func TestInstallCommandLockRecoverRetriesMalformedMetadataBeforeRemoving(t *test
 
 func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) {
 	const (
-		installTimeout        = 2 * time.Second
+		installTimeout        = 3 * time.Second
 		firstInstallHold      = 800 * time.Millisecond
 		secondInstallDuration = 1400 * time.Millisecond
 	)
@@ -2557,7 +2620,17 @@ func TestServiceRunActionStartsInstallTimeoutAfterLockAcquisition(t *testing.T) 
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
+	authPath := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	service := probeTestService(home)
+	service.ResolveCLIVersion = func(context.Context, string, []string) string {
+		return MinSupportedCodexVersion
+	}
 	service.InstallTimeout = installTimeout
 	service.Registry = Registry{Specs: []ProviderSpec{{
 		Provider:           "codex",
@@ -3390,6 +3463,9 @@ func testService(lookPath func(string) (string, error), files map[string]bool) S
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		ResolveCLIVersion: func(context.Context, string, []string) string {
+			return MinSupportedCodexVersion
+		},
 	}
 }
 
@@ -3413,6 +3489,17 @@ func probeTestService(home string) Service {
 		},
 		ProbeReadyAfter: 200 * time.Millisecond,
 		ProbeTimeout:    time.Second,
+	}
+}
+
+func writeCodexTestAuth(t *testing.T, home string) {
+	t.Helper()
+	authPath := filepath.Join(home, ".codex", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o755); err != nil {
+		t.Fatalf("mkdir codex auth dir: %v", err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
+		t.Fatalf("write codex auth marker: %v", err)
 	}
 }
 

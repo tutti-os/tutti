@@ -876,7 +876,7 @@ export const zhCN = {
         manageStatusChecking: "检测中",
         manageStatusConnected: "已连接",
         manageStatusUnknown: "状态不可用",
-        manageStatusUnsupported: "后台更新中",
+        manageStatusUnsupported: "暂不支持",
         manageTitle: "管理智能体",
         manageUnsupportedTooltip: "本地支持正在更新中，这个智能体暂时不可用。",
         refresh: "重新检测",

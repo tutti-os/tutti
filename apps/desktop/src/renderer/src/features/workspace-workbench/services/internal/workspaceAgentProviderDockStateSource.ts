@@ -93,6 +93,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
             .map((action) => action.actionId)
         ),
         order: resolveAgentProviderDockOrder(provider, status),
+        provider,
         status
       });
       return {

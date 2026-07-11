@@ -1211,6 +1211,10 @@ export type AgentProviderStatus = {
   adapter: AgentProviderAdapterStatus;
   auth: AgentProviderAuthInfo;
   actions: Array<AgentProviderAction>;
+  /**
+   * Registry-owned command users can run to install or repair this provider manually.
+   */
+  manualInstallCommand?: string | null;
   network?: AgentProviderNetworkStatus | null;
   activeAction?: AgentProviderActiveAction | null;
 };

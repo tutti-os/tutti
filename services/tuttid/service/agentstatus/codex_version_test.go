@@ -43,8 +43,8 @@ func TestCodexVersionMeetsMinimum(t *testing.T) {
 		{"equal to minimum", MinSupportedCodexVersion, true},
 		{"above minimum", "999.0.0", true},
 		{"below minimum", "0.0.1", false},
-		{"empty allowed (unknown, not blocked here)", "", true},
-		{"unparseable allowed (unknown, not blocked here)", "garbage", true},
+		{"empty rejected as unknown", "", false},
+		{"unparseable rejected as unknown", "garbage", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

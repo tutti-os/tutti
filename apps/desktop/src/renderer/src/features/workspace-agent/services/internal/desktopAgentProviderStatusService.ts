@@ -46,7 +46,6 @@ import {
   type AgentAnalyticsFlow,
   type AgentAnalyticsNode
 } from "./agentNodeResultAnalytics.ts";
-import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   loginStatusPollDurationMs?: number;
@@ -124,7 +123,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   >();
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
-  private readonly transientDowngradeCounts = new Map<string, number>();
   // Last env-detection fingerprint per provider, so `agent.env_detected` fires
   // only when the outcome changes instead of on every status poll.
   private readonly lastEnvSignatures = new Map<
@@ -220,15 +218,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         let responseProviders = response.providers;
         if (this.requestSequence === requestId) {
           const previousStatuses = this.snapshot.statuses;
-          const maybeReconciledStatuses =
-            this.reconcileProviderStatusesWithProbe(
-              previousStatuses,
-              response.providers,
-              input.providers
-            );
-          const reconciledStatuses = Array.isArray(maybeReconciledStatuses)
-            ? maybeReconciledStatuses
-            : await maybeReconciledStatuses;
+          const reconciledStatuses = this.reconcileProviderStatuses(
+            previousStatuses,
+            response.providers,
+            input.providers
+          );
           responseProviders = [...reconciledStatuses];
           this.setSnapshot({
             capturedAt: response.capturedAt,
@@ -517,10 +511,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       const previous = previousByProvider.get(status.provider);
       nextByProvider.set(
         status.provider,
-        this.preserveNetwork(
-          previous,
-          this.stabilizeProviderStatus(previous, status)
-        )
+        this.preserveNetwork(previous, status)
       );
     }
 
@@ -542,24 +533,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     return merged;
   }
 
-  private reconcileProviderStatusesWithProbe(
-    previousStatuses: readonly AgentProviderStatus[],
-    responseStatuses: readonly AgentProviderStatus[],
-    requestedProviders: readonly WorkspaceAgentProvider[] | undefined
-  ): readonly AgentProviderStatus[] | Promise<readonly AgentProviderStatus[]> {
-    const reconciledStatuses = this.reconcileProviderStatuses(
-      previousStatuses,
-      responseStatuses,
-      requestedProviders
-    );
-    return applyDesktopAgentProviderRuntimeProbeFallbacks({
-      probeProvider: (provider) =>
-        this.dependencies.tuttidClient.probeAgentProvider(provider),
-      requestedProviders,
-      statuses: reconciledStatuses
-    });
-  }
-
   /**
    * Network reachability is now fetched on-demand (only the wizard requests it),
    * so a local-only poll (dock / visibility / install / login) returns a status
@@ -575,20 +548,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       return next;
     }
     return { ...next, network: previous.network };
-  }
-
-  private stabilizeProviderStatus(
-    previous: AgentProviderStatus | undefined,
-    next: AgentProviderStatus
-  ): AgentProviderStatus {
-    if (!previous || !isTransientProviderStatusDowngrade(previous, next)) {
-      this.transientDowngradeCounts.delete(next.provider);
-      return next;
-    }
-
-    const count = this.transientDowngradeCounts.get(next.provider) ?? 0;
-    this.transientDowngradeCounts.set(next.provider, count + 1);
-    return count === 0 ? previous : next;
   }
 
   private addPendingAction(
@@ -1232,23 +1191,6 @@ function isClaudeUnavailableInRegionInstallError(
     normalized.includes("claude isn't available here") ||
     normalized.includes("claude isn&#x27;t available here") ||
     normalized.includes("claude isn&apos;t available here")
-  );
-}
-
-function isTransientProviderStatusDowngrade(
-  previous: AgentProviderStatus,
-  next: AgentProviderStatus
-): boolean {
-  if (previous.provider !== next.provider) {
-    return false;
-  }
-  const reasonCode = next.availability.reasonCode ?? "";
-  return (
-    previous.availability.status === "ready" &&
-    next.cli.installed &&
-    next.adapter.installed &&
-    next.availability.status === "auth_required" &&
-    (reasonCode === "auth_required" || reasonCode === "auth_unknown")
   );
 }
 

@@ -235,14 +235,15 @@ func generatedAgentProviderStatuses(statuses []agentstatusservice.ProviderStatus
 
 func generatedAgentProviderStatus(status agentstatusservice.ProviderStatus) tuttigenerated.AgentProviderStatus {
 	return tuttigenerated.AgentProviderStatus{
-		ActiveAction: generatedAgentProviderActiveAction(status.Provider, status.ActiveAction),
-		Actions:      generatedAgentProviderActions(status.Actions),
-		Adapter:      generatedAgentProviderAdapterStatus(status.Adapter),
-		Auth:         generatedAgentProviderAuthInfo(status.Auth),
-		Availability: generatedAgentProviderAvailability(status.Availability),
-		Cli:          generatedAgentProviderCLIStatus(status.CLI),
-		Network:      generatedAgentProviderNetworkStatus(status.Network),
-		Provider:     tuttigenerated.WorkspaceAgentProvider(status.Provider),
+		ActiveAction:         generatedAgentProviderActiveAction(status.Provider, status.ActiveAction),
+		Actions:              generatedAgentProviderActions(status.Actions),
+		Adapter:              generatedAgentProviderAdapterStatus(status.Adapter),
+		Auth:                 generatedAgentProviderAuthInfo(status.Auth),
+		Availability:         generatedAgentProviderAvailability(status.Availability),
+		Cli:                  generatedAgentProviderCLIStatus(status.CLI),
+		ManualInstallCommand: stringPointerIfNotBlank(status.ManualInstallCommand),
+		Network:              generatedAgentProviderNetworkStatus(status.Network),
+		Provider:             tuttigenerated.WorkspaceAgentProvider(status.Provider),
 	}
 }
 

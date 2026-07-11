@@ -19,6 +19,9 @@ export const desktopManagedAgentProviders = [
   "openclaw"
 ] as const satisfies readonly WorkspaceAgentProvider[];
 
+const desktopTemporarilyUnsupportedAgentProviders =
+  new Set<WorkspaceAgentProvider>(["hermes", "openclaw"]);
+
 const desktopManagedAgentStartupProviderPriority = [
   "codex",
   "claude-code",
@@ -163,5 +166,14 @@ export function isDesktopManagedAgentProvider(
 ): value is WorkspaceAgentProvider {
   return desktopManagedAgentProviders.includes(
     value as (typeof desktopManagedAgentProviders)[number]
+  );
+}
+
+export function isDesktopManagedAgentProviderSetupSupported(
+  value: unknown
+): value is WorkspaceAgentProvider {
+  return (
+    isDesktopManagedAgentProvider(value) &&
+    !desktopTemporarilyUnsupportedAgentProviders.has(value)
   );
 }

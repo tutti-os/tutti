@@ -19,6 +19,7 @@ const (
 )
 
 var ErrProviderUnavailable = errors.New("agent provider unavailable")
+var ErrProviderStatusUnavailable = errors.New("agent provider status service unavailable")
 
 type ProviderUnavailableError struct {
 	Provider   string
@@ -92,7 +93,10 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 	}
 	checker := s.AvailabilityChecker
 	if checker == nil {
-		checker = AgentStatusProviderAvailabilityChecker{Service: agentstatusservice.Service{}}
+		if s.ProviderStatusLister == nil {
+			return nil, ErrProviderStatusUnavailable
+		}
+		checker = AgentStatusProviderAvailabilityChecker{Service: s.ProviderStatusLister}
 	}
 	availability, err := checker.ListProviderAvailability(ctx, providers)
 	if errors.Is(err, agentstatusservice.ErrInvalidProvider) {
@@ -106,7 +110,7 @@ func (s *Service) ListProviderAvailability(ctx context.Context, input ProviderAv
 }
 
 func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider string) error {
-	if s.AvailabilityChecker == nil {
+	if s.AvailabilityChecker == nil && s.ProviderStatusLister == nil {
 		return nil
 	}
 	availability, err := s.ListProviderAvailability(ctx, ProviderAvailabilityInput{Provider: provider})
@@ -146,7 +150,7 @@ func (c AgentStatusProviderAvailabilityChecker) ListProviderAvailability(
 ) ([]ProviderAvailability, error) {
 	service := c.Service
 	if service == nil {
-		service = agentstatusservice.Service{}
+		return nil, ErrProviderStatusUnavailable
 	}
 	snapshot, err := service.List(ctx, agentstatusservice.ListInput{Providers: providers})
 	if err != nil {

@@ -19,7 +19,6 @@ export {
 export { AgentEnvPanel } from "./ui/AgentEnvPanel";
 export { DesktopAgentGUIWorkbenchBody } from "./ui/DesktopAgentGUIWorkbenchBody";
 export { DesktopAgentGUIWorkbenchHeader } from "./ui/DesktopAgentGUIWorkbenchHeader";
-export { DesktopAgentProviderManageDialog } from "./ui/DesktopAgentProviderManageDialog";
 export {
   createDesktopAgentGUINodeStateSource,
   desktopAgentGUIOpenSessionActivationType,

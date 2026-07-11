@@ -34,13 +34,13 @@ func Normalize(provider string) string {
 		return ClaudeCode
 	case Codex:
 		return Codex
-	case TuttiAgent:
+	case "tutti", TuttiAgent:
 		return TuttiAgent
 	case "cursor-agent", "cursor-cli", Cursor:
 		return Cursor
 	case "hermes-agent", Hermes:
 		return Hermes
-	case "tutti", Nexight:
+	case Nexight:
 		return Nexight
 	case "open-claw", OpenClaw:
 		return OpenClaw

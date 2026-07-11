@@ -1,4 +1,11 @@
-import { type JSX } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type JSX
+} from "react";
 import {
   Button,
   Dialog,
@@ -8,17 +15,31 @@ import {
   DialogHeader,
   DialogTitle,
   RefreshIcon,
+  StatusDot,
   Tooltip,
   TooltipContent,
-  TooltipTrigger
+  TooltipTrigger,
+  UnderlineTabs
 } from "@tutti-os/ui-system";
-import { closeAgentEnvPanel } from "@tutti-os/agent-gui/agent-env";
+import {
+  closeAgentEnvPanel,
+  projectAgentEnvProvider,
+  useAgentEnvPanelRequest,
+  type AgentEnvProviderStatusKind
+} from "@tutti-os/agent-gui/agent-env";
+import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
+import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
+import { desktopManagedAgentProviders } from "../services/internal/desktopManagedAgentProviders.ts";
 import { useAgentEnvWizard } from "./useAgentEnvWizard";
 import { AgentEnvSetupTrack } from "./AgentEnvSetupTrack";
 import { AgentEnvReportConsent } from "./AgentEnvReportConsent";
 import { resolveProviderLabel } from "./agentEnvPanelText";
+import {
+  resolveAgentEnvPanelProviderSelection,
+  type AgentEnvPanelProviderSelection
+} from "./agentEnvPanelSelection";
 
 interface AgentEnvPanelProps {
   agentProviderStatusService: IAgentProviderStatusService;
@@ -32,6 +53,72 @@ export function AgentEnvPanel({
   workbenchHost
 }: AgentEnvPanelProps): JSX.Element | null {
   const { t } = useTranslation();
+  const request = useAgentEnvPanelRequest();
+  const snapshot = useSyncExternalStore(
+    (listener) => agentProviderStatusService.subscribe(listener),
+    () => agentProviderStatusService.getSnapshot()
+  );
+  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const visibleProviders = useMemo(
+    () =>
+      desktopManagedAgentProviders.filter(
+        (candidate) =>
+          (candidate !== "cursor" ||
+            desktopPreferencesState.enableCursorAgent) &&
+          (candidate !== "opencode" ||
+            desktopPreferencesState.enableOpenCodeAgent)
+      ),
+    [
+      desktopPreferencesState.enableCursorAgent,
+      desktopPreferencesState.enableOpenCodeAgent
+    ]
+  );
+  const lastSelectedProviderRef = useRef<WorkspaceAgentProvider | null>(null);
+  const [selection, setSelection] = useState<AgentEnvPanelProviderSelection>({
+    provider: "codex",
+    requestSequence: -1
+  });
+  const resolvedSelection = useMemo(
+    () =>
+      resolveAgentEnvPanelProviderSelection({
+        current: selection,
+        defaultProvider: snapshot.defaultProvider,
+        lastSelectedProvider: lastSelectedProviderRef.current,
+        requestedProvider: request.provider,
+        requestSequence: request.requestSequence,
+        visibleProviders
+      }),
+    [
+      request.provider,
+      request.requestSequence,
+      selection,
+      snapshot.defaultProvider,
+      visibleProviders
+    ]
+  );
+
+  useEffect(() => {
+    if (!request.open || !resolvedSelection) {
+      return;
+    }
+    lastSelectedProviderRef.current = resolvedSelection.provider;
+    if (
+      selection.provider !== resolvedSelection.provider ||
+      selection.requestSequence !== resolvedSelection.requestSequence
+    ) {
+      setSelection(resolvedSelection);
+    }
+  }, [request.open, resolvedSelection, selection]);
+
+  useEffect(() => {
+    if (!request.open || visibleProviders.length === 0) {
+      return;
+    }
+    void agentProviderStatusService
+      .ensureLoaded({ providers: [...visibleProviders] })
+      .catch(() => null);
+  }, [agentProviderStatusService, request.open, visibleProviders]);
+
   const {
     open,
     provider,
@@ -42,11 +129,54 @@ export function AgentEnvPanel({
     logExpanded,
     actions
   } = useAgentEnvWizard({
+    activeProvider: resolvedSelection?.provider ?? "codex",
     service: agentProviderStatusService,
     workspaceId,
     workbenchHost
   });
   const providerLabel = resolveProviderLabel(provider);
+  const statusByProvider = useMemo(
+    () => new Map(snapshot.statuses.map((status) => [status.provider, status])),
+    [snapshot.statuses]
+  );
+  const tabs = useMemo(
+    () =>
+      visibleProviders.map((candidate) => {
+        const pendingActionIds = new Set(
+          snapshot.pendingActions
+            .filter((action) => action.provider === candidate)
+            .map((action) => action.actionId)
+        );
+        const projection = projectAgentEnvProvider({
+          isLoading: snapshot.isLoading,
+          pendingActionIds,
+          provider: candidate,
+          status: statusByProvider.get(candidate) ?? null
+        });
+        const statusLabel = resolveStatusLabel(projection.status, t);
+        return {
+          value: candidate,
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              <span>{resolveProviderLabel(candidate)}</span>
+              <StatusDot
+                ariaLabel={statusLabel}
+                pulse={projection.status === "checking"}
+                title={statusLabel}
+                tone={resolveStatusDotTone(projection.status)}
+              />
+            </span>
+          )
+        };
+      }),
+    [
+      snapshot.isLoading,
+      snapshot.pendingActions,
+      statusByProvider,
+      t,
+      visibleProviders
+    ]
+  );
 
   // Re-detect is disabled while an install runs (busy) or a detect is already in
   // flight (redetecting). Surface WHY via a tooltip — a disabled button with no
@@ -98,7 +228,7 @@ export function AgentEnvPanel({
       <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[560px]">
         <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
           <DialogTitle>
-            {t("workspace.agentEnv.configTitle", { provider: providerLabel })}
+            {t("workspace.workbenchDesktop.agentProviders.manageTitle")}
           </DialogTitle>
           <DialogDescription>
             {viewModel.ready
@@ -110,6 +240,22 @@ export function AgentEnvPanel({
                 })}
           </DialogDescription>
         </DialogHeader>
+
+        <UnderlineTabs
+          ariaLabel={t(
+            "workspace.workbenchDesktop.agentProviders.manageColumnAgent"
+          )}
+          className="shrink-0 px-5 pt-1"
+          tabs={tabs}
+          value={provider}
+          onValueChange={(nextProvider) => {
+            lastSelectedProviderRef.current = nextProvider;
+            setSelection({
+              provider: nextProvider,
+              requestSequence: request.requestSequence
+            });
+          }}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!isSupported ? (
@@ -136,10 +282,59 @@ export function AgentEnvPanel({
           />
         ) : null}
 
-        <DialogFooter className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-1)] px-5 py-4">
-          {redetectControl}
-        </DialogFooter>
+        {isSupported ? (
+          <DialogFooter className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-1)] px-5 py-4">
+            {redetectControl}
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
+}
+
+function resolveStatusLabel(
+  status: AgentEnvProviderStatusKind,
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  switch (status) {
+    case "auth_required":
+      return t(
+        "workspace.workbenchDesktop.agentProviders.manageStatusAuthRequired"
+      );
+    case "available":
+      return t(
+        "workspace.workbenchDesktop.agentProviders.manageStatusAvailable"
+      );
+    case "checking":
+      return t(
+        "workspace.workbenchDesktop.agentProviders.manageStatusChecking"
+      );
+    case "connected":
+      return t(
+        "workspace.workbenchDesktop.agentProviders.manageStatusConnected"
+      );
+    case "unsupported":
+      return t(
+        "workspace.workbenchDesktop.agentProviders.manageStatusUnsupported"
+      );
+    case "unknown":
+      return t("workspace.workbenchDesktop.agentProviders.manageStatusUnknown");
+  }
+}
+
+function resolveStatusDotTone(
+  status: AgentEnvProviderStatusKind
+): "amber" | "blue" | "green" | "neutral" {
+  switch (status) {
+    case "connected":
+      return "green";
+    case "available":
+    case "checking":
+      return "blue";
+    case "auth_required":
+    case "unsupported":
+      return "amber";
+    case "unknown":
+      return "neutral";
+  }
 }

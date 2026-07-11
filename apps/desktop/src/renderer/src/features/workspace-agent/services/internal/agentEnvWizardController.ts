@@ -103,14 +103,10 @@ export function attachAgentEnvWizard(
   resetWizardForOpen(params.focus);
   // The wizard renders the network diagnostic, so its detections opt into the
   // network probe; the dock and other callers stay local-only.
-  if (params.focus) {
-    void params.service.refresh([params.provider], { includeNetwork: true });
-  } else {
-    void params.service.ensureLoaded({
-      providers: [params.provider],
-      includeNetwork: true
-    });
-  }
+  // Opening or switching to a tab is the point where its deep diagnostic is
+  // allowed to run. Always refresh here so an earlier local-only badge load
+  // cannot turn the network-enabled wizard request into a cache hit.
+  void params.service.refresh([params.provider], { includeNetwork: true });
 
   const clearRevealTimer = (): void => {
     if (revealTimer !== null) {
@@ -194,12 +190,8 @@ export function attachAgentEnvWizard(
     }
   };
 
-  // Subscribe, then orchestrate once synchronously. The initial tick is REQUIRED
-  // for behavior parity with the old AgentEnvPanel effects: a no-focus casual open
-  // onto already-cached status takes the ensureLoaded() cache-hit path, which
-  // returns cached data WITHOUT notifying listeners (see
-  // desktopAgentProviderStatusService.ensureLoaded). Without this synchronous tick,
-  // the anomaly/report-consent prompt would never surface on such an open.
+  // Subscribe, then orchestrate once synchronously so already-cached status can
+  // drive reveal, auto-start, and anomaly consent before the refresh completes.
   const unsubscribe = params.service.subscribe(orchestrate);
   orchestrate();
 

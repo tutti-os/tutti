@@ -49,6 +49,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 				return agentstatusservice.Snapshot{
 					CapturedAt: capturedAt,
 					Providers: []agentstatusservice.ProviderStatus{{
+						ManualInstallCommand: "curl -fsSL https://claude.ai/install.sh | bash",
 						ActiveAction: &agentstatusservice.ActiveAction{
 							ID:       agentstatusservice.ActionInstall,
 							Status:   "running",
@@ -91,6 +92,9 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	}
 	if response.Providers[0].Provider != "claude-code" {
 		t.Fatalf("provider = %q, want claude-code", response.Providers[0].Provider)
+	}
+	if response.Providers[0].ManualInstallCommand == nil || *response.Providers[0].ManualInstallCommand != "curl -fsSL https://claude.ai/install.sh | bash" {
+		t.Fatalf("manualInstallCommand = %#v, want registry command", response.Providers[0].ManualInstallCommand)
 	}
 	activeAction := response.Providers[0].ActiveAction
 	if activeAction == nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -13,6 +14,22 @@ import (
 )
 
 const cursorAuthStatusProbeCount = 3
+
+// Cursor documents cli-config.json as configuration (for example permissions),
+// not as an authentication credential. Validate the JSON so a corrupt marker
+// is ignored, but never turn mere config-file existence into an authenticated
+// verdict; the authoritative `about`/`status` command probes above decide that.
+func parseCursorAuthMarkerFile(path string) (AuthInfo, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return AuthInfo{}, false
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil || payload == nil {
+		return AuthInfo{}, false
+	}
+	return AuthInfo{Status: AuthRequired}, true
+}
 
 func runCursorAuthStatusCommand(ctx context.Context, binaryPath string, env []string) (AuthInfo, bool) {
 	proxyEnv := runtimecmd.InjectSystemProxyEnv(env)

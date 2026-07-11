@@ -16,6 +16,9 @@ const (
 	// CodexErrVersionTooOld: the installed codex is below MinSupportedCodexVersion
 	// or the server rejected the request as requiring a newer version.
 	CodexErrVersionTooOld CodexErrorCode = "CODEX_VERSION_TOO_OLD"
+	// CodexErrVersionUnknown: the CLI exists but `--version` did not yield a
+	// parseable semantic version, so compatibility cannot be established.
+	CodexErrVersionUnknown CodexErrorCode = "CODEX_VERSION_UNKNOWN"
 	// CodexErrAuthRequired: codex is installed but not logged in.
 	CodexErrAuthRequired CodexErrorCode = "CODEX_AUTH_REQUIRED"
 	// CodexErrNetwork: an install or request failed for a network reason.

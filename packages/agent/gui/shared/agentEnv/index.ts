@@ -53,3 +53,12 @@ export type {
   AgentEnvWizardViewModelInput,
   NetworkCheck
 } from "./agentEnvViewModel.ts";
+export {
+  projectAgentEnvProvider,
+  resolveAgentEnvProviderStatus
+} from "./agentEnvProviderProjection.ts";
+export type {
+  AgentEnvProviderPrimaryAction,
+  AgentEnvProviderProjection,
+  AgentEnvProviderStatusKind
+} from "./agentEnvProviderProjection.ts";

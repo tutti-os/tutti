@@ -10,8 +10,15 @@ import {
   ensureDesktopManagedAgentProviderStatuses,
   hasRequiredDesktopManagedAgentProviderStatuses,
   isDesktopManagedAgentProvider,
+  isDesktopManagedAgentProviderSetupSupported,
   projectDesktopManagedAgentsStateForAgentGUI
 } from "./desktopManagedAgentProviders.ts";
+
+test("temporarily unsupported managed providers cannot attach the setup wizard", () => {
+  assert.equal(isDesktopManagedAgentProviderSetupSupported("hermes"), false);
+  assert.equal(isDesktopManagedAgentProviderSetupSupported("openclaw"), false);
+  assert.equal(isDesktopManagedAgentProviderSetupSupported("codex"), true);
+});
 
 test("ensureDesktopManagedAgentProviderStatuses stops waiting after the first ready provider", async () => {
   const calls: WorkspaceAgentProvider[][] = [];
