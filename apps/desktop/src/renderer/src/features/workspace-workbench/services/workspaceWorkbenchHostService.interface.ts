@@ -108,33 +108,41 @@ export interface WorkspaceWorkbenchHostInput {
   readonly workspaceId: string;
 }
 
+export interface WorkspaceWorkbenchHostSessionUpdate {
+  appI18n: I18nRuntime<string>;
+  appLocale: DesktopLocale;
+  appCenterRevision?: number;
+  confirmCloseGuard: (
+    request: WorkbenchHostCloseDialogRequest
+  ) => Promise<boolean> | boolean;
+  defaultAgentProvider?: string | null;
+  defaultAgentTargetId?: string | null;
+  dockIconStyle: DesktopDockIconStyle;
+  i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  onCapabilitySettingsRequest?: (
+    target: WorkspaceWorkbenchCapabilitySettingsTarget
+  ) => void;
+  agents?: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
+  renderFilesNodeBody: (
+    context: WorkspaceWorkbenchBodyRendererContext
+  ) => ReactNode;
+  themeAppearance: DesktopThemeAppearance;
+  workspaceId: string;
+}
+
 export interface IWorkspaceWorkbenchHostService {
   readonly _serviceBrand: undefined;
 
   approveWindowClose(): Promise<void>;
-  createHostInput(input: {
-    appI18n: I18nRuntime<string>;
-    appLocale: DesktopLocale;
-    appCenterRevision?: number;
-    confirmCloseGuard: (
-      request: WorkbenchHostCloseDialogRequest
-    ) => Promise<boolean> | boolean;
-    defaultAgentProvider?: string | null;
-    defaultAgentTargetId?: string | null;
-    dockIconStyle: DesktopDockIconStyle;
-    i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    onCapabilitySettingsRequest?: (
-      target: WorkspaceWorkbenchCapabilitySettingsTarget
-    ) => void;
-    agents?: readonly AgentGUIAgent[];
-    agentsLoading?: boolean;
-    comingSoonAgentProviders?: readonly AgentGUIProvider[];
-    renderFilesNodeBody: (
-      context: WorkspaceWorkbenchBodyRendererContext
-    ) => ReactNode;
-    themeAppearance: DesktopThemeAppearance;
-    workspaceId: string;
-  }): WorkspaceWorkbenchHostInput;
+  attachHostSurface(
+    workspaceId: string,
+    handle: WorkbenchHostHandle | null
+  ): void;
+  createHostInput(
+    input: WorkspaceWorkbenchHostSessionUpdate
+  ): WorkspaceWorkbenchHostInput;
   loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
@@ -164,6 +172,7 @@ export interface IWorkspaceWorkbenchHostService {
   markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
+  releaseHostSession(workspaceId: string): void;
   resolveWindowCloseRequest(input: {
     outcome: "approved" | "blocked";
     requestId: string;

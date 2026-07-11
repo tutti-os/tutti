@@ -20,8 +20,10 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
+import { WorkbenchHostCoordinator } from "./internal/workbenchHostCoordinator.ts";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
+import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
@@ -62,6 +64,10 @@ export function registerWorkspaceWorkbenchServices(
         tuttidClient: input.tuttidClient
       }
     ])
+  );
+  registry.register(
+    IWorkbenchHostCoordinator,
+    new SyncDescriptor(WorkbenchHostCoordinator)
   );
   registry.register(
     IWorkspaceWorkbenchHostService,

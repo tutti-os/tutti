@@ -1,0 +1,144 @@
+import {
+  areWorkbenchSnapshotPartitionsEqual,
+  createWorkbenchScopeKey,
+  WorkbenchHostSession,
+  type WorkbenchSnapshotPartition
+} from "./workbenchHostSession.ts";
+
+export interface WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState> {
+  readonly createSession: (
+    partition: WorkbenchSnapshotPartition
+  ) => WorkbenchHostSession<TUpdate, THostInput, TState>;
+  readonly partition: WorkbenchSnapshotPartition;
+}
+
+export interface WorkbenchHostSessionLease<TUpdate, THostInput, TState> {
+  readonly release: () => void;
+  readonly session: WorkbenchHostSession<TUpdate, THostInput, TState>;
+}
+
+interface WorkbenchHostCoordinatorEntry {
+  leaseCount: number;
+  readonly session: WorkbenchHostSession<unknown, unknown, unknown>;
+}
+
+export class WorkbenchHostCoordinator {
+  readonly _serviceBrand = undefined;
+  private disposed = false;
+  private readonly sessionsByScope = new Map<
+    string,
+    WorkbenchHostCoordinatorEntry
+  >();
+
+  open<TUpdate, THostInput, TState>(
+    input: WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState>
+  ): WorkbenchHostSessionLease<TUpdate, THostInput, TState> {
+    this.assertActive();
+    const scopeKey = createWorkbenchScopeKey(input.partition.scope);
+    let entry = this.sessionsByScope.get(scopeKey);
+    if (
+      entry &&
+      !areWorkbenchSnapshotPartitionsEqual(
+        entry.session.partition,
+        input.partition
+      )
+    ) {
+      this.sessionsByScope.delete(scopeKey);
+      entry.session.dispose();
+      entry = undefined;
+    }
+
+    if (!entry || entry.session.isDisposed) {
+      const session = input.createSession(input.partition);
+      if (
+        !areWorkbenchSnapshotPartitionsEqual(session.partition, input.partition)
+      ) {
+        session.dispose();
+        throw new Error(
+          "Workbench host session partition does not match the open request."
+        );
+      }
+      entry = {
+        leaseCount: 0,
+        session: session as WorkbenchHostSession<unknown, unknown, unknown>
+      };
+      this.sessionsByScope.set(scopeKey, entry);
+    }
+
+    entry.leaseCount += 1;
+    const leasedEntry = entry;
+    const session = entry.session as WorkbenchHostSession<
+      TUpdate,
+      THostInput,
+      TState
+    >;
+    let released = false;
+    return {
+      release: () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        this.release(scopeKey, leasedEntry);
+      },
+      session
+    };
+  }
+
+  get<TUpdate, THostInput, TState>(
+    partition: WorkbenchSnapshotPartition
+  ): WorkbenchHostSession<TUpdate, THostInput, TState> | null {
+    if (this.disposed) {
+      return null;
+    }
+    const scopeKey = createWorkbenchScopeKey(partition.scope);
+    const entry = this.sessionsByScope.get(scopeKey);
+    if (!entry) {
+      return null;
+    }
+    if (entry.session.isDisposed) {
+      this.sessionsByScope.delete(scopeKey);
+      return null;
+    }
+    if (
+      !areWorkbenchSnapshotPartitionsEqual(entry.session.partition, partition)
+    ) {
+      return null;
+    }
+    return entry.session as WorkbenchHostSession<TUpdate, THostInput, TState>;
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    const entries = Array.from(this.sessionsByScope.values());
+    this.sessionsByScope.clear();
+    for (const entry of entries) {
+      entry.session.dispose();
+    }
+  }
+
+  private assertActive(): void {
+    if (this.disposed) {
+      throw new Error("Workbench host coordinator is disposed.");
+    }
+  }
+
+  private release(
+    scopeKey: string,
+    leasedEntry: WorkbenchHostCoordinatorEntry
+  ): void {
+    const currentEntry = this.sessionsByScope.get(scopeKey);
+    if (currentEntry !== leasedEntry) {
+      return;
+    }
+    leasedEntry.leaseCount -= 1;
+    if (leasedEntry.leaseCount > 0) {
+      return;
+    }
+    this.sessionsByScope.delete(scopeKey);
+    leasedEntry.session.dispose();
+  }
+}

@@ -1,7 +1,7 @@
 # Workbench Host Kernel: Phase 0 To Stable
 
 - Date: 2026-07-11
-- Status: Active; ADR accepted and PR 1 characterization approved
+- Status: Active; ADR accepted, PR 1 merged, and PR 2 private kernel approved
 - Architecture decision:
   [ADR 0009](../adr/0009-cross-product-workbench-host-kernel.md)
 - Scope: Tutti-first implementation, npm beta, read-only/downstream TSH
@@ -31,21 +31,48 @@ an explicit approval gate.
 
 ## Approval state
 
-Approval recorded on 2026-07-11 is deliberately narrow:
+Approval recorded on 2026-07-11 remains deliberately incremental:
 
 | Scope                                     | Approval                    |
 | ----------------------------------------- | --------------------------- |
 | ADR 0009 architecture boundary            | Accepted                    |
-| PR 1 characterization fixtures/tests      | Approved for implementation |
-| PR 2 private coordinator/session          | Not approved                |
+| PR 1 characterization fixtures/tests      | Merged in #1043             |
+| PR 2 private coordinator/session          | Approved for implementation |
 | PR 3 Product Profile/Ports/adapters split | Not approved                |
 | Public package extraction                 | Not approved                |
 | npm beta publication                      | Not approved                |
 | TSH renderer DI/host migration            | Not approved                |
 | Stable publication                        | Not approved                |
 
-Completing PR 1 produces evidence for the next review; it does not implicitly
-authorize PR 2 or any later step.
+Completing PR 2 produces evidence for the next review; it does not implicitly
+authorize PR 3 or any later step.
+
+### PR 2 implementation evidence
+
+The approved Tutti-private proof keeps the extraction boundary reviewable:
+
+- `workbenchHostCoordinator.ts` owns renderer-local scope indexing, same-
+  partition lease reuse, immutable-partition replacement, and coordinator-wide
+  disposal;
+- `workbenchHostSession.ts` owns the immutable partition snapshot, stable host-
+  input publication, surface attachment, subscriptions, resource cleanup, and
+  idempotent disposal;
+- Tutti registers one coordinator in its existing `@tutti-os/infra/di`
+  renderer root and injects it into the existing product host service;
+- `WorkspaceWorkbenchHostService` remains the Tutti facade and product adapter:
+  it supplies the workspace partition and retains all existing contribution,
+  preload, tuttid, wallpaper, onboarding, dock, diagnostics, and business-
+  service wiring;
+- the React shell continues to render the existing surface and controllers,
+  while attaching the surface handle to the class session and releasing the
+  workspace session during effect cleanup; and
+- focused unit tests cover DI singleton ownership, lease reuse, multi-scope
+  isolation, principal-partition replacement, referential publication,
+  attachment cleanup, and idempotent disposal.
+
+This proof does not introduce Product Profile or Ports, move product adapters,
+create a package, change public Workbench contracts, or authorize any release or
+TSH change.
 
 ## Baseline evidence
 
@@ -498,10 +525,10 @@ The TSH PR must report:
 
 ## Approval gates
 
-ADR 0009 and PR 1 are approved. After PR 1 evidence is reviewed, the recommended
-next approval is PR 2 only. PR 3 remains a separate subsequent approval after
-PR 2 proves the private coordinator/session boundary.
+ADR 0009 is accepted, PR 1 merged as #1043, and PR 2 is approved for
+implementation. After PR 2 evidence is reviewed, the recommended next approval
+is PR 3 only.
 
 Package extraction, npm beta, TSH changes, and stable publication remain four
-additional separate approvals. None is implied by the accepted ADR or PR 1
-approval.
+additional separate approvals. None is implied by the accepted ADR or the PR 1
+and PR 2 approvals.

@@ -406,6 +406,13 @@ export function useWorkspaceWorkbenchShellRuntime({
 
   useEffect(() => {
     return () => {
+      workbenchHostService.attachHostSurface(state.workspace.id, null);
+      workbenchHostService.releaseHostSession(state.workspace.id);
+    };
+  }, [state.workspace.id, workbenchHostService]);
+
+  useEffect(() => {
+    return () => {
       workspaceFileManagerService.setCanvasFilePreviewLauncher(
         state.workspace.id,
         null
@@ -437,6 +444,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   const handleWorkbenchHostReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
       workbenchHostRef.current = host;
+      workbenchHostService.attachHostSurface(state.workspace.id, host);
       shellRuntimeController.setWorkbenchHost(host);
       syncWorkspaceAppWebviewNodes({
         apps: appCenterState.apps,
@@ -496,7 +504,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       locale,
       shellRuntimeController,
       state.workspace.id,
-      workspaceFileManagerService
+      workspaceFileManagerService,
+      workbenchHostService
     ]
   );
 
