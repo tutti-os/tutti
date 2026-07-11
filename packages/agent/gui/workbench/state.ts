@@ -46,9 +46,7 @@ export function normalizeAgentGuiWorkbenchState(
   if (!isRecord(state)) {
     return createDefaultAgentGuiWorkbenchState();
   }
-  const agentTargetId =
-    normalizeOptionalNonEmptyString(state.agentTargetId) ??
-    normalizeOptionalNonEmptyString(state.providerTargetId);
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -63,6 +61,26 @@ export function normalizeAgentGuiWorkbenchState(
       ? { lastActiveConversationTitle: state.lastActiveConversationTitle }
       : {})
   };
+}
+
+/**
+ * One-time persisted-state reader for snapshots written before agentTargetId
+ * became the canonical AgentGUI selection key. Current-state normalizers stay
+ * strict so live callers cannot continue using the removed alias.
+ */
+export function migrateLegacyAgentGuiWorkbenchState(state: unknown): unknown {
+  if (
+    !isRecord(state) ||
+    normalizeOptionalNonEmptyString(state.agentTargetId)
+  ) {
+    return state;
+  }
+  const legacyAgentTargetId = normalizeOptionalNonEmptyString(
+    state.providerTargetId
+  );
+  return legacyAgentTargetId
+    ? { ...state, agentTargetId: legacyAgentTargetId }
+    : state;
 }
 
 export function projectAgentGuiWorkbenchState(
@@ -104,15 +122,9 @@ export function normalizeAgentGuiWorkbenchNodeState(
     state?.provider,
     fallbackProvider
   );
-  const legacyState = state as
-    | (Record<string, unknown> & Partial<AgentGuiWorkbenchNodeState>)
-    | null
-    | undefined;
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
-    agentTargetId:
-      normalizeOptionalNonEmptyString(state?.agentTargetId) ??
-      normalizeOptionalNonEmptyString(legacyState?.providerTargetId),
+    agentTargetId: normalizeOptionalNonEmptyString(state?.agentTargetId),
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state?.composerOverrides
     ),

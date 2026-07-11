@@ -57,7 +57,7 @@ export function createAgentWindowIntent(input: {
     agentSessionID: input.agentSessionID?.trim() || null,
     agentTargetID: input.agentTargetID?.trim() || null,
     ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
-    ...(agents ? { agents } : {}),
+    ...(agents !== undefined ? { agents } : {}),
     kind: "agent",
     provider: input.provider?.trim() || null,
     workspaceID: input.workspaceID
@@ -95,7 +95,7 @@ export function encodeDesktopWindowIntent(
     if (intent.provider) {
       params.set("provider", intent.provider);
     }
-    if (intent.agents && intent.agents.length > 0) {
+    if (intent.agents !== undefined) {
       params.set("agents", JSON.stringify(intent.agents));
     }
     if (intent.providerStatusSnapshot) {
@@ -162,9 +162,10 @@ export function resolveDesktopWindowIntent(
 function normalizeAgentWindowAgents(
   agents: readonly AgentGUIAgent[] | null | undefined
 ): AgentGUIAgent[] | undefined {
-  const normalized =
-    agents?.flatMap((agent) => normalizeAgentWindowAgent(agent)) ?? [];
-  return normalized.length > 0 ? normalized : undefined;
+  if (agents === null || agents === undefined) {
+    return undefined;
+  }
+  return agents.flatMap((agent) => normalizeAgentWindowAgent(agent));
 }
 
 function normalizeAgentWindowAgent(value: unknown): AgentGUIAgent[] {

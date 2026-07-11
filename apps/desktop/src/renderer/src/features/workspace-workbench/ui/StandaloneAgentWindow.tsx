@@ -295,13 +295,21 @@ export function StandaloneAgentWindow({
 
   useEffect(() => {
     let disposed = false;
-    void agentsService.load().then((snapshot) => {
-      if (!disposed) {
-        setAgents(snapshot.agents);
-      }
-    });
+    const loadAgents = () => {
+      void agentsService
+        .load()
+        .then((snapshot) => {
+          if (!disposed) {
+            setAgents(snapshot.agents);
+          }
+        })
+        .catch(() => undefined);
+    };
+    loadAgents();
+    window.addEventListener("focus", loadAgents);
     return () => {
       disposed = true;
+      window.removeEventListener("focus", loadAgents);
     };
   }, [agentsService]);
   useEffect(() => {

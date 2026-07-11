@@ -699,6 +699,7 @@ export const en = {
       agentEnvSetup: "Environment Check",
       noConversations: "No sessions yet",
       emptyProjectConversations: "No chats yet",
+      agentsEmpty: "No agents are available",
       conversationFilterAll: "All",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",

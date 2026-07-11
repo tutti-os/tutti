@@ -29,6 +29,7 @@ import {
   agentGuiWorkbenchProviderFromInstanceId,
   agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
+  migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState
 } from "./state.ts";
@@ -254,10 +255,13 @@ export function createAgentGuiWorkbenchContribution(
             | Partial<AgentGuiWorkbenchNodeState>
             | null
             | undefined;
-          const workbenchState =
-            normalizeAgentGuiWorkbenchState(rawWorkbenchState);
+          const migratedWorkbenchState =
+            migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState);
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migratedWorkbenchState
+          );
           const nodeState = normalizeAgentGuiWorkbenchNodeState(
-            rawWorkbenchState,
+            migratedWorkbenchState as Partial<AgentGuiWorkbenchNodeState>,
             provider
           );
           const isConversationRailAutoCollapsed =

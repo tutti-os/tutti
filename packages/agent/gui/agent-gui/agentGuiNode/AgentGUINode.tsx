@@ -1279,6 +1279,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
+      agentsEmpty: t("agentHost.agentGui.agentsEmpty"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
       homeSuggestions: buildAgentHomeSuggestions(
         t,

@@ -4046,6 +4046,89 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("waits for the directory before applying an exact-target prefill", async () => {
+    const unactivate = vi.fn(async () => undefined);
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          agentTargetId: "codex-a",
+          provider: "codex"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      unactivate
+    });
+
+    type PrefillPromptRequest = Parameters<
+      typeof useAgentGUINodeController
+    >[0]["prefillPromptRequest"];
+    type ProviderTargets = NonNullable<
+      Parameters<typeof useAgentGUINodeController>[0]["providerTargets"]
+    >;
+    const request: PrefillPromptRequest = {
+      agentTargetId: "codex-b",
+      autoSubmit: true,
+      draftPrompt: "Run on B",
+      provider: "codex",
+      sequence: 11
+    };
+    const targets: ProviderTargets = [
+      {
+        targetId: "codex-a",
+        agentTargetId: "codex-a",
+        provider: "codex",
+        ref: { kind: "agent-directory", provider: "codex" },
+        label: "Codex A"
+      },
+      {
+        targetId: "codex-b",
+        agentTargetId: "codex-b",
+        provider: "codex",
+        ref: { kind: "agent-directory", provider: "codex" },
+        label: "Codex B"
+      }
+    ];
+    const { result, rerender } = renderHook(
+      (props: {
+        providerTargets: ProviderTargets;
+        providerTargetsLoading: boolean;
+      }) =>
+        useAgentGUINodeController({
+          workspaceId: "room-1",
+          currentUserId: "user-1",
+          workspacePath: "/workspace",
+          avoidGroupingEdits: false,
+          data: agentGuiData("session-1", "codex", {
+            agentTargetId: "codex-a"
+          }),
+          prefillPromptRequest: request,
+          onDataChange: vi.fn(),
+          ...props
+        }),
+      {
+        initialProps: {
+          providerTargets: [] as ProviderTargets,
+          providerTargetsLoading: true
+        }
+      }
+    );
+
+    expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    expect(result.current.viewModel.draftPrompt).not.toBe("Run on B");
+    expect(unactivate).not.toHaveBeenCalled();
+
+    rerender({ providerTargets: targets, providerTargetsLoading: false });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+      expect(result.current.viewModel.draftPrompt).toBe("Run on B");
+      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+        agentTargetId: "codex-b"
+      });
+    });
+  });
+
   it("tracks active conversation project setting changes through the host reporter", async () => {
     const trackSettingsProjectChange = vi.fn(async () => undefined);
     installAgentHostApi({
@@ -7053,7 +7136,7 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("inherits the current same-provider model when creating a new conversation without a draft model", async () => {
+  it("inherits the current target model when creating a new conversation for the same agent", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
         session: agentSession(input.agentSessionId),
@@ -7073,6 +7156,7 @@ describe("useAgentGUINodeController", () => {
     installAgentHostApi({
       list: vi.fn(async () =>
         snapshotWithSession("session-1", {
+          agentTargetId: "local:codex",
           model: "gpt-5.5"
         } as Partial<AgentHostWorkspaceAgentSession>)
       ),
@@ -7114,6 +7198,93 @@ describe("useAgentGUINodeController", () => {
           })
         })
       );
+    });
+  });
+
+  it("does not inherit a model across same-provider agent targets", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          agentTargetId: "codex-a",
+          model: "gpt-5.5",
+          provider: "codex"
+        } as Partial<AgentHostWorkspaceAgentSession>)
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      getState: vi.fn(async ({ agentSessionId }) =>
+        agentSessionState(agentSessionId, {
+          settings: { model: "gpt-5.5" }
+        })
+      )
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1", "codex", {
+          agentTargetId: "codex-a"
+        }),
+        providerTargets: [
+          {
+            targetId: "codex-a",
+            agentTargetId: "codex-a",
+            provider: "codex",
+            ref: { kind: "agent-directory", provider: "codex" },
+            label: "Codex A"
+          },
+          {
+            targetId: "codex-b",
+            agentTargetId: "codex-b",
+            provider: "codex",
+            ref: { kind: "agent-directory", provider: "codex" },
+            label: "Codex B"
+          }
+        ],
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.createConversation();
+      result.current.actions.selectHomeComposerAgentTarget({
+        agentTargetId: "codex-b",
+        provider: "codex"
+      });
+    });
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.selectedProviderTarget?.agentTargetId
+      ).toBe("codex-b");
+    });
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start on B"));
+    });
+
+    await waitFor(() => {
+      const newCall = activate.mock.calls.find(
+        ([input]) => input.mode === "new"
+      )?.[0];
+      expect(newCall?.mode).toBe("new");
+      if (!newCall || newCall.mode !== "new") {
+        return;
+      }
+      expect(newCall.agentTargetId).toBe("codex-b");
+      expect(newCall.settings?.model).not.toBe("gpt-5.5");
     });
   });
 

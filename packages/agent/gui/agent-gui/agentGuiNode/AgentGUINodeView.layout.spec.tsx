@@ -1451,6 +1451,9 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-busy", "false");
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.getByTestId("agent-gui-agents-empty")).toHaveTextContent(
+      "agentsEmpty"
+    );
   });
 
   it("renders exactly the provided targets in exact rail mode", () => {
@@ -4979,6 +4982,27 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(onAction).toHaveBeenCalledWith("codex", "install");
   });
 
+  it("preserves a disabled agent's install gate instead of coercing it to coming soon", () => {
+    const disabledTarget = {
+      ...createLocalAgentGUIProviderTarget("codex"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      viewModel: createViewModel({
+        providerReadinessGate: { status: "not_installed" },
+        selectedProviderTarget: disabledTarget,
+        providerTargets: [disabledTarget]
+      })
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-description")
+    ).toHaveTextContent("providerGateInstallDescription");
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate-action")
+    ).toHaveTextContent("providerGateInstallAction");
+  });
+
   it("renders a login gate for auth-required providers", () => {
     const onAction = vi.fn();
     renderAgentGUINodeView({
@@ -5765,6 +5789,7 @@ function createConversationDetailWithUserMessage(
 
 function createLabels(): AgentGUIViewLabels {
   return {
+    agentsEmpty: "agentsEmpty",
     initialPlaceholder: "initialPlaceholder",
     followupPlaceholder: "followupPlaceholder",
     installRequiredPlaceholder: "installRequiredPlaceholder",

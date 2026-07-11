@@ -69,6 +69,25 @@ test("desktop agents service maps agent targets into renderer presentations and 
   ]);
 });
 
+test("desktop agents service resolves target iconKey before provider artwork", () => {
+  const [presentation] = mapAgentTargetsToPresentations(
+    [
+      {
+        ...createAgentTarget({
+          id: "shared:alice",
+          name: "Alice's Codex",
+          provider: "codex",
+          sortOrder: 10
+        }),
+        iconKey: "alice-custom"
+      }
+    ],
+    { resolveAgentIconUrl: (key) => `tutti-asset://agent/${key}.png` }
+  );
+
+  assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
+});
+
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;

@@ -648,6 +648,7 @@ export const zhCN = {
       agentEnvSetup: "环境检测",
       noConversations: "还没有会话",
       emptyProjectConversations: "暂无对话",
+      agentsEmpty: "暂无可用 Agent",
       conversationFilterAll: "全部",
       conversationFilterCodex: "Codex",
       conversationFilterClaudeCode: "Claude Code",

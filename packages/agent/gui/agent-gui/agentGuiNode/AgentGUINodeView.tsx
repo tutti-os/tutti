@@ -446,6 +446,7 @@ export interface AgentGUIViewLabels {
   stop: string;
   stopping: string;
   noRunningResponse: string;
+  agentsEmpty: string;
   empty: string;
   emptyForProvider?: (provider: string) => string;
   emptyProvider?: string;
@@ -2040,6 +2041,7 @@ export function AgentGUINodeView({
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
+            renderAgentsEmpty={renderProviderRailEmpty}
             renderProviderUnavailableState={renderProviderUnavailableState}
             renderProviderReadinessGateState={renderProviderReadinessGateState}
             previewMode={previewMode}
@@ -2255,6 +2257,7 @@ interface AgentGUIDetailPaneProps {
   onRequestComposerFocus: () => void;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  renderAgentsEmpty?: AgentGUIProviderRailEmptyRenderer;
   renderProviderUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   renderProviderReadinessGateState?: AgentGUIProviderReadinessGateStateRenderer;
 }
@@ -2352,6 +2355,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onRequestComposerFocus,
   contextMentionProviders,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  renderAgentsEmpty,
   renderProviderUnavailableState,
   renderProviderReadinessGateState
 }: AgentGUIDetailPaneProps): React.JSX.Element {
@@ -2397,12 +2401,17 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     avoidGroupingEdits: viewModel.avoidGroupingEdits
   });
   const hasActiveConversation = viewModel.activeConversationId !== null;
+  const agentsLoadedEmpty =
+    !viewModel.providerTargetsLoading && viewModel.providerTargets.length === 0;
   const selectedProviderTargetComingSoon =
-    viewModel.selectedProviderTarget?.disabled === true;
+    viewModel.selectedProviderTarget?.disabled === true &&
+    (viewModel.providerReadinessGate === null ||
+      viewModel.providerReadinessGate?.status === "coming_soon");
   const emptyProviderReadinessGate = !hasActiveConversation
-    ? selectedProviderTargetComingSoon
-      ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)
-      : viewModel.providerReadinessGate
+    ? (viewModel.providerReadinessGate ??
+      (selectedProviderTargetComingSoon
+        ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)
+        : null))
     : null;
   const activePrompt =
     viewModel.pendingInteractivePrompt ?? viewModel.pendingApproval;
@@ -3772,7 +3781,22 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         viewportContentStyle={AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE}
       >
         {!hasActiveConversation ? (
-          shouldRenderProviderUnavailableState && disabledProviderTarget ? (
+          agentsLoadedEmpty ? (
+            renderAgentsEmpty ? (
+              <>{renderAgentsEmpty()}</>
+            ) : (
+              <div
+                className={styles.emptyHero}
+                data-testid="agent-gui-agents-empty"
+              >
+                <div className={styles.emptyHeroBody}>
+                  <h2 className={styles.emptyHeroTitle}>
+                    {labels.agentsEmpty}
+                  </h2>
+                </div>
+              </div>
+            )
+          ) : shouldRenderProviderUnavailableState && disabledProviderTarget ? (
             <>
               {renderProviderUnavailableState?.({
                 provider: disabledProviderTarget.provider,
@@ -5827,9 +5851,7 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         aria-label={labels.providerSwitchLabel}
         aria-busy={providerTargetsLoading}
         data-empty="true"
-      >
-        {renderProviderRailEmpty()}
-      </div>
+      ></div>
     );
   }
 

@@ -125,6 +125,26 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
   });
 });
 
+test("encodeDesktopWindowIntent preserves an explicitly loaded empty agent directory", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      agents: [],
+      provider: "codex",
+      workspaceID: "workspace-1"
+    })
+  );
+
+  assert.equal(new URLSearchParams(search).get("agents"), "[]");
+  assert.deepEqual(resolveDesktopWindowIntent(search), {
+    agentSessionID: null,
+    agentTargetID: null,
+    agents: [],
+    kind: "agent",
+    provider: "codex",
+    workspaceID: "workspace-1"
+  });
+});
+
 test("readInitialDockPlacementFromLocation resolves dock placement from search params", async () => {
   const { readInitialDockPlacementFromLocation } =
     await import("../preferences/index.ts");

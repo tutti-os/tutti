@@ -281,13 +281,21 @@ export function useWorkspaceWorkbenchShellRuntime({
   useEffect(() => {
     let disposed = false;
     setAgentGuiAgents(undefined);
-    void workbenchHostService.loadAgentGuiAgents().then((targets) => {
-      if (!disposed) {
-        setAgentGuiAgents(targets);
-      }
-    });
+    const loadAgents = () => {
+      void workbenchHostService
+        .loadAgentGuiAgents()
+        .then((targets) => {
+          if (!disposed) {
+            setAgentGuiAgents(targets);
+          }
+        })
+        .catch(() => undefined);
+    };
+    loadAgents();
+    window.addEventListener("focus", loadAgents);
     return () => {
       disposed = true;
+      window.removeEventListener("focus", loadAgents);
     };
     // comingSoonAgentProviders: the provider gate disables gated targets in
     // the daemon target list, so a gate flip must reload it (the host service

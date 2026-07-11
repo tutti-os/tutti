@@ -1504,6 +1504,18 @@ and read-only history. A legacy provider-only session resolves through the
 registered `local:<provider>` target. This is still a directory lookup, not a
 provider fallback.
 
+Target-bearing launch and prefill requests follow the same foreign-key rule:
+wait while the directory is loading, then require an exact `agentTargetId`
+match. A missing explicit id must not fall back to a sibling that happens to use
+the same provider or to the first directory entry.
+
+Directory loading has three distinct outcomes: unknown/loading, successfully
+loaded (including `[]`), and failed. Hosts may cache successful empty results,
+but a failed request must clear its cache so a later load can retry; it must not
+be converted into an authoritative empty directory. Window/bootstrap transport
+must serialize an explicit `agents: []` so detached windows preserve this
+distinction instead of reverting to loading.
+
 The public directory entry owns its presentation and availability:
 
 - render `agents[].name` and `agents[].iconUrl` as the primary identity
@@ -1528,7 +1540,9 @@ The removed public `providerTargets`, `providerRailMode`, provider-target
 renderers, and `defaultProviderTargetId` fields have no runtime compatibility
 alias. Workbench hydration may read legacy `providerTargetId` once and project
 it to `agentTargetId`, but canonical state and every subsequent write must omit
-legacy provider-target fields. `providerTargetRef` remains daemon/runtime
+legacy provider-target fields. Keep this read in a dedicated persisted-state
+migration; current-state normalizers must reject the removed alias.
+`providerTargetRef` remains daemon/runtime
 implementation data and must not cross back into AgentGUI's public UI contract.
 
 AgentGUI must not mint invocation-control tokens, resolve invocation plans,

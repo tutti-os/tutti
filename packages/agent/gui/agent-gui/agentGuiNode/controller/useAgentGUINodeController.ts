@@ -413,10 +413,7 @@ function resolveAgentGUIDirectorySelection(input: {
 }): AgentGUIProviderTarget | null {
   const agentTargetId = normalizeOptionalText(input.agentTargetId);
   if (agentTargetId) {
-    const exact = findAgentGUIDirectoryTarget(input.targets, agentTargetId);
-    if (exact) {
-      return exact;
-    }
+    return findAgentGUIDirectoryTarget(input.targets, agentTargetId) ?? null;
   }
   const providerTargets = input.provider
     ? input.targets.filter((target) => target.provider === input.provider)
@@ -2520,36 +2517,6 @@ function normalizeOptionalText(
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
-}
-
-function resolveSameProviderActiveSessionModel(input: {
-  activeProvider?: string | null;
-  agentSessionId?: string | null;
-  provider: string;
-  runtime: AgentActivityRuntime;
-  sessionState?: { settings?: AgentSessionComposerSettings | null } | null;
-  workspaceId: string;
-}): string | null {
-  const agentSessionId = normalizeOptionalText(input.agentSessionId);
-  if (agentSessionId === null) {
-    return null;
-  }
-  const runtimeSession =
-    input.runtime
-      .getSnapshot(input.workspaceId)
-      .sessions.find(
-        (candidate) => candidate.agentSessionId.trim() === agentSessionId
-      ) ?? null;
-  const activeProvider =
-    normalizeOptionalText(runtimeSession?.provider) ??
-    normalizeOptionalText(input.activeProvider);
-  if (activeProvider !== input.provider) {
-    return null;
-  }
-  return (
-    normalizeOptionalText(input.sessionState?.settings?.model) ??
-    normalizeOptionalText(runtimeSession?.model)
-  );
 }
 
 function normalizeOptionalPrompt(value: unknown): string {
@@ -4673,7 +4640,7 @@ export function useAgentGUINodeController({
   const pendingHomeErrorRef = useRef<string | null>(null);
   const activatedConversationIdsRef = useRef(new Set<string>());
   const failedNewConversationIdsRef = useRef(new Set<string>());
-  const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
+  const lastActiveModelByAgentTargetIdRef = useRef<Record<string, string>>({});
   const pendingTurnIdBySessionIdRef = useRef<Record<string, string>>({});
   const submitTraceBySessionIdRef = useRef<
     Record<string, AgentSubmitTraceState>
@@ -7713,17 +7680,9 @@ export function useAgentGUINodeController({
           : null;
         const inheritedModel =
           normalizeOptionalText(targetSafeInitialNodeSettings.model) === null
-            ? (resolveSameProviderActiveSessionModel({
-                activeProvider: currentActiveConversation?.provider ?? null,
-                agentSessionId: currentActiveConversationId,
-                provider,
-                runtime: agentActivityRuntime,
-                sessionState: activeSessionState,
-                workspaceId
-              }) ??
-              normalizeOptionalText(
-                lastActiveModelByProviderRef.current[provider]
-              ))
+            ? normalizeOptionalText(
+                lastActiveModelByAgentTargetIdRef.current[agentTargetId]
+              )
             : null;
         const effectiveInitialSettings =
           inheritedModel === null
@@ -8396,7 +8355,27 @@ export function useAgentGUINodeController({
       return;
     }
 
+    if (providerTargetsLoading && prefillPromptRequest.agentTargetId?.trim()) {
+      return;
+    }
+
+    const selectedTargetData = selectedComposerTargetDataRef.current;
+    const prefillTargetHinted =
+      Boolean(prefillPromptRequest.provider) ||
+      Boolean(prefillPromptRequest.agentTargetId);
+    const prefillTarget = prefillTargetHinted
+      ? resolveAgentGUIDirectorySelection({
+          agentTargetId: prefillPromptRequest.agentTargetId,
+          provider:
+            prefillPromptRequest.provider ?? selectedTargetData.provider,
+          targets: normalizedProviderTargets
+        })
+      : null;
+
     handledPrefillPromptSequenceRef.current = prefillPromptRequest.sequence;
+    if (prefillPromptRequest.agentTargetId?.trim() && !prefillTarget) {
+      return;
+    }
     const draftPrompt = prefillPromptRequest.draftPrompt.trim();
     if (!draftPrompt) {
       return;
@@ -8429,18 +8408,6 @@ export function useAgentGUINodeController({
     setActiveConversationId(null);
     setIsLoadingMessages(false);
     setDetailError(null);
-    const selectedTargetData = selectedComposerTargetDataRef.current;
-    const prefillTargetHinted =
-      Boolean(prefillPromptRequest.provider) ||
-      Boolean(prefillPromptRequest.agentTargetId);
-    const prefillTarget = prefillTargetHinted
-      ? resolveAgentGUIDirectorySelection({
-          agentTargetId: prefillPromptRequest.agentTargetId,
-          provider:
-            prefillPromptRequest.provider ?? selectedTargetData.provider,
-          targets: normalizedProviderTargets
-        })
-      : null;
     const targetData = prefillTarget
       ? composerTargetDataFromProviderTarget({
           current: dataRef.current,
@@ -8500,6 +8467,7 @@ export function useAgentGUINodeController({
     persistActiveConversation,
     prefillPromptRequest,
     previewMode,
+    providerTargetsLoading,
     workspaceId
   ]);
 
@@ -11621,10 +11589,13 @@ export function useAgentGUINodeController({
   const pendingInteractivePrompt =
     serverInteractivePrompt ?? planImplementationPromptVM;
   useEffect(() => {
-    const provider = normalizeOptionalText(
-      activeRuntimeSession?.provider ?? activeConversation?.provider
-    );
-    if (provider === null) {
+    const agentTargetId =
+      activeSessionTargetResolution.status === "resolved"
+        ? normalizeOptionalText(
+            activeSessionTargetResolution.target.agentTargetId
+          )
+        : null;
+    if (agentTargetId === null) {
       return;
     }
     const model =
@@ -11633,14 +11604,13 @@ export function useAgentGUINodeController({
     if (model === null) {
       return;
     }
-    lastActiveModelByProviderRef.current = {
-      ...lastActiveModelByProviderRef.current,
-      [provider]: model
+    lastActiveModelByAgentTargetIdRef.current = {
+      ...lastActiveModelByAgentTargetIdRef.current,
+      [agentTargetId]: model
     };
   }, [
-    activeConversation?.provider,
+    activeSessionTargetResolution,
     activeRuntimeSession?.model,
-    activeRuntimeSession?.provider,
     activeSessionState?.settings?.model
   ]);
   const activeActivityDisplayStatus = activeConversationId

@@ -121,6 +121,7 @@ import {
   IAgentsService,
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
+import { AgentGuiAgentsLoader } from "./agentGuiAgentsLoader.ts";
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -212,8 +213,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   };
   private readonly windowCloseRequestTracker =
     createWindowCloseRequestTracker();
-  private agentGuiAgentsPromise: Promise<readonly AgentGUIAgent[]> | null =
-    null;
+  private readonly agentGuiAgentsLoader: AgentGuiAgentsLoader;
 
   constructor(
     externalDependencies: WorkspaceWorkbenchHostExternalDependencies,
@@ -259,13 +259,16 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       runtimeApi: externalDependencies.runtimeApi,
       wallpaperApi: externalDependencies.wallpaperApi
     };
+    this.agentGuiAgentsLoader = new AgentGuiAgentsLoader(() =>
+      this.dependencies.agentsService.load().then((snapshot) => snapshot.agents)
+    );
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
     });
     // Provider visibility changes (e.g. the Cursor feature gate) invalidate the
     // cached agent target list so the next load reflects the new gate.
     this.dependencies.subscribeAgentProviderVisibility?.(() => {
-      this.agentGuiAgentsPromise = null;
+      this.agentGuiAgentsLoader.invalidate();
     });
     this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
@@ -276,13 +279,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]> {
-    if (!this.agentGuiAgentsPromise) {
-      this.agentGuiAgentsPromise = this.dependencies.agentsService
-        .load()
-        .then((snapshot) => snapshot.agents)
-        .catch(() => []);
-    }
-    return this.agentGuiAgentsPromise;
+    return this.agentGuiAgentsLoader.load();
   }
 
   onWindowCloseRequest(

@@ -21,6 +21,7 @@ export {
   areAgentGuiWorkbenchStatesEqual as areDesktopAgentGUIWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource as createDesktopAgentGUINodeStateSource,
   createDefaultAgentGuiWorkbenchNodeState as createDefaultDesktopAgentGUINodeState,
+  migrateLegacyAgentGuiWorkbenchState as migrateLegacyDesktopAgentGUIWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState as normalizeDesktopAgentGUINodeState,
   normalizeAgentGuiWorkbenchState as normalizeDesktopAgentGUIWorkbenchState,
   projectAgentGuiWorkbenchState as projectDesktopAgentGUIWorkbenchState
