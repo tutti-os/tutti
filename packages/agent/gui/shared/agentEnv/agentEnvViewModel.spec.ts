@@ -257,11 +257,11 @@ describe("buildAgentEnvWizardViewModel", () => {
           status: status({
             provider: "tutti-agent",
             manualInstallCommand:
-              "npm install -g @tutti-os/tutti-agent@0.0.2 --include=optional"
+              "npm install -g @tutti-os/tutti-agent@0.0.3 --include=optional"
           })
         })
       ).manualCommand
-    ).toBe("npm install -g @tutti-os/tutti-agent@0.0.2 --include=optional");
+    ).toBe("npm install -g @tutti-os/tutti-agent@0.0.3 --include=optional");
   });
 
   it("flags the install stage pending with a platform-incomplete problem when the launcher is present but the platform subpackage is missing", () => {

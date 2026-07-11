@@ -31,8 +31,6 @@ func codexNpmPlatformDir(goos, goarch string) (string, bool) {
 		nodeArch = "arm64"
 	case "amd64":
 		nodeArch = "x64"
-	case "386":
-		nodeArch = "ia32"
 	default:
 		return "", false
 	}

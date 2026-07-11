@@ -80,6 +80,33 @@ func TestServiceListProviderAvailabilityUsesAgentStatusSnapshot(t *testing.T) {
 	}
 }
 
+func TestServiceListProviderAvailabilityUsesInjectedStatusListerFallback(t *testing.T) {
+	lister := &fakeAgentProviderStatusLister{
+		snapshot: agentstatusservice.Snapshot{Providers: []agentstatusservice.ProviderStatus{{
+			Provider:     "codex",
+			Availability: agentstatusservice.Availability{Status: agentstatusservice.AvailabilityReady},
+		}}},
+	}
+	service := NewService(newFakeRuntime())
+	service.ProviderStatusLister = lister
+
+	availability, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lister.callCount != 1 || len(availability) != 1 || availability[0].Status != ProviderAvailabilityAvailable {
+		t.Fatalf("availability = %#v, calls = %d", availability, lister.callCount)
+	}
+}
+
+func TestServiceListProviderAvailabilityRejectsMissingStatusDependency(t *testing.T) {
+	service := NewService(newFakeRuntime())
+	_, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"})
+	if !errors.Is(err, ErrProviderStatusUnavailable) {
+		t.Fatalf("error = %v, want ErrProviderStatusUnavailable", err)
+	}
+}
+
 func TestServiceListProviderAvailabilityUsesClaudeSDKSidecarDetail(t *testing.T) {
 	capturedAt := time.Unix(10, 0).UTC()
 	lister := &fakeAgentProviderStatusLister{

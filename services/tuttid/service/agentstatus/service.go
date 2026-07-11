@@ -218,6 +218,7 @@ type Service struct {
 	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
 	InstallTimeout              time.Duration
 	RunAuthStatusCommand        func(context.Context, ProviderSpec, string) (AuthInfo, bool)
+	ResolveCLIVersion           func(context.Context, string, []string) string
 	AuthStatusCommandRetryDelay time.Duration
 	IsExecutableFile            func(string) bool
 	Now                         func() time.Time
@@ -241,7 +242,11 @@ const defaultAuthStatusCommandRetryDelay = 150 * time.Millisecond
 // (e.g. a slow npmjs before a fast CN mirror) without prematurely killing a
 // registry that would have succeeded.
 const defaultInstallTimeout = 8 * time.Minute
-const defaultProbeReadyAfter = 600 * time.Millisecond
+
+// Keep the observation window long enough to catch adapters that finish
+// bootstrapping and then crash (a common 600-900ms failure window), while
+// remaining well below the three-second probe timeout used by List.
+const defaultProbeReadyAfter = time.Second
 const defaultProbeTimeout = 3 * time.Second
 const defaultProbeWaitDelay = 500 * time.Millisecond
 const externalRegistryNPMProbeTimeoutPadding = 100 * time.Millisecond
@@ -618,6 +623,10 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
+	} else if spec.Provider == agentprovider.Codex && !codexVersionParseable(cliVersion) {
+		availability.Status = AvailabilityUnknown
+		availability.ReasonCode = "codex_version_unparseable"
+		actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
 	} else if spec.Provider == agentprovider.Codex && !codexVersionMeetsMinimum(cliVersion) {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))

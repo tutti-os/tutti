@@ -19,6 +19,7 @@ func TestCodexNpmPlatformDir(t *testing.T) {
 		{"linux", "amd64", "codex-linux-x64", true},
 		{"linux", "arm64", "codex-linux-arm64", true},
 		{"windows", "amd64", "codex-win32-x64", true},
+		{"windows", "386", "", false},
 		{"freebsd", "riscv64", "", false},
 	}
 	for _, tc := range cases {

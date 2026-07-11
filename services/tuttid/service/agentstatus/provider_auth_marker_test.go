@@ -24,6 +24,35 @@ func TestParseCursorAuthMarkerNeverTreatsConfigAsCredential(t *testing.T) {
 	}
 }
 
+func TestParseCodexAuthMarkerValidatesCredentialContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	for _, test := range []struct {
+		name    string
+		content string
+		status  AuthStatus
+		ok      bool
+	}{
+		{name: "api key", content: `{"OPENAI_API_KEY":"sk-test"}`, status: AuthAuthenticated, ok: true},
+		{name: "chatgpt tokens", content: `{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh","account_id":"acct"}}`, status: AuthAuthenticated, ok: true},
+		{name: "blank tokens", content: `{"tokens":{"access_token":"","refresh_token":""}}`, status: AuthRequired, ok: true},
+		{name: "empty object", content: `{}`, status: AuthRequired, ok: true},
+		{name: "malformed", content: `not-json`, ok: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(test.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			auth, ok := parseCodexAuthMarkerFile(path)
+			if ok != test.ok {
+				t.Fatalf("ok = %v, want %v", ok, test.ok)
+			}
+			if ok && auth.Status != test.status {
+				t.Fatalf("status = %q, want %q", auth.Status, test.status)
+			}
+		})
+	}
+}
+
 func TestParseOpenCodeAuthMarkerValidatesCredentialRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	for _, test := range []struct {
@@ -50,5 +79,17 @@ func TestParseOpenCodeAuthMarkerValidatesCredentialRecords(t *testing.T) {
 				t.Fatalf("status = %q, want %q", auth.Status, test.status)
 			}
 		})
+	}
+}
+
+func TestUnknownProviderMarkerIsNeverOptimisticallyAuthenticated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(path, []byte(`{"token":"present-but-unvalidated"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := Service{}
+	auth, ok := service.authFromMarkerFile(ProviderSpec{Provider: "future-provider"}, path)
+	if !ok || auth.Status != AuthRequired {
+		t.Fatalf("authFromMarkerFile() = (%#v, %v), want conservative auth required", auth, ok)
 	}
 }

@@ -17,6 +17,7 @@ type Service struct {
 	Runtime                       RuntimeController
 	AnalyticsReporter             reporterservice.Reporter
 	AvailabilityChecker           ProviderAvailabilityChecker
+	ProviderStatusLister          AgentProviderStatusLister
 	ModelCatalog                  AgentModelCatalog
 	ModelCapabilities             ModelCapabilitiesResolver
 	AgentTargetStore              AgentTargetStore

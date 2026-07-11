@@ -1406,7 +1406,7 @@ test("provider-scoped refresh immediately replaces ready status when ACP adapter
   assert.equal(service.getStatus("claude-code")?.adapter.installed, false);
 });
 
-test("provider-scoped refresh confirms auth downgrades before replacing a ready status", async () => {
+test("provider-scoped refresh applies daemon auth-required status immediately", async () => {
   const authRequiredStatus = createProviderStatus({
     actions: [
       {
@@ -1431,9 +1431,6 @@ test("provider-scoped refresh confirms auth downgrades before replacing a ready 
     tuttidClient: createTuttidClient({
       snapshots: [
         createStatusResponse([readyStatus]),
-        createStatusResponse([authRequiredStatus]),
-        createStatusResponse([readyStatus]),
-        createStatusResponse([authRequiredStatus]),
         createStatusResponse([authRequiredStatus])
       ]
     }),
@@ -1445,25 +1442,13 @@ test("provider-scoped refresh confirms auth downgrades before replacing a ready 
   await service.refresh();
   await service.refresh(["claude-code"]);
 
-  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
-
-  await service.refresh(["claude-code"]);
-
-  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
-
-  await service.refresh(["claude-code"]);
-
-  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
-
-  await service.refresh(["claude-code"]);
-
   assert.equal(
     service.getStatus("claude-code")?.availability.status,
     "auth_required"
   );
 });
 
-test("provider-scoped refresh confirms auth-unknown downgrades before replacing a ready status", async () => {
+test("provider-scoped refresh applies daemon auth-unknown status immediately", async () => {
   const authUnknownStatus = createProviderStatus({
     actions: [
       {
@@ -1489,7 +1474,6 @@ test("provider-scoped refresh confirms auth-unknown downgrades before replacing 
     tuttidClient: createTuttidClient({
       snapshots: [
         createStatusResponse([readyStatus]),
-        createStatusResponse([authUnknownStatus]),
         createStatusResponse([authUnknownStatus])
       ]
     }),
@@ -1499,10 +1483,6 @@ test("provider-scoped refresh confirms auth-unknown downgrades before replacing 
   });
 
   await service.refresh();
-  await service.refresh(["claude-code"]);
-
-  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
-
   await service.refresh(["claude-code"]);
 
   assert.equal(

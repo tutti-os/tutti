@@ -204,14 +204,29 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
 	// the stale "logged in" marker/command result until the user re-authenticates
 	// or a request succeeds again. We self-heal the moment the credential file is
-	// rewritten by a fresh login: re-login is a terminal action that never reports
-	// a "successful run", so without this the flag would stick until the user's
-	// next message succeeds, leaving the dock/wizard stuck on "needs login".
+	// rewritten by a fresh login or the provider auth command confirms the new
+	// session. Re-login is a terminal action that never reports a successful run,
+	// so without this the flag would stick until the next message succeeds.
+	var invalidationCommandAuth AuthInfo
+	var invalidationCommandOK bool
 	if failedAt, ok := s.RunOutcomes.AuthInvalidatedSince(spec.Provider); ok {
+		// A successful provider auth command is stronger than marker mtime: some
+		// login flows update credentials in place while preserving timestamps.
+		// Trust an explicit authenticated verdict and clear the runtime override.
+		if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
+			invalidationCommandAuth, invalidationCommandOK = s.resolveAuthFromCommand(ctx, spec, binaryPath)
+			if invalidationCommandOK && invalidationCommandAuth.Status == AuthAuthenticated {
+				s.RunOutcomes.ClearAuthInvalidated(spec.Provider)
+				return invalidationCommandAuth
+			}
+		}
 		if !s.authCredentialsRefreshedAfter(spec, failedAt) {
 			return AuthInfo{Status: AuthRequired}
 		}
 		s.RunOutcomes.ClearAuthInvalidated(spec.Provider)
+		if invalidationCommandOK {
+			return invalidationCommandAuth
+		}
 	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
@@ -277,6 +292,12 @@ func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, b
 		}
 		return AuthInfo{}, false
 	}
+	if spec.Provider == agentprovider.Codex {
+		if auth, ok := parseCodexAuthMarkerFile(path); ok {
+			return auth, true
+		}
+		return AuthInfo{}, false
+	}
 	if spec.Provider == agentprovider.Cursor {
 		if auth, ok := parseCursorAuthMarkerFile(path); ok {
 			return auth, true
@@ -289,7 +310,10 @@ func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, b
 		}
 		return AuthInfo{}, false
 	}
-	return AuthInfo{Status: AuthAuthenticated}, true
+	// A marker without a provider-specific parser is not proof of a usable
+	// credential. Stay conservative so newly added providers cannot regress to
+	// the old "file exists = authenticated" behavior.
+	return AuthInfo{Status: AuthRequired}, true
 }
 
 // parseTuttiAgentAuthMarkerFile validates that the Tutti Agent auth.json holds
@@ -360,7 +384,10 @@ func parseCLIVersion(output string) string {
 // "" when the binary is absent, errors, or prints nothing version-like. Used for
 // every supported provider (not just codex) so the config panel can show the
 // installed CLI version.
-func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
+func (s Service) cliVersion(ctx context.Context, binaryPath string, env []string) string {
+	if s.ResolveCLIVersion != nil {
+		return s.ResolveCLIVersion(ctx, binaryPath, env)
+	}
 	binaryPath = strings.TrimSpace(binaryPath)
 	if binaryPath == "" {
 		return ""
@@ -446,6 +473,8 @@ func codexProviderLastError(status ProviderStatus) *ProviderLastError {
 		return &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: "Codex platform package is incomplete"}
 	case "codex_version_too_old":
 		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + MinSupportedCodexVersion}
+	case "codex_version_unparseable":
+		return &ProviderLastError{Code: string(CodexErrVersionUnknown), Message: "Codex CLI version could not be determined"}
 	case "auth_required", "auth_unknown":
 		return &ProviderLastError{Code: string(CodexErrAuthRequired), Message: "authentication required"}
 	default:

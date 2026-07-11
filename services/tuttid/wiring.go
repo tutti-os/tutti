@@ -313,6 +313,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
 	}
 	agentSessionService.RuntimePreparer = agentRuntimePreparer
+	agentSessionService.ProviderStatusLister = &agentStatusService
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}

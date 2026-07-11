@@ -123,7 +123,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   >();
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
-  private readonly transientDowngradeCounts = new Map<string, number>();
   // Last env-detection fingerprint per provider, so `agent.env_detected` fires
   // only when the outcome changes instead of on every status poll.
   private readonly lastEnvSignatures = new Map<
@@ -512,10 +511,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       const previous = previousByProvider.get(status.provider);
       nextByProvider.set(
         status.provider,
-        this.preserveNetwork(
-          previous,
-          this.stabilizeProviderStatus(previous, status)
-        )
+        this.preserveNetwork(previous, status)
       );
     }
 
@@ -552,20 +548,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       return next;
     }
     return { ...next, network: previous.network };
-  }
-
-  private stabilizeProviderStatus(
-    previous: AgentProviderStatus | undefined,
-    next: AgentProviderStatus
-  ): AgentProviderStatus {
-    if (!previous || !isTransientProviderStatusDowngrade(previous, next)) {
-      this.transientDowngradeCounts.delete(next.provider);
-      return next;
-    }
-
-    const count = this.transientDowngradeCounts.get(next.provider) ?? 0;
-    this.transientDowngradeCounts.set(next.provider, count + 1);
-    return count === 0 ? previous : next;
   }
 
   private addPendingAction(
@@ -1209,23 +1191,6 @@ function isClaudeUnavailableInRegionInstallError(
     normalized.includes("claude isn't available here") ||
     normalized.includes("claude isn&#x27;t available here") ||
     normalized.includes("claude isn&apos;t available here")
-  );
-}
-
-function isTransientProviderStatusDowngrade(
-  previous: AgentProviderStatus,
-  next: AgentProviderStatus
-): boolean {
-  if (previous.provider !== next.provider) {
-    return false;
-  }
-  const reasonCode = next.availability.reasonCode ?? "";
-  return (
-    previous.availability.status === "ready" &&
-    next.cli.installed &&
-    next.adapter.installed &&
-    next.availability.status === "auth_required" &&
-    (reasonCode === "auth_required" || reasonCode === "auth_unknown")
   );
 }
 

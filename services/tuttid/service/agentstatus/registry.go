@@ -15,7 +15,7 @@ const (
 
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
 const codexServiceTierOverride = `service_tier="fast"`
-const minTuttiAgentVersion = "0.0.2"
+const minTuttiAgentVersion = "0.0.3"
 
 type ProviderSpec struct {
 	Provider                     string

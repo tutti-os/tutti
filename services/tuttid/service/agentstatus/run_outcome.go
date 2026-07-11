@@ -13,9 +13,9 @@ import (
 // "authenticated" verdict and surface "needs login" in the dock and wizard.
 //
 // The recorded value is the failure timestamp (not just a bool) so the probe can
-// self-heal: once the provider's credential file is rewritten by a fresh login
-// (its mtime moves past the failure time), the stale "needs login" verdict is
-// dropped without waiting for the next successful run.
+// self-heal when the credential file is newer. Providers whose login flow keeps
+// the same mtime also self-heal when their explicit auth-status command returns
+// an authenticated verdict.
 //
 // It is a pointer so it survives the value-copies of Service: the runtime and the
 // status probe share one store.

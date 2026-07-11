@@ -4,6 +4,10 @@
 范围：`services/tuttid` 的 agentstatus 服务 + daemon API + tuttid 客户端 + desktop 状态 service
 状态：待评审
 
+2026-07-11 现状：本轮检测正确性修补未实现此 split；差距与已完成的
+降本措施记录在
+[`2026-07-11-agent-status-detection-audit.md`](./2026-07-11-agent-status-detection-audit.md)。
+
 ## 问题
 
 桌面端安装进行中每 1 秒轮询进度（active-action），但进度只能从 `GetAgentProviderStatuses`（= `agentstatus.Service.List`）的 `activeAction` 字段拿到，而 `List` **每次调用都现场全量探测**：跑 `--version`、发 HTTP 探网络（registry/api/proxy）、查 adapter。于是高频轮询被迫每秒重探网络，网络不稳时反复闪红、整条轨道反复重检测。
@@ -34,7 +38,10 @@
 
 ## 关键约束（已核查代码）
 
-1. **`agentstatus.Service` 是值类型**，被按值拷贝、甚至在 `provider_availability.go:149` new 出空实例。→ 状态模型必须放**包级全局**（与 `active_action.go` 同模式），不能挂 `Service` 字段。
+1. **`agentstatus.Service` 是值类型**，会被按值拷贝。旧版
+   `provider_availability.go` 另建空实例的问题已在 2026-07-11 改为注入同一
+   configured lister；后续状态模型仍须明确处理值拷贝，可使用共享指针 store
+   或包級 store，但不再以空實例為前提。
 2. daemon 长生命周期（`wiring.go:215` 构造一次），包级模型跨请求存活。
 3. `GetAgentProviderStatuses` / `Probe` 是 desktop↔daemon **本地 API**，无外部消费者。当前 `List` 仅两个调用方：前端 `desktopAgentProviderStatusService` + daemon 内部 `provider_availability.go:151`。→ 翻转端点语义安全、可控。
 
