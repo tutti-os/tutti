@@ -13,22 +13,31 @@ export function shouldResetWorkspaceAppLaunchIntentReadiness(input: {
   return input.isMainFrame && !input.isSameDocument;
 }
 
-interface QueuedLaunchIntent {
+export interface WorkspaceAppLaunchIntentDelivery {
   enqueuedAtMs: number;
   intent: TuttiExternalWorkspaceOpenRouteIntent;
+  order: number;
   ownerWebContentsId: number;
 }
 
-const defaultLaunchIntentTtlMs = 5 * 60 * 1000;
-const defaultMaxIntentsPerTarget = 32;
-const defaultMaxTotalIntents = 512;
-const defaultMaxTargets = 128;
+interface WorkspaceAppLaunchIntentQueueTarget extends WorkspaceAppLaunchIntentTarget {
+  recipientWebContentsId?: number;
+}
+
+export const workspaceAppLaunchIntentQueueDefaults = Object.freeze({
+  maxIntentsPerTarget: 32,
+  maxTargets: 128,
+  maxTotalIntents: 512,
+  ttlMs: 5 * 60 * 1000
+});
 
 export class WorkspaceAppLaunchIntentQueue {
-  readonly #entries = new Map<string, QueuedLaunchIntent[]>();
+  readonly #entries = new Map<string, WorkspaceAppLaunchIntentDelivery[]>();
   readonly #maxIntentsPerTarget: number;
   readonly #maxTargets: number;
   readonly #maxTotalIntents: number;
+  #nextOrder = 0;
+  #nextPrependOrder = -1;
   readonly #now: () => number;
   readonly #ttlMs: number;
 
@@ -39,12 +48,25 @@ export class WorkspaceAppLaunchIntentQueue {
     now?: () => number;
     ttlMs?: number;
   }) {
-    this.#maxIntentsPerTarget =
-      options?.maxIntentsPerTarget ?? defaultMaxIntentsPerTarget;
-    this.#maxTargets = options?.maxTargets ?? defaultMaxTargets;
-    this.#maxTotalIntents = options?.maxTotalIntents ?? defaultMaxTotalIntents;
+    this.#maxIntentsPerTarget = requirePositiveInteger(
+      options?.maxIntentsPerTarget ??
+        workspaceAppLaunchIntentQueueDefaults.maxIntentsPerTarget,
+      "maxIntentsPerTarget"
+    );
+    this.#maxTargets = requirePositiveInteger(
+      options?.maxTargets ?? workspaceAppLaunchIntentQueueDefaults.maxTargets,
+      "maxTargets"
+    );
+    this.#maxTotalIntents = requirePositiveInteger(
+      options?.maxTotalIntents ??
+        workspaceAppLaunchIntentQueueDefaults.maxTotalIntents,
+      "maxTotalIntents"
+    );
     this.#now = options?.now ?? Date.now;
-    this.#ttlMs = options?.ttlMs ?? defaultLaunchIntentTtlMs;
+    this.#ttlMs = requireNonNegativeFiniteNumber(
+      options?.ttlMs ?? workspaceAppLaunchIntentQueueDefaults.ttlMs,
+      "ttlMs"
+    );
   }
 
   clearOwner(ownerWebContentsId: number): void {
@@ -56,15 +78,21 @@ export class WorkspaceAppLaunchIntentQueue {
   }
 
   drain(target: WorkspaceAppLaunchIntentTarget) {
+    return this.drainDeliveries(target).map((entry) => entry.intent);
+  }
+
+  drainDeliveries(
+    target: WorkspaceAppLaunchIntentQueueTarget
+  ): WorkspaceAppLaunchIntentDelivery[] {
     this.#prune();
     const key = launchIntentTargetKey(target);
     const entries = this.#entries.get(key) ?? [];
     this.#entries.delete(key);
-    return entries.map((entry) => entry.intent);
+    return entries;
   }
 
   enqueue(
-    target: WorkspaceAppLaunchIntentTarget,
+    target: WorkspaceAppLaunchIntentQueueTarget,
     intent: TuttiExternalWorkspaceOpenRouteIntent
   ): void {
     this.#prune();
@@ -76,6 +104,7 @@ export class WorkspaceAppLaunchIntentQueue {
     entries.push({
       enqueuedAtMs: this.#now(),
       intent,
+      order: this.#nextOrder++,
       ownerWebContentsId: target.ownerWebContentsId
     });
     while (entries.length > this.#maxIntentsPerTarget) {
@@ -88,7 +117,7 @@ export class WorkspaceAppLaunchIntentQueue {
   }
 
   prepend(
-    target: WorkspaceAppLaunchIntentTarget,
+    target: WorkspaceAppLaunchIntentQueueTarget,
     intent: TuttiExternalWorkspaceOpenRouteIntent
   ): void {
     this.#prune();
@@ -100,6 +129,7 @@ export class WorkspaceAppLaunchIntentQueue {
     entries.unshift({
       enqueuedAtMs: entries[0]?.enqueuedAtMs ?? this.#now(),
       intent,
+      order: this.#nextPrependOrder--,
       ownerWebContentsId: target.ownerWebContentsId
     });
     while (entries.length > this.#maxIntentsPerTarget) {
@@ -112,21 +142,81 @@ export class WorkspaceAppLaunchIntentQueue {
   }
 
   shift(
-    target: WorkspaceAppLaunchIntentTarget
+    target: WorkspaceAppLaunchIntentQueueTarget
   ): TuttiExternalWorkspaceOpenRouteIntent | undefined {
+    return this.shiftDelivery(target)?.intent;
+  }
+
+  shiftDelivery(
+    target: WorkspaceAppLaunchIntentQueueTarget
+  ): WorkspaceAppLaunchIntentDelivery | undefined {
     this.#prune();
     const key = launchIntentTargetKey(target);
     const entries = this.#entries.get(key);
-    const intent = entries?.shift()?.intent;
+    const delivery = entries?.shift();
     if (!entries || entries.length === 0) {
       this.#entries.delete(key);
     }
-    return intent;
+    return delivery;
+  }
+
+  restore(
+    target: WorkspaceAppLaunchIntentQueueTarget,
+    deliveries: readonly WorkspaceAppLaunchIntentDelivery[]
+  ): void {
+    this.#prune();
+    const expiresBefore = this.#now() - this.#ttlMs;
+    const retained = deliveries.filter(
+      (delivery) => delivery.enqueuedAtMs > expiresBefore
+    );
+    if (retained.length === 0) {
+      return;
+    }
+    const key = launchIntentTargetKey(target);
+    if (!this.#entries.has(key) && this.#entries.size >= this.#maxTargets) {
+      this.#evictOldestTarget();
+    }
+    const merged = [...(this.#entries.get(key) ?? []), ...retained].sort(
+      (left, right) => left.order - right.order
+    );
+    while (merged.length > this.#maxIntentsPerTarget) {
+      merged.shift();
+    }
+    this.#entries.set(key, merged);
+    while (this.#totalIntents() > this.#maxTotalIntents) {
+      this.#evictOldestIntent();
+    }
+  }
+
+  transfer(
+    source: WorkspaceAppLaunchIntentQueueTarget,
+    target: WorkspaceAppLaunchIntentQueueTarget
+  ): void {
+    this.#prune();
+    const sourceKey = launchIntentTargetKey(source);
+    const entries = this.#entries.get(sourceKey);
+    if (!entries || entries.length === 0) {
+      return;
+    }
+    this.#entries.delete(sourceKey);
+    const targetKey = launchIntentTargetKey(target);
+    const merged = [...(this.#entries.get(targetKey) ?? []), ...entries].sort(
+      (left, right) => left.order - right.order
+    );
+    while (merged.length > this.#maxIntentsPerTarget) {
+      merged.shift();
+    }
+    this.#entries.set(targetKey, merged);
   }
 
   get size(): number {
     this.#prune();
     return this.#totalIntents();
+  }
+
+  has(target: WorkspaceAppLaunchIntentQueueTarget): boolean {
+    this.#prune();
+    return this.#entries.has(launchIntentTargetKey(target));
   }
 
   #evictOldestIntent(): void {
@@ -213,9 +303,18 @@ interface WorkspaceAppLaunchIntentGuest {
   target: WorkspaceAppLaunchIntentTarget;
 }
 
+interface WorkspaceAppLaunchIntentReplacementBacklogs {
+  recipientWebContentsIds: number[];
+  target: WorkspaceAppLaunchIntentTarget;
+}
+
 export class WorkspaceAppLaunchIntentDeliveryState {
   readonly #guests = new Map<number, WorkspaceAppLaunchIntentGuest>();
   readonly #queue: WorkspaceAppLaunchIntentQueue;
+  readonly #replacementBacklogs = new Map<
+    string,
+    WorkspaceAppLaunchIntentReplacementBacklogs
+  >();
 
   constructor(
     options?: ConstructorParameters<typeof WorkspaceAppLaunchIntentQueue>[0]
@@ -225,6 +324,11 @@ export class WorkspaceAppLaunchIntentDeliveryState {
 
   clearOwner(ownerWebContentsId: number): void {
     this.#queue.clearOwner(ownerWebContentsId);
+    for (const [key, backlog] of this.#replacementBacklogs) {
+      if (backlog.target.ownerWebContentsId === ownerWebContentsId) {
+        this.#replacementBacklogs.delete(key);
+      }
+    }
     for (const [guestWebContentsId, guest] of this.#guests) {
       if (guest.target.ownerWebContentsId === ownerWebContentsId) {
         this.#guests.delete(guestWebContentsId);
@@ -246,33 +350,87 @@ export class WorkspaceAppLaunchIntentDeliveryState {
     }
   }
 
-  markReady(
-    guestWebContentsId: number
-  ): TuttiExternalWorkspaceOpenRouteIntent[] {
+  markDeliveryFailed(
+    guestWebContentsId: number,
+    intent: TuttiExternalWorkspaceOpenRouteIntent
+  ): void {
+    const guest = this.#guests.get(guestWebContentsId);
+    if (!guest) {
+      return;
+    }
+    guest.ready = false;
+    this.#queue.enqueue(
+      recipientTarget(guest.target, guestWebContentsId),
+      intent
+    );
+  }
+
+  restoreFailedDeliveries(
+    guestWebContentsId: number,
+    deliveries: readonly WorkspaceAppLaunchIntentDelivery[]
+  ): void {
+    const guest = this.#guests.get(guestWebContentsId);
+    if (!guest) {
+      return;
+    }
+    guest.ready = false;
+    this.#queue.restore(
+      recipientTarget(guest.target, guestWebContentsId),
+      deliveries
+    );
+  }
+
+  markReady(guestWebContentsId: number): WorkspaceAppLaunchIntentDelivery[] {
     const guest = this.#guests.get(guestWebContentsId);
     if (!guest) {
       return [];
     }
     guest.ready = true;
-    return this.#queue.drain(guest.target);
+    return [
+      ...this.#queue.drainDeliveries(guest.target),
+      ...this.#queue.drainDeliveries(
+        recipientTarget(guest.target, guestWebContentsId)
+      )
+    ];
   }
 
   registerGuest(
     guestWebContentsId: number,
     target: WorkspaceAppLaunchIntentTarget
-  ): TuttiExternalWorkspaceOpenRouteIntent | undefined {
+  ): WorkspaceAppLaunchIntentDelivery | undefined {
     this.#guests.set(guestWebContentsId, { ready: false, target });
-    return this.#queue.shift(target);
+    const replacementInitial = this.#claimReplacementBacklog(
+      guestWebContentsId,
+      target
+    );
+    if (replacementInitial) {
+      return replacementInitial;
+    }
+    return this.#queue.shiftDelivery(target);
   }
 
   removeGuest(
     guestWebContentsId: number,
-    unconsumedInitial?: TuttiExternalWorkspaceOpenRouteIntent
+    unconsumedInitial?: WorkspaceAppLaunchIntentDelivery
   ): void {
     const guest = this.#guests.get(guestWebContentsId);
     this.#guests.delete(guestWebContentsId);
-    if (guest && unconsumedInitial) {
-      this.#queue.prepend(guest.target, unconsumedInitial);
+    if (!guest) {
+      return;
+    }
+    const recipient = recipientTarget(guest.target, guestWebContentsId);
+    if (unconsumedInitial) {
+      this.#queue.restore(recipient, [unconsumedInitial]);
+    }
+    if (this.#queue.has(recipient)) {
+      this.#cleanupReplacementBacklogs();
+      const key = launchIntentTargetKey(guest.target);
+      const backlog = this.#replacementBacklogs.get(key) ?? {
+        recipientWebContentsIds: [],
+        target: guest.target
+      };
+      backlog.recipientWebContentsIds.push(guestWebContentsId);
+      this.#replacementBacklogs.set(key, backlog);
     }
   }
 
@@ -281,28 +439,113 @@ export class WorkspaceAppLaunchIntentDeliveryState {
     intent: TuttiExternalWorkspaceOpenRouteIntent
   ): number[] {
     const readyGuests: number[] = [];
+    let matchingGuestCount = 0;
     for (const [guestWebContentsId, guest] of this.#guests) {
-      if (guest.ready && targetsEqual(guest.target, target)) {
+      if (!targetsEqual(guest.target, target)) {
+        continue;
+      }
+      matchingGuestCount += 1;
+      if (guest.ready) {
         readyGuests.push(guestWebContentsId);
+      } else {
+        this.#queue.enqueue(
+          recipientTarget(target, guestWebContentsId),
+          intent
+        );
       }
     }
-    if (readyGuests.length === 0) {
+    if (matchingGuestCount === 0) {
       this.#queue.enqueue(target, intent);
     }
     return readyGuests;
   }
 
   get queuedIntentCount(): number {
+    this.#cleanupReplacementBacklogs();
     return this.#queue.size;
+  }
+
+  #claimReplacementBacklog(
+    guestWebContentsId: number,
+    target: WorkspaceAppLaunchIntentTarget
+  ): WorkspaceAppLaunchIntentDelivery | undefined {
+    this.#cleanupReplacementBacklogs();
+    const key = launchIntentTargetKey(target);
+    const backlog = this.#replacementBacklogs.get(key);
+    if (!backlog) {
+      return undefined;
+    }
+    while (backlog.recipientWebContentsIds.length > 0) {
+      const replacedGuestWebContentsId =
+        backlog.recipientWebContentsIds.shift();
+      if (replacedGuestWebContentsId === undefined) {
+        break;
+      }
+      const recipient = recipientTarget(target, guestWebContentsId);
+      this.#queue.transfer(
+        recipientTarget(target, replacedGuestWebContentsId),
+        recipient
+      );
+      if (!this.#queue.has(recipient)) {
+        continue;
+      }
+      // Intents emitted while no matching guest existed are newer than the
+      // replaced guest's backlog, so append the global lane before delivery.
+      this.#queue.transfer(target, recipient);
+      if (backlog.recipientWebContentsIds.length === 0) {
+        this.#replacementBacklogs.delete(key);
+      }
+      return this.#queue.shiftDelivery(recipient);
+    }
+    this.#replacementBacklogs.delete(key);
+    return undefined;
+  }
+
+  #cleanupReplacementBacklogs(): void {
+    for (const [key, backlog] of this.#replacementBacklogs) {
+      backlog.recipientWebContentsIds = backlog.recipientWebContentsIds.filter(
+        (guestWebContentsId) =>
+          this.#queue.has(recipientTarget(backlog.target, guestWebContentsId))
+      );
+      if (backlog.recipientWebContentsIds.length === 0) {
+        this.#replacementBacklogs.delete(key);
+      }
+    }
   }
 }
 
-function launchIntentTargetKey(target: WorkspaceAppLaunchIntentTarget): string {
+function launchIntentTargetKey(
+  target: WorkspaceAppLaunchIntentQueueTarget
+): string {
   return [
     String(target.ownerWebContentsId),
     encodeURIComponent(target.workspaceID),
-    encodeURIComponent(target.appID)
+    encodeURIComponent(target.appID),
+    target.recipientWebContentsId === undefined
+      ? "target"
+      : `guest:${String(target.recipientWebContentsId)}`
   ].join(":");
+}
+
+function recipientTarget(
+  target: WorkspaceAppLaunchIntentTarget,
+  guestWebContentsId: number
+): WorkspaceAppLaunchIntentQueueTarget {
+  return { ...target, recipientWebContentsId: guestWebContentsId };
+}
+
+function requirePositiveInteger(value: number, field: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`${field} must be a positive integer.`);
+  }
+  return value;
+}
+
+function requireNonNegativeFiniteNumber(value: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError(`${field} must be a finite non-negative number.`);
+  }
+  return value;
 }
 
 function targetsEqual(

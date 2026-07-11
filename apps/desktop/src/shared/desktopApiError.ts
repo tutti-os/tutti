@@ -23,50 +23,75 @@ export class DesktopApiError extends Error {
 export function normalizeDesktopApiErrorDetails(
   error: unknown
 ): DesktopApiErrorDetails {
-  const structured = readDesktopApiErrorDetails(error);
-  if (structured) {
-    return structured;
-  }
-  const value = isRecord(error) ? error : undefined;
-  return {
-    code: "UNKNOWN",
-    message:
+  try {
+    const structured = readDesktopApiErrorDetails(error);
+    if (structured) {
+      return structured;
+    }
+    const value = isRecord(error) ? error : undefined;
+    const message =
       error instanceof Error
-        ? error.message
-        : (readNonEmptyString(value?.message) ?? String(error))
-  };
+        ? readNonEmptyString(error.message)
+        : readNonEmptyString(value?.message);
+    return {
+      code: "UNKNOWN",
+      message:
+        message ??
+        (error instanceof Error
+          ? "Unknown desktop API error."
+          : safelyStringifyError(error))
+    };
+  } catch {
+    return {
+      code: "UNKNOWN",
+      message: "Unknown desktop API error."
+    };
+  }
 }
 
 export function readDesktopApiErrorDetails(
   error: unknown
 ): DesktopApiErrorDetails | undefined {
-  const value = isRecord(error) ? error : undefined;
-  const code = readNonEmptyString(value?.code);
-  const message =
-    error instanceof Error
-      ? readNonEmptyString(error.message)
-      : readNonEmptyString(value?.message);
-  if (!value || !code || !message) {
+  try {
+    const value = isRecord(error) ? error : undefined;
+    const code = readNonEmptyString(value?.code);
+    const message =
+      error instanceof Error
+        ? readNonEmptyString(error.message)
+        : readNonEmptyString(value?.message);
+    if (!value || !code || !message) {
+      return undefined;
+    }
+    const reason = readNonEmptyString(value?.reason);
+    const developerMessage = readNonEmptyString(value?.developerMessage);
+    const correlationId = readNonEmptyString(value?.correlationId);
+    return {
+      code,
+      message,
+      ...(reason ? { reason } : {}),
+      ...(isRecord(value?.params) ? { params: value.params } : {}),
+      ...(typeof value?.retryable === "boolean"
+        ? { retryable: value.retryable }
+        : {}),
+      ...(developerMessage ? { developerMessage } : {}),
+      ...(correlationId ? { correlationId } : {})
+    };
+  } catch {
     return undefined;
   }
-  const reason = readNonEmptyString(value?.reason);
-  const developerMessage = readNonEmptyString(value?.developerMessage);
-  const correlationId = readNonEmptyString(value?.correlationId);
-  return {
-    code,
-    message,
-    ...(reason ? { reason } : {}),
-    ...(isRecord(value?.params) ? { params: value.params } : {}),
-    ...(typeof value?.retryable === "boolean"
-      ? { retryable: value.retryable }
-      : {}),
-    ...(developerMessage ? { developerMessage } : {}),
-    ...(correlationId ? { correlationId } : {})
-  };
 }
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function safelyStringifyError(value: unknown): string {
+  try {
+    const message = String(value).trim();
+    return message || "Unknown desktop API error.";
+  } catch {
+    return "Unknown desktop API error.";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

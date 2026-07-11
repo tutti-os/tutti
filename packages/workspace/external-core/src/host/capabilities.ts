@@ -76,8 +76,19 @@ function normalizeCapabilityArray<T>(
   field: string,
   guard: (value: unknown) => value is T
 ): readonly T[] {
-  if (!Array.isArray(values) || values.some((value) => !guard(value))) {
+  if (!Array.isArray(values)) {
     throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
   }
-  return Object.freeze([...new Set(values)]);
+  const materialized: T[] = [];
+  for (let index = 0; index < values.length; index += 1) {
+    if (!Object.hasOwn(values, index)) {
+      throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
+    }
+    const value = values[index];
+    if (!guard(value)) {
+      throw new Error(`tuttiExternal host ${field} capabilities are invalid.`);
+    }
+    materialized.push(value);
+  }
+  return Object.freeze([...new Set(materialized)]);
 }

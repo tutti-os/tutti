@@ -43,3 +43,50 @@ test("falls back to UNKNOWN without accepting malformed metadata", () => {
     { code: "UNKNOWN", message: "failed" }
   );
 });
+
+test("always returns a string message for hostile or mutated errors", () => {
+  const mutated = new Error("original");
+  Object.defineProperty(mutated, "message", {
+    configurable: true,
+    value: { invalid: true }
+  });
+  assert.deepEqual(normalizeDesktopApiErrorDetails(mutated), {
+    code: "UNKNOWN",
+    message: "Unknown desktop API error."
+  });
+
+  const hostile = {
+    [Symbol.toPrimitive]() {
+      throw new Error("cannot stringify");
+    }
+  };
+  assert.deepEqual(normalizeDesktopApiErrorDetails(hostile), {
+    code: "UNKNOWN",
+    message: "Unknown desktop API error."
+  });
+
+  const throwingMessage = new Error("original");
+  Object.defineProperty(throwingMessage, "message", {
+    configurable: true,
+    get() {
+      throw new Error("cannot read message");
+    }
+  });
+  assert.deepEqual(normalizeDesktopApiErrorDetails(throwingMessage), {
+    code: "UNKNOWN",
+    message: "Unknown desktop API error."
+  });
+
+  const throwingProxy = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("cannot read property");
+      }
+    }
+  );
+  assert.deepEqual(normalizeDesktopApiErrorDetails(throwingProxy), {
+    code: "UNKNOWN",
+    message: "Unknown desktop API error."
+  });
+});

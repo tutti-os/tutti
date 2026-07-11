@@ -51,8 +51,7 @@ import type {
   TuttiExternalPdfPrintHtmlResult,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
-  TuttiExternalUploadedFile,
-  TuttiExternalWorkspaceOpenRouteIntent
+  TuttiExternalUploadedFile
 } from "@tutti-os/workspace-external-core/contracts";
 import { isTuttiExternalManagedAiModelProviderId } from "@tutti-os/workspace-external-core/core";
 import type { DesktopLocale } from "../../shared/i18n";
@@ -77,6 +76,7 @@ import {
 import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
 import {
   WorkspaceAppLaunchIntentDeliveryState,
+  type WorkspaceAppLaunchIntentDelivery,
   shouldResetWorkspaceAppLaunchIntentReadiness
 } from "./workspaceAppLaunchIntentQueue.ts";
 
@@ -93,7 +93,7 @@ type WorkspaceAppPrintLoadListener = (...args: unknown[]) => void;
 
 interface WorkspaceAppGuestContext {
   appID: string;
-  launchIntent?: TuttiExternalWorkspaceOpenRouteIntent;
+  launchIntentDelivery?: WorkspaceAppLaunchIntentDelivery;
   ownerWindow: BrowserWindow;
   workspaceID: string;
 }
@@ -115,7 +115,7 @@ export function registerWorkspaceAppGuestWebContents(
   let preloadFailed = false;
   const context = readWorkspaceAppGuestContext(ownerWindow, partition);
   if (context) {
-    context.launchIntent = workspaceAppLaunchIntents.registerGuest(
+    context.launchIntentDelivery = workspaceAppLaunchIntents.registerGuest(
       contents.id,
       workspaceAppLaunchIntentTarget(context)
     );
@@ -157,7 +157,7 @@ export function registerWorkspaceAppGuestWebContents(
     const destroyedContext = workspaceAppGuestContexts.get(contents.id);
     workspaceAppLaunchIntents.removeGuest(
       contents.id,
-      destroyedContext?.launchIntent
+      destroyedContext?.launchIntentDelivery
     );
     workspaceAppGuestWebContents.delete(contents);
     workspaceAppGuestContexts.delete(contents.id);
@@ -750,7 +750,6 @@ function forwardWorkspaceAppExternalRendererEvent(
       target,
       rendererEvent.intent
     );
-    let delivered = false;
     for (const guestWebContentsId of readyGuestIds) {
       const guestContents = webContents.fromId(guestWebContentsId);
       if (
@@ -758,7 +757,10 @@ function forwardWorkspaceAppExternalRendererEvent(
         guestContents.isDestroyed() ||
         !workspaceAppGuestWebContents.has(guestContents)
       ) {
-        workspaceAppLaunchIntents.markNotReady(guestWebContentsId);
+        workspaceAppLaunchIntents.markDeliveryFailed(
+          guestWebContentsId,
+          rendererEvent.intent
+        );
         continue;
       }
       try {
@@ -766,14 +768,12 @@ function forwardWorkspaceAppExternalRendererEvent(
           desktopIpcChannels.appExternal.guestEvent,
           rendererEvent
         );
-        delivered = true;
       } catch {
-        workspaceAppLaunchIntents.markNotReady(guestWebContentsId);
-        // Preserve the intent for a replacement/reloaded guest below.
+        workspaceAppLaunchIntents.markDeliveryFailed(
+          guestWebContentsId,
+          rendererEvent.intent
+        );
       }
-    }
-    if (readyGuestIds.length > 0 && !delivered) {
-      workspaceAppLaunchIntents.enqueue(target, rendererEvent.intent);
     }
     return;
   }
@@ -1308,8 +1308,8 @@ function createWorkspaceAppContext(
   }
   const issuer = new URL(resolveDesktopDaemonBaseUrl(endpoint)).origin;
   const installationId = `${context.workspaceID}:${context.appID}`;
-  const launchIntent = context.launchIntent;
-  delete context.launchIntent;
+  const launchIntent = context.launchIntentDelivery?.intent;
+  delete context.launchIntentDelivery;
   return {
     appId: context.appID,
     capabilities: [...workspaceAppLegacyContextCapabilities],
@@ -1395,22 +1395,19 @@ function drainWorkspaceAppInitialLaunchIntents(
   context: WorkspaceAppGuestContext
 ): void {
   const pending = workspaceAppLaunchIntents.markReady(contents.id);
-  for (const [index, intent] of pending.entries()) {
+  for (const [index, delivery] of pending.entries()) {
     try {
       contents.send(desktopIpcChannels.appExternal.guestEvent, {
         appId: context.appID,
-        intent,
+        intent: delivery.intent,
         type: "workspace.launchIntent",
         workspaceId: context.workspaceID
       } satisfies DesktopWorkspaceAppExternalRendererEvent);
     } catch {
-      workspaceAppLaunchIntents.markNotReady(contents.id);
-      for (const undelivered of pending.slice(index)) {
-        workspaceAppLaunchIntents.enqueue(
-          workspaceAppLaunchIntentTarget(context),
-          undelivered
-        );
-      }
+      workspaceAppLaunchIntents.restoreFailedDeliveries(
+        contents.id,
+        pending.slice(index)
+      );
       return;
     }
   }
