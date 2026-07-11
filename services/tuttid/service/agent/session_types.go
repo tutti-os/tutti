@@ -390,6 +390,7 @@ type SubmitAvailability struct {
 }
 
 type TurnLifecycle struct {
+	TurnID            string
 	ActiveTurnID      *string
 	Phase             string
 	Settling          bool

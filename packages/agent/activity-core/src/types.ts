@@ -326,6 +326,7 @@ export interface AgentActivityCompletedCommand {
 }
 
 export interface AgentActivityTurnLifecycle {
+  turnId?: string;
   activeTurnId: string | null;
   phase: AgentActivityTurnPhase | (string & {});
   settling?: boolean;

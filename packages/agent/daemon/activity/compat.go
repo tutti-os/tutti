@@ -258,6 +258,7 @@ func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnL
 		return nil
 	}
 	return &WorkspaceAgentTurnLifecycle{
+		TurnID:            strings.TrimSpace(value.TurnID),
 		ActiveTurnID:      cloneStringPointer(value.ActiveTurnID),
 		Phase:             strings.TrimSpace(value.Phase),
 		Settling:          value.Settling,

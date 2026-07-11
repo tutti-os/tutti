@@ -373,6 +373,37 @@ func TestStoreRestrictsTurnReassignmentToImportedSessions(t *testing.T) {
 	}
 }
 
+func TestStoreDoesNotGrantImportedTurnRepairToMessageCreatedSession(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "self-authorized-import",
+		Origin:         workspaceAgentSessionOriginImported,
+		Messages: []MessageUpdate{
+			{MessageID: "message-1", TurnID: "turn-1", Role: "assistant", Kind: "text"},
+			{MessageID: "message-1", TurnID: "turn-2", AllowTurnReassignment: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if result.AcceptedCount != 1 {
+		t.Fatalf("AcceptedCount = %d, want only the initial insert", result.AcceptedCount)
+	}
+	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: "self-authorized-import", Limit: 10,
+	})
+	if err != nil || !ok || len(page.Messages) != 1 {
+		t.Fatalf("ListSessionMessages() = %#v, ok=%v error=%v", page, ok, err)
+	}
+	if page.Messages[0].TurnID != "turn-1" {
+		t.Fatalf("TurnID = %q, want turn-1", page.Messages[0].TurnID)
+	}
+}
+
 func TestStoreClearSessionsTxJoinsCallerTransaction(t *testing.T) {
 	t.Parallel()
 

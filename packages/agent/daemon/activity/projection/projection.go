@@ -96,11 +96,14 @@ func ProjectSessionState(
 	if hasExisting {
 		session.CreatedAtUnixMS = existing.CreatedAtUnixMS
 		session.MessageVersion = existing.MessageVersion
+		// Origin is provenance, not mutable session state. Once persisted it must
+		// not be rewritten by a later report and used to acquire import-repair
+		// authority.
+		if strings.TrimSpace(existing.Origin) != "" {
+			session.Origin = existing.Origin
+		}
 		if session.LastError == "" {
 			session.LastError = strings.TrimSpace(existing.LastError)
-		}
-		if session.Origin == "" {
-			session.Origin = existing.Origin
 		}
 		if session.UserID == "" {
 			session.UserID = existing.UserID

@@ -981,6 +981,7 @@ describe("projectAgentConversationVM", () => {
           ...base.session,
           status: "canceled",
           turnLifecycle: {
+            turnId: "turn-1",
             activeTurnId: null,
             phase: "settled",
             outcome: "canceled",
@@ -1031,6 +1032,60 @@ describe("projectAgentConversationVM", () => {
         completedAtUnixMs: 9_000
       })
     );
+  });
+
+  it("keeps settled lifecycle timing attached to its owning turn", () => {
+    const base = detailViewModel();
+    const firstTurn = base.turns[0]!;
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...base.session,
+          turnLifecycle: {
+            turnId: "turn-1",
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "completed",
+            startedAtUnixMs: 1_000,
+            completedAtUnixMs: 5_000
+          }
+        },
+        turns: [
+          firstTurn,
+          {
+            id: "turn-2",
+            userMessage: {
+              id: "user-2",
+              body: "Next turn",
+              occurredAtUnixMs: 6_000
+            },
+            userMessages: [
+              {
+                id: "user-2",
+                body: "Next turn",
+                occurredAtUnixMs: 6_000
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.filter((row) => row.kind === "turn-elapsed")
+    ).toEqual([
+      expect.objectContaining({
+        id: "turn-elapsed:turn-1",
+        startedAtUnixMs: 1_000,
+        completedAtUnixMs: 5_000
+      })
+    ]);
   });
 
   it("scopes the transient processing row identity to the latest turn", () => {

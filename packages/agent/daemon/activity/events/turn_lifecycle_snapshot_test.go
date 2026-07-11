@@ -8,7 +8,7 @@ import (
 func TestTurnLifecycleSnapshotRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	event := Event{Payload: EventPayload{}}
+	event := Event{Payload: EventPayload{TurnID: "turn-1"}}
 	StampTurnLifecycleSnapshot(&event, TurnLifecycleSnapshot{
 		Origin:            TurnLifecycleOriginAdapter,
 		Seq:               7,
@@ -25,6 +25,7 @@ func TestTurnLifecycleSnapshotRoundTrip(t *testing.T) {
 	if parsed.Version != TurnLifecycleSnapshotVersion ||
 		parsed.Origin != TurnLifecycleOriginAdapter ||
 		parsed.Seq != 7 ||
+		parsed.TurnID != "turn-1" ||
 		parsed.ActiveTurnID != "turn-1" ||
 		parsed.Phase != string(TurnPhaseRunning) ||
 		parsed.StartedAtUnixMS != 1234 ||
@@ -38,7 +39,7 @@ func TestTurnLifecycleSnapshotRoundTrip(t *testing.T) {
 func TestTurnLifecycleSnapshotSurvivesJSON(t *testing.T) {
 	t.Parallel()
 
-	event := Event{Payload: EventPayload{}}
+	event := Event{Payload: EventPayload{TurnID: "turn-2"}}
 	StampTurnLifecycleSnapshot(&event, TurnLifecycleSnapshot{
 		Origin:            TurnLifecycleOriginController,
 		Seq:               42,
@@ -59,7 +60,7 @@ func TestTurnLifecycleSnapshotSurvivesJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("snapshot lost across JSON round trip")
 	}
-	if parsed.Seq != 42 || parsed.Phase != string(TurnPhaseSettled) ||
+	if parsed.Seq != 42 || parsed.TurnID != "turn-2" || parsed.Phase != string(TurnPhaseSettled) ||
 		parsed.Outcome != string(TurnOutcomeInterrupted) ||
 		parsed.StartedAtUnixMS != 5678 ||
 		parsed.CompletedAtUnixMS != 6789 {

@@ -1285,6 +1285,7 @@ export type SendWorkspaceAgentSessionInputResponse = {
 };
 
 export type AgentActivityTurnLifecycle = {
+  turnId?: string;
   activeTurnId: string | null;
   phase: string;
   settling?: boolean;

@@ -141,6 +141,7 @@ type WorkspaceAgentSubmitAvailability struct {
 }
 
 type WorkspaceAgentTurnLifecycle struct {
+	TurnID            string                          `json:"turnId,omitempty"`
 	ActiveTurnID      *string                         `json:"activeTurnId"`
 	Phase             string                          `json:"phase"`
 	Settling          bool                            `json:"settling,omitempty"`

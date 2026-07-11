@@ -57,6 +57,9 @@ func TestAdapterTurnLifecycleSnapshotsCarryStartedAt(t *testing.T) {
 		if snapshot.StartedAtUnixMS != 1000 {
 			t.Fatalf("event %d startedAtUnixMs = %d, want 1000", index, snapshot.StartedAtUnixMS)
 		}
+		if snapshot.TurnID != "turn-1" {
+			t.Fatalf("event %d turnId = %q, want turn-1", index, snapshot.TurnID)
+		}
 		if event.Type == activityshared.EventTurnCompleted && snapshot.CompletedAtUnixMS != 2000 {
 			t.Fatalf("event %d completedAtUnixMs = %d, want 2000", index, snapshot.CompletedAtUnixMS)
 		}

@@ -3691,12 +3691,20 @@ function mergeSessionControlStatePatch(
         : patch.turn.phase === "settled" || patch.turn.phase === "idle"
           ? null
           : patch.turn.turnId;
-    const preserveCurrentTiming = isSameActiveTurnLifecycle(
+    const preserveCurrentTiming = isSameTurnLifecyclePatch(
       current.turnLifecycle,
       nextActiveTurnId,
       patch.turn.turnId
     );
     next.turnLifecycle = {
+      turnId:
+        patch.turn.turnId?.trim() ||
+        nextActiveTurnId?.trim() ||
+        (preserveCurrentTiming
+          ? current.turnLifecycle?.turnId ||
+            current.turnLifecycle?.activeTurnId ||
+            undefined
+          : undefined),
       activeTurnId: nextActiveTurnId,
       phase: patch.turn.phase,
       settling: patch.turn.settling,
@@ -3729,12 +3737,16 @@ function sameJSONValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-function isSameActiveTurnLifecycle(
-  current: { activeTurnId?: string | null } | null | undefined,
+function isSameTurnLifecyclePatch(
+  current:
+    | { turnId?: string | null; activeTurnId?: string | null }
+    | null
+    | undefined,
   nextActiveTurnId: string | null | undefined,
   patchTurnId: string | null | undefined
 ): boolean {
-  const currentTurnId = current?.activeTurnId?.trim();
+  const currentTurnId =
+    current?.turnId?.trim() || current?.activeTurnId?.trim();
   if (!currentTurnId) {
     return false;
   }
@@ -11225,6 +11237,8 @@ export function useAgentGUINodeController({
           (turnLifecycle?.activeTurnId ?? null) &&
         (previous.turnLifecycle?.phase ?? null) ===
           (turnLifecycle?.phase ?? null) &&
+        (previous.turnLifecycle?.turnId ?? null) ===
+          (turnLifecycle?.turnId ?? null) &&
         (previous.turnLifecycle?.settling ?? false) ===
           (turnLifecycle?.settling ?? false) &&
         (previous.turnLifecycle?.startedAtUnixMs ?? null) ===
@@ -11261,12 +11275,14 @@ export function useAgentGUINodeController({
       activeConversation?.titleFallback,
       activeConversation?.userId,
       activeRuntimeTurnLifecycle?.activeTurnId,
+      activeRuntimeTurnLifecycle?.turnId,
       activeRuntimeTurnLifecycle?.phase,
       activeRuntimeTurnLifecycle?.settling,
       activeRuntimeTurnLifecycle?.startedAtUnixMs,
       activeRuntimeTurnLifecycle?.completedAtUnixMs,
       activeSessionState?.agentSessionId,
       activeSessionState?.turnLifecycle?.activeTurnId,
+      activeSessionState?.turnLifecycle?.turnId,
       activeSessionState?.turnLifecycle?.phase,
       activeSessionState?.turnLifecycle?.settling,
       activeSessionState?.turnLifecycle?.startedAtUnixMs,

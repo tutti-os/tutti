@@ -77,7 +77,7 @@ function turnStartedAtUnixMs(
   const lifecycle = turnLifecycleWithTiming(detail);
   if (
     lifecycle?.activeTurnId?.trim() === turn.id ||
-    isTurnLifecycleForSettledTurn(detail, lifecycle, turn.id)
+    isTurnLifecycleForSettledTurn(lifecycle, turn.id)
   ) {
     const lifecycleStartedAt = positiveUnixMs(lifecycle?.startedAtUnixMs);
     if (lifecycleStartedAt !== null) {
@@ -102,7 +102,7 @@ function turnCompletedAtUnixMs(
   turn: WorkspaceAgentSessionDetailTurn
 ): number | null {
   const lifecycle = turnLifecycleWithTiming(detail);
-  if (isTurnLifecycleForSettledTurn(detail, lifecycle, turn.id)) {
+  if (isTurnLifecycleForSettledTurn(lifecycle, turn.id)) {
     const lifecycleCompletedAt = positiveUnixMs(lifecycle?.completedAtUnixMs);
     if (lifecycleCompletedAt !== null) {
       return lifecycleCompletedAt;
@@ -250,15 +250,14 @@ function processingStartedAtUnixMs(
 }
 
 function isTurnLifecycleForSettledTurn(
-  detail: WorkspaceAgentSessionDetailViewModel,
   lifecycle: ReturnType<typeof turnLifecycleWithTiming>,
   turnId: string
 ): boolean {
   return (
     lifecycle?.phase?.trim() === "settled" &&
     lifecycle.activeTurnId == null &&
-    positiveUnixMs(lifecycle.completedAtUnixMs) !== null &&
-    detail.turns.at(-1)?.id === turnId
+    lifecycle.turnId?.trim() === turnId &&
+    positiveUnixMs(lifecycle.completedAtUnixMs) !== null
   );
 }
 
@@ -278,6 +277,7 @@ function isLiveTurn(
 function turnLifecycleWithTiming(detail: WorkspaceAgentSessionDetailViewModel):
   | {
       activeTurnId?: string | null;
+      turnId?: string | null;
       phase?: string | null;
       settling?: boolean | null;
       startedAtUnixMs?: number | null;
@@ -288,6 +288,7 @@ function turnLifecycleWithTiming(detail: WorkspaceAgentSessionDetailViewModel):
   return detail.session.turnLifecycle as
     | {
         activeTurnId?: string | null;
+        turnId?: string | null;
         phase?: string | null;
         settling?: boolean | null;
         startedAtUnixMs?: number | null;

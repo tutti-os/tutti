@@ -886,10 +886,12 @@ missing transcript row as a rendering-only bug.
 
 When desktop reconciliation serializes a fetched session back into a host state
 patch, `session.turnLifecycle` is authoritative over transcript-derived turn
-inference. Carry its active id, phase, settling flag, outcome, command, and
-start/completion timestamps together; only infer a turn from messages when the
-session has no lifecycle. Otherwise a stale final user message can replace a
-settled lifecycle and discard the terminal duration.
+inference. Carry its stable turn id, active id, phase, settling flag, outcome,
+command, and start/completion timestamps together; only infer a turn from
+messages when the session has no lifecycle. `activeTurnId` becomes empty after
+settlement, while `turnId` continues to identify the turn that owns the frozen
+timing. Otherwise a newly appended user message can claim the previous turn's
+settled lifecycle or discard its terminal duration.
 
 Live display-only clocks in transcript rows, such as running sub-agent elapsed
 time, are UI-local interaction state. Do not derive a running timer solely from
@@ -1101,7 +1103,9 @@ User-visible rules:
   must keep turn ownership immutable. The persistence boundary must authorize
   that repair from both the incoming report origin and the existing session's
   persisted imported origin; a per-message repair flag is only a request and
-  cannot change session provenance or grant itself permission.
+  cannot change session provenance or grant itself permission. Session origin is
+  immutable after persistence, and a message report cannot acquire repair
+  authority while implicitly creating its own imported session.
 - Detail errors should be tied to the active session and cleared when a new
   active session is selected or a retry begins.
 - Auto-scroll, bottom anchoring, and pending-row placement are visual behaviors

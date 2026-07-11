@@ -1343,6 +1343,7 @@ test("controller clears active turn and submit block from settled inline state p
   assert.equal(result.applied, true);
   const session = controller.getSnapshot().sessions[0];
   assert.deepEqual(session?.turnLifecycle, {
+    turnId: "turn-1",
     activeTurnId: null,
     phase: "settled",
     settling: undefined,
@@ -1353,6 +1354,36 @@ test("controller clears active turn and submit block from settled inline state p
   });
   assert.deepEqual(session?.submitAvailability, { state: "available" });
   assert.equal(session?.currentPhase, "idle");
+
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "state_patch",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      eventType: "state_patch",
+      currentPhase: "idle",
+      lastEventUnixMs: 2100,
+      turn: {
+        turnId: "turn-1",
+        activeTurnId: null,
+        phase: "settled",
+        outcome: "completed"
+      }
+    }
+  });
+
+  assert.deepEqual(controller.getSnapshot().sessions[0]?.turnLifecycle, {
+    turnId: "turn-1",
+    activeTurnId: null,
+    phase: "settled",
+    settling: undefined,
+    startedAtUnixMs: 1000,
+    completedAtUnixMs: 2000,
+    outcome: "completed",
+    completedCommand: null
+  });
 });
 
 test("controller maps session update events into complete session snapshots", () => {

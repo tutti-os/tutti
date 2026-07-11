@@ -57,6 +57,25 @@ func TestProjectSessionStateMergesExistingSnapshot(t *testing.T) {
 	}
 }
 
+func TestProjectSessionStatePreservesExistingOrigin(t *testing.T) {
+	t.Parallel()
+
+	projected := ProjectSessionState(SessionSnapshot{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Origin:         "runtime",
+	}, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Origin:           "WORKSPACE_AGENT_SESSION_ORIGIN_IMPORTED",
+		OccurredAtUnixMS: 100,
+	}, 100)
+
+	if projected.Session.Origin != "runtime" {
+		t.Fatalf("Origin = %q, want immutable runtime provenance", projected.Session.Origin)
+	}
+}
+
 func TestProjectSessionStateRejectsDeletedSnapshot(t *testing.T) {
 	existing := SessionSnapshot{
 		WorkspaceID:     "ws-1",

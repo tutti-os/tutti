@@ -1914,6 +1914,7 @@ type AgentActivityTurnLifecycle struct {
 	Phase             string                         `json:"phase"`
 	Settling          *bool                          `json:"settling,omitempty"`
 	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
+	TurnId            *string                        `json:"turnId,omitempty"`
 }
 
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.

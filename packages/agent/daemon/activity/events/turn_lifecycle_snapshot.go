@@ -23,6 +23,8 @@ type TurnLifecycleSnapshot struct {
 	// event sink); a consumer must drop a snapshot whose seq is lower than
 	// the last one it applied.
 	Seq uint64 `json:"seq"`
+	// TurnID identifies the turn this lifecycle describes even after it settles.
+	TurnID string `json:"turnId,omitempty"`
 	// ActiveTurnID is empty once the turn settled.
 	ActiveTurnID string `json:"activeTurnId,omitempty"`
 	// Phase is one of TurnPhaseSubmitted/Running/WaitingApproval/WaitingInput
@@ -108,10 +110,14 @@ func StampTurnLifecycleSnapshot(event *Event, snapshot TurnLifecycleSnapshot) {
 	if event.Payload.Metadata == nil {
 		event.Payload.Metadata = map[string]any{}
 	}
+	if snapshot.TurnID == "" {
+		snapshot.TurnID = strings.TrimSpace(event.Payload.TurnID)
+	}
 	event.Payload.Metadata[TurnLifecycleSnapshotMetadataKey] = map[string]any{
 		"v":                 snapshot.Version,
 		"origin":            snapshot.Origin,
 		"seq":               snapshot.Seq,
+		"turnId":            snapshot.TurnID,
 		"activeTurnId":      snapshot.ActiveTurnID,
 		"phase":             snapshot.Phase,
 		"outcome":           snapshot.Outcome,
@@ -136,12 +142,16 @@ func TurnLifecycleSnapshotFromEvent(event Event) (TurnLifecycleSnapshot, bool) {
 		Version:           intFromAny(payload["v"]),
 		Origin:            stringFromAny(payload["origin"]),
 		Seq:               uint64(intFromAny(payload["seq"])),
+		TurnID:            stringFromAny(payload["turnId"]),
 		ActiveTurnID:      stringFromAny(payload["activeTurnId"]),
 		Phase:             stringFromAny(payload["phase"]),
 		Outcome:           stringFromAny(payload["outcome"]),
 		Settling:          boolFromAny(payload["settling"]),
 		StartedAtUnixMS:   int64FromAny(payload["startedAtUnixMs"]),
 		CompletedAtUnixMS: int64FromAny(payload["completedAtUnixMs"]),
+	}
+	if snapshot.TurnID == "" {
+		snapshot.TurnID = strings.TrimSpace(event.Payload.TurnID)
 	}
 	if snapshot.Phase == "" {
 		return TurnLifecycleSnapshot{}, false

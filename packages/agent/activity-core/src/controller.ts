@@ -1712,7 +1712,15 @@ function turnLifecycleFromStatePatch(
     activeTurnId,
     existingLifecycle
   );
+  const lifecycleTurnId =
+    turn.turnId?.trim() ||
+    activeTurnId?.trim() ||
+    (preserveExistingTiming
+      ? existingLifecycle?.turnId?.trim() ||
+        existingLifecycle?.activeTurnId?.trim()
+      : undefined);
   return {
+    turnId: lifecycleTurnId || undefined,
     activeTurnId,
     phase,
     settling: turn.settling,
@@ -1741,14 +1749,17 @@ function isSameTurnLifecyclePatch(
   if (!existingLifecycle) {
     return false;
   }
-  const existingActiveTurnId = existingLifecycle.activeTurnId?.trim() || null;
+  const existingTurnId =
+    existingLifecycle.turnId?.trim() ||
+    existingLifecycle.activeTurnId?.trim() ||
+    null;
   const patchTurnId = turn.turnId?.trim() || null;
   const nextActiveTurnId = activeTurnId?.trim() || null;
-  if (existingActiveTurnId && nextActiveTurnId) {
-    return existingActiveTurnId === nextActiveTurnId;
+  if (existingTurnId && nextActiveTurnId) {
+    return existingTurnId === nextActiveTurnId;
   }
-  if (existingActiveTurnId && patchTurnId) {
-    return existingActiveTurnId === patchTurnId;
+  if (existingTurnId && patchTurnId) {
+    return existingTurnId === patchTurnId;
   }
   return false;
 }

@@ -123,6 +123,7 @@ func cloneTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
 		outcome = &next
 	}
 	return &TurnLifecycle{
+		TurnID:            strings.TrimSpace(value.TurnID),
 		ActiveTurnID:      activeTurnID,
 		Phase:             strings.TrimSpace(value.Phase),
 		Settling:          value.Settling,

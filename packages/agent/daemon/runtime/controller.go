@@ -1487,6 +1487,7 @@ func turnSteeredIntoActiveTurn(events []activityshared.Event, turnID string) boo
 func submittedTurnLifecycle(turnID string) *TurnLifecycle {
 	activeTurnID := strings.TrimSpace(turnID)
 	return &TurnLifecycle{
+		TurnID:       activeTurnID,
 		ActiveTurnID: &activeTurnID,
 		Phase:        "submitted",
 	}
@@ -1659,6 +1660,7 @@ func applyTurnLifecycleSnapshot(session Session, snapshot activityshared.TurnLif
 		return session
 	}
 	lifecycle := TurnLifecycle{
+		TurnID:            firstNonEmptyString(snapshot.TurnID, eventTurnID),
 		Phase:             snapshot.Phase,
 		Settling:          snapshot.Settling,
 		StartedAtUnixMS:   snapshot.StartedAtUnixMS,
@@ -1793,7 +1795,7 @@ func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event
 		if turnID == "" {
 			continue
 		}
-		lifecycle := TurnLifecycle{Phase: phase}
+		lifecycle := TurnLifecycle{TurnID: turnID, Phase: phase}
 		if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil && strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) == turnID {
 			lifecycle.StartedAtUnixMS = session.TurnLifecycle.StartedAtUnixMS
 		}
@@ -1898,6 +1900,7 @@ func cloneRuntimeTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
 		outcome = &next
 	}
 	return &TurnLifecycle{
+		TurnID:            strings.TrimSpace(value.TurnID),
 		ActiveTurnID:      activeTurnID,
 		Phase:             strings.TrimSpace(value.Phase),
 		Settling:          value.Settling,
@@ -1989,6 +1992,7 @@ func settleFinishedTurnLifecycle(session Session, turnID string) Session {
 		outcome = strings.TrimSpace(*session.TurnLifecycle.Outcome)
 	}
 	session.TurnLifecycle = &TurnLifecycle{
+		TurnID:            firstNonEmptyString(session.TurnLifecycle.TurnID, turnID),
 		Phase:             "settled",
 		StartedAtUnixMS:   session.TurnLifecycle.StartedAtUnixMS,
 		CompletedAtUnixMS: session.TurnLifecycle.CompletedAtUnixMS,
@@ -3039,6 +3043,7 @@ func activityTurnLifecycleFromRuntime(value *TurnLifecycle) *agentsessionstore.W
 		outcome = &next
 	}
 	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnID:            strings.TrimSpace(value.TurnID),
 		ActiveTurnID:      activeTurnID,
 		Phase:             strings.TrimSpace(value.Phase),
 		Settling:          value.Settling,

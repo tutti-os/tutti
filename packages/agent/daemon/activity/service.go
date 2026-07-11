@@ -1562,6 +1562,7 @@ func applyExplicitTurnLifecycleToPatch(patch *WorkspaceAgentStatePatch, event ac
 		}
 	}
 	patch.TurnLifecycle = &WorkspaceAgentTurnLifecycle{
+		TurnID:            turnID,
 		ActiveTurnID:      turnActive,
 		Phase:             lifecyclePhase,
 		StartedAtUnixMS:   startedAtUnixMS,

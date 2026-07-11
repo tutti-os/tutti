@@ -2104,6 +2104,7 @@ function statePatchTurnFromLifecycle(
     return null;
   }
   const activeTurnId = lifecycle.activeTurnId?.trim() || null;
+  const lifecycleTurnId = lifecycle.turnId?.trim() || "";
   const latestTurnId = latestMessageWithTurn(messages)?.turnId?.trim() || "";
   return {
     activeTurnId,
@@ -2117,7 +2118,7 @@ function statePatchTurnFromLifecycle(
     ...(lifecycle.startedAtUnixMs !== undefined
       ? { startedAtUnixMs: lifecycle.startedAtUnixMs }
       : {}),
-    turnId: activeTurnId ?? latestTurnId
+    turnId: lifecycleTurnId || activeTurnId || latestTurnId
   };
 }
 

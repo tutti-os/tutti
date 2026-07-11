@@ -767,6 +767,7 @@ func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *a
 		return nil
 	}
 	return &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnID:            strings.TrimSpace(value.TurnID),
 		ActiveTurnID:      cloneStringPointer(value.ActiveTurnID),
 		Phase:             strings.TrimSpace(value.Phase),
 		Settling:          value.Settling,
@@ -806,7 +807,11 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 	if !ok {
 		return false
 	}
-	turnID := firstNonEmptyString(strings.TrimSpace(snapshot.ActiveTurnID), strings.TrimSpace(event.Payload.TurnID))
+	turnID := firstNonEmptyString(
+		strings.TrimSpace(snapshot.TurnID),
+		strings.TrimSpace(snapshot.ActiveTurnID),
+		strings.TrimSpace(event.Payload.TurnID),
+	)
 	var turnActive *string
 	if snapshot.Phase != "settled" && strings.TrimSpace(snapshot.ActiveTurnID) != "" {
 		activeTurnID := strings.TrimSpace(snapshot.ActiveTurnID)
@@ -833,6 +838,7 @@ func applyLifecycleSnapshotToPatch(patch *agentsessionstore.WorkspaceAgentStateP
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
 	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnID:            firstNonEmptyString(snapshot.TurnID, event.Payload.TurnID),
 		ActiveTurnID:      turnActive,
 		Phase:             snapshot.Phase,
 		Settling:          snapshot.Settling,
@@ -915,6 +921,7 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 	}
 	patch.SubmitAvailability = cloneSubmitAvailability(patch.Turn.SubmitAvailability)
 	patch.TurnLifecycle = &agentsessionstore.WorkspaceAgentTurnLifecycle{
+		TurnID:           turnID,
 		ActiveTurnID:     turnActive,
 		Phase:            lifecyclePhase,
 		Outcome:          nil,

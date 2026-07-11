@@ -18263,6 +18263,117 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("keeps settled turn timing when a duplicate state patch omits timing", async () => {
+    let activityListener:
+      | ((event: AgentHostAgentActivityStreamEvent) => void)
+      | undefined;
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({
+        timelineItems: [
+          timelineMessage({
+            agentSessionId: "session-1",
+            id: 1,
+            eventId: "user-1",
+            role: "user",
+            content: "Run it",
+            turnId: "turn-1",
+            occurredAtUnixMs: 500
+          })
+        ]
+      })),
+      subscribeEvents: vi.fn((_payload, listener) => {
+        activityListener = listener;
+        return vi.fn();
+      }),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          status: "working",
+          turnLifecycle: {
+            turnId: "turn-1",
+            activeTurnId: "turn-1",
+            phase: "running",
+            startedAtUnixMs: 1_000
+          },
+          submitAvailability: { state: "blocked", reason: "active_turn" }
+        })
+      )
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(activityListener).toBeDefined();
+    });
+
+    const emitSettledPatch = (
+      occurredAtUnixMs: number,
+      timing?: { startedAtUnixMs: number; completedAtUnixMs: number }
+    ) => {
+      activityListener?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          turn: {
+            turnId: "turn-1",
+            activeTurnId: null,
+            phase: "settled",
+            outcome: "completed",
+            ...timing
+          },
+          occurredAtUnixMs
+        } as AgentHostWorkspaceAgentStatePatch
+      });
+    };
+
+    act(() => {
+      emitSettledPatch(6_000, {
+        startedAtUnixMs: 1_000,
+        completedAtUnixMs: 6_000
+      });
+    });
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversation?.rows.find(
+          (row) => row.kind === "turn-elapsed"
+        )
+      ).toEqual(
+        expect.objectContaining({
+          startedAtUnixMs: 1_000,
+          completedAtUnixMs: 6_000
+        })
+      );
+    });
+
+    act(() => {
+      emitSettledPatch(6_100);
+    });
+    await waitFor(() => {
+      expect(
+        result.current.viewModel.conversation?.rows.find(
+          (row) => row.kind === "turn-elapsed"
+        )
+      ).toEqual(
+        expect.objectContaining({
+          startedAtUnixMs: 1_000,
+          completedAtUnixMs: 6_000
+        })
+      );
+    });
+  });
+
   it("keeps composer busy from timeline working status when lifecycle is stale settled", async () => {
     const exec = vi.fn(async () => ({
       agentSessionId: "session-1",

@@ -43,6 +43,24 @@ func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 	}
 }
 
+func TestServiceTurnLifecycleFromRuntimePreservesIdentityAndTiming(t *testing.T) {
+	activeTurnID := "turn-1"
+	converted := serviceTurnLifecycleFromRuntime(agentruntime.TurnLifecycle{
+		TurnID:            "turn-1",
+		ActiveTurnID:      &activeTurnID,
+		Phase:             "running",
+		StartedAtUnixMS:   1000,
+		CompletedAtUnixMS: 2000,
+	})
+
+	if converted.TurnID != "turn-1" || converted.ActiveTurnID == nil || *converted.ActiveTurnID != "turn-1" {
+		t.Fatalf("turn identity = %#v, want turn-1", converted)
+	}
+	if converted.StartedAtUnixMS != 1000 || converted.CompletedAtUnixMS != 2000 {
+		t.Fatalf("turn timing = %d/%d, want 1000/2000", converted.StartedAtUnixMS, converted.CompletedAtUnixMS)
+	}
+}
+
 func runtimeContextHasClaudeSDKModelConfigOptions(runtimeContext map[string]any) bool {
 	options, ok := runtimeContext["configOptions"].([]map[string]any)
 	if !ok {

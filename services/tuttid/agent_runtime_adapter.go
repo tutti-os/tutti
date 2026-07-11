@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -145,11 +146,14 @@ func serviceCompletedCommandFromRuntime(value *agentruntime.CompletedCommand) *a
 
 func serviceTurnLifecycleFromRuntime(value agentruntime.TurnLifecycle) agentservice.TurnLifecycle {
 	return agentservice.TurnLifecycle{
-		ActiveTurnID:     cloneStringPointer(value.ActiveTurnID),
-		Phase:            value.Phase,
-		Settling:         value.Settling,
-		Outcome:          cloneStringPointer(value.Outcome),
-		CompletedCommand: serviceCompletedCommandFromRuntime(value.CompletedCommand),
+		TurnID:            strings.TrimSpace(value.TurnID),
+		ActiveTurnID:      cloneStringPointer(value.ActiveTurnID),
+		Phase:             value.Phase,
+		Settling:          value.Settling,
+		StartedAtUnixMS:   value.StartedAtUnixMS,
+		CompletedAtUnixMS: value.CompletedAtUnixMS,
+		Outcome:           cloneStringPointer(value.Outcome),
+		CompletedCommand:  serviceCompletedCommandFromRuntime(value.CompletedCommand),
 	}
 }
 
