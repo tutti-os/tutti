@@ -36,6 +36,9 @@ test("confirmWorkspaceWindowClose minimizes focused workbench node before window
       onCloseNode: () => assert.fail("window close should not close nodes"),
       onMinimizeNode: (nodeId) => {
         events.push(`node-minimize:${nodeId}`);
+      },
+      onRequestNodeClose: (nodeId) => {
+        events.push(`node-request-close:${nodeId}`);
       }
     }),
     hostInput,
@@ -128,6 +131,9 @@ test("confirmWorkspaceWindowClose falls back to visible node when focused id is 
       nodeIds: ["live-node"],
       onMinimizeNode: (nodeId) => {
         events.push(`node-minimize:${nodeId}`);
+      },
+      onRequestNodeClose: (nodeId) => {
+        events.push(`node-request-close:${nodeId}`);
       }
     }),
     hostInput,
@@ -220,6 +226,9 @@ test("confirmWorkspaceWindowClose closes the focused workbench node and blocks h
       },
       onMinimizeNode: (nodeId) => {
         events.push(`node-minimize:${nodeId}`);
+      },
+      onRequestNodeClose: (nodeId) => {
+        events.push(`node-request-close:${nodeId}`);
       }
     }),
     hostInput,

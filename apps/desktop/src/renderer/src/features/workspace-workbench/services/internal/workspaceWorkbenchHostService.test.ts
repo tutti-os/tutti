@@ -19,6 +19,48 @@ const workspaceWorkbenchHostServiceSource = readFileSync(
   "utf8"
 );
 
+test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /createWorkspaceWorkbenchContributionRegistryResult\(\{\s+context: \{[\s\S]*?factories: defaultWorkspaceWorkbenchContributionFactories\s+\}\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /contributions: contributionRegistry\.contributions/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /prepareHostClose: resolveWorkbenchHostPrepareClose\(\s+contributionRegistry\.contributions\s+\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /snapshotRepository: this\.dependencies\.repository/
+  );
+});
+
+test("workspace workbench host caches stable host input and isolates dynamic dock updates", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /private readonly cachedHostInputs = new Map<\s+string,\s+CachedWorkspaceWorkbenchHostInput\s+>\(\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /const cached = this\.cachedHostInputs\.get\(input\.workspaceId\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.renderFilesNodeBodyRef\.current = input\.renderFilesNodeBody;\s+return this\.createHostInputWithDynamicDockEntries\(/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /const dockSignature = createWorkspaceDynamicDockSignature\(\{[\s\S]*?cached\.dynamicDockSignature === dockSignature[\s\S]*?return cached\.dynamicHostInput/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.dynamicHostInput = dynamicHostInput;\s+return dynamicHostInput/
+  );
+});
+
 test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {
   assert.equal(
     shouldCloseTerminalNodeAfterError(

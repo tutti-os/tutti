@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
+import {
+  defaultIssueManagerNodeFrame,
+  defaultIssueManagerWorkbenchTypeId
+} from "@tutti-os/workspace-issue-manager/workbench/constants";
+import {
+  workspaceImageFileNodeTypeID,
+  workspaceTextFileNodeTypeID
+} from "../workspaceFilePreviewLaunch.ts";
+import { defaultWorkspaceTerminalWorkbenchTypeId } from "./workspaceTerminalWorkbenchConstants.ts";
 import {
   createWorkspaceAgentGuiDraftLaunchRequest,
   createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
@@ -11,13 +19,38 @@ import {
   toWorkspaceFilesActivation,
   workspaceAgentGuiDockEntryId,
   workspaceAgentGuiInstanceId,
+  workspaceAgentGuiNodeID,
   workspaceAgentGuiNodeFrame,
   workspaceAgentGuiProviderFromIdentifier,
   workspaceAgentGuiProviderFromLaunchRequest,
+  workspaceBrowserNodeID,
   workspaceFilePreviewNodeFrame,
   workspaceFilesNodeFrame,
   workspaceFilesNodeID
 } from "./workspaceWorkbenchComposition.ts";
+
+test("desktop workbench keeps its current stable node type identities", () => {
+  assert.deepEqual(
+    {
+      agentGui: workspaceAgentGuiNodeID,
+      browser: workspaceBrowserNodeID,
+      files: workspaceFilesNodeID,
+      imagePreview: workspaceImageFileNodeTypeID,
+      issueManager: defaultIssueManagerWorkbenchTypeId,
+      terminal: defaultWorkspaceTerminalWorkbenchTypeId,
+      textPreview: workspaceTextFileNodeTypeID
+    },
+    {
+      agentGui: "agent-gui",
+      browser: "browser",
+      files: "workspace-files",
+      imagePreview: "workspace-image-file",
+      issueManager: "issue-manager",
+      terminal: "workspace-terminal",
+      textPreview: "workspace-text-file"
+    }
+  );
+});
 
 test("createWorkspaceFilesDockEntry configures the files dock entry", () => {
   const entry = createWorkspaceFilesDockEntry({
