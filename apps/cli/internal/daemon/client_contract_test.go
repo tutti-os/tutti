@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	cliruntime "github.com/tutti-os/tutti/packages/cli/runtime"
 )
 
 func TestClientTransportModelTracksOpenAPIContract(t *testing.T) {
@@ -13,8 +15,8 @@ func TestClientTransportModelTracksOpenAPIContract(t *testing.T) {
 
 	requiredFragments := []string{
 		healthPath + ":",
-		cliCapabilitiesPath + ":",
-		cliCommandInvokePattern + ":",
+		cliruntime.CapabilitiesPath + ":",
+		cliruntime.CommandInvokePathPattern + ":",
 		"operationId: listCliCapabilities",
 		"operationId: invokeCliCommand",
 		"CliCapabilitiesResponse:",

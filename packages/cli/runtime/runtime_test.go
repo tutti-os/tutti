@@ -103,6 +103,45 @@ func TestRunnerUsesLongestPrefixMatch(t *testing.T) {
 	}
 }
 
+func TestHTTPVectorsMatchProtocolPathBuilders(t *testing.T) {
+	corpus, err := LoadHTTPVectors()
+	if err != nil {
+		t.Fatalf("LoadHTTPVectors() error = %v", err)
+	}
+	for _, vector := range corpus.CapabilityRequests {
+		got := CapabilitiesRequestPath(vector.WorkspaceID, CapabilityListOptions{
+			IncludeHidden:      vector.IncludeHidden,
+			IncludeIntegration: vector.IncludeIntegration,
+		})
+		if got != vector.ExpectedPath {
+			t.Errorf("CapabilitiesRequestPath(%s) = %q, want %q", vector.Name, got, vector.ExpectedPath)
+		}
+	}
+	for _, vector := range corpus.InvokePaths {
+		if got := CommandInvokePath(vector.CommandID); got != vector.ExpectedPath {
+			t.Errorf("CommandInvokePath(%s) = %q, want %q", vector.Name, got, vector.ExpectedPath)
+		}
+	}
+	assertExactJSONRoundTrip[InvokeRequest](t, "invoke request", corpus.InvokeRequestJSON)
+	assertExactJSONRoundTrip[CapabilityList](t, "capability response", corpus.CapabilityResponseJSON)
+	assertExactJSONRoundTrip[InvokeResponse](t, "invoke response", corpus.InvokeResponseJSON)
+}
+
+func assertExactJSONRoundTrip[T any](t *testing.T, name string, document string) {
+	t.Helper()
+	var value T
+	if err := json.Unmarshal([]byte(document), &value); err != nil {
+		t.Fatalf("decode %s: %v", name, err)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode %s: %v", name, err)
+	}
+	if string(encoded) != document {
+		t.Fatalf("%s is not the canonical public DTO wire shape\ngot:  %s\nwant: %s", name, encoded, document)
+	}
+}
+
 type multiCapabilityClient struct {
 	capabilities []Capability
 	commandID    string

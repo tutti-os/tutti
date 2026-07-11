@@ -23,6 +23,7 @@ for (const file of [
   "testvectors/argv.json",
   "testvectors/domain_scenarios.json",
   "testvectors/gates.json",
+  "testvectors/http.json",
   "testvectors/manifest.json",
   "testvectors/render.json"
 ]) {
@@ -41,7 +42,7 @@ try {
   );
   writeFileSync(
     join(consumerDirectory, "runtime_test.go"),
-    `package consumer\n\nimport (\n  "testing"\n  cliruntime "github.com/tutti-os/tutti/packages/cli/runtime"\n)\n\nfunc TestPublishedAssets(t *testing.T) {\n  manifest, err := cliruntime.LoadCanonicalManifest()\n  if err != nil { t.Fatal(err) }\n  if len(manifest.Commands) != 55 { t.Fatalf("commands = %d", len(manifest.Commands)) }\n  if _, err := cliruntime.LoadArgvVectors(); err != nil { t.Fatal(err) }\n  if _, err := cliruntime.LoadManifestVectors(); err != nil { t.Fatal(err) }\n}\n`
+    `package consumer\n\nimport (\n  "testing"\n  cliruntime "github.com/tutti-os/tutti/packages/cli/runtime"\n)\n\nfunc TestPublishedAssets(t *testing.T) {\n  manifest, err := cliruntime.LoadCanonicalManifest()\n  if err != nil { t.Fatal(err) }\n  if len(manifest.Commands) != 55 { t.Fatalf("commands = %d", len(manifest.Commands)) }\n  if _, err := cliruntime.LoadArgvVectors(); err != nil { t.Fatal(err) }\n  if _, err := cliruntime.LoadHTTPVectors(); err != nil { t.Fatal(err) }\n  if _, err := cliruntime.LoadManifestVectors(); err != nil { t.Fatal(err) }\n}\n`
   );
   run("go", ["mod", "vendor"], consumerDirectory);
   for (const file of embeddedFiles) {

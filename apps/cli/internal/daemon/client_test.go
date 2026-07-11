@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	cliruntime "github.com/tutti-os/tutti/packages/cli/runtime"
 )
 
 func TestNewClientUsesStartupFriendlyTimeout(t *testing.T) {
@@ -79,5 +81,53 @@ func TestDaemonRequestErrorHintsLocalDaemonAccessInsideAgent(t *testing.T) {
 	}
 	if strings.Contains(message, "sandbox_permissions=require_escalated") {
 		t.Fatalf("error = %q, should not contain provider-specific Codex escalation syntax", message)
+	}
+}
+
+func TestClientRequestsMatchSharedHTTPVectors(t *testing.T) {
+	corpus, err := cliruntime.LoadHTTPVectors()
+	if err != nil {
+		t.Fatalf("LoadHTTPVectors() error = %v", err)
+	}
+	for _, vector := range corpus.CapabilityRequests {
+		vector := vector
+		t.Run("capabilities/"+vector.Name, func(t *testing.T) {
+			var requestURI string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestURI = r.RequestURI
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"commands":[]}`))
+			}))
+			defer server.Close()
+			client := &Client{baseURL: server.URL, token: "token", httpClient: server.Client()}
+			if _, err := client.ListCapabilities(context.Background(), vector.WorkspaceID, cliruntime.CapabilityListOptions{
+				IncludeHidden:      vector.IncludeHidden,
+				IncludeIntegration: vector.IncludeIntegration,
+			}); err != nil {
+				t.Fatalf("ListCapabilities() error = %v", err)
+			}
+			if requestURI != vector.ExpectedPath {
+				t.Fatalf("RequestURI = %q, want %q", requestURI, vector.ExpectedPath)
+			}
+		})
+	}
+	for _, vector := range corpus.InvokePaths {
+		vector := vector
+		t.Run("invoke/"+vector.Name, func(t *testing.T) {
+			var requestURI string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestURI = r.RequestURI
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"ok":true}`))
+			}))
+			defer server.Close()
+			client := &Client{baseURL: server.URL, token: "token", httpClient: server.Client()}
+			if _, err := client.Invoke(context.Background(), vector.CommandID, cliruntime.InvokeRequest{}); err != nil {
+				t.Fatalf("Invoke() error = %v", err)
+			}
+			if requestURI != vector.ExpectedPath {
+				t.Fatalf("RequestURI = %q, want %q", requestURI, vector.ExpectedPath)
+			}
+		})
 	}
 }

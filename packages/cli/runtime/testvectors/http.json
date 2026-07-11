@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "capabilityRequests": [
+    {
+      "name": "default",
+      "expectedPath": "/v1/cli/capabilities"
+    },
+    {
+      "name": "workspace-and-integration",
+      "workspaceID": "workspace 1",
+      "includeIntegration": true,
+      "expectedPath": "/v1/cli/capabilities?includeIntegration=true&workspaceID=workspace+1"
+    },
+    {
+      "name": "hidden-and-integration",
+      "workspaceID": "workspace-1",
+      "includeHidden": true,
+      "includeIntegration": true,
+      "expectedPath": "/v1/cli/capabilities?includeHidden=true&includeIntegration=true&workspaceID=workspace-1"
+    }
+  ],
+  "invokePaths": [
+    {
+      "name": "canonical-id",
+      "commandID": "issue-manager.issue.list",
+      "expectedPath": "/v1/cli/commands/issue-manager.issue.list/invoke"
+    },
+    {
+      "name": "escaped-segment",
+      "commandID": "app/id?revision#1%",
+      "expectedPath": "/v1/cli/commands/app%2Fid%3Frevision%231%25/invoke"
+    }
+  ],
+  "invokeRequestJson": "{\"input\":{},\"outputMode\":\"json\",\"context\":{\"source\":\"cli\",\"workspaceID\":\"workspace-1\",\"parentCommandId\":\"parent-1\",\"agentSessionId\":\"session-1\"}}",
+  "capabilityResponseJson": "{\"commands\":[{\"id\":\"issue-manager.issue.list\",\"path\":[\"issue\",\"list\"],\"summary\":\"List issues\",\"visibility\":\"public\",\"inputSchema\":{},\"output\":{\"defaultMode\":\"json\",\"json\":true},\"source\":{\"kind\":\"builtin\"}}]}",
+  "invokeResponseJson": "{\"ok\":true,\"output\":{\"kind\":\"plain\",\"text\":\"done\",\"warnings\":[{\"code\":\"normalized\",\"message\":\"input normalized\"}]}}"
+}

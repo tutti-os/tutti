@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -26,10 +25,8 @@ const (
 	// 覆盖最长的命令预算(如 vibe-design session-start 声明 timeoutMs=300000),
 	// 留出网络/排队余量,避免长命令在客户端侧误报 "daemon request timed out"。
 	// TODO: 改为按命令的 timeoutMs 透传后,此全局值可回落。
-	defaultClientTimeout    = 360 * time.Second
-	healthPath              = "/v1/health"
-	cliCapabilitiesPath     = "/v1/cli/capabilities"
-	cliCommandInvokePattern = "/v1/cli/commands/{commandID}/invoke"
+	defaultClientTimeout = 360 * time.Second
+	healthPath           = "/v1/health"
 )
 
 type HealthStatus struct {
@@ -74,20 +71,7 @@ func (client *Client) GetHealth(ctx context.Context) (HealthStatus, error) {
 
 func (client *Client) ListCapabilities(ctx context.Context, workspaceID string, options CapabilityListOptions) (CapabilityList, error) {
 	var result CapabilityList
-	path := cliCapabilitiesPath
-	query := url.Values{}
-	if strings.TrimSpace(workspaceID) != "" {
-		query.Set("workspaceID", strings.TrimSpace(workspaceID))
-	}
-	if options.IncludeHidden {
-		query.Set("includeHidden", "true")
-	}
-	if options.IncludeIntegration {
-		query.Set("includeIntegration", "true")
-	}
-	if len(query) > 0 {
-		path += "?" + query.Encode()
-	}
+	path := cliruntime.CapabilitiesRequestPath(workspaceID, options)
 	if err := client.DoJSON(ctx, http.MethodGet, path, nil, &result); err != nil {
 		return CapabilityList{}, err
 	}
@@ -96,7 +80,7 @@ func (client *Client) ListCapabilities(ctx context.Context, workspaceID string, 
 
 func (client *Client) Invoke(ctx context.Context, commandID string, request InvokeRequest) (InvokeResponse, error) {
 	var result InvokeResponse
-	path := strings.Replace(cliCommandInvokePattern, "{commandID}", urlPathEscape(commandID), 1)
+	path := cliruntime.CommandInvokePath(commandID)
 	if err := client.DoJSON(ctx, http.MethodPost, path, request, &result); err != nil {
 		return InvokeResponse{}, err
 	}
@@ -169,9 +153,4 @@ func daemonRequestError(err error) error {
 func runningInAgentEnvironment() bool {
 	return strings.TrimSpace(os.Getenv("TUTTI_AGENT_SESSION_ID")) != "" ||
 		strings.TrimSpace(os.Getenv("TUTTI_AGENT_ROUTING")) != ""
-}
-
-func urlPathEscape(value string) string {
-	replacer := strings.NewReplacer("%", "%25", "/", "%2F", "?", "%3F", "#", "%23")
-	return replacer.Replace(value)
 }

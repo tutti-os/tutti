@@ -5,7 +5,8 @@ contract for Tutti CLI capability discovery and invocation.
 
 It owns the wire DTOs, longest-prefix command matching, argv parsing,
 positional shortcuts, help and output rendering, exit classification, the
-embedded canonical manifest, and shared compatibility vectors. Product
+embedded canonical manifest, and shared argv, HTTP-wire, rendering, gate, and
+domain compatibility vectors. Product
 endpoint discovery, bearer credentials, health/status commands, and daemon
 business handlers stay in their owning applications and services.
 

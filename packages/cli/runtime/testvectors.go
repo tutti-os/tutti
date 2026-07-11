@@ -44,6 +44,29 @@ type GateVectorCorpus struct {
 	Snapshots []GateSnapshot `json:"snapshots"`
 }
 
+type HTTPVectorCorpus struct {
+	Version                string                    `json:"version"`
+	CapabilityRequests     []CapabilityRequestVector `json:"capabilityRequests"`
+	InvokePaths            []InvokePathVector        `json:"invokePaths"`
+	InvokeRequestJSON      string                    `json:"invokeRequestJson"`
+	CapabilityResponseJSON string                    `json:"capabilityResponseJson"`
+	InvokeResponseJSON     string                    `json:"invokeResponseJson"`
+}
+
+type CapabilityRequestVector struct {
+	Name               string `json:"name"`
+	WorkspaceID        string `json:"workspaceID,omitempty"`
+	IncludeHidden      bool   `json:"includeHidden,omitempty"`
+	IncludeIntegration bool   `json:"includeIntegration,omitempty"`
+	ExpectedPath       string `json:"expectedPath"`
+}
+
+type InvokePathVector struct {
+	Name         string `json:"name"`
+	CommandID    string `json:"commandID"`
+	ExpectedPath string `json:"expectedPath"`
+}
+
 type ManifestVectorCorpus struct {
 	Version                string         `json:"version"`
 	ExpectedCommandCount   int            `json:"expectedCommandCount"`
@@ -92,6 +115,11 @@ func LoadRenderVectors() (RenderVectorCorpus, error) {
 func LoadGateVectors() (GateVectorCorpus, error) {
 	var corpus GateVectorCorpus
 	return corpus, loadCorpus("testvectors/gates.json", &corpus, func() string { return corpus.Version })
+}
+
+func LoadHTTPVectors() (HTTPVectorCorpus, error) {
+	var corpus HTTPVectorCorpus
+	return corpus, loadCorpus("testvectors/http.json", &corpus, func() string { return corpus.Version })
 }
 
 func LoadManifestVectors() (ManifestVectorCorpus, error) {
