@@ -17,7 +17,10 @@ response contracts until the removal gate below is satisfied.
 Every authenticated request that resolves to an installed app emits
 `deprecated_workspace_app_agent_api_used` with:
 
-- `route`: one of the three stable route identifiers above;
+- `route`: one of the stable telemetry identifiers `preferences/agent`,
+  `agent-providers/status`, or
+  `agent-providers/{provider}/composer-options` (these are suffix identifiers,
+  not the full HTTP route templates above);
 - `app_id`: the installed app package id, used to identify the migration owner;
 - `workspace_app_version`: the installed workspace app package version (or
   `unknown` for a legacy package without version metadata);

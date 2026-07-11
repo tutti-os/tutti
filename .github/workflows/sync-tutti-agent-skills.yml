@@ -67,6 +67,7 @@ jobs:
           versions_aligned="$(python3 - <<'PY'
           import json
           import pathlib
+          import re
 
           paths = [
               pathlib.Path(".codex-plugin/plugin.json"),
@@ -74,7 +75,8 @@ jobs:
               pathlib.Path("plugins/tutti/.claude-plugin/plugin.json"),
           ]
           versions = [json.loads(path.read_text()).get("version") for path in paths]
-          print("true" if len(set(versions)) == 1 else "false")
+          valid = all(re.fullmatch(r"\d+\.\d+\.\d+", str(version or "")) for version in versions)
+          print("true" if valid and len(set(versions)) == 1 else "false")
           PY
           )"
           if git diff --quiet -- \
