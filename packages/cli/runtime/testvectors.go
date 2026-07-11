@@ -51,6 +51,8 @@ type HTTPVectorCorpus struct {
 	InvokeRequestJSON      string                    `json:"invokeRequestJson"`
 	CapabilityResponseJSON string                    `json:"capabilityResponseJson"`
 	InvokeResponseJSON     string                    `json:"invokeResponseJson"`
+	ErrorResponses         []ErrorResponseVector     `json:"errorResponses"`
+	InvokeDecodeCases      []InvokeDecodeVector      `json:"invokeDecodeCases"`
 }
 
 type CapabilityRequestVector struct {
@@ -65,6 +67,21 @@ type InvokePathVector struct {
 	Name         string `json:"name"`
 	CommandID    string `json:"commandID"`
 	ExpectedPath string `json:"expectedPath"`
+}
+
+type ErrorResponseVector struct {
+	Name       string `json:"name"`
+	StatusCode int    `json:"statusCode"`
+	JSON       string `json:"json"`
+}
+
+type InvokeDecodeVector struct {
+	Name                string `json:"name"`
+	Body                string `json:"body"`
+	ExpectedStatusCode  int    `json:"expectedStatusCode"`
+	ExpectedInvoked     bool   `json:"expectedInvoked"`
+	ExpectedWorkspaceID string `json:"expectedWorkspaceID,omitempty"`
+	ExpectedReason      string `json:"expectedReason,omitempty"`
 }
 
 type ManifestVectorCorpus struct {

@@ -33,5 +33,63 @@
   ],
   "invokeRequestJson": "{\"input\":{},\"outputMode\":\"json\",\"context\":{\"source\":\"cli\",\"workspaceID\":\"workspace-1\",\"parentCommandId\":\"parent-1\",\"agentSessionId\":\"session-1\"}}",
   "capabilityResponseJson": "{\"commands\":[{\"id\":\"issue-manager.issue.list\",\"path\":[\"issue\",\"list\"],\"summary\":\"List issues\",\"visibility\":\"public\",\"inputSchema\":{},\"output\":{\"defaultMode\":\"json\",\"json\":true},\"source\":{\"kind\":\"builtin\"}}]}",
-  "invokeResponseJson": "{\"ok\":true,\"output\":{\"kind\":\"plain\",\"text\":\"done\",\"warnings\":[{\"code\":\"normalized\",\"message\":\"input normalized\"}]}}"
+  "invokeResponseJson": "{\"ok\":true,\"output\":{\"kind\":\"plain\",\"text\":\"done\",\"warnings\":[{\"code\":\"normalized\",\"message\":\"input normalized\"}]}}",
+  "errorResponses": [
+    {
+      "name": "command-not-found",
+      "statusCode": 404,
+      "json": "{\"error\":{\"code\":\"invalid_request\",\"reason\":\"cli_command_not_found\",\"developerMessage\":\"cli command not found\"}}"
+    },
+    {
+      "name": "invalid-input",
+      "statusCode": 400,
+      "json": "{\"error\":{\"code\":\"invalid_request\",\"reason\":\"malformed_request\",\"developerMessage\":\"invalid cli command input\"}}"
+    },
+    {
+      "name": "app-runtime-unavailable",
+      "statusCode": 503,
+      "json": "{\"error\":{\"code\":\"service_unavailable\",\"reason\":\"app_cli_runtime_unavailable\",\"developerMessage\":\"app_cli_runtime_unavailable: app runtime unavailable\"}}"
+    },
+    {
+      "name": "workspace-operation",
+      "statusCode": 502,
+      "json": "{\"error\":{\"code\":\"workspace_operation_failed\",\"reason\":\"workspace_operation_failed\",\"developerMessage\":\"app_cli_handler_bad_response: app handler bad response\"}}"
+    }
+  ],
+  "invokeDecodeCases": [
+    {
+      "name": "empty-body",
+      "body": "",
+      "expectedStatusCode": 400,
+      "expectedInvoked": false,
+      "expectedReason": "empty_body"
+    },
+    {
+      "name": "null-body",
+      "body": "null",
+      "expectedStatusCode": 200,
+      "expectedInvoked": true
+    },
+    {
+      "name": "trailing-document-ignored",
+      "body": "{\"context\":{\"source\":\"cli\",\"workspaceID\":\"workspace-1\"}} {\"unknown\":true}",
+      "expectedStatusCode": 200,
+      "expectedInvoked": true,
+      "expectedWorkspaceID": "workspace-1"
+    },
+    {
+      "name": "standard-decoder-case-match",
+      "body": "{\"context\":{\"source\":\"cli\",\"workspaceId\":\"workspace-alias\"}}",
+      "expectedStatusCode": 200,
+      "expectedInvoked": true,
+      "expectedWorkspaceID": "workspace-alias"
+    },
+    {
+      "name": "unknown-field",
+      "body": "{\"unknown\":true}",
+      "expectedStatusCode": 400,
+      "expectedInvoked": false,
+      "expectedReason": "malformed_request"
+    }
+  ]
 }

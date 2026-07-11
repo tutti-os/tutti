@@ -80,6 +80,19 @@ type CommandWarning struct {
 	Message string `json:"message"`
 }
 
+type APIErrorResponse struct {
+	Error APIErrorDetails `json:"error"`
+}
+
+type APIErrorDetails struct {
+	Code             string          `json:"code"`
+	Reason           *string         `json:"reason,omitempty"`
+	Params           *map[string]any `json:"params,omitempty"`
+	Retryable        *bool           `json:"retryable,omitempty"`
+	DeveloperMessage *string         `json:"developerMessage,omitempty"`
+	CorrelationID    *string         `json:"correlationId,omitempty"`
+}
+
 type CatalogClient interface {
 	ListCapabilities(context.Context, string, CapabilityListOptions) (CapabilityList, error)
 	Invoke(context.Context, string, InvokeRequest) (InvokeResponse, error)

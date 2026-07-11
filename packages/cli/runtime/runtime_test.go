@@ -125,6 +125,9 @@ func TestHTTPVectorsMatchProtocolPathBuilders(t *testing.T) {
 	assertExactJSONRoundTrip[InvokeRequest](t, "invoke request", corpus.InvokeRequestJSON)
 	assertExactJSONRoundTrip[CapabilityList](t, "capability response", corpus.CapabilityResponseJSON)
 	assertExactJSONRoundTrip[InvokeResponse](t, "invoke response", corpus.InvokeResponseJSON)
+	for _, vector := range corpus.ErrorResponses {
+		assertExactJSONRoundTrip[APIErrorResponse](t, "error response "+vector.Name, vector.JSON)
+	}
 }
 
 func assertExactJSONRoundTrip[T any](t *testing.T, name string, document string) {

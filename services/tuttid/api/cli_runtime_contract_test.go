@@ -23,6 +23,8 @@ func TestCLIRuntimeDTOsConformToGeneratedOpenAPI(t *testing.T) {
 	assertJSONFieldInventory[tuttigenerated.CliCommandOutput, cliruntime.CommandOutput](t)
 	assertJSONFieldInventory[tuttigenerated.CliCommandWarning, cliruntime.CommandWarning](t)
 	assertJSONFieldInventory[tuttigenerated.CliInvokeResponse, cliruntime.InvokeResponse](t)
+	assertJSONFieldInventory[tuttigenerated.ApiErrorResponse, cliruntime.APIErrorResponse](t)
+	assertJSONFieldInventory[tuttigenerated.ApiErrorDetails, cliruntime.APIErrorDetails](t)
 
 	description := "description"
 	visibility := tuttigenerated.Integration
@@ -96,6 +98,19 @@ func TestCLIRuntimeDTOsConformToGeneratedOpenAPI(t *testing.T) {
 	assertJSONContract[tuttigenerated.CliCommandOutput, cliruntime.CommandOutput](t, output)
 	assertJSONContract[tuttigenerated.CliInvokeResponse, cliruntime.InvokeResponse](t, tuttigenerated.CliInvokeResponse{
 		Ok: true, Output: &output,
+	})
+	reason := "app_cli_runtime_unavailable"
+	retryable := true
+	developerMessage := "app runtime unavailable"
+	params := map[string]any{"appId": "app-1"}
+	assertJSONContract[tuttigenerated.ApiErrorResponse, cliruntime.APIErrorResponse](t, tuttigenerated.ApiErrorResponse{
+		Error: tuttigenerated.ApiErrorDetails{
+			Code:             tuttigenerated.ServiceUnavailable,
+			Reason:           &reason,
+			Params:           &params,
+			Retryable:        &retryable,
+			DeveloperMessage: &developerMessage,
+		},
 	})
 }
 
