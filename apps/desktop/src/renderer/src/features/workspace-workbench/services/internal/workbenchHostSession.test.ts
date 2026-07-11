@@ -108,6 +108,36 @@ test("workbench host session disposable registrations can be released", () => {
   assert.equal(disposeCount, 0);
 });
 
+test("workbench host session continues cleanup after a disposer throws", () => {
+  const events: string[] = [];
+  const errors: unknown[] = [];
+  const session = new WorkbenchHostSession<string, string, undefined>({
+    onDisposalError(error) {
+      errors.push(error);
+    },
+    partition: workspacePartition("workspace-1"),
+    resolve(update) {
+      return { hostInput: update, state: undefined };
+    }
+  });
+  session.update("ready");
+  session.registerDisposable(() => {
+    events.push("first");
+  });
+  session.registerDisposable(() => {
+    events.push("throwing");
+    throw new Error("cleanup failed");
+  });
+
+  session.dispose();
+  session.dispose();
+
+  assert.deepEqual(events, ["throwing", "first"]);
+  assert.equal(errors.length, 1);
+  assert.match(String(errors[0]), /cleanup failed/);
+  assert.equal(session.isDisposed, true);
+});
+
 function createSession(
   partition: WorkbenchSnapshotPartition
 ): WorkbenchHostSession<string, string, undefined> {

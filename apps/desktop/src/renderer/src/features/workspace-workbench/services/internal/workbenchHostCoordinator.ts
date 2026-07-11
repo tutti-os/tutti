@@ -9,6 +9,7 @@ export interface WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState> {
   readonly createSession: (
     partition: WorkbenchSnapshotPartition
   ) => WorkbenchHostSession<TUpdate, THostInput, TState>;
+  readonly owner: object;
   readonly partition: WorkbenchSnapshotPartition;
 }
 
@@ -19,16 +20,26 @@ export interface WorkbenchHostSessionLease<TUpdate, THostInput, TState> {
 
 interface WorkbenchHostCoordinatorEntry {
   leaseCount: number;
+  readonly owner: object;
   readonly session: WorkbenchHostSession<unknown, unknown, unknown>;
+}
+
+export interface WorkbenchHostCoordinatorOptions {
+  readonly onDisposalError?: (error: unknown) => void;
 }
 
 export class WorkbenchHostCoordinator {
   readonly _serviceBrand = undefined;
   private disposed = false;
+  private readonly options: WorkbenchHostCoordinatorOptions;
   private readonly sessionsByScope = new Map<
     string,
     WorkbenchHostCoordinatorEntry
   >();
+
+  constructor(options: WorkbenchHostCoordinatorOptions = {}) {
+    this.options = options;
+  }
 
   open<TUpdate, THostInput, TState>(
     input: WorkbenchHostSessionOpenInput<TUpdate, THostInput, TState>
@@ -44,8 +55,14 @@ export class WorkbenchHostCoordinator {
       )
     ) {
       this.sessionsByScope.delete(scopeKey);
-      entry.session.dispose();
+      this.disposeSession(entry.session);
       entry = undefined;
+    }
+
+    if (entry && entry.owner !== input.owner) {
+      throw new Error(
+        "Workbench host session partition is already owned by another configuration."
+      );
     }
 
     if (!entry || entry.session.isDisposed) {
@@ -53,13 +70,14 @@ export class WorkbenchHostCoordinator {
       if (
         !areWorkbenchSnapshotPartitionsEqual(session.partition, input.partition)
       ) {
-        session.dispose();
+        this.disposeSession(session);
         throw new Error(
           "Workbench host session partition does not match the open request."
         );
       }
       entry = {
         leaseCount: 0,
+        owner: input.owner,
         session: session as WorkbenchHostSession<unknown, unknown, unknown>
       };
       this.sessionsByScope.set(scopeKey, entry);
@@ -116,7 +134,7 @@ export class WorkbenchHostCoordinator {
     const entries = Array.from(this.sessionsByScope.values());
     this.sessionsByScope.clear();
     for (const entry of entries) {
-      entry.session.dispose();
+      this.disposeSession(entry.session);
     }
   }
 
@@ -139,6 +157,24 @@ export class WorkbenchHostCoordinator {
       return;
     }
     this.sessionsByScope.delete(scopeKey);
-    leasedEntry.session.dispose();
+    this.disposeSession(leasedEntry.session);
+  }
+
+  private disposeSession<TUpdate, THostInput, TState>(
+    session: WorkbenchHostSession<TUpdate, THostInput, TState>
+  ): void {
+    try {
+      session.dispose();
+    } catch (error) {
+      this.reportDisposalError(error);
+    }
+  }
+
+  private reportDisposalError(error: unknown): void {
+    try {
+      this.options.onDisposalError?.(error);
+    } catch {
+      // Disposal must continue even when diagnostics fail.
+    }
   }
 }

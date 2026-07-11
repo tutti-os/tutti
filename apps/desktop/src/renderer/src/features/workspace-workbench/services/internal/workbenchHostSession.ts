@@ -20,6 +20,7 @@ export interface WorkbenchHostSessionResolution<THostInput, TState> {
 }
 
 export interface WorkbenchHostSessionOptions<TUpdate, THostInput, TState> {
+  readonly onDisposalError?: (error: unknown) => void;
   readonly partition: WorkbenchSnapshotPartition;
   readonly resolve: (
     update: TUpdate,
@@ -34,6 +35,7 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
   private disposed = false;
   private readonly disposalCallbacks: Array<() => void> = [];
   private readonly listeners = new Set<() => void>();
+  private readonly onDisposalError?: (error: unknown) => void;
   private readonly resolve: WorkbenchHostSessionOptions<
     TUpdate,
     THostInput,
@@ -45,6 +47,7 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     options: WorkbenchHostSessionOptions<TUpdate, THostInput, TState>
   ) {
     this.partition = freezeWorkbenchSnapshotPartition(options.partition);
+    this.onDisposalError = options.onDisposalError;
     this.resolve = options.resolve;
   }
 
@@ -116,20 +119,29 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     this.disposed = true;
     this.surfaceHandle = null;
     this.listeners.clear();
-    for (
-      let index = this.disposalCallbacks.length - 1;
-      index >= 0;
-      index -= 1
-    ) {
-      this.disposalCallbacks[index]?.();
-    }
+    const disposalCallbacks = this.disposalCallbacks.splice(0);
     this.disposalCallbacks.length = 0;
     this.current = null;
+    for (let index = disposalCallbacks.length - 1; index >= 0; index -= 1) {
+      try {
+        disposalCallbacks[index]?.();
+      } catch (error) {
+        this.reportDisposalError(error);
+      }
+    }
   }
 
   private assertActive(): void {
     if (this.disposed) {
       throw new Error("Workbench host session is disposed.");
+    }
+  }
+
+  private reportDisposalError(error: unknown): void {
+    try {
+      this.onDisposalError?.(error);
+    } catch {
+      // Disposal must continue even when diagnostics fail.
     }
   }
 }

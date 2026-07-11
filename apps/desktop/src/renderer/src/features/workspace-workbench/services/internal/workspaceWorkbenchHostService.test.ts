@@ -26,6 +26,10 @@ const workspaceWorkbenchShellHookSource = readFileSync(
   new URL("../../ui/useWorkspaceWorkbenchShellRuntime.tsx", import.meta.url),
   "utf8"
 );
+const workspaceWorkbenchSource = readFileSync(
+  new URL("../../ui/WorkspaceWorkbench.tsx", import.meta.url),
+  "utf8"
+);
 
 test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
   assert.match(
@@ -49,29 +53,31 @@ test("workspace workbench host keeps deterministic composition and close prepara
 test("workspace workbench host delegates workspace lifecycle to the DI coordinator", () => {
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /this\.workbenchHostCoordinator\.get<[\s\S]*?>\(createWorkspaceWorkbenchPartition\(workspaceId\)\)/
+    /openHostSession\([\s\S]*?this\.workbenchHostCoordinator\.open<[\s\S]*?>\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition: sessionPartition/
   );
   assert.match(
     workspaceWorkbenchHostServiceSource,
-    /this\.workbenchHostCoordinator\.open<[\s\S]*?>\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition: sessionPartition/
-  );
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /this\.hostSessionLeases\.add\(lease\);\s+session = lease\.session;[\s\S]*?return session\.update\(input\)/
+    /owner: this\.hostSessionOwner,[\s\S]*?return createWorkspaceWorkbenchHostSessionBinding\(\{[\s\S]*?bindingId: this\.hostSessionBindingSequence,[\s\S]*?lease,[\s\S]*?workspaceId/
   );
   assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cachedHostInputs/);
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /hostSessionLeases/);
   assert.match(
     workspaceWorkbenchRegistrationSource,
     /IWorkbenchHostCoordinator,\s+new SyncDescriptor\(WorkbenchHostCoordinator\)/
   );
   assert.match(
     workspaceWorkbenchShellHookSource,
-    /workbenchHostService\.attachHostSurface\(state\.workspace\.id, host\)/
+    /createHostInput: hostSession\.createHostInput/
   );
   assert.match(
     workspaceWorkbenchShellHookSource,
-    /workbenchHostService\.releaseHostSession\(state\.workspace\.id\)/
+    /hostSession\.attachSurface\(host\)/
   );
+  assert.match(
+    workspaceWorkbenchSource,
+    /useLayoutEffect\(\(\) => \{\s+const binding = workbenchHostService\.openHostSession\(workspaceId\);[\s\S]*?binding\.release\(\)/
+  );
+  assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
 });
 
 test("workspace workbench host session resolution keeps stable refs and isolates dynamic dock updates", () => {

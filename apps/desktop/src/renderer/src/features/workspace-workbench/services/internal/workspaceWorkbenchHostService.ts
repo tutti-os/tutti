@@ -22,6 +22,7 @@ import type {
   WorkspaceWorkbenchBodyRendererContext,
   WorkspaceWorkbenchCapabilitySettingsTarget,
   WorkspaceWorkbenchHostInput,
+  WorkspaceWorkbenchHostSessionBinding,
   WorkspaceWorkbenchHostSessionUpdate
 } from "../workspaceWorkbenchHostService.interface";
 import type {
@@ -123,16 +124,14 @@ import {
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
 import { AgentGuiAgentsLoader } from "./agentGuiAgentsLoader.ts";
-import {
-  WorkbenchHostCoordinator,
-  type WorkbenchHostSessionLease
-} from "./workbenchHostCoordinator.ts";
+import { WorkbenchHostCoordinator } from "./workbenchHostCoordinator.ts";
 import {
   WorkbenchHostSession,
   type WorkbenchHostSessionResolution,
   type WorkbenchSnapshotPartition
 } from "./workbenchHostSession.ts";
 import { IWorkbenchHostCoordinator } from "../workbenchHostCoordinator.interface.ts";
+import { createWorkspaceWorkbenchHostSessionBinding } from "./workspaceWorkbenchHostSessionBinding.ts";
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
 const workspaceDockNativePreviewTimeoutMs = 2_500;
@@ -198,8 +197,8 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
 export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostService {
   readonly _serviceBrand = undefined;
   private readonly dependencies: WorkspaceWorkbenchHostServiceDependencies;
-  private readonly hostSessionLeases =
-    new Set<WorkspaceWorkbenchHostSessionLease>();
+  private hostSessionBindingSequence = 0;
+  private readonly hostSessionOwner = {};
   private readonly pendingWallpaperDisplayModes = new Map<
     string,
     WorkspaceWallpaperDisplayMode
@@ -286,13 +285,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   approveWindowClose(): Promise<void> {
     return this.dependencies.hostWindowApi.approveClose();
-  }
-
-  attachHostSurface(
-    workspaceId: string,
-    handle: WorkbenchHostHandle | null
-  ): void {
-    this.getHostSession(workspaceId)?.attachSurface(handle);
   }
 
   loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]> {
@@ -658,21 +650,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies.hostWorkspaceApi.broadcastAgentStatus(payload);
   }
 
-  releaseHostSession(workspaceId: string): void {
-    for (const lease of this.hostSessionLeases) {
-      if (lease.session.partition.scope.id !== workspaceId) {
-        continue;
-      }
-      this.hostSessionLeases.delete(lease);
-      lease.release();
-    }
-  }
-
   dispose(): void {
-    for (const lease of this.hostSessionLeases) {
-      lease.release();
-    }
-    this.hostSessionLeases.clear();
     this.wallpaperListeners.clear();
   }
 
@@ -773,42 +751,39 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     }
   }
 
-  createHostInput(
-    input: WorkspaceWorkbenchHostSessionUpdate
-  ): WorkspaceWorkbenchHostInput {
-    const partition = createWorkspaceWorkbenchPartition(input.workspaceId);
-    let session = this.getHostSession(input.workspaceId);
-    if (!session) {
-      const lease = this.workbenchHostCoordinator.open<
-        WorkspaceWorkbenchHostSessionUpdate,
-        WorkspaceWorkbenchHostInput,
-        CachedWorkspaceWorkbenchHostInput
-      >({
-        createSession: (sessionPartition) =>
-          new WorkbenchHostSession<
-            WorkspaceWorkbenchHostSessionUpdate,
-            WorkspaceWorkbenchHostInput,
-            CachedWorkspaceWorkbenchHostInput
-          >({
-            partition: sessionPartition,
-            resolve: (update, current) => this.resolveHostInput(update, current)
-          }),
-        partition
-      });
-      this.hostSessionLeases.add(lease);
-      session = lease.session;
-    }
-    return session.update(input);
-  }
-
-  private getHostSession(
-    workspaceId: string
-  ): WorkspaceWorkbenchHostSession | null {
-    return this.workbenchHostCoordinator.get<
+  openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding {
+    const lease = this.workbenchHostCoordinator.open<
       WorkspaceWorkbenchHostSessionUpdate,
       WorkspaceWorkbenchHostInput,
       CachedWorkspaceWorkbenchHostInput
-    >(createWorkspaceWorkbenchPartition(workspaceId));
+    >({
+      createSession: (sessionPartition) =>
+        new WorkbenchHostSession<
+          WorkspaceWorkbenchHostSessionUpdate,
+          WorkspaceWorkbenchHostInput,
+          CachedWorkspaceWorkbenchHostInput
+        >({
+          onDisposalError: (error) => {
+            void this.dependencies.runtimeApi.logRendererDiagnostic({
+              details: { error: formatDiagnosticError(error) },
+              event: "workbench.host.session.dispose_failed",
+              level: "warn",
+              source: "workbench-host-session",
+              workspaceId
+            });
+          },
+          partition: sessionPartition,
+          resolve: (update, current) => this.resolveHostInput(update, current)
+        }),
+      owner: this.hostSessionOwner,
+      partition: createWorkspaceWorkbenchPartition(workspaceId)
+    });
+    this.hostSessionBindingSequence += 1;
+    return createWorkspaceWorkbenchHostSessionBinding({
+      bindingId: this.hostSessionBindingSequence,
+      lease,
+      workspaceId
+    });
   }
 
   private resolveHostInput(
@@ -1403,18 +1378,6 @@ interface CachedWorkspaceWorkbenchHostInput {
   };
   themeAppearance: DesktopThemeAppearance;
 }
-
-type WorkspaceWorkbenchHostSession = WorkbenchHostSession<
-  WorkspaceWorkbenchHostSessionUpdate,
-  WorkspaceWorkbenchHostInput,
-  CachedWorkspaceWorkbenchHostInput
->;
-
-type WorkspaceWorkbenchHostSessionLease = WorkbenchHostSessionLease<
-  WorkspaceWorkbenchHostSessionUpdate,
-  WorkspaceWorkbenchHostInput,
-  CachedWorkspaceWorkbenchHostInput
->;
 
 function createWorkspaceWorkbenchPartition(
   workspaceId: string

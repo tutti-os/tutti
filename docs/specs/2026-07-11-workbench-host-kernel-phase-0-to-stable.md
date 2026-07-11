@@ -63,12 +63,14 @@ The approved Tutti-private proof keeps the extraction boundary reviewable:
   it supplies the workspace partition and retains all existing contribution,
   preload, tuttid, wallpaper, onboarding, dock, diagnostics, and business-
   service wiring;
-- the React shell continues to render the existing surface and controllers,
-  while attaching the surface handle to the class session and releasing the
-  workspace session during effect cleanup; and
+- a committed React effect acquires an opaque binding to one exact lease before
+  rendering the session-backed shell; host-input projection never acquires a
+  lease, and stale bindings cannot attach to or release a replacement session;
+  and
 - focused unit tests cover DI singleton ownership, lease reuse, multi-scope
   isolation, principal-partition replacement, referential publication,
-  attachment cleanup, and idempotent disposal.
+  attachment cleanup, failed initial resolution ownership, owner mismatch,
+  exception-safe teardown, and idempotent disposal.
 
 This proof does not introduce Product Profile or Ports, move product adapters,
 create a package, change public Workbench contracts, or authorize any release or

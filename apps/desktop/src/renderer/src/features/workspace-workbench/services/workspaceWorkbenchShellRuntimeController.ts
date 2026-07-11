@@ -27,6 +27,7 @@ import type {
   IWorkspaceWorkbenchHostService,
   WorkspaceWorkbenchBodyRendererContext,
   WorkspaceWorkbenchCapabilitySettingsTarget,
+  WorkspaceWorkbenchHostSessionBinding,
   WorkspaceWorkbenchHostInput
 } from "./workspaceWorkbenchHostService.interface";
 import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
@@ -126,7 +127,7 @@ export interface WorkspaceWorkbenchShellHostInput {
   appI18n: I18nRuntime<string>;
   appLocale: DesktopLocale;
   appCenterRevision?: number;
-  createHostInput: IWorkspaceWorkbenchHostService["createHostInput"];
+  createHostInput: WorkspaceWorkbenchHostSessionBinding["createHostInput"];
   defaultAgentProvider?: string | null;
   defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;

@@ -53,7 +53,10 @@ import {
   createWorkspaceWorkbenchShellRuntimeController,
   type WorkspaceWorkbenchShellRuntimeController
 } from "../services/workspaceWorkbenchShellRuntimeController";
-import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
+import type {
+  WorkspaceWorkbenchCapabilitySettingsTarget,
+  WorkspaceWorkbenchHostSessionBinding
+} from "../services/workspaceWorkbenchHostService.interface";
 import type {
   WorkspaceMissionControlOpenRequest,
   WorkspaceMissionControlTrigger
@@ -121,9 +124,11 @@ export interface WorkspaceWorkbenchShellRuntime {
 
 export function useWorkspaceWorkbenchShellRuntime({
   enableWindowCloseGuard,
+  hostSession,
   state
 }: {
   enableWindowCloseGuard: boolean;
+  hostSession: WorkspaceWorkbenchHostSessionBinding;
   state: {
     platform: NodeJS.Platform;
     workspace: WorkspaceSummary;
@@ -203,8 +208,7 @@ export function useWorkspaceWorkbenchShellRuntime({
           appI18n,
           appLocale: locale,
           appCenterRevision: appCenterState.revision,
-          createHostInput: (hostInput) =>
-            workbenchHostService.createHostInput(hostInput),
+          createHostInput: hostSession.createHostInput,
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
           defaultAgentTargetId: defaultAgentTargetId,
           agents: resolvedAgentGuiAgents,
@@ -349,8 +353,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       appI18n,
       appLocale: locale,
       appCenterRevision: appCenterState.revision,
-      createHostInput: (hostInput) =>
-        workbenchHostService.createHostInput(hostInput),
+      createHostInput: hostSession.createHostInput,
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
       defaultAgentTargetId: defaultAgentTargetId,
       agents: resolvedAgentGuiAgents,
@@ -376,6 +379,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,
     handleCapabilitySettingsRequest,
+    hostSession,
     locale,
     shellRuntimeController,
     state.workspace.id,
@@ -403,13 +407,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   useEffect(() => {
     return shellRuntimeController.dispose;
   }, [shellRuntimeController.dispose]);
-
-  useEffect(() => {
-    return () => {
-      workbenchHostService.attachHostSurface(state.workspace.id, null);
-      workbenchHostService.releaseHostSession(state.workspace.id);
-    };
-  }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
     return () => {
@@ -444,7 +441,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   const handleWorkbenchHostReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
       workbenchHostRef.current = host;
-      workbenchHostService.attachHostSurface(state.workspace.id, host);
+      hostSession.attachSurface(host);
       shellRuntimeController.setWorkbenchHost(host);
       syncWorkspaceAppWebviewNodes({
         apps: appCenterState.apps,
@@ -501,11 +498,11 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterState.apps,
       appCenterState.loadStatus,
       appCenterState.workspaceId,
+      hostSession,
       locale,
       shellRuntimeController,
       state.workspace.id,
-      workspaceFileManagerService,
-      workbenchHostService
+      workspaceFileManagerService
     ]
   );
 

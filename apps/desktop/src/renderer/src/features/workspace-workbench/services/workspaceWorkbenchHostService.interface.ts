@@ -132,17 +132,23 @@ export interface WorkspaceWorkbenchHostSessionUpdate {
   workspaceId: string;
 }
 
+export interface WorkspaceWorkbenchHostSessionBinding {
+  readonly bindingId: number;
+  readonly isActive: boolean;
+  readonly workspaceId: string;
+  attachSurface(handle: WorkbenchHostHandle | null): void;
+  createHostInput(
+    input: WorkspaceWorkbenchHostSessionUpdate
+  ): WorkspaceWorkbenchHostInput;
+  release(): void;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface IWorkspaceWorkbenchHostService {
   readonly _serviceBrand: undefined;
 
   approveWindowClose(): Promise<void>;
-  attachHostSurface(
-    workspaceId: string,
-    handle: WorkbenchHostHandle | null
-  ): void;
-  createHostInput(
-    input: WorkspaceWorkbenchHostSessionUpdate
-  ): WorkspaceWorkbenchHostInput;
+  openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
   loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
@@ -172,7 +178,6 @@ export interface IWorkspaceWorkbenchHostService {
   markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
-  releaseHostSession(workspaceId: string): void;
   resolveWindowCloseRequest(input: {
     outcome: "approved" | "blocked";
     requestId: string;
