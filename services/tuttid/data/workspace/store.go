@@ -8,6 +8,8 @@ import (
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	managedcredentialsbiz "github.com/tutti-os/tutti/services/tuttid/biz/managedcredentials"
+	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
+	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
@@ -54,6 +56,21 @@ type AgentTargetStore interface {
 type PreferencesStore interface {
 	GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error)
 	PutDesktopPreferences(context.Context, preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error)
+}
+
+type ModelPlansStore interface {
+	DeleteModelPlan(context.Context, string, string) error
+	GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error)
+	ListModelPlans(context.Context, string) ([]modelplanbiz.Plan, error)
+	PutModelPlan(context.Context, modelplanbiz.Plan) error
+}
+
+type AgentModelBindingsStore interface {
+	DeleteAgentModelBinding(context.Context, string, string) error
+	GetAgentModelBinding(context.Context, string, string) (modelbindingbiz.Binding, error)
+	ListAgentModelBindings(context.Context, string) ([]modelbindingbiz.Binding, error)
+	ListAgentModelBindingsByPlan(context.Context, string, string) ([]modelbindingbiz.Binding, error)
+	PutAgentModelBinding(context.Context, modelbindingbiz.Binding) error
 }
 
 type ManagedCredentialsStore interface {

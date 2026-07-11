@@ -265,6 +265,81 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceAppMentionCandidates(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.ListModelPlans(w, r, workspaceID)
+		case http.MethodPost:
+			routes.CreateModelPlan(w, r, workspaceID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/detect", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.DetectModelPlan(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}", func(w http.ResponseWriter, r *http.Request) {
+		workspaceID := tuttigenerated.WorkspaceID(r.PathValue("workspaceID"))
+		modelPlanID := tuttigenerated.ModelPlanID(r.PathValue("modelPlanID"))
+		switch r.Method {
+		case http.MethodGet:
+			routes.GetModelPlan(w, r, workspaceID, modelPlanID)
+		case http.MethodPut:
+			routes.UpdateModelPlan(w, r, workspaceID, modelPlanID)
+		case http.MethodDelete:
+			routes.DeleteModelPlan(w, r, workspaceID, modelPlanID)
+		default:
+			tuttitypes.WriteMethodNotAllowed(w)
+		}
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/duplicate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.DuplicateModelPlan(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetModelPlanEnabled(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/model-plans/{modelPlanID}/references", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.ListModelPlanReferences(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), tuttigenerated.ModelPlanID(r.PathValue("modelPlanID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.ListAgentModelBindings(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")))
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-model-bindings/{agentTargetID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		routes.SetAgentModelBinding(w, r, tuttigenerated.WorkspaceID(r.PathValue("workspaceID")), r.PathValue("agentTargetID"))
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-model-providers", func(w http.ResponseWriter, r *http.Request) {
 		routes.HandleManagedModelProviders(w, r, r.PathValue("workspaceID"))
 	})
