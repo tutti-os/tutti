@@ -444,8 +444,6 @@ func visibleProviderName(provider string) string {
 		return descriptor.Identity.DisplayName
 	}
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode:
-		return "Claude Code"
 	case ProviderTuttiAgent:
 		return "Tutti Agent"
 	case ProviderNexight:

@@ -722,7 +722,7 @@ describe("AgentComposer", () => {
     expect(palette).toHaveTextContent("切换计划模式。");
   });
 
-  it("keeps legacy Claude Code palette filtering when no typed policy is loaded", async () => {
+  it("uses typed catalog authority to filter provider command noise", async () => {
     render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -739,7 +739,13 @@ describe("AgentComposer", () => {
         disabled={false}
         submitDisabled={false}
         placeholder="placeholder"
-        composerSettings={createComposerSettings({ slashCommandPolicy: null })}
+        composerSettings={createComposerSettings({
+          slashCommandPolicy: {
+            fallbackCommands: ["context", "usage"],
+            commandCatalogAuthoritative: true,
+            commandEffects: []
+          }
+        })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
         canQueueWhileBusy={false}
@@ -1737,7 +1743,10 @@ describe("AgentComposer", () => {
         placeholder="placeholder"
         composerSettings={createComposerSettings({
           supportsPlanMode: true,
-          slashCommandPolicy: null
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [{ command: "plan", effect: "togglePlanMode" }]
+          }
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
@@ -1783,7 +1792,10 @@ describe("AgentComposer", () => {
         placeholder="placeholder"
         composerSettings={createComposerSettings({
           supportsPlanMode: true,
-          slashCommandPolicy: null
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [{ command: "plan", effect: "togglePlanMode" }]
+          }
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}

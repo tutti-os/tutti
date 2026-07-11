@@ -5,10 +5,13 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -37,10 +40,12 @@ type Service struct {
 	providerAvailabilityCache     *providerAvailabilityCache
 	capabilityCatalogCache        *composerCapabilityCatalogCache
 	liveModelCache                *composerLiveModelCache
-	claudeStartupLock             *claudeStartupSerializer
+	claudeStartupLock             *claudecodeservice.StartupGate
 	liveModelDiscoveryMu          sync.Mutex
 	liveModelDiscoveryAttempted   map[string]struct{}
 	liveModelInvalidatedAtUnixMS  map[string]int64
+	liveModelDiscoverySessions    map[string]liveModelDiscoverySessionRef
+	liveModelDiscoveryGroup       singleflight.Group
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.

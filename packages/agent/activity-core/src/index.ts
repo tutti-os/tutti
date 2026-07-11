@@ -78,15 +78,90 @@ export type {
   EngineScheduledTask,
   EngineScheduler
 } from "./engine/types.ts";
+export { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "./engine/types.ts";
+export {
+  selectEngineCancelState,
+  selectEngineCancelPending,
+  selectEngineHasPendingInteractions,
+  selectEngineSession,
+  selectEngineSessionError,
+  selectEngineSessionLifecycleRecord,
+  selectEngineSubmitAvailability
+} from "./engine/sessionLifecycle.selectors.ts";
+export type {
+  SessionCancelState,
+  SessionCancelStatus,
+  SessionLifecycleRecord,
+  SessionLifecycleState,
+  TurnCancelCommand
+} from "./engine/sessionLifecycle.types.ts";
+export {
+  selectEngineHasVisibleQueuedSubmit,
+  selectEnginePromptQueueError,
+  selectEnginePromptQueue,
+  selectEngineQueuedPrompt,
+  selectEngineQueuedPrompts
+} from "./engine/promptQueue.selectors.ts";
+export type {
+  EngineQueuedPrompt,
+  PromptQueueAvailability,
+  PromptQueueInFlightCommand,
+  PromptQueueRecord,
+  PromptQueueSendCommand,
+  PromptQueueState,
+  PromptQueueSuspendReason
+} from "./engine/promptQueue.types.ts";
+export type {
+  ActivityMessagesReceivedIntent,
+  AgentSessionActivationResult,
+  PendingActivationIntentRecord,
+  PendingActivationStatus,
+  PendingIntentsIntent,
+  PendingIntentsState,
+  PendingSubmitIntentRecord,
+  PendingSubmitStatus,
+  SessionActivateCommand,
+  SessionActivationDismissedIntent,
+  SessionActivationFailureClearedIntent,
+  SessionActivationFailureRecordedIntent,
+  SessionActivationRequestedIntent,
+  SessionUnactivateCommand,
+  SessionUnactivationRequestedIntent,
+  SubmitCanceledIntent,
+  SubmitDismissedIntent,
+  SubmitRequestedIntent
+} from "./engine/pendingIntents.types.ts";
+export {
+  pendingSubmitRecordListsEqual,
+  sessionActivationPresentationMapsEqual,
+  selectLatestActivationForSession,
+  selectLatestPendingSubmitForSession,
+  selectPendingSubmitsForSession,
+  selectSessionActivationPresentations,
+  selectSessionHasUnconfirmedSubmit,
+  selectSessionIsSubmitting
+} from "./engine/pendingIntents.selectors.ts";
+export type { SessionActivationPresentation } from "./engine/pendingIntents.selectors.ts";
+export type {
+  SessionActivityObservedIntent,
+  SessionReconcileCommand,
+  SessionReconcileIntent,
+  SessionReconcileRecord,
+  SessionReconcileRequestedIntent,
+  SessionReconcileScope,
+  SessionReconcileState
+} from "./engine/sessionReconcile.types.ts";
 export type {
   AgentActivityDisplayStatus,
   AgentActivityCancelReason,
   AgentActivityCancelSessionInput,
+  AgentActivityCancelTurnInput,
   AgentActivityCancelSessionResult,
   AgentActivityGoalControlAction,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityComposerCapabilityOption,
+  AgentActivityComposerBehavior,
   AgentActivityComposerOptions,
   AgentActivityComposerPermissionConfig,
   AgentActivityComposerPermissionModeOption,
@@ -120,6 +195,9 @@ export type {
   AgentActivitySubmitInteractiveInput,
   AgentActivitySnapshot,
   AgentActivityTurnLifecycle,
+  AgentActivityTurn,
+  AgentActivityTurnCancelResponse,
+  AgentActivityInteraction,
   AgentActivityUpdatedApplyResult,
   AgentActivityUpdatedEvent
 } from "./types.ts";

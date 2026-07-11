@@ -13,7 +13,6 @@ import { useSnapshot } from "valtio";
 import { AgentGUI } from "@tutti-os/agent-gui";
 import type {
   AgentActivityRuntime,
-  AgentQueuedPromptRuntime,
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
@@ -81,13 +80,13 @@ import {
   logAgentGUIConversationRailPreferenceDiagnostic,
   stringifyDiagnosticError
 } from "./desktopAgentGUIWorkbenchDiagnostics.ts";
-import { mergeDesktopAgentProbeSnapshots } from "./desktopAgentProbeSnapshot.ts";
 import {
   hasDesktopAgentGUIConversationRailCollapsedState,
   resolveDesktopAgentGUIProviderForAgentTarget,
   withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
+import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import { projectDesktopManagedAgentsStateForAgentGUI } from "../services/internal/desktopManagedAgentProviders.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
@@ -100,7 +99,6 @@ export type DesktopAgentGUIConversationRailToggleDetail =
 
 interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi: AgentHostInputApi;
   appCenterService: IWorkspaceAppCenterService;
   agentProviderStatusService?: IAgentProviderStatusService;
@@ -181,9 +179,6 @@ const DESKTOP_AGENT_GUI_EMPTY_PROVIDER_STATUS_SNAPSHOT = {
   statuses: []
 } satisfies ReturnType<IAgentProviderStatusService["getSnapshot"]>;
 const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
-type DesktopAgentProbeState = NonNullable<
-  AgentGUIProps["workspaceAgentProbes"]
->;
 
 function areDesktopAgentGUIWorkbenchBodyPropsEqual(
   previous: DesktopAgentGUIWorkbenchBodyProps,
@@ -191,7 +186,6 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
 ): boolean {
   return (
     previous.agentActivityRuntime === next.agentActivityRuntime &&
-    previous.agentQueuedPromptRuntime === next.agentQueuedPromptRuntime &&
     previous.agentHostApi === next.agentHostApi &&
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
@@ -259,7 +253,6 @@ function areDesktopAgentGUIWorkbenchBodyContextsEqual(
 
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
-  agentQueuedPromptRuntime,
   agentHostApi,
   appCenterService,
   agentProviderStatusService,
@@ -660,8 +653,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     typeof setTimeout
   > | null>(null);
   const [agentProbeRefreshSequence, setAgentProbeRefreshSequence] = useState(0);
-  const [workspaceAgentProbes, setWorkspaceAgentProbes] =
-    useState<DesktopAgentProbeState | null>(null);
   const [openSessionRequest, setOpenSessionRequest] = useState<NonNullable<
     AgentGUIProps["openSessionRequest"]
   > | null>(null);
@@ -743,7 +734,14 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     () => Array.from(new Set(Object.values(agentProbeDemandBySource))).sort(),
     [agentProbeDemandBySource]
   );
-  const agentProbeProvidersKey = agentProbeProviders.join("\u0000");
+  const workspaceAgentProbes = useDesktopAgentProbes({
+    previewMode,
+    providers: agentProbeProviders,
+    refreshSequence: agentProbeRefreshSequence,
+    runtimeApi,
+    workspaceAgentProbes: agentHostApi.workspaceAgentProbes,
+    workspaceId
+  });
   const handleAgentProbeDemandChange: NonNullable<
     AgentGUIProps["onAgentProbeDemandChange"]
   > = useCallback((probeProvider, sourceId = "default") => {
@@ -807,79 +805,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     },
     [i18n, runtimeApi, workspaceId]
   );
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    if (agentProbeProviders.length === 0) {
-      setWorkspaceAgentProbes(null);
-      return;
-    }
-    const agentProbeApi = agentHostApi.workspaceAgentProbes;
-    if (!agentProbeApi) {
-      return;
-    }
-    let canceled = false;
-    setWorkspaceAgentProbes((current) => ({
-      isLoadingAvailability: current?.snapshot === null,
-      isLoadingUsage: true,
-      snapshot: current?.snapshot ?? null,
-      usageLoadFailed: current?.usageLoadFailed ?? false
-    }));
-    void agentProbeApi
-      .list({
-        includeUsage: true,
-        providers: agentProbeProviders,
-        refresh: true,
-        workspaceId
-      })
-      .then((snapshot) => {
-        if (canceled) {
-          return;
-        }
-        setWorkspaceAgentProbes((current) => ({
-          isLoadingAvailability: false,
-          isLoadingUsage: false,
-          snapshot: mergeDesktopAgentProbeSnapshots(
-            current?.snapshot ?? null,
-            snapshot
-          ),
-          usageLoadFailed: false
-        }));
-      })
-      .catch((error) => {
-        if (canceled) {
-          return;
-        }
-        setWorkspaceAgentProbes((current) => ({
-          isLoadingAvailability: false,
-          isLoadingUsage: false,
-          snapshot: current?.snapshot ?? null,
-          usageLoadFailed: true
-        }));
-        void runtimeApi?.logTerminalDiagnostic({
-          details: {
-            error: error instanceof Error ? error.message : String(error),
-            providers: agentProbeProviders.join(",")
-          },
-          event: "agent.gui.probe.usage_failed",
-          level: "warn",
-          workspaceId
-        });
-      });
-    return () => {
-      canceled = true;
-    };
-  }, [
-    agentHostApi.workspaceAgentProbes,
-    agentProbeRefreshSequence,
-    agentProbeProviders,
-    agentProbeProvidersKey,
-    runtimeApi,
-    previewMode,
-    workspaceId
-  ]);
 
   useEffect(() => {
     consumeDesktopAgentGUIOpenSessionActivation({
@@ -1189,7 +1114,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     <>
       <AgentGUI
         agentActivityRuntime={agentActivityRuntime}
-        agentQueuedPromptRuntime={agentQueuedPromptRuntime}
         agentHostApi={agentHostApiWithToast}
         i18n={i18n}
         locale={locale}
@@ -1288,7 +1212,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         }
         workspaceAppIcons={workspaceAppIcons}
         workspaceId={workspaceId}
-        workspacePath="/"
+        workspacePath=""
       />
     </>
   );

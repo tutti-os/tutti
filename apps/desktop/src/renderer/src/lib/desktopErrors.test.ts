@@ -80,7 +80,7 @@ test("wrapLocalizedTuttidErrorIfSpecific preserves protocol metadata for reason-
   const source = {
     code: "workspace_operation_failed",
     correlationId: "corr-1",
-    developerMessage: "claude-code: ACP adapter not found",
+    developerMessage: "opencode: ACP adapter not found",
     reason: "acp_adapter_version_mismatch",
     retryable: false,
     statusCode: 502
@@ -88,7 +88,7 @@ test("wrapLocalizedTuttidErrorIfSpecific preserves protocol metadata for reason-
   const wrapped = wrapLocalizedTuttidErrorIfSpecific(source, "en");
 
   assert.ok(wrapped instanceof Error);
-  assert.match(wrapped.message, /Claude Code's local adapter is unavailable/);
+  assert.match(wrapped.message, /The local agent adapter is unavailable/);
   assert.equal(
     (wrapped as { code?: string }).code,
     "workspace_operation_failed"
@@ -116,14 +116,14 @@ test("resolveDesktopErrorMessage localizes workspace operation reason details", 
     {
       code: "workspace_operation_failed",
       reason: "acp_adapter_version_mismatch",
-      developerMessage: "claude-code: ACP adapter not found"
+      developerMessage: "opencode: ACP adapter not found"
     },
     "zh-CN"
   );
 
   assert.equal(
     message,
-    "Claude Code 本地适配器不可用或版本不匹配。请先在 Dock 中重新连接 Claude Code，然后重试。"
+    "本地 Agent 适配器不可用或版本不匹配。请先在 Dock 中重新连接 Agent，然后重试。"
   );
 });
 

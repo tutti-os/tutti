@@ -951,7 +951,7 @@ export const zhCN = {
     workspace_operation_failed: {
       default: "暂时无法完成这个工作区操作。",
       acp_adapter_version_mismatch:
-        "Claude Code 本地适配器不可用或版本不匹配。请先在 Dock 中重新连接 Claude Code，然后重试。"
+        "本地 Agent 适配器不可用或版本不匹配。请先在 Dock 中重新连接 Agent，然后重试。"
     }
   }
 } as const satisfies TranslationDictionary;

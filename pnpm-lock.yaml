@@ -228,6 +228,10 @@ importers:
         version: 6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.3)(yaml@2.9.0)
 
   packages/agent/activity-core:
+    dependencies:
+      "@tutti-os/client-tuttid-ts":
+        specifier: workspace:*
+        version: link:../../clients/tuttid-ts
     devDependencies:
       "@tutti-os/config-tsconfig":
         specifier: workspace:*

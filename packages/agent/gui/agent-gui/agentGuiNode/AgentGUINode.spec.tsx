@@ -38,6 +38,7 @@ import type {
 import type { AgentGUINodeData } from "../../types";
 import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
+import { createTestAgentSessionEngine } from "../../shared/testing/createTestAgentSessionEngine";
 
 const mockCreateConversation = vi.fn();
 const mockSelectConversation = vi.fn();
@@ -1347,7 +1348,7 @@ describe("AgentGUINode", () => {
     ).toHaveLength(3);
   });
 
-  it("shows Claude Code slash status limits from ACP runtime usage", () => {
+  it("shows Claude Code slash status limits from SDK runtime usage", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       draftPrompt: "/status",
@@ -4426,7 +4427,10 @@ describe("AgentGUINode", () => {
       },
       composerSettings: {
         ...baseViewModel.composerSettings,
-        slashCommandPolicy: null
+        slashCommandPolicy: {
+          fallbackCommands: [],
+          commandEffects: [{ command: "plan", effect: "togglePlanMode" }]
+        }
       },
       draftPrompt: "/plan refactor auth",
       availableCommands: [{ name: "plan", description: "provider plan" }]
@@ -7300,8 +7304,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
     title: "",
     status: "ready"
   });
+  const sessionEngine = createTestAgentSessionEngine();
   return {
     promptContentUploadSupport: { file: true, image: true },
+    getSessionEngine() {
+      return sessionEngine;
+    },
     async goalControl(input) {
       return {
         session: createSession(input.workspaceId, input.agentSessionId),

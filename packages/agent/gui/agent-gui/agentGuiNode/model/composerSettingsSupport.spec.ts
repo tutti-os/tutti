@@ -24,6 +24,12 @@ function optionsFixture(input: {
       ? { capabilities: input.capabilities }
       : {},
     skills: [],
+    behavior: {
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     loadedAtUnixMs: 0
   };
 }

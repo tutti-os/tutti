@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	ProviderClaudeCode = "claude-code"
+	ProviderClaudeCode = providerregistry.ClaudeCodeProviderID
 	ProviderCodex      = providerregistry.CodexProviderID
 	ProviderTuttiAgent = "tutti-agent"
 	ProviderCursor     = "cursor"

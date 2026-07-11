@@ -19,6 +19,10 @@ export type EngineDiagnosticEvent =
       intentType: EngineIntent["type"];
     }
   | {
+      type: "intentDroppedForIdentityMismatch";
+      intentType: EngineIntent["type"];
+    }
+  | {
       type: "listenerError";
       error: unknown;
     };

@@ -29,10 +29,6 @@ export const migratedAgentGUIProviderIdentityCatalog: readonly AgentGUIProviderI
  */
 const legacyAgentGUIProviderIdentityFallbacks: readonly AgentGUIProviderIdentityCatalogEntry[] =
   [
-    legacyIdentity("claude-code", "Claude Code", "claude-code", [
-      "claude",
-      "claude code"
-    ]),
     legacyIdentity("cursor", "Cursor", "cursor", [
       "cursor-agent",
       "cursor agent"

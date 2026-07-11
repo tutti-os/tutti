@@ -151,10 +151,7 @@ func NewDefaultControllerWithOptions(
 	options ControllerOptions,
 ) *Controller {
 	host := options.HostMetadata
-	adapters := []Adapter{
-		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-	}
-	adapters = append(adapters, newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)...)
+	adapters := newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)
 	adapters = append(adapters,
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
@@ -165,17 +162,6 @@ func NewDefaultControllerWithOptions(
 	)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewController(adapters, reporter)
-}
-
-func newDefaultClaudeCodeAdapter(
-	transport ProcessTransport,
-	host HostMetadata,
-	commandResolver ProviderCommandResolver,
-) Adapter {
-	if claudeCodeSDKRuntimeEnabled() {
-		return NewClaudeCodeSDKAdapter(transport)
-	}
-	return newClaudeCodeAdapterWithHostMetadata(transport, host, commandResolver)
 }
 
 func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, error) {
@@ -452,8 +438,6 @@ func defaultPermissionModeIDForProvider(provider string) string {
 		return strings.TrimSpace(profile.DefaultPermissionModeID)
 	}
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode:
-		return "default"
 	case ProviderTuttiAgent, ProviderNexight:
 		return "auto"
 	case ProviderCursor:
@@ -463,29 +447,6 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	default:
 		return ""
 	}
-}
-
-// claudeCodePermissionModeIDs is the canonical set of claude-code permission
-// modes — i.e. every ACP mode except "plan". It is the single source the
-// allowlist, the forward ACP mapping (claudeCodeACPModeID), and the inverse
-// (claudeCodeModeFromID) all derive from, so adding a mode (e.g. "auto") is a
-// one-line change here rather than across several drifting switch statements.
-var claudeCodePermissionModeIDs = []string{
-	"default",
-	"acceptEdits",
-	"dontAsk",
-	"bypassPermissions",
-	"auto",
-}
-
-func isClaudeCodePermissionModeID(mode string) bool {
-	mode = strings.TrimSpace(mode)
-	for _, id := range claudeCodePermissionModeIDs {
-		if id == mode {
-			return true
-		}
-	}
-	return false
 }
 
 func permissionModeIDAllowedForProvider(provider string, mode string) bool {
@@ -499,8 +460,6 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		return false
 	}
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode:
-		return isClaudeCodePermissionModeID(mode)
 	case ProviderTuttiAgent, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
@@ -1878,7 +1837,7 @@ func sessionHasLiveBackgroundAgents(session Session) bool {
 			continue
 		}
 		status := firstNonEmptyString(payloadString(agent, "status"), string(activityshared.ActivityStatusRunning))
-		if !claudeSDKBackgroundAgentStatusIsTerminal(status) {
+		if !backgroundAgentStatusIsTerminal(status) {
 			return true
 		}
 	}
@@ -2489,7 +2448,7 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	if interactiveAdapter, ok := adapter.(InteractiveAdapter); ok {
 		result, err := interactiveAdapter.SubmitInteractive(ctx, session, input)
 		if err == nil {
-			c.syncClaudeCodeModeFromSelection(session, result.OptionID)
+			c.syncInteractiveSelectionState(adapter, session, result.OptionID)
 			if adapterShouldReceiveInteractiveDenyFollowUp(adapter) {
 				c.scheduleInteractiveDenyFollowUp(input)
 			}
@@ -2499,56 +2458,34 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	return SubmitInteractiveResult{}, fmt.Errorf("agent provider %q does not support interactive submission", session.Provider)
 }
 
-// claudeCodeModeFromID is the inverse of the adapter's effectiveModeID: it maps
-// an ACP mode id back to the (planMode, permissionModeID) that the session
-// settings represent. ok is false for ids that are not mode switches (ordinary
-// tool-approval options like allow_once/reject_once), which must not touch the
-// session mode. For "plan" the permission mode is left empty, meaning "keep the
-// current permission mode" while in plan.
-func claudeCodeModeFromID(modeID string) (planMode bool, permissionModeID string, ok bool) {
-	modeID = strings.TrimSpace(modeID)
-	if modeID == "plan" {
-		return true, "", true
-	}
-	if isClaudeCodePermissionModeID(modeID) {
-		return false, modeID, true
-	}
-	return false, "", false
-}
-
-// syncClaudeCodeModeFromSelection mirrors a claude-code interactive selection
-// (the exit-plan switch_mode options) into the session's authoritative mode.
-// Selecting a permission mode leaves plan mode and switches the mode in one
-// step; selecting "plan" (keep planning) stays in plan. The single state patch
-// it publishes drives the composer reactively — there is no separate frontend
-// optimistic write.
-func (c *Controller) syncClaudeCodeModeFromSelection(session Session, optionID string) {
-	if c == nil || strings.TrimSpace(session.Provider) != ProviderClaudeCode {
+// syncInteractiveSelectionState asks the adapter to interpret its protocol
+// option id, then keeps the controller as the single session-state writer.
+func (c *Controller) syncInteractiveSelectionState(adapter Adapter, session Session, optionID string) {
+	if c == nil {
 		return
 	}
-	planMode, permissionModeID, ok := claudeCodeModeFromID(optionID)
+	stateAdapter, ok := adapter.(InteractiveSelectionStateAdapter)
+	if !ok {
+		return
+	}
+	state, ok := stateAdapter.StateAfterInteractiveSelection(session, optionID)
 	if !ok {
 		return
 	}
 	current, found := c.Session(session.RoomID, session.AgentSessionID)
-	if !found || strings.TrimSpace(current.Provider) != ProviderClaudeCode {
+	if !found {
 		return
 	}
-	c.applyClaudeCodeMode(current, planMode, permissionModeID)
+	c.applyInteractiveSelectionState(current, state)
 }
 
-// applyClaudeCodeMode is the single writer of a claude-code session's mode. It
-// updates plan mode and permission mode together, no-ops when nothing changes,
-// and publishes one state patch so every reader (composer, list, reports) sees
-// the same authoritative value. An empty permissionModeID keeps the current
-// permission mode (used when entering plan).
-func (c *Controller) applyClaudeCodeMode(current Session, planMode bool, permissionModeID string) {
+func (c *Controller) applyInteractiveSelectionState(current Session, state InteractiveSelectionState) {
 	currentSettings := normalizeSessionSettings(current.Settings, current.Provider, current.PermissionModeID)
-	nextPermission := strings.TrimSpace(permissionModeID)
+	nextPermission := strings.TrimSpace(state.PermissionMode)
 	if nextPermission == "" {
 		nextPermission = strings.TrimSpace(currentSettings.PermissionModeID)
 	}
-	if currentSettings.PlanMode == planMode &&
+	if currentSettings.PlanMode == state.PlanMode &&
 		strings.TrimSpace(currentSettings.PermissionModeID) == nextPermission &&
 		strings.TrimSpace(current.PermissionModeID) == nextPermission {
 		return
@@ -2556,7 +2493,7 @@ func (c *Controller) applyClaudeCodeMode(current Session, planMode bool, permiss
 	nextSession := current
 	nextSession.PermissionModeID = nextPermission
 	settings := normalizeSessionSettings(nextSession.Settings, nextSession.Provider, nextSession.PermissionModeID)
-	settings.PlanMode = planMode
+	settings.PlanMode = state.PlanMode
 	settings.PermissionModeID = nextPermission
 	nextSession.Settings = cloneSessionSettings(settings)
 	nextSession.UpdatedAtUnixMS = unixMS(now())
@@ -2617,7 +2554,7 @@ func (c *Controller) syncCursorPlanModeFromEvents(session Session, events []acti
 		if event.Type != activityshared.EventSessionUpdated {
 			continue
 		}
-		if strings.TrimSpace(asString(event.Payload.Metadata["acpSessionUpdate"])) != "current_mode_update" {
+		if normalizedSessionUpdateKind(event.Payload.Metadata) != "current_mode_update" {
 			continue
 		}
 		c.syncCursorPlanModeFromACPUpdate(session, asString(event.Payload.Metadata["acpModeId"]))
@@ -2648,8 +2585,8 @@ func permissionModeStatePatch(session Session) agentsessionstore.WorkspaceAgentS
 }
 
 func adapterShouldReceiveInteractiveDenyFollowUp(adapter Adapter) bool {
-	if _, ok := adapter.(*ClaudeCodeSDKAdapter); ok {
-		return false
+	if policy, ok := adapter.(InteractiveDenyFollowUpPolicyAdapter); ok {
+		return policy.ControllerSendsInteractiveDenyFollowUp()
 	}
 	return true
 }

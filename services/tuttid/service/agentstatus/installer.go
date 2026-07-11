@@ -396,9 +396,6 @@ func (s Service) executeInstaller(
 			Env:      s.shellCommandInstallerEnv(installCtx, spec),
 			OnStdout: activeActionStdoutAppender(ctx, provider),
 		})
-		if err == nil && result.ExitCode == 0 {
-			result = s.applyInstallerPostStep(installCtx, spec, result)
-		}
 		return runResult(result, err)
 	case InstallerKindOfficialScript:
 		result, err := s.runOfficialScriptInstaller(installCtx, provider, spec)
@@ -440,9 +437,6 @@ func (s Service) executeInstaller(
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, provider, spec)
-		if err == nil && result.ExitCode == 0 {
-			result = s.applyInstallerPostStep(installCtx, spec, result)
-		}
 		return runResult(result, err)
 	default:
 		return command, InstallCommandResult{ExitCode: 1, Stderr: fmt.Sprintf("unsupported installer kind %q", spec.Kind)}, nil

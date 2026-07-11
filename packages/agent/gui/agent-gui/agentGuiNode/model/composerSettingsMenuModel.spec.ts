@@ -153,7 +153,7 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("preserves Claude ACP model descriptions", () => {
+  it("preserves Claude Code model descriptions", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         draftSettings: {

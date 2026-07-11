@@ -29,6 +29,7 @@ import {
   type AgentActivityRuntimeSessionSectionsResult
 } from "../../agentActivityRuntime";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
+import { createTestAgentSessionEngine } from "../../shared/testing/createTestAgentSessionEngine";
 import {
   MANAGED_AGENT_ICON_URLS,
   MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
@@ -4865,8 +4866,12 @@ type AgentGUINodeViewProps = Parameters<typeof AgentGUINodeView>[0];
 
 function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   const snapshot = createEmptyAgentActivitySnapshot();
+  const sessionEngine = createTestAgentSessionEngine();
   return {
     promptContentUploadSupport: { file: true, image: true },
+    getSessionEngine() {
+      return sessionEngine;
+    },
     async goalControl(input) {
       return {
         session: createRuntimeSession(input.workspaceId, input.agentSessionId),

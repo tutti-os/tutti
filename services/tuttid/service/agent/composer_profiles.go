@@ -21,9 +21,12 @@ type composerProfile struct {
 	// values are cleared before they reach the runtime.
 	ModelSelection bool
 	// LiveModelDiscovery: model options come from the model config option a
-	// live agent session advertises over ACP; GetComposerOptions merges them
+	// live agent session advertises through its runtime; GetComposerOptions merges them
 	// into the composer (reusing a running session's list when one exists).
 	LiveModelDiscovery bool
+	// LiveModelDiscoveryKind selects the provider-specific discovery protocol.
+	// Consumers branch on this implementation kind, never on provider identity.
+	LiveModelDiscoveryKind providerregistry.LiveModelDiscoveryKind
 	// LiveModelProbeSession: with no running session to reuse, model
 	// discovery may spawn a short-lived hidden provider session. Opt-in
 	// because the probe is a real session (Claude Code only today).
@@ -70,6 +73,7 @@ type composerProfile struct {
 	// SkillInvocation controls how discovered skills are invoked in the GUI.
 	SkillKind       string
 	SkillInvocation string
+	Behavior        providerregistry.ComposerBehaviorDescriptor
 }
 
 var composerFullCapabilities = []string{
@@ -78,23 +82,6 @@ var composerFullCapabilities = []string{
 
 func defaultComposerProfiles() map[string]composerProfile {
 	profiles := map[string]composerProfile{
-		agentprovider.ClaudeCode: {
-			ModelSelection:          true,
-			LiveModelDiscovery:      true,
-			LiveModelProbeSession:   true,
-			ReasoningEffort:         true,
-			DefaultReasoningEffort:  "high",
-			Speed:                   true,
-			Capabilities:            composerFullCapabilities,
-			PermissionConfigurable:  true,
-			DefaultPermissionModeID: "default",
-			PermissionModes: []PermissionModeOption{
-				{ID: "default", Semantic: PermissionModeSemanticAskBeforeWrite},
-				{ID: "acceptEdits", Semantic: PermissionModeSemanticAcceptEdits},
-				{ID: "dontAsk", Semantic: PermissionModeSemanticLockedDown},
-				{ID: "bypassPermissions", Semantic: PermissionModeSemanticFullAccess},
-			},
-		},
 		agentprovider.TuttiAgent: {
 			ModelSelection:         true,
 			UsesModelCatalog:       true,
@@ -183,13 +170,17 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 	}
 	return composerProfile{
 		ModelSelection:           descriptor.ModelSelection,
+		LiveModelDiscovery:       descriptor.LiveModelDiscovery.Kind != "",
+		LiveModelDiscoveryKind:   descriptor.LiveModelDiscovery.Kind,
+		LiveModelProbeSession:    descriptor.LiveModelDiscovery.HiddenProbe,
 		UsesModelCatalog:         strings.TrimSpace(string(descriptor.ModelCatalog)) != "",
 		ModelCatalog:             descriptor.ModelCatalog,
 		CapabilityCatalogKind:    descriptor.CapabilityCatalog.Kind,
 		CapabilityCatalogCommand: append([]string(nil), provider.Runtime.Command...),
 		SlashCommandPolicy: providerregistry.SlashCommandPolicyDescriptor{
-			FallbackCommands: append([]string(nil), descriptor.SlashCommandPolicy.FallbackCommands...),
-			CommandEffects:   append([]providerregistry.SlashCommandEffectDescriptor(nil), descriptor.SlashCommandPolicy.CommandEffects...),
+			FallbackCommands:            append([]string(nil), descriptor.SlashCommandPolicy.FallbackCommands...),
+			CommandEffects:              append([]providerregistry.SlashCommandEffectDescriptor(nil), descriptor.SlashCommandPolicy.CommandEffects...),
+			CommandCatalogAuthoritative: descriptor.SlashCommandPolicy.CommandCatalogAuthoritative,
 		},
 		ReasoningEffort:          descriptor.ReasoningEffort,
 		ReasoningEffortValues:    append([]string(nil), descriptor.ReasoningEffortValues...),
@@ -205,7 +196,12 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 		PermissionConfigOptionID: strings.TrimSpace(descriptor.ConfigOptionIDs.Permission),
 		SkillKind:                strings.TrimSpace(string(descriptor.Skills.Kind)),
 		SkillInvocation:          strings.TrimSpace(string(descriptor.Skills.Invocation)),
+		Behavior:                 descriptor.Behavior,
 	}
+}
+
+func isClaudeSDKLiveModelProvider(provider string) bool {
+	return composerProfileFor(provider).LiveModelDiscoveryKind == providerregistry.LiveModelDiscoveryKindClaudeSDK
 }
 
 // composerProfileFor resolves the provider's composer profile. Unknown

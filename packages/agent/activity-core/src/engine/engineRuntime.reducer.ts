@@ -31,6 +31,22 @@ export function engineRuntimeReducer(
   };
   switch (intent.type) {
     case "engine/connectionChanged":
+      if (
+        intent.status === "connected" &&
+        state.connection !== "connected" &&
+        intent.workspaceId?.trim()
+      ) {
+        return {
+          commands: [
+            {
+              commandId: `engine:reconcile:${intent.workspaceId}:${counted.processedIntentCount}`,
+              type: "engine/reconcileWorkspace",
+              workspaceId: intent.workspaceId
+            }
+          ],
+          state: { ...counted, connection: intent.status }
+        };
+      }
       return {
         commands: NO_COMMANDS,
         state: { ...counted, connection: intent.status }
@@ -83,5 +99,7 @@ export function engineRuntimeReducer(
         commands: NO_COMMANDS,
         state: { ...counted, lastExpiredIntentId: intent.expiryId }
       };
+    default:
+      return { commands: NO_COMMANDS, state: counted };
   }
 }

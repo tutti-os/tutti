@@ -73,6 +73,7 @@ type ComposerOptionsInput struct {
 	WorkspaceID              string
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
+	providerTargetRef        map[string]any
 }
 
 type ComposerSkillOption struct {
@@ -110,6 +111,7 @@ type ComposerOptions struct {
 	RuntimeContext     map[string]any
 	Skills             []ComposerSkillOption
 	CapabilityCatalog  []ComposerCapabilityOption
+	Behavior           providerregistry.ComposerBehaviorDescriptor
 	SlashCommandPolicy *providerregistry.SlashCommandPolicyDescriptor
 }
 
@@ -127,6 +129,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		provider = agentprovider.Normalize(launch.Provider)
 		input.Provider = provider
 		input.AgentTargetID = agentTargetID
+		input.providerTargetRef = clonePayload(launch.ProviderTargetRef)
 	}
 	if provider == "" {
 		return ComposerOptions{}, ErrInvalidArgument
@@ -149,7 +152,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
 	modelOptions := s.enrichModelCapabilityOptions(ctx, provider, composerSelectedModelOptions(effectiveSettings.Model))
-	if provider == agentprovider.ClaudeCode {
+	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
 		modelOptions = []ComposerConfigOptionValue{}
 	}
 	runtimeContext := map[string]any{
@@ -192,6 +195,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		RuntimeContext:     runtimeContext,
 		Skills:             skills,
 		CapabilityCatalog:  capabilityCatalog,
+		Behavior:           composerProfileFor(provider).Behavior,
 		SlashCommandPolicy: slashCommandPolicy,
 	}
 	if composerProfileFor(provider).LiveModelDiscovery {
@@ -303,12 +307,10 @@ func composerDefaultModel(
 	if composerProfileFor(provider).ModelCatalog == providerregistry.ModelCatalogKindCodexCLI {
 		return strings.TrimSpace(readCodexConfiguredDefaultModel())
 	}
-	switch provider {
-	case agentprovider.ClaudeCode:
+	if isClaudeSDKLiveModelProvider(provider) {
 		return strings.TrimSpace(readClaudeCodeConfiguredDefaultModel())
-	default:
-		return ""
 	}
+	return ""
 }
 
 func composerSlashCommandPolicy(provider string) *providerregistry.SlashCommandPolicyDescriptor {
@@ -317,7 +319,8 @@ func composerSlashCommandPolicy(provider string) *providerregistry.SlashCommandP
 		return nil
 	}
 	return &providerregistry.SlashCommandPolicyDescriptor{
-		FallbackCommands: append([]string(nil), policy.FallbackCommands...),
+		FallbackCommands:            append([]string(nil), policy.FallbackCommands...),
+		CommandCatalogAuthoritative: policy.CommandCatalogAuthoritative,
 		CommandEffects: append(
 			[]providerregistry.SlashCommandEffectDescriptor(nil),
 			policy.CommandEffects...,
@@ -409,13 +412,12 @@ func normalizeComposerConversationDetailMode(value string) string {
 }
 
 func normalizeComposerModelForProvider(provider string, model string) string {
-	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+	if !isClaudeSDKLiveModelProvider(provider) {
 		return strings.TrimSpace(model)
 	}
 	switch strings.TrimSpace(model) {
 	case "opus", "opusplan":
-		// Retired Claude Code aliases; Opus tier is exposed as "default" in
-		// newer claude-agent-acp builds.
+		// Retired Claude Code aliases map to the SDK's default Opus selection.
 		return "default"
 	default:
 		return strings.TrimSpace(model)
@@ -533,7 +535,7 @@ func composerOptionsProviderUsesModelCatalog(provider string) bool {
 }
 
 func composerModelConfig(provider string, selected string, options []ComposerConfigOptionValue) ComposerConfigOption {
-	if agentprovider.Normalize(provider) == agentprovider.ClaudeCode {
+	if composerProfileFor(provider).Behavior.ModelOptionsAuthoritative {
 		return ComposerConfigOption{}
 	}
 	values := make([]ComposerConfigOptionValue, 0, len(options))
@@ -674,10 +676,8 @@ const (
 // dimension. Speed combines orthogonally with model and reasoning effort.
 //
 //   - Codex: the codex app-server honours `service_tier` (fast → priority).
-//   - Claude Code: requires a supported claude-agent-acp bridge that advertises
-//     the native `fast` config option backed by the SDK's `Settings.fastMode`.
-//     The daemon maps Tutti's `standard` / `fast` speed tiers onto the bridge's
-//     live `off` / `on` config values.
+//   - Claude Code: the SDK sidecar maps the `standard` / `fast` tiers onto
+//     `Settings.fastMode`.
 func speedProviderSupportsSpeed(provider string) bool {
 	return composerProfileFor(provider).Speed
 }
@@ -778,8 +778,7 @@ func reasoningEffortValuesForProvider(provider string) []string {
 	if len(profile.ReasoningEffortValues) > 0 {
 		return append([]string(nil), profile.ReasoningEffortValues...)
 	}
-	if provider == agentprovider.ClaudeCode ||
-		provider == agentprovider.OpenCode {
+	if provider == agentprovider.OpenCode {
 		return []string{"low", "medium", "high", "xhigh"}
 	}
 	return []string{"minimal", "low", "medium", "high", "xhigh"}

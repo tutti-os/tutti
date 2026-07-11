@@ -13,6 +13,7 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 )
 
 var (
@@ -35,7 +36,7 @@ func NewService(runtime RuntimeController) *Service {
 		providerAvailabilityCache: newProviderAvailabilityCache(),
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
 		liveModelCache:            newComposerLiveModelCache(),
-		claudeStartupLock:         newClaudeStartupSerializer(),
+		claudeStartupLock:         claudecodeservice.DefaultStartupGate,
 	}
 }
 

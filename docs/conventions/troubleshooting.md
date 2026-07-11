@@ -1687,7 +1687,7 @@ delimited by ---`, and the composer skill picker may show partial or
 - Symptom:
   Provider setup appears stuck or idle even though `tuttid.log` has an
   `agent provider install step started` entry and no matching completed/failed
-  line yet. This is most visible for Claude Code CLI or ACP adapter installs.
+  line yet. This is most visible for provider CLI or adapter installs.
 - Quick checks:
   Compare the install start timestamp with the log export timestamp before
   calling it hung. Also check for a later completed install log line and the
@@ -1711,68 +1711,6 @@ delimited by ---`, and the composer skill picker may show partial or
   Run `cd services/tuttid && go test ./service/agentstatus ./api` and
   `pnpm check:api-generated`. Trigger a Claude Code install and confirm status
   responses include `activeAction` while the CLI or adapter step is in flight.
-
-### Legacy Claude ACP adapter appears stale after external registry migration
-
-- Symptom:
-  With `TUTTI_CLAUDE_CODE_RUNTIME=acp`, Claude Agent provider status is not
-  ready, or live ACP options do not match the package version advertised by the
-  ACP External Agent Registry. Another form is Claude Code context usage briefly
-  showing `0%` during a running session or around compaction, then returning to
-  the prior nonzero value on the next usage update. A third form is new Claude
-  Code sessions failing during startup with
-  `Invalid value for config option fast: standard`.
-- Quick checks:
-  First confirm the runtime is legacy ACP. The default Claude Code runtime is
-  SDK; SDK provider availability checks the `claude` CLI plus the Claude SDK
-  sidecar entry and must not require `claude-acp`.
-  Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
-  and the package manifest under
-  `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
-  `which claude-agent-acp` only describes a user/global shim and is no longer
-  the Tutti-owned Claude adapter source. For usage flicker, inspect that
-  package's `dist/acp-agent.js` for `sessionUpdate: "usage_update"` near
-  `compact_boundary`; it must not publish `used: 0` when the SDK
-  `getContextUsage()` probe fails. For speed failures, inspect the live
-  `fast` config option values advertised by the managed package; supported
-  native Claude ACP packages that fall back to select options use `off` and
-  `on`.
-- Root cause:
-  Tutti resolves Claude ACP from the external agent registry and installs the
-  npm adapter into a daemon-owned prefix with managed npm. A stale or missing
-  prefix package, stale registry cache, or unavailable managed Node runtime can
-  make the adapter unavailable even when a global `claude-agent-acp` exists.
-  Usage flicker can also come from the managed bridge bundle itself publishing
-  an invalid zero context usage after a failed compact-boundary usage probe;
-  AgentGUI only displays the normalized runtime context it receives. Speed
-  failures come from treating Tutti's internal `standard` / `fast` speed tier
-  values as ACP wire values; supported Claude ACP packages advertise native
-  `fast` config values as `off` / `on`.
-- Fix:
-  Run the provider install action so tuttid refreshes the registry, resolves the
-  managed Node runtime, and installs the npm package into the per-agent prefix.
-  Do not compensate by changing static model catalogs for behavior that should
-  come from the live ACP package. Keep the Tutti claude-agent-acp patch script
-  authoritative for bridge behavior and apply it to the managed package; do not
-  mask invalid usage in AgentGUI. Keep Tutti's internal speed tiers stable, but
-  translate Claude ACP `fast` config values at the adapter boundary according
-  to the live advertised options, and normalize the live value back before
-  projecting runtime settings.
-- Validation:
-  Run `go test ./services/tuttid/service/agentstatus`, then confirm a stale
-  global adapter is ignored and the install action uses managed npm with
-  `--prefix <state-dir>/agent-providers/external-agent-registry/packages/claude-acp`.
-  For usage flicker, run
-  `node services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs --dist <managed-acp-dist>`
-  twice and confirm the second run reports no changes, then inspect the bundle
-  and confirm `lastAssistantTotalUsage = usedTokens ?? 0` is absent. For speed
-  compatibility, run the Claude ACP adapter tests that cover native `off` /
-  `on` advertised values and confirm legacy `standard` / `fast` advertised
-  values are ignored.
-- References:
-  [service.go](../../services/tuttid/service/agentstatus/service.go)
-  [store.go](../../services/tuttid/service/externalagentregistry/store.go)
-  [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
 
 ### Cursor ACP context ring stays empty or usage looks wrong
 
@@ -2380,9 +2318,9 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   `canUseTool` callback; if that callback always requests AgentGUI approval,
   it can reintroduce prompts even after the SDK permission mode is bypass.
 - Fix:
-  Gate bypass availability with the same rule as Claude Agent ACP: non-root
-  processes can bypass, and root processes can bypass only when `IS_SANDBOX` is
-  set. Launch the SDK query with `allowDangerouslySkipPermissions` whenever
+  Gate bypass availability by process isolation: non-root processes can bypass,
+  and root processes can bypass only when `IS_SANDBOX` is set. Launch the SDK
+  query with `allowDangerouslySkipPermissions` whenever
   that gate passes, regardless of the current permission mode. In `canUseTool`,
   handle `AskUserQuestion` and `ExitPlanMode` first, then directly allow
   ordinary tools when the effective permission mode is `bypassPermissions`.
@@ -2402,6 +2340,18 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   `expiresAt: 0`, while the plaintext `~/.claude/.credentials.json` may still hold
   a valid token. The Claude CLI alone does not reproduce it.
 - Quick checks:
+  Compare the last `tutti.agent_provider.status.checked` entry for
+  `provider=claude-code` before the first SDK process start. It records only
+  availability, auth status/method, CLI version, and sidecar readiness; account
+  labels, command output, credential values, and personal paths stay excluded.
+  Tutti allows `claude auth status` up to ten minutes to finish so a slow
+  Keychain read is not killed by the generic five-second provider-status
+  timeout. It also shares the same credential-startup gate as SDK discovery and
+  real Claude sessions, so these operations cannot overlap around token expiry.
+  The local daemon log records the command's bounded raw output under
+  `event=tutti.agent_provider.claude.auth_status_command.completed`, together
+  with exit status and duration, so status parsing can be audited independently
+  from the normalized provider snapshot.
   Capture `/v1/oauth/token` traffic (mitmproxy). A failure may show `Client
 disconnected` immediately before later refresh attempts return `400
 invalid_grant`. Daemon logs may also show an extra `claude-code` process start
@@ -2422,7 +2372,7 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   Cold composer options must always have a static Claude fallback (`default`,
   `opus`, `sonnet`, `haiku`, plus any configured custom model) so the UI never
   depends on live discovery. A cold-start live discovery may run at most once per
-  provider/workspace/cwd cache key, but it must be hidden, serialized with other
+  provider/agent-target/auth-scope cache key, but it must be hidden, serialized with other
   Claude startups, and deleted only after a delayed grace period rather than
   immediately after the model list appears. Successful discovery updates the
   daemon live-model cache; later composer-options calls prefer cached models or
@@ -2431,13 +2381,28 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   options; it must not start discovery. If the daemon exits before the delayed
   cleanup timer fires, later persisted-session reads must delete the stale
   hidden discovery session instead of restoring it as a real conversation.
+  Run Claude discovery from the fixed daemon-owned
+  `<state-dir>/agent/discovery/claude-code` directory and scope its cache by
+  agent target plus auth context, never by workspace or the UI caller's cwd. Recheck for a
+  reusable session after acquiring the Claude startup slot so concurrent
+  requests cannot queue a second hidden process.
+  Keep the longer timeout scoped to Claude `auth status`; other provider status
+  commands retain the short generic timeout so a broken CLI cannot indefinitely
+  block provider loading.
+  Treat the 20-second composer wait as a UI budget only: SDK initialization may
+  continue in the background for ten minutes. Close must await the sidecar ack
+  after SDK query shutdown; do not close stdin or terminate the process first.
+  On macOS, usage reads Keychain first and only falls back to
+  `$CLAUDE_CONFIG_DIR/.credentials.json`. AgentGUI mount probes availability
+  only; opening the usage tooltip/config menu triggers the Anthropic quota call.
 - Validation:
   Add daemon service tests for Create cache-only validation, SendInput waiting
   on the Claude startup slot before runtime exec, static Claude cold-start model
   options, reusing model options from a running Claude session, cold-start
   discovery running once, delayed hidden discovery cleanup, and stale persisted
-  hidden discovery cleanup after restart. Run targeted agent service Go tests
-  plus the daemon Go lint/test/build lanes.
+  hidden discovery cleanup after restart. Cover the provider-specific Claude
+  auth-status timeout as well. Run targeted agent service Go tests plus the
+  daemon Go lint/test/build lanes.
 - References:
   [composer_live_model_discovery.go](../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [model_validation.go](../../services/tuttid/service/agent/model_validation.go)

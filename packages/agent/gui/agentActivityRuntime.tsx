@@ -22,7 +22,8 @@ import type {
   AgentActivitySession,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
-  AgentActivitySubmitInteractiveInput
+  AgentActivitySubmitInteractiveInput,
+  AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentHostAgentSessionComposerSettings,
@@ -336,6 +337,7 @@ export interface AgentActivityRuntime {
     input: AgentActivityRuntimeGetSessionControlStateInput
   ): Promise<AgentHostAgentSessionState>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
+  getSessionEngine(workspaceId: string): AgentSessionEngine;
   listSessionMessages(
     input: AgentActivityRuntimeListSessionMessagesInput
   ): Promise<AgentActivityMessagePage>;

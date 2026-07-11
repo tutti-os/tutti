@@ -60,7 +60,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchController.ts": 1750,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 1404,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.ts": 1443,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12485,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12440,
       "packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts": 1584,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterCard.tsx": 1330,
       "packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts": 864,
@@ -78,11 +78,11 @@
       "packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts": 1234,
       "packages/agent/gui/shared/contracts/dto/agentHost.ts": 1802,
       "packages/agent/gui/shared/workspaceAgentActivityListViewModel.ts": 1191,
-      "packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts": 1148,
+      "packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts": 1138,
       "packages/agent/gui/shared/workspaceAgentToolCallDisplay.ts": 1139,
       "packages/agent/gui/workbench/contribution.ts": 1069
     },
-    "goFileLengthExemptions": 12,
+    "goFileLengthExemptions": 11,
     "identityProviderBranches": 16,
     "memoCount": {
       "packages/agent/gui/AgentGUI.tsx": 1,
@@ -134,7 +134,7 @@
     },
     "moduleMutableGlobals": 13,
     "overlayStores": 6,
-    "providerBranches": 23,
+    "providerBranches": 14,
     "setTimeoutCount": 47,
     "swallowedCatch": 20,
     "useSyncExternalStoreCount": 10

@@ -915,14 +915,14 @@ func appServerTokenUsageState(params map[string]any) (acpUsageState, bool) {
 		return acpUsageState{}, false
 	}
 	last := payloadObject(tokenUsage["last"])
-	used, usedOK := firstACPInt64(last, "inputTokens")
+	used, usedOK := firstInt64Value(last, "inputTokens")
 	if !usedOK || used <= 0 {
-		used, usedOK = firstACPInt64(last, "totalTokens")
+		used, usedOK = firstInt64Value(last, "totalTokens")
 	}
 	if !usedOK || used <= 0 {
-		used, usedOK = firstACPInt64(payloadObject(tokenUsage["total"]), "totalTokens")
+		used, usedOK = firstInt64Value(payloadObject(tokenUsage["total"]), "totalTokens")
 	}
-	window, windowOK := firstACPInt64(tokenUsage, "modelContextWindow")
+	window, windowOK := firstInt64Value(tokenUsage, "modelContextWindow")
 	if !usedOK || !windowOK {
 		return acpUsageState{}, false
 	}
@@ -1041,7 +1041,7 @@ func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
 			"quotaType":        window.quotaType,
 			"percentRemaining": 100 - usedPercent,
 		}
-		if resetsAt, ok := acpInt64Value(entry["resetsAt"]); ok && resetsAt > 0 {
+		if resetsAt, ok := int64Value(entry["resetsAt"]); ok && resetsAt > 0 {
 			if resetsAt < 1_000_000_000_000 {
 				resetsAt *= 1000
 			}
@@ -1127,7 +1127,7 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	turnID string,
 	message acpMessage,
 	params map[string]any,
-	pending *pendingACPRequest,
+	pending *pendingInteractiveRequest,
 	emit EventSink,
 ) {
 	if pending == nil {
@@ -1136,7 +1136,7 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	defer a.deletePendingRequest(session.AgentSessionID, pending.requestID)
 	selection, err := pending.wait(ctx)
 	if err != nil {
-		resolved := acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, err)
+		resolved := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
 		// The shared error path emits only call.failed; append the
 		// back-to-running turn.updated so the lifecycle cannot strand in
 		// waiting_approval when a request is rejected or canceled.
@@ -1157,14 +1157,14 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 		}
 		return
 	}
-	resolved := acpPermissionResolvedEvents(session, turnID, pending, selection, nil)
+	resolved := normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
 	if emit != nil {
 		emit(resolved)
 	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
 		if emit != nil {
-			emit(acpPermissionResolvedEvents(session, turnID, pending, selection, err))
+			emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, err))
 		}
 		return
 	}
@@ -1176,7 +1176,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	rawRequestID json.RawMessage,
 	method string,
 	params map[string]any,
-) ([]activityshared.Event, *pendingACPRequest, error) {
+) ([]activityshared.Event, *pendingInteractiveRequest, error) {
 	requestID := acpRequestID(rawRequestID)
 	if requestID == "" {
 		return nil, nil, errors.New("approval request id is required")
@@ -1189,7 +1189,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	title := firstNonEmpty(asString(toolCall["title"]), "Permission requested")
 	callID := firstNonEmpty(asString(toolCall["toolCallId"]), newID())
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := acpApprovalInput(toolCall, options, requestID)
+	input := normalizedApprovalInput(toolCall, options, requestID)
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",
@@ -1198,7 +1198,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 		"status":   status,
 		"input":    input,
 	}
-	pending := &pendingACPRequest{
+	pending := &pendingInteractiveRequest{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
 		requestID:      requestID,
 		eventID:        newID(),
@@ -1209,7 +1209,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 		name:           title,
 		toolName:       "Approval",
 		options:        options,
-		response:       make(chan pendingACPResponse, 1),
+		response:       make(chan pendingInteractiveResponse, 1),
 	}
 	a.storePendingRequest(pending)
 	return []activityshared.Event{
@@ -1271,7 +1271,7 @@ func (a *CodexAppServerAdapter) appServerUserInputRequested(
 	turnID string,
 	requestID string,
 	params map[string]any,
-) ([]activityshared.Event, *pendingACPRequest, error) {
+) ([]activityshared.Event, *pendingInteractiveRequest, error) {
 	questions, _ := params["questions"].([]any)
 	input := map[string]any{
 		"requestId": requestID,
@@ -1299,7 +1299,7 @@ func (a *CodexAppServerAdapter) appServerUserInputRequested(
 		"input":    clonePayload(input),
 		"metadata": clonePayload(prompt.Metadata),
 	}
-	pending := &pendingACPRequest{
+	pending := &pendingInteractiveRequest{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
 		requestID:      requestID,
 		eventID:        newID(),
@@ -1310,7 +1310,7 @@ func (a *CodexAppServerAdapter) appServerUserInputRequested(
 		name:           "AskUserQuestion",
 		toolName:       "AskUserQuestion",
 		prompt:         prompt,
-		response:       make(chan pendingACPResponse, 1),
+		response:       make(chan pendingInteractiveResponse, 1),
 	}
 	a.storePendingRequest(pending)
 	return []activityshared.Event{
@@ -1349,7 +1349,7 @@ func appServerApprovalToolCall(method string, params map[string]any) map[string]
 			"input":      input,
 		}
 	case appServerMethodExecApprovalV1:
-		command := acpApprovalDisplayCommand(params["command"])
+		command := normalizedApprovalDisplayCommand(params["command"])
 		input := map[string]any{
 			"command": command,
 			"cwd":     asString(params["cwd"]),
@@ -1419,7 +1419,7 @@ func appServerApprovalOptions(method string) []map[string]any {
 	}
 }
 
-func appServerApprovalResult(method string, params map[string]any, selection pendingACPResponse) (any, *acpError) {
+func appServerApprovalResult(method string, params map[string]any, selection pendingInteractiveResponse) (any, *acpError) {
 	optionID := strings.TrimSpace(selection.optionID)
 	switch method {
 	case appServerMethodCommandApproval, appServerMethodFileChangeApproval:
@@ -1461,7 +1461,7 @@ func appServerApprovalResult(method string, params map[string]any, selection pen
 	}
 }
 
-func appServerUserInputAnswers(params map[string]any, selection pendingACPResponse) map[string]any {
+func appServerUserInputAnswers(params map[string]any, selection pendingInteractiveResponse) map[string]any {
 	answers := map[string]any{}
 	// The GUI sends per-question answers keyed by question id under
 	// answersByQuestionId (its `answers` field is a flat display list, not a

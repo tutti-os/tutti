@@ -1,0 +1,130 @@
+package providerregistry
+
+const (
+	ClaudeCodeProviderID = "claude-code"
+	ClaudeCodeTargetID   = "local:claude-code"
+)
+
+func claudeCodeDescriptor() ProviderDescriptor {
+	return ProviderDescriptor{
+		Identity: IdentityDescriptor{
+			ID:          ClaudeCodeProviderID,
+			DisplayName: "Claude Code",
+			IconKey:     "claude-code",
+			LocaleKey:   "agentHost.agentGui.conversationFilterClaudeCode",
+			Aliases:     []string{"claude", "claude code"},
+		},
+		Runtime: RuntimeDescriptor{
+			Kind: RuntimeKindClaudeSDK,
+			Name: "claude-agent-sdk",
+			Endpoint: RuntimeEndpointDescriptor{
+				BaseURLEnvVars: []string{
+					"ANTHROPIC_BASE_URL",
+					"ANTHROPIC_API_BASE_URL",
+				},
+				ConfigKind: EndpointConfigKindClaudeSettings,
+			},
+		},
+		Status: StatusDescriptor{
+			Kind:                            StatusKindClaudeCLI,
+			BinaryNames:                     []string{"claude"},
+			AuthStatusCommand:               []string{"auth", "status"},
+			AuthStatusCommandTimeoutSeconds: 600,
+			AuthMarkerPaths:                 []string{"~/.claude.json", "~/.claude/auth.json"},
+			APIEndpoints:                    []string{"https://api.anthropic.com/v1/messages"},
+			CustomConfigEnvVars: []string{
+				"ANTHROPIC_API_KEY",
+				"ANTHROPIC_AUTH_TOKEN",
+				"ANTHROPIC_BASE_URL",
+				"ANTHROPIC_API_BASE_URL",
+			},
+			CredentialEnvVars: []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"},
+			Install: InstallerDescriptor{
+				Kind:           InstallerKindOfficialScript,
+				DisplayCommand: "curl -fsSL https://claude.ai/install.sh | bash",
+				ScriptURL:      "https://claude.ai/install.sh",
+				ScriptShell:    "bash",
+			},
+			LoginArgs: []string{"auth", "login"},
+			AuthWatch: AuthWatchDescriptor{
+				RootEnvVar:      "CLAUDE_CONFIG_DIR",
+				DefaultRoot:     "~/.claude",
+				Paths:           []string{"settings.json", "auth.json", ".credentials.json"},
+				HomePaths:       []string{".claude.json"},
+				FingerprintKind: AuthWatchFingerprintClaudeState,
+			},
+		},
+		ComposerProfile: ComposerProfileDescriptor{
+			ModelSelection: true,
+			LiveModelDiscovery: LiveModelDiscoveryDescriptor{
+				Kind:        LiveModelDiscoveryKindClaudeSDK,
+				HiddenProbe: true,
+			},
+			ReasoningEffort:        true,
+			ReasoningEffortValues:  []string{"low", "medium", "high", "xhigh"},
+			DefaultReasoningEffort: "high",
+			Speed:                  true,
+			Capabilities: []string{
+				"imageInput",
+				"skills",
+				"compact",
+				"tokenUsage",
+				"rateLimits",
+				"planMode",
+				"interrupt",
+				"permissionModeChangeDuringTurn",
+				"review",
+				"goal",
+			},
+			PermissionConfigurable:  true,
+			DefaultPermissionModeID: "default",
+			PermissionModes: []PermissionModeDescriptor{
+				{ID: "default", Semantic: "ask-before-write"},
+				{ID: "acceptEdits", Semantic: "accept-edits"},
+				{ID: "dontAsk", Semantic: "locked-down"},
+				{ID: "bypassPermissions", Semantic: "full-access"},
+			},
+			ConfigOptionIDs: ComposerConfigOptionIDs{
+				Model:      "model",
+				Reasoning:  "effort",
+				Speed:      "fast",
+				Permission: "permission_mode",
+			},
+			Skills: SkillDescriptor{
+				Kind:       SkillKindClaudeCode,
+				Invocation: SkillInvocationTextTrigger,
+			},
+			SlashCommandPolicy: SlashCommandPolicyDescriptor{
+				FallbackCommands:            []string{"compact", "status", "fast", "goal", "review"},
+				CommandCatalogAuthoritative: true,
+				CommandEffects: []SlashCommandEffectDescriptor{
+					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
+					{Command: "context", Effect: SlashCommandEffectSubmitImmediate},
+					{Command: "usage", Effect: SlashCommandEffectSubmitImmediate},
+					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
+					{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
+					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
+					{Command: "status", Effect: SlashCommandEffectShowStatus},
+					{Command: "fast", Effect: SlashCommandEffectToggleSpeed},
+				},
+			},
+			Behavior: ComposerBehaviorDescriptor{
+				ModelOptionsAuthoritative:           true,
+				RefreshModelOptionsAfterSettings:    true,
+				PrewarmDraftSession:                 true,
+				PlanModeExclusiveWithPermissionMode: true,
+			},
+		},
+		Target: TargetDescriptor{
+			ID:            ClaudeCodeTargetID,
+			LaunchRefType: TargetLaunchRefTypeLocalCLI,
+			Enabled:       true,
+			SortOrder:     20,
+		},
+		Events: EventsDescriptor{
+			Enabled:                 true,
+			Aliases:                 []string{"claude", "claude_code"},
+			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
+		},
+	}
+}

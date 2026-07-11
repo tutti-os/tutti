@@ -88,7 +88,7 @@ func acpUsageRuntimeContext(usage acpUsageState) map[string]any {
 		}
 	}
 	if len(usage.quotas) > 0 {
-		result["quotas"] = cloneACPUsageQuotas(usage.quotas)
+		result["quotas"] = cloneUsageQuotas(usage.quotas)
 	}
 	return result
 }
@@ -172,7 +172,7 @@ func mergeACPUsageState(previous acpUsageState, next acpUsageState) acpUsageStat
 		merged.contextModel = previous.contextModel
 	}
 	if len(merged.quotas) == 0 && len(previous.quotas) > 0 {
-		merged.quotas = cloneACPUsageQuotas(previous.quotas)
+		merged.quotas = cloneUsageQuotas(previous.quotas)
 	}
 	return merged
 }
@@ -188,7 +188,7 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 			break
 		}
 	}
-	used, usedOK := firstACPInt64(context,
+	used, usedOK := firstInt64Value(context,
 		"usedTokens",
 		"used_tokens",
 		"tokensUsed",
@@ -198,7 +198,7 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 		"used",
 		"current",
 	)
-	total, totalOK := firstACPInt64(context,
+	total, totalOK := firstInt64Value(context,
 		"totalTokens",
 		"total_tokens",
 		"windowTokens",
@@ -212,11 +212,7 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 		"max",
 	)
 	if !usedOK || !totalOK {
-		quotas := acpUsageQuotasValue(update)
-		if len(quotas) == 0 {
-			return acpUsageState{}, false
-		}
-		return acpUsageState{quotas: quotas}, true
+		return acpUsageState{}, false
 	}
 	if used < 0 {
 		used = 0
@@ -228,65 +224,7 @@ func acpUsageValue(update map[string]any) (acpUsageState, bool) {
 		contextUsedTokens:   used,
 		contextWindowTokens: total,
 		contextKnown:        true,
-		quotas:              acpUsageQuotasValue(update),
 	}, true
-}
-
-func acpUsageQuotasValue(update map[string]any) []map[string]any {
-	meta, _ := update["_meta"].(map[string]any)
-	if len(meta) == 0 {
-		return nil
-	}
-	rateLimit, _ := meta["_claude/rateLimit"].(map[string]any)
-	if len(rateLimit) == 0 {
-		return nil
-	}
-	quotaType, modelName := acpClaudeRateLimitQuotaType(asString(rateLimit["rate_limit_type"]))
-	if quotaType == "" {
-		return nil
-	}
-	utilization, ok := acpFloatValue(rateLimit["utilization"])
-	if !ok {
-		return nil
-	}
-	usedPercent := utilization
-	if usedPercent <= 1 {
-		usedPercent *= 100
-	}
-	if usedPercent < 0 {
-		usedPercent = 0
-	}
-	if usedPercent > 100 {
-		usedPercent = 100
-	}
-	quota := map[string]any{
-		"quotaType":        quotaType,
-		"percentRemaining": 100 - usedPercent,
-	}
-	if modelName != "" {
-		quota["modelName"] = modelName
-	}
-	if resetsAt, ok := acpInt64Value(rateLimit["resets_at"]); ok && resetsAt > 0 {
-		quota["resetsAtUnixMs"] = resetsAt * 1000
-	}
-	return []map[string]any{quota}
-}
-
-func acpClaudeRateLimitQuotaType(rateLimitType string) (string, string) {
-	switch strings.TrimSpace(strings.ToLower(rateLimitType)) {
-	case "five_hour":
-		return "session", ""
-	case "seven_day":
-		return "weekly", ""
-	case "seven_day_sonnet":
-		return "model", "Sonnet"
-	case "seven_day_opus":
-		return "model", "Opus"
-	case "overage":
-		return "cost", ""
-	default:
-		return "", ""
-	}
 }
 
 func acpFloatValue(value any) (float64, bool) {
@@ -313,7 +251,7 @@ func acpFloatValue(value any) (float64, bool) {
 	return 0, false
 }
 
-func cloneACPUsageQuotas(quotas []map[string]any) []map[string]any {
+func cloneUsageQuotas(quotas []map[string]any) []map[string]any {
 	if len(quotas) == 0 {
 		return nil
 	}
@@ -324,10 +262,10 @@ func cloneACPUsageQuotas(quotas []map[string]any) []map[string]any {
 	return cloned
 }
 
-func firstACPInt64(source map[string]any, keys ...string) (int64, bool) {
+func firstInt64Value(source map[string]any, keys ...string) (int64, bool) {
 	for _, key := range keys {
 		if value, ok := source[key]; ok {
-			if parsed, ok := acpInt64Value(value); ok {
+			if parsed, ok := int64Value(value); ok {
 				return parsed, true
 			}
 		}
@@ -335,7 +273,7 @@ func firstACPInt64(source map[string]any, keys ...string) (int64, bool) {
 	return 0, false
 }
 
-func acpInt64Value(value any) (int64, bool) {
+func int64Value(value any) (int64, bool) {
 	switch typed := value.(type) {
 	case int:
 		return int64(typed), true
@@ -573,9 +511,6 @@ func sessionSettingsWithACPConfig(
 		asString(config["speed"]),
 		asString(config["fast"]),
 	); speed != "" {
-		if strings.TrimSpace(provider) == ProviderClaudeCode {
-			speed = claudeCodeSpeedFromACPFastConfigValue(speed)
-		}
 		settings.Speed = speed
 		hasSettings = true
 	}

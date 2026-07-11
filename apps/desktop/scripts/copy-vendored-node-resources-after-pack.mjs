@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { smokeClaudeSDKSidecar } from "./smoke-claude-sdk-sidecar.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
@@ -61,4 +62,7 @@ export default async function copyVendoredNodeResourcesAfterPack(context) {
   const resourcesDir = resourcesDirForContext(context);
   copyNodeModules(resourcesDir, "browser-mcp");
   copyNodeModules(resourcesDir, "claude-sdk-sidecar");
+  const packagedSidecarDir = join(resourcesDir, "bin", "claude-sdk-sidecar");
+  await smokeClaudeSDKSidecar({ bundleDir: packagedSidecarDir });
+  log(`smoke-tested claude-sdk-sidecar at ${packagedSidecarDir}`);
 }

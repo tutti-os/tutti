@@ -16,6 +16,8 @@ Current documents:
 - [Business Event Stream](./business-event-stream.md)
 - [Browser Node Package](./browser-node-package.md)
 - [Codex App Server Fast Submit Plan](./codex-appserver-fast-submit-plan.md)
+- [Claude Code SDK Runtime](./claude-code-sdk-runtime.md)
+- [Claude Code SDK Refactor Fidelity Requirements](./claude-code-sdk-requirements.md)
 - [Desktop Backend Access](./desktop-backend-access.md)
 - [Desktop Transport](./desktop-transport.md)
 - [Desktop Windows](./desktop-windows.md)

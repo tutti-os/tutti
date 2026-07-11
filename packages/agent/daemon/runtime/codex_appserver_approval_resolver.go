@@ -8,12 +8,12 @@ import (
 	"strings"
 )
 
-type pendingACPRequestState string
+type pendingInteractiveRequestState string
 
 const (
-	pendingACPRequestStatePending     pendingACPRequestState = "pending"
-	pendingACPRequestStateResolved    pendingACPRequestState = "resolved"
-	pendingACPRequestStateInterrupted pendingACPRequestState = "interrupted"
+	pendingInteractiveRequestStatePending     pendingInteractiveRequestState = "pending"
+	pendingInteractiveRequestStateResolved    pendingInteractiveRequestState = "resolved"
+	pendingInteractiveRequestStateInterrupted pendingInteractiveRequestState = "interrupted"
 )
 
 var errAppServerServerRequestResolved = fmt.Errorf("codex app-server server request resolved out of band")
@@ -65,11 +65,11 @@ func (a *CodexAppServerAdapter) resolvePendingRequestFromProvider(
 	}
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	var pending *pendingACPRequest
+	var pending *pendingInteractiveRequest
 	if appSession != nil && appSession.pendingRequests != nil {
 		pending = appSession.pendingRequests[requestID]
 		if pending != nil {
-			pending.state = pendingACPRequestStateResolved
+			pending.state = pendingInteractiveRequestStateResolved
 			delete(appSession.pendingRequests, requestID)
 		}
 	}
@@ -78,7 +78,7 @@ func (a *CodexAppServerAdapter) resolvePendingRequestFromProvider(
 		return false
 	}
 	select {
-	case pending.response <- pendingACPResponse{
+	case pending.response <- pendingInteractiveResponse{
 		action:            "resolved",
 		err:               errAppServerServerRequestResolved,
 		outOfBandResolved: true,

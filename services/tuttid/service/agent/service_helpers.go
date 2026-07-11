@@ -3,8 +3,6 @@ package agent
 import (
 	"errors"
 	"strings"
-
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 const (
@@ -200,7 +198,7 @@ func normalizeRuntimeContextForProvider(
 	if normalizedReasoning != "" {
 		cloned["reasoningEffort"] = normalizedReasoning
 	}
-	normalizeClaudeSDKRuntimeCapabilities(normalizedProvider, cloned)
+	normalizeClaudeSDKRuntimeCapabilities(cloned)
 	rawConfigOptions, ok := cloned["configOptions"]
 	if !ok {
 		return cloned
@@ -216,9 +214,8 @@ func normalizeRuntimeContextForProvider(
 	return cloned
 }
 
-func normalizeClaudeSDKRuntimeCapabilities(provider string, runtimeContext map[string]any) {
-	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode ||
-		strings.TrimSpace(runtimeContextString(runtimeContext, "adapter")) != runtimeContextAdapterClaudeAgentSDK {
+func normalizeClaudeSDKRuntimeCapabilities(runtimeContext map[string]any) {
+	if strings.TrimSpace(runtimeContextString(runtimeContext, "adapter")) != runtimeContextAdapterClaudeAgentSDK {
 		return
 	}
 	runtimeContext["capabilities"] = runtimeContextWithCapability(

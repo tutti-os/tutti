@@ -15,8 +15,7 @@ import type { AgentGUINodeData } from "../../../types";
 import { translate } from "../../../i18n/index";
 import type {
   AgentGUIComposerSettingOption,
-  AgentGUIProviderSkillOption,
-  AgentGUIQueuedPromptVM
+  AgentGUIProviderSkillOption
 } from "../model/agentGuiNodeTypes";
 import type { ACPConfigOptionSelection } from "./agentGuiController.types";
 import {
@@ -216,6 +215,8 @@ export function slashCommandPoliciesEqual(
     return left === right;
   }
   return (
+    (left.commandCatalogAuthoritative ?? false) ===
+      (right.commandCatalogAuthoritative ?? false) &&
     left.fallbackCommands.length === right.fallbackCommands.length &&
     left.fallbackCommands.every(
       (command, index) => command === right.fallbackCommands[index]
@@ -604,13 +605,6 @@ export function permissionModeDescription(
     return contractDescription;
   }
   return undefined;
-}
-
-export function removeQueuedPromptById(
-  queue: readonly AgentGUIQueuedPromptVM[],
-  queuedPromptId: string
-): AgentGUIQueuedPromptVM[] {
-  return queue.filter((queuedPrompt) => queuedPrompt.id !== queuedPromptId);
 }
 
 export const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";

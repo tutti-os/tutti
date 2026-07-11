@@ -6,7 +6,8 @@ import {
   isForegroundModelOptionsLoading,
   nodeDataMatchesComposerTarget,
   reconcileOptimisticComposerTarget,
-  resolvePresentedComposerSettings
+  resolvePresentedComposerSettings,
+  sanitizeComposerSettingsForOptions
 } from "./agentGuiController.composerPresentation";
 
 describe("composer target presentation", () => {
@@ -111,6 +112,12 @@ describe("composer target presentation", () => {
       reasoningEfforts: [],
       speeds: [],
       skills: [],
+      behavior: {
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
       loadedAtUnixMs: 1,
       effectiveSettings: {
         model: "gpt-5.3-codex",
@@ -142,6 +149,12 @@ describe("composer target presentation", () => {
       reasoningEfforts: [],
       speeds: [],
       skills: [],
+      behavior: {
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
       loadedAtUnixMs: 1,
       effectiveSettings: { model: "gpt-5.3-codex" }
     });
@@ -155,5 +168,38 @@ describe("composer target presentation", () => {
         homeSettings: { planMode: true }
       }).planMode
     ).toBe(true);
+  });
+
+  it("applies descriptor-backed model catalog authority without provider checks", () => {
+    const settings = { model: "stale-model", reasoningEffort: "high" };
+    const options = {
+      provider: "any-provider",
+      models: [{ value: "current-model", label: "Current" }],
+      reasoningEfforts: [{ value: "high", label: "High" }],
+      speeds: [],
+      skills: [],
+      behavior: {
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: false,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1
+    };
+
+    expect(sanitizeComposerSettingsForOptions(settings, options).model).toBe(
+      "stale-model"
+    );
+    expect(
+      sanitizeComposerSettingsForOptions(settings, {
+        ...options,
+        behavior: {
+          modelOptionsAuthoritative: true,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        }
+      }).model
+    ).toBeNull();
   });
 });

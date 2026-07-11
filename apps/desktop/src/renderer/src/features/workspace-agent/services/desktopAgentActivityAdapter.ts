@@ -589,6 +589,9 @@ export function agentActivitySessionFromTuttidSession(
     cwd: session.cwd ?? "/",
     title: session.title ?? "",
     status: session.status,
+    activeTurnId: session.activeTurnId ?? null,
+    activeTurn: session.activeTurn ?? null,
+    pendingInteractions: session.pendingInteractions ?? [],
     visible: session.visible ?? true,
     resumable: session.resumable ?? false,
     ...(session.turnLifecycle != null

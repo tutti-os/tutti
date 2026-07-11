@@ -21,6 +21,9 @@
     "test": "node --test --experimental-strip-types \"./src/**/*.test.ts\"",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
+  "dependencies": {
+    "@tutti-os/client-tuttid-ts": "workspace:*"
+  },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
     "@types/node": "^24.0.1",

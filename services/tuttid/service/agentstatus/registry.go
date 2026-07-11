@@ -2,6 +2,7 @@ package agentstatus
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -35,6 +36,7 @@ type ProviderSpec struct {
 	AdapterUnavailableReasonCode string
 	AdapterPackage               AdapterPackageRequirement
 	AuthStatusCommand            []string
+	AuthStatusCommandTimeout     time.Duration
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
 	AdapterInstall               InstallerSpec
@@ -89,19 +91,6 @@ func (r Registry) Select(providers []string) ([]ProviderSpec, error) {
 
 func DefaultRegistry() Registry {
 	specsByProvider := map[string]ProviderSpec{
-		agentprovider.ClaudeCode: {
-			Provider:          agentprovider.ClaudeCode,
-			BinaryNames:       []string{"claude"},
-			AuthStatusCommand: []string{"auth", "status"},
-			AuthMarkerPaths:   []string{"~/.claude.json", "~/.claude/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://claude.ai/install.sh | bash",
-				ScriptURL:      "https://claude.ai/install.sh",
-				ScriptShell:    "bash",
-			},
-			LoginArgs: []string{"auth", "login"},
-		},
 		agentprovider.TuttiAgent: {
 			Provider:    agentprovider.TuttiAgent,
 			BinaryNames: []string{"tutti-agent"},
@@ -219,9 +208,12 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 		AdapterBinaryNames: adapterBinaryNames,
 		AdapterCommand:     append([]string(nil), descriptor.Runtime.Command...),
 		AuthStatusCommand:  append([]string(nil), descriptor.Status.AuthStatusCommand...),
-		AuthMarkerPaths:    append([]string(nil), descriptor.Status.AuthMarkerPaths...),
-		Install:            install,
-		LoginArgs:          append([]string(nil), descriptor.Status.LoginArgs...),
+		AuthStatusCommandTimeout: time.Duration(
+			descriptor.Status.AuthStatusCommandTimeoutSeconds,
+		) * time.Second,
+		AuthMarkerPaths: append([]string(nil), descriptor.Status.AuthMarkerPaths...),
+		Install:         install,
+		LoginArgs:       append([]string(nil), descriptor.Status.LoginArgs...),
 	}, nil
 }
 
@@ -233,6 +225,16 @@ func isCodexStatusSpec(spec ProviderSpec) bool {
 		}
 	}
 	return kind == providerregistry.StatusKindCodexCLI
+}
+
+func isClaudeStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindClaudeCLI
 }
 
 func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {
@@ -254,6 +256,13 @@ func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDe
 				BinaryName:      descriptor.BinaryName,
 				IncludeOptional: descriptor.IncludeOptional,
 			},
+		}, nil
+	case providerregistry.InstallerKindOfficialScript:
+		return InstallerSpec{
+			Kind:           InstallerKindOfficialScript,
+			DisplayCommand: descriptor.DisplayCommand,
+			ScriptURL:      descriptor.ScriptURL,
+			ScriptShell:    descriptor.ScriptShell,
 		}, nil
 	default:
 		return InstallerSpec{}, fmt.Errorf("unsupported installer kind %q", descriptor.Kind)

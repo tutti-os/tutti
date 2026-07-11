@@ -940,6 +940,12 @@ test("shared tuttid client loads agent provider composer options", async () => {
             ]
           },
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         } satisfies AgentProviderComposerOptionsResponse),
         {
@@ -1015,6 +1021,12 @@ test("shared tuttid client loads agent provider composer options", async () => {
       ]
     },
     skills: [],
+    behavior: {
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     capabilityCatalog: []
   } satisfies AgentProviderComposerOptionsResponse);
 });
@@ -1066,6 +1078,12 @@ test("shared tuttid client loads app factory provider composer options", async (
           },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         } satisfies AgentProviderComposerOptionsResponse),
         {

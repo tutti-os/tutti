@@ -1287,6 +1287,90 @@ test("controller clears active turn and submit block from settled inline state p
   assert.equal(session?.currentPhase, "idle");
 });
 
+test("controller applies protocol v2 turn updates without a durable reload", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () => Promise.resolve({ sessions: [createSession()] })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+  const result = controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "turn_update",
+    data: {
+      activeTurnId: "turn-1",
+      occurredAtUnixMs: 20,
+      turn: {
+        turnId: "turn-1",
+        agentSessionId: "session-1",
+        phase: "running",
+        startedAtUnixMs: 10,
+        updatedAtUnixMs: 20
+      }
+    }
+  });
+  assert.equal(result.applied, true);
+  assert.equal(result.session?.activeTurnId, "turn-1");
+  assert.equal(result.session?.activeTurn?.phase, "running");
+});
+
+test("controller maintains pending interactions from protocol v2 updates", async () => {
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      listSessions: () =>
+        Promise.resolve({
+          sessions: [
+            createSession({
+              activeTurnId: "turn-1",
+              activeTurn: {
+                turnId: "turn-1",
+                agentSessionId: "session-1",
+                phase: "waiting",
+                startedAtUnixMs: 10,
+                updatedAtUnixMs: 20
+              }
+            })
+          ]
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+  await controller.load();
+  const pending = {
+    requestId: "request-1",
+    agentSessionId: "session-1",
+    turnId: "turn-1",
+    kind: "approval",
+    status: "pending",
+    createdAtUnixMs: 21,
+    updatedAtUnixMs: 21
+  };
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "interaction_update",
+    data: { interaction: pending, occurredAtUnixMs: 21 }
+  });
+  assert.deepEqual(controller.getSnapshot().sessions[0]?.pendingInteractions, [
+    pending
+  ]);
+  controller.applyActivityUpdatedEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    eventType: "interaction_update",
+    data: {
+      interaction: { ...pending, status: "answered", updatedAtUnixMs: 22 },
+      occurredAtUnixMs: 22
+    }
+  });
+  assert.deepEqual(
+    controller.getSnapshot().sessions[0]?.pendingInteractions,
+    []
+  );
+});
+
 test("controller maps session update events into complete session snapshots", () => {
   const controller = createAgentActivityController({
     adapter: fakeAdapter(),
@@ -1830,6 +1914,12 @@ function createComposerOptions(
     speeds: [],
     permissionConfig: null,
     skills: [],
+    behavior: {
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     loadedAtUnixMs: 1000,
     ...overrides
   };

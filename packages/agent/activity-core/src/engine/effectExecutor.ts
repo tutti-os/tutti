@@ -76,6 +76,7 @@ export function createEngineEffectExecutor({
           settle({
             commandId: command.commandId,
             commandType: command.type,
+            ...commandCorrelationFields(command),
             outcome: "timedOut",
             type: "engine/commandResult"
           });
@@ -97,6 +98,7 @@ export function createEngineEffectExecutor({
           settle({
             commandId: command.commandId,
             commandType: command.type,
+            ...commandCorrelationFields(command),
             outcome: "succeeded",
             type: "engine/commandResult",
             value
@@ -115,13 +117,46 @@ export function createEngineEffectExecutor({
           settle({
             commandId: command.commandId,
             commandType: command.type,
-            errorMessage:
-              error instanceof Error ? error.message : String(error),
+            ...commandCorrelationFields(command),
+            ...engineCommandErrorFields(error),
             outcome: "failed",
             type: "engine/commandResult"
           });
         }
       );
     }
+  };
+}
+
+function commandCorrelationFields(command: EngineExternalCommand): {
+  correlationId?: string;
+} {
+  if (!("correlationId" in command)) {
+    return {};
+  }
+  const value = command.correlationId;
+  return typeof value === "string" && value.trim()
+    ? { correlationId: value.trim() }
+    : {};
+}
+
+function engineCommandErrorFields(error: unknown): {
+  errorCode?: string;
+  errorMessage: string;
+} {
+  const record =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : null;
+  const code = typeof record?.code === "string" ? record.code.trim() : "";
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof record?.message === "string"
+        ? record.message
+        : String(error);
+  return {
+    ...(code ? { errorCode: code } : {}),
+    errorMessage: message
   };
 }

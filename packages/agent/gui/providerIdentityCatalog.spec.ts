@@ -24,12 +24,12 @@ describe("provider identity catalog", () => {
     });
   });
 
-  it("keeps an explicit legacy fallback for providers not yet migrated", () => {
+  it("reads the migrated Claude identity from the generated catalog", () => {
     expect(resolveAgentGUIProviderCatalogIdentity("Claude Code")).toMatchObject(
       {
         providerId: "claude-code",
         displayName: "Claude Code",
-        source: "legacy"
+        source: "generated"
       }
     );
   });

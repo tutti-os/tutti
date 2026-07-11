@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var migratedDescriptors = []ProviderDescriptor{codexDescriptor()}
+var migratedDescriptors = []ProviderDescriptor{codexDescriptor(), claudeCodeDescriptor()}
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
@@ -116,7 +116,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q locale key is required", providerID)
 	}
 	switch descriptor.Runtime.Kind {
-	case RuntimeKindCodexAppServer:
+	case RuntimeKindCodexAppServer, RuntimeKindClaudeSDK:
 	case "":
 		return fmt.Errorf("provider %q runtime kind is required", providerID)
 	default:
@@ -125,29 +125,34 @@ func Validate(descriptor ProviderDescriptor) error {
 	if strings.TrimSpace(descriptor.Runtime.Name) == "" {
 		return fmt.Errorf("provider %q runtime name is required", providerID)
 	}
-	if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
-		return fmt.Errorf("provider %q runtime client info name is required", providerID)
-	}
-	if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
-		return fmt.Errorf("provider %q runtime auth required message is required", providerID)
-	}
-	if err := validateCommand(descriptor.Runtime.Command); err != nil {
-		return fmt.Errorf("provider %q runtime command: %w", providerID, err)
+	if descriptor.Runtime.Kind == RuntimeKindCodexAppServer {
+		if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
+			return fmt.Errorf("provider %q runtime client info name is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
+			return fmt.Errorf("provider %q runtime auth required message is required", providerID)
+		}
+		if err := validateCommand(descriptor.Runtime.Command); err != nil {
+			return fmt.Errorf("provider %q runtime command: %w", providerID, err)
+		}
 	}
 	switch descriptor.Runtime.Endpoint.ConfigKind {
-	case "", EndpointConfigKindCodexCLI:
+	case "", EndpointConfigKindCodexCLI, EndpointConfigKindClaudeSettings:
 	default:
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
 	}
 	switch descriptor.Status.Kind {
-	case StatusKindCodexCLI:
+	case StatusKindCodexCLI, StatusKindClaudeCLI:
 	case "":
 		return fmt.Errorf("provider %q status kind is required", providerID)
 	default:
 		return fmt.Errorf("provider %q status kind %q is unsupported", providerID, descriptor.Status.Kind)
 	}
-	if strings.TrimSpace(descriptor.Status.MinVersion) == "" {
+	if descriptor.Status.Kind == StatusKindCodexCLI && strings.TrimSpace(descriptor.Status.MinVersion) == "" {
 		return fmt.Errorf("provider %q minimum version is required", providerID)
+	}
+	if descriptor.Status.AuthStatusCommandTimeoutSeconds < 0 {
+		return fmt.Errorf("provider %q auth status timeout must be non-negative", providerID)
 	}
 	if len(descriptor.Status.BinaryNames) == 0 {
 		return fmt.Errorf("provider %q status binary names are required", providerID)
@@ -167,11 +172,32 @@ func Validate(descriptor ProviderDescriptor) error {
 	if err := validateCommand(descriptor.Status.LoginArgs); err != nil {
 		return fmt.Errorf("provider %q login args: %w", providerID, err)
 	}
-	if strings.TrimSpace(descriptor.Status.NPMRegistryPackage) == "" {
-		return fmt.Errorf("provider %q npm registry package is required", providerID)
-	}
 	switch descriptor.Status.Install.Kind {
 	case InstallerKindCodexCLILatest:
+		if strings.TrimSpace(descriptor.Status.NPMRegistryPackage) == "" {
+			return fmt.Errorf("provider %q npm registry package is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" {
+			return fmt.Errorf("provider %q installer package name is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
+			return fmt.Errorf("provider %q installer binary name is required", providerID)
+		}
+		if descriptor.Status.Install.PackageName != descriptor.Status.NPMRegistryPackage {
+			return fmt.Errorf(
+				"provider %q installer package %q does not match npm registry package %q",
+				providerID,
+				descriptor.Status.Install.PackageName,
+				descriptor.Status.NPMRegistryPackage,
+			)
+		}
+	case InstallerKindOfficialScript:
+		if strings.TrimSpace(descriptor.Status.Install.ScriptURL) == "" {
+			return fmt.Errorf("provider %q installer script url is required", providerID)
+		}
+		if strings.TrimSpace(descriptor.Status.Install.ScriptShell) == "" {
+			return fmt.Errorf("provider %q installer script shell is required", providerID)
+		}
 	case "":
 		return fmt.Errorf("provider %q installer kind is required", providerID)
 	default:
@@ -180,27 +206,21 @@ func Validate(descriptor ProviderDescriptor) error {
 	if strings.TrimSpace(descriptor.Status.Install.DisplayCommand) == "" {
 		return fmt.Errorf("provider %q installer display command is required", providerID)
 	}
-	if strings.TrimSpace(descriptor.Status.Install.PackageName) == "" {
-		return fmt.Errorf("provider %q installer package name is required", providerID)
-	}
-	if strings.TrimSpace(descriptor.Status.Install.BinaryName) == "" {
-		return fmt.Errorf("provider %q installer binary name is required", providerID)
-	}
-	if descriptor.Status.Install.PackageName != descriptor.Status.NPMRegistryPackage {
-		return fmt.Errorf(
-			"provider %q installer package %q does not match npm registry package %q",
-			providerID,
-			descriptor.Status.Install.PackageName,
-			descriptor.Status.NPMRegistryPackage,
-		)
-	}
-	if len(descriptor.Status.AuthWatch.Paths) > 0 {
+	if len(descriptor.Status.AuthWatch.Paths) > 0 || len(descriptor.Status.AuthWatch.HomePaths) > 0 {
 		if strings.TrimSpace(descriptor.Status.AuthWatch.RootEnvVar) == "" &&
 			strings.TrimSpace(descriptor.Status.AuthWatch.DefaultRoot) == "" {
 			return fmt.Errorf("provider %q auth watch root is required", providerID)
 		}
 		if err := validateUniqueNonBlankStrings(descriptor.Status.AuthWatch.Paths); err != nil {
 			return fmt.Errorf("provider %q auth watch paths: %w", providerID, err)
+		}
+		if err := validateUniqueNonBlankStrings(descriptor.Status.AuthWatch.HomePaths); err != nil {
+			return fmt.Errorf("provider %q auth watch home paths: %w", providerID, err)
+		}
+		switch descriptor.Status.AuthWatch.FingerprintKind {
+		case AuthWatchFingerprintNone, AuthWatchFingerprintClaudeState:
+		default:
+			return fmt.Errorf("provider %q auth watch fingerprint kind %q is unsupported", providerID, descriptor.Status.AuthWatch.FingerprintKind)
 		}
 	}
 	switch descriptor.ComposerProfile.ModelCatalog {
@@ -214,9 +234,17 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q capability catalog kind %q is unsupported", providerID, descriptor.ComposerProfile.CapabilityCatalog.Kind)
 	}
 	switch descriptor.ComposerProfile.Skills.Kind {
-	case SkillKindCodex:
+	case SkillKindCodex, SkillKindClaudeCode:
 	default:
 		return fmt.Errorf("provider %q skill kind %q is unsupported", providerID, descriptor.ComposerProfile.Skills.Kind)
+	}
+	switch descriptor.ComposerProfile.LiveModelDiscovery.Kind {
+	case "", LiveModelDiscoveryKindClaudeSDK:
+	default:
+		return fmt.Errorf("provider %q live model discovery kind %q is unsupported", providerID, descriptor.ComposerProfile.LiveModelDiscovery.Kind)
+	}
+	if descriptor.ComposerProfile.LiveModelDiscovery.Kind != "" && descriptor.ComposerProfile.ModelCatalog != "" {
+		return fmt.Errorf("provider %q cannot declare both live model discovery and a model catalog", providerID)
 	}
 	switch descriptor.ComposerProfile.Skills.Invocation {
 	case SkillInvocationPromptItem, SkillInvocationTextTrigger:
@@ -387,6 +415,7 @@ func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {
 	value.Status.CredentialEnvVars = append([]string(nil), value.Status.CredentialEnvVars...)
 	value.Status.LoginArgs = append([]string(nil), value.Status.LoginArgs...)
 	value.Status.AuthWatch.Paths = append([]string(nil), value.Status.AuthWatch.Paths...)
+	value.Status.AuthWatch.HomePaths = append([]string(nil), value.Status.AuthWatch.HomePaths...)
 	value.ComposerProfile.ReasoningEffortValues = append([]string(nil), value.ComposerProfile.ReasoningEffortValues...)
 	value.ComposerProfile.Capabilities = append([]string(nil), value.ComposerProfile.Capabilities...)
 	value.ComposerProfile.PermissionModes = append([]PermissionModeDescriptor(nil), value.ComposerProfile.PermissionModes...)

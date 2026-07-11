@@ -56,7 +56,7 @@ AgentGUI 不允许感知 provider wire 协议；provider 事件必须经 `packag
 | ------------------ | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Codex app-server   | `codex`                                       | spawn `codex app-server` → JSON-RPC `initialize` / `thread/start` / `turn/start` / 通知 / server request → reducer → activity projection | 非 ACP（codex-over-ACP 已退役，见 `docs/specs/2026-07-01-codex-appserver-refactor-design.md` 决策 D1）。当前实现**硬编码**命令、provider、originator、鉴权文案（见 2.5） |
 | Tutti app-server   | 拟新增 `tutti-agent`                          | 同上生命周期，但命令 `tutti-agent app-server`、`TUTTI_AGENT_HOME`、initialize 返回 `tuttiAgentHome`、`tutti_llm` 鉴权                    | 共享 app-server 机制，但不得复用 Codex 官方 client identity 与 home/auth 假设                                                                                            |
-| Claude SDK sidecar | `claude-code` 默认路径                        | Claude sidecar 行协议                                                                                                                    | 非 ACP                                                                                                                                                                   |
+| Claude SDK sidecar | `claude-code` 默认路径                        | Claude sidecar 行协议                                                                                                                    | SDK-only                                                                                                                                                                 |
 | 标准 ACP           | `hermes`、`openclaw`、legacy provider（部分） | `standardACPAdapter` + 每 provider 一份 `standardACPConfig`                                                                              | 已参数化，是本方案 adapter 参数化的范式参照                                                                                                                              |
 
 关键结论：`tutti-agent` 走 Codex-app-server 兼容路径，**不能**接入标准 ACP 适配器，也不能描述为"只换二进制"。
@@ -107,7 +107,7 @@ daemon 会拒绝请求 provider 与存储 target 推导 provider 不一致的情
 - initialize 结果解析：`codex_appserver_events.go:1752` `appServerInfo()` 读取 `codexHome` 字段。
 - 注意：`CODEX_HOME` **不在 adapter 里注入**，来自 sidecar 的 `CodexPreparer`（见 2.6），经 `session.Env` 传入。adapter 侧 `provider_endpoint.go:133` 会读 env 中的 `CODEX_HOME`（缺省 `~/.codex`）。
 
-适配器注册：`controller.go` 的 `NewDefaultControllerWithOptions` 构建 adapter slice（`newDefaultClaudeCodeAdapter`、`NewCodexAppServerAdapterWithHostMetadata`、以及四个 ACP adapter），controller 按 `Adapter.Provider()` 建索引分发。新增 adapter 只需要加进这个 slice。
+适配器注册：`controller.go` 的 `NewDefaultControllerWithOptions` 构建 adapter slice，包含 Claude SDK、Codex app-server 与标准协议适配器；controller 按 `Adapter.Provider()` 建索引分发。新增 adapter 只需要加进这个 slice。
 
 对比范式：`standard_acp_adapter.go` 的 `standardACPConfig`（字段含 `provider`、`adapterName`、`command`、`commandResolver`、`env`、`initializeParams`、`authRequiredMessage`、`permissionModeID` 等），一个 adapter 类型被 legacy ACP adapter / `NewGeminiAdapter…` / `NewHermesAdapter…` / `NewOpenClawAdapter…` 用不同配置实例化。app-server 侧目前没有对应物——这正是本方案的核心改造。
 

@@ -503,6 +503,12 @@ func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComp
 func generatedAgentProviderComposerOptions(options agentservice.ComposerOptions) tuttigenerated.AgentProviderComposerOptionsResponse {
 	effectiveSettings := generatedAgentSessionComposerSettings(options.EffectiveSettings)
 	return tuttigenerated.AgentProviderComposerOptionsResponse{
+		Behavior: tuttigenerated.AgentProviderComposerBehavior{
+			ModelOptionsAuthoritative:           options.Behavior.ModelOptionsAuthoritative,
+			RefreshModelOptionsAfterSettings:    options.Behavior.RefreshModelOptionsAfterSettings,
+			PrewarmDraftSession:                 options.Behavior.PrewarmDraftSession,
+			PlanModeExclusiveWithPermissionMode: options.Behavior.PlanModeExclusiveWithPermissionMode,
+		},
 		CapabilityCatalog:  generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
 		EffectiveSettings:  effectiveSettings,
 		ModelConfig:        generatedComposerConfigOption(options.ModelConfig),
@@ -530,8 +536,9 @@ func generatedAgentSlashCommandPolicy(
 		})
 	}
 	return &tuttigenerated.AgentSlashCommandPolicy{
-		FallbackCommands: append(make([]string, 0, len(policy.FallbackCommands)), policy.FallbackCommands...),
-		CommandEffects:   effects,
+		FallbackCommands:            append(make([]string, 0, len(policy.FallbackCommands)), policy.FallbackCommands...),
+		CommandEffects:              effects,
+		CommandCatalogAuthoritative: boolPointer(policy.CommandCatalogAuthoritative),
 	}
 }
 

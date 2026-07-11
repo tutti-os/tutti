@@ -64,6 +64,32 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	}
 }
 
+func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
+	descriptor, ok := Find("Claude Code")
+	if !ok {
+		t.Fatal("Find(Claude Code) ok = false")
+	}
+	if err := Validate(descriptor); err != nil {
+		t.Fatalf("Validate(claude-code) error = %v", err)
+	}
+	if descriptor.Runtime.Kind != RuntimeKindClaudeSDK ||
+		descriptor.Status.Kind != StatusKindClaudeCLI ||
+		descriptor.ComposerProfile.LiveModelDiscovery.Kind != LiveModelDiscoveryKindClaudeSDK {
+		t.Fatalf("implementation kinds = %#v", descriptor)
+	}
+	if descriptor.Target.ID != ClaudeCodeTargetID ||
+		descriptor.Status.Install.Kind != InstallerKindOfficialScript ||
+		descriptor.Status.AuthStatusCommandTimeoutSeconds != 600 {
+		t.Fatalf("target/status = %#v / %#v", descriptor.Target, descriptor.Status)
+	}
+	if !descriptor.ComposerProfile.Behavior.ModelOptionsAuthoritative ||
+		!descriptor.ComposerProfile.Behavior.RefreshModelOptionsAfterSettings ||
+		!descriptor.ComposerProfile.Behavior.PrewarmDraftSession ||
+		!descriptor.ComposerProfile.Behavior.PlanModeExclusiveWithPermissionMode {
+		t.Fatalf("composer behavior = %#v", descriptor.ComposerProfile.Behavior)
+	}
+}
+
 func TestMigratedReturnsClones(t *testing.T) {
 	first := Migrated()
 	first[0].Runtime.Command[0] = "mutated"
@@ -72,6 +98,7 @@ func TestMigratedReturnsClones(t *testing.T) {
 	first[0].ComposerProfile.Capabilities[0] = "mutated"
 	first[0].ComposerProfile.SlashCommandPolicy.FallbackCommands[0] = "mutated"
 	first[0].ComposerProfile.SlashCommandPolicy.CommandEffects[0].Command = "mutated"
+	first[1].Status.AuthWatch.HomePaths[0] = "mutated"
 
 	second := Migrated()
 	if second[0].Runtime.Command[0] != "codex" {
@@ -89,6 +116,9 @@ func TestMigratedReturnsClones(t *testing.T) {
 	if second[0].ComposerProfile.SlashCommandPolicy.FallbackCommands[0] != "compact" ||
 		second[0].ComposerProfile.SlashCommandPolicy.CommandEffects[0].Command != "init" {
 		t.Fatalf("SlashCommandPolicy leaked mutation: %#v", second[0].ComposerProfile.SlashCommandPolicy)
+	}
+	if second[1].Status.AuthWatch.HomePaths[0] != ".claude.json" {
+		t.Fatalf("Status.AuthWatch.HomePaths leaked mutation: %#v", second[1].Status.AuthWatch.HomePaths)
 	}
 }
 

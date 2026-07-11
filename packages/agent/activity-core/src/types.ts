@@ -26,6 +26,9 @@ export interface AgentActivitySession {
   cwd: string;
   title: string;
   status: AgentActivitySessionStatus | (string & {});
+  activeTurnId?: string | null;
+  activeTurn?: AgentActivityTurn | null;
+  pendingInteractions?: readonly AgentActivityInteraction[];
   turnLifecycle?: AgentActivityTurnLifecycle | null;
   submitAvailability?: AgentActivitySubmitAvailability | null;
   pendingInteractive?: AgentActivityInteractivePrompt | null;
@@ -185,10 +188,18 @@ export type AgentActivitySlashCommandEffect =
 
 export interface AgentActivitySlashCommandPolicy {
   fallbackCommands: readonly string[];
+  commandCatalogAuthoritative?: boolean;
   commandEffects: readonly {
     command: string;
     effect: AgentActivitySlashCommandEffect;
   }[];
+}
+
+export interface AgentActivityComposerBehavior {
+  modelOptionsAuthoritative: boolean;
+  refreshModelOptionsAfterSettings: boolean;
+  prewarmDraftSession: boolean;
+  planModeExclusiveWithPermissionMode: boolean;
 }
 
 export interface AgentActivityComposerOptions {
@@ -209,6 +220,7 @@ export interface AgentActivityComposerOptions {
   runtimeContext?: Record<string, unknown>;
   skills: AgentActivityComposerSkillOption[];
   capabilityCatalog?: AgentActivityComposerCapabilityOption[];
+  behavior: AgentActivityComposerBehavior;
   slashCommandPolicy?: AgentActivitySlashCommandPolicy | null;
   loadedAtUnixMs: number;
 }
@@ -443,4 +455,19 @@ export interface AgentActivityNeedsAttentionItem {
   kind: AgentActivityNeedsAttentionKind;
   summary: string;
   occurredAtUnixMs: number;
+}
+import type {
+  WorkspaceAgentInteraction,
+  WorkspaceAgentTurn,
+  WorkspaceAgentTurnCancelResponse
+} from "@tutti-os/client-tuttid-ts";
+
+export type AgentActivityTurn = WorkspaceAgentTurn;
+export type AgentActivityInteraction = WorkspaceAgentInteraction;
+export type AgentActivityTurnCancelResponse = WorkspaceAgentTurnCancelResponse;
+
+export interface AgentActivityCancelTurnInput {
+  agentSessionId: string;
+  turnId: string;
+  workspaceId: string;
 }

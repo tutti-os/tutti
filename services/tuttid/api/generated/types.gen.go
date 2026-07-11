@@ -2269,6 +2269,14 @@ type AgentProviderCliStatus struct {
 	Version    *string `json:"version,omitempty"`
 }
 
+// AgentProviderComposerBehavior defines model for AgentProviderComposerBehavior.
+type AgentProviderComposerBehavior struct {
+	ModelOptionsAuthoritative           bool `json:"modelOptionsAuthoritative"`
+	PlanModeExclusiveWithPermissionMode bool `json:"planModeExclusiveWithPermissionMode"`
+	PrewarmDraftSession                 bool `json:"prewarmDraftSession"`
+	RefreshModelOptionsAfterSettings    bool `json:"refreshModelOptionsAfterSettings"`
+}
+
 // AgentProviderComposerConfig defines model for AgentProviderComposerConfig.
 type AgentProviderComposerConfig struct {
 	Configurable bool                                     `json:"configurable"`
@@ -2288,6 +2296,7 @@ type AgentProviderComposerConfigOptionValue struct {
 
 // AgentProviderComposerOptionsResponse defines model for AgentProviderComposerOptionsResponse.
 type AgentProviderComposerOptionsResponse struct {
+	Behavior           AgentProviderComposerBehavior   `json:"behavior"`
 	CapabilityCatalog  []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 	EffectiveSettings  AgentSessionComposerSettings    `json:"effectiveSettings"`
 	ModelConfig        AgentProviderComposerConfig     `json:"modelConfig"`
@@ -2395,8 +2404,9 @@ type AgentSlashCommandEffectDescriptor struct {
 
 // AgentSlashCommandPolicy defines model for AgentSlashCommandPolicy.
 type AgentSlashCommandPolicy struct {
-	CommandEffects   []AgentSlashCommandEffectDescriptor `json:"commandEffects"`
-	FallbackCommands []string                            `json:"fallbackCommands"`
+	CommandCatalogAuthoritative *bool                               `json:"commandCatalogAuthoritative,omitempty"`
+	CommandEffects              []AgentSlashCommandEffectDescriptor `json:"commandEffects"`
+	FallbackCommands            []string                            `json:"fallbackCommands"`
 }
 
 // AgentTarget defines model for AgentTarget.

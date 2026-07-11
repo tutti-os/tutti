@@ -6,7 +6,8 @@ import { beforeEach, test } from "node:test";
 import {
   desktopAgentUsageProbeLogLevel,
   listDesktopWorkspaceAgentProbes,
-  resetUsageProbeCacheForTesting
+  resetUsageProbeCacheForTesting,
+  setClaudeOAuthKeychainReaderForTesting
 } from "./agentProviderUsageProbe.ts";
 import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
 
@@ -14,6 +15,9 @@ import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
 // case's result never leaks into the next.
 beforeEach(() => {
   resetUsageProbeCacheForTesting();
+  setClaudeOAuthKeychainReaderForTesting(async () => {
+    throw new Error("test keychain credential not found");
+  });
 });
 
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {
@@ -125,12 +129,14 @@ test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () 
 
 test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", async () => {
   const previousHome = process.env.HOME;
+  const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-usage-"));
   try {
     process.env.HOME = directory;
-    await mkdir(join(directory, ".claude"), { recursive: true });
+    process.env.CLAUDE_CONFIG_DIR = join(directory, "custom-claude-config");
+    await mkdir(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
     await writeFile(
-      join(directory, ".claude", ".credentials.json"),
+      join(process.env.CLAUDE_CONFIG_DIR, ".credentials.json"),
       JSON.stringify({
         claudeAiOauth: {
           accessToken: "claude-access-token-1",
@@ -207,6 +213,64 @@ test("listDesktopWorkspaceAgentProbes maps Claude Code OAuth usage windows", asy
     } else {
       process.env.HOME = previousHome;
     }
+    if (previousClaudeConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+    }
+    setOutboundFetcherForTesting(null);
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("listDesktopWorkspaceAgentProbes prefers Claude macOS Keychain credentials", async () => {
+  if (process.platform !== "darwin") return;
+  const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const directory = await mkdtemp(join(tmpdir(), "tutti-claude-keychain-"));
+  try {
+    process.env.CLAUDE_CONFIG_DIR = directory;
+    await writeFile(
+      join(directory, ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "stale-file-token",
+          expiresAt: 4102444800000
+        }
+      })
+    );
+    setClaudeOAuthKeychainReaderForTesting(async () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "fresh-keychain-token",
+          expiresAt: 4102444800000
+        }
+      })
+    );
+    setOutboundFetcherForTesting(async (_url, init) => {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer fresh-keychain-token");
+      return new Response(JSON.stringify({ five_hour: { utilization: 1 } }), {
+        status: 200
+      });
+    });
+
+    const result = await listDesktopWorkspaceAgentProbes({
+      includeUsage: true,
+      providers: ["claude-code"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    });
+    assert.equal(
+      result.providers[0]?.attempts?.[0]?.strategy,
+      "claude-oauth-keychain"
+    );
+  } finally {
+    if (previousClaudeConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+    }
+    setClaudeOAuthKeychainReaderForTesting(null);
     setOutboundFetcherForTesting(null);
     await rm(directory, { force: true, recursive: true });
   }

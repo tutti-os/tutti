@@ -80,12 +80,12 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 	cases := []struct {
 		name      string
 		params    map[string]any
-		selection pendingACPResponse
+		selection pendingInteractiveResponse
 		want      map[string]any
 	}{
 		{
 			name: "canonical single-select from answersByQuestionId",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answers":             []any{"Health check"},
 					"answersByQuestionId": map[string]any{"plan-kind": "Health check"},
@@ -97,7 +97,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		},
 		{
 			name: "multi-select values preserved",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answersByQuestionId": map[string]any{"areas": []any{"A", "B"}},
 				},
@@ -108,7 +108,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		},
 		{
 			name: "legacy answers-as-map still accepted",
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				payload: map[string]any{
 					"answers": map[string]any{"q1": "postgres"},
 				},
@@ -120,7 +120,7 @@ func TestAppServerUserInputAnswers(t *testing.T) {
 		{
 			name:   "falls back to optionId keyed by the request's questions",
 			params: map[string]any{"questions": []any{map[string]any{"id": "q1"}}},
-			selection: pendingACPResponse{
+			selection: pendingInteractiveResponse{
 				optionID: "Renderer A",
 				payload:  map[string]any{},
 			},
@@ -619,7 +619,7 @@ func TestCodexAppServerAdapterApplyTokenUsagePrefersInputTokens(t *testing.T) {
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 1000 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 1000 {
 		t.Fatalf("usedTokens = %v, want last.inputTokens (1000): context fill should exclude response/reasoning tokens", used)
 	}
 }
@@ -642,7 +642,7 @@ func TestCodexAppServerAdapterApplyTokenUsageFallsBackToLastTotalTokens(t *testi
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 1200 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 1200 {
 		t.Fatalf("usedTokens = %v, want last.totalTokens (1200), not cumulative total (4800)", used)
 	}
 }
@@ -679,7 +679,7 @@ func TestCodexAppServerAdapterApplyTokenUsageCompactFrameUsesLastTotalTokens(t *
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 5763 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 5763 {
 		t.Fatalf("usedTokens = %v, want post-compact last.totalTokens (5763); a literal 0 inputTokens must not be shown as the context fill", used)
 	}
 }
@@ -709,8 +709,8 @@ func TestCodexAppServerAdapterApplyTokenUsageNoCumulativeFalsePositive(t *testin
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	used, _ := acpInt64Value(contextWindow["usedTokens"])
-	total, _ := acpInt64Value(contextWindow["totalTokens"])
+	used, _ := int64Value(contextWindow["usedTokens"])
+	total, _ := int64Value(contextWindow["totalTokens"])
 	if used > total {
 		t.Fatalf("usedTokens (%d) > totalTokens (%d): cumulative sum is leaking into context-window display", used, total)
 	}

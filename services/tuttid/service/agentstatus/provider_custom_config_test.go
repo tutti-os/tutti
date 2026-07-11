@@ -76,6 +76,17 @@ func TestProviderUsesCustomConfigClaudeSettings(t *testing.T) {
 	}
 }
 
+func TestProviderUsesCustomConfigClaudeSettingsFromOverride(t *testing.T) {
+	configDir := t.TempDir()
+	writeFile(t, filepath.Join(configDir, "settings.json"),
+		`{"env":{"ANTHROPIC_BASE_URL":"https://override.local"}}`)
+	svc := customConfigService(t.TempDir())
+	svc.Environ = func() []string { return []string{"CLAUDE_CONFIG_DIR=" + configDir} }
+	if !svc.providerUsesCustomConfig(agentprovider.ClaudeCode) {
+		t.Fatal("expected CLAUDE_CONFIG_DIR settings to count as custom config")
+	}
+}
+
 func TestProviderUsesCustomConfigClaudeAuthToken(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".claude", "settings.json"),

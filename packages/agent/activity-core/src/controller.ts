@@ -16,6 +16,8 @@ import type {
   AgentActivityMessagePage,
   AgentActivityStatePatch,
   AgentActivitySession,
+  AgentActivityInteraction,
+  AgentActivityTurn,
   AgentActivitySessionEventEnvelope,
   AgentActivitySnapshot,
   AgentActivityUpdatedApplyResult,
@@ -586,18 +588,29 @@ function cloneAgentActivityComposerOptions(
     capabilityCatalog: (options.capabilityCatalog ?? []).map((capability) => ({
       ...capability
     })),
+    behavior: { ...options.behavior },
     slashCommandPolicy: cloneJSONValue(
       options.slashCommandPolicy ?? null
     ) as AgentActivityComposerOptions["slashCommandPolicy"],
     loadedAtUnixMs: options.loadedAtUnixMs
   };
 }
-
 function cloneAgentActivitySession(
   session: AgentActivitySession
 ): AgentActivitySession {
   return {
     ...session,
+    activeTurn: session.activeTurn
+      ? (cloneJSONValue(
+          session.activeTurn
+        ) as AgentActivitySession["activeTurn"])
+      : session.activeTurn,
+    pendingInteractions: session.pendingInteractions?.map(
+      (interaction) =>
+        cloneJSONValue(interaction) as NonNullable<
+          AgentActivitySession["pendingInteractions"]
+        >[number]
+    ),
     turnLifecycle: session.turnLifecycle
       ? (cloneJSONValue(
           session.turnLifecycle
@@ -711,7 +724,119 @@ function applyActivityUpdatedEvent(
     });
   }
 
+  if (event.eventType === "turn_update") {
+    return applyActivityUpdatedTurn(snapshot, {
+      agentSessionId,
+      data: event.data,
+      workspaceId
+    });
+  }
+
+  if (event.eventType === "interaction_update") {
+    return applyActivityUpdatedInteraction(snapshot, {
+      agentSessionId,
+      data: event.data,
+      workspaceId
+    });
+  }
+
   return emptyActivityUpdatedApplyResult(snapshot);
+}
+
+function applyActivityUpdatedTurn(
+  snapshot: AgentActivitySnapshot,
+  input: { agentSessionId: string; data: unknown; workspaceId: string }
+): AgentActivityUpdatedApplyResult & { snapshot: AgentActivitySnapshot } {
+  const data = recordValue(input.data);
+  const turn = workspaceAgentTurnFromValue(data?.turn);
+  if (!data || !turn || turn.agentSessionId !== input.agentSessionId) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const sessionIndex = snapshot.sessions.findIndex(
+    (session) => session.agentSessionId === input.agentSessionId
+  );
+  if (sessionIndex < 0) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const current = snapshot.sessions[sessionIndex]!;
+  if (
+    current.activeTurn?.turnId === turn.turnId &&
+    (current.activeTurn.updatedAtUnixMs ?? 0) > turn.updatedAtUnixMs
+  ) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const hasActiveTurnId = Object.prototype.hasOwnProperty.call(
+    data,
+    "activeTurnId"
+  );
+  const activeTurnId = hasActiveTurnId
+    ? nullableStringValue(data.activeTurnId)
+    : turn.phase === "settled"
+      ? null
+      : turn.turnId;
+  const session: AgentActivitySession = {
+    ...current,
+    activeTurnId,
+    activeTurn: turn,
+    pendingInteractions:
+      activeTurnId === null ? [] : (current.pendingInteractions ?? []),
+    updatedAtUnixMs: numberValue(data.occurredAtUnixMs) ?? turn.updatedAtUnixMs,
+    lastEventUnixMs: numberValue(data.occurredAtUnixMs) ?? turn.updatedAtUnixMs
+  };
+  const sessions = [...snapshot.sessions];
+  sessions[sessionIndex] = session;
+  return {
+    applied: true,
+    messages: [],
+    session,
+    snapshot: { ...snapshot, sessions },
+    statePatch: null
+  };
+}
+
+function applyActivityUpdatedInteraction(
+  snapshot: AgentActivitySnapshot,
+  input: { agentSessionId: string; data: unknown; workspaceId: string }
+): AgentActivityUpdatedApplyResult & { snapshot: AgentActivitySnapshot } {
+  const data = recordValue(input.data);
+  const interaction = workspaceAgentInteractionFromValue(data?.interaction);
+  if (
+    !data ||
+    !interaction ||
+    interaction.agentSessionId !== input.agentSessionId
+  ) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const sessionIndex = snapshot.sessions.findIndex(
+    (session) => session.agentSessionId === input.agentSessionId
+  );
+  if (sessionIndex < 0) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const current = snapshot.sessions[sessionIndex]!;
+  const pendingInteractions = (current.pendingInteractions ?? []).filter(
+    (candidate) => candidate.requestId !== interaction.requestId
+  );
+  if (interaction.status === "pending") {
+    pendingInteractions.push(interaction);
+  }
+  const session: AgentActivitySession = {
+    ...current,
+    pendingInteractions,
+    updatedAtUnixMs:
+      numberValue(data.occurredAtUnixMs) ?? interaction.updatedAtUnixMs,
+    lastEventUnixMs:
+      numberValue(data.occurredAtUnixMs) ?? interaction.updatedAtUnixMs
+  };
+  const sessions = [...snapshot.sessions];
+  sessions[sessionIndex] = session;
+  return {
+    applied: true,
+    messages: [],
+    session,
+    snapshot: { ...snapshot, sessions },
+    statePatch: null
+  };
 }
 
 function applyActivityUpdatedMessages(
@@ -1660,6 +1785,54 @@ function turnLifecycleFromStatePatch(
     outcome: turn.outcome ?? null,
     completedCommand: turn.completedCommand ?? null
   };
+}
+
+function workspaceAgentTurnFromValue(value: unknown): AgentActivityTurn | null {
+  const source = recordValue(value);
+  const turnId = stringValue(source?.turnId);
+  const agentSessionId = stringValue(source?.agentSessionId);
+  const phase = stringValue(source?.phase);
+  const startedAtUnixMs = numberValue(source?.startedAtUnixMs);
+  const updatedAtUnixMs = numberValue(source?.updatedAtUnixMs);
+  if (
+    !source ||
+    !turnId ||
+    !agentSessionId ||
+    !["submitted", "running", "waiting", "settling", "settled"].includes(
+      phase
+    ) ||
+    startedAtUnixMs === undefined ||
+    updatedAtUnixMs === undefined
+  ) {
+    return null;
+  }
+  return cloneJSONValue(source) as AgentActivityTurn;
+}
+
+function workspaceAgentInteractionFromValue(
+  value: unknown
+): AgentActivityInteraction | null {
+  const source = recordValue(value);
+  const requestId = stringValue(source?.requestId);
+  const agentSessionId = stringValue(source?.agentSessionId);
+  const turnId = stringValue(source?.turnId);
+  const kind = stringValue(source?.kind);
+  const status = stringValue(source?.status);
+  const createdAtUnixMs = numberValue(source?.createdAtUnixMs);
+  const updatedAtUnixMs = numberValue(source?.updatedAtUnixMs);
+  if (
+    !source ||
+    !requestId ||
+    !agentSessionId ||
+    !turnId ||
+    !["approval", "question", "plan"].includes(kind) ||
+    !["pending", "answered", "superseded"].includes(status) ||
+    createdAtUnixMs === undefined ||
+    updatedAtUnixMs === undefined
+  ) {
+    return null;
+  }
+  return cloneJSONValue(source) as AgentActivityInteraction;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

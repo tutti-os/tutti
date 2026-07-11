@@ -51,6 +51,8 @@ func newAdapterFromProviderDescriptor(
 			},
 			commandResolver,
 		)
+	case providerregistry.RuntimeKindClaudeSDK:
+		return NewClaudeCodeSDKAdapter(transport)
 	default:
 		return nil
 	}

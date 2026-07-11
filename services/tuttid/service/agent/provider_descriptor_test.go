@@ -30,6 +30,19 @@ func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
+	profile := composerProfileFor(agentprovider.ClaudeCode)
+	if profile.LiveModelDiscoveryKind != providerregistry.LiveModelDiscoveryKindClaudeSDK ||
+		!profile.LiveModelProbeSession || profile.SkillKind != "claude-code" {
+		t.Fatalf("claude composer profile = %#v", profile)
+	}
+	if !profile.SlashCommandPolicy.CommandCatalogAuthoritative ||
+		!profile.Behavior.ModelOptionsAuthoritative ||
+		!profile.Behavior.PrewarmDraftSession {
+		t.Fatalf("claude composer policies = %#v / %#v", profile.SlashCommandPolicy, profile.Behavior)
+	}
+}
+
 func TestCodexModelCatalogSpecComesFromProviderDescriptor(t *testing.T) {
 	spec, ok := agentModelCatalogSpecs[agentprovider.Codex]
 	if !ok {

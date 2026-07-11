@@ -21,7 +21,7 @@ func TestClaudeSettingsBaseURLReadsUserSettingsEnv(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	if got := claudeSettingsBaseURL(""); got != "https://anthropic.user.test" {
+	if got := claudeSettingsBaseURL(nil, ""); got != "https://anthropic.user.test" {
 		t.Fatalf("claude settings base URL = %q, want user settings URL", got)
 	}
 }
@@ -51,8 +51,26 @@ func TestClaudeSettingsBaseURLPrefersProjectLocalSettings(t *testing.T) {
 		t.Fatalf("write project settings: %v", err)
 	}
 
-	if got := claudeSettingsBaseURL(project); got != "https://anthropic.project.test" {
+	if got := claudeSettingsBaseURL(nil, project); got != "https://anthropic.project.test" {
 		t.Fatalf("claude settings base URL = %q, want project settings URL", got)
+	}
+}
+
+func TestClaudeSettingsBaseURLRespectsClaudeConfigDir(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(configDir, "settings.json"),
+		[]byte(`{"env":{"ANTHROPIC_BASE_URL":"https://anthropic.override.test"}}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	if got := claudeSettingsBaseURL(
+		[]string{"CLAUDE_CONFIG_DIR=" + configDir},
+		"",
+	); got != "https://anthropic.override.test" {
+		t.Fatalf("claude settings base URL = %q, want override URL", got)
 	}
 }
 

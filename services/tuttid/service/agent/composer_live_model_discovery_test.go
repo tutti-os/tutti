@@ -7,6 +7,27 @@ import (
 	"time"
 )
 
+func TestClaudeModelCatalogDebugPayloadDropsSensitiveDiagnostics(t *testing.T) {
+	payload := claudeModelCatalogDebugPayload("discovery_uncached_failed", map[string]any{
+		"provider":          "claude-code",
+		"modelOptionCount":  3,
+		"cwd":               "/Users/private/repo",
+		"error":             "token sk-secret failed for account@example.com",
+		"modelOptionValues": []string{"private-model"},
+	})
+	if payload["provider"] != "claude-code" || payload["modelOptionCount"] != 3 {
+		t.Fatalf("safe fields missing: %#v", payload)
+	}
+	for _, key := range []string{"cwd", "error", "modelOptionValues"} {
+		if _, ok := payload[key]; ok {
+			t.Fatalf("sensitive field %q survived: %#v", key, payload)
+		}
+	}
+	if payload["errorClass"] != "discovery_failed" {
+		t.Fatalf("error class = %#v", payload["errorClass"])
+	}
+}
+
 // cursorModelRuntimeContext mirrors the configOptions a live cursor-agent
 // (2026.07) session advertises: parameterized model ids in {value, name}.
 func cursorModelRuntimeContext() map[string]any {
@@ -139,8 +160,8 @@ func TestGetComposerOptionsRestoresCursorModelsFromPersistedSessions(t *testing.
 	if options.ModelConfig.CurrentValue != "composer-2.5[fast=true]" {
 		t.Fatalf("model current value = %q", options.ModelConfig.CurrentValue)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 	// The restored list must seed the cache so later fetches skip the scan.
 	if cached, ok := service.getLiveComposerModelOptions("cursor", "ws-1", "/repo", time.Now().UTC()); !ok || len(cached) != 3 {
@@ -287,8 +308,8 @@ func TestMergeLiveModelsIntoComposerOptionsUpdatesRuntimeContext(t *testing.T) {
 	if !merged.ModelConfig.Configurable || len(merged.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v", merged.ModelConfig)
 	}
-	if merged.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", merged.RuntimeContext["modelCatalogSource"])
+	if merged.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", merged.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) != 2 || configOptions[0]["id"] != "model" {

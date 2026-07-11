@@ -6081,6 +6081,7 @@ components:
         - runtimeContext
         - skills
         - capabilityCatalog
+        - behavior
       properties:
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
@@ -6105,8 +6106,27 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderCapabilityOption"
+        behavior:
+          $ref: "#/components/schemas/AgentProviderComposerBehavior"
         slashCommandPolicy:
           $ref: "#/components/schemas/AgentSlashCommandPolicy"
+    AgentProviderComposerBehavior:
+      type: object
+      additionalProperties: false
+      required:
+        - modelOptionsAuthoritative
+        - refreshModelOptionsAfterSettings
+        - prewarmDraftSession
+        - planModeExclusiveWithPermissionMode
+      properties:
+        modelOptionsAuthoritative:
+          type: boolean
+        refreshModelOptionsAfterSettings:
+          type: boolean
+        prewarmDraftSession:
+          type: boolean
+        planModeExclusiveWithPermissionMode:
+          type: boolean
     AgentSlashCommandEffect:
       type: string
       enum:
@@ -6142,6 +6162,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentSlashCommandEffectDescriptor"
+        commandCatalogAuthoritative:
+          type: boolean
     AgentProviderSkillOption:
       type: object
       additionalProperties: false

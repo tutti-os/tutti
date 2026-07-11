@@ -38,6 +38,12 @@ describe("slash command policy equality", () => {
         ]
       })
     ).toBe(false);
+    expect(
+      slashCommandPoliciesEqual(policy, {
+        ...structuredClone(policy),
+        commandCatalogAuthoritative: true
+      })
+    ).toBe(false);
   });
 });
 

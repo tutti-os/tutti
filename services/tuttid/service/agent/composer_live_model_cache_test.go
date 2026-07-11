@@ -9,10 +9,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
-// Claude Code keeps its live model cache for the daemon's lifetime: a real
-// session's model list must not decay back to the static fallback, because
-// hidden discovery runs at most once per key and cannot re-probe after expiry.
-func TestGetLiveComposerModelOptionsClaudeNeverExpires(t *testing.T) {
+func TestGetLiveComposerModelOptionsClaudeExpiresForRediscovery(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	service := &Service{}
 	cachedAt := time.Now().UTC()
@@ -21,12 +18,8 @@ func TestGetLiveComposerModelOptionsClaudeNeverExpires(t *testing.T) {
 		{Value: "claude-fable-5[1m]", Label: "Fable"},
 	})
 
-	got, ok := service.getLiveComposerModelOptions("claude-code", "ws-1", "/repo", cachedAt.Add(24*time.Hour))
-	if !ok {
-		t.Fatal("claude live model cache expired, want last-known-good retained")
-	}
-	if len(got) != 2 {
-		t.Fatalf("cached options = %d, want 2", len(got))
+	if _, ok := service.getLiveComposerModelOptions("claude-code", "ws-1", "/repo", cachedAt.Add(24*time.Hour)); ok {
+		t.Fatal("claude live model cache did not expire")
 	}
 }
 
@@ -125,8 +118,8 @@ func TestGetComposerOptionsClaudeRunningSessionOverridesStaleCache(t *testing.T)
 	if got := composerConfigOptionModelValues(options.ModelConfig.Options); !slices.Equal(got, wantValues) {
 		t.Fatalf("model options = %v, want newer running-session list %v", got, wantValues)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 
 	// The live session must have refreshed the cache, not the reverse.

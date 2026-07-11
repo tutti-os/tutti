@@ -46,32 +46,12 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 	if err != nil {
 		home = ""
 	}
-	claudeConfigDir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
-	if claudeConfigDir == "" && home != "" {
-		claudeConfigDir = filepath.Join(home, ".claude")
-	}
 	opencodePaths := defaultOpenCodeAuthWatchPaths(home)
 	entries := make([]ProviderAuthWatchEntry, 0, len(providerregistry.Migrated())+2)
 	for _, descriptor := range providerregistry.Migrated() {
 		if entry, ok := providerAuthWatchEntryFromDescriptor(descriptor, home); ok {
 			entries = append(entries, entry)
 		}
-	}
-	if claudeConfigDir != "" {
-		claudePaths := []string{
-			filepath.Join(claudeConfigDir, "settings.json"),
-			filepath.Join(claudeConfigDir, "auth.json"),
-		}
-		claudeStatePath := ""
-		if home != "" {
-			claudeStatePath = filepath.Join(home, ".claude.json")
-			claudePaths = append(claudePaths, claudeStatePath)
-		}
-		entries = append(entries, ProviderAuthWatchEntry{
-			Provider:           agentprovider.ClaudeCode,
-			Paths:              claudePaths,
-			ContentFingerprint: claudeProviderAuthContentFingerprint(claudeStatePath),
-		})
 	}
 	if len(opencodePaths) > 0 {
 		entries = append(entries, ProviderAuthWatchEntry{
@@ -88,7 +68,7 @@ func providerAuthWatchEntryFromDescriptor(
 	home string,
 ) (ProviderAuthWatchEntry, bool) {
 	watch := descriptor.Status.AuthWatch
-	if len(watch.Paths) == 0 {
+	if len(watch.Paths) == 0 && len(watch.HomePaths) == 0 {
 		return ProviderAuthWatchEntry{}, false
 	}
 	root := ""
@@ -102,7 +82,7 @@ func providerAuthWatchEntryFromDescriptor(
 	if root == "" {
 		return ProviderAuthWatchEntry{}, false
 	}
-	paths := make([]string, 0, len(watch.Paths))
+	paths := make([]string, 0, len(watch.Paths)+len(watch.HomePaths))
 	for _, path := range watch.Paths {
 		path = strings.TrimSpace(path)
 		if path == "" {
@@ -113,14 +93,34 @@ func providerAuthWatchEntryFromDescriptor(
 		}
 		paths = append(paths, path)
 	}
+	homePaths := make([]string, 0, len(watch.HomePaths))
+	for _, path := range watch.HomePaths {
+		path = strings.TrimSpace(path)
+		if path == "" || strings.TrimSpace(home) == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(home, path)
+		}
+		homePaths = append(homePaths, path)
+		paths = append(paths, path)
+	}
 	paths = uniqueNonEmptyPaths(paths)
 	if len(paths) == 0 {
 		return ProviderAuthWatchEntry{}, false
 	}
-	return ProviderAuthWatchEntry{
+	entry := ProviderAuthWatchEntry{
 		Provider: descriptor.Identity.ID,
 		Paths:    paths,
-	}, true
+	}
+	if watch.FingerprintKind == providerregistry.AuthWatchFingerprintClaudeState {
+		claudeStatePath := ""
+		if len(homePaths) > 0 {
+			claudeStatePath = homePaths[0]
+		}
+		entry.ContentFingerprint = claudeProviderAuthContentFingerprint(claudeStatePath)
+	}
+	return entry, true
 }
 
 func expandProviderAuthWatchHome(path string, home string) string {

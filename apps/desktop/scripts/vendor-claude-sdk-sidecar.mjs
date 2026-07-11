@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { smokeClaudeSDKSidecar } from "./smoke-claude-sdk-sidecar.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
@@ -60,3 +61,5 @@ if (!existsSync(entry)) {
   process.exit(1);
 }
 log(`OK: vendored entry at ${entry}`);
+await smokeClaudeSDKSidecar({ bundleDir: outDir });
+log("OK: vendored sidecar completed protocol smoke test");

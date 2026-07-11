@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -14,6 +15,89 @@ import (
 // claudeSDKGoalCommandTimeout bounds the sidecar ack round-trip for /goal
 // command execs issued by goal controls.
 const claudeSDKGoalCommandTimeout = 30 * time.Second
+
+func claudeGoalSlashPromptUpdate(prompt string) (map[string]any, string, bool) {
+	text := strings.TrimSpace(prompt)
+	if !strings.HasPrefix(text, appServerSlashGoal) {
+		return nil, "", false
+	}
+	if len(text) > len(appServerSlashGoal) {
+		switch text[len(appServerSlashGoal)] {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return nil, "", false
+		}
+	}
+	objective := strings.TrimSpace(text[len(appServerSlashGoal):])
+	if objective == "" {
+		return nil, "", false
+	}
+	if isGoalClearCommandArgs(objective) {
+		return nil, "thread_goal_cleared", true
+	}
+	return map[string]any{"objective": objective, "status": "active"}, "thread_goal_update", true
+}
+
+func claudeSDKGoalStatusPayload(raw json.RawMessage) (map[string]any, bool) {
+	var params any
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, false
+	}
+	attachment := claudeSDKGoalStatusAttachment(params, 6)
+	if len(attachment) == 0 {
+		return nil, false
+	}
+	objective := strings.TrimSpace(asString(attachment["condition"]))
+	if objective == "" {
+		return nil, false
+	}
+	goal := map[string]any{"objective": objective, "status": "active"}
+	if met, ok := attachment["met"].(bool); ok && met {
+		goal["status"] = "complete"
+	}
+	for _, key := range []string{"reason", "iterations", "durationMs", "tokens", "sentinel"} {
+		if value, ok := attachment[key]; ok {
+			goal[key] = value
+		}
+	}
+	return goal, true
+}
+
+func claudeSDKGoalStatusAttachment(value any, depth int) map[string]any {
+	if depth <= 0 {
+		return nil
+	}
+	obj := payloadObject(value)
+	if len(obj) > 0 {
+		if strings.TrimSpace(asString(obj["type"])) == "goal_status" {
+			return obj
+		}
+		if attachment := payloadObject(obj["attachment"]); strings.TrimSpace(asString(attachment["type"])) == "goal_status" {
+			return attachment
+		}
+		for _, child := range obj {
+			if attachment := claudeSDKGoalStatusAttachment(child, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+		return nil
+	}
+	switch items := value.(type) {
+	case []any:
+		for _, item := range items {
+			if attachment := claudeSDKGoalStatusAttachment(item, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+	case []map[string]any:
+		for _, item := range items {
+			if attachment := claudeSDKGoalStatusAttachment(item, depth-1); len(attachment) > 0 {
+				return attachment
+			}
+		}
+	}
+	return nil
+}
 
 // Claude Code's goal is a session-level entity inside the CLI (a condition
 // whose evaluator drives autonomous new turns until it is met), but the SDK
@@ -138,8 +222,7 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	return events, true, nil
 }
 
-// isGoalClearCommandArgs mirrors claudeGoalSlashPromptUpdate's reserved
-// clear keywords.
+// isGoalClearCommandArgs recognizes Claude Code's reserved clear keywords.
 func isGoalClearCommandArgs(args string) bool {
 	switch strings.ToLower(strings.TrimSpace(args)) {
 	case "clear", "reset":
@@ -314,7 +397,7 @@ func (a *ClaudeCodeSDKAdapter) applyLocalGoal(adapterSession *claudeSDKAdapterSe
 }
 
 func (*ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType string) []activityshared.Event {
-	if event, ok := acpGoalUpdatedEvent(session, updateType); ok {
+	if event, ok := normalizedGoalUpdatedEvent(session, updateType); ok {
 		return []activityshared.Event{event}
 	}
 	return nil

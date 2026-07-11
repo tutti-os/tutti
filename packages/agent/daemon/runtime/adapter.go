@@ -33,6 +33,14 @@ type ProcessConnection interface {
 	Close() error
 }
 
+// ContextProcessConnection lets protocol readers stop waiting for output
+// without terminating the provider process. Long-lived provider startups use
+// this to detach a UI request timeout from the process lifecycle.
+type ContextProcessConnection interface {
+	ProcessConnection
+	RecvContext(context.Context) (ProcessFrame, error)
+}
+
 type GracefulProcessConnection interface {
 	ProcessConnection
 	CloseInput() error
@@ -100,6 +108,22 @@ type ConfigOptionsUpdateSinkAdapter interface {
 
 type InteractiveAdapter interface {
 	SubmitInteractive(context.Context, Session, SubmitInteractiveInput) (SubmitInteractiveResult, error)
+}
+
+// InteractiveSelectionState is the provider adapter's narrow projection of a
+// successful interactive choice onto generic session settings. The controller
+// owns persistence/publication; adapters own protocol vocabulary.
+type InteractiveSelectionState struct {
+	PlanMode       bool
+	PermissionMode string
+}
+
+type InteractiveSelectionStateAdapter interface {
+	StateAfterInteractiveSelection(Session, string) (InteractiveSelectionState, bool)
+}
+
+type InteractiveDenyFollowUpPolicyAdapter interface {
+	ControllerSendsInteractiveDenyFollowUp() bool
 }
 
 type PromptContentAdapter interface {

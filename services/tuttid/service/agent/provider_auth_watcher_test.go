@@ -131,6 +131,9 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 	if len(byProvider[agentprovider.ClaudeCode]) == 0 {
 		t.Fatal("expected claude-code watch paths")
 	}
+	if !containsString(byProvider[agentprovider.ClaudeCode], filepath.Join(home, ".claude", ".credentials.json")) {
+		t.Fatalf("claude-code watch paths = %v, want credentials file", byProvider[agentprovider.ClaudeCode])
+	}
 	opencodePaths := byProvider[agentprovider.OpenCode]
 	if len(opencodePaths) == 0 {
 		t.Fatal("expected opencode watch paths")

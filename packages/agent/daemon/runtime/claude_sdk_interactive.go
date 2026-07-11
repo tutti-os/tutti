@@ -65,6 +65,37 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 	}, nil
 }
 
+func (*ClaudeCodeSDKAdapter) StateAfterInteractiveSelection(
+	_ Session,
+	optionID string,
+) (InteractiveSelectionState, bool) {
+	planMode, permissionMode, ok := claudeCodeModeFromID(optionID)
+	return InteractiveSelectionState{
+		PlanMode:       planMode,
+		PermissionMode: permissionMode,
+	}, ok
+}
+
+func (*ClaudeCodeSDKAdapter) ControllerSendsInteractiveDenyFollowUp() bool {
+	return false
+}
+
+// claudeCodeModeFromID owns the SDK's interactive option vocabulary. The
+// controller only receives the generic settings projection above.
+func claudeCodeModeFromID(optionID string) (bool, string, bool) {
+	switch strings.TrimSpace(optionID) {
+	case "plan":
+		return true, "", true
+	case "default", "acceptEdits", "dontAsk", "bypassPermissions":
+		return false, strings.TrimSpace(optionID), true
+	case "auto":
+		// Older sidecars used "auto" for the accept-edits exit-plan choice.
+		return false, "acceptEdits", true
+	default:
+		return false, "", false
+	}
+}
+
 func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	adapterSession *claudeSDKAdapterSession,
 	session Session,
@@ -74,7 +105,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	requestID := firstNonEmpty(payloadString(payload, "requestId"), payloadString(payload, "id"), newID())
 	toolCall := claudeSDKInteractiveToolCall(payload, requestID)
 	options := claudeSDKInteractiveOptions(payload, toolCall)
-	interactivePrompt := acpInteractivePrompt(toolCall, options, requestID)
+	interactivePrompt := normalizedInteractivePrompt(toolCall, options, requestID)
 	title := firstNonEmpty(
 		asString(toolCall["title"]),
 		asString(toolCall["name"]),
@@ -85,7 +116,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	callID := "approval:" + requestID
 	callType := "approval"
 	status := string(activityshared.TurnPhaseWaitingApproval)
-	input := acpApprovalInput(toolCall, options, requestID)
+	input := normalizedApprovalInput(toolCall, options, requestID)
 	eventPayload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",
@@ -119,7 +150,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 			eventPayload["metadata"] = metadata
 		}
 	}
-	pending := &pendingACPRequest{
+	pending := &pendingInteractiveRequest{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
 		requestID:      requestID,
 		eventID:        newID(),
@@ -132,7 +163,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		toolName:       firstNonEmpty(asString(eventPayload["toolName"]), title),
 		prompt:         interactivePrompt,
 		options:        options,
-		response:       make(chan pendingACPResponse, 1),
+		response:       make(chan pendingInteractiveResponse, 1),
 	}
 	a.storeClaudeSDKPendingRequest(adapterSession, pending)
 	return []activityshared.Event{
@@ -173,15 +204,15 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 	if adapterSession != nil {
 		effectiveTurnID = adapterSession.backgroundAgentTurnID(payload, effectiveTurnID)
 	}
-	response := pendingACPResponse{
+	response := pendingInteractiveResponse{
 		optionID: firstNonEmpty(payloadString(payload, "optionId"), payloadString(payload, "selectedId")),
 		action:   payloadString(payload, "action"),
 		payload:  payloadMap(payload, "payload"),
 	}
 	if errText := payloadString(payload, "error"); errText != "" {
-		return acpPermissionResolvedEvents(session, effectiveTurnID, pending, pendingACPResponse{}, errors.New(errText))
+		return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, pendingInteractiveResponse{}, errors.New(errText))
 	}
-	return acpPermissionResolvedEvents(session, effectiveTurnID, pending, response, nil)
+	return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, response, nil)
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
@@ -194,7 +225,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
 		return nil
 	}
 	a.mu.Lock()
-	pending := make([]*pendingACPRequest, 0, len(adapterSession.pendingRequests))
+	pending := make([]*pendingInteractiveRequest, 0, len(adapterSession.pendingRequests))
 	for requestID, request := range adapterSession.pendingRequests {
 		pending = append(pending, request)
 		delete(adapterSession.pendingRequests, requestID)
@@ -203,7 +234,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
 	events := make([]activityshared.Event, 0, len(pending))
 	for _, request := range pending {
 		effectiveTurnID := firstNonEmptyString(strings.TrimSpace(turnID), request.turnID)
-		events = append(events, acpPermissionResolvedEvents(session, effectiveTurnID, request, pendingACPResponse{}, err)...)
+		events = append(events, normalizedPermissionResolvedEvents(session, effectiveTurnID, request, pendingInteractiveResponse{}, err)...)
 	}
 	return events
 }
@@ -241,7 +272,7 @@ func claudeSDKInteractiveOptions(payload map[string]any, toolCall map[string]any
 	if options := cloneOptionMaps(payloadArray(payload["options"])); len(options) > 0 {
 		return options
 	}
-	switch acpInteractiveToolName(toolCall) {
+	switch normalizedInteractiveToolName(toolCall) {
 	case "AskUserQuestion":
 		return nil
 	case "ExitPlanMode":
@@ -259,19 +290,19 @@ func claudeSDKInteractiveOptions(payload map[string]any, toolCall map[string]any
 	}
 }
 
-func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingACPRequest) {
+func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingInteractiveRequest) {
 	if a == nil || adapterSession == nil || pending == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if adapterSession.pendingRequests == nil {
-		adapterSession.pendingRequests = make(map[string]*pendingACPRequest)
+		adapterSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 	}
 	adapterSession.pendingRequests[strings.TrimSpace(pending.requestID)] = pending
 }
 
-func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, requestID string) *pendingACPRequest {
+func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, requestID string) *pendingInteractiveRequest {
 	adapterSession := a.getSession(agentSessionID)
 	if adapterSession == nil {
 		return nil
@@ -284,7 +315,7 @@ func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string,
 	return adapterSession.pendingRequests[strings.TrimSpace(requestID)]
 }
 
-func (a *ClaudeCodeSDKAdapter) deleteClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, requestID string) *pendingACPRequest {
+func (a *ClaudeCodeSDKAdapter) deleteClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, requestID string) *pendingInteractiveRequest {
 	if a == nil || adapterSession == nil {
 		return nil
 	}

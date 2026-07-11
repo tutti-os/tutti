@@ -1,5 +1,8 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
-import { resolveSubmitAvailability } from "@tutti-os/agent-activity-core";
+import {
+  AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+  resolveSubmitAvailability
+} from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityMessage,
   AgentActivityMessagePage,
@@ -153,9 +156,13 @@ export function createDesktopAgentActivityRuntime(
   const archiveAgentPromptFile = options.hostFilesApi?.archiveAgentPromptFile;
   const readLocalPreviewFile = options.hostFilesApi?.readLocalPreviewFile;
   return {
+    origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
     promptContentUploadSupport: {
       file: Boolean(archiveAgentPromptFile),
       image: Boolean(archiveAgentPromptFile)
+    },
+    getSessionEngine(workspaceId) {
+      return workspaceAgentActivityService.getSessionEngine(workspaceId);
     },
     async activateSession(input) {
       reportAgentSubmitTraceDiagnostic({

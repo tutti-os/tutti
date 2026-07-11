@@ -686,7 +686,7 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
     ]);
   });
 
-  it("extracts Claude Code write-file changes from ACP-style input locations and content", () => {
+  it("extracts Claude Code write-file changes from legacy input locations and content", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       {
         id: "turn-4",

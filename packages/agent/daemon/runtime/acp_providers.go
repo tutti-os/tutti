@@ -6,21 +6,20 @@ package agentruntime
 // child process's stdio) is a thin declarative config on top of the shared
 // engine in standard_acp_adapter.go. One provider lives in one file:
 //
-//	acp_provider_claude.go    claude-agent-acp bridge (non-default runtime)
 //	acp_provider_cursor.go    cursor-agent acp
 //	acp_provider_hermes.go    hermes acp
 //	acp_provider_nexight.go   nexight-acp (codex-acp derived)
 //	acp_provider_openclaw.go  openclaw acp -v
 //
-// Codex is the only non-ACP adapter (codex_appserver_adapter.go talks to the
-// codex binary's own app-server protocol) and is not a template for new
-// providers.
+// Codex and Claude Code are non-ACP adapters. Codex talks to the CLI's own
+// app-server protocol; Claude Code talks to its Agent SDK sidecar. Neither is
+// a template for ACP providers.
 //
 // Provider registration is migrating to providerregistry.ProviderDescriptor.
-// Codex has completed that migration: its runtime, status, composer, target,
-// identity, and event registration values live in providerregistry/codex.go.
-// Do not add Codex values back to the legacy registration sites below. The
-// checklist remains temporarily for ACP providers that have not yet migrated;
+// Codex and Claude Code have completed that migration: their runtime, status,
+// composer, target, identity, and event registration values live under
+// providerregistry. Do not add their values back to legacy registration sites.
+// The checklist remains temporarily for ACP providers that have not migrated;
 // migrate the next provider by extending the descriptor runtime/conversion
 // kinds and then deleting that provider's legacy entries atomically.
 //

@@ -14,6 +14,7 @@ import type {
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
   CancelWorkspaceAgentSessionResponse,
+  WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
   WorkspaceAgentSessionGoalControlRequest,
@@ -628,6 +629,11 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<CancelWorkspaceAgentSessionResponse>;
+  cancelWorkspaceAgentTurn?(
+    workspaceID: string,
+    agentSessionID: string,
+    turnID: string
+  ): Promise<WorkspaceAgentTurnCancelResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string,

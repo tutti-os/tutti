@@ -219,7 +219,7 @@ type codexAppServerSession struct {
 	// late registration can report how many events the ordering gap lost.
 	recentForeignDrops map[string]int
 	acpLiveState
-	pendingRequests map[string]*pendingACPRequest
+	pendingRequests map[string]*pendingInteractiveRequest
 }
 
 type codexAppServerThreadContext struct {
@@ -463,7 +463,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		client:          client,
 		serverInfo:      serverInfo,
 		acpLiveState:    newACPLiveState(),
-		pendingRequests: make(map[string]*pendingACPRequest),
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
 	})
 
 	account, authRequired := a.fetchAccount(ctx, client, session, trace)
@@ -474,7 +474,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 			authState:       "auth_required",
 			authMessage:     a.config.authRequiredMessage,
 			acpLiveState:    newACPLiveState(),
-			pendingRequests: make(map[string]*pendingACPRequest),
+			pendingRequests: make(map[string]*pendingInteractiveRequest),
 		})
 		keepSession = true
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, map[string]any{
@@ -511,7 +511,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 				authState:       "auth_required",
 				authMessage:     a.config.authRequiredMessage,
 				acpLiveState:    newACPLiveState(),
-				pendingRequests: make(map[string]*pendingACPRequest),
+				pendingRequests: make(map[string]*pendingInteractiveRequest),
 			})
 			keepSession = true
 			return []activityshared.Event{newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, map[string]any{
@@ -561,7 +561,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 		defaultModel:           codexAppServerSessionDefaultModel(session, models),
 		authState:              "authenticated",
 		acpLiveState:           liveState,
-		pendingRequests:        make(map[string]*pendingACPRequest),
+		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
 	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
@@ -623,7 +623,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 			authState:       "auth_required",
 			authMessage:     a.config.authRequiredMessage,
 			acpLiveState:    newACPLiveState(),
-			pendingRequests: make(map[string]*pendingACPRequest),
+			pendingRequests: make(map[string]*pendingInteractiveRequest),
 		})
 		keepSession = true
 		return nil
@@ -686,7 +686,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		defaultModel:           codexAppServerSessionDefaultModel(session, models),
 		authState:              "authenticated",
 		acpLiveState:           liveState,
-		pendingRequests:        make(map[string]*pendingACPRequest),
+		pendingRequests:        make(map[string]*pendingInteractiveRequest),
 	})
 	a.refreshStartupMetadataAsync(session, threadResult, len(models) == 0, true, trace)
 	// Mirror Start: push the command snapshot so a resumed session advertises
@@ -1612,7 +1612,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		return append([]activityshared.Event(nil), events...)
 	}
 	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackACPFamilySessionTitle(session.Title, visibleText, "", a.config.provider); fallbackTitle != "" {
+	if fallbackTitle := fallbackAgentSessionTitle(session.Title, visibleText, "", a.config.provider); fallbackTitle != "" {
 		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
 		session.Title = fallbackTitle
 	}
@@ -1752,7 +1752,7 @@ func (a *CodexAppServerAdapter) pendingRequestFailureEvents(
 	}
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(session.AgentSessionID)]
-	pendings := make([]*pendingACPRequest, 0)
+	pendings := make([]*pendingInteractiveRequest, 0)
 	if appSession != nil {
 		for _, pending := range appSession.pendingRequests {
 			pendings = append(pendings, pending)
@@ -1761,7 +1761,7 @@ func (a *CodexAppServerAdapter) pendingRequestFailureEvents(
 	a.mu.Unlock()
 	var events []activityshared.Event
 	for _, pending := range pendings {
-		events = append(events, acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, cause)...)
+		events = append(events, normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, cause)...)
 	}
 	return events
 }
@@ -1901,7 +1901,7 @@ func (a *CodexAppServerAdapter) GoalControl(
 		}
 	}
 	events := []activityshared.Event{}
-	if event, ok := acpGoalUpdatedEvent(session, goalUpdateType); ok {
+	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
 		events = append(events, event)
 	}
 	if action == GoalControlResume || action == GoalControlSet {
@@ -1979,7 +1979,7 @@ func (a *CodexAppServerAdapter) execGoalControlCommand(
 	} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
 		a.applyGoalUpdate(session.AgentSessionID, goal)
 	}
-	if event, ok := acpGoalUpdatedEvent(session, goalUpdateType); ok {
+	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
 		events = append(events, event)
 	}
 	if notice := appServerGoalNoticeEvent(session, turnID, method, result); notice != nil {
@@ -2079,12 +2079,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		}
 		if method == appServerMethodThreadGoalClear {
 			a.applyGoalClear(session.AgentSessionID)
-			if event, ok := acpGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
+			if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
 				emitEvents([]activityshared.Event{event})
 			}
 		} else if goal := appServerGoalFromResult(result); len(goal) > 0 {
 			a.applyGoalUpdate(session.AgentSessionID, goal)
-			if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+			if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_update"); ok {
 				emitEvents([]activityshared.Event{event})
 			}
 		}
@@ -2389,7 +2389,7 @@ func (a *CodexAppServerAdapter) pauseActiveGoalForCancel(session Session) []acti
 	// already reflects the paused state; repeated stops would spam the
 	// timeline.
 	events := []activityshared.Event{}
-	if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+	if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_update"); ok {
 		events = append(events, event)
 	}
 	return events
@@ -2965,7 +2965,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		select {
 		case <-ctx.Done():
 			return SubmitInteractiveResult{}, ctx.Err()
-		case pending.response <- pendingACPResponse{optionID: resolvedOptionID}:
+		case pending.response <- pendingInteractiveResponse{optionID: resolvedOptionID}:
 			return SubmitInteractiveResult{
 				AgentSessionID: session.AgentSessionID,
 				RequestID:      requestID,
@@ -2982,7 +2982,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 	select {
 	case <-ctx.Done():
 		return SubmitInteractiveResult{}, ctx.Err()
-	case pending.response <- pendingACPResponse{
+	case pending.response <- pendingInteractiveResponse{
 		optionID: optionID,
 		action:   action,
 		payload:  payload,
@@ -3036,7 +3036,7 @@ func (a *CodexAppServerAdapter) storeSession(agentSessionID string, session *cod
 			session.serverInfo = map[string]any{}
 		}
 		if session.pendingRequests == nil {
-			session.pendingRequests = make(map[string]*pendingACPRequest)
+			session.pendingRequests = make(map[string]*pendingInteractiveRequest)
 		}
 	}
 	key := strings.TrimSpace(agentSessionID)
@@ -3232,7 +3232,7 @@ func (a *CodexAppServerAdapter) sessionMarkerTurnID(agentSessionID string) strin
 	return firstNonEmpty(appSession.activeTurnID, appSession.lastTurnID)
 }
 
-func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingACPRequest) {
+func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingInteractiveRequest) {
 	if a == nil || pending == nil {
 		return
 	}
@@ -3240,15 +3240,15 @@ func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingACPRequest) 
 	appSession := a.sessions[strings.TrimSpace(pending.agentSessionID)]
 	if appSession != nil {
 		if appSession.pendingRequests == nil {
-			appSession.pendingRequests = make(map[string]*pendingACPRequest)
+			appSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 		}
-		pending.state = pendingACPRequestStatePending
+		pending.state = pendingInteractiveRequestStatePending
 		appSession.pendingRequests[strings.TrimSpace(pending.requestID)] = pending
 	}
 	a.mu.Unlock()
 }
 
-func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, requestID string) *pendingACPRequest {
+func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, requestID string) *pendingInteractiveRequest {
 	if a == nil {
 		return nil
 	}
@@ -3291,10 +3291,10 @@ func (a *CodexAppServerAdapter) rejectPendingRequests(agentSessionID string, err
 	}
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	pending := make([]*pendingACPRequest, 0)
+	pending := make([]*pendingInteractiveRequest, 0)
 	if appSession != nil && appSession.pendingRequests != nil {
 		for requestID, request := range appSession.pendingRequests {
-			request.state = pendingACPRequestStateInterrupted
+			request.state = pendingInteractiveRequestStateInterrupted
 			pending = append(pending, request)
 			delete(appSession.pendingRequests, requestID)
 		}

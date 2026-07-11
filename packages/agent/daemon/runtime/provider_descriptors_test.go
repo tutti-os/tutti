@@ -39,6 +39,34 @@ func TestMigratedCodexDescriptorBuildsDefaultAdapter(t *testing.T) {
 	}
 }
 
+func TestMigratedClaudeCodeDescriptorBuildsSDKAdapter(t *testing.T) {
+	descriptor, ok := providerregistry.Find(ProviderClaudeCode)
+	if !ok {
+		t.Fatal("claude-code descriptor missing")
+	}
+	adapter := newAdapterFromProviderDescriptor(descriptor, nil, HostMetadata{}, nil)
+	if _, ok := adapter.(*ClaudeCodeSDKAdapter); !ok {
+		t.Fatalf("adapter = %T, want *ClaudeCodeSDKAdapter", adapter)
+	}
+	if adapter.Provider() != ProviderClaudeCode {
+		t.Fatalf("adapter.Provider() = %q", adapter.Provider())
+	}
+}
+
+func TestMigratedClaudeCodeDescriptorOwnsPermissionModes(t *testing.T) {
+	if got := defaultPermissionModeIDForProvider(ProviderClaudeCode); got != "default" {
+		t.Fatalf("default permission mode = %q", got)
+	}
+	for _, mode := range []string{"default", "acceptEdits", "dontAsk", "bypassPermissions"} {
+		if !permissionModeIDAllowedForProvider(ProviderClaudeCode, mode) {
+			t.Fatalf("permission mode %q rejected", mode)
+		}
+	}
+	if permissionModeIDAllowedForProvider(ProviderClaudeCode, "auto") {
+		t.Fatal("legacy permission mode auto accepted")
+	}
+}
+
 func TestSharedAppServerAdapterKeepsTuttiAgentIdentity(t *testing.T) {
 	adapter := NewTuttiAgentAppServerAdapterWithHostMetadata(nil, HostMetadata{})
 	serverInfo := adapter.appServerInfo(nil)

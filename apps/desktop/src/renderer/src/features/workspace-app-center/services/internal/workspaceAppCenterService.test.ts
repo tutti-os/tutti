@@ -1400,6 +1400,12 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
           },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1465,6 +1471,12 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
           },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1545,6 +1557,12 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
             ]
           },
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1864,6 +1882,12 @@ function createTuttidClient(
         },
         runtimeContext: {},
         skills: [],
+        behavior: {
+          modelOptionsAuthoritative: false,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        },
         capabilityCatalog: []
       };
     },

@@ -3,6 +3,7 @@ import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
   AgentActivityCancelSessionInput,
   AgentActivityCancelSessionResult,
+  AgentActivityCancelTurnInput,
   AgentActivityGoalControlInput,
   AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
@@ -16,6 +17,7 @@ import type {
   AgentActivitySession,
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
+  AgentSessionEngine,
   AgentActivitySubmitInteractiveInput
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -117,6 +119,11 @@ export interface IWorkspaceAgentActivityService {
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;
+  cancelTurn?(
+    input: AgentActivityCancelTurnInput
+  ): Promise<
+    import("@tutti-os/agent-activity-core").AgentActivityTurnCancelResponse
+  >;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
@@ -149,6 +156,7 @@ export interface IWorkspaceAgentActivityService {
     workspaceId: string;
   }): Promise<AgentHostAgentSessionState>;
   getSnapshot(workspaceId: string): AgentActivitySnapshot;
+  getSessionEngine(workspaceId: string): AgentSessionEngine;
   listSessionMessages(
     input: WorkspaceAgentActivityListMessagesInput
   ): Promise<AgentActivityMessagePage>;

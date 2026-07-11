@@ -417,9 +417,9 @@ call type. For `AskUserQuestion`, renderer payloads may keep
 `answersByQuestionId` keyed by stable UI question ids, but the Claude SDK
 permission callback must return `updatedInput.answers` keyed by the full
 question text because current Claude SDK result rendering looks up answers by
-question text. Legacy Claude ACP `AskUserQuestion` failures may be hidden only
-when the recorded failure says the tool is unavailable; waiting or completed
-Claude SDK `AskUserQuestion` calls must remain in the Agent GUI detail
+question text. Recorded `AskUserQuestion` failures may be hidden only when the
+failure says the tool is unavailable; waiting or completed Claude SDK
+`AskUserQuestion` calls must remain in the Agent GUI detail
 projection so the composer prompt can render.
 
 Runtime interactive prompts also travel through session state. Provider
@@ -432,9 +432,9 @@ prompt", and explicit `null` means "clear the current prompt". Do not model it
 as a persisted workspace session field or as a pointer-only JSON field that
 cannot emit `null`.
 
-Claude background agents are session-level runtime state for both ACP and SDK
-adapters. Raw Claude `task_started`, `task_progress`, `task_notification`,
-`task_updated`, and SDK sidecar `task_*` events should update
+Claude background agents are session-level SDK runtime state. Raw sidecar
+`task_started`, `task_progress`, `task_notification`, `task_updated`, and
+`task_*` events should update
 `runtimeContext.backgroundAgents` and emit activity timeline events, without
 forcing the parent session into a working lifecycle state. Composer wait copy
 such as "Waiting for 1 background agent to finish" must be derived from that
@@ -791,7 +791,7 @@ parse provider stdout, terminal text, or runtime internals directly. It consumes
 normalized sessions, messages, state patches, and message pages through
 `AgentActivityRuntime`.
 If a provider exposes final assistant text through a side-channel such as a
-Claude SDK message rather than an ACP `agent_message_chunk`, the daemon adapter
+Claude SDK message rather than a generic message chunk, the daemon adapter
 must normalize that text into the same persisted message projection. AgentGUI
 must not read provider transcript files or SDK-specific logs to recover missing
 final output.
@@ -825,14 +825,12 @@ persists the normalized `attachmentId`. The managed source path must live under
 the daemon state root's `agent-prompt-assets` directory, and the daemon must
 re-check the resolved source path, symlink target, file type, and size before
 copying it into the session attachment store.
-Claude Code runtime options follow the same parity rule. The legacy ACP adapter
-and the Claude SDK adapter must derive system prompt append text, Tutti detail
-mode instructions, plan-mode instructions, plugin directory, custom model args,
-disallowed tools, and the Claude Code built-in tool preset from one daemon-side
-builder before they cross their runtime boundary. SDK sidecars should map that
-structured payload into SDK `query` options; they should not rediscover plugin
-dirs, infer tool availability from UI labels, or keep a separate prompt/options
-contract from the ACP path.
+Claude Code runtime options come from one daemon-side builder: system prompt
+append text, Tutti detail mode instructions, plan-mode instructions, plugin
+directory, custom model args, disallowed tools, and the Claude Code built-in
+tool preset. The SDK sidecar maps that structured payload into SDK `query`
+options; it must not rediscover plugin dirs or infer tool availability from UI
+labels.
 
 ### Event Reconcile And UI Refresh
 

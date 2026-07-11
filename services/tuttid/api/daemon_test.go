@@ -1446,8 +1446,15 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 						SourceKind:  "project",
 						Description: "Review architecture changes",
 					}},
+					Behavior: providerregistry.ComposerBehaviorDescriptor{
+						ModelOptionsAuthoritative:           true,
+						RefreshModelOptionsAfterSettings:    true,
+						PrewarmDraftSession:                 true,
+						PlanModeExclusiveWithPermissionMode: true,
+					},
 					SlashCommandPolicy: &providerregistry.SlashCommandPolicyDescriptor{
-						FallbackCommands: []string{"compact", "goal"},
+						FallbackCommands:            []string{"compact", "goal"},
+						CommandCatalogAuthoritative: true,
 						CommandEffects: []providerregistry.SlashCommandEffectDescriptor{
 							{Command: "compact", Effect: providerregistry.SlashCommandEffectSubmitImmediate},
 							{Command: "goal", Effect: providerregistry.SlashCommandEffectActivateGoalMode},
@@ -1494,10 +1501,17 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	if len(response.Skills) != 1 || response.Skills[0].Trigger != "$architecture-review" || response.Skills[0].SourceKind != tuttigenerated.AgentProviderSkillOptionSourceKindProject {
 		t.Fatalf("skills = %#v", response.Skills)
 	}
+	if !response.Behavior.ModelOptionsAuthoritative ||
+		!response.Behavior.RefreshModelOptionsAfterSettings || !response.Behavior.PrewarmDraftSession ||
+		!response.Behavior.PlanModeExclusiveWithPermissionMode {
+		t.Fatalf("behavior = %#v", response.Behavior)
+	}
 	if response.SlashCommandPolicy == nil ||
 		!slices.Equal(response.SlashCommandPolicy.FallbackCommands, []string{"compact", "goal"}) ||
 		len(response.SlashCommandPolicy.CommandEffects) != 2 ||
-		response.SlashCommandPolicy.CommandEffects[1].Effect != tuttigenerated.ActivateGoalMode {
+		response.SlashCommandPolicy.CommandEffects[1].Effect != tuttigenerated.ActivateGoalMode ||
+		response.SlashCommandPolicy.CommandCatalogAuthoritative == nil ||
+		!*response.SlashCommandPolicy.CommandCatalogAuthoritative {
 		t.Fatalf("slashCommandPolicy = %#v", response.SlashCommandPolicy)
 	}
 }

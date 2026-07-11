@@ -59,6 +59,35 @@ test("probe request emits an external probe command", () => {
   ]);
 });
 
+test("connected transition requests one workspace reconcile", () => {
+  const initial = createInitialEngineRuntimeState();
+  const connected = engineRuntimeReducer(initial, {
+    status: "connected",
+    type: "engine/connectionChanged",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(connected.commands[0]?.type, "engine/reconcileWorkspace");
+
+  const duplicate = engineRuntimeReducer(connected.state, {
+    status: "connected",
+    type: "engine/connectionChanged",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(duplicate.commands.length, 0);
+
+  const disconnected = engineRuntimeReducer(duplicate.state, {
+    status: "disconnected",
+    type: "engine/connectionChanged",
+    workspaceId: "workspace-1"
+  });
+  const reconnected = engineRuntimeReducer(disconnected.state, {
+    status: "connected",
+    type: "engine/connectionChanged",
+    workspaceId: "workspace-1"
+  });
+  assert.equal(reconnected.commands[0]?.type, "engine/reconcileWorkspace");
+});
+
 test("expiry request and cancellation emit internal clock commands", () => {
   const requested = engineRuntimeReducer(createInitialEngineRuntimeState(), {
     dueAtUnixMs: 500,
@@ -112,7 +141,7 @@ test("interleaving: a late command result does not clobber a newer expiry", () =
   });
 });
 
-test("root reducer composes domain slices without adding logic", () => {
+test("root reducer composes domain slices and commands", () => {
   const initial = createInitialAgentSessionEngineState();
   const result = rootEngineReducer(initial, {
     status: "disconnected",
@@ -128,5 +157,299 @@ test("root reducer composes domain slices without adding logic", () => {
   });
   assert.deepEqual(withCommand.commands, [
     { commandId: "p-1", type: "engine/probe" }
+  ]);
+});
+
+test("canceling a queued submit atomically removes queue and pending intent", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "session-1",
+          phase: "running",
+          startedAtUnixMs: 1,
+          turnId: "turn-1",
+          updatedAtUnixMs: 1
+        },
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        provider: "codex",
+        status: "working",
+        title: "Session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "queued" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 2,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  assert.ok(state.pendingIntents.submitsByClientSubmitId["submit-1"]);
+  assert.equal(
+    state.promptQueue.recordsBySessionId["session-1"]?.prompts.length,
+    1
+  );
+
+  const canceled = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    type: "submit/canceled"
+  });
+  assert.equal(
+    canceled.state.pendingIntents.submitsByClientSubmitId["submit-1"],
+    undefined
+  );
+  assert.equal(
+    canceled.state.promptQueue.recordsBySessionId["session-1"],
+    undefined
+  );
+  assert.deepEqual(canceled.commands, [
+    { expiryId: "submit:submit-1", type: "engine/cancelExpiry" }
+  ]);
+});
+
+test("an uncertain queued submit cannot be half-canceled", () => {
+  let state = createInitialAgentSessionEngineState();
+  const runningSession = {
+    activeTurn: {
+      agentSessionId: "session-1",
+      phase: "running" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    },
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    provider: "codex",
+    status: "working",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "workspace-1"
+  };
+  state = rootEngineReducer(state, {
+    sessions: [runningSession],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "queued" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 2,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        ...runningSession,
+        activeTurn: {
+          ...runningSession.activeTurn,
+          phase: "settled",
+          settledAtUnixMs: 3,
+          updatedAtUnixMs: 3
+        },
+        activeTurnId: null,
+        status: "ready",
+        updatedAtUnixMs: 3
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+  const commandId =
+    state.promptQueue.recordsBySessionId["session-1"]?.inFlight?.commandId;
+  assert.ok(commandId);
+  state = rootEngineReducer(state, {
+    commandId,
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+
+  const canceled = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    type: "submit/canceled"
+  });
+  assert.ok(canceled.state.pendingIntents.submitsByClientSubmitId["submit-1"]);
+  assert.equal(
+    canceled.state.promptQueue.recordsBySessionId["session-1"]
+      ?.uncertainDelivery?.promptId,
+    "submit-1"
+  );
+  assert.deepEqual(canceled.commands, []);
+});
+
+test("session tombstone blocks late queue and snapshot resurrection across domains", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        provider: "codex",
+        status: "completed",
+        title: "Session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }
+    ]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "session/removed",
+    agentSessionId: "session-1"
+  }).state;
+  const lateEnqueue = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "late" }],
+      createdAtUnixMs: 2,
+      id: "prompt-1"
+    },
+    workspaceId: "workspace-1"
+  });
+  assert.equal(
+    lateEnqueue.state.promptQueue.recordsBySessionId["session-1"],
+    undefined
+  );
+  const lateSnapshot = rootEngineReducer(lateEnqueue.state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        provider: "codex",
+        status: "completed",
+        title: "Session",
+        updatedAtUnixMs: 3,
+        workspaceId: "workspace-1"
+      }
+    ]
+  });
+  assert.equal(lateSnapshot.commands.length, 0);
+  assert.equal(
+    lateSnapshot.state.promptQueue.recordsBySessionId["session-1"],
+    undefined
+  );
+  assert.equal(
+    lateSnapshot.state.sessionLifecycle.recordsBySessionId["session-1"],
+    undefined
+  );
+  const lateActivity = rootEngineReducer(lateSnapshot.state, {
+    type: "session/activityObserved",
+    agentSessionId: "session-1",
+    eventType: "session_update",
+    hasCachedSession: false,
+    hasInlineMessages: false,
+    inlineApplied: false,
+    workspaceId: "workspace-1"
+  });
+  assert.equal(lateActivity.commands.length, 0);
+  assert.equal(
+    lateActivity.state.sessionReconcile.recordsBySessionId["session-1"],
+    undefined
+  );
+});
+
+test("an invalid queue promotion cannot cancel an unrelated active turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "session-1",
+          phase: "running",
+          startedAtUnixMs: 1,
+          turnId: "turn-1",
+          updatedAtUnixMs: 1
+        },
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        provider: "codex",
+        status: "working",
+        title: "Session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }
+    ]
+  }).state;
+  const invalid = rootEngineReducer(state, {
+    type: "queue/promoted",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    cancelCommandId: "cancel-1",
+    promptId: "missing-prompt",
+    timeoutMs: 30_000
+  });
+  assert.equal(invalid.commands.length, 0);
+  assert.equal(
+    invalid.state.sessionLifecycle.recordsBySessionId["session-1"]?.cancel
+      .status,
+    "idle"
+  );
+});
+
+test("an accepted promotion waits with a deadline when the referenced turn entity is late", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        activeTurn: null,
+        activeTurnId: "turn-1",
+        agentSessionId: "session-1",
+        cwd: "/workspace",
+        provider: "codex",
+        status: "working",
+        title: "Session",
+        updatedAtUnixMs: 1,
+        workspaceId: "workspace-1"
+      }
+    ]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "next" }],
+      createdAtUnixMs: 1,
+      id: "prompt-1"
+    },
+    workspaceId: "workspace-1"
+  }).state;
+  const promoted = rootEngineReducer(state, {
+    type: "queue/promoted",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    cancelCommandId: "cancel-1",
+    promptId: "prompt-1",
+    timeoutMs: 30_000
+  });
+  assert.equal(
+    promoted.state.sessionLifecycle.recordsBySessionId["session-1"]?.cancel
+      .status,
+    "awaitingTurn"
+  );
+  assert.deepEqual(promoted.commands, [
+    {
+      dueAtUnixMs: 30_000,
+      expiryId: "cancel:awaiting-turn:cancel-1",
+      type: "engine/scheduleExpiry"
+    }
   ]);
 });

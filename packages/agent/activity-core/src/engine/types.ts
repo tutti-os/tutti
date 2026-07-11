@@ -22,6 +22,9 @@ export interface AgentSessionEngineIdentity {
   workspaceId: string;
 }
 
+export const AGENT_SESSION_ENGINE_LOCAL_ORIGIN =
+  "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME";
+
 export type EngineConnectionStatus = "connected" | "disconnected" | "unknown";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +35,7 @@ export type EngineConnectionStatus = "connected" | "disconnected" | "unknown";
 export interface EngineConnectionChangedIntent {
   type: "engine/connectionChanged";
   status: EngineConnectionStatus;
+  workspaceId?: string;
 }
 
 /** Requests a command-port round trip; exercises the executor feedback loop. */
@@ -64,8 +68,10 @@ export interface EngineCommandResultIntent {
   type: "engine/commandResult";
   commandId: string;
   commandType: EngineExternalCommand["type"];
+  correlationId?: string;
   outcome: EngineCommandOutcome;
   value?: unknown;
+  errorCode?: string;
   errorMessage?: string;
 }
 
@@ -85,7 +91,11 @@ export type EngineIntent =
   | EngineExpiryCancelRequestedIntent
   | EngineExpiryRequestedIntent
   | EngineIntentExpiredIntent
-  | EngineProbeRequestedIntent;
+  | EngineProbeRequestedIntent
+  | PendingIntentsIntent
+  | PromptQueueIntent
+  | SessionReconcileIntent
+  | SessionLifecycleIntent;
 
 // ---------------------------------------------------------------------------
 // Commands: descriptions returned by reducers. Internal commands are handled
@@ -113,11 +123,23 @@ export interface EngineProbeCommand extends EngineExternalCommandBase {
   type: "engine/probe";
 }
 
+export interface EngineReconcileWorkspaceCommand extends EngineExternalCommandBase {
+  type: "engine/reconcileWorkspace";
+  workspaceId: string;
+}
+
 export type EngineInternalCommand =
   | EngineCancelExpiryCommand
   | EngineScheduleExpiryCommand;
 
-export type EngineExternalCommand = EngineProbeCommand;
+export type EngineExternalCommand =
+  | EngineProbeCommand
+  | EngineReconcileWorkspaceCommand
+  | PromptQueueSendCommand
+  | SessionActivateCommand
+  | SessionUnactivateCommand
+  | SessionReconcileCommand
+  | TurnCancelCommand;
 
 export type EngineCommand = EngineExternalCommand | EngineInternalCommand;
 
@@ -150,6 +172,10 @@ export interface EngineRuntimeState {
 
 export interface AgentSessionEngineState {
   engineRuntime: EngineRuntimeState;
+  pendingIntents: PendingIntentsState;
+  promptQueue: PromptQueueState;
+  sessionReconcile: SessionReconcileState;
+  sessionLifecycle: SessionLifecycleState;
 }
 
 export interface EngineReducerResult<TState> {
@@ -212,3 +238,24 @@ export interface AgentSessionEngine {
   getSnapshot(): AgentSessionEngineState;
   subscribe(listener: AgentSessionEngineListener): () => void;
 }
+import type {
+  PromptQueueIntent,
+  PromptQueueSendCommand,
+  PromptQueueState
+} from "./promptQueue.types.ts";
+import type {
+  PendingIntentsIntent,
+  PendingIntentsState,
+  SessionActivateCommand,
+  SessionUnactivateCommand
+} from "./pendingIntents.types.ts";
+import type {
+  SessionLifecycleIntent,
+  SessionLifecycleState,
+  TurnCancelCommand
+} from "./sessionLifecycle.types.ts";
+import type {
+  SessionReconcileCommand,
+  SessionReconcileIntent,
+  SessionReconcileState
+} from "./sessionReconcile.types.ts";

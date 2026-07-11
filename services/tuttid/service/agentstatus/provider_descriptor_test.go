@@ -3,6 +3,7 @@ package agentstatus
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -31,6 +32,23 @@ func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	}
 	if spec.Install.CodexCLI.PackageName != "@openai/codex" || spec.Install.CodexCLI.BinaryName != "codex" || !spec.Install.CodexCLI.IncludeOptional {
 		t.Fatalf("codex installer registration = %#v", spec.Install.CodexCLI)
+	}
+}
+
+func TestClaudeCodeStatusSpecComesFromProviderDescriptor(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{agentprovider.ClaudeCode})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("Select(claude-code) = %#v, %v", specs, err)
+	}
+	spec := specs[0]
+	if spec.Kind != providerregistry.StatusKindClaudeCLI ||
+		spec.AuthStatusCommandTimeout != 10*time.Minute {
+		t.Fatalf("claude status registration = %#v", spec)
+	}
+	if spec.Install.Kind != InstallerKindOfficialScript ||
+		spec.Install.ScriptURL != "https://claude.ai/install.sh" ||
+		spec.Install.ScriptShell != "bash" {
+		t.Fatalf("claude installer = %#v", spec.Install)
 	}
 }
 

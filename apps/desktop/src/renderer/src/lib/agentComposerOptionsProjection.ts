@@ -79,8 +79,23 @@ export function agentActivityComposerOptionsFromTuttidResult(
     skills:
       skillsFromResult.length > 0 ? skillsFromResult : skillsFromRuntimeContext,
     capabilityCatalog,
+    behavior: composerBehaviorFromValue(result.behavior),
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
+  };
+}
+
+function composerBehaviorFromValue(
+  value: unknown
+): AgentActivityComposerOptions["behavior"] {
+  const behavior = recordValue(value);
+  return {
+    modelOptionsAuthoritative: behavior.modelOptionsAuthoritative === true,
+    refreshModelOptionsAfterSettings:
+      behavior.refreshModelOptionsAfterSettings === true,
+    prewarmDraftSession: behavior.prewarmDraftSession === true,
+    planModeExclusiveWithPermissionMode:
+      behavior.planModeExclusiveWithPermissionMode === true
   };
 }
 
@@ -121,7 +136,13 @@ function slashCommandPolicyFromValue(
     const effect = slashCommandEffectFromValue(descriptor.effect);
     return command && effect ? [{ command, effect }] : [];
   });
-  return { fallbackCommands, commandEffects };
+  return {
+    fallbackCommands,
+    commandEffects,
+    ...(policy.commandCatalogAuthoritative === true
+      ? { commandCatalogAuthoritative: true }
+      : {})
+  };
 }
 
 function slashCommandEffectFromValue(

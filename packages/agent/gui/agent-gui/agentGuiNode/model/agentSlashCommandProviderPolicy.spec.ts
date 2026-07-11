@@ -19,6 +19,21 @@ const CODEX_POLICY = {
   ]
 } as const;
 
+const CLAUDE_POLICY = {
+  fallbackCommands: ["compact", "status", "fast", "goal", "review"],
+  commandCatalogAuthoritative: true,
+  commandEffects: [
+    { command: "compact", effect: "submitImmediate" },
+    { command: "context", effect: "submitImmediate" },
+    { command: "usage", effect: "submitImmediate" },
+    { command: "review", effect: "showReviewPicker" },
+    { command: "goal", effect: "activateGoalMode" },
+    { command: "plan", effect: "togglePlanMode" },
+    { command: "status", effect: "showStatus" },
+    { command: "fast", effect: "toggleSpeed" }
+  ]
+} as const;
+
 describe("agentSlashCommandProviderPolicy", () => {
   const reviewPickerProviders = ["codex", "claude-code"] as const;
 
@@ -116,10 +131,11 @@ describe("agentSlashCommandProviderPolicy", () => {
     ]);
   });
 
-  it("adds Claude Code fallback commands including goal when ACP commands are empty", () => {
+  it("adds Claude Code fallback commands including goal when SDK commands are empty", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands: []
       }).map((command) => command.name)
     ).toEqual(["compact", "status", "fast", "goal", "review"]);
@@ -129,6 +145,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands: [
           { name: "browser-use-tutti-10" },
           { name: "lark-mail" },
@@ -155,6 +172,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         provider: "claude-code",
         policy: {
           fallbackCommands: ["custom-command"],
+          commandCatalogAuthoritative: true,
           commandEffects: []
         },
         commands: [{ name: "descriptor-command" }]
@@ -182,6 +200,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands: [{ name: "plan", description: "provider plan" }]
       })
     ).toEqual([
@@ -276,6 +295,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         command: { name: "status" },
         currentDraft: "/sta"
       })
@@ -283,6 +303,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         command: { name: "plan" },
         currentDraft: "/pla"
       })
@@ -293,6 +314,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         command: { name: "compact" },
         currentDraft: "/"
       })
@@ -303,6 +325,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         command: { name: "goal" },
         currentDraft: "/"
       })
@@ -346,6 +369,7 @@ describe("agentSlashCommandProviderPolicy", () => {
   it("parses manual Claude Code status and toggles plan mode on submit", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "claude-code",
+      policy: CLAUDE_POLICY,
       commands: [],
       planSupported: true
     });
@@ -353,6 +377,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands,
         draft: "/status"
       })
@@ -360,6 +385,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands,
         draft: "/plan"
       })
@@ -367,6 +393,7 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands,
         draft: "/plan refactor auth"
       })
@@ -418,8 +445,10 @@ describe("agentSlashCommandProviderPolicy", () => {
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
+        policy: CLAUDE_POLICY,
         commands: resolveSlashCommandsForProvider({
           provider: "claude-code",
+          policy: CLAUDE_POLICY,
           commands: [{ name: "context", description: "provider context" }]
         }),
         draft: "/context"
@@ -449,7 +478,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         resolveSlashCommandSelectionEffect({
           provider,
 
-          policy: provider === "codex" ? CODEX_POLICY : undefined,
+          policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
           command: { name: "review", description: "Review code changes" },
           currentDraft: "/rev"
         })
@@ -463,14 +492,14 @@ describe("agentSlashCommandProviderPolicy", () => {
       const commands = resolveSlashCommandsForProvider({
         provider,
 
-        policy: provider === "codex" ? CODEX_POLICY : undefined,
+        policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
         commands: [{ name: "review", description: "Review code changes" }]
       });
       expect(
         resolveSlashCommandSubmitEffect({
           provider,
 
-          policy: provider === "codex" ? CODEX_POLICY : undefined,
+          policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
           commands,
           draft: "/review"
         })
@@ -484,7 +513,7 @@ describe("agentSlashCommandProviderPolicy", () => {
       const commands = resolveSlashCommandsForProvider({
         provider,
 
-        policy: provider === "codex" ? CODEX_POLICY : undefined,
+        policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
         commands: [],
         hasCompactableContext: false
       });
@@ -493,7 +522,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         resolveSlashCommandSubmitEffect({
           provider,
 
-          policy: provider === "codex" ? CODEX_POLICY : undefined,
+          policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
           commands,
           draft: "/review"
         })
@@ -507,14 +536,14 @@ describe("agentSlashCommandProviderPolicy", () => {
       const commands = resolveSlashCommandsForProvider({
         provider,
 
-        policy: provider === "codex" ? CODEX_POLICY : undefined,
+        policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
         commands: [{ name: "review", description: "Review code changes" }]
       });
       expect(
         resolveSlashCommandSubmitEffect({
           provider,
 
-          policy: provider === "codex" ? CODEX_POLICY : undefined,
+          policy: provider === "codex" ? CODEX_POLICY : CLAUDE_POLICY,
           commands,
           draft: "/review check the auth flow"
         })

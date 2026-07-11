@@ -188,6 +188,7 @@ export type {
   AgentProviderAvailabilityStatus,
   AgentProviderCapabilityOption,
   AgentProviderCliStatus,
+  AgentProviderComposerBehavior,
   AgentProviderComposerConfig,
   AgentProviderComposerConfigOptionValue,
   AgentProviderComposerOptionsResponse,

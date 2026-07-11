@@ -2381,6 +2381,20 @@ func (a *statefulInteractiveAdapter) SubmitInteractive(_ context.Context, sessio
 	}, nil
 }
 
+func (a *statefulInteractiveAdapter) StateAfterInteractiveSelection(
+	_ Session,
+	optionID string,
+) (InteractiveSelectionState, bool) {
+	if a.Provider() != ProviderClaudeCode {
+		return InteractiveSelectionState{}, false
+	}
+	planMode, permissionMode, ok := claudeCodeModeFromID(optionID)
+	return InteractiveSelectionState{
+		PlanMode:       planMode,
+		PermissionMode: permissionMode,
+	}, ok
+}
+
 func (a *statefulInteractiveAdapter) ApplySessionSettings(_ context.Context, session Session, patch SessionSettingsPatch) error {
 	if a.applySettingsErr != nil {
 		return a.applySettingsErr
@@ -2867,6 +2881,20 @@ func (a *blockingExecAdapter) SubmitInteractive(_ context.Context, session Sessi
 		Accepted:       true,
 		OptionID:       optionID,
 	}, nil
+}
+
+func (a *blockingExecAdapter) StateAfterInteractiveSelection(
+	_ Session,
+	optionID string,
+) (InteractiveSelectionState, bool) {
+	if a.Provider() != ProviderClaudeCode {
+		return InteractiveSelectionState{}, false
+	}
+	planMode, permissionMode, ok := claudeCodeModeFromID(optionID)
+	return InteractiveSelectionState{
+		PlanMode:       planMode,
+		PermissionMode: permissionMode,
+	}, ok
 }
 
 func (a *blockingExecAdapter) waitForPrompt(t *testing.T, prompt string) {
@@ -3804,7 +3832,7 @@ func TestControllerSubmitInteractiveSyncsClaudeCodePermissionModeSelection(t *te
 		{name: "accept edits", initial: "default", optionID: "acceptEdits", wantMode: "acceptEdits"},
 		{name: "bypass permissions", initial: "default", optionID: "bypassPermissions", wantMode: "bypassPermissions"},
 		{name: "default", initial: "acceptEdits", optionID: "default", wantMode: "default"},
-		{name: "auto", initial: "default", optionID: "auto", wantMode: "auto"},
+		{name: "legacy auto", initial: "default", optionID: "auto", wantMode: "acceptEdits"},
 		{name: "dont ask from payload", initial: "default", payload: map[string]any{"optionId": "dontAsk"}, resolved: "dontAsk", wantMode: "dontAsk"},
 	}
 
@@ -3891,7 +3919,7 @@ func TestClaudeCodeModeFromID(t *testing.T) {
 		{modeID: "default", wantPlan: false, wantPermission: "default", wantOK: true},
 		{modeID: "acceptEdits", wantPlan: false, wantPermission: "acceptEdits", wantOK: true},
 		{modeID: "bypassPermissions", wantPlan: false, wantPermission: "bypassPermissions", wantOK: true},
-		{modeID: "auto", wantPlan: false, wantPermission: "auto", wantOK: true},
+		{modeID: "auto", wantPlan: false, wantPermission: "acceptEdits", wantOK: true},
 		{modeID: "dontAsk", wantPlan: false, wantPermission: "dontAsk", wantOK: true},
 		{modeID: "allow_once", wantOK: false},
 		{modeID: "reject", wantOK: false},
@@ -3944,14 +3972,14 @@ func TestControllerSubmitInteractiveExitsPlanModeOnPermissionSelection(t *testin
 	if !ok {
 		t.Fatal("Session returned ok=false")
 	}
-	if session.PermissionModeID != "auto" {
-		t.Fatalf("session permission mode = %q, want auto", session.PermissionModeID)
+	if session.PermissionModeID != "acceptEdits" {
+		t.Fatalf("session permission mode = %q, want acceptEdits", session.PermissionModeID)
 	}
 	if session.Settings == nil || session.Settings.PlanMode {
 		t.Fatalf("session settings = %#v, want plan mode cleared", session.Settings)
 	}
 
-	event := waitForStatePatchPermissionMode(t, events, "auto")
+	event := waitForStatePatchPermissionMode(t, events, "acceptEdits")
 	patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
 	if !ok {
 		t.Fatalf("event data = %#v, want state patch", event.Data)
@@ -4848,7 +4876,7 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 	}
 	usage, _ := patch.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
+	if got, _ := int64Value(contextWindow["totalTokens"]); got != 200000 {
 		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
 	}
 	if patch.TurnLifecycle == nil ||

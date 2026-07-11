@@ -8,15 +8,10 @@ import {
   type AgentGUINodeProps
 } from "./agent-gui/agentGuiNode/AgentGUINode";
 import { AgentActivityHostProvider } from "./agentActivityHost";
-import {
-  AgentQueuedPromptRuntimeProvider,
-  type AgentQueuedPromptRuntime
-} from "./agentQueuedPromptRuntime";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
 
 export interface AgentGUIProps extends AgentGUINodeProps {
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi?: AgentHostInputApi | null;
   embedded?: boolean;
   i18n?: I18nRuntime<string> | null;
@@ -25,7 +20,6 @@ export interface AgentGUIProps extends AgentGUINodeProps {
 
 export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
-  agentQueuedPromptRuntime,
   agentHostApi,
   i18n,
   locale,
@@ -37,9 +31,7 @@ export const AgentGUI = memo(function AgentGUI({
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApi}
       >
-        <AgentQueuedPromptRuntimeProvider runtime={agentQueuedPromptRuntime}>
-          <AgentGUINode {...props} />
-        </AgentQueuedPromptRuntimeProvider>
+        <AgentGUINode {...props} />
       </AgentActivityHostProvider>
     </AgentGuiI18nProvider>
   );

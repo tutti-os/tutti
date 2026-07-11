@@ -917,7 +917,7 @@ func providerUsesExplicitTurnLifecyclePatch(provider string) bool {
 	// migrated to providerregistry yet. This fallback disappears provider by
 	// provider as each descriptor declares its own policy.
 	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode, ProviderTuttiAgent:
+	case ProviderTuttiAgent:
 		return true
 	default:
 		return false

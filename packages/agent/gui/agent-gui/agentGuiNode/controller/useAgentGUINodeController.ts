@@ -14,20 +14,31 @@ import {
   useAgentActivitySnapshot,
   type AgentActivityRuntime
 } from "../../../agentActivityRuntime";
-import {
-  useAgentQueuedPromptRuntime,
-  useAgentQueuedPromptSessionSnapshot
-} from "../../../agentQueuedPromptRuntime";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
+  pendingSubmitRecordListsEqual,
   resolveSubmitAvailability,
   isLiveTurnLifecyclePhase,
   resolveAgentActivityCapability,
   resolveAgentActivityUsage,
+  selectEngineCancelState,
+  selectEngineHasPendingInteractions,
+  selectEngineHasVisibleQueuedSubmit,
+  selectEnginePromptQueue,
+  selectEnginePromptQueueError,
+  selectEngineQueuedPrompt,
+  selectEngineSession,
+  selectEngineSessionError,
+  selectEngineSessionLifecycleRecord,
+  selectEngineSubmitAvailability,
+  selectLatestPendingSubmitForSession,
+  selectPendingSubmitsForSession,
+  selectSessionHasUnconfirmedSubmit,
+  selectSessionIsSubmitting,
   selectSessionDisplayStatuses
 } from "@tutti-os/agent-activity-core";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type {
-  AgentActivityCancelSessionResult,
   AgentActivityComposerOptions,
   AgentActivityGoalControlAction,
   AgentActivityDisplayStatus,
@@ -119,7 +130,6 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import type { WorkspaceAgentActivityCard } from "../../../shared/workspaceAgentActivityListViewModel";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
-import { projectCoreSessionStatus } from "../../../shared/agentActivitySnapshotProjection";
 import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLatestActivitySummary";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
 import { mergeWorkspaceAgentMessages } from "../../../host/workspaceAgentSessionMessages";
@@ -157,15 +167,12 @@ import {
 } from "../../../contexts/workspace/presentation/renderer/agentSessions/useAgentSessionView";
 import {
   clearAgentGUIConversationCreatePending,
-  clearAgentGUIConversationSubmitPending,
   clearAgentGUIConversationUnreadCompletion,
   createAgentGUIConversationListQueryKey,
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationCreatePending,
-  getAgentGUIConversationSubmitPending,
   markAgentGUIConversationCompletionObserved,
   markAgentGUIConversationCreatePending,
-  markAgentGUIConversationSubmitPending,
   markAgentGUIConversationUnreadCompletion,
   markLocalDeletedAgentGUIConversation,
   patchAgentGUIConversationSummary,
@@ -181,7 +188,6 @@ import {
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
-import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
   createAgentSessionMentionHref,
   formatAgentMentionMarkdown,
@@ -218,6 +224,7 @@ import {
   isForegroundModelOptionsLoading,
   reconcileOptimisticComposerTarget,
   resolveComposerSettingsPresentation,
+  sanitizeComposerSettingsForTarget,
   type AgentGUIComposerTargetData,
   type OptimisticComposerTarget
 } from "./agentGuiController.composerPresentation";
@@ -443,69 +450,6 @@ function composerOptionsForTarget(input: {
 function providerUsesModelImageInputSupport(provider: string | null): boolean {
   const normalized = provider?.trim().toLowerCase();
   return normalized === "opencode" || normalized === "cursor";
-}
-
-function composerOptionValues(
-  options: readonly { value: string }[]
-): Set<string> {
-  return new Set(options.map((option) => option.value));
-}
-
-function sanitizeComposerSettingsForOptions(
-  settings: AgentSessionComposerSettings,
-  options: AgentActivityComposerOptions | null
-): AgentSessionComposerSettings {
-  if (!options) {
-    return settings;
-  }
-  const modelValues = composerOptionValues(options.models);
-  const reasoningValues = composerOptionValues(options.reasoningEfforts);
-  const speedValues = composerOptionValues(options.speeds ?? []);
-  const permissionValues = new Set(
-    options.permissionConfig?.modes.map((mode) => mode.id) ?? []
-  );
-  const model = normalizeOptionalText(settings.model);
-  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
-  const speed = normalizeOptionalText(settings.speed);
-  const permissionModeId = normalizePermissionModeId(settings.permissionModeId);
-  const modelOptionsAreAuthoritative = options.provider === "claude-code";
-  return {
-    ...settings,
-    model:
-      modelOptionsAreAuthoritative &&
-      model &&
-      modelValues.size > 0 &&
-      !modelValues.has(model)
-        ? null
-        : model,
-    reasoningEffort:
-      reasoningEffort &&
-      reasoningValues.size > 0 &&
-      !reasoningValues.has(reasoningEffort)
-        ? null
-        : (reasoningEffort as AgentSessionReasoningEffort | null),
-    speed:
-      speed && speedValues.size > 0 && !speedValues.has(speed)
-        ? null
-        : (speed as AgentSessionSpeed | null),
-    permissionModeId:
-      permissionModeId &&
-      permissionValues.size > 0 &&
-      !permissionValues.has(permissionModeId)
-        ? null
-        : permissionModeId
-  };
-}
-
-function sanitizeComposerSettingsForTarget(input: {
-  settings: AgentSessionComposerSettings;
-  target: AgentGUIComposerTargetData;
-  options: AgentActivityComposerOptions | null;
-}): AgentSessionComposerSettings {
-  if (!input.target.agentTargetId) {
-    return input.settings;
-  }
-  return sanitizeComposerSettingsForOptions(input.settings, input.options);
 }
 
 function agentGUIProviderTargetsEqual(
@@ -865,50 +809,6 @@ function reportAgentGUISubmitRecoveredActiveConversation(input: {
   }
 }
 
-function reportAgentGUICancelDiagnostic(input: {
-  agentSessionId: string;
-  busySource?: string | null;
-  currentSessionStatus?: string | null;
-  phase: "interrupt_current_turn";
-  provider?: string | null;
-  result: AgentActivityCancelSessionResult;
-  runtime: AgentActivityRuntime;
-  workspaceId: string;
-}): void {
-  if (input.result.canceled) {
-    return;
-  }
-  const reportDiagnostic = input.runtime.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
-  try {
-    void Promise.resolve(
-      reportDiagnostic.call(input.runtime, {
-        details: {
-          agentSessionId: input.agentSessionId,
-          busySource: input.busySource ?? "unknown",
-          canceled: input.result.canceled,
-          cancelReason: input.result.reason,
-          currentSessionStatus: input.currentSessionStatus ?? null,
-          phase: input.phase,
-          provider: input.provider ?? null,
-          returnedSessionNonBusy: cancelResultSessionStatusIsNonBusy(
-            input.result
-          ),
-          returnedSessionStatus: input.result.session.status
-        },
-        event: "agent.gui.cancel.noop",
-        level: "info",
-        source: "agent-gui",
-        workspaceId: input.workspaceId
-      })
-    ).catch(() => {});
-  } catch {
-    // Diagnostic logging must never affect the Agent GUI recovery path.
-  }
-}
-
 function reportAgentSubmitTraceDiagnostic(input: {
   event: string;
   runtime: AgentActivityRuntime;
@@ -1008,18 +908,6 @@ function createAgentSubmitTraceId(): string {
   }
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `submit-${Date.now().toString(36)}-${fallbackHex.slice(0, 12)}`;
-}
-
-function cancelResultSessionStatusIsNonBusy(
-  result: AgentActivityCancelSessionResult
-): boolean {
-  const status = normalizeOptionalWorkspaceAgentStatus({
-    currentPhase: result.session.currentPhase,
-    status: projectCoreSessionStatus(result.session.status)
-  });
-  return (
-    status !== null && status.kind !== "working" && status.kind !== "waiting"
-  );
 }
 
 /**
@@ -1133,39 +1021,6 @@ function shouldClearSubmittedDraft(input: {
   return currentLargeTextPaths.every(
     (path, index) => path === submittedLargeTextPaths[index]
   );
-}
-
-function cancelBusySource(input: {
-  conversationStatus?: string | null;
-  hasActivePrompt?: boolean;
-  runtimeSessionStatus?: string | null;
-  sessionStateStatus?: string | null;
-}): string {
-  if (input.hasActivePrompt) {
-    return "interactive_prompt";
-  }
-  if (
-    agentSessionStatusBusy({
-      status: input.conversationStatus ?? undefined
-    })
-  ) {
-    return "conversation_status";
-  }
-  if (
-    agentSessionStatusBusy({
-      status: input.runtimeSessionStatus ?? undefined
-    })
-  ) {
-    return "runtime_session";
-  }
-  if (
-    agentSessionStatusBusy({
-      status: input.sessionStateStatus ?? undefined
-    })
-  ) {
-    return "session_state";
-  }
-  return "unknown";
 }
 
 function normalizeAgentGUIDiagnosticError(
@@ -1307,26 +1162,6 @@ function isSessionNotFoundErrorCode(
   code: AppErrorCode | null | undefined
 ): boolean {
   return code === AGENT_SESSION_NOT_FOUND_ERROR;
-}
-
-const WORKSPACE_AGENT_SESSION_NOT_READY_REASON =
-  "workspace_agent_session_not_found";
-
-// True when a cancel raced session startup: the workspace agent session is not
-// registered in the runtime yet (its thread/start is still in flight), so the
-// daemon reports "workspace agent session not found". This is transient — the
-// session is connecting — so it must not surface as a hard error.
-function isAgentSessionNotReadyError(error: unknown): boolean {
-  if (error && typeof error === "object") {
-    const reason = (error as { reason?: unknown }).reason;
-    if (reason === WORKSPACE_AGENT_SESSION_NOT_READY_REASON) {
-      return true;
-    }
-  }
-  return (
-    getAgentGUIRawErrorMessage(error)?.trim() ===
-    "workspace agent session not found"
-  );
 }
 
 function isSettingsRequireNewSessionErrorCode(
@@ -1936,30 +1771,6 @@ function retargetOptimisticPromptMessages(
     return { ...message, turnId };
   });
   return { changed, messages: retargeted };
-}
-
-function removeOptimisticPromptMessagesByClientSubmitId(
-  messages: readonly WorkspaceAgentActivityMessage[],
-  clientSubmitId: string
-): { changed: boolean; messages: WorkspaceAgentActivityMessage[] } {
-  const normalizedClientSubmitId = clientSubmitId.trim();
-  if (!normalizedClientSubmitId || messages.length === 0) {
-    return { changed: false, messages: [...messages] };
-  }
-  const filtered = messages.filter((message) => {
-    if (!isWorkspaceAgentActivityOptimisticMessage(message)) {
-      return true;
-    }
-    const messageClientSubmitId = message.payload?.clientSubmitId;
-    return (
-      typeof messageClientSubmitId !== "string" ||
-      messageClientSubmitId.trim() !== normalizedClientSubmitId
-    );
-  });
-  return {
-    changed: filtered.length !== messages.length,
-    messages: filtered
-  };
 }
 
 function shouldRetargetOptimisticPromptFromMessage(
@@ -2996,17 +2807,6 @@ function useStableStringArrayByValue(values: string[]): string[] {
   return currentValues ?? values;
 }
 
-function agentSessionStatusBusy(input: {
-  lifecycleStatus?: string;
-  effectiveStatus?: string;
-  status?: string;
-  turnPhase?: string;
-  currentPhase?: string;
-}): boolean {
-  const normalized = normalizeOptionalWorkspaceAgentStatus(input);
-  return normalized?.kind === "working" || normalized?.kind === "waiting";
-}
-
 function agentActivityDisplayStatusBusy(
   status: AgentActivityDisplayStatus | null | undefined
 ): boolean {
@@ -3697,11 +3497,22 @@ export function useAgentGUINodeController({
   onShowMessage
 }: UseAgentGUINodeControllerInput) {
   const agentActivityRuntime = useAgentActivityRuntime();
-  // Stable identity of the injected runtime; drives the conversation-list query
-  // key and every session-view ref so local/shared runtimes stay isolated.
   const agentActivityRuntimeOrigin =
     agentActivityRuntime.origin?.trim() || AGENT_GUI_RUNTIME_SESSION_ORIGIN;
-  const agentQueuedPromptRuntime = useAgentQueuedPromptRuntime();
+  const sessionEngine = useMemo(() => {
+    const engine = agentActivityRuntime.getSessionEngine(workspaceId);
+    if (
+      engine.identity.workspaceId !== workspaceId ||
+      engine.identity.origin !== agentActivityRuntimeOrigin
+    ) {
+      throw new Error(
+        "Agent activity runtime returned a session engine for a different identity."
+      );
+    }
+    return engine;
+  }, [agentActivityRuntime, agentActivityRuntimeOrigin, workspaceId]);
+  // Stable identity of the injected runtime; drives the conversation-list query
+  // key and every session-view ref so local/shared runtimes stay isolated.
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
   const normalizedComingSoonProviders = useMemo(
@@ -3996,34 +3807,32 @@ export function useAgentGUINodeController({
   const isCreatingConversation =
     localIsCreatingConversation || pendingCreateConversationId !== null;
   const isCreatingConversationRef = useRef(isCreatingConversation);
-  const resolvePendingSubmit = useCallback(
-    () =>
-      conversationListQuery
-        ? getAgentGUIConversationSubmitPending({
-            query: conversationListQuery,
-            conversationId: activeConversationId
-          })
-        : false,
-    [activeConversationId, conversationListQuery]
+  const activeQueuedPromptSnapshot = useEngineSelector(sessionEngine, (state) =>
+    selectEnginePromptQueue(state, activeConversationId)
   );
-  const [isPendingSubmit, setIsPendingSubmit] = useState(resolvePendingSubmit);
-  const [localIsSubmitting, setLocalIsSubmitting] = useState(false);
-  const isSubmitting = localIsSubmitting || isPendingSubmit;
-  const activeQueuedPromptSnapshot = useAgentQueuedPromptSessionSnapshot({
-    workspaceId,
-    agentSessionId: activeConversationId
-  });
   const activeQueuedPrompts =
-    activeQueuedPromptSnapshot?.prompts ?? EMPTY_QUEUED_PROMPTS;
-  const activeQueuedPromptClaim = activeQueuedPromptSnapshot?.claim ?? null;
-  const [interruptingSessionIds, setInterruptingSessionIds] = useState<
-    Record<string, boolean>
-  >({});
-  // Sessions whose cancel raced startup; the interrupt is retried once the
-  // session connects and its turn goes live.
-  const [pendingInterruptSessionIds, setPendingInterruptSessionIds] = useState<
-    Record<string, boolean>
-  >({});
+    activeQueuedPromptSnapshot?.prompts.filter(
+      (prompt) =>
+        prompt.visibleInQueue !== false &&
+        prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
+        prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
+    ) ?? EMPTY_QUEUED_PROMPTS;
+  const activeQueuedPromptInFlight =
+    activeQueuedPromptSnapshot?.inFlight ?? null;
+  const activePendingSubmits = useEngineSelector(
+    sessionEngine,
+    (state) => selectPendingSubmitsForSession(state, activeConversationId),
+    pendingSubmitRecordListsEqual
+  );
+  const activeLatestPendingSubmit = useEngineSelector(sessionEngine, (state) =>
+    selectLatestPendingSubmitForSession(state, activeConversationId)
+  );
+  const isSubmitting = useEngineSelector(sessionEngine, (state) =>
+    selectSessionIsSubmitting(state, activeConversationId)
+  );
+  const hasUnconfirmedSubmit = useEngineSelector(sessionEngine, (state) =>
+    selectSessionHasUnconfirmedSubmit(state, activeConversationId)
+  );
   const [
     suppressedPromptRequestIdsBySessionId,
     setSuppressedPromptRequestIdsBySessionId
@@ -4081,9 +3890,6 @@ export function useAgentGUINodeController({
   ] = useState<AgentGUIProjectConversationDeleteTarget | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [statePatchErrorBySessionId, setStatePatchErrorBySessionId] = useState<
-    Record<string, string>
-  >({});
   const [openclawGateway, setOpenclawGateway] =
     useState<OpenclawGatewayViewState | null>(() =>
       data.provider === "openclaw" ? { status: "starting", error: null } : null
@@ -4100,6 +3906,30 @@ export function useAgentGUINodeController({
     sessionViewRef(activeConversationId)
   );
   const activeSessionState = activeSessionView?.controlState ?? null;
+  const activeCancelState = useEngineSelector(sessionEngine, (state) =>
+    selectEngineCancelState(state, activeConversationId)
+  );
+  const activeEngineSession = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSession(state, activeConversationId)
+  );
+  const activeEngineLifecycleError = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionError(state, activeConversationId)
+  );
+  const activeEngineQueueError = useEngineSelector(sessionEngine, (state) =>
+    selectEnginePromptQueueError(state, activeConversationId)
+  );
+  const activeEngineError =
+    activeEngineLifecycleError ?? activeEngineQueueError;
+  const activeEngineAvailability = useEngineSelector(
+    sessionEngine,
+    (state) =>
+      selectEngineSubmitAvailability(state, activeConversationId)?.state ??
+      "missing"
+  );
+  const activeEngineHasPendingInteractions = useEngineSelector(
+    sessionEngine,
+    (state) => selectEngineHasPendingInteractions(state, activeConversationId)
+  );
   const composerTargetData = composerTargetDataForConversation({
     activeConversationId,
     data,
@@ -4222,14 +4052,54 @@ export function useAgentGUINodeController({
     [sessionViewRef]
   );
   const activeMessages = useMemo(() => {
-    return activeConversationId
+    const storedMessages = activeConversationId
       ? resolveSessionMessages(activeConversationId)
       : (activeSessionView?.overlayMessages ?? EMPTY_AGENT_GUI_MESSAGES);
+    if (!activeConversationId) {
+      return storedMessages;
+    }
+    const visibleQueuedSubmitIds = new Set(
+      activeQueuedPrompts
+        .map((prompt) =>
+          "clientSubmitId" in prompt ? prompt.clientSubmitId : undefined
+        )
+        .filter((value): value is string => Boolean(value))
+    );
+    const pendingMessages = activePendingSubmits
+      .filter(
+        (pending) =>
+          pending.agentSessionId === activeConversationId &&
+          pending.status !== "failed" &&
+          !visibleQueuedSubmitIds.has(pending.clientSubmitId)
+      )
+      .map((pending) =>
+        createOptimisticPromptMessage({
+          agentSessionId: pending.agentSessionId,
+          clientSubmitId: pending.clientSubmitId,
+          content: [...pending.content],
+          occurredAtUnixMs: pending.requestedAtUnixMs,
+          prompt:
+            pending.displayPrompt ??
+            agentPromptContentDisplayText([...pending.content]),
+          turnId:
+            pending.turnId ??
+            createPendingOptimisticTurnId(pending.clientSubmitId),
+          userId: currentUserId?.trim() || "user",
+          workspaceId
+        })
+      );
+    return pendingMessages.length > 0
+      ? mergeWorkspaceAgentMessages(storedMessages, pendingMessages)
+      : storedMessages;
   }, [
     activeConversationId,
+    activeQueuedPrompts,
     activeSessionView?.detailMessages,
     activeSessionView?.overlayMessages,
-    resolveSessionMessages
+    currentUserId,
+    activePendingSubmits,
+    resolveSessionMessages,
+    workspaceId
   ]);
   const activeTimelineItems = useMemo(
     () => projectAgentGUIMessagesToTimelineItems(activeMessages),
@@ -4246,7 +4116,9 @@ export function useAgentGUINodeController({
     [agentActivitySnapshot.sessions]
   );
   const activeRuntimeSession =
-    runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
+    activeEngineSession ??
+    runtimeSessionsBySessionId.get(activeConversationId ?? "") ??
+    null;
   const stableRuntimeSyncStateBySessionId = useMemo(() => {
     const current = stableRuntimeSyncStateBySessionIdRef.current;
     let next = current;
@@ -4515,7 +4387,7 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean }
+      options?: { guidance?: boolean; immediate?: boolean }
     ) => void
   >(() => {});
   const reloadSelectedConversationRef = useRef<
@@ -4894,24 +4766,6 @@ export function useAgentGUINodeController({
     pendingCreateOwnerKey,
     previewMode,
     resolvePendingCreateConversationId
-  ]);
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    setIsPendingSubmit(resolvePendingSubmit());
-    if (!conversationListQuery || activeConversationId === null) {
-      return;
-    }
-    return subscribeAgentGUIConversationListStore(() => {
-      setIsPendingSubmit(resolvePendingSubmit());
-    });
-  }, [
-    activeConversationId,
-    conversationListQuery,
-    previewMode,
-    resolvePendingSubmit
   ]);
 
   useEffect(() => {
@@ -5351,7 +5205,6 @@ export function useAgentGUINodeController({
     },
     [
       activation,
-      agentQueuedPromptRuntime,
       agentActivityRuntime,
       conversationListQuery,
       currentUserId,
@@ -5987,9 +5840,9 @@ export function useAgentGUINodeController({
               "local-delete"
             );
           }
-          agentQueuedPromptRuntime.cleanupSession({
-            workspaceId,
-            agentSessionId
+          sessionEngine.dispatch({
+            agentSessionId,
+            type: "session/removed"
           });
           deleteAgentSessionView(sessionViewRef(agentSessionId));
           reportAgentGUIActiveConversationCleared({
@@ -6025,7 +5878,6 @@ export function useAgentGUINodeController({
       }
     },
     [
-      agentQueuedPromptRuntime,
       agentActivityRuntime,
       applySessionStateSnapshot,
       clearFailedLiveState,
@@ -6036,7 +5888,8 @@ export function useAgentGUINodeController({
       scheduleSelectedConversationNotFoundRetry,
       workspaceId,
       conversationListQuery,
-      sessionViewRef
+      sessionViewRef,
+      sessionEngine
     ]
   );
 
@@ -6621,7 +6474,8 @@ export function useAgentGUINodeController({
       return;
     }
     loadDraftComposerOptions(
-      composerTargetData.provider === "claude-code" && isComposerHome
+      providerComposerOptions?.behavior?.prewarmDraftSession === true &&
+        isComposerHome
         ? { force: true }
         : undefined
     );
@@ -6631,7 +6485,8 @@ export function useAgentGUINodeController({
     composerTargetData.provider,
     isComposerHome,
     loadDraftComposerOptions,
-    previewMode
+    previewMode,
+    providerComposerOptions?.behavior?.prewarmDraftSession
   ]);
 
   const scheduleActivityStreamStateReload = useMemo(
@@ -6935,42 +6790,6 @@ export function useAgentGUINodeController({
     [sessionViewRef]
   );
 
-  const removeOptimisticPrompt = useCallback(
-    (agentSessionId: string, clientSubmitId: string) => {
-      const normalizedAgentSessionId = agentSessionId.trim();
-      if (!normalizedAgentSessionId || !clientSubmitId.trim()) {
-        return;
-      }
-      const sessionView = getAgentSessionView(
-        sessionViewRef(normalizedAgentSessionId)
-      );
-      if (!sessionView) {
-        return;
-      }
-      const detail = removeOptimisticPromptMessagesByClientSubmitId(
-        sessionView.detailMessages,
-        clientSubmitId
-      );
-      if (detail.changed) {
-        setAgentSessionViewDetailMessages(
-          sessionViewRef(normalizedAgentSessionId),
-          detail.messages
-        );
-      }
-      const overlay = removeOptimisticPromptMessagesByClientSubmitId(
-        sessionView.overlayMessages,
-        clientSubmitId
-      );
-      if (overlay.changed) {
-        setAgentSessionViewOverlayMessages(
-          sessionViewRef(normalizedAgentSessionId),
-          overlay.messages
-        );
-      }
-    },
-    [sessionViewRef]
-  );
-
   const applyStatePatch = useCallback(
     (patch: WorkspaceAgentActivityStatePatch) => {
       const agentSessionId = patch.agentSessionId.trim();
@@ -7039,21 +6858,25 @@ export function useAgentGUINodeController({
       }
       const patchTitle = patch.title?.trim() ?? "";
       const previousStatePatchError =
-        statePatchErrorBySessionId[agentSessionId] ?? null;
+        selectEngineSessionLifecycleRecord(
+          sessionEngine.getSnapshot(),
+          agentSessionId
+        )?.operationError ?? null;
       if (normalizedLastError !== "") {
-        const nextErrors = {
-          ...statePatchErrorBySessionId,
-          [agentSessionId]: normalizedLastError
-        };
-        setStatePatchErrorBySessionId(nextErrors);
+        sessionEngine.dispatch({
+          agentSessionId,
+          errorMessage: normalizedLastError,
+          type: "session/errorRecorded"
+        });
       } else if (
         nextStatus &&
         nextStatus !== "failed" &&
         previousStatePatchError !== null
       ) {
-        const nextErrors = { ...statePatchErrorBySessionId };
-        delete nextErrors[agentSessionId];
-        setStatePatchErrorBySessionId(nextErrors);
+        sessionEngine.dispatch({
+          agentSessionId,
+          type: "session/errorCleared"
+        });
       }
       if (activeConversationIdRef.current === agentSessionId) {
         if (normalizedLastError !== "") {
@@ -7160,7 +6983,7 @@ export function useAgentGUINodeController({
       retargetOptimisticPromptTurn,
       sessionViewRef,
       setTransientConversation,
-      statePatchErrorBySessionId,
+      sessionEngine,
       agentActivityRuntime,
       conversationListQuery,
       workspaceId
@@ -7486,7 +7309,8 @@ export function useAgentGUINodeController({
             options: snapshotComposerOptions
           });
         const snapshotDraftAgentSessionId =
-          normalizedInitialContent.length > 0 && provider === "claude-code"
+          normalizedInitialContent.length > 0 &&
+          snapshotComposerOptions?.behavior?.prewarmDraftSession === true
             ? draftAgentSessionIdFromComposerOptions(snapshotComposerOptions)
             : null;
         // Only reuse a pre-warmed draft that has not already been consumed by a
@@ -8337,7 +8161,7 @@ export function useAgentGUINodeController({
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean }
+      options?: { guidance?: boolean; immediate?: boolean }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -8363,7 +8187,6 @@ export function useAgentGUINodeController({
         agentSessionId,
         transientConversationRef.current
       );
-      const previousConversationStatus = targetConversation?.status ?? null;
       submitTraceBySessionIdRef.current = {
         ...submitTraceBySessionIdRef.current,
         [agentSessionId]: submitTrace
@@ -8376,357 +8199,88 @@ export function useAgentGUINodeController({
         fields: {
           activeConversationId: activeConversationIdRef.current,
           conversationKnown: targetConversation !== null,
-          conversationStatus: previousConversationStatus,
+          conversationStatus: targetConversation?.status ?? null,
           isComposerHome: isComposerHomeRef.current,
           targetIsActiveConversation,
           targetMode: "existing"
         }
       });
-      if (conversationListQuery) {
-        markAgentGUIConversationSubmitPending({
-          query: conversationListQuery,
-          conversationId: agentSessionId
-        });
-      }
-      setLocalIsSubmitting(true);
-      setDetailError(null);
-      patchConversation(agentSessionId, (conversation) => ({
-        status: "working",
-        sortTimeUnixMs: Math.max(
-          conversation.sortTimeUnixMs ?? 0,
-          submittedAtUnixMs
-        ),
-        updatedAtUnixMs: Math.max(
-          conversation.updatedAtUnixMs,
-          submittedAtUnixMs
-        )
-      }));
-      setTransientConversation((current) =>
-        current?.id === agentSessionId
-          ? {
-              ...current,
-              status: "working",
-              sortTimeUnixMs: Math.max(
-                current.sortTimeUnixMs ?? 0,
-                submittedAtUnixMs
-              ),
-              updatedAtUnixMs: Math.max(
-                current.updatedAtUnixMs,
-                submittedAtUnixMs
-              )
-            }
-          : current
-      );
-      const pendingOptimisticTurnId = createPendingOptimisticTurnId(
-        submitTrace.clientSubmitId
-      );
-      pendingTurnIdBySessionIdRef.current = {
-        ...pendingTurnIdBySessionIdRef.current,
-        [agentSessionId]: pendingOptimisticTurnId
-      };
-      applyStatePatch({
+      sessionEngine.dispatch({
         agentSessionId,
-        currentPhase: "working",
-        occurredAtUnixMs: submittedAtUnixMs
-      });
-      reportAgentSubmitTraceDiagnostic({
-        event: "optimistic_state_applied",
-        runtime: agentActivityRuntime,
-        trace: submitTrace,
+        clientSubmitId: submitTrace.clientSubmitId,
+        content: normalizedContent,
+        expiresAtUnixMs: submittedAtUnixMs + 120_000,
+        ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
+        ...(options?.guidance === true ? { guidance: true } : {}),
+        metadata: agentSubmitTraceMetadata(submitTrace),
+        requestedAtUnixMs: submittedAtUnixMs,
+        ...(options?.immediate === true ? { routing: "immediate" } : {}),
+        runtimeContent: toRuntimeSendContent(normalizedContent),
+        type: "submit/requested",
         workspaceId
       });
-      recordLocalMessages(agentSessionId, [
-        createOptimisticPromptMessage({
-          workspaceId,
+      const queued = Boolean(
+        selectEngineHasVisibleQueuedSubmit(
+          sessionEngine.getSnapshot(),
           agentSessionId,
-          turnId: pendingOptimisticTurnId,
-          clientSubmitId: submitTrace.clientSubmitId,
-          userId: currentUserId?.trim() || "user",
-          prompt: submittedPromptText,
-          content: normalizedContent,
-          occurredAtUnixMs: submittedAtUnixMs
-        })
-      ]);
+          submitTrace.clientSubmitId
+        )
+      );
+      submitTrace.queued = queued;
+      if (queued) {
+        setDraftBySessionId((current) => ({
+          ...current,
+          [agentSessionId]: emptyAgentComposerDraft()
+        }));
+        setDetailError(null);
+      }
+      if (!queued) {
+        setDetailError(null);
+      }
       reportAgentSubmitTraceDiagnostic({
-        event: "optimistic_user_message_recorded",
+        event: "send_input.requested",
         runtime: agentActivityRuntime,
         trace: submitTrace,
         workspaceId
       });
-      void Promise.resolve()
-        .then(() => {
-          reportAgentSubmitTraceDiagnostic({
-            event: "send_input.requested",
-            runtime: agentActivityRuntime,
-            trace: submitTrace,
-            workspaceId
-          });
-          return agentActivityRuntime.sendInput({
-            workspaceId,
-            agentSessionId,
-            // The codex-style "read this file" instruction for pasted-text
-            // attachments is materialized here (send time only) so translated
-            // copy never enters the persisted/queued draft, optimistic echo, or
-            // draft equality checks.
-            content: toRuntimeSendContent(normalizedContent),
-            displayPrompt:
-              displayPrompt && displayPrompt.trim() ? displayPrompt : null,
-            ...(options?.guidance === true ? { guidance: true } : {}),
-            metadata: agentSubmitTraceMetadata(submitTrace)
-          });
-        })
-        .then((result) => {
-          if (!result) {
-            return;
-          }
-          submitTrace.turnId = result.turnId.trim() || null;
-          reportAgentSubmitTraceDiagnostic({
-            event: "send_input.resolved",
-            runtime: agentActivityRuntime,
-            trace: submitTrace,
-            workspaceId,
-            fields: {
-              submitAvailability: result.submitAvailability,
-              turnLifecycle: result.turnLifecycle
-            }
-          });
-          reportAgentSubmitTraceDiagnostic({
-            event: "submit.accepted",
-            runtime: agentActivityRuntime,
-            trace: submitTrace,
-            workspaceId,
-            fields: {
-              submitAvailability: result.submitAvailability,
-              turnLifecycle: result.turnLifecycle
-            }
-          });
-          const submittedStatus =
-            conversationStatusFromStatePatch({
-              agentSessionId,
-              turn: {
-                turnId: result.turnId,
-                phase: result.turnLifecycle.phase,
-                outcome: result.turnLifecycle.outcome ?? undefined,
-                activeTurnId: result.turnLifecycle.activeTurnId,
-                settling: result.turnLifecycle.settling,
-                completedCommand:
-                  result.turnLifecycle.completedCommand ?? undefined,
-                submitAvailability: result.submitAvailability
-              }
-            }) ??
-            conversationStatusFromStatusValue(
-              projectCoreSessionStatus(result.session.status)
-            );
-          if (submittedStatus && submittedStatus !== "ready") {
-            patchConversation(agentSessionId, {
-              status: submittedStatus,
-              updatedAtUnixMs: Date.now()
-            });
-          }
-          setDraftBySessionId((current) => {
-            const currentDraft = current[agentSessionId];
-            if (
-              !shouldClearSubmittedDraft({
-                currentDraft,
-                submittedContent: normalizedContent
-              })
-            ) {
-              return current;
-            }
-            return {
-              ...current,
-              [agentSessionId]: emptyAgentComposerDraft()
-            };
-          });
-          const submittedTurnId = result.turnId.trim();
-          if (submittedTurnId) {
-            pendingTurnIdBySessionIdRef.current = {
-              ...pendingTurnIdBySessionIdRef.current,
-              [agentSessionId]: submittedTurnId
-            };
-            retargetOptimisticPromptTurn(
-              agentSessionId,
-              submitTrace.clientSubmitId,
-              submittedTurnId
-            );
-            scheduleAgentSubmitTracePaint({
-              runtime: agentActivityRuntime,
-              trace: submitTrace,
-              workspaceId
-            });
-          }
-          void refreshMessagesFromSnapshot(agentSessionId);
-          if (
-            !getAgentSessionView(sessionViewRef(agentSessionId))?.controlState
-          ) {
-            void loadSessionState(agentSessionId);
-          }
-          if (submittedStatus !== "working") {
-            void syncConversationListProjection(agentSessionId);
-          }
-        })
-        .catch((error) => {
-          const nextTraces = { ...submitTraceBySessionIdRef.current };
-          delete nextTraces[agentSessionId];
-          submitTraceBySessionIdRef.current = nextTraces;
-          removeOptimisticPrompt(agentSessionId, submitTrace.clientSubmitId);
-          const nextPendingTurns = { ...pendingTurnIdBySessionIdRef.current };
-          delete nextPendingTurns[agentSessionId];
-          pendingTurnIdBySessionIdRef.current = nextPendingTurns;
-          reportAgentSubmitTraceDiagnostic({
-            event: "submit.failed",
-            runtime: agentActivityRuntime,
-            trace: submitTrace,
-            workspaceId,
-            fields: {
-              errorCode: getAgentGUIErrorCode(error)
-            }
-          });
-          if (
-            previousConversationStatus &&
-            previousConversationStatus !== "working"
-          ) {
-            patchConversation(agentSessionId, (conversation) =>
-              conversation.status === "working"
-                ? {
-                    status: previousConversationStatus,
-                    updatedAtUnixMs: Date.now()
-                  }
-                : null
-            );
-            const transient = transientConversationRef.current;
-            if (
-              transient?.id === agentSessionId &&
-              transient.status === "working"
-            ) {
-              setTransientConversation({
-                ...transient,
-                status: previousConversationStatus,
-                updatedAtUnixMs: Date.now()
-              });
-            }
-          }
-          if (isCurrentConversation(agentSessionId)) {
-            reportAgentGUIRuntimeError({
-              agentSessionId,
-              error,
-              phase: "send_prompt",
-              provider: dataRef.current.provider,
-              runtime: agentActivityRuntime,
-              workspaceId
-            });
-            setDetailError(getAgentGUIErrorMessage(error));
-          }
-        })
-        .finally(() => {
-          if (conversationListQuery) {
-            clearAgentGUIConversationSubmitPending({
-              query: conversationListQuery,
-              conversationId: agentSessionId
-            });
-          }
-          setLocalIsSubmitting(false);
-        });
+      scheduleAgentSubmitTracePaint({
+        runtime: agentActivityRuntime,
+        trace: submitTrace,
+        workspaceId
+      });
     },
-    [
-      currentUserId,
-      isCurrentConversation,
-      applyStatePatch,
-      conversationListQuery,
-      syncConversationListProjection,
-      loadSessionState,
-      refreshMessagesFromSnapshot,
-      recordLocalMessages,
-      removeOptimisticPrompt,
-      retargetOptimisticPromptTurn,
-      sessionViewRef,
-      setTransientConversation,
-      patchConversation,
-      workspaceId,
-      agentActivityRuntime
-    ]
+    [agentActivityRuntime, sessionEngine, workspaceId]
   );
 
   useEffect(() => {
     executePromptRef.current = executePrompt;
   }, [executePrompt]);
 
-  const queuePromptLocally = useCallback(
-    (
-      agentSessionId: string,
-      content: readonly AgentPromptContentBlock[],
-      displayPrompt?: string
-    ) => {
-      const normalizedContent = normalizeAgentPromptContentBlocks(content);
-      if (!agentSessionId || normalizedContent.length === 0) {
-        return;
+  useEffect(() => {
+    if (
+      !activeLatestPendingSubmit ||
+      (activeLatestPendingSubmit.status !== "accepted" &&
+        activeLatestPendingSubmit.status !== "confirmed")
+    ) {
+      return;
+    }
+    const { agentSessionId, content } = activeLatestPendingSubmit;
+    setDraftBySessionId((current) => {
+      const currentDraft = current[agentSessionId];
+      if (
+        !shouldClearSubmittedDraft({
+          currentDraft,
+          submittedContent: content
+        })
+      ) {
+        return current;
       }
-      const queuedPrompt: AgentGUIQueuedPromptVM = {
-        id: `local-${createAgentGUIConversationId()}`,
-        content: normalizedContent,
-        ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
-        createdAtUnixMs: Date.now()
-      };
-      agentQueuedPromptRuntime.enqueue({
-        workspaceId,
-        agentSessionId,
-        prompt: queuedPrompt
-      });
-      setDraftBySessionId((current) => ({
+      return {
         ...current,
         [agentSessionId]: emptyAgentComposerDraft()
-      }));
-      setDetailError(null);
-    },
-    [agentQueuedPromptRuntime, workspaceId]
-  );
-
-  const shouldQueuePromptLocally = useCallback(
-    (agentSessionId: string): boolean => {
-      if (isSubmitting || isRespondingApproval) {
-        return true;
-      }
-      const normalizedAgentSessionId = agentSessionId.trim();
-      if (!normalizedAgentSessionId) {
-        return false;
-      }
-      if (pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]) {
-        return true;
-      }
-      const sessionState =
-        getAgentSessionView(sessionViewRef(normalizedAgentSessionId))
-          ?.controlState ?? null;
-      if (sessionState?.pendingInteractive) {
-        return true;
-      }
-      const runtimeSession =
-        runtimeSessionsBySessionId.get(normalizedAgentSessionId) ?? null;
-      if (
-        runtimeSession &&
-        resolveSubmitAvailability(runtimeSession).state === "blocked"
-      ) {
-        return true;
-      }
-      const conversationStatus =
-        conversations.find(
-          (conversation) => conversation.id === normalizedAgentSessionId
-        )?.status ?? null;
-      if (conversationBusyStatus(conversationStatus)) {
-        return true;
-      }
-      return agentActivityDisplayStatusBusy(
-        agentActivityDisplayStatuses.get(normalizedAgentSessionId)
-      );
-    },
-    [
-      agentActivityDisplayStatuses,
-      conversations,
-      isRespondingApproval,
-      isSubmitting,
-      runtimeSessionsBySessionId,
-      sessionViewRef
-    ]
-  );
+      };
+    });
+  }, [activeLatestPendingSubmit]);
 
   const submitExistingPrompt = useCallback(
     (
@@ -8756,43 +8310,12 @@ export function useAgentGUINodeController({
         );
         return;
       }
-      // Read the queue before resuming: resumeQueue wakes the drain
-      // coordinator, which immediately races to send the queued head. A
-      // direct send issued alongside that drain loses the daemon's
-      // single-active-turn slot and the prompt is dropped, so when prompts
-      // are already queued the explicit send must join the queue behind them
-      // instead of racing the drain.
-      const hasQueuedPrompts =
-        agentQueuedPromptRuntime.getSessionSnapshot({
-          workspaceId,
-          agentSessionId
-        }).prompts.length > 0;
-      // Any explicit user send lifts a user-stop hold on the queue.
-      agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
-      if (
-        (hasQueuedPrompts || shouldQueuePromptLocally(agentSessionId)) &&
-        options?.bypassLocalQueue !== true
-      ) {
-        queuePromptLocally(
-          agentSessionId,
-          normalizedContent,
-          displayPromptText
-        );
-        return;
-      }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
-        guidance: options?.guidance === true
+        guidance: options?.guidance === true,
+        immediate: options?.bypassLocalQueue === true
       });
     },
-    [
-      activation,
-      agentQueuedPromptRuntime,
-      executePrompt,
-      isSessionMarkedNonResumable,
-      queuePromptLocally,
-      shouldQueuePromptLocally,
-      workspaceId
-    ]
+    [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
   // Goal control commands (/goal clear|paused|active) act on the running
@@ -8819,7 +8342,8 @@ export function useAgentGUINodeController({
         executePrompt(
           agentSessionId,
           textPromptContent(GOAL_CLEAR_PROMPT),
-          GOAL_CLEAR_PROMPT
+          GOAL_CLEAR_PROMPT,
+          { immediate: true }
         );
         return;
       }
@@ -9017,7 +8541,7 @@ export function useAgentGUINodeController({
       // Exit-plan mode changes are NOT mirrored optimistically here. The daemon
       // owns the session mode: on this submit it switches plan/permission mode
       // and publishes a state patch, which drives the composer reactively (see
-      // syncClaudeCodeModeFromSelection in the runtime controller). A frontend
+      // the adapter-owned interactive selection projection in the runtime). A frontend
       // optimistic write would just race that authoritative patch.
       void Promise.resolve()
         .then(() => {
@@ -9080,7 +8604,15 @@ export function useAgentGUINodeController({
   const interruptCurrentTurn = useCallback(
     (noRunningResponseMessage: string) => {
       const agentSessionId = activeConversationIdRef.current;
-      if (!agentSessionId || interruptingSessionIds[agentSessionId]) {
+      const cancelStatus = agentSessionId
+        ? selectEngineCancelState(sessionEngine.getSnapshot(), agentSessionId)
+            ?.status
+        : null;
+      if (
+        !agentSessionId ||
+        cancelStatus === "requested" ||
+        cancelStatus === "awaitingTurn"
+      ) {
         return;
       }
       void noRunningResponseMessage;
@@ -9091,166 +8623,26 @@ export function useAgentGUINodeController({
           [agentSessionId]: activePendingPrompt.requestId
         }));
       }
-      setInterruptingSessionIds((current) => ({
-        ...current,
-        [agentSessionId]: true
-      }));
       // A user stop means "stop everything": hold the queued prompts instead
       // of letting the drainer fire the next one the moment the session
       // becomes available. An explicit user send (submit or send-now on a
       // queued item) lifts the hold.
-      agentQueuedPromptRuntime.suspendQueue({
-        workspaceId,
+      sessionEngine.dispatch({
         agentSessionId,
-        reason: "user_stop"
+        reason: "user_stop",
+        type: "queue/suspended"
       });
       setDetailError(null);
-      void Promise.resolve()
-        .then(() => {
-          if (!isCurrentConversation(agentSessionId)) {
-            return null;
-          }
-          return agentActivityRuntime.cancelSession({
-            workspaceId,
-            agentSessionId
-          });
-        })
-        .then((result) => {
-          if (!result || !isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          const conversationStatus =
-            resolveConversationSummaryById(
-              conversations,
-              agentSessionId,
-              transientConversationRef.current
-            )?.status ?? null;
-          const runtimeSessionStatus =
-            runtimeSessionsBySessionId.get(agentSessionId)?.status ?? null;
-          reportAgentGUICancelDiagnostic({
-            agentSessionId,
-            busySource: cancelBusySource({
-              conversationStatus,
-              hasActivePrompt:
-                activePendingPrompt?.sessionId === agentSessionId,
-              runtimeSessionStatus,
-              sessionStateStatus: activeSessionState?.status ?? null
-            }),
-            currentSessionStatus:
-              activeSessionState?.status ?? runtimeSessionStatus,
-            phase: "interrupt_current_turn",
-            provider: dataRef.current.provider,
-            result,
-            runtime: agentActivityRuntime,
-            workspaceId
-          });
-          void refreshMessagesFromSnapshot(agentSessionId);
-          void loadSessionState(agentSessionId);
-          void syncConversationListProjection(agentSessionId);
-        })
-        .catch((error) => {
-          if (!isCurrentConversation(agentSessionId)) {
-            return;
-          }
-          if (isAgentSessionNotReadyError(error)) {
-            // The session is still connecting (its thread/start is in flight),
-            // so there is no live turn to interrupt yet. Arm a retry for when
-            // the turn goes live and suppress the transient "session not found"
-            // banner instead of surfacing it as a hard error.
-            setPendingInterruptSessionIds((current) => ({
-              ...current,
-              [agentSessionId]: true
-            }));
-            return;
-          }
-          reportAgentGUIRuntimeError({
-            agentSessionId,
-            error,
-            phase: "interrupt_current_turn",
-            provider: dataRef.current.provider,
-            runtime: agentActivityRuntime,
-            workspaceId
-          });
-          setSuppressedPromptRequestIdsBySessionId((current) => {
-            if (current[agentSessionId] !== activePendingPrompt?.requestId) {
-              return current;
-            }
-            const next = { ...current };
-            delete next[agentSessionId];
-            return next;
-          });
-          setDetailError(getAgentGUIErrorMessage(error));
-        })
-        .finally(() => {
-          setInterruptingSessionIds((current) => {
-            if (!current[agentSessionId]) {
-              return current;
-            }
-            const next = { ...current };
-            delete next[agentSessionId];
-            return next;
-          });
-        });
+      sessionEngine.dispatch({
+        agentSessionId,
+        awaitingTurnExpiresAtUnixMs: Date.now() + 30_000,
+        commandId: createAgentGUIConversationId(),
+        timeoutMs: 30_000,
+        type: "session/cancelRequested"
+      });
     },
-    [
-      agentQueuedPromptRuntime,
-      interruptingSessionIds,
-      isCurrentConversation,
-      syncConversationListProjection,
-      loadSessionState,
-      refreshMessagesFromSnapshot,
-      conversations,
-      runtimeSessionsBySessionId,
-      activeSessionState,
-      workspaceId,
-      agentActivityRuntime
-    ]
+    [sessionEngine]
   );
-
-  // A deferred cancel (armed when a cancel raced session startup) applies only
-  // to that startup turn. Fire it once the turn goes live; drop it once the
-  // session settles without a live turn, so it can never interrupt a later,
-  // unrelated turn in the same session.
-  useEffect(() => {
-    const agentSessionId = activeConversationId;
-    if (!agentSessionId || !pendingInterruptSessionIds[agentSessionId]) {
-      return;
-    }
-    const status = agentActivityDisplayStatuses.get(agentSessionId) ?? null;
-    const action = pendingInterruptActionForDisplayStatus(status);
-    if (action === "wait") {
-      return;
-    }
-    setPendingInterruptSessionIds((current) => {
-      if (!current[agentSessionId]) {
-        return current;
-      }
-      const next = { ...current };
-      delete next[agentSessionId];
-      return next;
-    });
-    if (action === "fire") {
-      interruptCurrentTurn("");
-    }
-  }, [
-    activeConversationId,
-    agentActivityDisplayStatuses,
-    pendingInterruptSessionIds,
-    interruptCurrentTurn
-  ]);
-
-  // Abandon a deferred cancel when the user switches away from its session, so
-  // it cannot fire against a different conversation later.
-  useEffect(() => {
-    const activeId = activeConversationId;
-    setPendingInterruptSessionIds((current) => {
-      const ids = Object.keys(current);
-      if (ids.length === 0 || (ids.length === 1 && ids[0] === activeId)) {
-        return current;
-      }
-      return activeId && current[activeId] ? { [activeId]: true } : {};
-    });
-  }, [activeConversationId]);
 
   const updateDraftContent = useCallback((draftContent: AgentComposerDraft) => {
     const agentSessionId = activeConversationIdRef.current;
@@ -9285,14 +8677,24 @@ export function useAgentGUINodeController({
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId] ?? null;
           const optimisticSettings = queuedUpdate?.sessionSettingsPatch ?? null;
-          const pendingClaudeModelRefreshSettings =
-            dataRef.current.provider === "claude-code" &&
+          const refreshModelOptionsAfterSettings =
+            composerOptionsForTarget({
+              snapshot: agentActivityRuntime.getSnapshot(workspaceId),
+              target: composerTargetDataForConversation({
+                activeConversationId: agentSessionId,
+                data: dataRef.current,
+                optimisticTarget: optimisticComposerTargetRef.current,
+                selectedTarget: selectedComposerTargetDataRef.current
+              })
+            })?.behavior?.refreshModelOptionsAfterSettings === true;
+          const pendingModelRefreshSettings =
+            refreshModelOptionsAfterSettings &&
             sessionSettingsPatch.model !== undefined
               ? { model: sessionSettingsPatch.model }
               : null;
           const nextAppliedSettings = {
             ...result.settings,
-            ...(pendingClaudeModelRefreshSettings ?? {}),
+            ...(pendingModelRefreshSettings ?? {}),
             ...(optimisticSettings ?? {})
           };
           updateAgentSessionViewControlState(
@@ -9317,7 +8719,7 @@ export function useAgentGUINodeController({
           if (queuedUpdate === null) {
             if (
               sessionSettingsPatch.model !== undefined &&
-              dataRef.current.provider === "claude-code"
+              refreshModelOptionsAfterSettings
             ) {
               void loadSessionState(agentSessionId, {
                 source: "settings-update",
@@ -9453,7 +8855,10 @@ export function useAgentGUINodeController({
           nextSettings: targetSafeMerged
         });
         loadDraftComposerOptions(
-          targetData.provider === "claude-code" ? { force: true } : undefined
+          snapshotComposerOptions?.behavior
+            ?.refreshModelOptionsAfterSettings === true
+            ? { force: true }
+            : undefined
         );
         return;
       }
@@ -9796,13 +9201,26 @@ export function useAgentGUINodeController({
       if (!agentSessionId || !normalizedQueuedPromptId) {
         return;
       }
-      agentQueuedPromptRuntime.removePrompt({
-        workspaceId,
+      const queuedPrompt = selectEngineQueuedPrompt(
+        sessionEngine.getSnapshot(),
         agentSessionId,
-        promptId: normalizedQueuedPromptId
-      });
+        normalizedQueuedPromptId
+      );
+      sessionEngine.dispatch(
+        queuedPrompt?.clientSubmitId
+          ? {
+              agentSessionId,
+              clientSubmitId: queuedPrompt.clientSubmitId,
+              type: "submit/canceled"
+            }
+          : {
+              agentSessionId,
+              promptId: normalizedQueuedPromptId,
+              type: "queue/removed"
+            }
+      );
     },
-    [agentQueuedPromptRuntime, previewMode, workspaceId]
+    [previewMode, sessionEngine]
   );
 
   const editQueuedPrompt = useCallback(
@@ -9812,14 +9230,27 @@ export function useAgentGUINodeController({
       if (previewMode || !agentSessionId || !normalizedQueuedPromptId) {
         return;
       }
-      const queuedPrompt = agentQueuedPromptRuntime.removePrompt({
-        workspaceId,
+      const queuedPrompt = selectEngineQueuedPrompt(
+        sessionEngine.getSnapshot(),
         agentSessionId,
-        promptId: normalizedQueuedPromptId
-      });
+        normalizedQueuedPromptId
+      );
       if (!queuedPrompt) {
         return;
       }
+      sessionEngine.dispatch(
+        queuedPrompt.clientSubmitId
+          ? {
+              agentSessionId,
+              clientSubmitId: queuedPrompt.clientSubmitId,
+              type: "submit/canceled"
+            }
+          : {
+              agentSessionId,
+              promptId: normalizedQueuedPromptId,
+              type: "queue/removed"
+            }
+      );
       setDraftBySessionId((current) => ({
         ...current,
         [agentSessionId]: agentPromptContentToComposerDraft(
@@ -9828,7 +9259,7 @@ export function useAgentGUINodeController({
         )
       }));
     },
-    [agentQueuedPromptRuntime, previewMode, workspaceId]
+    [previewMode, sessionEngine]
   );
 
   const sendQueuedPromptNext = useCallback(
@@ -9838,13 +9269,16 @@ export function useAgentGUINodeController({
       if (previewMode || !agentSessionId || !normalizedQueuedPromptId) {
         return;
       }
-      agentQueuedPromptRuntime.promotePrompt({
-        workspaceId,
+      sessionEngine.dispatch({
         agentSessionId,
-        promptId: normalizedQueuedPromptId
+        awaitingTurnExpiresAtUnixMs: Date.now() + 30_000,
+        cancelCommandId: createAgentGUIConversationId(),
+        promptId: normalizedQueuedPromptId,
+        timeoutMs: 30_000,
+        type: "queue/promoted"
       });
     },
-    [agentQueuedPromptRuntime, previewMode, workspaceId]
+    [previewMode, sessionEngine]
   );
 
   const removeProject = useCallback(
@@ -9967,9 +9401,9 @@ export function useAgentGUINodeController({
           delete next[target.id];
           return next;
         });
-        agentQueuedPromptRuntime.cleanupSession({
-          workspaceId,
-          agentSessionId: target.id
+        sessionEngine.dispatch({
+          agentSessionId: target.id,
+          type: "queue/sessionCleaned"
         });
         deleteAgentSessionView(sessionViewRef(target.id));
         const currentConversations = conversationsRef.current;
@@ -10030,7 +9464,7 @@ export function useAgentGUINodeController({
     sessionViewRef,
     agentActivityRuntime,
     agentHostApi.toast,
-    agentQueuedPromptRuntime,
+    sessionEngine,
     removeConversations
   ]);
 
@@ -10062,9 +9496,9 @@ export function useAgentGUINodeController({
         omitConversationLocalState(current, targetIds)
       );
       for (const id of targetIds) {
-        agentQueuedPromptRuntime.cleanupSession({
-          workspaceId,
-          agentSessionId: id
+        sessionEngine.dispatch({
+          agentSessionId: id,
+          type: "queue/sessionCleaned"
         });
       }
       const nextConversations = conversationsRef.current.filter(
@@ -10092,7 +9526,7 @@ export function useAgentGUINodeController({
       clearSelectedConversationNotFoundRetry,
       markSelectedConversationDetailPending,
       persistActiveConversation,
-      agentQueuedPromptRuntime,
+      sessionEngine,
       sessionViewRef,
       setTransientConversation,
       workspaceId,
@@ -10483,8 +9917,10 @@ export function useAgentGUINodeController({
           agentActivityDisplayStatuses.get(resolved.id)
         );
       const status =
-        activityBusyStatus ??
-        (resolved.status === "ready" && pendingTurnId
+        (isSubmitting || hasUnconfirmedSubmit
+          ? ("working" as const)
+          : activityBusyStatus) ??
+        (resolved.status === "ready" && (pendingTurnId || isSubmitting)
           ? ("working" as const)
           : resolved.status);
       const nextConversation =
@@ -10535,6 +9971,7 @@ export function useAgentGUINodeController({
     currentUserId,
     data.provider,
     draftBySessionId,
+    hasUnconfirmedSubmit,
     isCreatingConversation,
     isSubmitting,
     isNoProjectPath,
@@ -10878,25 +10315,17 @@ export function useAgentGUINodeController({
   const hasProviderSessionNotFoundError =
     isNonRetryableResumeErrorCode(activationErrorCode);
   const activeStatePatchError =
-    activeConversationId !== null
-      ? (statePatchErrorBySessionId[activeConversationId] ?? null)
-      : null;
+    activeConversationId !== null ? activeEngineError : null;
 
   useEffect(() => {
     if (
       activeConversationId !== null &&
-      activeConversation?.status === "failed" &&
       activeStatePatchError &&
       detailError === null
     ) {
       setDetailError(activeStatePatchError);
     }
-  }, [
-    activeConversation?.status,
-    activeConversationId,
-    activeStatePatchError,
-    detailError
-  ]);
+  }, [activeConversationId, activeStatePatchError, detailError]);
 
   const rawPendingApproval = useMemo(
     () =>
@@ -10965,16 +10394,20 @@ export function useAgentGUINodeController({
     hasProviderSessionNotFoundError || isActivePromptSuppressed
       ? null
       : rawPendingInteractivePrompt;
-  const isInterrupting =
-    activeConversationId !== null &&
-    Boolean(interruptingSessionIds[activeConversationId]);
+  const isInterrupting = activeCancelState?.status === "requested";
   // A cancel was requested but raced session startup; it will fire once the
   // session connects. Surfaced so the connecting indicator can read "cancelling".
-  const isCancelPending =
-    activeConversationId !== null &&
-    Boolean(pendingInterruptSessionIds[activeConversationId]);
-  const queuedPrompts = activeConversationId ? [...activeQueuedPrompts] : [];
-  const drainingQueuedPromptId = activeQueuedPromptClaim?.promptId ?? null;
+  const isCancelPending = activeCancelState?.status === "awaitingTurn";
+  const queuedPrompts: AgentGUIQueuedPromptVM[] = activeConversationId
+    ? activeQueuedPrompts.map((prompt) => ({
+        ...prompt,
+        content: [...prompt.content]
+      }))
+    : [];
+  const drainingQueuedPromptId =
+    activeQueuedPromptInFlight?.kind === "send"
+      ? activeQueuedPromptInFlight.promptId
+      : null;
   const sessionSettings = useStableComposerSettings(
     cloneComposerSettings(activeSessionState?.settings ?? null)
   );
@@ -11062,12 +10495,12 @@ export function useAgentGUINodeController({
     })
   );
   const persistedDraftModel = normalizeOptionalText(draftSettings.model);
-  // "default" is Claude Code's own placeholder for "no explicit model
-  // pinned" (claudeSDKModelConfigOption); an unset value normalizes to
+  // Some runtimes use "default" as a placeholder for "no explicit model
+  // pinned"; an unset value normalizes to
   // null for every provider. Only in those "nothing meaningful persisted
   // yet" cases do we prefer the live app-server-reported current model
   // (kept fresh across an in-flight settings-refresh race, see the "keep
-  // Claude model selection stable" fix). Once a session has a real,
+  // model-selection refresh race). Once a session has a real,
   // concrete persisted model — e.g. one carried over from an imported
   // conversation (2U74Ri) — that value must win outright: it is the
   // authoritative source of what will actually run on the next turn, and
@@ -11154,11 +10587,12 @@ export function useAgentGUINodeController({
     : false;
   const activeSubmitBlocked =
     activeSessionStateSubmitBlocked || activeRuntimeSubmitBlocked;
-  const activeConversationBusy =
-    agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
-    conversationBusyStatus(activeConversation?.status ?? null) ||
-    activeHasPendingSubmittedTurn ||
-    activeSubmitBlocked;
+  const activeConversationBusy = activeEngineSession
+    ? activeEngineAvailability === "blocked"
+    : agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
+      conversationBusyStatus(activeConversation?.status ?? null) ||
+      activeHasPendingSubmittedTurn ||
+      activeSubmitBlocked;
   const activeSessionResumable =
     activeRuntimeSession?.resumable ??
     activeConversation?.resumable ??
@@ -11264,7 +10698,9 @@ export function useAgentGUINodeController({
     Boolean(activeConversationId) &&
     (activeConversationBusy ||
       isSubmitting ||
-      Boolean(activeSessionState?.pendingInteractive));
+      activeEngineHasPendingInteractions ||
+      (!isActivePromptSuppressed &&
+        Boolean(activeSessionState?.pendingInteractive)));
   useEffect(() => {
     const firstVersion = minFiniteMessageVersion(activeMessages);
     const lastVersion = maxFiniteMessageVersion(activeMessages);
@@ -11417,7 +10853,8 @@ export function useAgentGUINodeController({
       supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
       planExclusiveWithPermissionMode:
-        composerTargetData.provider === "claude-code",
+        providerComposerOptions?.behavior
+          ?.planModeExclusiveWithPermissionMode === true,
       isSettingsLoading,
       isModelOptionsLoading,
       modelUnavailable:

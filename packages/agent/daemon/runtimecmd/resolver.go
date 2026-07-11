@@ -23,7 +23,7 @@ type Resolver struct {
 
 // nestingGuardEnvKeys are the environment variables a parent Claude Code
 // session exports to detect (and refuse) nested launches. When tuttid itself
-// runs inside a Claude Code session these leak into spawned ACP agents, causing
+// runs inside a Claude Code session these leak into spawned agent subprocesses, causing
 // a child `claude` to abort with "cannot be launched inside another Claude Code
 // session". They are stripped from the base environment so each spawned agent
 // starts as a fresh session; they are CLAUDE-specific and harmless to other runtimes.

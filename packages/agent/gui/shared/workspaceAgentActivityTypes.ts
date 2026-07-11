@@ -1,3 +1,5 @@
+import { AGENT_SESSION_ENGINE_LOCAL_ORIGIN } from "@tutti-os/agent-activity-core";
+
 /**
  * RETIREMENT PATH (agent-gui refactor plan, protocol v2 — see
  * docs/architecture/agent-gui-refactor-plan.md, slices 3 and 7):
@@ -35,7 +37,7 @@ export interface WorkspaceAgentActivityComposerSettings {
 }
 
 export const WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN =
-  "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME";
+  AGENT_SESSION_ENGINE_LOCAL_ORIGIN;
 
 export type WorkspaceAgentActivitySessionOrigin =
   | typeof WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN

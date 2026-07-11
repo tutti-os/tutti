@@ -1,8 +1,5 @@
 import { isLiveTurnLifecyclePhase } from "@tutti-os/agent-activity-core";
-import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
 import {
   buildWorkspaceAgentToolCallDisplay,
   isWorkspaceAgentToolCallItem,
@@ -46,10 +43,8 @@ export function buildCanonicalWorkspaceAgentDetailView({
   const sortedTimelineItems = [...timelineItems].sort(
     compareTimelineItemsAscending
   );
-  const suppressedToolCallIds = suppressedClaudeAskUserQuestionCallIds(
-    session,
-    sortedTimelineItems
-  );
+  const suppressedToolCallIds =
+    suppressedUnavailableAskUserQuestionCallIds(sortedTimelineItems);
 
   for (const item of sortedTimelineItems) {
     // Sub-agent child-thread rows (payload.ownerThreadId) belong to the
@@ -282,14 +277,9 @@ function upsertToolCall(
   upsertToolCallAgentItem(turn, call, itemId(item));
 }
 
-function suppressedClaudeAskUserQuestionCallIds(
-  session: WorkspaceAgentActivitySession,
+function suppressedUnavailableAskUserQuestionCallIds(
   items: readonly WorkspaceAgentActivityTimelineItem[]
 ): Set<string> {
-  const provider = session.provider?.trim().toLowerCase() ?? "";
-  if (provider !== "claude-code") {
-    return new Set();
-  }
   const suppressed = new Set<string>();
   for (const item of items) {
     if (

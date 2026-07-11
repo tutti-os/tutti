@@ -91,34 +91,14 @@ interface ProviderSlashPolicy {
   localSpeedCommands: ReadonlySet<string>;
 }
 
-const REVIEW_COMMAND = "review";
 // `compact` is locally handled and submitted immediately for every provider.
 const UNIVERSAL_IMMEDIATE_COMMANDS = new Set(["compact"]);
 // `/plan` toggles plan mode locally (a negotiated capability) rather than
 // reaching the agent as a prompt; surfaced only when plan mode is supported.
 // `/fast` toggles the descriptor-advertised speed dimension locally.
-const ACP_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  { name: "compact" },
-  { name: "status" },
-  { name: "fast" },
-  { name: "goal" }
-];
-const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  ...ACP_FALLBACK_COMMANDS,
-  { name: REVIEW_COMMAND }
-];
 // Cursor exposes only Tutti's local `/plan` toggle; every other slash entry is
 // hidden from the composer palette.
 const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [];
-const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
-  "compact",
-  "context",
-  "fast",
-  "goal",
-  "review",
-  "status",
-  "usage"
-]);
 const BROWSER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
   kind: "capability",
   capability: "browserUse",
@@ -136,15 +116,6 @@ const PLAN_MODE_COMMAND: AgentSessionCommand = { name: "plan" };
 const PROVIDER_SLASH_POLICY: Readonly<
   Partial<Record<AgentSlashCommandProvider, ProviderSlashPolicy>>
 > = {
-  "claude-code": {
-    immediateCommands: new Set(["compact", "context", "usage"]),
-    reviewPickerCommands: new Set([REVIEW_COMMAND]),
-    fallbackCommands: CLAUDE_CODE_FALLBACK_COMMANDS,
-    localGoalCommands: new Set(["goal"]),
-    localPlanCommands: new Set(["plan"]),
-    localStatusCommands: new Set(["status"]),
-    localSpeedCommands: new Set(["fast"])
-  },
   cursor: {
     immediateCommands: new Set(),
     reviewPickerCommands: new Set(),
@@ -416,19 +387,15 @@ function isSlashPaletteCommandVisible(
   commandName: string,
   policy?: AgentSlashCommandPolicy | null
 ): boolean {
-  if (
-    policy &&
-    (policy.fallbackCommands.some(
-      (command) => command.trim().toLowerCase() === commandName
-    ) ||
+  if (policy?.commandCatalogAuthoritative === true) {
+    return (
+      policy.fallbackCommands.some(
+        (command) => command.trim().toLowerCase() === commandName
+      ) ||
       policy.commandEffects.some(
         (descriptor) => descriptor.command.trim().toLowerCase() === commandName
-      ))
-  ) {
-    return true;
-  }
-  if (provider === "claude-code") {
-    return CLAUDE_CODE_SLASH_PALETTE_COMMANDS.has(commandName);
+      )
+    );
   }
   if (provider === "cursor") {
     return false;

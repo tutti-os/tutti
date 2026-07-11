@@ -21,7 +21,7 @@
 - Base record id: `recvmTP6qDB2SN`
 - Bug: After installing a new package, Claude Code still showed as needing installation, and clicking install appeared to remain in progress.
 - Log evidence: `tutti-logs-20260618-204709.zip` contains repeated `npm error code ENOENT` / `npm error syscall lstat` for `/Users/Sun/.tutti/agent-providers/external-agent-registry/packages`, followed by `ENOENT: no such file or directory`.
-- Cause: External registry NPM provider command resolution could produce an `npm --prefix ... exec` command before the external registry package prefix directory existed. On older installs or fresh registry cache roots, npm failed while lstat-ing the missing parent path, preventing Claude ACP from becoming available.
+- Cause: External registry NPM provider command resolution could produce an `npm --prefix ... exec` command before the external registry package prefix directory existed. On older installs or fresh registry cache roots, npm failed while lstat-ing the missing parent path, preventing the configured provider runtime from becoming available.
 - Fix: Ensure the external registry NPM prefix directory exists while resolving the provider spec, before returning the managed-runtime npm command.
 - Verification:
   - `go test ./service/agentstatus`
@@ -35,7 +35,7 @@
 
 - Link: https://ccn53rwonxso.feishu.cn/record/NOAUrbbqEeWz2icEsdkctXY9n7W
 - Base record id: `recvmY89ypTdxP`
-- Bug: On Mac Intel, Claude Code and Codex ACP could not be installed or opened from Agent GUI.
+- Bug: On Mac Intel, Claude Code and Codex could not be installed or opened from Agent GUI.
 - Log evidence: `tutti-logs-20260619-143353.zip` shows a dock click for `agent-gui` resolving to `{"kind":"blocked"}` with `dockNodeState:"closed"` and no matching open nodes.
 - Cause: Default Agent GUI dock entries stayed visible while `not_installed` or `auth_required`, but their dock state was `disabled`. Workbench dock click resolution blocks disabled entries before launching the Agent GUI panel, so users could not reach the setup surface that exposes install/login actions.
 - Fix: Keep default Agent GUI providers (`Codex`, `Claude Code`) visible with their setup hover actions, but project `not_installed` and `auth_required` default-provider dock states as launchable so the Agent GUI setup panel can open.

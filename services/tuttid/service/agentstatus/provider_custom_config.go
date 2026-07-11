@@ -44,16 +44,14 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 		}
 	}
 	if status, ok := migratedProviderStatus(provider); ok {
-		if status.Kind == providerregistry.StatusKindCodexCLI {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
 			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key")
+		case providerregistry.StatusKindClaudeCLI:
+			return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
 		}
 	}
-	switch provider {
-	case agentprovider.ClaudeCode:
-		return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
-	default:
-		return false
-	}
+	return false
 }
 
 // providerHasAPICredential reports whether the user configured an API
@@ -69,16 +67,14 @@ func (s Service) providerHasAPICredential(provider string) bool {
 		}
 	}
 	if status, ok := migratedProviderStatus(provider); ok {
-		if status.Kind == providerregistry.StatusKindCodexCLI {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
 			return s.codexConfigDeclares("api_key")
+		case providerregistry.StatusKindClaudeCLI:
+			return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
 		}
 	}
-	switch provider {
-	case agentprovider.ClaudeCode:
-		return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
-	default:
-		return false
-	}
+	return false
 }
 
 // providerCustomConfigEnvVars lists env vars that signal a user-provided API
@@ -89,13 +85,6 @@ func providerCustomConfigEnvVars(provider string) []string {
 		return append([]string(nil), status.CustomConfigEnvVars...)
 	}
 	switch provider {
-	case agentprovider.ClaudeCode:
-		return []string{
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_AUTH_TOKEN",
-			"ANTHROPIC_BASE_URL",
-			"ANTHROPIC_API_BASE_URL",
-		}
 	case agentprovider.OpenCode:
 		return []string{
 			"OPENCODE_CONFIG",
@@ -115,12 +104,7 @@ func providerCredentialEnvVars(provider string) []string {
 	if status, ok := migratedProviderStatus(provider); ok {
 		return append([]string(nil), status.CredentialEnvVars...)
 	}
-	switch provider {
-	case agentprovider.ClaudeCode:
-		return []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
-	default:
-		return nil
-	}
+	return nil
 }
 
 // claudeCustomConfigKeys are the ~/.claude/settings.json env keys that count as
@@ -174,15 +158,19 @@ func (s Service) codexConfigDeclares(keys ...string) bool {
 	return false
 }
 
-// claudeSettingsDeclares reports whether ~/.claude/settings.json sets any of
+// claudeSettingsDeclares reports whether $CLAUDE_CONFIG_DIR/settings.json sets any of
 // the given env keys to a non-blank value, or — when withAPIKeyHelper is true —
 // declares a non-blank apiKeyHelper.
 func (s Service) claudeSettingsDeclares(keys []string, withAPIKeyHelper bool) bool {
-	home, err := s.homeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return false
+	configDir := strings.TrimSpace(s.lookupEnv("CLAUDE_CONFIG_DIR"))
+	if configDir == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		configDir = filepath.Join(home, ".claude")
 	}
-	content, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	content, err := os.ReadFile(filepath.Join(configDir, "settings.json"))
 	if err != nil {
 		return false
 	}

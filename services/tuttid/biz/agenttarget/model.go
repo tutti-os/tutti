@@ -14,7 +14,7 @@ import (
 
 const (
 	IDLocalCodex      = providerregistry.CodexTargetID
-	IDLocalClaudeCode = "local:claude-code"
+	IDLocalClaudeCode = providerregistry.ClaudeCodeTargetID
 	IDLocalTuttiAgent = "local:tutti-agent"
 	IDLocalCursor     = "local:cursor"
 	IDLocalOpenCode   = "local:opencode"
@@ -54,18 +54,6 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 		targets = append(targets, systemTargetFromProviderDescriptor(descriptor, nowUnixMS))
 	}
 	return append(targets,
-		Target{
-			ID:              IDLocalClaudeCode,
-			Provider:        agentproviderbiz.ClaudeCode,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.ClaudeCode),
-			Name:            "Claude Code",
-			IconKey:         "claude-code",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       20,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
 		Target{
 			ID:              IDLocalTuttiAgent,
 			Provider:        agentproviderbiz.TuttiAgent,
@@ -247,8 +235,6 @@ func normalizeFirstIterationProvider(value string) string {
 		return normalized
 	}
 	switch normalized {
-	case agentproviderbiz.ClaudeCode:
-		return agentproviderbiz.ClaudeCode
 	case agentproviderbiz.TuttiAgent:
 		return agentproviderbiz.TuttiAgent
 	case agentproviderbiz.Cursor:

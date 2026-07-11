@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -632,7 +631,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		// stale OAuth label or "未登录". A bare custom endpoint without a
 		// credential is NOT API billing (the user may still be on an OAuth
 		// session), so it does not trigger this override.
-		if spec.Provider == agentprovider.ClaudeCode && s.providerHasAPICredential(agentprovider.ClaudeCode) {
+		if isClaudeStatusSpec(spec) && s.providerHasAPICredential(spec.Provider) {
 			auth.Status = AuthAuthenticated
 			auth.AccountLabel = "API Usage Billing"
 			auth.AuthMethod = "apiKey"
@@ -683,6 +682,20 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			"registryPresent", strings.TrimSpace(status.ActiveAction.Registry) != "",
 			"stdoutBytes", bytes,
 			"stdoutLines", lines,
+		)
+	}
+	if isClaudeStatusSpec(spec) {
+		slog.Info(
+			"claude-code agent provider status checked",
+			"event", "tutti.agent_provider.status.checked",
+			"provider", spec.Provider,
+			"availability", status.Availability.Status,
+			"reasonCode", status.Availability.ReasonCode,
+			"authStatus", status.Auth.Status,
+			"authMethod", status.Auth.AuthMethod,
+			"cliInstalled", status.CLI.Installed,
+			"cliVersion", status.CLI.Version,
+			"sdkSidecarInstalled", status.Adapter.Installed,
 		)
 	}
 	if isCodexStatusSpec(spec) {

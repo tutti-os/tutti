@@ -150,8 +150,16 @@ export function createAgentSessionEngine({
       });
       return;
     }
+    const scopedIntent = intentForEngineIdentity(intent, engineIdentity);
+    if (!scopedIntent) {
+      diagnosticSink?.({
+        intentType: intent.type,
+        type: "intentDroppedForIdentityMismatch"
+      });
+      return;
+    }
     if (options?.batch === true) {
-      batchedIntents.push(intent);
+      batchedIntents.push(scopedIntent);
       if (batchFlushTask === null) {
         batchFlushTask = scheduler.schedule(batchDelayMs, () => {
           batchFlushTask = null;
@@ -165,7 +173,7 @@ export function createAgentSessionEngine({
     // ordering is preserved (a terminal event never overtakes the streaming
     // updates that preceded it).
     flushBatchedIntents();
-    intentQueue.push(intent);
+    intentQueue.push(scopedIntent);
     drainQueue();
   }
 
@@ -197,4 +205,27 @@ export function createAgentSessionEngine({
       };
     }
   };
+}
+
+function intentForEngineIdentity(
+  intent: EngineIntent,
+  identity: AgentSessionEngineIdentity
+): EngineIntent | null {
+  if ("workspaceId" in intent && intent.workspaceId !== undefined) {
+    if (intent.workspaceId.trim() !== identity.workspaceId) {
+      return null;
+    }
+  }
+  if (intent.type === "session/upserted") {
+    return intent.session.workspaceId === identity.workspaceId ? intent : null;
+  }
+  if (intent.type === "session/snapshotReceived") {
+    const sessions = intent.sessions.filter(
+      (session) => session.workspaceId === identity.workspaceId
+    );
+    return sessions.length === intent.sessions.length
+      ? intent
+      : { ...intent, sessions };
+  }
+  return intent;
 }

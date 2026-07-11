@@ -102,6 +102,8 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
   ]);
   assert.deepEqual(sessions.sessions, [
     {
+      activeTurn: null,
+      activeTurnId: null,
       agentSessionId: "agent-session-1",
       createdAtUnixMs: Date.parse("2026-01-01T00:00:00.000Z"),
       cwd: "/repo",
@@ -109,6 +111,7 @@ test("desktop agent activity adapter maps tuttid sessions and messages", async (
       lastError: "needs input",
       lastEventUnixMs: Date.parse("2026-01-01T00:01:00.000Z"),
       pinnedAtUnixMs: null,
+      pendingInteractions: [],
       provider: "codex",
       providerSessionId: "agent-session-1",
       resumable: false,
@@ -334,7 +337,7 @@ test("desktop agent activity adapter localizes adapter mismatch create failures"
       async createWorkspaceAgentSession() {
         throw new TuttidProtocolError({
           code: "workspace_operation_failed",
-          developerMessage: "claude-code: ACP adapter not found",
+          developerMessage: "opencode: ACP adapter not found",
           reason: "acp_adapter_version_mismatch",
           statusCode: 502
         });
@@ -346,10 +349,10 @@ test("desktop agent activity adapter localizes adapter mismatch create failures"
   await assert.rejects(
     adapter.createSession({
       agentSessionId: "agent-session-1",
-      agentTargetId: "local:claude-code",
+      agentTargetId: "local:opencode",
       workspaceId
     }),
-    /Claude Code's local adapter is unavailable or version-mismatched/
+    /The local agent adapter is unavailable or version-mismatched/
   );
 });
 
@@ -499,6 +502,12 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
             ]
           },
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -777,6 +786,12 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
             ]
           },
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -830,6 +845,12 @@ test("desktop agent activity adapter uses Claude draft live model list", async (
           reasoningConfig: { configurable: false, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -894,6 +915,12 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
             ]
           },
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -947,6 +974,12 @@ test("desktop agent activity adapter loads Claude models via composer options re
           reasoningConfig: { configurable: false, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       }
@@ -1185,6 +1218,12 @@ test("desktop agent activity adapter loads Claude options without mutating draft
           reasoningConfig: { configurable: true, options: [] },
           runtimeContext: {},
           skills: [],
+          behavior: {
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
           capabilityCatalog: []
         };
       },
@@ -1285,6 +1324,12 @@ function createTuttidClient(
         },
         runtimeContext: {},
         skills: [],
+        behavior: {
+          modelOptionsAuthoritative: false,
+          refreshModelOptionsAfterSettings: false,
+          prewarmDraftSession: false,
+          planModeExclusiveWithPermissionMode: false
+        },
         capabilityCatalog: []
       };
     },

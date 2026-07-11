@@ -51,26 +51,6 @@ func hasStreamCallEvent(events []StreamEvent, callType string, status string) bo
 	return false
 }
 
-func hasStreamMessageEvent(events []StreamEvent, role string, content string) bool {
-	for _, event := range events {
-		if event.EventType != StreamEventMessageUpdate {
-			continue
-		}
-		update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
-		if !ok {
-			continue
-		}
-		if role != "" && update.Role != role {
-			continue
-		}
-		if content != "" && asString(update.Payload["content"]) != content {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
 func reportsWithTimelineItem(reports []agentsessionstore.ReportActivityInput, itemType string) []agentsessionstore.ReportActivityInput {
 	var out []agentsessionstore.ReportActivityInput
 	for _, report := range reports {

@@ -13,7 +13,7 @@ function createService(): WorkspaceAgentActivityService {
   });
 }
 
-test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working when send response is still ready", async () => {
+test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready response", async () => {
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -40,10 +40,64 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
     .getSnapshot("ws-1")
     .sessions.find((session) => session.agentSessionId === "session-1");
 
-  assert.equal(result.session.status, "working");
-  assert.equal(result.session.currentPhase, "working");
-  assert.equal(snapshotSession?.status, "working");
-  assert.equal(snapshotSession?.currentPhase, "working");
+  assert.equal(result.session.status, "ready");
+  assert.equal(result.session.currentPhase, undefined);
+  assert.equal(snapshotSession?.status, "ready");
+  assert.equal(snapshotSession?.currentPhase, undefined);
+});
+
+test("WorkspaceAgentActivityService drains an engine queue with every GUI panel closed", async () => {
+  const sendCalls: unknown[] = [];
+  const readySession = workspaceAgentSession({ status: "ready" });
+  let phase: "running" | "settled" = "running";
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [wireEngineSession(phase)],
+        workspaceId: "ws-1"
+      }),
+      sendWorkspaceAgentSessionInput: async (
+        workspaceId: string,
+        agentSessionId: string,
+        request: unknown
+      ) => {
+        sendCalls.push({ agentSessionId, request, workspaceId });
+        return { session: readySession };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  await service.load("ws-1");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const engine = service.getSessionEngine("ws-1");
+  engine.dispatch({
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "continue" }],
+      createdAtUnixMs: 1,
+      id: "prompt-1"
+    },
+    workspaceId: "ws-1"
+  });
+  assert.equal(sendCalls.length, 0);
+
+  // No React/controller subscription exists here. The workspace-owned engine
+  // must still observe the settled turn and execute the queued command.
+  phase = "settled";
+  await service.load("ws-1");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  assert.equal(sendCalls.length, 1);
+  assert.deepEqual(sendCalls[0], {
+    agentSessionId: "session-1",
+    request: {
+      content: [{ type: "text", text: "continue" }],
+      displayPrompt: null
+    },
+    workspaceId: "ws-1"
+  });
 });
 
 test("WorkspaceAgentActivityService.activateSession creates target-backed sessions without provider input", async () => {
@@ -378,6 +432,7 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
     eventType: "message_update",
     workspaceId: "ws-1"
   });
+  await new Promise((resolve) => setImmediate(resolve));
 
   const session = service.getSnapshot("ws-1").sessions[0];
   assert.deepEqual(calls, ["listMessages", "getSession"]);
@@ -688,6 +743,7 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
     eventType: "session_update",
     workspaceId: "ws-1"
   });
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(diagnostics.at(-1), {
     details: {
@@ -810,5 +866,29 @@ function workspaceAgentSession(overrides: {
     visible: true,
     createdAt: "2026-06-16T00:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-06-16T00:00:00.000Z"
+  };
+}
+
+function wireEngineSession(phase: "running" | "settled") {
+  return {
+    ...workspaceAgentSession({
+      status: phase === "running" ? "working" : "completed",
+      updatedAt:
+        phase === "running"
+          ? "2026-07-11T00:00:01.000Z"
+          : "2026-07-11T00:00:02.000Z"
+    }),
+    activeTurnId: phase === "running" ? "turn-1" : null,
+    activeTurn:
+      phase === "running"
+        ? {
+            agentSessionId: "session-1",
+            phase: "running",
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 1
+          }
+        : null,
+    pendingInteractions: []
   };
 }

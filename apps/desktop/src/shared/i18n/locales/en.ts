@@ -1007,7 +1007,7 @@ export const en = {
     workspace_operation_failed: {
       default: "We couldn't finish that workspace action right now.",
       acp_adapter_version_mismatch:
-        "Claude Code's local adapter is unavailable or version-mismatched. Reconnect Claude Code from the dock, then try again."
+        "The local agent adapter is unavailable or version-mismatched. Reconnect the agent from the dock, then try again."
     }
   }
 } as const;

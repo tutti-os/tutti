@@ -155,7 +155,7 @@ func TestAppServerCollabAgentCompletedCarriesResultOutput(t *testing.T) {
 	if !ok {
 		t.Fatalf("rawOutput.result = %#v, want map", rawOutput["result"])
 	}
-	if got, _ := acpInt64Value(result["integer"]); got != 7 {
+	if got, _ := int64Value(result["integer"]); got != 7 {
 		t.Fatalf("rawOutput.result.integer = %#v, want 7", result["integer"])
 	}
 }
@@ -275,6 +275,6 @@ git commit -m "test(codex): step0 pin foreign-thread drop semantics (cluster B, 
 
 **Placeholder scan:** version string is captured via an exact command and written to an exact line (environment data, not a placeholder). Two "if the constant/keys differ, mirror the exact existing test" fallbacks point to specific named tests — grounding guidance, not TODOs.
 
-**Type consistency:** `appServerItemToolCallUpdate(map[string]any, bool) (map[string]any, bool)`, `appServerNotificationThreadMismatch(Session, string, map[string]any) bool`, `asString(any) string`, `acpInt64Value(any) (int64, bool)`, `Session{AgentSessionID, ProviderSessionID string}` — all used consistently with their verified signatures; `<CORPUS_RUN_PATTERN>` is identical in the manifest and Task 3 Step 3.
+**Type consistency:** `appServerItemToolCallUpdate(map[string]any, bool) (map[string]any, bool)`, `appServerNotificationThreadMismatch(Session, string, map[string]any) bool`, `asString(any) string`, `int64Value(any) (int64, bool)`, `Session{AgentSessionID, ProviderSessionID string}` — all used consistently with their verified signatures; `<CORPUS_RUN_PATTERN>` is identical in the manifest and Task 3 Step 3.
 
 **Scope note:** Cluster A daemon-half contract is intentionally _not_ authored here (it is Step 4); Step 0 only records that its regression coverage is GUI-side and deferred to Step 9. Steps 1 (codegen) and 2+ each get their own plan.

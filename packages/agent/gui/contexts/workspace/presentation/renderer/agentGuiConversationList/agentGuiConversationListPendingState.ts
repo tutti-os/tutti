@@ -2,7 +2,6 @@ const pendingCreateConversationIdsByQueryKey = new Map<
   string,
   Map<string, string>
 >();
-const pendingSubmitConversationIdsByQueryKey = new Map<string, Set<string>>();
 
 export function markAgentGUIConversationCreatePendingState(input: {
   queryKey: string | null;
@@ -67,60 +66,6 @@ export function getAgentGUIConversationCreatePendingState(input: {
   );
 }
 
-export function markAgentGUIConversationSubmitPendingState(input: {
-  queryKey: string | null;
-  conversationId: string;
-}): boolean {
-  const conversationId = input.conversationId.trim();
-  if (!input.queryKey || !conversationId) {
-    return false;
-  }
-  const pendingIds =
-    pendingSubmitConversationIdsByQueryKey.get(input.queryKey) ??
-    new Set<string>();
-  if (pendingIds.has(conversationId)) {
-    return false;
-  }
-  pendingIds.add(conversationId);
-  pendingSubmitConversationIdsByQueryKey.set(input.queryKey, pendingIds);
-  return true;
-}
-
-export function clearAgentGUIConversationSubmitPendingState(input: {
-  queryKey: string | null;
-  conversationId: string;
-}): boolean {
-  const conversationId = input.conversationId.trim();
-  if (!input.queryKey || !conversationId) {
-    return false;
-  }
-  const pendingIds = pendingSubmitConversationIdsByQueryKey.get(input.queryKey);
-  if (!pendingIds?.has(conversationId)) {
-    return false;
-  }
-  pendingIds.delete(conversationId);
-  if (pendingIds.size === 0) {
-    pendingSubmitConversationIdsByQueryKey.delete(input.queryKey);
-  }
-  return true;
-}
-
-export function getAgentGUIConversationSubmitPendingState(input: {
-  queryKey: string | null;
-  conversationId: string | null | undefined;
-}): boolean {
-  const conversationId = input.conversationId?.trim() ?? "";
-  if (!input.queryKey || !conversationId) {
-    return false;
-  }
-  return (
-    pendingSubmitConversationIdsByQueryKey
-      .get(input.queryKey)
-      ?.has(conversationId) ?? false
-  );
-}
-
 export function resetAgentGUIConversationPendingStateForTests(): void {
   pendingCreateConversationIdsByQueryKey.clear();
-  pendingSubmitConversationIdsByQueryKey.clear();
 }

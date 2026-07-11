@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -55,12 +56,13 @@ func (s *Service) discoverComposerSkillOptions(provider string, cwd string, env 
 
 func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]composerSkillRoot, skillTriggerFunc) {
 	profile := composerProfileFor(provider)
-	if profile.SkillKind == "codex" {
+	switch providerregistry.SkillKind(profile.SkillKind) {
+	case providerregistry.SkillKindCodex:
 		return codexComposerSkillRoots(cwd, env), codexSkillTrigger
+	case providerregistry.SkillKindClaudeCode:
+		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
 	}
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
-		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
 	case agentprovider.Cursor:
 		return cursorComposerSkillRoots(cwd, env), cursorSkillTrigger
 	default:

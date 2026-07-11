@@ -147,6 +147,68 @@ export function effectiveComposerSettingsFromOptions(
   };
 }
 
+function composerOptionValues(
+  options: readonly { value: string }[]
+): ReadonlySet<string> {
+  return new Set(options.map((option) => option.value));
+}
+
+export function sanitizeComposerSettingsForOptions(
+  settings: AgentSessionComposerSettings,
+  options: AgentActivityComposerOptions | null
+): AgentSessionComposerSettings {
+  if (!options) {
+    return settings;
+  }
+  const modelValues = composerOptionValues(options.models);
+  const reasoningValues = composerOptionValues(options.reasoningEfforts);
+  const speedValues = composerOptionValues(options.speeds ?? []);
+  const permissionValues = new Set(
+    options.permissionConfig?.modes.map((mode) => mode.id) ?? []
+  );
+  const model = normalizeOptionalText(settings.model);
+  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
+  const speed = normalizeOptionalText(settings.speed);
+  const permissionModeId = normalizeOptionalText(settings.permissionModeId);
+  return {
+    ...settings,
+    model:
+      options.behavior?.modelOptionsAuthoritative === true &&
+      model &&
+      modelValues.size > 0 &&
+      !modelValues.has(model)
+        ? null
+        : model,
+    reasoningEffort:
+      reasoningEffort &&
+      reasoningValues.size > 0 &&
+      !reasoningValues.has(reasoningEffort)
+        ? null
+        : (reasoningEffort as AgentSessionReasoningEffort | null),
+    speed:
+      speed && speedValues.size > 0 && !speedValues.has(speed)
+        ? null
+        : (speed as AgentSessionSpeed | null),
+    permissionModeId:
+      permissionModeId &&
+      permissionValues.size > 0 &&
+      !permissionValues.has(permissionModeId)
+        ? null
+        : permissionModeId
+  };
+}
+
+export function sanitizeComposerSettingsForTarget(input: {
+  settings: AgentSessionComposerSettings;
+  target: AgentGUIComposerTargetData;
+  options: AgentActivityComposerOptions | null;
+}): AgentSessionComposerSettings {
+  if (!input.target.agentTargetId) {
+    return input.settings;
+  }
+  return sanitizeComposerSettingsForOptions(input.settings, input.options);
+}
+
 export function resolvePresentedComposerSettings(input: {
   homeSettings: AgentSessionComposerSettings;
   optimisticSettings: AgentSessionComposerSettings | null;

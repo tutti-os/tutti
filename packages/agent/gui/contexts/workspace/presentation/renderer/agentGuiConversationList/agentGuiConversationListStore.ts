@@ -35,11 +35,8 @@ import type {
 } from "../../../../../shared/contracts/dto";
 import {
   clearAgentGUIConversationCreatePendingState,
-  clearAgentGUIConversationSubmitPendingState,
   getAgentGUIConversationCreatePendingState,
-  getAgentGUIConversationSubmitPendingState,
   markAgentGUIConversationCreatePendingState,
-  markAgentGUIConversationSubmitPendingState,
   resetAgentGUIConversationPendingStateForTests
 } from "./agentGuiConversationListPendingState";
 import { workspaceAgentSnapshotForConversations } from "./agentGuiConversationListSnapshot";
@@ -2181,58 +2178,6 @@ export function getAgentGUIConversationCreatePending(input: {
   return getAgentGUIConversationCreatePendingState({
     queryKey: createAgentGUIConversationListQueryKey(input.query),
     ownerKey: input.ownerKey
-  });
-}
-
-export function markAgentGUIConversationSubmitPending(input: {
-  query: AgentGUIConversationListQuery;
-  conversationId: string;
-}): void {
-  if (
-    markAgentGUIConversationSubmitPendingState({
-      queryKey: createAgentGUIConversationListQueryKey(input.query),
-      conversationId: input.conversationId
-    })
-  ) {
-    updateAgentGUIConversationListConversations(
-      input.query,
-      (current) =>
-        current.map((conversation) =>
-          conversation.id === input.conversationId.trim()
-            ? {
-                ...conversation,
-                status: "working",
-                updatedAtUnixMs: Date.now()
-              }
-            : conversation
-        ),
-      "submit-pending"
-    );
-    emitChange();
-  }
-}
-
-export function clearAgentGUIConversationSubmitPending(input: {
-  query: AgentGUIConversationListQuery;
-  conversationId: string;
-}): void {
-  if (
-    clearAgentGUIConversationSubmitPendingState({
-      queryKey: createAgentGUIConversationListQueryKey(input.query),
-      conversationId: input.conversationId
-    })
-  ) {
-    emitChange();
-  }
-}
-
-export function getAgentGUIConversationSubmitPending(input: {
-  query: AgentGUIConversationListQuery;
-  conversationId: string | null | undefined;
-}): boolean {
-  return getAgentGUIConversationSubmitPendingState({
-    queryKey: createAgentGUIConversationListQueryKey(input.query),
-    conversationId: input.conversationId
   });
 }
 

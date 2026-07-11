@@ -105,9 +105,9 @@ const INSTALLING_PHASES: ReadonlySet<CodexSetupPhase> = new Set([
  * Maps primitive provider-status flags onto the fixed 5-stage track the wizard
  * renders. Version verification folds into the install (CLI) stage (an
  * unsupported version means install is `error`, not `ok`). The adapter stage
- * covers the ACP adapter, which for some providers (e.g. claude-code) is a
- * separate, slow npm install distinct from the CLI; for providers where the
- * adapter is the CLI itself it simply tracks the CLI. Login `running` is driven
+ * covers any provider runtime component installed separately from its CLI,
+ * such as an SDK sidecar; where no separate component exists it simply tracks
+ * the CLI. Login `running` is driven
  * by the caller's pending flag because login runs as a terminal action, not via
  * the activeAction phase stream.
  */

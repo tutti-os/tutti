@@ -189,14 +189,14 @@ describe("deriveAgentSetupStages", () => {
           input({
             cliInstalled: true,
             adapterInstalled: true,
-            adapterDetail: { kind: "text", text: "claude-acp" }
+            adapterDetail: { kind: "text", text: "claude-sdk-sidecar" }
           })
         ),
         "adapter"
       )
     ).toMatchObject({
       status: "ok",
-      detail: { kind: "text", text: "claude-acp" }
+      detail: { kind: "text", text: "claude-sdk-sidecar" }
     });
     expect(
       stage(

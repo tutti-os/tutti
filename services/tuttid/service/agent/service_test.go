@@ -1835,7 +1835,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 			Status:   ProviderAvailabilityUnavailable,
 			Checks: []ProviderAvailabilityCheck{
 				{Name: "cli", Passed: true, Detail: "/usr/local/bin/claude"},
-				{Name: "adapter", Passed: true, Detail: "/usr/local/bin/claude-agent-acp"},
+				{Name: "adapter", Passed: true, Detail: "/opt/tutti/claude-sdk-sidecar"},
 				{Name: "auth", Passed: false, Detail: "authentication required"},
 			},
 			LastError: &ProviderAvailabilityError{
@@ -2193,7 +2193,7 @@ func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
 		Visible:     true,
 	}
 	service := NewService(runtime)
-	if err := service.claudeStartup().acquire(context.Background()); err != nil {
+	if err := service.claudeStartup().Acquire(context.Background()); err != nil {
 		t.Fatalf("acquire startup lock: %v", err)
 	}
 
@@ -2213,7 +2213,7 @@ func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
 	if len(runtime.execCalls) != 0 {
 		t.Fatalf("exec calls = %d, want blocked while startup slot held", len(runtime.execCalls))
 	}
-	service.claudeStartup().release()
+	service.claudeStartup().Release()
 
 	select {
 	case err := <-done:
@@ -3065,8 +3065,8 @@ func TestGetComposerOptionsClaudeCodeReusesRunningSessionLiveModels(t *testing.T
 	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want discovered model options", options.ModelConfig)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
@@ -3173,6 +3173,7 @@ func TestGetComposerOptionsClaudeCodeSkipsDiscoveryBesideRunningSession(t *testi
 }
 
 func TestGetComposerOptionsClaudeCodeSkipsStaleRunningSessionModelsAfterInvalidation(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
@@ -3235,8 +3236,14 @@ func TestGetComposerOptionsClaudeCodeSkipsStaleRunningSessionModelsAfterInvalida
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t *testing.T) {
-	runtime := newFakeRuntime()
+func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAcrossWorkspacesAndCallerCwds(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+	closed := make(chan RuntimeCloseInput, 1)
+	runtime := &closeSignalRuntime{
+		fakeRuntime: newFakeRuntime(),
+		closed:      closed,
+	}
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
 			t.Fatalf("start provider = %q, want claude-code", input.Provider)
@@ -3262,12 +3269,14 @@ func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t 
 		return session
 	}
 	service := NewService(runtime)
-	service.LiveModelDiscoveryDeleteDelay = 50 * time.Millisecond
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.LiveModelDiscoveryDeleteDelay = 2 * time.Second
 
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-1",
-		Cwd:         "/repo",
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		WorkspaceID:   "ws-1",
+		Cwd:           "/",
 	})
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
@@ -3275,20 +3284,31 @@ func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t 
 	if len(runtime.startCalls) != 1 {
 		t.Fatalf("start calls = %d, want one hidden discovery", len(runtime.startCalls))
 	}
-	if len(runtime.closeCalls) != 0 {
-		t.Fatalf("close calls = %#v, want no immediate hidden discovery cleanup", runtime.closeCalls)
+	wantDiscoveryCwd := filepath.Join(stateDir, "agent", "discovery", "claude-code")
+	if runtime.startCalls[0].Cwd != wantDiscoveryCwd {
+		t.Fatalf("discovery cwd = %q, want %q", runtime.startCalls[0].Cwd, wantDiscoveryCwd)
+	}
+	if runtime.startCalls[0].AgentTargetID != agenttargetbiz.IDLocalClaudeCode ||
+		runtime.startCalls[0].ProviderTargetRef["targetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("discovery target = %q / %#v", runtime.startCalls[0].AgentTargetID, runtime.startCalls[0].ProviderTargetRef)
+	}
+	select {
+	case input := <-closed:
+		t.Fatalf("unexpected immediate hidden discovery cleanup: %#v", input)
+	default:
 	}
 	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want discovered Claude model config", options.ModelConfig)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
-		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != runtimeLiveModelCatalogSource {
+		t.Fatalf("modelCatalogSource = %#v, want %s", options.RuntimeContext["modelCatalogSource"], runtimeLiveModelCatalogSource)
 	}
 
 	second, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-1",
-		Cwd:         "/repo",
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		WorkspaceID:   "ws-2",
+		Cwd:           "/Users/example/project",
 	})
 	if err != nil {
 		t.Fatalf("GetComposerOptions second returned error: %v", err)
@@ -3300,17 +3320,13 @@ func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t 
 		t.Fatalf("second modelConfig = %#v, want cached discovered model config", second.ModelConfig)
 	}
 
-	deadline := time.After(2 * time.Second)
-	for len(runtime.closeCalls) == 0 {
-		select {
-		case <-deadline:
-			t.Fatalf("close calls = %#v, want delayed hidden discovery cleanup", runtime.closeCalls)
-		default:
-			time.Sleep(5 * time.Millisecond)
+	select {
+	case input := <-closed:
+		if input.AgentSessionID != runtime.startCalls[0].AgentSessionID {
+			t.Fatalf("close input = %#v, want delayed cleanup for hidden discovery session %q", input, runtime.startCalls[0].AgentSessionID)
 		}
-	}
-	if runtime.closeCalls[0].AgentSessionID != runtime.startCalls[0].AgentSessionID {
-		t.Fatalf("close calls = %#v, want delayed cleanup for hidden discovery session %q", runtime.closeCalls, runtime.startCalls[0].AgentSessionID)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for delayed hidden discovery cleanup")
 	}
 }
 

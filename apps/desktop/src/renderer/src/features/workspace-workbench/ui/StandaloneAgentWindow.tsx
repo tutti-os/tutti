@@ -406,7 +406,6 @@ export function StandaloneAgentWindow({
       <div className="workbench-window__body h-full min-h-0 min-w-0 overflow-hidden">
         <DesktopAgentGUIWorkbenchBody
           agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
-          agentQueuedPromptRuntime={agentGuiHostInput.agentQueuedPromptRuntime}
           agentHostApi={agentGuiHostInput.agentHostApi}
           appCenterService={workspaceAppCenterService}
           agentProviderStatusService={agentProviderStatusService}

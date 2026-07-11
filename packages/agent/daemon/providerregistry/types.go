@@ -7,6 +7,7 @@ type RuntimeKind string
 
 const (
 	RuntimeKindCodexAppServer RuntimeKind = "codex_app_server"
+	RuntimeKindClaudeSDK      RuntimeKind = "claude_sdk"
 )
 
 // EndpointConfigKind identifies an optional provider-owned config source for
@@ -15,7 +16,8 @@ const (
 type EndpointConfigKind string
 
 const (
-	EndpointConfigKindCodexCLI EndpointConfigKind = "codex_cli"
+	EndpointConfigKindCodexCLI       EndpointConfigKind = "codex_cli"
+	EndpointConfigKindClaudeSettings EndpointConfigKind = "claude_settings"
 )
 
 type RuntimeEndpointDescriptor struct {
@@ -29,12 +31,14 @@ type InstallerKind string
 
 const (
 	InstallerKindCodexCLILatest InstallerKind = "codex_cli_latest"
+	InstallerKindOfficialScript InstallerKind = "official_script"
 )
 
 type StatusKind string
 
 const (
-	StatusKindCodexCLI StatusKind = "codex_cli"
+	StatusKindCodexCLI  StatusKind = "codex_cli"
+	StatusKindClaudeCLI StatusKind = "claude_cli"
 )
 
 type IdentityDescriptor struct {
@@ -60,32 +64,44 @@ type InstallerDescriptor struct {
 	PackageName     string
 	BinaryName      string
 	IncludeOptional bool
+	ScriptURL       string
+	ScriptShell     string
 }
 
 type StatusDescriptor struct {
-	Kind                StatusKind
-	MinVersion          string
-	BinaryNames         []string
-	AdapterBinaryNames  []string
-	AuthStatusCommand   []string
-	AuthMarkerPaths     []string
-	APIEndpoints        []string
-	CustomConfigEnvVars []string
-	CredentialEnvVars   []string
-	NPMRegistryPackage  string
-	Install             InstallerDescriptor
-	LoginArgs           []string
-	AuthWatch           AuthWatchDescriptor
+	Kind                            StatusKind
+	MinVersion                      string
+	BinaryNames                     []string
+	AdapterBinaryNames              []string
+	AuthStatusCommand               []string
+	AuthStatusCommandTimeoutSeconds int
+	AuthMarkerPaths                 []string
+	APIEndpoints                    []string
+	CustomConfigEnvVars             []string
+	CredentialEnvVars               []string
+	NPMRegistryPackage              string
+	Install                         InstallerDescriptor
+	LoginArgs                       []string
+	AuthWatch                       AuthWatchDescriptor
 }
 
 // AuthWatchDescriptor identifies files whose changes can invalidate
 // provider-owned catalog data. RootEnvVar supports provider-specific home
 // overrides without teaching consumers the provider's identity.
 type AuthWatchDescriptor struct {
-	RootEnvVar  string
-	DefaultRoot string
-	Paths       []string
+	RootEnvVar      string
+	DefaultRoot     string
+	Paths           []string
+	HomePaths       []string
+	FingerprintKind AuthWatchFingerprintKind
 }
+
+type AuthWatchFingerprintKind string
+
+const (
+	AuthWatchFingerprintNone        AuthWatchFingerprintKind = ""
+	AuthWatchFingerprintClaudeState AuthWatchFingerprintKind = "claude_state"
+)
 
 type PermissionModeDescriptor struct {
 	ID       string
@@ -101,7 +117,10 @@ type ComposerConfigOptionIDs struct {
 
 type SkillKind string
 
-const SkillKindCodex SkillKind = "codex"
+const (
+	SkillKindCodex      SkillKind = "codex"
+	SkillKindClaudeCode SkillKind = "claude-code"
+)
 
 type SkillInvocation string
 
@@ -133,6 +152,22 @@ type CapabilityCatalogDescriptor struct {
 	Kind CapabilityCatalogKind
 }
 
+type LiveModelDiscoveryKind string
+
+const LiveModelDiscoveryKindClaudeSDK LiveModelDiscoveryKind = "claude_sdk"
+
+type LiveModelDiscoveryDescriptor struct {
+	Kind        LiveModelDiscoveryKind
+	HiddenProbe bool
+}
+
+type ComposerBehaviorDescriptor struct {
+	ModelOptionsAuthoritative           bool
+	RefreshModelOptionsAfterSettings    bool
+	PrewarmDraftSession                 bool
+	PlanModeExclusiveWithPermissionMode bool
+}
+
 type SlashCommandEffect string
 
 const (
@@ -150,8 +185,9 @@ type SlashCommandEffectDescriptor struct {
 }
 
 type SlashCommandPolicyDescriptor struct {
-	FallbackCommands []string
-	CommandEffects   []SlashCommandEffectDescriptor
+	FallbackCommands            []string
+	CommandEffects              []SlashCommandEffectDescriptor
+	CommandCatalogAuthoritative bool
 }
 
 type ComposerProfileDescriptor struct {
@@ -168,7 +204,9 @@ type ComposerProfileDescriptor struct {
 	ConfigOptionIDs         ComposerConfigOptionIDs
 	Skills                  SkillDescriptor
 	CapabilityCatalog       CapabilityCatalogDescriptor
+	LiveModelDiscovery      LiveModelDiscoveryDescriptor
 	SlashCommandPolicy      SlashCommandPolicyDescriptor
+	Behavior                ComposerBehaviorDescriptor
 }
 
 type TargetDescriptor struct {

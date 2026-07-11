@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -199,7 +201,7 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	if !installed {
 		return AuthInfo{Status: AuthUnknown}
 	}
-	if spec.Provider == agentprovider.ClaudeCode && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
+	if isClaudeStatusSpec(spec) && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
 		return AuthInfo{Status: AuthRequired}
 	}
 	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
@@ -266,7 +268,7 @@ func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, b
 	if !s.fileExists(path) {
 		return AuthInfo{}, false
 	}
-	if spec.Provider == agentprovider.ClaudeCode {
+	if isClaudeStatusSpec(spec) {
 		if auth, ok := parseClaudeAuthMarkerFile(path); ok {
 			return auth, true
 		}
@@ -512,23 +514,57 @@ func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath str
 	if agentprovider.Normalize(spec.Provider) == agentprovider.Cursor {
 		return runCursorAuthStatusCommand(ctx, binaryPath, env)
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
+	commandCtx, cancel := context.WithTimeout(ctx, authStatusTimeout(spec))
 	defer cancel()
+	isClaude := isClaudeStatusSpec(spec)
+	if isClaude {
+		if err := claudecodeservice.DefaultStartupGate.Acquire(commandCtx); err != nil {
+			return AuthInfo{}, false
+		}
+		defer claudecodeservice.DefaultStartupGate.Release()
+	}
 	command := exec.CommandContext(commandCtx, binaryPath, spec.AuthStatusCommand...)
 	// Inject the macOS system proxy so the auth-status probe reaches the upstream
 	// API through the same proxy as spawned agents (mirroring agent install &
 	// login), instead of connecting directly and hitting `403 Request not allowed`
 	// from a restricted region.
 	command.Env = runtimecmd.InjectSystemProxyEnv(env)
+	startedAt := time.Now()
 	output, err := command.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			output = append(output, exitErr.Stderr...)
 		} else {
+			if isClaude {
+				logClaudeAuthStatusCommandOutput(err, time.Since(startedAt))
+			}
 			return AuthInfo{}, false
 		}
 	}
+	if isClaude {
+		logClaudeAuthStatusCommandOutput(err, time.Since(startedAt))
+	}
 	return parseAuthStatusCommandOutput(spec.Provider, output)
+}
+
+func logClaudeAuthStatusCommandOutput(commandErr error, duration time.Duration) {
+	exitStatus := "success"
+	if commandErr != nil {
+		exitStatus = "failed"
+	}
+	slog.Info(
+		"claude auth status command completed",
+		"event", "tutti.agent_provider.claude.auth_status_command.completed",
+		"exitStatus", exitStatus,
+		"durationMs", duration.Milliseconds(),
+	)
+}
+
+func authStatusTimeout(spec ProviderSpec) time.Duration {
+	if spec.AuthStatusCommandTimeout > 0 {
+		return spec.AuthStatusCommandTimeout
+	}
+	return authStatusCommandTimeout
 }
 
 func sleepContext(ctx context.Context, delay time.Duration) bool {
@@ -547,13 +583,14 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 		return auth, true
 	}
 	if status, ok := migratedProviderStatus(provider); ok {
-		if status.Kind == providerregistry.StatusKindCodexCLI {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
 			return parseCodexAuthStatusOutput(output)
+		case providerregistry.StatusKindClaudeCLI:
+			return parseClaudeAuthStatusOutput(output)
 		}
 	}
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
-		return parseClaudeAuthStatusOutput(output)
 	case agentprovider.TuttiAgent:
 		// Tutti Agent is a Codex CLI fork; `tutti-agent login status` prints the
 		// same "Logged in ..." / "Not logged in" copy.

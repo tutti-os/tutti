@@ -49,8 +49,8 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 	if claudeExecutableEnv := claudeCodeExecutableEnv(); claudeExecutableEnv != "" {
 		env = append(env, claudeExecutableEnv)
 	}
-	// Plan mode is enabled exclusively through the ACP `set_mode("plan")` call
-	// (see effectiveModeID in the daemon runtime). We intentionally do NOT set
+	// Plan mode is enabled through the SDK permission mode selected by the
+	// daemon runtime. We intentionally do NOT set
 	// CLAUDE_CONFIG_DIR to seed `permissions.defaultMode=plan`: pointing the CLI
 	// at a fresh config directory makes it stop reading the user's real
 	// credentials (keychain on macOS, ~/.claude/.credentials.json elsewhere),

@@ -167,7 +167,6 @@ function agentSessionStateSettings(
   const settings = normalizeComposerSettings(session.settings);
   const defaultModel = normalizedOptionalString(defaults?.settings?.model);
   if (
-    session.provider === "claude-code" &&
     settings.model === "default" &&
     defaultModel !== null &&
     defaultModel !== "default"

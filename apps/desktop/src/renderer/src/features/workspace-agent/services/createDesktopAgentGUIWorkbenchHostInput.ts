@@ -1,6 +1,5 @@
 import type {
   AgentActivityRuntime,
-  AgentQueuedPromptRuntime,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
@@ -46,7 +45,6 @@ import { translate } from "../../../i18n/appRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi: AgentHostInputApi;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
@@ -134,17 +132,16 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           NonNullable<AgentActivityRuntime["warmupOpenclawGateway"]>
         >
     : undefined;
-  const { agentActivityRuntime, agentQueuedPromptRuntime } =
-    getDesktopAgentActivityRuntimeServices({
-      hostFilesApi,
-      reporterNow,
-      reporterService,
-      runtimeApi,
-      warmupOpenclawGateway,
-      workspaceAgentActivityService,
-      workspaceId,
-      workspaceUserProjectService
-    });
+  const { agentActivityRuntime } = getDesktopAgentActivityRuntimeServices({
+    hostFilesApi,
+    reporterNow,
+    reporterService,
+    runtimeApi,
+    warmupOpenclawGateway,
+    workspaceAgentActivityService,
+    workspaceId,
+    workspaceUserProjectService
+  });
   const workspaceFileReferenceTracker =
     createAgentWorkspaceFileReferenceTracker({
       reporterNow,
@@ -223,7 +220,6 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   };
   return {
     agentActivityRuntime,
-    agentQueuedPromptRuntime,
     agentHostApi: resolvedAgentHostApi,
     contextMentionProviders: richTextAtService
       .getProviders({

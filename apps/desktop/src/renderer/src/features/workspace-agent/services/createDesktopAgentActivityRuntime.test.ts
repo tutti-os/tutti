@@ -269,6 +269,9 @@ test("desktop agent activity runtime reads archived prompt assets", async () => 
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
+    getSessionEngine() {
+      throw new Error("not implemented");
+    },
     activateSession: async () => {
       throw new Error("not implemented");
     },

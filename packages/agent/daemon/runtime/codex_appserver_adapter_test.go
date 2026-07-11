@@ -592,7 +592,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"createdAt":       int64(1750000000),
 				"updatedAt":       int64(1750000001),
 			}
-			if tokenBudget, ok := acpInt64Value(message.Params["tokenBudget"]); ok {
+			if tokenBudget, ok := int64Value(message.Params["tokenBudget"]); ok {
 				goal["tokenBudget"] = tokenBudget
 			}
 			c.goal = clonePayload(goal)
@@ -1139,10 +1139,10 @@ func TestCodexAppServerAdapterResumeRetainsReplayedContextUsage(t *testing.T) {
 	if contextWindow == nil {
 		t.Fatalf("resume dropped replayed token usage: usage=%#v", usage)
 	}
-	if got, _ := acpInt64Value(contextWindow["usedTokens"]); got != 20453 {
+	if got, _ := int64Value(contextWindow["usedTokens"]); got != 20453 {
 		t.Fatalf("usedTokens = %d, want 20453", got)
 	}
-	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 258400 {
+	if got, _ := int64Value(contextWindow["totalTokens"]); got != 258400 {
 		t.Fatalf("totalTokens = %d, want 258400", got)
 	}
 }
@@ -1326,10 +1326,10 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if used, _ := acpInt64Value(contextWindow["usedTokens"]); used != 1000 {
+	if used, _ := int64Value(contextWindow["usedTokens"]); used != 1000 {
 		t.Fatalf("usage usedTokens = %#v, want last.inputTokens (1000)", usage)
 	}
-	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
+	if total, _ := int64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
 	}
 }
@@ -3223,7 +3223,7 @@ func TestCodexAppServerAdapterCancelPausesActiveGoal(t *testing.T) {
 	foundGoalEvent := false
 	for _, event := range events {
 		if event.Type == activityshared.EventSessionUpdated &&
-			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			event.Payload.Metadata["sessionUpdateKind"] == "thread_goal_update" {
 			foundGoalEvent = true
 		}
 	}
@@ -3617,7 +3617,7 @@ func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing
 	foundNotice := false
 	for _, event := range sinkEvents {
 		if event.Type == activityshared.EventSessionUpdated &&
-			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			event.Payload.Metadata["sessionUpdateKind"] == "thread_goal_update" {
 			foundUpdate = true
 		}
 		if event.Type == activityshared.EventMessageAppended &&
@@ -3913,7 +3913,7 @@ func TestCodexAppServerAdapterSlashUndo(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	rollback := appServerRequestParams(t, transport.conn, appServerMethodThreadRollback)
-	if numTurns, _ := acpInt64Value(rollback["numTurns"]); numTurns != 1 {
+	if numTurns, _ := int64Value(rollback["numTurns"]); numTurns != 1 {
 		t.Fatalf("rollback params = %#v", rollback)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
@@ -4127,7 +4127,7 @@ func TestCodexAppServerAdapterRateLimitNotificationUpdatesUsage(t *testing.T) {
 	if remaining, _ := acpFloatValue(sessionQuota["percentRemaining"]); remaining != 60 {
 		t.Fatalf("session quota = %#v, want 60%% remaining", sessionQuota)
 	}
-	if resetsAt, _ := acpInt64Value(sessionQuota["resetsAtUnixMs"]); resetsAt != 1750003600000 {
+	if resetsAt, _ := int64Value(sessionQuota["resetsAtUnixMs"]); resetsAt != 1750003600000 {
 		t.Fatalf("session quota resetsAt = %#v", sessionQuota)
 	}
 }

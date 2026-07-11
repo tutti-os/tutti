@@ -780,19 +780,19 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     });
   });
 
-  it("hides unsupported Claude AskUserQuestion tool calls from the transcript detail view", () => {
-    const claudeSession: AgentHostWorkspaceAgentSession = {
+  it("hides unavailable AskUserQuestion tool calls by event semantics", () => {
+    const providerSession: AgentHostWorkspaceAgentSession = {
       ...session,
-      provider: "claude-code"
+      provider: "opencode"
     };
 
     const view = buildWorkspaceAgentSessionDetailViewModel({
       activity: {
         ...activity,
-        agentProvider: "claude-code",
-        agentName: "Claude Code"
+        agentProvider: "opencode",
+        agentName: "OpenCode"
       },
-      session: claudeSession,
+      session: providerSession,
       timelineItems: [
         item({
           id: 42,

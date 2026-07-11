@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	ClaudeCode = "claude-code"
+	ClaudeCode = providerregistry.ClaudeCodeProviderID
 	Codex      = providerregistry.CodexProviderID
 	Cursor     = "cursor"
 	Hermes     = "hermes"
@@ -27,7 +27,6 @@ func All() []string {
 		seen[provider] = struct{}{}
 		providers = append(providers, provider)
 	}
-	appendProvider(ClaudeCode)
 	for _, descriptor := range providerregistry.Migrated() {
 		appendProvider(descriptor.Identity.ID)
 	}
@@ -42,8 +41,6 @@ func Normalize(provider string) string {
 		return providerID
 	}
 	switch strings.TrimSpace(strings.ToLower(provider)) {
-	case "claude", ClaudeCode:
-		return ClaudeCode
 	case TuttiAgent:
 		return TuttiAgent
 	case "cursor-agent", "cursor-cli", Cursor:

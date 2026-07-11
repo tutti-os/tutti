@@ -3,6 +3,7 @@ import {
   addWorkspaceIssueTaskContextRefs,
   applyWorkspaceGitPatch,
   cancelWorkspaceAgentSession,
+  cancelWorkspaceAgentTurn,
   goalControlWorkspaceAgentSession,
   checkUserProjectPath,
   clearWorkspaceAgentSessions,
@@ -871,6 +872,13 @@ export function createTuttidClient(
         path: { agentSessionID, workspaceID }
       });
       return unwrapData(response, "Cancel workspace agent session failed.");
+    },
+    async cancelWorkspaceAgentTurn(workspaceID, agentSessionID, turnID) {
+      const response = await cancelWorkspaceAgentTurn({
+        client,
+        path: { agentSessionID, turnID, workspaceID }
+      });
+      return unwrapData(response, "Cancel workspace agent turn failed.");
     },
     async goalControlWorkspaceAgentSession(
       workspaceID,

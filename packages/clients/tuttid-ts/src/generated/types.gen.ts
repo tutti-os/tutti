@@ -1019,7 +1019,15 @@ export type AgentProviderComposerOptionsResponse = {
   };
   skills: Array<AgentProviderSkillOption>;
   capabilityCatalog: Array<AgentProviderCapabilityOption>;
+  behavior: AgentProviderComposerBehavior;
   slashCommandPolicy?: AgentSlashCommandPolicy;
+};
+
+export type AgentProviderComposerBehavior = {
+  modelOptionsAuthoritative: boolean;
+  refreshModelOptionsAfterSettings: boolean;
+  prewarmDraftSession: boolean;
+  planModeExclusiveWithPermissionMode: boolean;
 };
 
 export type AgentSlashCommandEffect =
@@ -1038,6 +1046,7 @@ export type AgentSlashCommandEffectDescriptor = {
 export type AgentSlashCommandPolicy = {
   fallbackCommands: Array<string>;
   commandEffects: Array<AgentSlashCommandEffectDescriptor>;
+  commandCatalogAuthoritative?: boolean;
 };
 
 export type AgentProviderSkillOption = {

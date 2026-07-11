@@ -132,6 +132,13 @@ type providerLaunchCleanupConnection struct {
 	cleanup func(context.Context)
 }
 
+func (c *providerLaunchCleanupConnection) RecvContext(ctx context.Context) (ProcessFrame, error) {
+	if contextual, ok := c.ProcessConnection.(ContextProcessConnection); ok {
+		return contextual.RecvContext(ctx)
+	}
+	return c.Recv()
+}
+
 func (c *providerLaunchCleanupConnection) Close() error {
 	if c == nil {
 		return nil

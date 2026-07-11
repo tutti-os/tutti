@@ -4,6 +4,12 @@ import { agentActivityComposerOptionsFromTuttidResult } from "./agentComposerOpt
 
 test("agent composer options keep SDK fast speed configurable after reload", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("claude-code", {
+    behavior: {
+      modelOptionsAuthoritative: true,
+      refreshModelOptionsAfterSettings: true,
+      prewarmDraftSession: true,
+      planModeExclusiveWithPermissionMode: true
+    },
     runtimeContext: {
       configOptions: [
         {
@@ -19,6 +25,12 @@ test("agent composer options keep SDK fast speed configurable after reload", () 
   });
 
   assert.equal(options.speedConfigurable, true);
+  assert.deepEqual(options.behavior, {
+    modelOptionsAuthoritative: true,
+    refreshModelOptionsAfterSettings: true,
+    prewarmDraftSession: true,
+    planModeExclusiveWithPermissionMode: true
+  });
   assert.deepEqual(options.speeds, [
     { label: "Standard", value: "standard" },
     { label: "Fast", value: "fast" }
@@ -36,6 +48,7 @@ test("agent composer options project the typed slash command policy", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("codex", {
     slashCommandPolicy: {
       fallbackCommands: ["compact", "status"],
+      commandCatalogAuthoritative: true,
       commandEffects: [
         { command: "compact", effect: "submitImmediate" },
         { command: "status", effect: "showStatus" },
@@ -53,6 +66,7 @@ test("agent composer options project the typed slash command policy", () => {
 
   assert.deepEqual(options.slashCommandPolicy, {
     fallbackCommands: ["compact", "status"],
+    commandCatalogAuthoritative: true,
     commandEffects: [
       { command: "compact", effect: "submitImmediate" },
       { command: "status", effect: "showStatus" },

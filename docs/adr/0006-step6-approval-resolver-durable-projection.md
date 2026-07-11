@@ -10,7 +10,7 @@
 
 tutti's server-request handling (`item/{commandExecution,fileChange,permissions}/requestApproval`,
 `item/tool/requestUserInput`, MCP elicitation) is a **blocking RPC handler**: the
-JSON-RPC handler goroutine builds a `pendingACPRequest{ response chan }`, registers it
+JSON-RPC handler goroutine builds a `pendingInteractiveRequest{ response chan }`, registers it
 in an in-memory `pendingRequests` map, and **parks on `<-response`**; `SubmitInteractive`
 non-blocking-sends the decision (`default` → "already answered"). The RPC reply to codex
 IS the handler's return. Two structural gaps:

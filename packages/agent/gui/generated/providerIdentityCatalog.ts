@@ -13,5 +13,18 @@ export const generatedProviderIdentityCatalog = [
       enabled: true,
       sortOrder: 10
     }
+  },
+  {
+    providerId: "claude-code",
+    displayName: "Claude Code",
+    iconKey: "claude-code",
+    localeKey: "agentHost.agentGui.conversationFilterClaudeCode",
+    aliases: ["claude", "claude code"],
+    target: {
+      id: "local:claude-code",
+      launchRefType: "local_cli",
+      enabled: true,
+      sortOrder: 20
+    }
   }
 ] as const;

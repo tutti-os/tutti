@@ -164,6 +164,30 @@ test("factory rejects empty identity parts", () => {
   );
 });
 
+test("engine drops intents scoped to another workspace", () => {
+  const harness = createHarness({ workspaceId: "workspace-a" });
+  harness.engine.dispatch({
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "wrong workspace" }],
+      createdAtUnixMs: 1,
+      id: "prompt-1"
+    },
+    type: "queue/enqueued",
+    workspaceId: "workspace-b"
+  });
+  assert.equal(
+    harness.engine.getSnapshot().promptQueue.recordsBySessionId["session-1"],
+    undefined
+  );
+  assert.deepEqual(harness.diagnosticEvents, [
+    {
+      intentType: "queue/enqueued",
+      type: "intentDroppedForIdentityMismatch"
+    }
+  ]);
+});
+
 test("immediate dispatch reduces synchronously and notifies once per drain", () => {
   const { engine, notifiedStates } = createHarness();
   engine.dispatch({ status: "connected", type: "engine/connectionChanged" });

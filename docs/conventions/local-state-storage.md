@@ -89,6 +89,8 @@ Migrated agent runtime state should derive from the same root:
 ```text
 ~/.tutti[-dev]/
   agent/
+    discovery/
+      claude-code/
     sessions/
       <date>-<sequence>/
     runs/
@@ -131,7 +133,11 @@ Migrated agent runtime state should derive from the same root:
   app-toolchains/
 ```
 
-`agent/sessions` stores daemon-created working directories for agent sessions
+`agent/discovery/claude-code` is the fixed, project-neutral working directory
+for Claude Code capability discovery. Discovery must not run from `/` or from a
+user project directory, and its cache identity must not vary with a caller's
+cwd or workspace. Agent-target identity and the non-secret auth fingerprint do
+remain part of the identity. `agent/sessions` stores daemon-created working directories for agent sessions
 that do not receive an explicit cwd. `agent/runs` stores per-session provider
 sidecar state that can be recreated or cleaned up when the owning agent session
 is deleted. Provider-specific homes, generated skills, and cleanup manifests
