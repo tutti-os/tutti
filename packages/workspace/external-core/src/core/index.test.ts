@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  deriveTuttiExternalLegacyContextCapabilities,
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalBrowserOpenUrlInput,
   normalizeTuttiExternalFileOpenInput,
@@ -128,16 +129,26 @@ test("normalizes file select input", () => {
 test("normalizes file open input", () => {
   assert.deepEqual(
     normalizeTuttiExternalFileOpenInput({
+      location: {
+        path: " assets/report.md ",
+        type: "app-package-relative"
+      },
       mode: "auto",
       mtimeMs: 123,
       name: " Report.md ",
+      packageVersion: " v1.2.3 ",
       path: " docs/report.md ",
       sizeBytes: null
     }),
     {
+      location: {
+        path: "assets/report.md",
+        type: "app-package-relative"
+      },
       mode: "auto",
       mtimeMs: 123,
       name: "Report.md",
+      packageVersion: "v1.2.3",
       path: "docs/report.md",
       sizeBytes: null
     }
@@ -152,6 +163,30 @@ test("rejects invalid file open input", () => {
   assert.throws(
     () => normalizeTuttiExternalFileOpenInput({ path: "README.md", mode: "x" }),
     /mode is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalFileOpenInput({
+        path: "README.md",
+        location: { path: "README.md", type: "host-relative" }
+      }),
+    /location type is unsupported/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalFileOpenInput({
+        path: "README.md",
+        location: { path: " ", type: "workspace-relative" }
+      }),
+    /location path is required/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalFileOpenInput({
+        path: "README.md",
+        packageVersion: " "
+      }),
+    /packageVersion must be a non-empty string or null/
   );
 });
 
@@ -531,5 +566,17 @@ test("rejects invalid external log input", () => {
         details: "invalid"
       }),
     /details must be an object/
+  );
+});
+
+test("derives legacy context capabilities from the structured operation roster", () => {
+  assert.deepEqual(
+    deriveTuttiExternalLegacyContextCapabilities([
+      "browser.openUrl",
+      "files.open",
+      "userProjects.getSnapshot",
+      "logs.write"
+    ]),
+    ["browser.openUrl@1", "files.open@1", "userProjects@1"]
   );
 });

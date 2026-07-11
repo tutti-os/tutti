@@ -47,9 +47,23 @@ test("normalizes requests and rejects activation failures asynchronously", async
     adapter: harness.adapter,
     isUserActivationActive: () => true
   });
-  await activeBridge.files.open({ path: " /workspace/readme.md " });
+  await activeBridge.files.open({
+    location: {
+      path: " docs/readme.md ",
+      type: "app-package-relative"
+    },
+    packageVersion: " v1.2.3 ",
+    path: " /workspace/readme.md "
+  });
   assert.deepEqual(harness.requests.at(-1), {
-    input: { path: "/workspace/readme.md" },
+    input: {
+      location: {
+        path: "docs/readme.md",
+        type: "app-package-relative"
+      },
+      packageVersion: "v1.2.3",
+      path: "/workspace/readme.md"
+    },
     operation: "files.open"
   });
 });

@@ -2,6 +2,7 @@ import {
   resolveBrowserNavigationUrl,
   type BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
+import { normalizeTuttiExternalBrowserOpenUrlInput } from "@tutti-os/workspace-external-core/core";
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
 
 interface WorkspaceAppWindowOpenContents {
@@ -32,6 +33,10 @@ interface WorkspaceAppWindowOpenHandlerInput {
 
 interface WorkspaceAppOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
   url: string;
+}
+
+interface WorkspaceAppExternalOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
+  payload: unknown;
 }
 
 export function installWorkspaceAppWindowOpenHandler({
@@ -96,4 +101,32 @@ export function dispatchWorkspaceAppOpenUrl({
   });
   ownerWindow.webContents.send(desktopIpcChannels.browser.event, payload);
   return true;
+}
+
+/**
+ * Dispatches the JSB browser.openUrl notification after validating it again in
+ * the privileged main process. Native window-open/link handling intentionally
+ * continues through dispatchWorkspaceAppOpenUrl and keeps its existing URL
+ * resolution semantics.
+ */
+export function dispatchWorkspaceAppExternalOpenUrl({
+  contents,
+  logger,
+  ownerWindow,
+  payload
+}: WorkspaceAppExternalOpenUrlInput): boolean {
+  try {
+    const input = normalizeTuttiExternalBrowserOpenUrlInput(payload);
+    return dispatchWorkspaceAppOpenUrl({
+      contents,
+      logger,
+      ownerWindow,
+      url: input.url
+    });
+  } catch {
+    logger?.warn?.("workspace app guest ignored invalid JSB open-url", {
+      webContentsId: contents.id
+    });
+    return false;
+  }
 }

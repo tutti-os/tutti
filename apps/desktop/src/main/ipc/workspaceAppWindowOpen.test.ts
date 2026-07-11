@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
 import {
+  dispatchWorkspaceAppExternalOpenUrl,
   dispatchWorkspaceAppOpenUrl,
   installWorkspaceAppWindowOpenHandler
 } from "./workspaceAppWindowOpen.ts";
@@ -98,4 +99,62 @@ test("workspace app preload open-url requests dispatch Browser Node open-url eve
       }
     }
   ]);
+});
+
+test("workspace app JSB open-url rejects bare hostnames and non-HTTP URLs in main", () => {
+  const sent: unknown[] = [];
+  const warnings: string[] = [];
+  const input = {
+    contents: { id: 99 },
+    logger: {
+      warn(message: string) {
+        warnings.push(message);
+      }
+    },
+    ownerWindow: {
+      webContents: {
+        send(_channel: string, payload: unknown) {
+          sent.push(payload);
+        }
+      }
+    }
+  };
+
+  assert.equal(
+    dispatchWorkspaceAppExternalOpenUrl({
+      ...input,
+      payload: { url: "example.com" }
+    }),
+    false
+  );
+  assert.equal(
+    dispatchWorkspaceAppExternalOpenUrl({
+      ...input,
+      payload: { url: "file:///tmp/report.html" }
+    }),
+    false
+  );
+  assert.deepEqual(sent, []);
+  assert.equal(warnings.length, 2);
+});
+
+test("workspace app JSB open-url canonicalizes HTTP URLs in main", () => {
+  const sent: Array<{ channel: string; payload: unknown }> = [];
+  const result = dispatchWorkspaceAppExternalOpenUrl({
+    contents: { id: 99 },
+    ownerWindow: {
+      webContents: {
+        send(channel, payload) {
+          sent.push({ channel, payload });
+        }
+      }
+    },
+    payload: { url: " https://example.com/design " }
+  });
+
+  assert.equal(result, true);
+  assert.equal(
+    (sent[0]?.payload as { url?: string } | undefined)?.url,
+    "https://example.com/design"
+  );
 });

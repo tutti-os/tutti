@@ -22,6 +22,7 @@ import {
   type DesktopWorkspaceAppOpenFileRequest
 } from "../../shared/contracts/ipc";
 import {
+  deriveTuttiExternalLegacyContextCapabilities,
   normalizeTuttiExternalAtQueryInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
@@ -37,6 +38,7 @@ import {
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
   normalizeTuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/core";
+import { tuttiExternalOperations } from "@tutti-os/workspace-external-core/host";
 import type {
   TuttiExternalAtQueryResult,
   TuttiExternalFileOpenInput,
@@ -61,7 +63,7 @@ import {
 } from "../transport/paths";
 import { registerDesktopIpcHandler } from "./handle";
 import {
-  dispatchWorkspaceAppOpenUrl,
+  dispatchWorkspaceAppExternalOpenUrl,
   installWorkspaceAppWindowOpenHandler
 } from "./workspaceAppWindowOpen.ts";
 import { reportWorkspaceAppUserActive } from "./workspaceAppActivityAnalytics.ts";
@@ -207,7 +209,7 @@ export function registerWorkspaceAppContextIpc(
     async (event, payload) => {
       const context = requireWorkspaceAppGuestContext(event.sender);
       const input = normalizeTuttiExternalFileOpenInput(payload);
-      const request = toWorkspaceAppOpenFileRequest(input, payload);
+      const request = toWorkspaceAppOpenFileRequest(input);
       const resolved = await resolveWorkspaceAppOpenFilePayload({
         appId: context.appID,
         request,
@@ -500,7 +502,7 @@ export function registerWorkspaceAppContextIpc(
       payload: normalizeWorkspaceAppOpenUrlLogPayload(payload),
       webContentsId: event.sender.id
     });
-    if (!context || !isWorkspaceAppOpenUrlPayload(payload)) {
+    if (!context) {
       logger?.warn("workspace app open-url IPC ignored", {
         hasContext: Boolean(context),
         payload: normalizeWorkspaceAppOpenUrlLogPayload(payload),
@@ -508,11 +510,11 @@ export function registerWorkspaceAppContextIpc(
       });
       return;
     }
-    dispatchWorkspaceAppOpenUrl({
+    dispatchWorkspaceAppExternalOpenUrl({
       contents: event.sender,
       logger,
       ownerWindow: context.ownerWindow,
-      url: payload.url
+      payload
     });
   });
   registerDesktopIpcHandler(
@@ -1231,6 +1233,10 @@ function isDesktopIpcResult(
   );
 }
 
+const workspaceAppLegacyContextCapabilities = Object.freeze(
+  deriveTuttiExternalLegacyContextCapabilities(tuttiExternalOperations)
+);
+
 function createWorkspaceAppContext(
   endpoint: DesktopDaemonEndpoint,
   locale: DesktopLocale,
@@ -1245,14 +1251,7 @@ function createWorkspaceAppContext(
   delete context.launchIntent;
   return {
     appId: context.appID,
-    capabilities: [
-      "browser.openUrl@1",
-      "files.open@1",
-      "files.upload@1",
-      "pdf.printHtmlToPdf@1",
-      "userProjects@1",
-      "workspace.openFeature@1"
-    ],
+    capabilities: [...workspaceAppLegacyContextCapabilities],
     contextToken: createWorkspaceAppContextToken(endpoint, context, {
       installationId,
       issuer
@@ -1448,17 +1447,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isWorkspaceAppOpenUrlPayload(
-  value: unknown
-): value is { url: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    typeof (value as { url?: unknown }).url === "string"
-  );
-}
-
 function normalizeWorkspaceAppOpenUrlLogPayload(
   value: unknown
 ): Record<string, unknown> | null {
@@ -1485,35 +1473,11 @@ function broadcastWorkspaceAppContext(
 }
 
 function toWorkspaceAppOpenFileRequest(
-  input: TuttiExternalFileOpenInput,
-  payload: unknown
+  input: TuttiExternalFileOpenInput
 ): DesktopWorkspaceAppOpenFileRequest {
   const request: DesktopWorkspaceAppOpenFileRequest = { ...input };
-  if (!isRecord(payload)) {
-    return request;
+  if (input.location) {
+    request.location = { ...input.location };
   }
-
-  const location = payload.location;
-  if (isRecord(location) && typeof location.path === "string") {
-    const locationType = location.type;
-    if (
-      locationType === "app-data-relative" ||
-      locationType === "app-package-relative" ||
-      locationType === "workspace-relative"
-    ) {
-      request.location = {
-        path: location.path.trim(),
-        type: locationType
-      };
-    }
-  }
-
-  if (
-    typeof payload.packageVersion === "string" ||
-    payload.packageVersion === null
-  ) {
-    request.packageVersion = payload.packageVersion;
-  }
-
   return request;
 }

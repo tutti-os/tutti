@@ -11,6 +11,7 @@ import {
   type TuttiExternalLogInput,
   type TuttiExternalLogLevel,
   type TuttiExternalManagedAiModelProviderId,
+  type TuttiExternalOperation,
   type TuttiExternalPermissionRequestInput,
   type TuttiExternalPdfMargin,
   type TuttiExternalPdfPrintHtmlInput,
@@ -49,6 +50,35 @@ export const tuttiExternalWorkspaceFeatures = [
   "agent-chat",
   "agent-manage"
 ] as const satisfies readonly TuttiExternalWorkspaceFeature[];
+
+/**
+ * Compatibility projection for the legacy string roster returned from
+ * `app.getContext().capabilities`. The structured bridge capabilities remain
+ * authoritative; this table only groups those operations for older apps.
+ */
+export const tuttiExternalLegacyContextCapabilityFamilies = [
+  { capability: "browser.openUrl@1", operation: "browser.openUrl" },
+  { capability: "files.open@1", operation: "files.open" },
+  { capability: "files.upload@1", operation: "files.upload" },
+  { capability: "pdf.printHtmlToPdf@1", operation: "pdf.printHtmlToPdf" },
+  { capability: "userProjects@1", operation: "userProjects.getSnapshot" },
+  {
+    capability: "workspace.openFeature@1",
+    operation: "workspace.openFeature"
+  }
+] as const satisfies readonly {
+  capability: string;
+  operation: TuttiExternalOperation;
+}[];
+
+export function deriveTuttiExternalLegacyContextCapabilities(
+  operations: readonly TuttiExternalOperation[]
+): string[] {
+  const supported = new Set<TuttiExternalOperation>(operations);
+  return tuttiExternalLegacyContextCapabilityFamilies
+    .filter((entry) => supported.has(entry.operation))
+    .map((entry) => entry.capability);
+}
 
 export function limitDiagnosticText(
   value: string | undefined
@@ -151,7 +181,10 @@ export function normalizeTuttiExternalFileOpenInput(
     throw new Error("files.open path is required.");
   }
   const mode = normalizeFileOpenMode(input.mode);
+  const location = normalizeFileOpenLocation(input.location);
+  const packageVersion = normalizeFileOpenPackageVersion(input.packageVersion);
   return {
+    ...(location ? { location } : {}),
     ...(mode ? { mode } : {}),
     ...(typeof input.mtimeMs === "number" || input.mtimeMs === null
       ? { mtimeMs: input.mtimeMs }
@@ -159,11 +192,47 @@ export function normalizeTuttiExternalFileOpenInput(
     ...(typeof input.name === "string" && input.name.trim() !== ""
       ? { name: input.name.trim() }
       : {}),
+    ...(packageVersion !== undefined ? { packageVersion } : {}),
     path: input.path.trim(),
     ...(typeof input.sizeBytes === "number" || input.sizeBytes === null
       ? { sizeBytes: input.sizeBytes }
       : {})
   };
+}
+
+function normalizeFileOpenLocation(
+  value: unknown
+): TuttiExternalFileOpenInput["location"] {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error("files.open location must be an object.");
+  }
+  const path = normalizeRequiredString(value.path, "files.open location path");
+  const type = value.type;
+  if (
+    type !== "app-data-relative" &&
+    type !== "app-package-relative" &&
+    type !== "workspace-relative"
+  ) {
+    throw new Error("files.open location type is unsupported.");
+  }
+  return { path, type };
+}
+
+function normalizeFileOpenPackageVersion(
+  value: unknown
+): string | null | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(
+      "files.open packageVersion must be a non-empty string or null."
+    );
+  }
+  return value.trim();
 }
 
 export function normalizeTuttiExternalFileUploadInput(

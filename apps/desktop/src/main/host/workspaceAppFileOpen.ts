@@ -37,7 +37,7 @@ export async function resolveWorkspaceAppOpenFilePayload(input: {
   };
 }
 
-async function resolveWorkspaceAppOpenFileAbsolutePath(
+export async function resolveWorkspaceAppOpenFileAbsolutePath(
   stateRootDir: string,
   input: {
     appId: string;
@@ -50,12 +50,12 @@ async function resolveWorkspaceAppOpenFileAbsolutePath(
     throw new Error("Workspace app open file path is required.");
   }
 
-  if (isAbsolute(rawPath)) {
+  const location = input.request.location;
+  if (!location && isAbsolute(rawPath)) {
     await assertAllowedWorkspaceAppAbsolutePath(stateRootDir, input, rawPath);
     return rawPath;
   }
 
-  const location = input.request.location;
   const relativePath = location?.path?.trim() || rawPath;
   if (
     !relativePath ||

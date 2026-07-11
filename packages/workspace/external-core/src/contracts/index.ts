@@ -85,10 +85,22 @@ export interface TuttiExternalFileSelectInput {
 
 export type TuttiExternalFileSelectResult = WorkspaceFileReference[];
 
+export type TuttiExternalFileOpenLocationType =
+  | "app-data-relative"
+  | "app-package-relative"
+  | "workspace-relative";
+
+export interface TuttiExternalFileOpenLocation {
+  path: string;
+  type: TuttiExternalFileOpenLocationType;
+}
+
 export interface TuttiExternalFileOpenInput {
+  location?: TuttiExternalFileOpenLocation;
   mode?: "auto" | "preview" | "reveal";
   mtimeMs?: number | null;
   name?: string;
+  packageVersion?: string | null;
   path: string;
   sizeBytes?: number | null;
 }
