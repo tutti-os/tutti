@@ -114,7 +114,7 @@ export class WorkbenchHostSession<TUpdate, THostInput, TState> {
     const next = this.resolve(update, this.current);
     this.current = next;
     if (!hadCurrent || previousHostInput !== next.hostInput) {
-      for (const listener of this.listeners) {
+      for (const listener of Array.from(this.listeners)) {
         listener();
       }
     }

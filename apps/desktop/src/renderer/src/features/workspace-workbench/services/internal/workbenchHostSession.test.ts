@@ -64,6 +64,24 @@ test("workbench host session publishes only referential host input changes", () 
   assert.deepEqual(previousStates, [null, "first", "second"]);
 });
 
+test("workbench host session keeps one stable subscriber batch per update", () => {
+  const session = createSession(workspacePartition("workspace-1"));
+  let notificationCount = 0;
+  let unsubscribe = () => {};
+  const listener = () => {
+    notificationCount += 1;
+    unsubscribe();
+    unsubscribe = session.subscribe(listener);
+  };
+  unsubscribe = session.subscribe(listener);
+
+  session.update("first");
+  assert.equal(notificationCount, 1);
+
+  session.update("second");
+  assert.equal(notificationCount, 2);
+});
+
 test("workbench host session detaches its surface and disposes resources once", () => {
   const events: string[] = [];
   const session = createSession(workspacePartition("workspace-1"));

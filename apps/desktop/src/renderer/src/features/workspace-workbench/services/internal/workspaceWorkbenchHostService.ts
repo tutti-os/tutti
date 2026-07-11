@@ -681,6 +681,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   dispose(): void {
     this.wallpaperListeners.clear();
+    this.clearCustomWallpaperUrls();
   }
 
   private subscribeWorkbenchNodeLaunchRequests(): void {
