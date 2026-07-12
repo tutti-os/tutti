@@ -13,6 +13,7 @@ import type {
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import { markdownToPlainText } from "../lib/markdownToPlainText";
 import {
   buildAgentTurnSequenceItems,
   computeAgentToolGroups
@@ -444,7 +445,7 @@ function projectMessageCopyText(
         row.speaker === "user"
           ? copyTextForUserMessage(message)
           : assistantCopyTargetKeys.has(messageCopyTargetKey(row, message))
-            ? message.body
+            ? markdownToPlainText(message.body)
             : null;
       if ((message.copyText ?? null) === copyText) {
         return message;
