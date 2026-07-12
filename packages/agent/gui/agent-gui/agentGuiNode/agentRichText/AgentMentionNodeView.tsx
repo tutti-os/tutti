@@ -113,12 +113,18 @@ function parseDottedSessionText(
     .split("·")
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length < 3) {
+  if (parts.length < 2) {
     return null;
   }
+  if (parts.length === 2) {
+    return {
+      participant: `${parts[0]} & ${parts[1]}`,
+      summary: ""
+    };
+  }
   return {
-    participant: `${parts[0]} & ${parts[1]}`,
-    summary: normalizeSessionTitle(parts.slice(2).join(" "))
+    participant: parts.slice(0, -1).join(" & "),
+    summary: normalizeSessionTitle(parts[parts.length - 1]!)
   };
 }
 
@@ -137,8 +143,11 @@ function sessionPresentation(attrs: Record<string, unknown>): {
     return {
       // i18n-check-ignore: Dynamic participant display names.
       label: `${initiatorName} & ${agentName}`,
-      summary:
-        dottedTitle?.summary || (title && title !== name ? title : inputPreview)
+      summary: dottedTitle
+        ? dottedTitle.summary
+        : title && title !== name
+          ? title
+          : inputPreview
     };
   }
 
