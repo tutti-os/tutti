@@ -98,7 +98,7 @@ export function ExternalAgentSessionImportWizard({
     () => (initialProviders ?? []).join("\n"),
     [initialProviders]
   );
-  // Requests are not aborted on close (see isExternalImportWizardBusy), so a
+  // Requests are not aborted on close, so a
   // scan started in a previous dialog lifecycle can settle after the wizard
   // was reset or a newer scan began. Every reset and every new scan bumps this
   // generation; in-flight continuations compare against it before applying
@@ -389,7 +389,7 @@ export function ExternalAgentSessionImportWizard({
                 archive={archiveMode}
                 result={result}
               />
-            ) : error ? (
+            ) : error && step === "select" ? (
               <CenteredExternalAgentSessionImportState
                 ariaLive="assertive"
                 icon={<RefreshIcon className="size-5" />}
@@ -397,15 +397,28 @@ export function ExternalAgentSessionImportWizard({
                 text={error}
               />
             ) : (
-              <ExternalAgentSessionImportSourceStep
-                disabled={loading || importing}
-                providers={externalImportProviderOptions}
-                selectedProviders={selectedProviders}
-                onToggle={toggleProvider}
-                onSelectArchive={() => {
-                  void handleSelectArchive();
-                }}
-              />
+              <>
+                {error ? (
+                  // Picker failures surface inline so the provider and
+                  // archive controls stay reachable for an immediate retry.
+                  <p
+                    aria-live="assertive"
+                    className="mb-3 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"
+                    role="alert"
+                  >
+                    {error}
+                  </p>
+                ) : null}
+                <ExternalAgentSessionImportSourceStep
+                  disabled={loading || importing}
+                  providers={externalImportProviderOptions}
+                  selectedProviders={selectedProviders}
+                  onToggle={toggleProvider}
+                  onSelectArchive={() => {
+                    void handleSelectArchive();
+                  }}
+                />
+              </>
             )}
           </div>
         )}

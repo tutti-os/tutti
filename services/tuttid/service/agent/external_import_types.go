@@ -4,7 +4,9 @@ type ExternalImportScanInput struct {
 	Providers []string
 	// Days limits the scan window to conversations updated within the last N
 	// days. 0 keeps the default 30-day window; a negative value scans all
-	// available history.
+	// available history. Archive scans (ArchivePath set) are the exception:
+	// the export is a complete snapshot, so 0 also scans the full archive and
+	// only an explicit positive value narrows the window.
 	Days int
 	// ArchivePath selects a supported provider data-export ZIP instead of the
 	// provider's local CLI transcript directory.
