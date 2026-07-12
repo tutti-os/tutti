@@ -1,4 +1,5 @@
-import { useMemo, useState, type JSX } from "react";
+import { useCallback, useMemo, useRef, useState, type JSX } from "react";
+import { Check, Copy } from "lucide-react";
 import { translate } from "../../../../../i18n/index";
 import { AgentPathTailLabel } from "../AgentPathTailLabel";
 
@@ -21,12 +22,41 @@ export function AgentCodeBlock({
 }): JSX.Element | null {
   "use memo";
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const normalized = content.trimEnd();
   const lines = useMemo(
     () => (normalized ? normalized.split("\n") : []),
     [normalized]
   );
   const lineCount = lines.length;
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard?.writeText(normalized).then(() => {
+      setCopied(true);
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current);
+      }
+      copyResetRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  }, [normalized]);
+
+  const copyButton = (
+    <button
+      type="button"
+      data-testid="agent-code-block-copy"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)]"
+      aria-label={translate("agentHost.agentGui.copyCode")}
+      title={translate("agentHost.agentGui.copyCode")}
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <Check size={13} strokeWidth={2} aria-hidden="true" />
+      ) : (
+        <Copy size={13} strokeWidth={2} aria-hidden="true" />
+      )}
+    </button>
+  );
   const truncated = collapsible && !expanded && lineCount > MAX_VISIBLE_LINES;
   const visibleContent = truncated
     ? lines.slice(0, MAX_VISIBLE_LINES).join("\n")
@@ -80,6 +110,7 @@ export function AgentCodeBlock({
               <span className="shrink-0 font-semibold text-[var(--state-success)]">
                 +{addedCount}
               </span>
+              {copyButton}
             </div>
           ) : null}
           <div className="workspace-agents-status-panel__detail-scroll-region max-h-[240px] overflow-auto bg-[var(--background-panel)]">
@@ -112,6 +143,7 @@ export function AgentCodeBlock({
                 {language ? `${language} · ` : ""}
                 {lineCount} lines
               </span>
+              {copyButton}
             </div>
           ) : null}
           <pre className="workspace-agents-status-panel__detail-scroll-region max-h-[200px] overflow-auto px-3 py-2 text-[11px] leading-5 text-[var(--text-primary)]">
