@@ -505,6 +505,19 @@ export function createAgentFileMentionExtension(
             if (options.shouldSuppressSuggestion?.()) {
               return false;
             }
+            const query = state.doc.textBetween(
+              range.from,
+              range.to,
+              "\n",
+              "\n"
+            );
+            // Dismiss the mention palette when the user types whitespace
+            // immediately after @ without any non-whitespace query. This lets
+            // them continue typing regular text instead of being trapped in the
+            // suggestion until they press Escape or select an item.
+            if (query.trim().length === 0 && query.length > 0) {
+              return false;
+            }
             if (range.from <= 1) {
               return true;
             }

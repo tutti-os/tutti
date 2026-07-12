@@ -2271,6 +2271,11 @@ export function AgentComposer({
       }
       if (target.closest(MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR)) {
         closeOpenPalette();
+        return;
+      }
+      const paletteContent = paletteContentRef.current;
+      if (paletteContent && !paletteContent.contains(target)) {
+        closeOpenPalette();
       }
     };
     const handleWindowResize = (): void => {

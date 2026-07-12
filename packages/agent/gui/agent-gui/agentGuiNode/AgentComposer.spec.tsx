@@ -208,7 +208,8 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
         ref
       ) => {
         React.useEffect(() => {
-          if (!value.startsWith("@")) {
+          if (!value.startsWith("@") || /^[@]\s/.test(value)) {
+            onFileMentionSuggestionChange?.(null);
             return;
           }
           onFileMentionSuggestionChange?.({
@@ -5032,6 +5033,110 @@ describe("AgentComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
 
     await waitFor(() => expect(draftContent.prompt).toBe("@"));
+  });
+
+  it("dismisses the mention palette when clicking outside", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
+    await waitFor(() => expect(draftContent.prompt).toBe("@"));
+    expect(
+      screen.getByTestId("agent-gui-mention-palette-surface")
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("agent-gui-mention-palette-surface")
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it("dismisses the mention palette when typing whitespace after @", async () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提及上下文" }));
+    await waitFor(() => expect(draftContent.prompt).toBe("@"));
+    expect(
+      screen.getByTestId("agent-gui-mention-palette-surface")
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "@ " } });
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("agent-gui-mention-palette-surface")
+      ).not.toBeInTheDocument()
+    );
   });
 
   it("renders controlled text and image draft content", () => {
