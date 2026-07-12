@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 
 // Three.js scene behind the empty-hero agent carousel, modelled after
 // animos.app's "Wheel Carousel": same-sized flat tiles ride the rim of a
@@ -31,6 +32,9 @@ const SPRING_SETTLE_EPSILON = 0.001;
 const SPRING_SETTLE_VELOCITY = 0.02;
 const TEXTURE_SIZE = 256;
 const TEXTURE_CORNER_RADIUS = 0.05;
+const BADGE_CORNER_RADIUS = 0.5;
+const BADGE_DIAMETER = 0.36;
+const BADGE_OFFSET = 0.4;
 const MAX_PIXEL_RATIO = 2;
 
 // Signed ring offset of tile `index` for a continuous scroll position, in
@@ -53,14 +57,15 @@ function ringOffset(index: number, scroll: number, count: number): number {
 // rounded tiles without custom shaders.
 function roundedIconTexture(
   image: HTMLImageElement,
-  onReadyRender: () => void
+  onReadyRender: () => void,
+  cornerRadius = TEXTURE_CORNER_RADIUS
 ): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = TEXTURE_SIZE;
   canvas.height = TEXTURE_SIZE;
   const context = canvas.getContext("2d");
   if (context) {
-    const radius = TEXTURE_SIZE * TEXTURE_CORNER_RADIUS;
+    const radius = TEXTURE_SIZE * cornerRadius;
     context.beginPath();
     context.roundRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE, radius);
     context.clip();
@@ -88,11 +93,12 @@ function roundedIconTexture(
 
 interface AgentGuiHeroCarouselTile {
   mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  badgeMesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
 }
 
 export interface AgentGuiHeroCarouselSceneOptions {
   canvas: HTMLCanvasElement;
-  iconUrls: readonly string[];
+  items: readonly AgentGUIAgentAvatarPresentation[];
   loadedImages?: readonly (HTMLImageElement | null)[];
   // Fired once the wheel settles on an integer slot after an animated move.
   onSettle: (index: number) => void;
@@ -132,7 +138,7 @@ export class AgentGuiHeroCarouselScene {
   private disposed = false;
 
   private constructor(options: AgentGuiHeroCarouselSceneOptions) {
-    this.agentCount = options.iconUrls.length;
+    this.agentCount = options.items.length;
     const repeats = Math.max(
       1,
       Math.round(WHEEL_TARGET_SLOTS / Math.max(this.agentCount, 1))
@@ -162,10 +168,22 @@ export class AgentGuiHeroCarouselScene {
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData.agentIndex = slot % this.agentCount;
+      const badgeMaterial = new THREE.MeshBasicMaterial({
+        transparent: true,
+        depthWrite: false,
+        visible: false
+      });
+      const badgeMesh = new THREE.Mesh(
+        new THREE.CircleGeometry(BADGE_DIAMETER / 2, 32),
+        badgeMaterial
+      );
+      badgeMesh.position.set(BADGE_OFFSET, -BADGE_OFFSET, 0.01);
+      badgeMesh.userData.agentIndex = slot % this.agentCount;
+      mesh.add(badgeMesh);
       this.scene.add(mesh);
-      this.tiles.push({ mesh });
+      this.tiles.push({ badgeMesh, mesh });
     }
-    options.iconUrls.forEach((iconUrl, agentIndex) => {
+    options.items.forEach((item, agentIndex) => {
       const loadedImage = options.loadedImages?.[agentIndex] ?? null;
       const image = loadedImage ?? new Image();
       if (!loadedImage) {
@@ -184,7 +202,10 @@ export class AgentGuiHeroCarouselScene {
       if (image.complete && image.naturalWidth > 0) {
         this.applyImageTexture(image, agentIndex);
       } else if (!loadedImage) {
-        image.src = iconUrl;
+        image.src = item.iconUrl;
+      }
+      if (item.badge?.iconUrl) {
+        this.loadBadgeImage(item.badge.iconUrl, agentIndex);
       }
     });
 
@@ -271,7 +292,11 @@ export class AgentGuiHeroCarouselScene {
         (tile) =>
           tile.mesh.material.visible && tile.mesh.material.opacity > 0.05
       )
-      .map((tile) => tile.mesh);
+      .flatMap((tile) =>
+        tile.badgeMesh.material.visible
+          ? [tile.mesh, tile.badgeMesh]
+          : [tile.mesh]
+      );
     const hit = this.raycaster.intersectObjects(meshes, false)[0];
     const index = hit?.object.userData.agentIndex;
     return typeof index === "number" ? index : null;
@@ -294,6 +319,9 @@ export class AgentGuiHeroCarouselScene {
       tile.mesh.geometry.dispose();
       tile.mesh.material.map?.dispose();
       tile.mesh.material.dispose();
+      tile.badgeMesh.geometry.dispose();
+      tile.badgeMesh.material.map?.dispose();
+      tile.badgeMesh.material.dispose();
     }
     // Do NOT force a context loss here: React StrictMode replays the mount
     // effect on the SAME canvas element, and a forced loss would hand the
@@ -385,6 +413,33 @@ export class AgentGuiHeroCarouselScene {
     }
   }
 
+  private loadBadgeImage(badgeUrl: string, agentIndex: number): void {
+    const image = new Image();
+    image.decoding = "async";
+    image.loading = "eager";
+    this.ownedImages.add(image);
+    this.images.push(image);
+    image.onload = () => {
+      if (this.disposed) {
+        return;
+      }
+      const texture = roundedIconTexture(
+        image,
+        () => this.requestRender(),
+        BADGE_CORNER_RADIUS
+      );
+      for (const tile of this.tiles) {
+        if (tile.mesh.userData.agentIndex === agentIndex) {
+          tile.badgeMesh.material.map = texture;
+          tile.badgeMesh.material.visible = true;
+          tile.badgeMesh.material.needsUpdate = true;
+        }
+      }
+      this.requestRender();
+    };
+    image.src = badgeUrl;
+  }
+
   private applyPoses(): void {
     const step = (Math.PI * 2) / Math.max(this.tileCount, 1);
     this.tiles.forEach((tile, index) => {
@@ -403,6 +458,7 @@ export class AgentGuiHeroCarouselScene {
       const focus = THREE.MathUtils.clamp(1 - Math.abs(offset), 0, 1);
       tile.mesh.material.opacity =
         UNFOCUSED_OPACITY + (1 - UNFOCUSED_OPACITY) * focus;
+      tile.badgeMesh.material.opacity = tile.mesh.material.opacity;
     });
   }
 }

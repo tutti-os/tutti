@@ -1569,6 +1569,16 @@ The public directory entry owns its presentation and availability:
 - use `agentTargetId` as the opaque activity-core composer `targetKey`; never
   derive a cache key from provider
 
+The package-internal normalized target vocabulary is
+`AgentGUIAgentTarget` / `agentTargets`. Do not reintroduce
+`AgentGUIProviderTarget` or `providerTargets`: provider is execution metadata,
+while `agentTargetId` is selection and launch identity. Agent avatar chrome is
+projected once from an agent target into a shared avatar presentation containing
+the resolved icon, label, and optional owner badge. The DOM rail, single-agent
+empty state, and WebGL empty-home carousel consume that same presentation;
+renderer adapters may differ, but they must not create parallel icon-only
+models that can silently discard badge or identity fields.
+
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is
 available. They must not synthesize `local:<provider>` from a provider-only

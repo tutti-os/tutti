@@ -26,7 +26,7 @@ import type {
   AgentGUINodeData,
   AgentGUIProvider,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget,
+  AgentGUIAgentTarget,
   NodeFrame,
   Point
 } from "../../types";
@@ -524,13 +524,13 @@ function resolveAgentGUIRailStatusProvider(input: {
   conversationFilter: ReturnType<
     typeof useAgentGUINodeController
   >["viewModel"]["conversationFilter"];
-  providerTargets: readonly AgentGUIProviderTarget[];
+  agentTargets: readonly AgentGUIAgentTarget[];
 }): AgentProvider | null {
   const filter = input.conversationFilter;
   if (filter.kind !== "agentTarget") {
     return null;
   }
-  const target = input.providerTargets.find(
+  const target = input.agentTargets.find(
     (candidate) =>
       candidate.disabled !== true &&
       (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId
@@ -988,8 +988,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     data: state,
     openSessionRequest,
     prefillPromptRequest,
-    providerTargets: internalAgentTargets,
-    providerTargetsLoading: agentsLoading,
+    agentTargets: internalAgentTargets,
+    agentTargetsLoading: agentsLoading,
     providerReadinessGates: internalProviderReadinessGates,
     defaultAgentTargetId: defaultAgentTargetId,
     previewMode,
@@ -1029,13 +1029,13 @@ export const AgentGUINode = memo(function AgentGUINode({
   const activeReadinessProvider =
     viewModel.activeConversationId !== null
       ? activeProvider
-      : viewModel.selectedProviderTarget.provider;
-  const selectedProviderTargetLabel =
-    viewModel.selectedProviderTarget?.label ??
+      : viewModel.selectedAgentTarget.provider;
+  const selectedAgentTargetLabel =
+    viewModel.selectedAgentTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
   const displayProviderLabel = viewModel.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
-    : selectedProviderTargetLabel;
+    : selectedAgentTargetLabel;
   const activeConversationDockTitle = viewModel.activeConversation
     ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
     : null;
@@ -1714,9 +1714,9 @@ export const AgentGUINode = memo(function AgentGUINode({
     () =>
       resolveAgentGUIRailStatusProvider({
         conversationFilter: viewModel.conversationFilter,
-        providerTargets: viewModel.providerTargets
+        agentTargets: viewModel.agentTargets
       }),
-    [viewModel.conversationFilter, viewModel.providerTargets]
+    [viewModel.conversationFilter, viewModel.agentTargets]
   );
   const activeAgentProbe = useMemo(
     () =>

@@ -79,7 +79,7 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.TuttiAgent),
 			Name:            "Tutti Agent",
 			IconKey:         "tutti-agent",
-			Enabled:         true,
+			Enabled:         false,
 			Source:          SourceSystem,
 			SortOrder:       30,
 			CreatedAtUnixMS: nowUnixMS,

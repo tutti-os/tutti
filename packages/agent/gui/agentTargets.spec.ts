@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentGUIProviderTargetRefsEqual,
-  createLocalAgentGUIProviderTarget,
-  createLocalAgentGUIProviderTargets,
-  createSharedAgentGUIProviderTarget,
-  normalizeAgentGUIProviderTargets,
-  resolveAgentGUIProviderTarget
-} from "./providerTargets";
+  agentGUIAgentTargetRefsEqual,
+  createLocalAgentGUIAgentTarget,
+  createLocalAgentGUIAgentTargets,
+  createSharedAgentGUIAgentTarget,
+  normalizeAgentGUIAgentTargets,
+  resolveAgentGUIAgentTarget
+} from "./agentTargets";
 
-describe("agent gui provider targets", () => {
+describe("agent gui agent targets", () => {
   it("creates local targets for the default provider catalog", () => {
-    expect(createLocalAgentGUIProviderTarget("codex")).toEqual({
+    expect(createLocalAgentGUIAgentTarget("codex")).toEqual({
       targetId: "local:codex",
       agentTargetId: "local:codex",
       provider: "codex",
@@ -21,7 +21,7 @@ describe("agent gui provider targets", () => {
       label: "Codex"
     });
     expect(
-      createLocalAgentGUIProviderTargets().map((target) => target.targetId)
+      createLocalAgentGUIAgentTargets().map((target) => target.targetId)
     ).toEqual([
       "local:codex",
       "local:claude-code",
@@ -31,22 +31,22 @@ describe("agent gui provider targets", () => {
       "local:hermes",
       "local:openclaw"
     ]);
-    expect(createLocalAgentGUIProviderTarget("cursor")).toMatchObject({
+    expect(createLocalAgentGUIAgentTarget("cursor")).toMatchObject({
       agentTargetId: "local:cursor",
       label: "Cursor",
       provider: "cursor"
     });
-    expect(createLocalAgentGUIProviderTarget("nexight")).toMatchObject({
+    expect(createLocalAgentGUIAgentTarget("nexight")).toMatchObject({
       agentTargetId: "local:nexight",
       label: "Tutti Agent",
       provider: "nexight"
     });
-    expect(createLocalAgentGUIProviderTarget("hermes")).toMatchObject({
+    expect(createLocalAgentGUIAgentTarget("hermes")).toMatchObject({
       agentTargetId: "local:hermes",
       label: "Hermes",
       provider: "hermes"
     });
-    expect(createLocalAgentGUIProviderTarget("openclaw")).toMatchObject({
+    expect(createLocalAgentGUIAgentTarget("openclaw")).toMatchObject({
       agentTargetId: "local:openclaw",
       label: "OpenClaw",
       provider: "openclaw"
@@ -54,10 +54,10 @@ describe("agent gui provider targets", () => {
   });
 
   it("can append disabled placeholder targets for unavailable future providers", () => {
-    const targets = normalizeAgentGUIProviderTargets(
+    const targets = normalizeAgentGUIAgentTargets(
       [
-        createLocalAgentGUIProviderTarget("codex"),
-        createLocalAgentGUIProviderTarget("claude-code")
+        createLocalAgentGUIAgentTarget("codex"),
+        createLocalAgentGUIAgentTarget("claude-code")
       ],
       {
         includeDisabledPlaceholders: true,
@@ -101,11 +101,11 @@ describe("agent gui provider targets", () => {
   });
 
   it("treats nullish provider target refs as equal", () => {
-    expect(agentGUIProviderTargetRefsEqual(undefined, null)).toBe(true);
+    expect(agentGUIAgentTargetRefsEqual(undefined, null)).toBe(true);
   });
 
   it("keeps host-owned opaque target refs without interpreting kind", () => {
-    const targets = normalizeAgentGUIProviderTargets([
+    const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "shared-agent:agent-1",
         provider: "codex",
@@ -134,7 +134,7 @@ describe("agent gui provider targets", () => {
 
   it("creates shared agent targets with owner and availability metadata", () => {
     expect(
-      createSharedAgentGUIProviderTarget({
+      createSharedAgentGUIAgentTarget({
         provider: "codex",
         sharedAgentId: " agent-1 ",
         agentTargetId: " cp-target-1 ",
@@ -174,7 +174,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("drops whitespace-only optional target metadata during normalization", () => {
-    const [target] = normalizeAgentGUIProviderTargets(
+    const [target] = normalizeAgentGUIAgentTargets(
       [
         {
           targetId: " shared-agent:agent-1 ",
@@ -211,7 +211,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("keeps same target ids for different real providers", () => {
-    const targets = normalizeAgentGUIProviderTargets([
+    const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "default",
         provider: "codex",
@@ -242,7 +242,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("marks future providers disabled in the static provider catalog", () => {
-    const targets = normalizeAgentGUIProviderTargets(undefined, {
+    const targets = normalizeAgentGUIAgentTargets(undefined, {
       includeDisabledPlaceholders: true
     });
 
@@ -263,7 +263,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("can normalize explicit targets without static catalog targets", () => {
-    const targets = normalizeAgentGUIProviderTargets([], {
+    const targets = normalizeAgentGUIAgentTargets([], {
       useStaticCatalog: false
     });
 
@@ -271,7 +271,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("rejects targets whose ref provider does not match the real provider", () => {
-    const targets = normalizeAgentGUIProviderTargets([
+    const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "shared-agent:agent-1",
         provider: "codex",
@@ -291,7 +291,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("resolves targets only within the selected real provider", () => {
-    const targets = normalizeAgentGUIProviderTargets([
+    const targets = normalizeAgentGUIAgentTargets([
       {
         targetId: "shared-agent:codex-1",
         provider: "codex",
@@ -315,11 +315,10 @@ describe("agent gui provider targets", () => {
     ]);
 
     expect(
-      resolveAgentGUIProviderTarget({
-        defaultProviderTargetId: "shared-agent:claude-1",
+      resolveAgentGUIAgentTarget({
+        defaultAgentTargetId: "shared-agent:claude-1",
         provider: "codex",
-        providerTargetId: "shared-agent:missing",
-        providerTargets: targets
+        agentTargets: targets
       })
     ).toMatchObject({
       targetId: "shared-agent:codex-1",
@@ -328,7 +327,7 @@ describe("agent gui provider targets", () => {
   });
 
   it("resolves agent target ids across providers before using provider fallback", () => {
-    const targets = normalizeAgentGUIProviderTargets(
+    const targets = normalizeAgentGUIAgentTargets(
       [
         {
           targetId: "local:codex",
@@ -355,10 +354,10 @@ describe("agent gui provider targets", () => {
     );
 
     expect(
-      resolveAgentGUIProviderTarget({
+      resolveAgentGUIAgentTarget({
         agentTargetId: "local:claude-code",
         provider: "codex",
-        providerTargets: targets
+        agentTargets: targets
       })
     ).toMatchObject({
       agentTargetId: "local:claude-code",

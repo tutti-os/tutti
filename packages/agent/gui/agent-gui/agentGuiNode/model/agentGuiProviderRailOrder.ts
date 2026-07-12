@@ -1,4 +1,4 @@
-import type { AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIAgentTarget } from "../../../types";
 
 const AGENT_GUI_PROVIDER_RAIL_ORDER_STORAGE_PREFIX =
   "agent-gui:provider-rail-order:";
@@ -53,7 +53,7 @@ export function sanitizeAgentGUIProviderRailOrder(
 }
 
 export function applyAgentGUIProviderRailOrder<
-  T extends Pick<AgentGUIProviderTarget, "targetId">
+  T extends Pick<AgentGUIAgentTarget, "targetId">
 >(targets: readonly T[], order: readonly string[]): readonly T[] {
   const knownOrder = sanitizeAgentGUIProviderRailOrder(order);
   if (knownOrder.length === 0 || targets.length <= 1) {

@@ -48,7 +48,11 @@ func (f fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, e
 }
 
 func enabledTestAgentTargets() fakeAgentTargetLister {
-	return fakeAgentTargetLister{targets: agenttargetbiz.DefaultSystemTargets(1)}
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	for index := range targets {
+		targets[index].Enabled = true
+	}
+	return fakeAgentTargetLister{targets: targets}
 }
 
 func (f fakeDesktopPreferencesReader) Get(context.Context) (preferencesbiz.DesktopPreferences, error) {
@@ -985,6 +989,7 @@ func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 func TestProvidersCommandUsesEnabledTargetOrderAndStructuredAvailability(t *testing.T) {
 	targets := agenttargetbiz.DefaultSystemTargets(1)
 	targets[0].Enabled = false
+	targets[2].Enabled = true
 	targets = []agenttargetbiz.Target{targets[2], targets[1], targets[0]}
 	sessions := &fakeAgentSessions{availability: []agentservice.ProviderAvailability{
 		availableProvider("claude-code"),

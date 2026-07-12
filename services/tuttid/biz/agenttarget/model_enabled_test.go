@@ -2,10 +2,25 @@ package agenttarget
 
 import "testing"
 
+func TestDefaultSystemTargetsDisableTuttiAgent(t *testing.T) {
+	targets := DefaultSystemTargets(1)
+	for _, target := range targets {
+		if target.ID != IDLocalTuttiAgent {
+			continue
+		}
+		if target.Enabled {
+			t.Fatal("Tutti Agent target is enabled by default, want disabled")
+		}
+		return
+	}
+	t.Fatalf("Tutti Agent target %q was not seeded", IDLocalTuttiAgent)
+}
+
 func TestEnabledTargetsByProviderPreservesOrderAndCanonicalizes(t *testing.T) {
 	targets := DefaultSystemTargets(1)
 	targets[0].Provider = "CODEX"
 	targets[1].Enabled = false
+	targets[2].Enabled = true
 	duplicate := targets[0]
 	duplicate.ID = "user:codex"
 	duplicate.Name = "Other Codex"

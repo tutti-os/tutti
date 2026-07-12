@@ -1,11 +1,11 @@
 import type {
   AgentGUIProvider,
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetBadge,
-  AgentGUIProviderTargetRef
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetBadge,
+  AgentGUIAgentTargetRef
 } from "./types.ts";
 
-const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
+const agentGUIAgentTargetStaticLabels: Record<AgentGUIProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
@@ -31,10 +31,10 @@ const agentGUIDisabledPlaceholderProviders = [
   "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 
-export function createLocalAgentGUIProviderTarget(
+export function createLocalAgentGUIAgentTarget(
   provider: AgentGUIProvider
-): AgentGUIProviderTarget {
-  const targetId = localAgentGUIProviderTargetId(provider);
+): AgentGUIAgentTarget {
+  const targetId = localAgentGUIAgentTargetId(provider);
   const agentTargetId = localAgentGUIAgentTargetId(provider);
   return {
     targetId,
@@ -44,34 +44,34 @@ export function createLocalAgentGUIProviderTarget(
       kind: "local",
       provider
     },
-    label: agentGUIProviderTargetStaticLabels[provider] ?? provider
+    label: agentGUIAgentTargetStaticLabels[provider] ?? provider
   };
 }
 
-export function createDisabledPlaceholderAgentGUIProviderTarget(
+export function createDisabledPlaceholderAgentGUIAgentTarget(
   provider: AgentGUIProvider
-): AgentGUIProviderTarget {
+): AgentGUIAgentTarget {
   return {
-    ...createLocalAgentGUIProviderTarget(provider),
+    ...createLocalAgentGUIAgentTarget(provider),
     disabled: true
   };
 }
 
-export function createSharedAgentGUIProviderTarget(input: {
+export function createSharedAgentGUIAgentTarget(input: {
   provider: AgentGUIProvider;
   sharedAgentId: string;
   label: string;
   agentTargetId?: string | null;
-  badge?: AgentGUIProviderTargetBadge | null;
+  badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string | null;
   iconUrl?: string | null;
   unavailableReason?: string | null;
   disabled?: boolean;
   ref?: Record<string, unknown> | null;
-}): AgentGUIProviderTarget {
+}): AgentGUIAgentTarget {
   const sharedAgentId = input.sharedAgentId.trim();
   const targetId = `shared-agent:${sharedAgentId}`;
-  const badge = normalizeAgentGUIProviderTargetBadge(input.badge);
+  const badge = normalizeAgentGUIAgentTargetBadge(input.badge);
   return {
     targetId,
     ...(input.agentTargetId?.trim()
@@ -97,18 +97,16 @@ export function createSharedAgentGUIProviderTarget(input: {
   };
 }
 
-export function createLocalAgentGUIProviderTargets(
+export function createLocalAgentGUIAgentTargets(
   providers: readonly AgentGUIProvider[] = agentGUIDefaultTargetProviders
-): AgentGUIProviderTarget[] {
-  return providers.map((provider) =>
-    createLocalAgentGUIProviderTarget(provider)
-  );
+): AgentGUIAgentTarget[] {
+  return providers.map((provider) => createLocalAgentGUIAgentTarget(provider));
 }
 
-function createStaticAgentGUIProviderTargets(
+function createStaticAgentGUIAgentTargets(
   providers: readonly AgentGUIProvider[] = agentGUIDefaultTargetProviders,
   options?: { includeDisabledPlaceholders?: boolean }
-): AgentGUIProviderTarget[] {
+): AgentGUIAgentTarget[] {
   const disabledProviders = new Set<AgentGUIProvider>(
     options?.includeDisabledPlaceholders === true
       ? agentGUIDisabledPlaceholderProviders
@@ -116,58 +114,31 @@ function createStaticAgentGUIProviderTargets(
   );
   return providers.map((provider) =>
     disabledProviders.has(provider)
-      ? createDisabledPlaceholderAgentGUIProviderTarget(provider)
-      : createLocalAgentGUIProviderTarget(provider)
+      ? createDisabledPlaceholderAgentGUIAgentTarget(provider)
+      : createLocalAgentGUIAgentTarget(provider)
   );
 }
 
-export function localAgentGUIProviderTargetId(
-  provider: AgentGUIProvider
-): string {
+export function localAgentGUIAgentTargetId(provider: AgentGUIProvider): string {
   return `local:${provider}`;
 }
 
-export function localAgentGUIAgentTargetId(
-  provider: AgentGUIProvider
-): string | null {
-  switch (provider) {
-    case "codex":
-      return "local:codex";
-    case "claude-code":
-      return "local:claude-code";
-    case "tutti-agent":
-      return "local:tutti-agent";
-    case "cursor":
-      return "local:cursor";
-    case "hermes":
-      return "local:hermes";
-    case "nexight":
-      return "local:nexight";
-    case "openclaw":
-      return "local:openclaw";
-    case "opencode":
-      return "local:opencode";
-    default:
-      return null;
-  }
-}
-
-export function normalizeAgentGUIProviderTargets(
-  targets: readonly AgentGUIProviderTarget[] | null | undefined,
+export function normalizeAgentGUIAgentTargets(
+  targets: readonly AgentGUIAgentTarget[] | null | undefined,
   options?: {
     includeDisabledPlaceholders?: boolean;
     useStaticCatalog?: boolean;
   }
-): AgentGUIProviderTarget[] {
+): AgentGUIAgentTarget[] {
   const includeDisabledPlaceholders =
     options?.includeDisabledPlaceholders === true;
   const useStaticCatalog = options?.useStaticCatalog !== false;
   const source = targets && targets.length > 0 ? targets : [];
-  const normalizedTargets: AgentGUIProviderTarget[] = [];
+  const normalizedTargets: AgentGUIAgentTarget[] = [];
   const seenTargetKeys = new Set<string>();
   const seenProviders = new Set<AgentGUIProvider>();
   for (const target of source) {
-    const normalized = normalizeAgentGUIProviderTarget(target);
+    const normalized = normalizeAgentGUIAgentTarget(target);
     if (!normalized) {
       continue;
     }
@@ -185,27 +156,26 @@ export function normalizeAgentGUIProviderTargets(
         continue;
       }
       normalizedTargets.push(
-        createDisabledPlaceholderAgentGUIProviderTarget(provider)
+        createDisabledPlaceholderAgentGUIAgentTarget(provider)
       );
     }
   }
   return normalizedTargets.length > 0 || !useStaticCatalog
     ? normalizedTargets
-    : createStaticAgentGUIProviderTargets(undefined, {
+    : createStaticAgentGUIAgentTargets(undefined, {
         includeDisabledPlaceholders
       });
 }
 
-export function resolveAgentGUIProviderTarget(input: {
+export function resolveAgentGUIAgentTarget(input: {
   agentTargetId?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   provider: AgentGUIProvider;
-  providerTargetId?: string | null;
-  providerTargets: readonly AgentGUIProviderTarget[];
+  agentTargets: readonly AgentGUIAgentTarget[];
   useStaticCatalog?: boolean;
-}): AgentGUIProviderTarget | null {
+}): AgentGUIAgentTarget | null {
   const targetByAgentTargetId = new Map(
-    input.providerTargets.flatMap((target) =>
+    input.agentTargets.flatMap((target) =>
       target.agentTargetId ? [[target.agentTargetId, target] as const] : []
     )
   );
@@ -215,27 +185,26 @@ export function resolveAgentGUIProviderTarget(input: {
   if (agentTarget) {
     return agentTarget;
   }
-  const providerTargets = input.providerTargets.filter(
+  const agentTargets = input.agentTargets.filter(
     (target) => target.provider === input.provider
   );
   const targetById = new Map(
-    providerTargets.map((target) => [target.targetId, target])
+    agentTargets.map((target) => [target.targetId, target])
   );
   return (
-    targetById.get(input.providerTargetId?.trim() ?? "") ??
-    targetById.get(input.defaultProviderTargetId?.trim() ?? "") ??
-    targetById.get(localAgentGUIProviderTargetId(input.provider)) ??
-    providerTargets.find((target) => target.disabled !== true) ??
-    providerTargets[0] ??
+    targetById.get(input.defaultAgentTargetId?.trim() ?? "") ??
+    targetById.get(localAgentGUIAgentTargetId(input.provider)) ??
+    agentTargets.find((target) => target.disabled !== true) ??
+    agentTargets[0] ??
     (input.useStaticCatalog === false
       ? null
-      : createLocalAgentGUIProviderTarget(input.provider))
+      : createLocalAgentGUIAgentTarget(input.provider))
   );
 }
 
-export function agentGUIProviderTargetRefsEqual(
-  left: AgentGUIProviderTargetRef | null | undefined,
-  right: AgentGUIProviderTargetRef | null | undefined
+export function agentGUIAgentTargetRefsEqual(
+  left: AgentGUIAgentTargetRef | null | undefined,
+  right: AgentGUIAgentTargetRef | null | undefined
 ): boolean {
   if (left === right) {
     return true;
@@ -246,12 +215,12 @@ export function agentGUIProviderTargetRefsEqual(
   if (!left || !right) {
     return false;
   }
-  return stableProviderTargetRefKey(left) === stableProviderTargetRefKey(right);
+  return stableAgentTargetRefKey(left) === stableAgentTargetRefKey(right);
 }
 
-function normalizeAgentGUIProviderTarget(
-  target: AgentGUIProviderTarget
-): AgentGUIProviderTarget | null {
+function normalizeAgentGUIAgentTarget(
+  target: AgentGUIAgentTarget
+): AgentGUIAgentTarget | null {
   const {
     targetId: _targetId,
     agentTargetId: _agentTargetId,
@@ -273,7 +242,7 @@ function normalizeAgentGUIProviderTarget(
   if (!targetId || !label || !kind || target.ref.provider !== target.provider) {
     return null;
   }
-  const normalizedBadge = normalizeAgentGUIProviderTargetBadge(badge);
+  const normalizedBadge = normalizeAgentGUIAgentTargetBadge(badge);
   return {
     ...rest,
     targetId,
@@ -295,9 +264,9 @@ function normalizeAgentGUIProviderTarget(
   };
 }
 
-function normalizeAgentGUIProviderTargetBadge(
-  badge: AgentGUIProviderTargetBadge | null | undefined
-): AgentGUIProviderTargetBadge | null {
+function normalizeAgentGUIAgentTargetBadge(
+  badge: AgentGUIAgentTargetBadge | null | undefined
+): AgentGUIAgentTargetBadge | null {
   const iconUrl = badge?.iconUrl?.trim() ?? "";
   if (!iconUrl) {
     return null;
@@ -309,13 +278,13 @@ function normalizeAgentGUIProviderTargetBadge(
   };
 }
 
-function stableProviderTargetRefKey(ref: AgentGUIProviderTargetRef): string {
-  return JSON.stringify(sortProviderTargetRefValue(ref));
+function stableAgentTargetRefKey(ref: AgentGUIAgentTargetRef): string {
+  return JSON.stringify(sortAgentTargetRefValue(ref));
 }
 
-function sortProviderTargetRefValue(value: unknown): unknown {
+function sortAgentTargetRefValue(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map(sortProviderTargetRefValue);
+    return value.map(sortAgentTargetRefValue);
   }
   if (!value || typeof value !== "object") {
     return value;
@@ -323,6 +292,6 @@ function sortProviderTargetRefValue(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => [key, sortProviderTargetRefValue(entryValue)])
+      .map(([key, entryValue]) => [key, sortAgentTargetRefValue(entryValue)])
   );
 }

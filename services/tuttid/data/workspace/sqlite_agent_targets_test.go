@@ -39,7 +39,11 @@ func TestSQLiteStoreSeedsSystemAgentTargets(t *testing.T) {
 		if target.Source != agenttargetbiz.SourceSystem {
 			t.Fatalf("target %q source = %q, want system", target.ID, target.Source)
 		}
-		if !target.Enabled {
+		if target.ID == agenttargetbiz.IDLocalTuttiAgent {
+			if target.Enabled {
+				t.Fatalf("target %q enabled = true, want false", target.ID)
+			}
+		} else if !target.Enabled {
 			t.Fatalf("target %q enabled = false, want true", target.ID)
 		}
 		if _, err := agenttargetbiz.CanonicalLaunchRefJSONString(target.Provider, target.LaunchRefJSON); err != nil {

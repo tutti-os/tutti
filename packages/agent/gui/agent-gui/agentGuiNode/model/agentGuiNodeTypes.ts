@@ -2,7 +2,7 @@ import type { AgentActivityUsage } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUINodeData,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import type {
   AgentGUIApprovalRequest,
@@ -262,10 +262,10 @@ export interface AgentGUINodeViewModel {
   workspacePath?: string | null;
   currentUserId?: string | null;
   data: AgentGUINodeData;
-  selectedProviderTarget: AgentGUIProviderTarget;
-  providerTargets: readonly AgentGUIProviderTarget[];
-  handoffProviderTargets: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading: boolean;
+  selectedAgentTarget: AgentGUIAgentTarget;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  handoffAgentTargets: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading: boolean;
   conversationFilter: AgentGUIConversationFilter;
   conversations: AgentGUIConversationSummary[];
   userProjects: AgentGUIConversationUserProject[];

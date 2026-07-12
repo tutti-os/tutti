@@ -9,16 +9,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
-import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
+import type { AgentGUIProvider } from "../../types";
+import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
 import styles from "./AgentGUINode.styles";
-
-export interface AgentGUIHeroCarouselIcon {
-  agentTargetId?: string;
-  iconUrl: string;
-  provider: string;
-}
 
 export interface AgentGUIHeroCarouselSelectInput {
   provider: AgentGUIProvider;
@@ -27,26 +21,9 @@ export interface AgentGUIHeroCarouselSelectInput {
 
 interface AgentGUIHeroAgentCarouselProps {
   activeAgentTargetId?: string | null;
-  icons: readonly AgentGUIHeroCarouselIcon[];
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  items: readonly AgentGUIAgentAvatarPresentation[];
   onProviderSelect?: (input: AgentGUIHeroCarouselSelectInput) => void;
   providerSelectLabel?: string;
-}
-
-export function agentGUILaunchpadProviderTarget(
-  providerTargets: readonly AgentGUIProviderTarget[],
-  provider: string
-): AgentGUIProviderTarget | null {
-  const normalized = normalizeManagedAgentProvider(provider);
-  const matches = providerTargets.filter(
-    (target) => normalizeManagedAgentProvider(target.provider) === normalized
-  );
-  // Prefer a ready target, but fall back to a disabled placeholder so
-  // unavailable agents stay selectable from the ring — selecting one surfaces
-  // its coming-soon / readiness gate while the carousel keeps spinning.
-  return (
-    matches.find((target) => target.disabled !== true) ?? matches[0] ?? null
-  );
 }
 
 const CAROUSEL_WHEEL_STEP_THRESHOLD = 42;
@@ -65,23 +42,23 @@ function emptyPreloadedCarouselImages(
 }
 
 function useAgentGUIHeroCarouselImages(
-  icons: readonly AgentGUIHeroCarouselIcon[],
+  items: readonly AgentGUIAgentAvatarPresentation[],
   iconKey: string
 ): AgentGUIHeroCarouselImagePreloadState {
   const [preloadState, setPreloadState] =
     useState<AgentGUIHeroCarouselImagePreloadState>({
       images: [],
-      ready: icons.length === 0
+      ready: items.length === 0
     });
 
   useEffect(() => {
-    if (icons.length === 0) {
+    if (items.length === 0) {
       setPreloadState({ images: [], ready: true });
       return;
     }
     if (typeof Image !== "function") {
       setPreloadState({
-        images: emptyPreloadedCarouselImages(icons.length),
+        images: emptyPreloadedCarouselImages(items.length),
         ready: true
       });
       return;
@@ -89,13 +66,13 @@ function useAgentGUIHeroCarouselImages(
 
     let cancelled = false;
     setPreloadState({
-      images: emptyPreloadedCarouselImages(icons.length),
+      images: emptyPreloadedCarouselImages(items.length),
       ready: false
     });
 
     void Promise.all(
-      icons.map(
-        (icon) =>
+      items.map(
+        (item) =>
           new Promise<HTMLImageElement | null>((resolve) => {
             const image = new Image();
             const resolveDecoded = (): void => {
@@ -115,7 +92,7 @@ function useAgentGUIHeroCarouselImages(
               resolveDecoded();
             };
             image.onerror = () => resolve(null);
-            image.src = icon.iconUrl;
+            image.src = item.iconUrl;
             if (image.complete) {
               if (image.naturalWidth > 0) {
                 resolveDecoded();
@@ -148,8 +125,7 @@ function useAgentGUIHeroCarouselImages(
 export const AgentGUIHeroAgentCarousel = memo(
   function AgentGUIHeroAgentCarousel({
     activeAgentTargetId,
-    icons,
-    providerTargets,
+    items,
     onProviderSelect,
     providerSelectLabel
   }: AgentGUIHeroAgentCarouselProps): React.JSX.Element {
@@ -157,10 +133,10 @@ export const AgentGUIHeroAgentCarousel = memo(
       () =>
         !activeAgentTargetId
           ? -1
-          : icons.findIndex(
-              (icon) => icon.agentTargetId === activeAgentTargetId
+          : items.findIndex(
+              (item) => item.agentTargetId === activeAgentTargetId
             ),
-      [activeAgentTargetId, icons]
+      [activeAgentTargetId, items]
     );
     const [centerIndex, setCenterIndex] = useState(
       activeIconIndex >= 0 ? activeIconIndex : 0
@@ -169,40 +145,20 @@ export const AgentGUIHeroAgentCarousel = memo(
     centerIndexRef.current = centerIndex;
     const activeIconIndexRef = useRef(activeIconIndex);
     activeIconIndexRef.current = activeIconIndex;
-    const interactive =
-      onProviderSelect != null && (providerTargets?.length ?? 0) > 0;
-
-    const targetForIndex = useCallback(
-      (index: number): AgentGUIProviderTarget | null => {
-        const icon = icons[index];
-        if (!icon || !interactive) {
-          return null;
-        }
-        if (!icon.agentTargetId) {
-          return null;
-        }
-        return (
-          providerTargets?.find(
-            (target) =>
-              (target.agentTargetId ?? target.targetId) === icon.agentTargetId
-          ) ?? null
-        );
-      },
-      [icons, interactive, providerTargets]
-    );
+    const interactive = onProviderSelect != null && items.length > 0;
 
     const selectIndex = useCallback(
       (index: number) => {
-        const target = targetForIndex(index);
-        if (!target || !onProviderSelect) {
+        const item = items[index];
+        if (!item || !onProviderSelect) {
           return;
         }
         onProviderSelect({
-          provider: target.provider,
-          agentTargetId: target.targetId
+          provider: item.provider,
+          agentTargetId: item.targetId
         });
       },
-      [onProviderSelect, targetForIndex]
+      [items, onProviderSelect]
     );
     const selectIndexRef = useRef(selectIndex);
     selectIndexRef.current = selectIndex;
@@ -210,10 +166,13 @@ export const AgentGUIHeroAgentCarousel = memo(
     const stageRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const sceneRef = useRef<AgentGuiHeroCarouselScene | null>(null);
-    const iconKey = icons
-      .map((icon) => `${icon.agentTargetId ?? icon.provider}:${icon.iconUrl}`)
+    const iconKey = items
+      .map(
+        (item) =>
+          `${item.agentTargetId}:${item.iconUrl}:${item.badge?.iconUrl ?? ""}`
+      )
       .join("|");
-    const carouselImages = useAgentGUIHeroCarouselImages(icons, iconKey);
+    const carouselImages = useAgentGUIHeroCarouselImages(items, iconKey);
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -223,7 +182,7 @@ export const AgentGUIHeroAgentCarousel = memo(
       }
       const scene = AgentGuiHeroCarouselScene.create({
         canvas,
-        iconUrls: icons.map((icon) => icon.iconUrl),
+        items,
         loadedImages: carouselImages.images,
         onSettle: (index) => {
           centerIndexRef.current = index;
@@ -271,14 +230,14 @@ export const AgentGUIHeroAgentCarousel = memo(
     const stepBy = useCallback(
       (direction: 1 | -1) => {
         const scene = sceneRef.current;
-        if (!scene || icons.length <= 1) {
+        if (!scene || items.length <= 1) {
           return;
         }
         const next = scene.stepBy(direction);
         centerIndexRef.current = next;
         setCenterIndex(next);
       },
-      [icons.length]
+      [items.length]
     );
     const stepByRef = useRef(stepBy);
     stepByRef.current = stepBy;
@@ -443,30 +402,32 @@ export const AgentGUIHeroAgentCarousel = memo(
           onClick={interactive ? handleCanvasClick : undefined}
           onPointerMove={interactive ? handleCanvasHover : undefined}
         />
-        {icons.map((icon, index) => {
+        {items.map((item, index) => {
           // Visually-hidden switchers keep the ring reachable by keyboard,
           // screen readers, and DOM-level tests; visuals live on the canvas.
           const isCenter = index === centerIndex;
-          const target = targetForIndex(index);
-          const key = `${icon.agentTargetId ?? icon.provider}:${icon.iconUrl}`;
-          if (target && onProviderSelect) {
+          const key = `${item.agentTargetId}:${item.iconUrl}`;
+          if (onProviderSelect) {
+            const itemLabel = item.badge?.label
+              ? `${item.label}, ${item.badge.label}`
+              : item.label;
             const label = providerSelectLabel
-              ? `${providerSelectLabel}: ${target.label}`
-              : target.label;
+              ? `${providerSelectLabel}: ${itemLabel}`
+              : itemLabel;
             return (
               <button
                 key={key}
                 type="button"
                 className={styles.emptyHeroCarouselItem}
-                data-agent-target-id={icon.agentTargetId}
-                data-provider={icon.provider}
+                data-agent-target-id={item.agentTargetId}
+                data-provider={item.provider}
                 data-provider-active={isCenter}
                 aria-label={label}
                 aria-pressed={isCenter}
-                title={target.label}
+                title={item.label}
                 onClick={() => handleItemClick(index)}
               >
-                {target.label}
+                {item.label}
               </button>
             );
           }
@@ -474,7 +435,7 @@ export const AgentGUIHeroAgentCarousel = memo(
             <span
               key={key}
               className={styles.emptyHeroCarouselItem}
-              data-provider={icon.provider}
+              data-provider={item.provider}
               data-provider-active={isCenter}
             />
           );
