@@ -118,10 +118,10 @@ type ServerInterface interface {
 	// Create an agent session for one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions)
 	CreateWorkspaceAgentSession(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
-	// Import selected external local agent session history into one workspace
+	// Import selected local agent history or provider-export conversations into one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/external-imports/import)
 	ImportWorkspaceExternalAgentSessions(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
-	// Scan external local agent session history that can be imported into one workspace
+	// Scan local agent history or a supported provider export that can be imported into one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/external-imports/scan)
 	ScanWorkspaceExternalAgentSessionImports(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
 	// Delete one workspace agent session
@@ -21266,10 +21266,10 @@ type StrictServerInterface interface {
 	// Create an agent session for one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions)
 	CreateWorkspaceAgentSession(ctx context.Context, request CreateWorkspaceAgentSessionRequestObject) (CreateWorkspaceAgentSessionResponseObject, error)
-	// Import selected external local agent session history into one workspace
+	// Import selected local agent history or provider-export conversations into one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/external-imports/import)
 	ImportWorkspaceExternalAgentSessions(ctx context.Context, request ImportWorkspaceExternalAgentSessionsRequestObject) (ImportWorkspaceExternalAgentSessionsResponseObject, error)
-	// Scan external local agent session history that can be imported into one workspace
+	// Scan local agent history or a supported provider export that can be imported into one workspace
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/external-imports/scan)
 	ScanWorkspaceExternalAgentSessionImports(ctx context.Context, request ScanWorkspaceExternalAgentSessionImportsRequestObject) (ScanWorkspaceExternalAgentSessionImportsResponseObject, error)
 	// Delete one workspace agent session

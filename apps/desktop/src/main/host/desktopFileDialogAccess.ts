@@ -54,8 +54,14 @@ export function createDesktopFileDialogAccess(
 
   return {
     async selectAppArchive(ownerWindow) {
+      const translator = createTranslator(deps.getLocale());
       const selection = await showOpenDialog(ownerWindow, {
-        filters: [{ extensions: ["zip"], name: "Zip Archive" }],
+        filters: [
+          {
+            extensions: ["zip"],
+            name: translator.t("common.zipArchive")
+          }
+        ],
         properties: ["openFile"]
       });
 
@@ -67,9 +73,15 @@ export function createDesktopFileDialogAccess(
     },
 
     async selectAppArchiveExportPath(defaultPath, ownerWindow) {
+      const translator = createTranslator(deps.getLocale());
       const selection = await showSaveDialog(ownerWindow, {
         defaultPath,
-        filters: [{ extensions: ["zip"], name: "Zip Archive" }]
+        filters: [
+          {
+            extensions: ["zip"],
+            name: translator.t("common.zipArchive")
+          }
+        ]
       });
 
       if (selection.canceled || !selection.filePath) {

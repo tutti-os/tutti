@@ -22,7 +22,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
-    "createUserDocumentsProjectDirectory"
+    "createUserDocumentsProjectDirectory" | "selectAppArchive"
   >;
   tuttidClient: TuttidClient;
   reporterService?: Pick<IReporterService, "trackEvents">;

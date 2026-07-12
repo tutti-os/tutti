@@ -20,7 +20,15 @@ func (*Service) ExternalImportValidProjectPaths(ctx context.Context, input Exter
 	if len(selections) == 0 {
 		return nil, nil
 	}
-	data := scanExternalAgentSessions(ctx, providersFromExternalImportSelections(selections), -1)
+	data, err := scanExternalAgentSessions(
+		ctx,
+		providersFromExternalImportSelections(selections),
+		-1,
+		input.ArchivePath,
+	)
+	if err != nil {
+		return nil, err
+	}
 	valid := map[string]int64{}
 	for _, session := range data.sessions {
 		if ctx.Err() != nil {
@@ -65,6 +73,17 @@ func externalSessionProjectPath(session externalImportedSession) (string, bool) 
 		return gitRoot, true
 	}
 	return cwd, true
+}
+
+// externalImportNoProjectBucketPath resolves the canonical home-directory
+// bucket used for provider exports that are not associated with a local
+// project directory.
+func externalImportNoProjectBucketPath() (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	return canonicalExistingDir(home)
 }
 
 func nearestExternalImportGitRoot(cwd string) (string, bool) {

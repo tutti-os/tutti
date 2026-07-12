@@ -309,15 +309,106 @@ test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions an
   });
 
   const result = await service.importExternalSessions("ws-1", {
+    archivePath: "/tmp/claude-export.zip",
     projects: [{ path: "/repo" }]
   });
 
   assert.deepEqual(importCalls, [
-    { workspaceId: "ws-1", request: { projects: [{ path: "/repo" }] } }
+    {
+      workspaceId: "ws-1",
+      request: {
+        archivePath: "/tmp/claude-export.zip",
+        projects: [{ path: "/repo" }]
+      }
+    }
   ]);
   assert.equal(result.importedMessages, 2);
   assert.equal(listCalls, 1);
   assert.equal(projectRefreshCalls, 1);
+});
+
+test("WorkspaceAgentActivityService selects, scans, and imports the same Claude export archive", async () => {
+  const scanCalls: unknown[] = [];
+  const importCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    hostFilesApi: {
+      async createUserDocumentsProjectDirectory() {
+        return { path: "/tmp/project" };
+      },
+      async selectAppArchive() {
+        return "/tmp/claude-export.zip";
+      }
+    } as never,
+    tuttidClient: {
+      scanWorkspaceExternalAgentSessionImports: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["scanWorkspaceExternalAgentSessionImports"]
+        >[1]
+      ) => {
+        scanCalls.push({ workspaceId, request });
+        return {
+          errors: [],
+          projects: [],
+          providers: [],
+          scannedMessages: 0,
+          scannedSessions: 0,
+          sessions: [],
+          skippedSessions: 0
+        };
+      },
+      importWorkspaceExternalAgentSessions: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["importWorkspaceExternalAgentSessions"]
+        >[1]
+      ) => {
+        importCalls.push({ workspaceId, request });
+        return {
+          errors: [],
+          importedMessages: 0,
+          importedProjects: 0,
+          importedSessions: 0,
+          skippedSessions: 0
+        };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const archivePath = await service.selectExternalSessionImportArchive();
+  assert.equal(archivePath, "/tmp/claude-export.zip");
+  assert.ok(archivePath);
+  await service.scanExternalSessionImports("ws-1", {
+    archivePath,
+    days: -1
+  });
+  await service.importExternalSessions("ws-1", {
+    archivePath,
+    projects: [{ path: "/Users/demo", sessionIds: ["session-1"] }]
+  });
+  assert.deepEqual(scanCalls, [
+    {
+      workspaceId: "ws-1",
+      request: { archivePath: "/tmp/claude-export.zip", days: -1 }
+    }
+  ]);
+  assert.deepEqual(importCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        archivePath: "/tmp/claude-export.zip",
+        projects: [{ path: "/Users/demo", sessionIds: ["session-1"] }]
+      }
+    }
+  ]);
 });
 
 test("WorkspaceAgentActivityService fetches combined reconcile state after messages", async () => {

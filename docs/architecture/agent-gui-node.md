@@ -431,6 +431,57 @@ is not durable state and should not become the source of truth.
 Use these flows when debugging AgentGUI behavior. They are intentionally written
 from the user's action back to the authoritative data source.
 
+### External History Import
+
+```text
+desktop ZIP picker or local-history source selection
+  -> ExternalAgentSessionImportWizard
+  -> WorkspaceAgentActivityService scanExternalSessionImports
+  -> tuttid external-import scan endpoint
+  -> local JSONL scanner or Claude data-export ZIP parser
+  -> selectable import session summaries
+  -> WorkspaceAgentActivityService importExternalSessions
+  -> tuttid external-import import endpoint
+  -> ActivityProjection persisted sessions/messages
+  -> desktop activity load + user-project refresh
+  -> AgentActivityRuntime snapshot
+  -> AgentGUI rail and transcript
+```
+
+The daemon owns archive validation and conversation parsing. Desktop passes the
+absolute path selected through the native picker, and both scan and import must
+carry the same `archivePath`; import reopens and revalidates the archive rather
+than trusting scan-time state. The wizard must bind a completed scan to its
+normalized local/archive source identity and invalidate it before a source
+change or failed rescan, so sessions from one scan cannot be submitted with a
+different archive path. Claude exports are read directly from the exact root
+`conversations.json` ZIP entry. Preflight the ZIP central directory and bound
+conversation JSON depth, container counts, token counts, and retained messages
+before expanding untrusted data. Do not extract the archive, execute tool
+payloads, fetch citation URLs, or treat referenced files as locally available.
+
+Claude export `message.text` is not a safe visible-body source: rich messages
+can include hidden thinking and tool material there. Import only ordered
+`content[type=text]` blocks into visible transcript text, ignore control blocks,
+and retain file-only messages as unavailable references without claiming that
+the ZIP contains their payloads. Stable source message UUIDs make repeat imports
+idempotent even when a later export inserts earlier messages. Claude exports may
+contain mutually exclusive edit/retry branches. Build the parent-message graph
+and import the deterministic latest leaf's root-to-leaf path; never flatten
+sibling branches into one transcript. Namespace the imported session with a
+fingerprint of the selected sibling choices: ordinary appends stay in the same
+session, while a later export that selects a different retry branch lands in a
+separate session instead of accumulating incompatible messages. Preserve the
+branch fingerprint and chosen leaf UUID in message payloads so that branch
+selection remains auditable.
+
+claude.ai exports do not carry a coding-project cwd or a Claude Code runtime
+session id. Persist them in the no-project Chats section with
+`runtimeContext.imported`, `externalImportNoProject`, and a false
+`externalImportResumeSupported` marker. They may use the Claude Code target for
+presentation, but AgentGUI must keep the imported history read-only and route
+continued work through the existing "continue in a new conversation" flow.
+
 ### Conversation List Loading
 
 ```text

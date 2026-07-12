@@ -55,13 +55,15 @@ func (s *Service) ensureRuntimeSessionResult(
 		}
 		return ensuredRuntimeSession{}, ErrSessionNotFound
 	}
-	// Imported sessions used to be rejected here, which is what surfaced the
-	// "can't resume on this device, start a new conversation" dead-end. They now
-	// resume in place (same-device) or, when the provider session can't be
-	// restored locally, get a fresh provider session created on demand. The
-	// recreate is opt-in (RecreateIfMissing) so it stays scoped to imported
-	// conversations and doesn't change restore-error handling for normal ones.
+	// Imported local CLI transcripts resume in place (same-device) or, when the
+	// provider session can't be restored locally, get a fresh provider session
+	// created on demand. Provider data exports opt out because their web UUID is
+	// not a runtime session id. RecreateIfMissing stays scoped to the remaining
+	// imported transcripts and does not change normal restore-error handling.
 	imported := strings.TrimSpace(persisted.Origin) == WorkspaceAgentSessionOriginImported
+	if imported && !externalImportResumeSupported(persisted.RuntimeContext) {
+		return ensuredRuntimeSession{}, ErrSessionNotFound
+	}
 	prepared, err := s.prepareRuntimeForResume(ctx, persisted)
 	if err != nil {
 		return ensuredRuntimeSession{}, err

@@ -9,7 +9,8 @@ export const en = {
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
-    workspace: "workspace"
+    workspace: "workspace",
+    zipArchive: "Zip Archive"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -280,8 +281,27 @@ export const en = {
       triggerAria: "Join feedback group"
     },
     externalImport: {
+      archiveEmpty:
+        "No supported conversations were found in this Claude export",
+      archiveGroupLabel: "Claude chats",
+      archiveOptionDescription:
+        "Choose the ZIP file downloaded from Claude's data export",
+      archiveOptionTitle: "Import Claude export data",
+      archivePickFailed: "We couldn't open the Claude export file picker.",
+      archiveResult:
+        "Imported {{sessions}} conversations and {{messages}} messages from the Claude export",
+      archiveScanFailed:
+        "This ZIP could not be read as a supported Claude data export.",
+      archiveScanning: "Reading Claude export conversations...",
+      archiveSearchPlaceholder: "Search Claude conversations",
+      archiveSelectionReady:
+        "Claude export scan complete. {{count}} conversations are ready to review.",
+      archiveSelectDescription:
+        "Search and check the Claude conversations to import",
       back: "Back",
-      description: "Import local Codex and Claude Code conversation history",
+      chooseArchive: "Choose ZIP",
+      description:
+        "Import local Codex and Claude Code history or a Claude data export",
       done: "Done",
       empty: "No local Codex or Claude Code project history was found",
       errors: "Skipped items",
@@ -324,7 +344,7 @@ export const en = {
       selectImportOption: "Select {{label}}",
       settingsAction: "Import",
       settingsDescription:
-        "Bring recent local Codex and Claude Code conversation history into this workspace",
+        "Bring local Codex and Claude Code history or Claude export conversations into this workspace",
       settingsLabel: "Import AI chats",
       title: "Import from AI apps"
     },

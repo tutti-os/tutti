@@ -1280,6 +1280,10 @@ export type WorkspaceAgentSessionSectionPageResponse = {
 };
 
 export type ExternalAgentImportScanRequest = {
+  /**
+   * Absolute path to a supported provider data-export ZIP archive. When supplied, scan the archive instead of local CLI history.
+   */
+  archivePath?: string;
   providers?: Array<WorkspaceAgentProvider>;
   /**
    * Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
@@ -1338,6 +1342,10 @@ export type ExternalAgentImportProjectSelection = {
 };
 
 export type ImportExternalAgentSessionsRequest = {
+  /**
+   * Absolute path to the same provider data-export ZIP archive used for the preceding scan. The daemon revalidates and rereads the archive before importing the selected conversations.
+   */
+  archivePath?: string;
   projects: Array<ExternalAgentImportProjectSelection>;
   registerUserProjects?: boolean;
   importSessions?: boolean;

@@ -19,6 +19,7 @@ func (api DaemonAPI) ScanWorkspaceExternalAgentSessionImports(ctx context.Contex
 	}
 	input := agentservice.ExternalImportScanInput{}
 	if request.Body != nil {
+		input.ArchivePath = optionalStringValue(request.Body.ArchivePath)
 		input.Providers = externalImportProvidersFromGenerated(request.Body.Providers)
 		if request.Body.Days != nil {
 			input.Days = *request.Body.Days
@@ -45,6 +46,7 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 		}, nil
 	}
 	projects := externalImportProjectSelectionsFromGenerated(request.Body.Projects)
+	archivePath := optionalStringValue(request.Body.ArchivePath)
 	register := request.Body.RegisterUserProjects == nil || *request.Body.RegisterUserProjects
 	importSessions := request.Body.ImportSessions == nil || *request.Body.ImportSessions
 
@@ -57,7 +59,8 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 	if importSessions {
 		var err error
 		result, err = api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
-			Projects: projects,
+			ArchivePath: archivePath,
+			Projects:    projects,
 		})
 		if err != nil {
 			return writeImportWorkspaceExternalAgentSessionsError(err), nil
@@ -66,7 +69,8 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 	} else {
 		var err error
 		validPaths, err = api.AgentSessionService.ExternalImportValidProjectPaths(ctx, agentservice.ExternalImportInput{
-			Projects: projects,
+			ArchivePath: archivePath,
+			Projects:    projects,
 		})
 		if err != nil {
 			return writeImportWorkspaceExternalAgentSessionsError(err), nil

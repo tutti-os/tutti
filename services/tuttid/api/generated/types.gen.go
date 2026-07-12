@@ -2670,6 +2670,9 @@ type ExternalAgentImportResultResponse struct {
 
 // ExternalAgentImportScanRequest defines model for ExternalAgentImportScanRequest.
 type ExternalAgentImportScanRequest struct {
+	// ArchivePath Absolute path to a supported provider data-export ZIP archive. When supplied, scan the archive instead of local CLI history.
+	ArchivePath *string `json:"archivePath,omitempty"`
+
 	// Days Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
 	Days      *int                      `json:"days,omitempty"`
 	Providers *[]WorkspaceAgentProvider `json:"providers,omitempty"`
@@ -2729,6 +2732,8 @@ type HealthStatusResponseStatus string
 
 // ImportExternalAgentSessionsRequest defines model for ImportExternalAgentSessionsRequest.
 type ImportExternalAgentSessionsRequest struct {
+	// ArchivePath Absolute path to the same provider data-export ZIP archive used for the preceding scan. The daemon revalidates and rereads the archive before importing the selected conversations.
+	ArchivePath          *string                               `json:"archivePath,omitempty"`
 	ImportSessions       *bool                                 `json:"importSessions,omitempty"`
 	Projects             []ExternalAgentImportProjectSelection `json:"projects"`
 	RegisterUserProjects *bool                                 `json:"registerUserProjects,omitempty"`

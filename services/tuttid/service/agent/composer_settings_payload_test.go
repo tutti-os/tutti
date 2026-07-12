@@ -93,6 +93,21 @@ func TestCreateSessionInputFromPersistedCarriesExternalRolloutSourcePath(t *test
 	}
 }
 
+func TestCreateSessionInputFromPersistedDoesNotTreatClaudeExportAsRollout(t *testing.T) {
+	input := createSessionInputFromPersisted(PersistedSession{
+		ID:       "session-1",
+		Provider: "claude-code",
+		RuntimeContext: map[string]any{
+			"imported":                      true,
+			"externalImportResumeSupported": false,
+			"externalSourcePath":            "/home/user/Downloads/claude-export.zip",
+		},
+	})
+	if input.ExternalRolloutSourcePath != "" {
+		t.Fatalf("ExternalRolloutSourcePath = %q, want archive path excluded from provider resume", input.ExternalRolloutSourcePath)
+	}
+}
+
 func TestCreateSessionInputFromPersistedLeavesExternalRolloutSourcePathEmptyForNonImportedSession(t *testing.T) {
 	input := createSessionInputFromPersisted(PersistedSession{
 		ID:       "session-1",

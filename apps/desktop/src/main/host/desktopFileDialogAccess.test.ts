@@ -52,7 +52,7 @@ test("desktop file dialog access selects app archive zip files", async () => {
     NonNullable<DesktopFileDialogAccessDependencies["showOpenDialog"]>
   >[] = [];
   const dialogAccess = createDesktopFileDialogAccess({
-    getLocale: () => "en",
+    getLocale: () => "zh-CN",
     showOpenDialog: async (...args) => {
       calls.push(args);
       return {
@@ -66,7 +66,12 @@ test("desktop file dialog access selects app archive zip files", async () => {
 
   assert.equal(selectedPath, "/tmp/app.zip");
   assert.deepEqual(calls[0]?.[1], {
-    filters: [{ extensions: ["zip"], name: "Zip Archive" }],
+    filters: [
+      {
+        extensions: ["zip"],
+        name: createTranslator("zh-CN").t("common.zipArchive")
+      }
+    ],
     properties: ["openFile"]
   });
 });
@@ -92,7 +97,12 @@ test("desktop file dialog access selects app archive export path", async () => {
   assert.equal(selectedPath, "/tmp/export.zip");
   assert.deepEqual(calls[0]?.[1], {
     defaultPath: "sample.zip",
-    filters: [{ extensions: ["zip"], name: "Zip Archive" }]
+    filters: [
+      {
+        extensions: ["zip"],
+        name: createTranslator("en").t("common.zipArchive")
+      }
+    ]
   });
 });
 

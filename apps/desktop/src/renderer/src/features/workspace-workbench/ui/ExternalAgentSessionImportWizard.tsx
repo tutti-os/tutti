@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import type * as React from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import type {
   ExternalAgentImportResultResponse,
-  ExternalAgentImportScanResponse,
   ExternalAgentImportSession,
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -21,14 +19,29 @@ import {
   LoadingIcon,
   RefreshIcon,
   SearchIcon,
-  SuccessFilledIcon,
   UploadIcon,
   formatTuttiShortDateTime
 } from "@tutti-os/ui-system";
 import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import { useTranslation } from "@renderer/i18n";
-import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
+import {
+  externalImportGroupsFromScan,
+  externalImportRequestSource,
+  externalImportScanRequest,
+  externalImportScanSource,
+  externalImportScanStateReducer,
+  externalImportSelectionProjects,
+  externalImportUsableScan,
+  filterExternalImportGroups,
+  isExternalImportArchiveMode,
+  type ExternalImportProjectGroup
+} from "./externalAgentSessionImportWizardModel";
+import { ExternalAgentSessionImportSourceStep } from "./ExternalAgentSessionImportSourceStep";
+import {
+  CenteredExternalAgentSessionImportState,
+  ExternalAgentSessionImportResultSummary
+} from "./ExternalAgentSessionImportStatus";
 
 const externalImportProviderOptions: WorkspaceAgentProvider[] = [
   "codex",
@@ -43,16 +56,6 @@ const externalImportDefaultDays = 30;
 
 const externalImportListCheckboxClass =
   "focus-visible:!ring-0 focus-visible:border-[var(--border-1)] data-[state=checked]:focus-visible:border-[var(--text-primary)]";
-
-const externalImportListItemClass =
-  "grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-[8px] bg-[var(--transparency-block)] p-3 transition-colors hover:bg-[var(--transparency-hover)]";
-
-type ExternalImportProjectGroup = {
-  path: string;
-  label: string;
-  providers: WorkspaceAgentProvider[];
-  sessions: ExternalAgentImportSession[];
-};
 
 export function ExternalAgentSessionImportWizard({
   initialProviders,
@@ -69,7 +72,8 @@ export function ExternalAgentSessionImportWizard({
   const workspaceAgentActivityService = useService(
     IWorkspaceAgentActivityService
   );
-  const [scan, setScan] = useState<ExternalAgentImportScanResponse | null>(
+  const [scanState, dispatchScanState] = useReducer(
+    externalImportScanStateReducer,
     null
   );
   const [result, setResult] =
@@ -79,6 +83,7 @@ export function ExternalAgentSessionImportWizard({
     Set<WorkspaceAgentProvider>
   >(new Set(externalImportProviderOptions));
   const [days, setDays] = useState<number>(externalImportDefaultDays);
+  const [archivePath, setArchivePath] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Sessions are selected by default; we only track explicit opt-outs so that
   // widening the day range or re-scanning keeps the user's deselections.
@@ -103,12 +108,13 @@ export function ExternalAgentSessionImportWizard({
       : externalImportProviderOptions;
     setSelectedProviders(new Set(providers));
     setStep("providers");
-    setScan(null);
+    dispatchScanState({ type: "source-changed" });
     setError(null);
     setResult(null);
     setLoading(false);
     setImporting(false);
     setDays(externalImportDefaultDays);
+    setArchivePath(null);
     setSearch("");
     setDeselectedSessionIds(new Set());
     setRegisterProjects(true);
@@ -118,9 +124,23 @@ export function ExternalAgentSessionImportWizard({
   const selectedProviderList = externalImportProviderOptions.filter(
     (provider) => selectedProviders.has(provider)
   );
+  const currentScanSource = externalImportScanSource({
+    archivePath,
+    days,
+    providers: selectedProviderList
+  });
+  const scan = externalImportUsableScan(scanState, currentScanSource);
+  const archiveMode = isExternalImportArchiveMode(archivePath);
   const groups = useMemo(
-    () => externalImportGroupsFromScan(scan, t),
-    [scan, t]
+    () =>
+      externalImportGroupsFromScan(
+        scan,
+        (path) => externalImportProjectLabelFallback(path, t),
+        archiveMode
+          ? t("workspace.externalImport.archiveGroupLabel")
+          : undefined
+      ),
+    [archiveMode, scan, t]
   );
   const filteredGroups = useMemo(
     () => filterExternalImportGroups(groups, search),
@@ -166,16 +186,26 @@ export function ExternalAgentSessionImportWizard({
     });
   };
 
-  const runScan = async (nextDays: number) => {
+  const runScan = async (nextDays: number, nextArchivePath: string | null) => {
+    const source = externalImportScanSource({
+      archivePath: nextArchivePath,
+      days: nextDays,
+      providers: selectedProviderList
+    });
+    dispatchScanState({ type: "scan-started" });
     setLoading(true);
     setError(null);
     try {
       const nextScan =
         await workspaceAgentActivityService.scanExternalSessionImports(
           workspace.id,
-          { providers: selectedProviderList, days: nextDays }
+          externalImportScanRequest(source)
         );
-      setScan(nextScan);
+      dispatchScanState({
+        type: "scan-succeeded",
+        response: nextScan,
+        source
+      });
       // Drop deselections for sessions that no longer exist in the new scan.
       const nextIds = new Set(nextScan.sessions.map((session) => session.id));
       setDeselectedSessionIds((current) => {
@@ -189,7 +219,14 @@ export function ExternalAgentSessionImportWizard({
       });
       setStep("select");
     } catch {
-      setError(t("workspace.externalImport.scanFailed"));
+      dispatchScanState({ type: "scan-failed" });
+      setError(
+        t(
+          nextArchivePath
+            ? "workspace.externalImport.archiveScanFailed"
+            : "workspace.externalImport.scanFailed"
+        )
+      );
       setStep("select");
     } finally {
       setLoading(false);
@@ -200,7 +237,30 @@ export function ExternalAgentSessionImportWizard({
     if (!canScan) {
       return;
     }
-    await runScan(days);
+    setArchivePath(null);
+    await runScan(days, null);
+  };
+
+  const handleSelectArchive = async () => {
+    if (loading || importing) {
+      return;
+    }
+    dispatchScanState({ type: "source-changed" });
+    setError(null);
+    try {
+      const nextArchivePath =
+        await workspaceAgentActivityService.selectExternalSessionImportArchive();
+      if (!nextArchivePath) {
+        return;
+      }
+      setArchivePath(nextArchivePath);
+      setDays(-1);
+      await runScan(-1, nextArchivePath);
+    } catch {
+      dispatchScanState({ type: "scan-failed" });
+      setError(t("workspace.externalImport.archivePickFailed"));
+      setStep("select");
+    }
   };
 
   const handleSelectRange = async (nextDays: number) => {
@@ -208,11 +268,11 @@ export function ExternalAgentSessionImportWizard({
       return;
     }
     setDays(nextDays);
-    await runScan(nextDays);
+    await runScan(nextDays, archivePath);
   };
 
   const handleImport = async () => {
-    if (!canImport || !scan) {
+    if (!canImport || !scan || !scanState) {
       return;
     }
     setImporting(true);
@@ -226,8 +286,13 @@ export function ExternalAgentSessionImportWizard({
         await workspaceAgentActivityService.importExternalSessions(
           workspace.id,
           {
+            ...externalImportRequestSource(
+              scanState.source.kind === "archive"
+                ? scanState.source.archivePath
+                : null,
+              registerProjects
+            ),
             projects,
-            registerUserProjects: registerProjects,
             importSessions: true
           }
         );
@@ -243,7 +308,10 @@ export function ExternalAgentSessionImportWizard({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[640px]">
+      <DialogContent
+        aria-busy={loading || importing}
+        className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[640px]"
+      >
         <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
           <DialogTitle>
             {step === "select"
@@ -252,7 +320,11 @@ export function ExternalAgentSessionImportWizard({
           </DialogTitle>
           <DialogDescription>
             {step === "select"
-              ? t("workspace.externalImport.selectDescription")
+              ? t(
+                  archiveMode
+                    ? "workspace.externalImport.archiveSelectDescription"
+                    : "workspace.externalImport.selectDescription"
+                )
               : t("workspace.externalImport.description")}
           </DialogDescription>
         </DialogHeader>
@@ -272,26 +344,44 @@ export function ExternalAgentSessionImportWizard({
             onToggleRegisterProjects={setRegisterProjects}
             onToggleSessions={setSessionsSelected}
             disabled={importing}
+            archiveMode={archiveMode}
+            showProjectRegistration={!archiveMode}
+            showRange={!archiveMode}
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             {loading ? (
-              <CenteredImportState
+              <CenteredExternalAgentSessionImportState
+                ariaLive="polite"
                 icon={<LoadingIcon className="size-5 animate-spin" />}
-                text={t("workspace.externalImport.scanning")}
+                role="status"
+                text={t(
+                  archiveMode
+                    ? "workspace.externalImport.archiveScanning"
+                    : "workspace.externalImport.scanning"
+                )}
               />
             ) : result ? (
-              <ImportResultSummary result={result} />
+              <ExternalAgentSessionImportResultSummary
+                archive={archiveMode}
+                result={result}
+              />
             ) : error ? (
-              <CenteredImportState
+              <CenteredExternalAgentSessionImportState
+                ariaLive="assertive"
                 icon={<RefreshIcon className="size-5" />}
+                role="alert"
                 text={error}
               />
             ) : (
-              <ProviderSelectionList
+              <ExternalAgentSessionImportSourceStep
+                disabled={loading || importing}
                 providers={externalImportProviderOptions}
                 selectedProviders={selectedProviders}
                 onToggle={toggleProvider}
+                onSelectArchive={() => {
+                  void handleSelectArchive();
+                }}
               />
             )}
           </div>
@@ -316,6 +406,9 @@ export function ExternalAgentSessionImportWizard({
                   if (step === "select") {
                     setStep("providers");
                     setError(null);
+                    dispatchScanState({ type: "source-changed" });
+                    setArchivePath(null);
+                    setDays(externalImportDefaultDays);
                     return;
                   }
                   onOpenChange(false);
@@ -338,23 +431,30 @@ export function ExternalAgentSessionImportWizard({
                   {t("workspace.externalImport.scan")}
                 </Button>
               ) : (
-                <Button
-                  disabled={!canImport}
-                  size="dialog"
-                  type="button"
-                  onClick={() => {
-                    void handleImport();
-                  }}
-                >
-                  {importing ? (
-                    <LoadingIcon className="size-4 animate-spin" />
-                  ) : (
-                    <UploadIcon className="size-4" />
-                  )}
-                  {importing
-                    ? t("workspace.externalImport.importing")
-                    : t("workspace.externalImport.import")}
-                </Button>
+                <>
+                  {archiveMode && importing ? (
+                    <span aria-live="polite" className="sr-only" role="status">
+                      {t("workspace.externalImport.importing")}
+                    </span>
+                  ) : null}
+                  <Button
+                    disabled={!canImport}
+                    size="dialog"
+                    type="button"
+                    onClick={() => {
+                      void handleImport();
+                    }}
+                  >
+                    {importing ? (
+                      <LoadingIcon className="size-4 animate-spin" />
+                    ) : (
+                      <UploadIcon className="size-4" />
+                    )}
+                    {importing
+                      ? t("workspace.externalImport.importing")
+                      : t("workspace.externalImport.import")}
+                  </Button>
+                </>
               )}
             </>
           )}
@@ -364,47 +464,8 @@ export function ExternalAgentSessionImportWizard({
   );
 }
 
-function ProviderSelectionList({
-  onToggle,
-  providers,
-  selectedProviders
-}: {
-  onToggle: (provider: WorkspaceAgentProvider, checked: boolean) => void;
-  providers: WorkspaceAgentProvider[];
-  selectedProviders: Set<WorkspaceAgentProvider>;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="m-0 text-[13px] leading-[1.4] text-[var(--text-secondary)]">
-        {t("workspace.externalImport.providerDescription")}
-      </p>
-      <div className="flex flex-col gap-2">
-        {providers.map((provider) => {
-          const checked = selectedProviders.has(provider);
-          const label = resolveWorkspaceAgentGuiLabel(provider);
-          return (
-            <label key={provider} className={externalImportListItemClass}>
-              <Checkbox
-                aria-label={t("workspace.externalImport.selectProvider", {
-                  label
-                })}
-                checked={checked}
-                className={externalImportListCheckboxClass}
-                onCheckedChange={(value) => onToggle(provider, value === true)}
-              />
-              <span className="min-w-0 text-[13px] font-semibold text-[var(--text-primary)]">
-                {label}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function ImportSelectStep({
+  archiveMode,
   days,
   deselectedSessionIds,
   disabled,
@@ -416,8 +477,11 @@ function ImportSelectStep({
   registerProjects,
   search,
   selectedCount,
+  showProjectRegistration,
+  showRange,
   totalCount
 }: {
+  archiveMode: boolean;
   days: number;
   deselectedSessionIds: Set<string>;
   disabled: boolean;
@@ -429,6 +493,8 @@ function ImportSelectStep({
   registerProjects: boolean;
   search: string;
   selectedCount: number;
+  showProjectRegistration: boolean;
+  showRange: boolean;
   totalCount: number;
 }) {
   const { t } = useTranslation();
@@ -440,37 +506,52 @@ function ImportSelectStep({
   const allVisibleSelected =
     visibleIds.length > 0 &&
     visibleIds.every((id) => !deselectedSessionIds.has(id));
+  const searchPlaceholder = t(
+    archiveMode
+      ? "workspace.externalImport.archiveSearchPlaceholder"
+      : "workspace.externalImport.searchPlaceholder"
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {archiveMode ? (
+        <p aria-live="polite" className="sr-only" role="status">
+          {t("workspace.externalImport.archiveSelectionReady", {
+            count: totalCount
+          })}
+        </p>
+      ) : null}
       <div className="flex shrink-0 flex-col gap-3 px-5 pb-3 pt-4">
-        <div className="flex items-center gap-1">
-          <span className="mr-1 text-[12px] text-[var(--text-secondary)]">
-            {t("workspace.externalImport.rangeLabel")}
-          </span>
-          {externalImportRangeDays.map((value) => (
-            <button
-              key={value}
-              type="button"
-              disabled={disabled}
-              onClick={() => onSelectRange(value)}
-              className={`rounded-[6px] px-2.5 py-1 text-[12px] transition-colors ${
-                days === value
-                  ? "bg-[var(--text-primary)] text-[var(--text-inverted)]"
-                  : "bg-[var(--transparency-block)] text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)]"
-              }`}
-            >
-              {externalImportRangeLabel(value, t)}
-            </button>
-          ))}
-        </div>
+        {showRange ? (
+          <div className="flex items-center gap-1">
+            <span className="mr-1 text-[12px] text-[var(--text-secondary)]">
+              {t("workspace.externalImport.rangeLabel")}
+            </span>
+            {externalImportRangeDays.map((value) => (
+              <button
+                key={value}
+                type="button"
+                disabled={disabled}
+                onClick={() => onSelectRange(value)}
+                className={`rounded-[6px] px-2.5 py-1 text-[12px] transition-colors ${
+                  days === value
+                    ? "bg-[var(--text-primary)] text-[var(--text-inverted)]"
+                    : "bg-[var(--transparency-block)] text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)]"
+                }`}
+              >
+                {externalImportRangeLabel(value, t)}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-placeholder)]" />
           <input
+            aria-label={searchPlaceholder}
             type="text"
             value={search}
             disabled={disabled}
-            placeholder={t("workspace.externalImport.searchPlaceholder")}
+            placeholder={searchPlaceholder}
             onChange={(event) => onSearchChange(event.target.value)}
             className="h-8 w-full min-w-0 appearance-none rounded-md border border-transparent bg-[var(--transparency-block)] pl-9 pr-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)]"
           />
@@ -498,11 +579,15 @@ function ImportSelectStep({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5">
         {groups.length === 0 ? (
-          <CenteredImportState
+          <CenteredExternalAgentSessionImportState
             icon={<FolderIcon className="size-5" />}
             text={
               totalCount === 0
-                ? t("workspace.externalImport.empty")
+                ? t(
+                    archiveMode
+                      ? "workspace.externalImport.archiveEmpty"
+                      : "workspace.externalImport.empty"
+                  )
                 : t("workspace.externalImport.noResults")
             }
           />
@@ -520,20 +605,22 @@ function ImportSelectStep({
           </div>
         )}
       </div>
-      <div className="shrink-0 border-t border-[var(--border-1)] px-5 py-3">
-        <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-          <Checkbox
-            aria-label={t("workspace.externalImport.registerProjects")}
-            checked={registerProjects}
-            disabled={disabled}
-            className={externalImportListCheckboxClass}
-            onCheckedChange={(value) =>
-              onToggleRegisterProjects(value === true)
-            }
-          />
-          {t("workspace.externalImport.registerProjects")}
-        </label>
-      </div>
+      {showProjectRegistration ? (
+        <div className="shrink-0 border-t border-[var(--border-1)] px-5 py-3">
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+            <Checkbox
+              aria-label={t("workspace.externalImport.registerProjects")}
+              checked={registerProjects}
+              disabled={disabled}
+              className={externalImportListCheckboxClass}
+              onCheckedChange={(value) =>
+                onToggleRegisterProjects(value === true)
+              }
+            />
+            {t("workspace.externalImport.registerProjects")}
+          </label>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -641,48 +728,6 @@ function externalImportSessionMeta(
   return messages;
 }
 
-function externalImportGroupsFromScan(
-  scan: ExternalAgentImportScanResponse | null,
-  t: ReturnType<typeof useTranslation>["t"]
-): ExternalImportProjectGroup[] {
-  if (!scan) {
-    return [];
-  }
-  const labelByPath = new Map(
-    scan.projects.map((project) => [project.path, project.label])
-  );
-  const groupByPath = new Map<string, ExternalImportProjectGroup>();
-  for (const session of scan.sessions) {
-    const path = session.projectPath;
-    let group = groupByPath.get(path);
-    if (!group) {
-      group = {
-        path,
-        label:
-          labelByPath.get(path) ?? externalImportProjectLabelFallback(path, t),
-        providers: [],
-        sessions: []
-      };
-      groupByPath.set(path, group);
-    }
-    if (!group.providers.includes(session.provider)) {
-      group.providers.push(session.provider);
-    }
-    group.sessions.push(session);
-  }
-  return [...groupByPath.values()].sort(
-    (left, right) =>
-      externalImportGroupRecency(right) - externalImportGroupRecency(left)
-  );
-}
-
-function externalImportGroupRecency(group: ExternalImportProjectGroup): number {
-  return group.sessions.reduce(
-    (latest, session) => Math.max(latest, session.lastUpdatedAtUnixMs ?? 0),
-    0
-  );
-}
-
 function externalImportProjectLabelFallback(
   path: string,
   t: ReturnType<typeof useTranslation>["t"]
@@ -692,120 +737,4 @@ function externalImportProjectLabelFallback(
   return base && base.length > 0
     ? base
     : t("workspace.externalImport.projectOptionTitle", { count: 1 });
-}
-
-function filterExternalImportGroups(
-  groups: ExternalImportProjectGroup[],
-  search: string
-): ExternalImportProjectGroup[] {
-  const query = search.trim().toLowerCase();
-  if (!query) {
-    return groups;
-  }
-  const result: ExternalImportProjectGroup[] = [];
-  for (const group of groups) {
-    const labelMatch =
-      group.label.toLowerCase().includes(query) ||
-      group.path.toLowerCase().includes(query);
-    const sessions = labelMatch
-      ? group.sessions
-      : group.sessions.filter((session) =>
-          session.title.toLowerCase().includes(query)
-        );
-    if (sessions.length > 0) {
-      result.push({ ...group, sessions });
-    }
-  }
-  return result;
-}
-
-function externalImportSelectionProjects(
-  sessions: ExternalAgentImportSession[],
-  deselectedSessionIds: Set<string>
-): {
-  path: string;
-  providers?: WorkspaceAgentProvider[];
-  sessionIds?: string[];
-}[] {
-  const byPath = new Map<
-    string,
-    {
-      path: string;
-      providers: Set<WorkspaceAgentProvider>;
-      sessionIds: string[];
-    }
-  >();
-  for (const session of sessions) {
-    if (deselectedSessionIds.has(session.id)) {
-      continue;
-    }
-    let entry = byPath.get(session.projectPath);
-    if (!entry) {
-      entry = {
-        path: session.projectPath,
-        providers: new Set(),
-        sessionIds: []
-      };
-      byPath.set(session.projectPath, entry);
-    }
-    entry.providers.add(session.provider);
-    entry.sessionIds.push(session.id);
-  }
-  return [...byPath.values()].map((entry) => ({
-    path: entry.path,
-    providers: [...entry.providers],
-    sessionIds: entry.sessionIds
-  }));
-}
-
-function ImportResultSummary({
-  result
-}: {
-  result: ExternalAgentImportResultResponse;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-4">
-      <CenteredImportState
-        icon={
-          <SuccessFilledIcon className="size-7 text-[var(--tutti-purple)]" />
-        }
-        text={t("workspace.externalImport.result", {
-          messages: result.importedMessages,
-          projects: result.importedProjects,
-          sessions: result.importedSessions
-        })}
-      />
-      {result.errors.length > 0 ? (
-        <div className="rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
-          <strong className="text-[12px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.externalImport.errors")}
-          </strong>
-          <ul className="mt-2 flex flex-col gap-1 p-0 text-[12px] text-[var(--text-secondary)]">
-            {result.errors.map((item, index) => (
-              <li key={`${item.sourcePath ?? "error"}-${index}`}>
-                {item.sourcePath ? `${item.sourcePath}: ` : ""}
-                {item.message}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function CenteredImportState({
-  icon,
-  text
-}: {
-  icon: React.ReactNode;
-  text: string;
-}) {
-  return (
-    <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center text-[13px] text-[var(--text-secondary)]">
-      <div className="text-[var(--text-primary)]">{icon}</div>
-      <p className="m-0 max-w-[360px] leading-[1.4]">{text}</p>
-    </div>
-  );
 }

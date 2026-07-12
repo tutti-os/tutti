@@ -2121,6 +2121,9 @@ function createWorkspaceAgentActivityService(
     async importExternalSessions() {
       throw new Error("not implemented");
     },
+    async selectExternalSessionImportArchive() {
+      return null;
+    },
     async load(inputWorkspaceId) {
       return { ...snapshot, workspaceId: inputWorkspaceId };
     },
