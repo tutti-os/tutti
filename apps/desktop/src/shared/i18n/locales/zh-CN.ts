@@ -12,7 +12,7 @@ export const zhCN = {
     unknownError: "未知错误",
     unreachable: "不可达",
     workspace: "工作区",
-    zipArchive: "Zip 压缩包"
+    zipArchive: "ZIP 压缩包"
   },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
@@ -323,6 +323,7 @@ export const zhCN = {
       promptTitle: "导入已有 AI 聊天",
       result:
         "已从 {{projects}} 个项目导入 {{sessions}} 个会话和 {{messages}} 条消息",
+      resultSkipped: "已跳过 {{count}} 个空的或不支持的对话",
       scan: "扫描",
       scanFailed: "暂时无法扫描外部 Agent 历史。",
       scanning: "正在扫描本机 Agent 历史...",
@@ -330,7 +331,7 @@ export const zhCN = {
       selectImportOption: "选择 {{label}}",
       settingsAction: "导入",
       settingsDescription:
-        "将本机 Codex、Claude Code 历史或 Claude 导出对话导入这个工作区",
+        "将本机 Codex、Claude Code 历史或 Claude 导出对话导入 Tutti",
       settingsLabel: "导入 AI 聊天",
       title: "从 AI 应用导入"
     },

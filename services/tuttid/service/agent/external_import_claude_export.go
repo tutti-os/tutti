@@ -189,24 +189,36 @@ func openClaudeExportConversations(rawPath string) (string, *zip.File, func(), e
 	if err != nil {
 		return "", nil, func() {}, invalidClaudeExportArchive("resolve archive path: %v", err)
 	}
-	info, err := os.Stat(resolvedPath)
+	// Open the archive once and derive every subsequent check (size, directory
+	// preflight, ZIP parsing) from this one descriptor, so a concurrently
+	// replaced file cannot slip a different archive past the validation.
+	archive, err := os.Open(resolvedPath)
 	if err != nil {
+		return "", nil, func() {}, invalidClaudeExportArchive("open archive: %v", err)
+	}
+	closeArchive := func() { _ = archive.Close() }
+	info, err := archive.Stat()
+	if err != nil {
+		closeArchive()
 		return "", nil, func() {}, invalidClaudeExportArchive("inspect archive: %v", err)
 	}
 	if !info.Mode().IsRegular() {
+		closeArchive()
 		return "", nil, func() {}, invalidClaudeExportArchive("archive is not a regular file")
 	}
 	if info.Size() <= 0 || info.Size() > maxClaudeExportArchiveBytes {
+		closeArchive()
 		return "", nil, func() {}, invalidClaudeExportArchive("archive size exceeds the supported limit")
 	}
-	if err := validateClaudeExportZipDirectory(resolvedPath, info.Size()); err != nil {
+	if err := validateClaudeExportZipDirectory(archive, info.Size()); err != nil {
+		closeArchive()
 		return "", nil, func() {}, err
 	}
-	reader, err := zip.OpenReader(resolvedPath)
+	reader, err := zip.NewReader(archive, info.Size())
 	if err != nil {
+		closeArchive()
 		return "", nil, func() {}, invalidClaudeExportArchive("open ZIP: %v", err)
 	}
-	closeArchive := func() { _ = reader.Close() }
 	if len(reader.File) > maxClaudeExportArchiveEntries {
 		closeArchive()
 		return "", nil, func() {}, invalidClaudeExportArchive("archive entry count exceeds %d", maxClaudeExportArchiveEntries)

@@ -28,6 +28,13 @@ export function ExternalAgentSessionImportResultSummary({
           }
         )}
       />
+      {result.skippedSessions > 0 ? (
+        <p className="m-0 text-center text-[12px] text-[var(--text-secondary)]">
+          {t("workspace.externalImport.resultSkipped", {
+            count: result.skippedSessions
+          })}
+        </p>
+      ) : null}
       {result.errors.length > 0 ? (
         <div className="rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
           <strong className="text-[12px] font-semibold text-[var(--text-primary)]">

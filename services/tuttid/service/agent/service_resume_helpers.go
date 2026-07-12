@@ -29,6 +29,13 @@ func (s *Service) ensureRuntimeSessionResult(
 	agentSessionID string,
 ) (ensuredRuntimeSession, error) {
 	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
+		// Provider data exports are marked non-resumable at import time.
+		// Enforce the marker on the fast path too, so the opt-out below does
+		// not depend on the resume path being the only way a session can end
+		// up in the runtime registry.
+		if !externalImportResumeSupported(session.RuntimeContext) {
+			return ensuredRuntimeSession{}, ErrSessionNotFound
+		}
 		staleTurnReconciled := false
 		shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
 		if err != nil {

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 )
 
 const (
@@ -251,12 +250,7 @@ func isClaudeExportJSONWhitespace(value byte) bool {
 	return value == ' ' || value == '\t' || value == '\r' || value == '\n'
 }
 
-func validateClaudeExportZipDirectory(archivePath string, archiveSize int64) error {
-	archive, err := os.Open(archivePath)
-	if err != nil {
-		return invalidClaudeExportArchive("open ZIP for directory preflight: %v", err)
-	}
-	defer archive.Close()
+func validateClaudeExportZipDirectory(archive io.ReaderAt, archiveSize int64) error {
 	tailSize := archiveSize
 	const endRecordBytes = int64(22)
 	if maximum := endRecordBytes + maxClaudeZipCommentBytes; tailSize > maximum {
@@ -287,7 +281,9 @@ func validateClaudeExportZipDirectory(archivePath string, archiveSize int64) err
 	entriesOnDisk := binary.LittleEndian.Uint16(record[8:])
 	totalEntries := binary.LittleEndian.Uint16(record[10:])
 	directorySize := binary.LittleEndian.Uint32(record[12:])
-	if entriesOnDisk == ^uint16(0) || totalEntries == ^uint16(0) || directorySize == ^uint32(0) {
+	directoryOffset := binary.LittleEndian.Uint32(record[16:])
+	if entriesOnDisk == ^uint16(0) || totalEntries == ^uint16(0) ||
+		directorySize == ^uint32(0) || directoryOffset == ^uint32(0) {
 		return invalidClaudeExportArchive("ZIP64 directory metadata is not supported")
 	}
 	if entriesOnDisk != totalEntries {
@@ -299,6 +295,15 @@ func validateClaudeExportZipDirectory(archivePath string, archiveSize int64) err
 	if int64(directorySize) > maxClaudeZipDirectoryBytes || int64(directorySize) > archiveSize {
 		return invalidClaudeExportArchive("ZIP directory exceeds the supported size limit")
 	}
+	// archive/zip parses central-directory headers from directoryOffset until
+	// they stop parsing, not until the declared count, so a record that
+	// underreports its size could smuggle a much larger directory past the
+	// limits above. Require the declared span to end exactly at the
+	// end-of-directory record.
+	endRecordStart := archiveSize - tailSize + int64(endOffset)
+	if int64(directoryOffset)+int64(directorySize) != endRecordStart {
+		return invalidClaudeExportArchive("ZIP directory span does not match the end-of-directory record")
+	}
 	return nil
 }
 
@@ -309,14 +314,11 @@ func validateClaudeExportConversationJSON(ctx context.Context, raw []byte, conve
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	frames := make([]claudeExportJSONFrame, 0, 8)
 	rootValues := 0
-	for tokenCount := 1; ; tokenCount++ {
+	for tokenCount := 0; ; {
 		if tokenCount%1024 == 0 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-		}
-		if tokenCount > maxClaudeExportJSONTokens {
-			return claudeExportConversationComplexityError(conversationNumber, "JSON token count")
 		}
 		token, err := decoder.Token()
 		if errors.Is(err, io.EOF) {
@@ -324,6 +326,12 @@ func validateClaudeExportConversationJSON(ctx context.Context, raw []byte, conve
 		}
 		if err != nil {
 			return invalidClaudeExportArchive("decode conversation %d structure: %v", conversationNumber, err)
+		}
+		// Count only successfully decoded tokens so a conversation with
+		// exactly maxClaudeExportJSONTokens tokens stays within the limit.
+		tokenCount++
+		if tokenCount > maxClaudeExportJSONTokens {
+			return claudeExportConversationComplexityError(conversationNumber, "JSON token count")
 		}
 		switch value := token.(type) {
 		case json.Delim:

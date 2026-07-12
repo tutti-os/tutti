@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ExternalAgentImportResultResponse,
   ExternalAgentImportSession,
@@ -98,8 +98,15 @@ export function ExternalAgentSessionImportWizard({
     () => (initialProviders ?? []).join("\n"),
     [initialProviders]
   );
+  // Requests are not aborted on close (see isExternalImportWizardBusy), so a
+  // scan started in a previous dialog lifecycle can settle after the wizard
+  // was reset or a newer scan began. Every reset and every new scan bumps this
+  // generation; in-flight continuations compare against it before applying
+  // their results so a stale scan can never overwrite newer wizard state.
+  const scanGeneration = useRef(0);
 
   useEffect(() => {
+    scanGeneration.current += 1;
     if (!open) {
       return undefined;
     }
@@ -187,6 +194,7 @@ export function ExternalAgentSessionImportWizard({
   };
 
   const runScan = async (nextDays: number, nextArchivePath: string | null) => {
+    const generation = ++scanGeneration.current;
     const source = externalImportScanSource({
       archivePath: nextArchivePath,
       days: nextDays,
@@ -201,6 +209,9 @@ export function ExternalAgentSessionImportWizard({
           workspace.id,
           externalImportScanRequest(source)
         );
+      if (generation !== scanGeneration.current) {
+        return;
+      }
       dispatchScanState({
         type: "scan-succeeded",
         response: nextScan,
@@ -219,6 +230,9 @@ export function ExternalAgentSessionImportWizard({
       });
       setStep("select");
     } catch {
+      if (generation !== scanGeneration.current) {
+        return;
+      }
       dispatchScanState({ type: "scan-failed" });
       setError(
         t(
@@ -229,7 +243,9 @@ export function ExternalAgentSessionImportWizard({
       );
       setStep("select");
     } finally {
-      setLoading(false);
+      if (generation === scanGeneration.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -247,19 +263,26 @@ export function ExternalAgentSessionImportWizard({
     }
     dispatchScanState({ type: "source-changed" });
     setError(null);
+    // The dialog stays dismissable while the system file picker is open, so
+    // its continuation must not touch a wizard that was reset in the interim.
+    const generation = scanGeneration.current;
     try {
       const nextArchivePath =
         await workspaceAgentActivityService.selectExternalSessionImportArchive();
-      if (!nextArchivePath) {
+      if (generation !== scanGeneration.current || !nextArchivePath) {
         return;
       }
       setArchivePath(nextArchivePath);
       setDays(-1);
       await runScan(-1, nextArchivePath);
     } catch {
+      if (generation !== scanGeneration.current) {
+        return;
+      }
+      // Stay on the providers step: no scan ran, so the select-step chrome
+      // (title, Import/Back footer) would not match the actual wizard state.
       dispatchScanState({ type: "scan-failed" });
       setError(t("workspace.externalImport.archivePickFailed"));
-      setStep("select");
     }
   };
 

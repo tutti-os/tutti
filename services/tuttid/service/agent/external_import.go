@@ -184,7 +184,19 @@ func externalImportAgentTargetID(provider string) string {
 
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string) (externalScanData, error) {
 	if strings.TrimSpace(archivePath) != "" {
-		return scanClaudeExportArchive(ctx, archivePath, externalScanCutoffUnixMS(days))
+		if len(providers) > 0 && !providersIncludeClaudeCode(providers) {
+			return externalScanData{}, fmt.Errorf(
+				"%w: a Claude export archive scan requires the claude-code provider",
+				ErrInvalidArgument,
+			)
+		}
+		// An export archive is a complete snapshot, so no implicit 30-day
+		// window applies; only an explicit positive day range narrows it.
+		cutoffUnixMS := int64(0)
+		if days > 0 {
+			cutoffUnixMS = externalScanCutoffUnixMS(days)
+		}
+		return scanClaudeExportArchive(ctx, archivePath, cutoffUnixMS)
 	}
 	data := externalScanData{}
 	projects := map[string]*ExternalImportProject{}
@@ -225,7 +237,21 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 		}
 		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
 	})
+	// The provider loop breaks on cancellation, so surface it instead of
+	// letting a partial scan pass as a complete result.
+	if err := ctx.Err(); err != nil {
+		return externalScanData{}, err
+	}
 	return data, nil
+}
+
+func providersIncludeClaudeCode(providers []string) bool {
+	for _, provider := range providers {
+		if agentproviderbiz.Normalize(provider) == agentproviderbiz.ClaudeCode {
+			return true
+		}
+	}
+	return false
 }
 
 // externalScanCutoffUnixMS resolves the "updated since" cutoff for a scan

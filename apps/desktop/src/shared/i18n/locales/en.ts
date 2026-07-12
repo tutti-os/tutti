@@ -10,7 +10,7 @@ export const en = {
     unknownError: "Unknown error",
     unreachable: "unreachable",
     workspace: "workspace",
-    zipArchive: "Zip Archive"
+    zipArchive: "ZIP Archive"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -337,6 +337,8 @@ export const en = {
       promptTitle: "Import existing AI chats",
       result:
         "Imported {{sessions}} sessions and {{messages}} messages from {{projects}} projects",
+      resultSkipped:
+        "Skipped {{count}} conversations that were empty or unsupported",
       scan: "Scan",
       scanFailed: "We couldn't scan external agent history right now.",
       scanning: "Scanning local agent history...",
@@ -344,7 +346,7 @@ export const en = {
       selectImportOption: "Select {{label}}",
       settingsAction: "Import",
       settingsDescription:
-        "Bring local Codex and Claude Code history or Claude export conversations into this workspace",
+        "Bring local Codex and Claude Code history or Claude export conversations into Tutti",
       settingsLabel: "Import AI chats",
       title: "Import from AI apps"
     },

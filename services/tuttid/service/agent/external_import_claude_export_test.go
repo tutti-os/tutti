@@ -452,6 +452,19 @@ func TestScanClaudeExportArchivePreflightsDirectoryLimits(t *testing.T) {
 				binary.LittleEndian.PutUint32(data[endOffset+12:], uint32(maxClaudeZipDirectoryBytes+1))
 			},
 		},
+		{
+			name: "ZIP64 directory offset sentinel",
+			mutate: func(data []byte, endOffset int) {
+				binary.LittleEndian.PutUint32(data[endOffset+16:], ^uint32(0))
+			},
+		},
+		{
+			name: "directory span mismatch",
+			mutate: func(data []byte, endOffset int) {
+				directorySize := binary.LittleEndian.Uint32(data[endOffset+12:])
+				binary.LittleEndian.PutUint32(data[endOffset+12:], directorySize-1)
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -473,6 +486,53 @@ func TestScanClaudeExportArchivePreflightsDirectoryLimits(t *testing.T) {
 				t.Fatalf("error = %v, want ErrInvalidArgument", err)
 			}
 		})
+	}
+}
+
+func TestScanExternalAgentSessionsArchiveIgnoresDefaultDayWindow(t *testing.T) {
+	// The fixture conversation is dated 2026-06, well past the historical
+	// 30-day default, so it only survives if the archive branch skips the
+	// implicit window.
+	archivePath := writeClaudeExportArchive(t, []map[string]any{
+		claudeExportConversationFixture("conversation-old", "Old", linkedClaudeExportMessages(
+			claudeExportMessageFixture("message-1", "human", "2026-06-01T00:00:00Z", []map[string]any{
+				{"type": "text", "text": "hello"},
+			}),
+		)),
+	})
+	data, err := scanExternalAgentSessions(context.Background(), nil, 0, archivePath)
+	if err != nil {
+		t.Fatalf("scan archive with default days: %v", err)
+	}
+	if data.result.ScannedSessions != 1 {
+		t.Fatalf("ScannedSessions = %d, want 1", data.result.ScannedSessions)
+	}
+	// An explicit positive window still narrows the archive scan.
+	data, err = scanExternalAgentSessions(context.Background(), nil, 7, archivePath)
+	if err != nil {
+		t.Fatalf("scan archive with 7-day window: %v", err)
+	}
+	if data.result.ScannedSessions != 0 {
+		t.Fatalf("ScannedSessions = %d, want 0 for a 7-day window", data.result.ScannedSessions)
+	}
+}
+
+func TestScanExternalAgentSessionsRejectsArchiveWithoutClaudeProvider(t *testing.T) {
+	archivePath := writeClaudeExportArchive(t, []map[string]any{})
+	_, err := scanExternalAgentSessions(context.Background(), []string{"codex"}, 0, archivePath)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument for a provider filter excluding claude-code", err)
+	}
+	if _, err := scanExternalAgentSessions(context.Background(), []string{"codex", "claude-code"}, 0, archivePath); err != nil {
+		t.Fatalf("scan with claude-code included: %v", err)
+	}
+}
+
+func TestScanExternalAgentSessionsSurfacesCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := scanExternalAgentSessions(ctx, nil, 0, ""); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
 

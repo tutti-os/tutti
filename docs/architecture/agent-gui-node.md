@@ -461,8 +461,10 @@ before expanding untrusted data. Do not extract the archive, execute tool
 payloads, fetch citation URLs, or treat referenced files as locally available.
 
 Claude export `message.text` is not a safe visible-body source: rich messages
-can include hidden thinking and tool material there. Import only ordered
-`content[type=text]` blocks into visible transcript text, ignore control blocks,
+can include hidden thinking and tool material there. Import ordered
+`content[type=text]` blocks into visible transcript text; only legacy user
+messages with no structured content may fall back to `message.text`, and
+assistant messages never may. Ignore control blocks,
 and retain file-only messages as unavailable references without claiming that
 the ZIP contains their payloads. Stable source message UUIDs make repeat imports
 idempotent even when a later export inserts earlier messages. Claude exports may
