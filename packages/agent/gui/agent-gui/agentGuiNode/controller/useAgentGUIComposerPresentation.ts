@@ -264,6 +264,10 @@ export function useAgentGUIComposerPresentation(
       collapseModelOptionsToLatest:
         input.providerComposerOptions?.behavior.collapseModelOptionsToLatest ===
         true,
+      modelPlan: input.providerComposerOptions?.modelPlan ?? null,
+      modelSwitchTakesEffectNextTurn:
+        input.activeConversationId !== null &&
+        input.composerSupport.modelSwitch,
       availableModels:
         input.composerSupport.model &&
         hasOptionsSource &&

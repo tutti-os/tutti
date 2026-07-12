@@ -1,12 +1,13 @@
 import {
   Fragment,
   cloneElement,
+  useCallback,
   useEffect,
   useState,
   type HTMLAttributes,
   type ReactElement
 } from "react";
-import { ChevronDown, ZapIcon } from "lucide-react";
+import { ChevronDown, Star, ZapIcon } from "lucide-react";
 import { prepareWorkspaceUserProjectSelection } from "@tutti-os/workspace-user-project/core";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
@@ -48,6 +49,15 @@ import {
   type AgentComposerSettingsMenuLabels,
   type ComposerMenuOption
 } from "./model/composerSettingsMenuModel";
+import {
+  composerModelFavoritesStorageKey,
+  composerModelRecentsStorageKey,
+  parseComposerModelIdList,
+  recordRecentComposerModel,
+  serializeComposerModelIdList,
+  toggleFavoriteComposerModel
+} from "./model/composerModelChoiceHistory";
+import { translate } from "../../i18n/index";
 import styles from "./AgentGUINode.styles";
 
 export type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
@@ -414,12 +424,18 @@ export function AgentModelReasoningDropdown({
   disabled = false,
   previewMode = false,
   labels,
+  modelHistoryTargetId = null,
   onSettingsChange
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
   previewMode?: boolean;
   labels: AgentComposerSettingsMenuLabels;
+  /**
+   * Stable per-target key for the recents/favorites localStorage chrome
+   * state; omit to fall back to one shared "default" bucket.
+   */
+  modelHistoryTargetId?: string | null;
   onSettingsChange: (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -428,7 +444,43 @@ export function AgentModelReasoningDropdown({
 }): React.JSX.Element {
   "use memo";
   const [menuOpen, setMenuOpen] = useState(false);
-  const menu = buildComposerModelMenuModel(composerSettings, labels);
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const [favoriteModelIds, setFavoriteModelIds] = useState<readonly string[]>(
+    []
+  );
+  const [recentModelIds, setRecentModelIds] = useState<readonly string[]>([]);
+  const reloadModelHistory = useCallback(() => {
+    setFavoriteModelIds(
+      parseComposerModelIdList(
+        readComposerLocalStorage(
+          composerModelFavoritesStorageKey(modelHistoryTargetId)
+        )
+      )
+    );
+    setRecentModelIds(
+      parseComposerModelIdList(
+        readComposerLocalStorage(
+          composerModelRecentsStorageKey(modelHistoryTargetId)
+        )
+      )
+    );
+  }, [modelHistoryTargetId]);
+  useEffect(() => {
+    reloadModelHistory();
+  }, [reloadModelHistory]);
+  const handleMenuOpenChange = (open: boolean): void => {
+    if (open) {
+      // Pick up writes from other windows and clear the previous filter.
+      reloadModelHistory();
+      setModelSearchQuery("");
+    }
+    setMenuOpen(open);
+  };
+  const menu = buildComposerModelMenuModel(composerSettings, labels, {
+    favoriteModelIds,
+    recentModelIds,
+    searchQuery: modelSearchQuery
+  });
   const menuDisabled = disabled || menu.disabled;
   // While the model list is still loading the trigger shows a placeholder
   // ("Default") that reads like a real selection. Surface a hover hint so the
@@ -444,6 +496,34 @@ export function AgentModelReasoningDropdown({
     onSettingsChange(patch);
     setMenuOpen(false);
   };
+  const applyModelSelection = (value: string): void => {
+    const nextRecentIds = recordRecentComposerModel(recentModelIds, value);
+    setRecentModelIds(nextRecentIds);
+    writeComposerLocalStorage(
+      composerModelRecentsStorageKey(modelHistoryTargetId),
+      serializeComposerModelIdList(nextRecentIds)
+    );
+    applySettingsChange({ model: value });
+  };
+  const handleToggleFavoriteModel = (value: string): void => {
+    const nextFavoriteIds = toggleFavoriteComposerModel(
+      favoriteModelIds,
+      value
+    );
+    setFavoriteModelIds(nextFavoriteIds);
+    writeComposerLocalStorage(
+      composerModelFavoritesStorageKey(modelHistoryTargetId),
+      serializeComposerModelIdList(nextFavoriteIds)
+    );
+  };
+  const favoriteValueSet = new Set(menu.model.favoriteValues);
+  const modelDescriptionPresentation = menu.model.optionDescriptionInline
+    ? ("inline" as const)
+    : ("model-tooltip" as const);
+  const modelListEmpty =
+    menu.model.options.length === 0 &&
+    menu.model.favoriteOptions.length === 0 &&
+    menu.model.recentOptions.length === 0;
   const trigger = (
     <button
       type="button"
@@ -486,7 +566,7 @@ export function AgentModelReasoningDropdown({
   }
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+    <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       {isModelLoading ? (
         // The trigger is disabled while loading, so pointer events never reach
         // it. Target the tooltip at a focusable wrapper span (Radix's pattern
@@ -519,7 +599,83 @@ export function AgentModelReasoningDropdown({
       >
         {menu.model.show ? (
           <>
-            <DropdownMenuLabel>{labels.modelSelectionLabel}</DropdownMenuLabel>
+            <DropdownMenuLabel className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate">
+                {labels.modelSelectionLabel}
+              </span>
+              {menu.model.plan ? (
+                <span
+                  data-agent-model-plan-badge="true"
+                  className="min-w-0 shrink truncate rounded-full border border-[var(--line-2)] px-1.5 text-[10px] font-normal leading-4 text-[var(--agent-gui-text-tertiary)]"
+                >
+                  {translate("agentHost.agentGui.composerModelPlanBadge", {
+                    name: menu.model.plan.name
+                  })}
+                </span>
+              ) : null}
+            </DropdownMenuLabel>
+            {menu.model.searchEnabled ? (
+              <div
+                className="px-2 pb-1.5"
+                // Keep typing local to the input: Radix menu typeahead and
+                // arrow-key focus handling must not steal these key events.
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  type="text"
+                  value={modelSearchQuery}
+                  data-agent-model-search-input="true"
+                  placeholder={translate(
+                    "agentHost.agentGui.composerModelSearchPlaceholder"
+                  )}
+                  className="box-border h-7 w-full min-w-0 rounded-[6px] border border-[var(--line-2)] bg-transparent px-2 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--agent-gui-text-tertiary)] focus:border-[var(--tutti-purple)]"
+                  onChange={(event) => setModelSearchQuery(event.target.value)}
+                />
+              </div>
+            ) : null}
+            {menu.model.favoriteOptions.length > 0 ? (
+              <>
+                <DropdownMenuLabel
+                  data-agent-model-favorites-group="true"
+                  className="text-xs text-[var(--agent-gui-text-tertiary)]"
+                >
+                  {translate("agentHost.agentGui.composerModelFavoritesGroup")}
+                </DropdownMenuLabel>
+                <ComposerMenuOptionItems
+                  options={menu.model.favoriteOptions}
+                  selectedValue={menu.model.selectedValue}
+                  descriptionPresentation={modelDescriptionPresentation}
+                  tooltipsEnabled={!previewMode}
+                  favoriteValues={favoriteValueSet}
+                  onToggleFavorite={handleToggleFavoriteModel}
+                  onSelect={applyModelSelection}
+                />
+              </>
+            ) : null}
+            {menu.model.recentOptions.length > 0 ? (
+              <>
+                <DropdownMenuLabel
+                  data-agent-model-recents-group="true"
+                  className="text-xs text-[var(--agent-gui-text-tertiary)]"
+                >
+                  {translate("agentHost.agentGui.composerModelRecentsGroup")}
+                </DropdownMenuLabel>
+                <ComposerMenuOptionItems
+                  options={menu.model.recentOptions}
+                  selectedValue={menu.model.selectedValue}
+                  descriptionPresentation={modelDescriptionPresentation}
+                  tooltipsEnabled={!previewMode}
+                  favoriteValues={favoriteValueSet}
+                  onToggleFavorite={handleToggleFavoriteModel}
+                  onSelect={applyModelSelection}
+                />
+              </>
+            ) : null}
+            {(menu.model.favoriteOptions.length > 0 ||
+              menu.model.recentOptions.length > 0) &&
+            menu.model.options.length > 0 ? (
+              <DropdownMenuSeparator />
+            ) : null}
             {menu.model.groups.length > 0 ? (
               menu.model.groups.map((group, index) => (
                 <Fragment key={group.label ?? `ungrouped-${index}`}>
@@ -531,9 +687,11 @@ export function AgentModelReasoningDropdown({
                   <ComposerMenuOptionItems
                     options={group.options}
                     selectedValue={menu.model.selectedValue}
-                    descriptionPresentation="model-tooltip"
+                    descriptionPresentation={modelDescriptionPresentation}
                     tooltipsEnabled={!previewMode}
-                    onSelect={(value) => applySettingsChange({ model: value })}
+                    favoriteValues={favoriteValueSet}
+                    onToggleFavorite={handleToggleFavoriteModel}
+                    onSelect={applyModelSelection}
                   />
                 </Fragment>
               ))
@@ -541,11 +699,23 @@ export function AgentModelReasoningDropdown({
               <ComposerMenuOptionItems
                 options={menu.model.options}
                 selectedValue={menu.model.selectedValue}
-                descriptionPresentation="model-tooltip"
+                descriptionPresentation={modelDescriptionPresentation}
                 tooltipsEnabled={!previewMode}
-                onSelect={(value) => applySettingsChange({ model: value })}
+                favoriteValues={favoriteValueSet}
+                onToggleFavorite={handleToggleFavoriteModel}
+                onSelect={applyModelSelection}
               />
             )}
+            {menu.model.searchEnabled &&
+            menu.model.searchQuery &&
+            modelListEmpty ? (
+              <div
+                data-agent-model-search-empty="true"
+                className="px-2 py-1.5 text-[12px] text-[var(--agent-gui-text-tertiary)]"
+              >
+                {translate("agentHost.agentGui.composerModelSearchEmpty")}
+              </div>
+            ) : null}
           </>
         ) : null}
         {menu.model.show && (menu.reasoning.show || menu.speed.show) ? (
@@ -606,9 +776,42 @@ export function AgentModelReasoningDropdown({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
+        {menu.switchEffectHint ? (
+          <>
+            <DropdownMenuSeparator />
+            <div
+              data-agent-model-switch-hint="true"
+              className="px-2 py-1.5 text-[11px] text-[var(--agent-gui-text-tertiary)]"
+            >
+              {translate("agentHost.agentGui.composerModelSwitchNextTurnHint")}
+            </div>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function readComposerLocalStorage(key: string): string | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return null;
+    }
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeComposerLocalStorage(key: string, value: string): void {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return;
+    }
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Chrome-state persistence is best-effort; never break the menu.
+  }
 }
 
 // Renders a list of pick-to-apply menu items. Pointer activation applies
@@ -620,12 +823,17 @@ function ComposerMenuOptionItems({
   selectedValue,
   descriptionPresentation = "none",
   tooltipsEnabled = true,
+  favoriteValues,
+  onToggleFavorite,
   onSelect
 }: {
   options: ComposerMenuOption[];
   selectedValue: string;
   descriptionPresentation?: "inline" | "model-tooltip" | "none" | "tooltip";
   tooltipsEnabled?: boolean;
+  /** Values currently favorited; enables the per-option star toggle. */
+  favoriteValues?: ReadonlySet<string>;
+  onToggleFavorite?: (value: string) => void;
   onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
@@ -637,6 +845,43 @@ function ComposerMenuOptionItems({
         const showModelTooltip = descriptionPresentation === "model-tooltip";
         const showTooltipDescription =
           descriptionPresentation === "tooltip" && hasDescription;
+        const isFavorite = favoriteValues?.has(option.value) ?? false;
+        const favoriteToggle = onToggleFavorite ? (
+          <button
+            type="button"
+            data-agent-model-favorite-toggle="true"
+            data-favorited={isFavorite ? "true" : "false"}
+            aria-label={translate(
+              isFavorite
+                ? "agentHost.agentGui.composerModelFavoriteRemove"
+                : "agentHost.agentGui.composerModelFavoriteAdd"
+            )}
+            className={cn(
+              "ml-1 inline-flex size-5 shrink-0 items-center justify-center rounded-[4px] text-[var(--agent-gui-text-tertiary)] transition-opacity hover:text-[var(--text-secondary)]",
+              isFavorite
+                ? "text-[var(--tutti-purple)] opacity-100 hover:text-[var(--tutti-purple)]"
+                : "opacity-0 group-hover/composer-option:opacity-100 group-data-[highlighted]/composer-option:opacity-100"
+            )}
+            // Stop before the DropdownMenuItem's pointerdown-apply handler:
+            // starring an option must not also select it or close the menu.
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleFavorite(option.value);
+            }}
+          >
+            <Star
+              aria-hidden
+              className="size-3.5"
+              fill={isFavorite ? "currentColor" : "none"}
+              strokeWidth={2}
+            />
+          </button>
+        ) : null;
         const item = (
           <DropdownMenuItem
             key={option.value}
@@ -701,6 +946,7 @@ function ComposerMenuOptionItems({
                 ) : null}
               </span>
             )}
+            {favoriteToggle}
             <CheckIcon
               aria-hidden
               className={cn(

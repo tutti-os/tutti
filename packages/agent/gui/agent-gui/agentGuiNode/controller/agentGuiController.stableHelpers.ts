@@ -474,6 +474,12 @@ export function areComposerSettingsVMsEqual(
     Boolean(left.projectPathIsRemote) === Boolean(right.projectPathIsRemote) &&
     Boolean(left.collapseModelOptionsToLatest) ===
       Boolean(right.collapseModelOptionsToLatest) &&
+    (left.modelPlan?.id ?? null) === (right.modelPlan?.id ?? null) &&
+    (left.modelPlan?.name ?? null) === (right.modelPlan?.name ?? null) &&
+    (left.modelPlan?.protocol ?? null) ===
+      (right.modelPlan?.protocol ?? null) &&
+    Boolean(left.modelSwitchTakesEffectNextTurn) ===
+      Boolean(right.modelSwitchTakesEffectNextTurn) &&
     areComposerSettingOptionListsEqual(
       left.availableModels,
       right.availableModels

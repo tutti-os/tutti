@@ -242,6 +242,14 @@ export interface IWorkspaceAgentActivityService {
     attachmentId: string;
     workspaceId: string;
   }): Promise<WorkspaceAgentActivityAttachment>;
+  // Optional like their AgentActivityRuntime counterparts so lightweight
+  // fakes/hosts without collaboration-run support can omit them; the runtime
+  // wiring only exposes the commands when the service implements them.
+  startModelConsult?: NonNullable<AgentActivityRuntime["startModelConsult"]>;
+  setCollaborationAdoption?: NonNullable<
+    AgentActivityRuntime["setCollaborationAdoption"]
+  >;
+  listModelPlans?: NonNullable<AgentActivityRuntime["listModelPlans"]>;
   renameSession(
     input: AgentActivityRenameSessionInput
   ): Promise<AgentActivitySession>;

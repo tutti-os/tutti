@@ -13,6 +13,10 @@ import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { isApprovalToolCall } from "./agentToolRendererKind";
 import { resolveAgentTranscriptPresentationKind } from "./agentTranscriptPresentation";
 import { projectAgentToolCall } from "./agentToolProjection";
+import {
+  isCollaborationTimelineItem,
+  projectAgentCollaborationVM
+} from "./agentCollaborationProjection";
 import { projectConversationUserRow } from "./agentConversationUserProjection";
 
 export type AgentTurnSequenceItemVM =
@@ -190,6 +194,16 @@ function projectMessage(
       )
     ) {
       projected.contentKind = "plan";
+    }
+    const collaborationItem = message.sourceTimelineItems.find(
+      isCollaborationTimelineItem
+    );
+    if (collaborationItem) {
+      const collaboration = projectAgentCollaborationVM(collaborationItem);
+      if (collaboration) {
+        projected.contentKind = "collaboration";
+        projected.collaboration = collaboration;
+      }
     }
   }
   return projected;

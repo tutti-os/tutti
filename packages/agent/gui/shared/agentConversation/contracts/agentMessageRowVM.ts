@@ -2,6 +2,7 @@ import type { AgentActivityMessageSemantics } from "@tutti-os/agent-activity-cor
 import type { ToolCallStatusKind } from "../../workspaceAgentToolCallDisplay";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { AgentTranscriptPresentationKind } from "./agentTranscriptPresentation";
+import type { AgentCollaborationVM } from "./agentCollaborationVM";
 
 export interface AgentMessageContentVM {
   kind: "message-content";
@@ -11,8 +12,10 @@ export interface AgentMessageContentVM {
   presentationKind: AgentTranscriptPresentationKind;
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
-  contentKind?: "text" | "image-grid" | "plan";
+  contentKind?: "text" | "image-grid" | "plan" | "collaboration";
   isTurnFinalText?: true;
+  /** Typed payload for `contentKind: "collaboration"` rows. */
+  collaboration?: AgentCollaborationVM | null;
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;
   visibleError?: {

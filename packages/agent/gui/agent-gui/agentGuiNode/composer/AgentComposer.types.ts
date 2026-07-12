@@ -9,6 +9,7 @@ import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionE
 import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
+import type { AgentModelConsultContext } from "../AgentModelConsultControl";
 import type {
   AgentComposerDraft,
   AgentGUIComposerSettingsVM,
@@ -90,6 +91,8 @@ export interface AgentComposerProps {
   providerSelectLabel?: string;
   handoffLabel?: string;
   handoffMenuLabel?: string;
+  /** Active-session model consult context; null hides the consult entry. */
+  modelConsult?: AgentModelConsultContext | null;
   labels: {
     send: string;
     modelLabel: string;
