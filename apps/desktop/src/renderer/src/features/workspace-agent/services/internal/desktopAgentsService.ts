@@ -102,6 +102,9 @@ export class DesktopAgentsService implements IAgentsService {
       agentTargets,
       capturedAtUnixMs: this.dependencies.now?.() ?? Date.now()
     };
+    if (areAgentsSnapshotsEqual(this.snapshot, nextSnapshot)) {
+      return this.snapshot;
+    }
     this.snapshot = nextSnapshot;
     this.emit();
     return nextSnapshot;
@@ -162,6 +165,51 @@ function resolveAgentTargetIconUrl(
     resolveAgentIconUrl?.(target.provider) ||
     ""
   );
+}
+
+function areAgentsSnapshotsEqual(
+  left: AgentsSnapshot,
+  right: AgentsSnapshot
+): boolean {
+  if (
+    left.agents.length !== right.agents.length ||
+    left.agentTargets.length !== right.agentTargets.length
+  ) {
+    return false;
+  }
+  for (let index = 0; index < left.agents.length; index += 1) {
+    const leftAgent = left.agents[index];
+    const rightAgent = right.agents[index];
+    if (
+      leftAgent?.agentTargetId !== rightAgent?.agentTargetId ||
+      leftAgent?.name !== rightAgent?.name ||
+      leftAgent?.provider !== rightAgent?.provider ||
+      leftAgent?.iconUrl !== rightAgent?.iconUrl ||
+      leftAgent?.availability.status !== rightAgent?.availability.status
+    ) {
+      return false;
+    }
+  }
+  for (let index = 0; index < left.agentTargets.length; index += 1) {
+    const leftTarget = left.agentTargets[index];
+    const rightTarget = right.agentTargets[index];
+    if (
+      leftTarget?.agentTargetId !== rightTarget?.agentTargetId ||
+      leftTarget?.createdAtUnixMs !== rightTarget?.createdAtUnixMs ||
+      leftTarget?.enabled !== rightTarget?.enabled ||
+      leftTarget?.iconKey !== rightTarget?.iconKey ||
+      leftTarget?.iconUrl !== rightTarget?.iconUrl ||
+      leftTarget?.launchRefType !== rightTarget?.launchRefType ||
+      leftTarget?.name !== rightTarget?.name ||
+      leftTarget?.provider !== rightTarget?.provider ||
+      leftTarget?.sortOrder !== rightTarget?.sortOrder ||
+      leftTarget?.source !== rightTarget?.source ||
+      leftTarget?.updatedAtUnixMs !== rightTarget?.updatedAtUnixMs
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function compareAgentTargetsForDisplay(

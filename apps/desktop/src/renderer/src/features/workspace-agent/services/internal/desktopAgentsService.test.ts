@@ -63,6 +63,66 @@ test("desktop agents service maps agent targets into renderer presentations and 
   ]);
 });
 
+test("desktop agents service does not emit when fetched snapshot is unchanged", async () => {
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      listAgentTargets: async () => ({
+        targets: [
+          createAgentTarget({
+            id: "local:codex",
+            name: "Codex",
+            provider: "codex",
+            sortOrder: 10
+          })
+        ]
+      })
+    }
+  });
+  const emitCount = { value: 0 };
+  service.subscribe(() => {
+    emitCount.value += 1;
+  });
+
+  await service.load();
+  await service.load();
+  await service.load();
+
+  assert.equal(emitCount.value, 1);
+});
+
+test("desktop agents service emits when fetched snapshot changes", async () => {
+  let targets: AgentTarget[] = [
+    createAgentTarget({
+      id: "local:codex",
+      name: "Codex",
+      provider: "codex",
+      sortOrder: 10
+    })
+  ];
+  const service = new DesktopAgentsService({
+    tuttidClient: {
+      listAgentTargets: async () => ({ targets })
+    }
+  });
+  const emitCount = { value: 0 };
+  service.subscribe(() => {
+    emitCount.value += 1;
+  });
+
+  await service.load();
+  targets = [
+    createAgentTarget({
+      id: "local:claude-code",
+      name: "Claude Code",
+      provider: "claude-code",
+      sortOrder: 20
+    })
+  ];
+  await service.load();
+
+  assert.equal(emitCount.value, 2);
+});
+
 test("desktop agents service resolves target iconKey before provider artwork", () => {
   const [presentation] = mapAgentTargetsToPresentations(
     [
