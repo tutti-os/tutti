@@ -951,6 +951,107 @@ describe("AgentMentionSearchController", () => {
     expect(queryFiles).toHaveBeenCalledTimes(1);
   });
 
+
+  it("shows loading status while serving stale browse cache for background revalidation", async () => {
+    let now = 10_000;
+    const queryFiles = vi.fn().mockResolvedValue({
+      workspaceId: "room-1",
+      root: "/workspace",
+      entries: [
+        { path: "/workspace/initial.md", name: "initial.md", kind: "file" }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] }),
+      diagnosticNow: () => now,
+      browseCacheTtlMs: 5_000
+    });
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    // Warm cache with initial data
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "file"
+      })
+    );
+
+    // Close and advance time past TTL so cache becomes stale
+    controller.close();
+    now += 10_000;
+
+    // Update the mock to return different files (simulating real workspace changes)
+    queryFiles.mockResolvedValue({
+      workspaceId: "room-1",
+      root: "/workspace",
+      entries: [
+        { path: "/workspace/updated.md", name: "updated.md", kind: "file" }
+      ]
+    });
+
+    // Reopen — stale cache should show status "loading", not "ready"
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    // Wait for the stale-while-revalidate state to appear
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "loading",
+        mode: "browse",
+        filter: "file"
+      })
+    );
+    // Stale data is still visible as placeholder
+    expect(states.at(-1).groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "opened_files",
+          items: [
+            expect.objectContaining({
+              path: "/workspace/initial.md"
+            })
+          ]
+        })
+      ])
+    );
+
+    // After background fetch completes, status becomes "ready" with fresh data
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "file",
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: "opened_files",
+            items: [
+              expect.objectContaining({
+                path: "/workspace/updated.md"
+              })
+            ]
+          })
+        ])
+      })
+    );
+
+    controller.dispose();
+  });
+
   it("evicts the oldest browse cache entry once the shared cap is exceeded", async () => {
     const now = 5_000;
     const queryFiles = vi.fn().mockResolvedValue({

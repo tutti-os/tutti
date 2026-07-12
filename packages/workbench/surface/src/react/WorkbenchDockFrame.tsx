@@ -95,6 +95,9 @@ export function WorkbenchDockFrame<TData>({
                 },
                 isPendingMinimizedDockNode: (nodeID) => {
                   return genie.isPendingMinimizedDockNode(nodeID);
+                },
+                minimizeNodeToAnchor: (nodeID, minimize) => {
+                  genie.minimizeNodeToAnchor(nodeID, minimize);
                 }
               },
               minimizedNodes,

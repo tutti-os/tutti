@@ -21,6 +21,7 @@ export type WorkbenchHostDockClickResolution =
   | { kind: "blocked" }
   | { kind: "focus-node"; nodeId: string }
   | { kind: "launch" }
+  | { kind: "minimize-node"; nodeId: string }
   | { kind: "open-popup" };
 
 export function matchWorkbenchDockEntryNode(
@@ -116,6 +117,7 @@ export function resolveWorkbenchDockEntries(input: {
 
 export function resolveWorkbenchDockEntryClick(input: {
   entry: WorkbenchHostDockEntry;
+  focusedNodeId?: string | null;
   instanceMode?: WorkbenchHostNodeInstanceStrategy["mode"];
   matchedNodes: readonly WorkbenchNode<WorkbenchHostNodeData>[];
 }): WorkbenchHostDockClickResolution {
@@ -135,7 +137,18 @@ export function resolveWorkbenchDockEntryClick(input: {
     return { kind: "open-popup" };
   }
   if (input.matchedNodes.length === 1) {
-    return { kind: "focus-node", nodeId: input.matchedNodes[0]!.id };
+    const node = input.matchedNodes[0]!;
+    // Toggle: if the node is already focused (not minimized and is the active
+    // node), clicking the dock icon minimizes it. If it's minimized or not
+    // focused, clicking restores/focuses it.
+    if (
+      input.focusedNodeId != null &&
+      node.id === input.focusedNodeId &&
+      !node.isMinimized
+    ) {
+      return { kind: "minimize-node", nodeId: node.id };
+    }
+    return { kind: "focus-node", nodeId: node.id };
   }
   if (input.matchedNodes.length > 1) {
     return { kind: "open-popup" };
