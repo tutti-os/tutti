@@ -112,28 +112,11 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.provider_ready", workspaceID, input.AgentSessionID, input.Metadata, nil)
 	requestedModel := value(input.Model)
-	planEndpoint, planModels := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, requestedModel)
 	nodeStartedAt = time.Now()
-	if planEndpoint != nil {
-		// The bound plan owns the model catalog for this session: the model is
-		// validated against the plan's model list and defaults to the
-		// plan-resolved model instead of provider-native sources.
-		if err := validateModelAgainstPlan(provider, requestedModel, planModels); err != nil {
-			s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
-			return Session{}, err
-		}
-		if strings.TrimSpace(planEndpoint.Model) != "" {
-			resolvedModel := planEndpoint.Model
-			input.Model = &resolvedModel
-		}
-	} else {
-		input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, input.Model)
-		if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
-			if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
-				s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
-				return Session{}, err
-			}
-		}
+	planEndpoint, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
+		return Session{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.model_validated", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{

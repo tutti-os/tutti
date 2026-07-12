@@ -284,3 +284,28 @@ func (observers SessionStateObservers) ObserveAgentSessionState(ctx context.Cont
 		}
 	}
 }
+
+// resolveCreateSessionModelForPlanOrProvider resolves and validates the
+// session model for Create. A bound plan owns the model catalog: the request
+// validates against the plan's model list and defaults to the plan-resolved
+// model. Without a plan the provider-native resolution and validation apply.
+func (s *Service) resolveCreateSessionModelForPlanOrProvider(ctx context.Context, workspaceID string, provider string, requestedModel string, input *CreateSessionInput) (*runtimeprep.ModelEndpointConfig, error) {
+	planEndpoint, planModels := s.resolveModelPlanEndpoint(ctx, workspaceID, input.AgentTargetID, provider, requestedModel)
+	if planEndpoint != nil {
+		if err := validateModelAgainstPlan(provider, requestedModel, planModels); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(planEndpoint.Model) != "" {
+			resolvedModel := planEndpoint.Model
+			input.Model = &resolvedModel
+		}
+		return planEndpoint, nil
+	}
+	input.Model = s.resolveCreateSessionModel(ctx, provider, input.ProviderTargetRef, input.Model)
+	if providerTargetRefKind(input.ProviderTargetRef) != "agent_extension" {
+		if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), requestedModel); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}

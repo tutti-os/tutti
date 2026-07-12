@@ -24,6 +24,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 - [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
 - [Agent Reference Mention Resolution](./agent-reference-mention-resolution.md)
 - [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
+- [Model Access Plans And Model Governance](./model-access-plans.md)
 
 ## Desktop And Transport
 

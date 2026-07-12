@@ -22,7 +22,7 @@ func newMemoryBindingStore() *memoryBindingStore {
 	return &memoryBindingStore{bindings: map[string]modelbindingbiz.Binding{}}
 }
 
-func (s *memoryBindingStore) key(workspaceID string, agentTargetID string) string {
+func (*memoryBindingStore) key(workspaceID string, agentTargetID string) string {
 	return workspaceID + "/" + agentTargetID
 }
 
@@ -82,7 +82,7 @@ type staticPlans struct {
 	plans map[string]modelplanbiz.Plan
 }
 
-func (s staticPlans) ListModelPlans(context.Context, string) ([]modelplanbiz.Plan, error) {
+func (staticPlans) ListModelPlans(context.Context, string) ([]modelplanbiz.Plan, error) {
 	return nil, nil
 }
 
@@ -94,8 +94,8 @@ func (s staticPlans) GetModelPlan(_ context.Context, _ string, planID string) (m
 	return plan, nil
 }
 
-func (s staticPlans) PutModelPlan(context.Context, modelplanbiz.Plan) error { return nil }
-func (s staticPlans) DeleteModelPlan(context.Context, string, string) error {
+func (staticPlans) PutModelPlan(context.Context, modelplanbiz.Plan) error { return nil }
+func (staticPlans) DeleteModelPlan(context.Context, string, string) error {
 	return nil
 }
 
