@@ -180,7 +180,8 @@ describe("composerSettingsSupportFromOptions", () => {
       computer: false,
       planImplementation: false,
       permissionModeChangeDuringTurn: false,
-      permissionModeChangeDeferred: false
+      permissionModeChangeDeferred: false,
+      modelSwitch: false
     });
   });
 

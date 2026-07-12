@@ -231,6 +231,12 @@ export interface AgentHomeSuggestionCategory {
   action?: AgentHomeSuggestionAction;
 }
 
+export interface AgentGUIComposerModelPlanVM {
+  id: string;
+  name: string;
+  protocol?: string | null;
+}
+
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
@@ -279,6 +285,14 @@ export interface AgentGUIComposerSettingsVM {
   // whose live lists span many vendors and versions, e.g. Cursor). The
   // currently selected model always stays visible even if older.
   collapseModelOptionsToLatest?: boolean;
+  // Bound model access plan for the composer target, projected from the
+  // daemon composer options `runtimeContext.modelPlan`. Absent/null when the
+  // target keeps its provider-native model source.
+  modelPlan?: AgentGUIComposerModelPlanVM | null;
+  // Active session with a provider advertising the "modelSwitch" capability:
+  // a new model pick applies from the next request, so the model menu shows
+  // the switch-effect footer hint.
+  modelSwitchTakesEffectNextTurn?: boolean;
   availableModels: AgentGUIComposerSettingOption[];
   availableReasoningEfforts: AgentGUIComposerSettingOption[];
   availableSpeeds: AgentGUIComposerSettingOption[];

@@ -1,5 +1,6 @@
 import type { ToolCallStatusKind } from "../../workspaceAgentToolCallDisplay";
 import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
+import type { AgentCollaborationVM } from "./agentCollaborationVM";
 
 export interface AgentMessageContentVM {
   kind: "message-content";
@@ -8,7 +9,9 @@ export interface AgentMessageContentVM {
   body: string;
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
-  contentKind?: "text" | "image-grid" | "plan";
+  contentKind?: "text" | "image-grid" | "plan" | "collaboration";
+  /** Typed payload for `contentKind: "collaboration"` rows. */
+  collaboration?: AgentCollaborationVM | null;
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;
   visibleError?: {

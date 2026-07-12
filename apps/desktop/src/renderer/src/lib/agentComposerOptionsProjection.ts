@@ -92,6 +92,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
     capabilityCatalog,
     behavior: composerBehaviorFromValue(result.behavior),
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
+    modelPlan: composerModelPlanFromValue(runtimeContext.modelPlan),
     loadedAtUnixMs: Date.now()
   };
 }
@@ -118,6 +119,22 @@ function commandOptionsFromValue(value: unknown) {
     });
   }
   return commands;
+}
+
+function composerModelPlanFromValue(
+  value: unknown
+): AgentActivityComposerOptions["modelPlan"] {
+  const plan = recordValue(value);
+  const id = normalizeText(plan.id);
+  const name = normalizeText(plan.name);
+  if (!id || !name) {
+    return null;
+  }
+  return {
+    id,
+    name,
+    protocol: normalizeText(plan.protocol)
+  };
 }
 
 function settingOptionsWithLocalizedPresentation(
@@ -164,6 +181,8 @@ function sessionCapabilitiesFromValue(
     imageInput: capabilities.imageInput === true,
     interrupt: capabilities.interrupt === true,
     modelImageInputRequired: capabilities.modelImageInputRequired === true,
+    modelPlanBinding: capabilities.modelPlanBinding === true,
+    modelSwitch: capabilities.modelSwitch === true,
     permissionModeChangeDeferred:
       capabilities.permissionModeChangeDeferred === true,
     permissionModeChangeDuringTurn:

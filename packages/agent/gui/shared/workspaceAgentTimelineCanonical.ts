@@ -22,6 +22,7 @@ import {
   thinkingStatusKind,
   userMessageProjectionKey
 } from "./workspaceAgentTimelineMessageHelpers";
+import { isCollaborationTimelineItem } from "./agentConversation/projection/agentCollaborationProjection";
 import {
   compareToolCallsAscending,
   delegatedToolStepFromCall,
@@ -98,6 +99,33 @@ export function buildCanonicalWorkspaceAgentDetailView({
     const turnId =
       explicitTurnId || activeSequenceTurnId || `seq:${item.seq || item.id}`;
     const turn = getTurn(turns, turnId);
+
+    // Collaboration runs render as a dedicated card. Unlike ordinary agent
+    // messages they must stay visible while their body (resultText) is still
+    // empty — a running consult has no output yet — so this branch does not
+    // require a non-empty body.
+    if (isCollaborationTimelineItem(item)) {
+      const status = firstPresentString(
+        item.status,
+        stringRecordValue(item.payload, "status")
+      );
+      const statusKind = messageStatusKind(status);
+      const message = withSourceTimelineItems(
+        {
+          id: itemId(item),
+          body,
+          ...(status ? { status } : {}),
+          ...(statusKind ? { statusKind } : {}),
+          turnId,
+          occurredAtUnixMs:
+            item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
+        },
+        [item]
+      );
+      turn.agentMessages.push(message);
+      turn.agentItems.push({ kind: "message", message });
+      continue;
+    }
 
     if (isWorkspaceAgentToolCallItem(item)) {
       if (shouldSuppressToolCall(item, suppressedToolCallIds)) {

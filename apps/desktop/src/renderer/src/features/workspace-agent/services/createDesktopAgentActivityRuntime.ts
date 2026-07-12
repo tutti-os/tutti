@@ -477,6 +477,33 @@ export function createDesktopAgentActivityRuntime(
       : {}),
     renameSession: (input) =>
       workspaceAgentActivityService.renameSession(input),
+    ...(workspaceAgentActivityService.startModelConsult
+      ? {
+          startModelConsult: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["startModelConsult"]>
+            >[0]
+          ) => workspaceAgentActivityService.startModelConsult!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.setCollaborationAdoption
+      ? {
+          setCollaborationAdoption: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["setCollaborationAdoption"]>
+            >[0]
+          ) => workspaceAgentActivityService.setCollaborationAdoption!(input)
+        }
+      : {}),
+    ...(workspaceAgentActivityService.listModelPlans
+      ? {
+          listModelPlans: (
+            input: Parameters<
+              NonNullable<AgentActivityRuntime["listModelPlans"]>
+            >[0]
+          ) => workspaceAgentActivityService.listModelPlans!(input)
+        }
+      : {}),
     async setSessionPinned(input) {
       const session =
         await workspaceAgentActivityService.setSessionPinned(input);

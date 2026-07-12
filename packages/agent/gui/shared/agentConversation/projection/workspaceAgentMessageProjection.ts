@@ -95,6 +95,26 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
       };
     }
 
+    if (kind === "collaboration") {
+      // Collaboration runs (model consult/fork/delegate/handoff) are durable
+      // assistant-side messages the daemon updates in place by messageId
+      // ("collab:<runId>"). Keep the full payload so the canonical detail view
+      // can project the typed collaboration card even while resultText is
+      // still empty (running consult).
+      return messageTimelineItem({
+        message,
+        id,
+        seq,
+        eventId,
+        turnId,
+        actorType: "agent",
+        itemType: "collaboration",
+        role: "assistant",
+        content: messagePayloadString(message, "resultText") ?? "",
+        occurredAtUnixMs
+      });
+    }
+
     if (kind === "reasoning") {
       return messageTimelineItem({
         message,

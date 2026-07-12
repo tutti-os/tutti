@@ -8,8 +8,18 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
+  Client,
+  CollaborationRun,
+  ModelPlan,
   TuttidClient,
   TuttidEventStreamClient
+} from "@tutti-os/client-tuttid-ts";
+import {
+  createClient,
+  createCollaborationRun,
+  listModelPlans as listModelPlansRequest,
+  normalizeTuttidError,
+  setCollaborationRunAdoption
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
@@ -74,7 +84,8 @@ export interface WorkspaceAgentActivityServiceDependencies {
     "createUserDocumentsProjectDirectory" | "selectAppArchive"
   >;
   tuttidClient: TuttidClient;
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic"> &
+    Partial<Pick<DesktopRuntimeApi, "getBackendConfig">>;
   agentProviderStatusService?: Pick<IAgentProviderStatusService, "refresh">;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -95,6 +106,15 @@ export class WorkspaceAgentActivityService
     Promise<AgentActivitySnapshot>
   >();
   private composerOptionsCommandSequence = 1;
+  // Collaboration-run/model-plan requests are not part of the TuttidClient
+  // wrapper yet, so they call the generated SDK directly. The client is
+  // re-resolved from the backend config on every call (cached per endpoint)
+  // because the managed daemon can restart onto a new ephemeral port.
+  private collaborationClientCache: {
+    accessToken: string;
+    baseUrl: string;
+    client: Client;
+  } | null = null;
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
     super(dependencies);
     this.dependencies = dependencies;
@@ -587,6 +607,109 @@ export class WorkspaceAgentActivityService
     );
   }
 
+  async startModelConsult(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["startModelConsult"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await createCollaborationRun({
+      body: {
+        contextText: input.contextText?.trim() || undefined,
+        mode: "consult",
+        model: input.model,
+        modelPlanId: input.modelPlanId,
+        question: input.question,
+        sourceSessionId: input.agentSessionId,
+        triggerReason: "composer_consult",
+        triggerSource: "user"
+      },
+      client,
+      path: { workspaceID: workspaceId },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(response, "Model consult request failed.")
+    );
+  }
+
+  async setCollaborationAdoption(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
+    >[0]
+  ): ReturnType<
+    NonNullable<IWorkspaceAgentActivityService["setCollaborationAdoption"]>
+  > {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await setCollaborationRunAdoption({
+      body: { adoption: input.adoption },
+      client,
+      path: {
+        collaborationRunID: input.runId,
+        workspaceID: workspaceId
+      },
+      signal: input.signal
+    });
+    return agentActivityCollaborationRunFromTuttid(
+      unwrapCollaborationData(
+        response,
+        "Collaboration adoption request failed."
+      )
+    );
+  }
+
+  async listModelPlans(
+    input: Parameters<
+      NonNullable<IWorkspaceAgentActivityService["listModelPlans"]>
+    >[0]
+  ): ReturnType<NonNullable<IWorkspaceAgentActivityService["listModelPlans"]>> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const client = await this.resolveCollaborationClient();
+    const response = await listModelPlansRequest({
+      client,
+      path: { workspaceID: workspaceId },
+      signal: input.signal
+    });
+    const plans = unwrapCollaborationData(
+      response,
+      "Model plans request failed."
+    ).plans;
+    return { plans: plans.map(agentActivityModelPlanSummaryFromTuttid) };
+  }
+
+  private async resolveCollaborationClient(): Promise<Client> {
+    const getBackendConfig = this.dependencies.runtimeApi.getBackendConfig;
+    if (!getBackendConfig) {
+      throw new Error(
+        "Collaboration requests are unavailable: backend config resolver is missing."
+      );
+    }
+    const config = await getBackendConfig();
+    const cached = this.collaborationClientCache;
+    if (
+      cached &&
+      cached.baseUrl === config.baseUrl &&
+      cached.accessToken === config.accessToken
+    ) {
+      return cached.client;
+    }
+    const client = createClient({
+      auth: config.accessToken,
+      baseUrl: config.baseUrl,
+      fetch: globalThis.fetch.bind(globalThis)
+    });
+    this.collaborationClientCache = {
+      accessToken: config.accessToken,
+      baseUrl: config.baseUrl,
+      client
+    };
+    return client;
+  }
+
   async goalControl(
     input: Parameters<AgentActivityAdapter["goalControl"]>[0]
   ): Promise<AgentActivityGoalControlResult> {
@@ -765,4 +888,102 @@ export class WorkspaceAgentActivityService
       workspaceId
     });
   }
+}
+
+// Local equivalent of the TuttidClient unwrap helper for direct generated-SDK
+// calls: normalize protocol errors, otherwise fall back to the caller message.
+function unwrapCollaborationData<TResult>(
+  response: { data?: TResult; error?: unknown; response?: Response },
+  fallback: string
+): TResult {
+  if (response.error !== undefined) {
+    throw (
+      normalizeTuttidError(response.error, response.response?.status ?? 0) ??
+      new Error(fallback)
+    );
+  }
+  if (response.data === undefined) {
+    throw new Error(fallback);
+  }
+  return response.data;
+}
+
+function agentActivityCollaborationRunFromTuttid(run: CollaborationRun): {
+  adoption: CollaborationRun["adoption"];
+  completedAtUnixMs: number | null;
+  contextScope: string | null;
+  durationMs: number | null;
+  failureReason: string | null;
+  id: string;
+  mode: CollaborationRun["mode"];
+  model: string | null;
+  modelPlanId: string | null;
+  resultText: string | null;
+  sourceSessionId: string | null;
+  startedAtUnixMs: number | null;
+  status: CollaborationRun["status"];
+  targetAgentTargetId: string | null;
+  targetSessionId: string | null;
+  triggerReason: string | null;
+  triggerSource: CollaborationRun["triggerSource"];
+  usage: { inputTokens: number; outputTokens: number } | null;
+  workspaceId: string;
+} {
+  return {
+    adoption: run.adoption,
+    completedAtUnixMs: unixMsFromIsoTimestamp(run.completedAt),
+    contextScope: run.contextScope ?? null,
+    durationMs: run.durationMs ?? null,
+    failureReason: run.failureReason ?? null,
+    id: run.id,
+    mode: run.mode,
+    model: run.model ?? null,
+    modelPlanId: run.modelPlanId ?? null,
+    resultText: run.resultText ?? null,
+    sourceSessionId: run.sourceSessionId ?? null,
+    startedAtUnixMs: unixMsFromIsoTimestamp(run.startedAt),
+    status: run.status,
+    targetAgentTargetId: run.targetAgentTargetId ?? null,
+    targetSessionId: run.targetSessionId ?? null,
+    triggerReason: run.triggerReason ?? null,
+    triggerSource: run.triggerSource,
+    usage: run.usage
+      ? {
+          inputTokens: run.usage.inputTokens,
+          outputTokens: run.usage.outputTokens
+        }
+      : null,
+    workspaceId: run.workspaceId
+  };
+}
+
+function agentActivityModelPlanSummaryFromTuttid(plan: ModelPlan): {
+  defaultModel: string | null;
+  enabled: boolean;
+  id: string;
+  models: Array<{ id: string; name: string }>;
+  name: string;
+  protocol: string;
+  status: string;
+} {
+  return {
+    defaultModel: plan.defaultModel ?? null,
+    enabled: plan.enabled,
+    id: plan.id,
+    models: plan.models.map((model) => ({ id: model.id, name: model.name })),
+    name: plan.name,
+    protocol: plan.protocol,
+    status: plan.status
+  };
+}
+
+function unixMsFromIsoTimestamp(
+  value: string | null | undefined
+): number | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }

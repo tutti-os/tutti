@@ -1849,6 +1849,34 @@ success means only that delegation started successfully; child terminal state
 comes from the child's canonical turn. Wait/close tool output and transcript
 markers are display data, not lifecycle authority.
 
+### Collaboration Timeline Cards And Model Consult
+
+Collaboration runs (model consult, fork, delegate, handoff) are daemon-owned
+records (`services/tuttid/service/collabrun`). The daemon projects each run
+into the source session transcript as a durable message of kind
+`"collaboration"` with message id `collab:<runId>`; status transitions update
+that one message in place through the normal `message_update` pipeline.
+AgentGUI renders it through the pure `agentCollaborationProjection` into
+`AgentCollaborationRow`; malformed payloads degrade to plain message rows.
+Collaboration rows never merge into assistant prose and never contribute
+copy-text. Adoption (采纳/不采纳) is a runtime command
+(`setCollaborationAdoption`); the durable state returns via activity events.
+
+The composer consult entry (`AgentModelConsultControl`) is active-session-only
+chrome next to the model select. It reads enabled plans via the optional
+`listModelPlans` runtime command and submits `startModelConsult`; hosts that do
+not implement these optional commands hide the affordance entirely. The
+composer draft seeds the question text and is never cleared by a consult.
+
+When an agent target is bound to a workspace model access plan, daemon
+composer options replace provider-native model options with the plan's models
+and set `runtimeContext.modelPlan = {id, name, protocol}`; the composer model
+menu shows the source plan badge and per-option plan labels. Model favorites
+and recents are per-`agentTargetId` browser-local chrome state
+(`composerModelChoiceHistory`), never controller or durable state. See
+[Model Access Plans And Model Governance](./model-access-plans.md) for the
+daemon side.
+
 ### Layer Ownership Summary
 
 | Layer                                    | Owns                                                                                                                | Must not own                                                              |
