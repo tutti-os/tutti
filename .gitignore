@@ -5,6 +5,7 @@
 .env.*
 !.env.example
 !.env.*.example
+.npmrc
 node_modules/
 dist/
 out/
