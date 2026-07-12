@@ -30,7 +30,7 @@ func newMemoryPolicyStore() *memoryPolicyStore {
 	}
 }
 
-func (s *memoryPolicyStore) key(workspaceID string, id string) string { return workspaceID + "/" + id }
+func (*memoryPolicyStore) key(workspaceID string, id string) string { return workspaceID + "/" + id }
 
 func (s *memoryPolicyStore) ListModelPolicies(_ context.Context, workspaceID string) ([]modelpolicybiz.Policy, error) {
 	s.mu.Lock()
