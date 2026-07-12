@@ -138,6 +138,11 @@ the WebGL empty-home carousel all project the same agent-target avatar
 presentation, including the owner badge; renderer-specific DOM and WebGL code
 must not rebuild partial icon-only models.
 
+Hosts serving `owner.avatarUrl` from another origin must enable anonymous CORS
+for that asset. The WebGL carousel keeps a local programmatic owner marker when
+the remote image cannot be decoded or uploaded safely, while DOM avatar
+surfaces continue using the same shared presentation.
+
 Use `agentsLoading` for directory hydration and `renderAgentsEmpty` for a
 host-specific loaded-empty state. Use `renderAgentUnavailableState` or
 `renderAgentReadinessState` for host-specific availability presentation, and

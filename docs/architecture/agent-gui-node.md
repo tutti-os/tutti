@@ -1603,6 +1603,14 @@ the resolved icon, label, and optional owner badge. The DOM rail, single-agent
 empty state, and WebGL empty-home carousel consume that same presentation;
 renderer adapters may differ, but they must not create parallel icon-only
 models that can silently discard badge or identity fields.
+The WebGL adapter owns badge image loading and GPU resource lifecycle. Remote
+badge images must be requested with anonymous CORS before assigning `src`, and
+the asset host must return an origin-clean response. The adapter must keep an
+asset-independent visible owner marker until decode, canvas conversion, and
+texture upload all succeed; any load, decode, conversion, or upload failure
+keeps that fallback instead of leaving the badge material hidden. Scene disposal
+must detach image callbacks, cancel owned loads, and release badge textures,
+materials, and geometry alongside the primary avatar resources.
 
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is

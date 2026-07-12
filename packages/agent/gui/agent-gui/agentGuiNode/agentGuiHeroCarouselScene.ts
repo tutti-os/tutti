@@ -377,7 +377,10 @@ export class AgentGuiHeroCarouselScene {
       const badgeMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         depthWrite: false,
-        visible: false
+        // The solid circle is the owner marker's asset-independent fallback.
+        // Keep it visible while the optional remote avatar is loading or when
+        // that avatar cannot safely become a WebGL texture.
+        visible: options.items[slot % this.agentCount]?.badge != null
       });
       const badgeMesh = new THREE.Mesh(
         new THREE.CircleGeometry(BADGE_DIAMETER / 2, 32),
@@ -581,6 +584,7 @@ export class AgentGuiHeroCarouselScene {
     }
     for (const image of this.images) {
       image.onload = null;
+      image.onerror = null;
       if (this.ownedImages.has(image)) {
         image.src = "";
       }
@@ -772,30 +776,83 @@ export class AgentGuiHeroCarouselScene {
 
   private loadBadgeImage(badgeUrl: string, agentIndex: number): void {
     const image = new Image();
+    // CanvasTexture uploads require an origin-clean source. The owning CDN
+    // must answer this anonymous CORS request with an appropriate
+    // Access-Control-Allow-Origin header; otherwise onerror keeps the
+    // programmatic badge fallback visible.
+    image.crossOrigin = "anonymous";
     image.decoding = "async";
     image.loading = "eager";
     this.ownedImages.add(image);
     this.images.push(image);
+    let settled = false;
+    const keepFallback = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.requestRender();
+    };
+    const applyDecodedImage = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.applyBadgeImageTexture(image, agentIndex);
+    };
     image.onload = () => {
       if (this.disposed) {
         return;
       }
-      const texture = roundedIconTexture(
+      let decode: Promise<void> | undefined;
+      try {
+        decode = image.decode?.();
+      } catch {
+        keepFallback();
+        return;
+      }
+      if (decode) {
+        void decode.then(applyDecodedImage).catch(keepFallback);
+        return;
+      }
+      applyDecodedImage();
+    };
+    image.onerror = keepFallback;
+    image.src = badgeUrl;
+  }
+
+  private applyBadgeImageTexture(
+    image: HTMLImageElement,
+    agentIndex: number
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    let texture: THREE.CanvasTexture | null = null;
+    try {
+      texture = roundedIconTexture(
         image,
         () => this.requestRender(),
         BADGE_CORNER_RADIUS
       );
-      this.textures.add(texture);
-      for (const tile of this.tiles) {
-        if (tile.poseGroup.userData.agentIndex === agentIndex) {
-          tile.badgeMesh.material.map = texture;
-          tile.badgeMesh.material.visible = true;
-          tile.badgeMesh.material.needsUpdate = true;
-        }
-      }
+      // Force the upload before replacing the fallback material. This makes
+      // Canvas/WebGL failures transactional instead of leaving a visible
+      // material pointing at a texture that can never upload.
+      this.renderer.initTexture(texture);
+    } catch {
+      texture?.dispose();
       this.requestRender();
-    };
-    image.src = badgeUrl;
+      return;
+    }
+    this.textures.add(texture);
+    for (const tile of this.tiles) {
+      if (tile.poseGroup.userData.agentIndex === agentIndex) {
+        tile.badgeMesh.material.map = texture;
+        tile.badgeMesh.material.visible = true;
+        tile.badgeMesh.material.needsUpdate = true;
+      }
+    }
+    this.requestRender();
   }
 
   private applyPoses(): void {

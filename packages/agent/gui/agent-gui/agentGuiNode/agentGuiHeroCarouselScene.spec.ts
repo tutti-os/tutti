@@ -22,9 +22,11 @@ interface FakeMesh {
 }
 
 const threeState = vi.hoisted(() => ({
+  failTextureUpload: false,
   materials: [] as FakeMaterial[],
   meshes: [] as FakeMesh[],
   raycastObjects: [] as FakeMesh[],
+  renderCount: 0,
   rendererDisposed: false,
   textures: [] as FakeDisposable[]
 }));
@@ -124,7 +126,15 @@ vi.mock("three", () => {
       threeState.rendererDisposed = true;
     }
 
-    render(): void {}
+    initTexture(): void {
+      if (threeState.failTextureUpload) {
+        throw new Error("texture upload failed");
+      }
+    }
+
+    render(): void {
+      threeState.renderCount += 1;
+    }
     setClearColor(): void {}
     setPixelRatio(): void {}
     setSize(): void {}
@@ -187,14 +197,29 @@ vi.mock("three", () => {
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
 
 class FakeImage {
+  static instances: FakeImage[] = [];
+  static nextDecodeFailure = false;
+  static nextLoadFailure = false;
+
   complete = false;
+  crossOrigin: string | null = null;
+  decode?: () => Promise<void>;
   decoding = "auto";
   height = 100;
   loading = "auto";
   naturalWidth = 100;
+  onerror: (() => void) | null = null;
   onload: (() => void) | null = null;
   width = 100;
   private value = "";
+
+  constructor() {
+    if (FakeImage.nextDecodeFailure) {
+      FakeImage.nextDecodeFailure = false;
+      this.decode = () => Promise.reject(new Error("decode failed"));
+    }
+    FakeImage.instances.push(this);
+  }
 
   get src(): string {
     return this.value;
@@ -203,7 +228,12 @@ class FakeImage {
   set src(value: string) {
     this.value = value;
     if (value) {
-      this.onload?.();
+      if (FakeImage.nextLoadFailure) {
+        FakeImage.nextLoadFailure = false;
+        this.onerror?.();
+      } else {
+        this.onload?.();
+      }
     }
   }
 
@@ -217,11 +247,16 @@ describe("AgentGuiHeroCarouselScene", () => {
   let getContextSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    threeState.failTextureUpload = false;
     threeState.materials.length = 0;
     threeState.meshes.length = 0;
     threeState.raycastObjects.length = 0;
+    threeState.renderCount = 0;
     threeState.rendererDisposed = false;
     threeState.textures.length = 0;
+    FakeImage.instances.length = 0;
+    FakeImage.nextDecodeFailure = false;
+    FakeImage.nextLoadFailure = false;
     globalThis.Image = FakeImage as unknown as typeof Image;
     globalThis.requestAnimationFrame = vi.fn(() => 1);
     globalThis.cancelAnimationFrame = vi.fn();
@@ -285,6 +320,7 @@ describe("AgentGuiHeroCarouselScene", () => {
     });
 
     expect(scene).not.toBeNull();
+    expect(FakeImage.instances[0]?.crossOrigin).toBe("anonymous");
     const badgeMeshes = threeState.meshes.filter(
       (mesh) => mesh.geometry.kind === "badge"
     );
@@ -315,10 +351,89 @@ describe("AgentGuiHeroCarouselScene", () => {
     ).toBe(true);
 
     scene?.dispose();
+    expect(FakeImage.instances[0]?.onerror).toBeNull();
+    expect(FakeImage.instances[0]?.src).toBe("");
     expect(threeState.rendererDisposed).toBe(true);
     expect(threeState.materials.every((material) => material.disposed)).toBe(
       true
     );
     expect(threeState.textures.every((texture) => texture.disposed)).toBe(true);
   });
+
+  it("keeps a visible programmatic badge and schedules a scene update when loading fails", () => {
+    FakeImage.nextLoadFailure = true;
+    const requestAnimationFrame = vi.mocked(globalThis.requestAnimationFrame);
+    const scene = createSceneWithBadge();
+    const badgeMaterials = badgeMaterialsForAgent(0);
+
+    expect(FakeImage.instances[0]?.crossOrigin).toBe("anonymous");
+    expect(badgeMaterials.every((material) => material.visible)).toBe(true);
+    expect(badgeMaterials.every((material) => material.map == null)).toBe(true);
+    expect(requestAnimationFrame).toHaveBeenCalled();
+
+    scene?.dispose();
+  });
+
+  it("keeps the fallback when decode fails", async () => {
+    FakeImage.nextDecodeFailure = true;
+    const scene = createSceneWithBadge();
+
+    await Promise.resolve();
+    const badgeMaterials = badgeMaterialsForAgent(0);
+    expect(badgeMaterials.every((material) => material.visible)).toBe(true);
+    expect(badgeMaterials.every((material) => material.map == null)).toBe(true);
+
+    scene?.dispose();
+  });
+
+  it("disposes a rejected texture and keeps the fallback when WebGL upload fails", () => {
+    threeState.failTextureUpload = true;
+    const scene = createSceneWithBadge();
+    const badgeMaterials = badgeMaterialsForAgent(0);
+
+    expect(badgeMaterials.every((material) => material.visible)).toBe(true);
+    expect(badgeMaterials.every((material) => material.map == null)).toBe(true);
+    expect(threeState.textures).toHaveLength(2);
+    expect(threeState.textures.at(-1)?.disposed).toBe(true);
+
+    scene?.dispose();
+  });
 });
+
+function createSceneWithBadge(): AgentGuiHeroCarouselScene | null {
+  const loadedImage = {
+    complete: true,
+    height: 100,
+    naturalWidth: 100,
+    onload: null,
+    width: 100
+  } as unknown as HTMLImageElement;
+  return AgentGuiHeroCarouselScene.create({
+    canvas: document.createElement("canvas"),
+    items: [
+      {
+        targetId: "agent-1",
+        agentTargetId: "agent-1",
+        provider: "codex",
+        label: "Agent 1",
+        iconUrl: "app://agent-1.png",
+        badge: {
+          iconUrl: "https://cdn.example.com/owner-1.png",
+          label: "Owner 1"
+        }
+      }
+    ],
+    loadedImages: [loadedImage],
+    onSettle: vi.fn()
+  });
+}
+
+function badgeMaterialsForAgent(agentIndex: number): FakeMaterial[] {
+  return threeState.meshes
+    .filter(
+      (mesh) =>
+        mesh.geometry.kind === "badge" &&
+        mesh.userData.agentIndex === agentIndex
+    )
+    .map((mesh) => mesh.material);
+}
