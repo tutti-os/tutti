@@ -1842,8 +1842,9 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     !isAgentProviderReady ||
     (!viewModel.canSubmit && !canQueueWhileBusy);
   const hasNonRetryableRecoveryFailure =
-    sessionChrome.recovery?.kind === "failed" &&
-    sessionChrome.recovery.canRetry === false;
+    (sessionChrome.recovery?.kind === "failed" &&
+      sessionChrome.recovery.canRetry === false) ||
+    sessionChrome.recovery?.kind === "resume-unavailable";
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||

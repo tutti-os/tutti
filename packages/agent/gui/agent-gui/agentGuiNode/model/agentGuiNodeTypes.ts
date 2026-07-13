@@ -31,7 +31,7 @@ export interface AgentGUISessionChrome {
   } | null;
   approval: AgentGUIApprovalRequest | null;
   recovery: {
-    kind: "activating" | "failed" | "warning";
+    kind: "activating" | "failed" | "warning" | "resume-unavailable";
     message: string;
     canRetry?: boolean;
     followupAction?: "continue-in-new-conversation";

@@ -280,9 +280,8 @@ describe("AgentSessionChrome", () => {
           auth: null,
           approval: null,
           recovery: {
-            kind: "failed",
+            kind: "resume-unavailable",
             message: "This session is not recoverable on this machine.",
-            canRetry: false,
             followupAction: "continue-in-new-conversation"
           },
           rawState: null
@@ -319,7 +318,14 @@ describe("AgentSessionChrome", () => {
     expect(continueButton).toHaveAttribute("data-variant", "ghost");
     expect(continueButton).toHaveAttribute("data-size", "sm");
     expect(continueButton.className).toContain(
-      "agent-gui-chrome__danger-ghost-button"
+      "agent-gui-chrome__success-ghost-button"
+    );
+    expect(
+      continueButton.closest(".agent-gui-chrome__card")?.className
+    ).toContain("agent-gui-chrome__card--success");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toBe(
+      continueButton.closest(".agent-gui-chrome__card")
     );
 
     fireEvent.click(continueButton);

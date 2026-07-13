@@ -2669,6 +2669,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-chrome__card--warning,
 .agent-gui-chrome__card--danger,
+.agent-gui-chrome__card--success,
 .agent-gui-chrome__card--muted,
 .agent-gui-chrome__card--connecting {
   --agent-gui-chrome-card-spring: cubic-bezier(0.22, 1.18, 0.36, 1);
@@ -2832,6 +2833,48 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__danger-ghost-button:hover:not(:disabled) {
   background: var(--on-danger-hover);
   color: var(--status-danger-hover, var(--state-danger-hover));
+}
+
+.agent-gui-chrome__card--success {
+  border-color: color-mix(in srgb, var(--state-success) 28%, transparent);
+  border-bottom: 0;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+  background: color-mix(
+    in srgb,
+    var(--state-success) 10%,
+    var(--background-fronted)
+  );
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 16px;
+  cursor: default;
+}
+
+.agent-gui-chrome__card--success .agent-gui-chrome__icon,
+.agent-gui-chrome__card--success .agent-gui-chrome__message {
+  color: var(--state-success);
+}
+
+.agent-gui-chrome__success-ghost-button {
+  background: transparent;
+  color: var(--state-success);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.agent-gui-chrome__success-ghost-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--state-success) 14%, transparent);
+}
+
+.agent-gui-chrome__success-ghost-button:focus-visible {
+  border-color: var(--state-success);
+  color: var(--state-success);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--state-success) 25%, transparent);
 }
 
 .agent-gui-chrome__danger-ghost-button:focus-visible {
