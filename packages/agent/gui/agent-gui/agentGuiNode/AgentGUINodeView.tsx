@@ -4058,8 +4058,8 @@ interface AgentGUIEmptyHeroCarouselStageProps {
   providerSelectLabel: string;
 }
 
-// The carousel sits above the ready/gated body branch so target readiness
-// changes never replace its canvas or reset the wheel's scroll position.
+// The carousel stays mounted above the ready/gated body branch so readiness
+// changes do not replace its canvas or reset the wheel's scroll position.
 const AgentGUIEmptyHeroCarouselStage = memo(
   function AgentGUIEmptyHeroCarouselStage({
     activeAgentTargetId,

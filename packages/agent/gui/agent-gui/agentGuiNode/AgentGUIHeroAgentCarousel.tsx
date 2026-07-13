@@ -10,8 +10,16 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { AgentGUIProvider } from "../../types";
+import claudeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/claude-vinyl.png";
+import codexVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/codex-vinyl.png";
+import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cursor-vinyl.png";
+import hermesVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/hermes-vinyl.png";
+import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
+import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
+import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
+import { AgentGUIVinylPlayer } from "./AgentGUIVinylPlayer";
 import styles from "./AgentGUINode.styles";
 
 export interface AgentGUIHeroCarouselSelectInput {
@@ -32,8 +40,19 @@ const CAROUSEL_DRAG_STEP_PX = 52;
 
 interface AgentGUIHeroCarouselImagePreloadState {
   images: readonly (HTMLImageElement | null)[];
+  coverImages: readonly (HTMLImageElement | null)[];
   ready: boolean;
 }
+
+const AGENT_VINYL_COVER_BY_PROVIDER: Record<string, string> = {
+  "claude-code": claudeVinylAssetUrl,
+  codex: codexVinylAssetUrl,
+  cursor: cursorVinylAssetUrl,
+  hermes: hermesVinylAssetUrl,
+  openclaw: openclawVinylAssetUrl,
+  opencode: opencodeVinylAssetUrl,
+  "tutti-agent": tuttiVinylAssetUrl
+};
 
 function emptyPreloadedCarouselImages(
   length: number
@@ -48,17 +67,19 @@ function useAgentGUIHeroCarouselImages(
   const [preloadState, setPreloadState] =
     useState<AgentGUIHeroCarouselImagePreloadState>({
       images: [],
+      coverImages: [],
       ready: items.length === 0
     });
 
   useEffect(() => {
     if (items.length === 0) {
-      setPreloadState({ images: [], ready: true });
+      setPreloadState({ images: [], coverImages: [], ready: true });
       return;
     }
     if (typeof Image !== "function") {
       setPreloadState({
         images: emptyPreloadedCarouselImages(items.length),
+        coverImages: emptyPreloadedCarouselImages(items.length),
         ready: true
       });
       return;
@@ -67,23 +88,48 @@ function useAgentGUIHeroCarouselImages(
     let cancelled = false;
     setPreloadState({
       images: emptyPreloadedCarouselImages(items.length),
+      coverImages: emptyPreloadedCarouselImages(items.length),
       ready: false
     });
 
     void Promise.all(
       items.map(
         (item) =>
-          new Promise<HTMLImageElement | null>((resolve) => {
+          new Promise<{
+            icon: HTMLImageElement | null;
+            cover: HTMLImageElement | null;
+          }>((resolve) => {
             const image = new Image();
+            const coverUrl = AGENT_VINYL_COVER_BY_PROVIDER[item.provider];
+            const coverImage = coverUrl ? new Image() : null;
+            let iconResult: HTMLImageElement | null = null;
+            let coverResult: HTMLImageElement | null = coverImage ? null : null;
+            let iconDone = false;
+            let coverDone = !coverImage;
+            const finish = (): void => {
+              if (iconDone && coverDone) {
+                resolve({ icon: iconResult, cover: coverResult });
+              }
+            };
             const resolveDecoded = (): void => {
               const decode = image.decode?.();
               if (decode) {
                 void decode
-                  .then(() => resolve(image))
-                  .catch(() => resolve(image));
+                  .then(() => {
+                    iconResult = image;
+                    iconDone = true;
+                    finish();
+                  })
+                  .catch(() => {
+                    iconResult = image;
+                    iconDone = true;
+                    finish();
+                  });
                 return;
               }
-              resolve(image);
+              iconResult = image;
+              iconDone = true;
+              finish();
             };
             image.decoding = "async";
             image.loading = "eager";
@@ -91,20 +137,68 @@ function useAgentGUIHeroCarouselImages(
             image.onload = () => {
               resolveDecoded();
             };
-            image.onerror = () => resolve(null);
+            image.onerror = () => {
+              iconDone = true;
+              finish();
+            };
             image.src = item.iconUrl;
             if (image.complete) {
               if (image.naturalWidth > 0) {
                 resolveDecoded();
               } else {
-                resolve(null);
+                iconDone = true;
+                finish();
+              }
+            }
+            if (coverUrl && coverImage) {
+              const resolvedCoverUrl = coverUrl;
+              const resolveCover = (): void => {
+                const decode = coverImage.decode?.();
+                if (decode) {
+                  void decode
+                    .then(() => {
+                      coverResult = coverImage;
+                      coverDone = true;
+                      finish();
+                    })
+                    .catch(() => {
+                      coverResult = coverImage;
+                      coverDone = true;
+                      finish();
+                    });
+                  return;
+                }
+                coverResult = coverImage;
+                coverDone = true;
+                finish();
+              };
+              coverImage.decoding = "async";
+              coverImage.loading = "eager";
+              coverImage.setAttribute("fetchpriority", "high");
+              coverImage.onload = resolveCover;
+              coverImage.onerror = () => {
+                coverDone = true;
+                finish();
+              };
+              coverImage.src = resolvedCoverUrl;
+              if (coverImage.complete) {
+                if (coverImage.naturalWidth > 0) {
+                  resolveCover();
+                } else {
+                  coverDone = true;
+                  finish();
+                }
               }
             }
           })
       )
-    ).then((images) => {
+    ).then((preloaded) => {
       if (!cancelled) {
-        setPreloadState({ images, ready: true });
+        setPreloadState({
+          images: preloaded.map((entry) => entry.icon),
+          coverImages: preloaded.map((entry) => entry.cover),
+          ready: true
+        });
       }
     });
 
@@ -184,6 +278,7 @@ export const AgentGUIHeroAgentCarousel = memo(
         canvas,
         items,
         loadedImages: carouselImages.images,
+        loadedCoverImages: carouselImages.coverImages,
         onSettle: (index) => {
           centerIndexRef.current = index;
           setCenterIndex(index);
@@ -444,6 +539,10 @@ export const AgentGUIHeroAgentCarousel = memo(
         onPointerCancel={interactive ? handlePointerEnd : undefined}
         onClickCapture={interactive ? handleClickCapture : undefined}
       >
+        <AgentGUIVinylPlayer
+          selectedAgent={items[centerIndex] ?? items[0] ?? null}
+          isPlaying
+        />
         <canvas
           ref={canvasRef}
           aria-hidden="true"

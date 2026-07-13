@@ -9023,7 +9023,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: flex;
   width: 100%;
   min-height: 100%;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 24px clamp(32px, 4vw, 48px) 40px;
 }
@@ -9056,6 +9056,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__empty-hero-carousel-stage {
   position: relative;
+  top: -24px;
   width: 100%;
   min-height: 100%;
 }
@@ -9063,7 +9064,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__empty-hero-carousel-layer {
   position: absolute;
   z-index: 1;
-  top: 24px;
+  top: calc(50% - 210px);
   left: 50%;
   width: min(400px, calc(100% - 64px));
   transform: translateX(-50%);
@@ -9166,6 +9167,230 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
     both;
 }
 
+/* Reference VinylPlayer structure, scaled from 440px to the 112px hero slot. */
+.agent-gui-vinyl-player {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 440px;
+  height: 440px;
+  overflow: visible;
+  border-radius: 40px;
+  background: transparent;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.25);
+  transform-origin: center;
+}
+
+.agent-gui-vinyl-player__chassis {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  z-index: 0;
+  width: 440px;
+  height: 416px;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.agent-gui-vinyl-player__indicator {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid #c0c2c4;
+  border-radius: 50%;
+  background: #9ea0a3;
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 10%),
+    inset 0 1px 2px rgb(255 255 255 / 80%);
+  display: none;
+}
+
+.agent-gui-vinyl-player__indicator-light {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px solid #384a3c;
+  border-radius: 50%;
+  background: #4b6652;
+  box-shadow: inset 0 2px 6px rgb(0 0 0 / 40%);
+}
+
+.agent-gui-vinyl-player__indicator-light--playing {
+  border-color: #86f0a6;
+  background: #5edb84;
+  box-shadow:
+    0 0 12px rgb(74 222 128 / 70%),
+    inset 0 1px 4px rgb(255 255 255 / 60%);
+}
+
+.agent-gui-vinyl-player__indicator-light > span {
+  width: 1px;
+  height: 8px;
+  background: rgb(255 255 255 / 80%);
+}
+
+.agent-gui-vinyl-player__platter {
+  position: absolute;
+  top: 29px;
+  left: 24px;
+  display: grid;
+  width: 370px;
+  height: 370px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-vinyl-player__platter-inner {
+  display: grid;
+  width: 340px;
+  height: 340px;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-vinyl-player__record {
+  position: relative;
+  display: grid;
+  width: 326px;
+  height: 326px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(
+      circle at center,
+      rgb(255 255 255 / 9%) 0 2px,
+      rgb(0 0 0 / 0%) 2px 8px
+    ),
+    #111;
+  box-shadow: 0 4px 15px rgb(0 0 0 / 60%);
+}
+
+.agent-gui-vinyl-player__groove,
+.agent-gui-vinyl-player__reflection,
+.agent-gui-vinyl-player__label,
+.agent-gui-vinyl-player__hole {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.agent-gui-vinyl-player__groove {
+  border: 2px solid rgb(255 255 255 / 12%);
+}
+
+.agent-gui-vinyl-player__reflection {
+  inset: 0;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(255 255 255 / 15%) 45deg,
+    transparent 90deg,
+    transparent 180deg,
+    rgb(255 255 255 / 15%) 225deg,
+    transparent 270deg
+  );
+  mix-blend-mode: screen;
+  opacity: 0.35;
+}
+
+.agent-gui-vinyl-player__label {
+  display: grid;
+  width: 144px;
+  height: 144px;
+  place-items: center;
+  overflow: hidden;
+  background: #2a2a2a;
+  box-shadow: inset 0 0 12px rgb(0 0 0 / 60%);
+}
+
+.agent-gui-vinyl-player__label > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agent-gui-vinyl-player__tonearm {
+  position: absolute;
+  top: -20px;
+  right: 14px;
+  z-index: 4;
+  width: 140px;
+  height: 400px;
+  object-fit: contain;
+  pointer-events: none;
+  transform: rotate(15deg);
+  transform-origin: 50% 8%;
+}
+
+.agent-gui-vinyl-player__hole {
+  width: 12px;
+  height: 12px;
+  border: 0.5px solid #717171;
+  background: #e0e2e5;
+  box-shadow: inset 0 1px 4px rgb(0 0 0 / 80%);
+}
+
+.agent-gui-vinyl-player__power-control {
+  position: absolute;
+  bottom: 32px;
+  left: 32px;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-gui-vinyl-player__lever {
+  display: block;
+  width: 16px;
+  height: 44px;
+  border: 1px solid #111;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #1a1a1a, #3a3a3a, #1a1a1a);
+  box-shadow: 4px 2px 8px rgb(0 0 0 / 40%);
+  transform-origin: bottom;
+}
+
+.agent-gui-vinyl-player__power-label {
+  color: #3f4144;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.agent-gui-vinyl-player__tone-control {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  color: #65676b;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.agent-gui-vinyl-player__tone-control > span:first-child {
+  width: 30px;
+  height: 52px;
+  border: 1px solid #a0a2a4;
+  border-radius: 6px;
+  background: linear-gradient(#b0b2b5, #ced0d3);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
+}
+
 .agent-gui-node__empty-hero-carousel:has(:focus-visible) {
   border-radius: 12px;
   box-shadow: 0 0 0 1.5px var(--tutti-purple);
@@ -9225,6 +9450,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__empty-provider-gate {
   max-width: 520px;
   gap: 8px;
+  transform: translateY(-40px);
 }
 
 /* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
