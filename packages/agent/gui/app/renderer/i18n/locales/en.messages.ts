@@ -5,6 +5,8 @@ export const enMessages = {
     "This session history is still available, but the underlying provider session can no longer be restored.",
   agentResumeSessionNotLocal:
     "This session cannot be resumed on this device. Start a new session and @this session to keep going.",
+  agentImportedSessionResumeUnavailable:
+    "This conversation was imported successfully. Start a new session and @this conversation to keep going.",
   agentSettingsRequireNewSession:
     "This model can only be used in a new session to preserve context.",
   agentPermissionModeAppliesNextTurn:

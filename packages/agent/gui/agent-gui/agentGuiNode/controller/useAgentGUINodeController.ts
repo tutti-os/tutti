@@ -10573,14 +10573,29 @@ export function useAgentGUINodeController({
           /auth|sign in|log in|login|unauthorized|authenticated/i.test(
             normalizedError
           )));
-    const recoveryMessage =
-      normalizedError ||
-      (activeConversationResumeUnavailable
-        ? translate("messages.agentResumeSessionNotLocal")
-        : "");
-    const recoveryIsNonRetryable =
-      isNonRetryableResumeErrorCode(activationErrorCode) ||
+    // Resuming a session on this device is impossible whenever the provider
+    // session id was never captured locally (imported conversations) or the
+    // ACP adapter never reported a resume method. Imported conversations are
+    // an expected, successful outcome ("continue in a new conversation"), not
+    // a failure, so they get their own copy and a non-alarming tone; the rare
+    // non-import case (e.g. an ACP agent without resume support) keeps the
+    // original neutral wording.
+    const isResumeNotLocalRecovery =
+      isResumeSessionNotLocalErrorCode(activationErrorCode) ||
       activeConversationResumeUnavailable;
+    // The import marker rides on the conversation summary when the list
+    // snapshot carried runtimeContext, and on the session state's persisted
+    // runtimeContext otherwise (transient summaries drop it).
+    const isImportedConversation =
+      activeConversation?.isImported === true ||
+      runtimeContext?.imported === true;
+    const recoveryMessage = isResumeNotLocalRecovery
+      ? translate(
+          isImportedConversation
+            ? "messages.agentImportedSessionResumeUnavailable"
+            : "messages.agentResumeSessionNotLocal"
+        )
+      : normalizedError;
     return {
       auth: hasProviderSessionNotFoundError
         ? null
@@ -10603,21 +10618,24 @@ export function useAgentGUINodeController({
               message: "Reconnecting to the live agent session…"
             }
           : !isAuthError && recoveryMessage
-            ? {
-                kind: "failed",
-                message: recoveryMessage,
-                canRetry: !recoveryIsNonRetryable,
-                ...(isResumeSessionNotLocalErrorCode(activationErrorCode) ||
-                activeConversationResumeUnavailable
-                  ? { followupAction: "continue-in-new-conversation" as const }
-                  : {})
-              }
+            ? isResumeNotLocalRecovery
+              ? {
+                  kind: "resume-unavailable",
+                  message: recoveryMessage,
+                  followupAction: "continue-in-new-conversation" as const
+                }
+              : {
+                  kind: "failed",
+                  message: recoveryMessage,
+                  canRetry: !isNonRetryableResumeErrorCode(activationErrorCode)
+                }
             : null,
       rawState: activeSessionState
     };
   }, [
     activationError,
     activationErrorCode,
+    activeConversation,
     activeLiveState,
     activeConversationId,
     activeConversationResumeUnavailable,

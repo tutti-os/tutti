@@ -11,7 +11,8 @@ export const zhCN = {
     selectFolder: "选择文件夹",
     unknownError: "未知错误",
     unreachable: "不可达",
-    workspace: "工作区"
+    workspace: "工作区",
+    zipArchive: "ZIP 压缩包"
   },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
@@ -273,8 +274,22 @@ export const zhCN = {
       triggerAria: "加入反馈群"
     },
     externalImport: {
+      archiveEmpty: "这个 Claude 导出中没有找到受支持的对话",
+      archiveGroupLabel: "Claude 对话",
+      archiveOptionDescription: "选择从 Claude 数据导出中下载的 ZIP 文件",
+      archiveOptionTitle: "Claude 导出数据导入",
+      archivePickFailed: "无法打开 Claude 导出文件选择器。",
+      archiveResult:
+        "已从 Claude 导出中导入 {{sessions}} 个对话和 {{messages}} 条消息",
+      archiveScanFailed: "无法将这个 ZIP 读取为支持的 Claude 数据导出。",
+      archiveScanning: "正在读取 Claude 导出对话...",
+      archiveSearchPlaceholder: "搜索 Claude 对话",
+      archiveSelectionReady:
+        "Claude 导出扫描完成，有 {{count}} 个对话可供检查。",
+      archiveSelectDescription: "搜索并勾选要导入的 Claude 对话",
       back: "返回",
-      description: "导入本机 Codex 和 Claude Code 的会话历史",
+      chooseArchive: "选择 ZIP",
+      description: "导入本机 Codex、Claude Code 历史或 Claude 数据导出",
       done: "完成",
       empty: "未找到本机 Codex 或 Claude Code 的项目历史",
       errors: "跳过的项目",
@@ -308,6 +323,7 @@ export const zhCN = {
       promptTitle: "导入已有 AI 聊天",
       result:
         "已从 {{projects}} 个项目导入 {{sessions}} 个会话和 {{messages}} 条消息",
+      resultSkipped: "已跳过 {{count}} 个空的或不支持的对话",
       scan: "扫描",
       scanFailed: "暂时无法扫描外部 Agent 历史。",
       scanning: "正在扫描本机 Agent 历史...",
@@ -315,7 +331,7 @@ export const zhCN = {
       selectImportOption: "选择 {{label}}",
       settingsAction: "导入",
       settingsDescription:
-        "将本机 Codex 和 Claude Code 最近的会话历史导入这个工作区",
+        "将本机 Codex、Claude Code 历史或 Claude 导出对话导入 Tutti",
       settingsLabel: "导入 AI 聊天",
       title: "从 AI 应用导入"
     },

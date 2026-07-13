@@ -51,14 +51,26 @@ func persistedSessionCanResume(controller RuntimeController, session PersistedSe
 	if controller == nil {
 		return false
 	}
-	// Imported sessions used to be hard-marked non-resumable, which dead-ended
-	// the user into starting a brand new conversation. They carry the provider
-	// session id captured at import time (codex thread id / claude sessionId), so
-	// they can resume in place on the same device; when the underlying provider
-	// session is missing, the runtime recreates a fresh one on send instead of
-	// blocking (see Controller.ensureLiveAdapterSession). Either way the
-	// conversation is continuable, so defer to the adapter's CanResume.
+	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported &&
+		!externalImportResumeSupported(session.RuntimeContext) {
+		return false
+	}
+	// Imported local CLI transcripts carry the provider session id captured at
+	// import time (Codex thread id / Claude Code sessionId), so they can resume
+	// in place on the same device; when the provider session is missing, the
+	// runtime recreates a fresh one on send. Provider data exports explicitly
+	// opt out above because their web conversation UUID is not a runtime session
+	// id. All other imported and normal sessions defer to the adapter.
 	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
+}
+
+func externalImportResumeSupported(runtimeContext map[string]any) bool {
+	value, exists := runtimeContext["externalImportResumeSupported"]
+	if !exists {
+		return true
+	}
+	supported, ok := value.(bool)
+	return ok && supported
 }
 
 func serviceSession(session RuntimeSession, resumable bool) Session {

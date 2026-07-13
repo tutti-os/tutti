@@ -210,6 +210,7 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
     importExternalSessions: async () => {
       throw new Error("not implemented");
     },
+    selectExternalSessionImportArchive: async () => null,
     load: async () => {
       throw new Error("not implemented");
     },

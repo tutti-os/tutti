@@ -1837,13 +1837,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     !emptyProviderReadinessGate &&
     !isAgentProviderReady &&
     !isCollaboratorConversation;
+  const hasNonRetryableRecoveryFailure =
+    (sessionChrome.recovery?.kind === "failed" &&
+      sessionChrome.recovery.canRetry === false) ||
+    sessionChrome.recovery?.kind === "resume-unavailable";
+  // Also fences the queue-while-busy send path: AgentComposer ignores
+  // `disabled` in queue mode, and the controller fence would turn the send
+  // into a silent no-op for a dead-ended session.
   const submitDisabled =
+    hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||
     !isAgentProviderReady ||
     (!viewModel.canSubmit && !canQueueWhileBusy);
-  const hasNonRetryableRecoveryFailure =
-    sessionChrome.recovery?.kind === "failed" &&
-    sessionChrome.recovery.canRetry === false;
   const composerDisabled =
     hasNonRetryableRecoveryFailure ||
     isCollaboratorConversation ||

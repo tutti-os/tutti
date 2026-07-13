@@ -30,12 +30,24 @@ export interface AgentGUISessionChrome {
     message: string;
   } | null;
   approval: AgentGUIApprovalRequest | null;
-  recovery: {
-    kind: "activating" | "failed" | "warning";
-    message: string;
-    canRetry?: boolean;
-    followupAction?: "continue-in-new-conversation";
-  } | null;
+  recovery:
+    | {
+        kind: "activating" | "failed" | "warning";
+        message: string;
+        canRetry?: boolean;
+        // `never` blocks structurally-typed values (variables, spreads) from
+        // smuggling a continue action onto a failed/warning recovery.
+        followupAction?: never;
+      }
+    // Discriminated so the continue action cannot be omitted for a
+    // resume-unavailable recovery, nor smuggled onto a failed one.
+    | {
+        kind: "resume-unavailable";
+        message: string;
+        followupAction: "continue-in-new-conversation";
+        canRetry?: never;
+      }
+    | null;
   rawState: AgentSessionState | null;
 }
 

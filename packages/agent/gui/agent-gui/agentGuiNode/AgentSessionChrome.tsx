@@ -150,9 +150,8 @@ export function AgentSessionChrome({
       ? labels.activatingSession
       : (visibleRecovery?.message ?? "");
   const recoveryHasInlineAction =
-    visibleRecovery?.kind === "failed" &&
-    (visibleRecovery.followupAction === "continue-in-new-conversation" ||
-      visibleRecovery.canRetry !== false);
+    visibleRecovery?.kind === "resume-unavailable" ||
+    (visibleRecovery?.kind === "failed" && visibleRecovery.canRetry !== false);
   const activatingMessage = splitTrailingEllipsis(recoveryMessage);
   const hasContent =
     visibleAuth !== null ||
@@ -225,20 +224,32 @@ export function AgentSessionChrome({
 
       {visibleRecovery ? (
         <section
-          role={visibleRecovery.kind === "failed" ? "alert" : undefined}
+          role={
+            visibleRecovery.kind === "failed"
+              ? "alert"
+              : visibleRecovery.kind === "resume-unavailable"
+                ? "status"
+                : undefined
+          }
           aria-live={
-            visibleRecovery.kind === "failed" ? "assertive" : undefined
+            visibleRecovery.kind === "failed"
+              ? "assertive"
+              : visibleRecovery.kind === "resume-unavailable"
+                ? "polite"
+                : undefined
           }
           data-has-inline-actions={recoveryHasInlineAction ? "true" : "false"}
           className={cn(
             styles.chromeCard,
             visibleRecovery.kind === "failed"
               ? styles.chromeCardDanger
-              : visibleRecovery.kind === "warning"
-                ? styles.chromeCardDanger
-                : visibleRecovery.kind === "activating"
-                  ? styles.chromeCardConnecting
-                  : styles.chromeCardMuted
+              : visibleRecovery.kind === "resume-unavailable"
+                ? styles.chromeCardSuccess
+                : visibleRecovery.kind === "warning"
+                  ? styles.chromeCardDanger
+                  : visibleRecovery.kind === "activating"
+                    ? styles.chromeCardConnecting
+                    : styles.chromeCardMuted
           )}
         >
           <div className={styles.chromeMetaRow}>
@@ -276,14 +287,14 @@ export function AgentSessionChrome({
               </ChromeMessageTooltip>
             </div>
             <div className={styles.chromeInlineActions}>
-              {visibleRecovery.kind === "failed" &&
-              visibleRecovery.followupAction ===
-                "continue-in-new-conversation" ? (
+              {/* followupAction is required on this variant, so the kind
+                  check alone guarantees the continue action. */}
+              {visibleRecovery.kind === "resume-unavailable" ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className={styles.chromeDangerGhostButton}
+                  className={styles.chromeSuccessGhostButton}
                   onClick={() => onContinueInNewConversation()}
                 >
                   {labels.continueInNewConversation}

@@ -6087,16 +6087,19 @@ describe("AgentGUINode", () => {
         auth: null,
         approval: null,
         recovery: {
-          kind: "failed",
+          kind: "resume-unavailable",
           message:
             "This session cannot be resumed on this device. Start a new session and @this session to keep going.",
-          canRetry: false,
           followupAction: "continue-in-new-conversation"
         },
         rawState: null
       }
     });
     renderAgentGUINode();
+
+    // The composer stays fenced off for resume-unavailable sessions even
+    // though the banner is success-toned rather than an error alert.
+    expect(getComposerEditor()).toHaveAttribute("aria-disabled", "true");
 
     fireEvent.click(
       screen.getByRole("button", {
