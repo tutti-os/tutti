@@ -109,7 +109,7 @@ export function useAgentEnvWizard(input: {
   );
 
   const runProviderAction = useCallback(
-    async (actionId: "install" | "login") => {
+    async (actionId: "install" | "update" | "login") => {
       if (provider === "tutti-agent" && actionId === "login") {
         await accountService.startLogin();
         return;
@@ -172,6 +172,7 @@ export function useAgentEnvWizard(input: {
         isLoading: snapshot.isLoading,
         activeAction: readCodexSetupActiveAction(status),
         installActionPending: service.isActionPending(provider, "install"),
+        updateActionPending: service.isActionPending(provider, "update"),
         loginPending: service.isActionPending(provider, "login"),
         revealIndex: wizard.revealIndex,
         stageLabels

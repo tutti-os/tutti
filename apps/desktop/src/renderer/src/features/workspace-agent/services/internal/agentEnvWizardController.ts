@@ -87,6 +87,7 @@ function buildRawViewModel(p: AttachAgentEnvWizardParams) {
     isLoading: snap.isLoading,
     activeAction: readCodexSetupActiveAction(status),
     installActionPending: p.service.isActionPending(p.provider, "install"),
+    updateActionPending: p.service.isActionPending(p.provider, "update"),
     loginPending: p.service.isActionPending(p.provider, "login"),
     revealIndex: REVEAL_ALL,
     stageLabels: ORCHESTRATION_LABELS

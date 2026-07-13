@@ -45,6 +45,7 @@ type ActionID string
 
 const (
 	ActionInstall ActionID = "install"
+	ActionUpdate  ActionID = "update"
 	ActionLogin   ActionID = "login"
 	ActionRefresh ActionID = "refresh"
 )
@@ -154,9 +155,11 @@ type Availability struct {
 }
 
 type CLIStatus struct {
-	Installed  bool
-	BinaryPath string
-	Version    string
+	Installed       bool
+	BinaryPath      string
+	Version         string
+	LatestVersion   string
+	UpdateAvailable bool
 	// MinVersion is the lowest CLI version this provider supports, when it
 	// enforces a floor (codex). Empty for providers with no version gate. Lets
 	// the UI surface "current X, requires >= Y" from the same constant the gate uses.
@@ -292,7 +295,15 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 			if installing[i] {
 				continue
 			}
+			cliPackage := agentProviderCLINPMPackage(specs[i].Provider)
 			registry := s.probeRegistry(ctx, agentNPMRegistryProbePackage(specs[i]))
+			if registry.Reachable && cliPackage != "" {
+				latestVersion := s.fetchNPMRegistryLatestVersion(ctx, registry.Endpoint, cliPackage)
+				statuses[i].CLI.LatestVersion = latestVersion
+				if comparison, ok := compareCodexVersions(statuses[i].CLI.Version, latestVersion); ok {
+					statuses[i].CLI.UpdateAvailable = comparison < 0
+				}
+			}
 			api := s.probeProviderAPI(ctx, statuses[i].Provider)
 			statuses[i].Network = &NetworkStatus{
 				Registry:    registry,
@@ -418,6 +429,17 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
 			Error:     err,
 			Node:      "install_daemon_action",
+			Provider:  spec.Provider,
+			Result:    result,
+			StartedAt: startedAt,
+		})
+		return result, err
+	case ActionUpdate:
+		startedAt := s.now()
+		result, err := s.runUpdateAction(ctx, spec, result)
+		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
+			Error:     err,
+			Node:      "update_daemon_action",
 			Provider:  spec.Provider,
 			Result:    result,
 			StartedAt: startedAt,
@@ -620,7 +642,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 	} else if spec.Provider == agentprovider.Codex && !codexVersionMeetsMinimum(cliVersion) {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
-		actions = append(actions, daemonAction(ActionInstall))
+		actions = append(actions, daemonAction(ActionUpdate))
 	} else {
 		actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 
@@ -651,6 +673,9 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 				availability.ReasonCode = "auth_unknown"
 				actions = append(actions, Action{ID: ActionRefresh, Kind: ActionKindRefresh})
 			}
+		}
+		if providerSupportsCLIUpdate(spec.Provider) {
+			actions = append(actions, daemonAction(ActionUpdate))
 		}
 	}
 
@@ -718,6 +743,9 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 }
 
 func agentNPMRegistryProbePackage(spec ProviderSpec) string {
+	if packageName := agentProviderCLINPMPackage(spec.Provider); packageName != "" {
+		return packageName
+	}
 	if spec.Provider == agentprovider.Codex {
 		return "@openai/codex"
 	}

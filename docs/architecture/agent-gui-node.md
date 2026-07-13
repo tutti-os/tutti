@@ -267,6 +267,19 @@ whose runtime command is more authoritative than its lightweight status check
 (for example Cursor), the desktop status service may run a provider-specific
 runtime probe and fold a ready result back into the provider status snapshot
 before projecting the empty-home readiness gate.
+CLI release checks belong to the desktop environment wizard's opt-in network
+path, not startup readiness. `tuttid` may resolve the latest stable Codex or
+Claude Code package version while `includeNetwork` is enabled and publish
+`cli.latestVersion` plus `cli.updateAvailable`; local-only dock and polling
+requests must remain network-free. Desktop should preserve the last fetched
+release metadata across those local polls so an update warning does not
+flicker, then request a fresh network check after an update completes. CLI
+mutation remains daemon-owned: both providers delegate to the resolved CLI's
+official `update` command so the existing installation source is preserved;
+older Codex versions may fall back to the managed npm installer and its
+registry/prefix safeguards. AgentGUI owns neither version comparison nor
+process execution; it only renders the host-projected warning and dispatches
+the reported provider action.
 Startup provider detection should be progressive: desktop may publish the first
 ready managed provider as soon as it is confirmed, then continue detecting the
 remaining providers in the background. When the empty-home rail is still on

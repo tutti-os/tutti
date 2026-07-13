@@ -399,8 +399,8 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 	if status.Auth.Status != AuthRequired {
 		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthRequired)
 	}
-	if len(status.Actions) != 2 {
-		t.Fatalf("Actions length = %d, want 2", len(status.Actions))
+	if len(status.Actions) != 3 {
+		t.Fatalf("Actions length = %d, want 3", len(status.Actions))
 	}
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionLogin {
@@ -412,6 +412,9 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 	}
 	if status.Actions[1].ID != ActionRefresh || status.Actions[1].Kind != ActionKindRefresh {
 		t.Fatalf("second action = %#v, want refresh", status.Actions[1])
+	}
+	if status.Actions[2].ID != ActionUpdate || status.Actions[2].Kind != ActionKindDaemonAction {
+		t.Fatalf("third action = %#v, want daemon update", status.Actions[2])
 	}
 }
 
@@ -524,8 +527,8 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	if !status.Adapter.Installed {
 		t.Fatal("Adapter.Installed = false, want true")
 	}
-	if len(status.Actions) != 1 {
-		t.Fatalf("Actions length = %d, want 1", len(status.Actions))
+	if len(status.Actions) != 2 {
+		t.Fatalf("Actions length = %d, want 2", len(status.Actions))
 	}
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionLogin {
@@ -534,6 +537,9 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	if action.Command == nil || action.Command.Input != `/usr/local/bin/codex login -c 'service_tier="fast"'
 ` {
 		t.Fatalf("login command = %#v", action.Command)
+	}
+	if status.Actions[1].ID != ActionUpdate || status.Actions[1].Kind != ActionKindDaemonAction {
+		t.Fatalf("second action = %#v, want daemon update", status.Actions[1])
 	}
 }
 
@@ -641,6 +647,9 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	assertProviderCheck(t, status.Checks, "platform_binary", true)
 	assertProviderCheck(t, status.Checks, "version_floor", false)
 	assertProviderCheck(t, status.Checks, "auth", true)
+	if len(status.Actions) != 1 || status.Actions[0].ID != ActionUpdate {
+		t.Fatalf("Actions = %#v, want daemon CLI update", status.Actions)
+	}
 }
 
 func TestServiceListRunsCodexLauncherWithManagedNodePath(t *testing.T) {
@@ -1191,8 +1200,8 @@ func TestServiceListTreatsUnknownAuthAsAuthRequired(t *testing.T) {
 	if status.Availability.ReasonCode != "auth_unknown" {
 		t.Fatalf("ReasonCode = %q, want auth_unknown", status.Availability.ReasonCode)
 	}
-	if len(status.Actions) != 2 {
-		t.Fatalf("Actions length = %d, want 2", len(status.Actions))
+	if len(status.Actions) != 3 {
+		t.Fatalf("Actions length = %d, want 3", len(status.Actions))
 	}
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionLogin {
@@ -1203,6 +1212,9 @@ func TestServiceListTreatsUnknownAuthAsAuthRequired(t *testing.T) {
 	}
 	if status.Actions[1].ID != ActionRefresh || status.Actions[1].Kind != ActionKindRefresh {
 		t.Fatalf("second action = %#v, want refresh", status.Actions[1])
+	}
+	if status.Actions[2].ID != ActionUpdate || status.Actions[2].Kind != ActionKindDaemonAction {
+		t.Fatalf("third action = %#v, want daemon update", status.Actions[2])
 	}
 }
 

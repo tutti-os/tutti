@@ -41,7 +41,8 @@ export type AgentAnalyticsNode =
   | "runtime_started"
   | "send_input_request"
   | "session_refreshed"
-  | "session_started_reported";
+  | "session_started_reported"
+  | "update_action_requested";
 
 export type AgentAnalyticsNodeStatus = "success" | "failure";
 

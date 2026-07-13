@@ -60,6 +60,7 @@ function input(
     ready: false,
     activePhase: null,
     installActionPending: false,
+    updateActionPending: false,
     loginPending: false,
     networkReachable: true,
     cliVersionDetail: null,
@@ -180,6 +181,18 @@ describe("deriveAgentSetupStages", () => {
     );
     expect(stage(stages, "install").status).toBe("ok");
     expect(stage(stages, "adapter").status).toBe("running");
+  });
+
+  it("shows an installed CLI running while its update action is pending", () => {
+    const stages = deriveAgentSetupStages(
+      input({
+        cliInstalled: true,
+        adapterInstalled: true,
+        updateActionPending: true
+      })
+    );
+    expect(stage(stages, "install").status).toBe("running");
+    expect(stage(stages, "adapter").status).toBe("ok");
   });
 
   it("marks adapter ok and error from its own flags", () => {
@@ -386,9 +399,9 @@ describe("stageRemediation", () => {
     });
   });
 
-  it("maps an errored install to install-outdated → redetect (manual upgrade, not auto-install)", () => {
+  it("maps an errored install to install-outdated → update", () => {
     expect(stageRemediation(mk("install", "error"))).toEqual({
-      actionId: "redetect",
+      actionId: "update",
       problem: "install-outdated"
     });
   });
@@ -444,7 +457,7 @@ describe("resolveWizardAutoStartAction", () => {
     );
   });
 
-  it("does NOT auto-start install for upgrade focus (CLI upgrades are user-driven)", () => {
+  it("does NOT auto-start update for upgrade focus (CLI upgrades are user-confirmed)", () => {
     expect(
       resolveWizardAutoStartAction({ ...base, focus: "upgrade" })
     ).toBeNull();

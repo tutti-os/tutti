@@ -6449,6 +6449,7 @@ components:
       type: string
       enum:
         - install
+        - update
         - login
         - refresh
     AgentProviderProbeStatus:
@@ -6663,6 +6664,18 @@ components:
         version:
           type: string
           nullable: true
+        latestVersion:
+          type: string
+          nullable: true
+          description: >-
+            The latest stable CLI version reported by the provider's package
+            registry during an opt-in network check. Omitted when the version
+            lookup is unavailable or was not requested.
+        updateAvailable:
+          type: boolean
+          description: >-
+            Whether latestVersion is newer than the installed version. False
+            when either version is unavailable or cannot be compared.
         minVersion:
           type: string
           nullable: true

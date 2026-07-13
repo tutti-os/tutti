@@ -173,6 +173,9 @@ export const zhCN = {
       ready: "{{provider}} 已就绪。",
       busyInstalling: "正在设置 {{provider}}…",
       busyVerifying: "正在校验 {{provider}}…",
+      cliUpdateWarning:
+        "{{provider}} CLI 当前版本为 {{current}}，低于最新版本 {{latest}}。建议更新以获得最新功能与修复。",
+      actionUpdateCli: "更新 CLI",
       actionDetect: "重新检测",
       redetectDisabledInstalling: "安装进行中，暂时无法重新检测",
       redetectDisabledChecking: "正在检测…",
@@ -842,6 +845,9 @@ export const zhCN = {
         install: "连接",
         installFailed: "连接失败",
         installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
+        updateFailed: "CLI 更新失败",
+        updateFailedDescription:
+          "暂时无法更新本地 Agent CLI，请查看安装日志后重试。",
         installFailedMissingRuntime:
           "找不到本地 Agent 可执行文件，请检查是否已正确安装",
         installFailedOutdatedLocalAgent: "检测到旧版本本地 Agent，自动升级失败",

@@ -78,7 +78,9 @@ export function AgentEnvSetupTrack({
     blockingStageId,
     manualCommand,
     installPending,
+    updatePending,
     loginPending,
+    cliUpdateNotice,
     redetecting,
     ready,
     busy,
@@ -89,6 +91,39 @@ export function AgentEnvSetupTrack({
     stages.find((entry) => entry.id === "detect")?.status === "running";
   return (
     <div className="flex flex-col gap-4">
+      {cliUpdateNotice ? (
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_32%,var(--border-1))] bg-[color-mix(in_srgb,var(--state-warning)_10%,transparent)] p-3"
+        >
+          <WarningFilledIcon className="mt-0.5 size-4 shrink-0 text-[var(--state-warning)]" />
+          <p className="m-0 min-w-0 flex-1 text-[12px] leading-5 text-[var(--text-primary)]">
+            {t("workspace.agentEnv.cliUpdateWarning", {
+              provider: providerLabel,
+              current:
+                cliUpdateNotice.currentVersion ??
+                t("workspace.agentEnv.valueUnknown"),
+              latest:
+                cliUpdateNotice.targetVersion ??
+                t("workspace.agentEnv.valueUnknown")
+            })}
+          </p>
+          {blockingStageId !== "install" ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={updatePending || installPending}
+              onClick={() => actions.runStageAction("update")}
+            >
+              {updatePending ? (
+                <LoadingIcon className="size-4 animate-spin" />
+              ) : null}
+              {t("workspace.agentEnv.actionUpdateCli")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {ready ? null : (
         <p className="m-0 text-[13px] text-[var(--text-secondary)]">
           {busy
@@ -127,11 +162,13 @@ export function AgentEnvSetupTrack({
           const actionPending =
             remediation?.actionId === "login"
               ? loginPending
-              : remediation?.actionId === "redetect"
-                ? // Re-detect stays disabled for the whole install (busy is
-                  // stable, unlike redetecting/isLoading which flickers per poll).
-                  redetecting || busy
-                : installPending;
+              : remediation?.actionId === "update"
+                ? updatePending
+                : remediation?.actionId === "redetect"
+                  ? // Re-detect stays disabled for the whole install (busy is
+                    // stable, unlike redetecting/isLoading which flickers per poll).
+                    redetecting || busy
+                  : installPending;
           return (
             <li
               key={stage.id}

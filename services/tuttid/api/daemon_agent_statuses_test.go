@@ -67,7 +67,10 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 							Status: agentstatusservice.AvailabilityUnknown,
 						},
 						CLI: agentstatusservice.CLIStatus{
-							Installed: true,
+							Installed:       true,
+							Version:         "2.1.100",
+							LatestVersion:   "2.1.200",
+							UpdateAvailable: true,
 						},
 						Provider: "claude-code",
 					}},
@@ -91,6 +94,12 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	}
 	if response.Providers[0].Provider != "claude-code" {
 		t.Fatalf("provider = %q, want claude-code", response.Providers[0].Provider)
+	}
+	if response.Providers[0].Cli.LatestVersion == nil || *response.Providers[0].Cli.LatestVersion != "2.1.200" {
+		t.Fatalf("cli.latestVersion = %#v, want 2.1.200", response.Providers[0].Cli.LatestVersion)
+	}
+	if response.Providers[0].Cli.UpdateAvailable == nil || !*response.Providers[0].Cli.UpdateAvailable {
+		t.Fatalf("cli.updateAvailable = %#v, want true", response.Providers[0].Cli.UpdateAvailable)
 	}
 	activeAction := response.Providers[0].ActiveAction
 	if activeAction == nil {

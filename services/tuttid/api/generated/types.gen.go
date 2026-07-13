@@ -114,6 +114,7 @@ const (
 	AgentProviderActionIDInstall AgentProviderActionID = "install"
 	AgentProviderActionIDLogin   AgentProviderActionID = "login"
 	AgentProviderActionIDRefresh AgentProviderActionID = "refresh"
+	AgentProviderActionIDUpdate  AgentProviderActionID = "update"
 )
 
 // Valid indicates whether the value is a known member of the AgentProviderActionID enum.
@@ -124,6 +125,8 @@ func (e AgentProviderActionID) Valid() bool {
 	case AgentProviderActionIDLogin:
 		return true
 	case AgentProviderActionIDRefresh:
+		return true
+	case AgentProviderActionIDUpdate:
 		return true
 	default:
 		return false
@@ -2062,9 +2065,15 @@ type AgentProviderCliStatus struct {
 	BinaryPath *string `json:"binaryPath,omitempty"`
 	Installed  bool    `json:"installed"`
 
+	// LatestVersion The latest stable CLI version reported by the provider's package registry during an opt-in network check. Omitted when the version lookup is unavailable or was not requested.
+	LatestVersion *string `json:"latestVersion,omitempty"`
+
 	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
 	MinVersion *string `json:"minVersion,omitempty"`
-	Version    *string `json:"version,omitempty"`
+
+	// UpdateAvailable Whether latestVersion is newer than the installed version. False when either version is unavailable or cannot be compared.
+	UpdateAvailable *bool   `json:"updateAvailable,omitempty"`
+	Version         *string `json:"version,omitempty"`
 }
 
 // AgentProviderComposerConfig defines model for AgentProviderComposerConfig.

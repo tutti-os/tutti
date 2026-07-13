@@ -176,6 +176,9 @@ export const en = {
       ready: "{{provider}} is ready to run.",
       busyInstalling: "Setting up {{provider}}…",
       busyVerifying: "Verifying {{provider}}…",
+      cliUpdateWarning:
+        "{{provider}} CLI {{current}} is behind the latest version {{latest}}. Update it for current features and fixes.",
+      actionUpdateCli: "Update CLI",
       actionDetect: "Re-check",
       redetectDisabledInstalling: "Can't re-check while setting up",
       redetectDisabledChecking: "Checking…",
@@ -888,6 +891,9 @@ export const en = {
         installFailed: "Connection failed",
         installFailedDescription:
           "Unable to connect the local agent right now. Try again in a moment.",
+        updateFailed: "CLI update failed",
+        updateFailedDescription:
+          "Unable to update the local agent CLI right now. Check the setup log and try again.",
         installFailedMissingRuntime:
           "The local agent executable could not be found. Check that it is installed correctly.",
         installFailedOutdatedLocalAgent:

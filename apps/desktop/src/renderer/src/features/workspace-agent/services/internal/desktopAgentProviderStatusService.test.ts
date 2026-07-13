@@ -129,7 +129,14 @@ test("a local-only refresh keeps the network the wizard fetched", async () => {
       snapshots: [
         // Wizard fetch (with network).
         createStatusResponse([
-          createProviderStatus({ actions: [], availability: "ready", network })
+          createProviderStatus({
+            actions: [],
+            availability: "ready",
+            cliLatestVersion: "0.200.0",
+            cliUpdateAvailable: true,
+            cliVersion: "0.190.0",
+            network
+          })
         ]),
         // Dock / poll fetch (local-only, no network).
         createStatusResponse([
@@ -144,10 +151,62 @@ test("a local-only refresh keeps the network the wizard fetched", async () => {
 
   await service.refresh(["codex"], { includeNetwork: true });
   assert.deepEqual(service.getStatus("codex")?.network, network);
+  assert.equal(service.getStatus("codex")?.cli.latestVersion, "0.200.0");
+  assert.equal(service.getStatus("codex")?.cli.updateAvailable, true);
 
   // A later local-only poll omits network; it must not wipe the diagnostic.
   await service.refresh(["codex"]);
   assert.deepEqual(service.getStatus("codex")?.network, network);
+  assert.equal(service.getStatus("codex")?.cli.latestVersion, "0.200.0");
+  assert.equal(service.getStatus("codex")?.cli.updateAvailable, true);
+});
+
+test("runAction updates a provider through the daemon and rechecks latest version metadata", async () => {
+  const actionCalls: Array<[WorkspaceAgentProvider, string]> = [];
+  const includeNetworkRequests: Array<boolean | undefined> = [];
+  const pendingSnapshots: boolean[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      onRunActionRequest: (provider, actionID) =>
+        actionCalls.push([provider, actionID]),
+      onStatusRequest: (_providers, includeNetwork) =>
+        includeNetworkRequests.push(includeNetwork),
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            cliLatestVersion: "2.1.200",
+            cliUpdateAvailable: true,
+            cliVersion: "2.1.100",
+            provider: "claude-code"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({
+            actions: [{ id: "update", kind: "daemon_action" }],
+            availability: "ready",
+            cliLatestVersion: "2.1.200",
+            cliUpdateAvailable: false,
+            cliVersion: "2.1.200",
+            provider: "claude-code"
+          })
+        ])
+      ]
+    }),
+    terminalCommandRunner: { async runTerminalCommand() {} }
+  });
+  service.subscribe(() => {
+    pendingSnapshots.push(service.isActionPending("claude-code", "update"));
+  });
+
+  await service.refresh(["claude-code"]);
+  await service.runAction("claude-code", "update");
+
+  assert.deepEqual(actionCalls, [["claude-code", "update"]]);
+  assert.deepEqual(includeNetworkRequests, [undefined, true]);
+  assert.equal(pendingSnapshots.includes(true), true);
+  assert.equal(service.getStatus("claude-code")?.cli.updateAvailable, false);
 });
 
 test("runAction tracks provider login initiation and successful status result", async () => {
@@ -1834,6 +1893,9 @@ function createProviderStatus(input: {
   adapterInstalled?: boolean;
   availability: AgentProviderStatus["availability"]["status"];
   cliInstalled?: boolean;
+  cliLatestVersion?: string;
+  cliUpdateAvailable?: boolean;
+  cliVersion?: string;
   network?: AgentProviderStatus["network"];
   provider?: WorkspaceAgentProvider;
   reasonCode?: string;
@@ -1859,7 +1921,10 @@ function createProviderStatus(input: {
       status: input.availability
     },
     cli: {
-      installed: cliInstalled
+      installed: cliInstalled,
+      latestVersion: input.cliLatestVersion,
+      updateAvailable: input.cliUpdateAvailable ?? false,
+      version: input.cliVersion
     },
     network: input.network,
     provider: input.provider ?? "codex"

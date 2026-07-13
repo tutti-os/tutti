@@ -335,15 +335,22 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       this.addPendingAction(provider, actionId);
     }
     try {
-      if (action.id === "install") {
-        await runInstalledProviderAction(
+      if (action.id === "install" || action.id === "update") {
+        await runDaemonProviderAction(
           this.dependencies.tuttidClient,
-          provider
+          provider,
+          action.id
         );
-        await this.refresh([provider]);
+        await this.refresh(
+          [provider],
+          action.id === "update" ? { includeNetwork: true } : undefined
+        );
         await this.reportNodeResult({
           flow: "provider_setup",
-          node: "install_action_requested",
+          node:
+            action.id === "update"
+              ? "update_action_requested"
+              : "install_action_requested",
           provider,
           success: true
         });
@@ -398,6 +405,24 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           fallbackErrorCode: AgentAnalyticsErrorCode.InstallFailed,
           flow: "provider_setup",
           node: "install_action_requested",
+          provider,
+          success: false
+        });
+      }
+      if (action.id === "update") {
+        this.notifications.error({
+          description: translate(
+            "workspace.workbenchDesktop.agentProviders.updateFailedDescription"
+          ),
+          title: translate(
+            "workspace.workbenchDesktop.agentProviders.updateFailed"
+          )
+        });
+        await this.reportNodeResult({
+          error,
+          fallbackErrorCode: AgentAnalyticsErrorCode.InstallFailed,
+          flow: "provider_setup",
+          node: "update_action_requested",
           provider,
           success: false
         });
@@ -561,20 +586,34 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   /**
-   * Network reachability is now fetched on-demand (only the wizard requests it),
-   * so a local-only poll (dock / visibility / install / login) returns a status
-   * with no `network`. Carry the last-known network forward so those polls don't
-   * wipe the diagnostic the wizard fetched; a later with-network response replaces
-   * it.
+   * Network reachability and latest CLI release metadata are fetched on-demand
+   * (only the wizard requests them), so a local-only poll returns neither.
+   * Carry the last-known values forward so install/login/update progress polls
+   * do not make diagnostics or the update banner flicker; the next with-network
+   * response replaces them.
    */
   private preserveNetwork(
     previous: AgentProviderStatus | undefined,
     next: AgentProviderStatus
   ): AgentProviderStatus {
-    if (next.network || !previous?.network) {
+    if (
+      (next.network || !previous?.network) &&
+      (next.cli.latestVersion || !previous?.cli.latestVersion)
+    ) {
       return next;
     }
-    return { ...next, network: previous.network };
+    return {
+      ...next,
+      cli:
+        next.cli.latestVersion || !previous?.cli.latestVersion
+          ? next.cli
+          : {
+              ...next.cli,
+              latestVersion: previous.cli.latestVersion,
+              updateAvailable: previous.cli.updateAvailable
+            },
+      network: next.network ?? previous?.network ?? null
+    };
   }
 
   private stabilizeProviderStatus(
@@ -734,7 +773,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     provider: WorkspaceAgentProvider,
     actionId: string
   ): void {
-    if (actionId !== "install") {
+    if (actionId !== "install" && actionId !== "update") {
       return;
     }
     this.schedulePendingActionStatusPoll(provider, actionId);
@@ -1106,11 +1145,12 @@ class AgentProviderInstallActionFailedError extends Error {
   }
 }
 
-async function runInstalledProviderAction(
+async function runDaemonProviderAction(
   tuttidClient: TuttidClient,
-  provider: WorkspaceAgentProvider
+  provider: WorkspaceAgentProvider,
+  actionId: "install" | "update"
 ): Promise<void> {
-  const result = await tuttidClient.runAgentProviderAction(provider, "install");
+  const result = await tuttidClient.runAgentProviderAction(provider, actionId);
   if (result.status !== "failed") {
     return;
   }
@@ -1129,7 +1169,7 @@ function resolveAgentProviderActionFailureReason(
     result.stdout?.trim() ||
     result.probe?.message?.trim() ||
     result.probe?.reasonCode?.trim() ||
-    "Agent provider install action failed."
+    "Agent provider action failed."
   );
 }
 
@@ -1253,7 +1293,7 @@ function isTransientProviderStatusDowngrade(
 }
 
 function shouldTrackPendingAction(actionId: string): boolean {
-  return actionId === "install";
+  return actionId === "install" || actionId === "update";
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

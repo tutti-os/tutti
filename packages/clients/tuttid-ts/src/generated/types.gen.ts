@@ -1089,7 +1089,7 @@ export type AgentProviderActionKind =
   | "terminal_command"
   | "refresh";
 
-export type AgentProviderActionId = "install" | "login" | "refresh";
+export type AgentProviderActionId = "install" | "update" | "login" | "refresh";
 
 export type AgentProviderProbeStatus = "ready" | "failed" | "skipped";
 
@@ -1175,6 +1175,14 @@ export type AgentProviderCliStatus = {
   installed: boolean;
   binaryPath?: string | null;
   version?: string | null;
+  /**
+   * The latest stable CLI version reported by the provider's package registry during an opt-in network check. Omitted when the version lookup is unavailable or was not requested.
+   */
+  latestVersion?: string | null;
+  /**
+   * Whether latestVersion is newer than the installed version. False when either version is unavailable or cannot be compared.
+   */
+  updateAvailable?: boolean;
   /**
    * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
    */
