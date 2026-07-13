@@ -2839,10 +2839,11 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__card--success {
   /* --state-success alone reads ~2:1 against the light-theme card wash;
      mixing toward --text-primary keeps the hue while adapting the contrast
-     in both themes. Borders/backgrounds stay on the raw token. */
+     in both themes (45% keeps 13px text past the 4.5:1 target). Borders and
+     backgrounds stay on the raw token. */
   --agent-gui-chrome-success-foreground: color-mix(
     in srgb,
-    var(--state-success) 62%,
+    var(--state-success) 45%,
     var(--text-primary)
   );
 
