@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import {
   Select,
   SelectContent,
@@ -19,9 +19,15 @@ import type {
   AgentGUIProviderReadinessGate,
   AgentGUIAgentTarget
 } from "../../../types";
+import { AgentGUIHeroAgentCarousel } from "../AgentGUIHeroAgentCarousel";
 import { AgentSessionChrome } from "../AgentSessionChrome";
 import { AgentComposer, type AgentComposerProps } from "../AgentComposer";
 import { AgentHomeSuggestions } from "../AgentHomeSuggestions";
+import {
+  createFallbackAgentGUIAgentAvatar,
+  projectAgentGUIAgentTargetAvatar,
+  type AgentGUIAgentAvatarPresentation
+} from "../model/agentGuiAgentAvatarPresentation";
 import type {
   AgentHomeSuggestionAction,
   AgentHomeSuggestionCategory,
@@ -50,22 +56,6 @@ export function resolveAgentGUIHeroIconUrl(
   );
 }
 
-export function agentGUIProviderIconPresentation(
-  provider: string | undefined,
-  iconUrl?: string | null
-): AgentGUIProviderIconPresentation {
-  const normalizedProvider = normalizeManagedAgentProvider(provider);
-  const providerRailIconUrl =
-    MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS[normalizedProvider] ?? null;
-  return {
-    provider: normalizedProvider,
-    iconUrl:
-      (normalizedProvider === "cursor" ? providerRailIconUrl : null) ||
-      iconUrl?.trim() ||
-      resolveAgentGUIHeroIconUrl(normalizedProvider)
-  };
-}
-
 export function agentGUIProviderRailIconPresentation(
   provider: string | undefined,
   iconUrl?: string | null
@@ -87,23 +77,149 @@ export function shouldEmphasizeEmptyHeroProvider(label: string): boolean {
   return label.trim().length > 0;
 }
 
-export function agentGUILaunchpadIconPresentations(): readonly AgentGUIProviderIconPresentation[] {
-  return [
-    agentGUIProviderRailIconPresentation("codex"),
-    agentGUIProviderRailIconPresentation("claude-code"),
-    agentGUIProviderRailIconPresentation("cursor"),
-    agentGUIProviderRailIconPresentation("tutti")
-  ];
-}
-
 export const EMPTY_HOME_SUGGESTIONS: readonly AgentHomeSuggestionCategory[] =
   Object.freeze([]);
+
+interface AgentGUIEmptyHeroCarouselStageProps {
+  activeAgentTargetId?: string | null;
+  children: ReactNode;
+  items: readonly AgentGUIAgentAvatarPresentation[];
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerSelectLabel: string;
+}
+
+// Keep the carousel outside the ready/readiness-gate branch. Runtime
+// readiness changes must not replace the WebGL canvas or reset its position.
+export const AgentGUIEmptyHeroCarouselStage = memo(
+  function AgentGUIEmptyHeroCarouselStage({
+    activeAgentTargetId,
+    children,
+    items,
+    onProviderSelect,
+    providerSelectLabel
+  }: AgentGUIEmptyHeroCarouselStageProps): React.JSX.Element {
+    "use memo";
+
+    return (
+      <div className={styles.emptyHeroCarouselStage}>
+        {items.length > 1 ? (
+          <div className={styles.emptyHeroCarouselLayer}>
+            <AgentGUIHeroAgentCarousel
+              activeAgentTargetId={activeAgentTargetId}
+              items={items}
+              onProviderSelect={onProviderSelect}
+              providerSelectLabel={providerSelectLabel}
+            />
+          </div>
+        ) : null}
+        {children}
+      </div>
+    );
+  }
+);
+
+interface AgentGUIEmptyHomePaneProps {
+  provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
+  providerReadinessGate: AgentGUIProviderReadinessGate | null;
+  showAllProviders: boolean;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  selectedAgentTarget: AgentGUIAgentTarget | null;
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  inlineNoticeChrome: AgentGUISessionChrome | null;
+  isRespondingApproval: boolean;
+  onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
+  onAuthLogin?: (provider?: string | null) => void;
+  onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
+  onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
+  chromeLabels: ChromeLabels;
+  composerProps: AgentComposerProps;
+  labels: AgentGUIViewLabels;
+  suggestions: readonly AgentHomeSuggestionCategory[];
+  suggestionsCloseLabel?: string;
+  onSelectSuggestion: (prompt: string) => void;
+  onSelectSuggestionAction?: (action: AgentHomeSuggestionAction) => void;
+}
+
+export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
+  provider,
+  providerReadinessGate,
+  showAllProviders,
+  agentTargets,
+  selectedAgentTarget,
+  onProviderSelect,
+  labels,
+  ...heroProps
+}: AgentGUIEmptyHomePaneProps): React.JSX.Element {
+  "use memo";
+
+  const runtimeProviderLabel =
+    labels.emptyProviderForProvider?.(provider) ?? labels.emptyProvider ?? "";
+  const providerLabel = selectedAgentTarget?.label ?? runtimeProviderLabel;
+  const baseLabel = labels.emptyForProvider?.(provider) ?? labels.empty;
+  const emptyLabel = runtimeProviderLabel
+    ? baseLabel.replace(runtimeProviderLabel, providerLabel)
+    : baseLabel;
+  const avatarPresentations = useMemo(
+    () =>
+      agentTargets.length
+        ? agentTargets.map(projectAgentGUIAgentTargetAvatar)
+        : selectedAgentTarget
+          ? [projectAgentGUIAgentTargetAvatar(selectedAgentTarget)]
+          : [
+              createFallbackAgentGUIAgentAvatar({
+                provider,
+                label: providerLabel
+              })
+            ],
+    [agentTargets, provider, providerLabel, selectedAgentTarget]
+  );
+  const carouselMountedExternally = avatarPresentations.length > 1;
+
+  return (
+    <AgentGUIEmptyHeroCarouselStage
+      activeAgentTargetId={
+        selectedAgentTarget?.agentTargetId ?? selectedAgentTarget?.targetId
+      }
+      items={avatarPresentations}
+      onProviderSelect={onProviderSelect}
+      providerSelectLabel={labels.providerSwitchLabel}
+    >
+      {providerReadinessGate ? (
+        <AgentGUIProviderReadinessGatePane
+          provider={provider}
+          gate={providerReadinessGate}
+          showAllProviders={showAllProviders}
+          avatarPresentations={avatarPresentations}
+          carouselMountedExternally={carouselMountedExternally}
+          onProviderSelect={onProviderSelect}
+          providerSelectLabel={labels.providerSwitchLabel}
+          selectedAgentTarget={selectedAgentTarget}
+          labels={labels}
+        />
+      ) : (
+        <AgentGUIEmptyHeroPane
+          {...heroProps}
+          provider={provider}
+          emptyLabel={emptyLabel}
+          emptyProvider={providerLabel}
+          avatarPresentations={avatarPresentations}
+          carouselMountedExternally={carouselMountedExternally}
+          onProviderSelect={onProviderSelect}
+          agentTargets={agentTargets}
+          selectedAgentTarget={selectedAgentTarget}
+          providerSelectLabel={labels.providerSwitchLabel}
+        />
+      )}
+    </AgentGUIEmptyHeroCarouselStage>
+  );
+});
 
 interface AgentGUIEmptyHeroPaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   emptyLabel: string;
   emptyProvider: string;
-  iconPresentations: readonly AgentGUIProviderIconPresentation[];
+  avatarPresentations: readonly AgentGUIAgentAvatarPresentation[];
+  carouselMountedExternally?: boolean;
   inlineNoticeChrome: AgentGUISessionChrome | null;
   isRespondingApproval: boolean;
   onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
@@ -126,7 +242,8 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   provider,
   emptyLabel,
   emptyProvider,
-  iconPresentations,
+  avatarPresentations,
+  carouselMountedExternally = false,
   inlineNoticeChrome,
   isRespondingApproval,
   onSubmitApprovalOption,
@@ -146,31 +263,45 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 }: AgentGUIEmptyHeroPaneProps): React.JSX.Element {
   "use memo";
 
-  const heroIconPresentations =
-    iconPresentations.length > 0
-      ? iconPresentations
-      : [agentGUIProviderIconPresentation(provider)];
-  const heroIconAnimationKey = heroIconPresentations
-    .map((icon) => `${icon.provider}:${icon.iconUrl}`)
+  const heroAvatarPresentations =
+    avatarPresentations.length > 0
+      ? avatarPresentations
+      : [
+          createFallbackAgentGUIAgentAvatar({
+            provider,
+            label: emptyProvider
+          })
+        ];
+  const heroIconAnimationKey = heroAvatarPresentations
+    .map(
+      (avatar) =>
+        `${avatar.agentTargetId}:${avatar.iconUrl}:${avatar.badge?.iconUrl ?? ""}`
+    )
     .join("|");
 
   return (
     <div className={styles.emptyHero}>
       <div className={styles.emptyHeroBody}>
-        <div className={styles.emptyHeroIconSlot}>
-          {heroIconPresentations.length > 1 ? (
-            <AgentGUIAllProviderGridIcon
-              key={heroIconAnimationKey}
-              activeProvider={provider}
-              className={styles.agentAvatar}
-              icons={heroIconPresentations}
+        <div
+          className={styles.emptyHeroIconSlot}
+          data-carousel-placeholder={carouselMountedExternally || undefined}
+        >
+          {carouselMountedExternally ? null : heroAvatarPresentations.length >
+            1 ? (
+            <AgentGUIHeroAgentCarousel
+              activeAgentTargetId={
+                selectedAgentTarget?.agentTargetId ??
+                selectedAgentTarget?.targetId
+              }
+              items={heroAvatarPresentations}
+              onProviderSelect={onProviderSelect}
+              providerSelectLabel={providerSelectLabel}
             />
           ) : (
-            <AgentGUIProviderIconVisual
+            <AgentGUIAgentAvatarVisual
               key={heroIconAnimationKey}
-              ariaHidden
-              imageClassName={styles.emptyHeroIconEffect}
-              icon={heroIconPresentations[0]!}
+              className={styles.emptyHeroIconEffect}
+              presentation={heroAvatarPresentations[0]!}
             />
           )}
         </div>
@@ -211,6 +342,11 @@ interface AgentGUIProviderReadinessGatePaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
   showAllProviders?: boolean;
+  avatarPresentations: readonly AgentGUIAgentAvatarPresentation[];
+  carouselMountedExternally?: boolean;
+  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerSelectLabel: string;
+  selectedAgentTarget: AgentGUIAgentTarget | null;
   labels: Pick<
     AgentGUIViewLabels,
     | "providerGateCheckingTitle"
@@ -239,15 +375,26 @@ export const AgentGUIProviderReadinessGatePane = memo(
     provider,
     gate,
     showAllProviders = false,
+    avatarPresentations,
+    carouselMountedExternally = false,
+    onProviderSelect,
+    providerSelectLabel,
+    selectedAgentTarget,
     labels
   }: AgentGUIProviderReadinessGatePaneProps): React.JSX.Element {
     "use memo";
 
-    const heroIconUrl = resolveAgentGUIHeroIconUrl(provider);
-    const launchpadIconPresentations = useMemo(
-      () => agentGUILaunchpadIconPresentations(),
-      []
-    );
+    const heroAvatarPresentations =
+      avatarPresentations.length > 0
+        ? avatarPresentations
+        : [
+            selectedAgentTarget
+              ? projectAgentGUIAgentTargetAvatar(selectedAgentTarget)
+              : createFallbackAgentGUIAgentAvatar({
+                  provider,
+                  label: provider
+                })
+          ];
     const pendingAction = gate.pendingAction ?? null;
     const isPending = pendingAction !== null;
     const showAllProvidersChecking =
@@ -272,18 +419,25 @@ export const AgentGUIProviderReadinessGatePane = memo(
           data-testid="agent-gui-provider-readiness-gate"
           role="status"
         >
-          {showAllProvidersChecking ? (
-            <AgentGUIAllProviderGridIcon
-              className={styles.agentAvatar}
-              icons={launchpadIconPresentations}
+          {carouselMountedExternally ? (
+            <div
+              aria-hidden="true"
+              className={styles.emptyHeroCarouselPlaceholder}
+            />
+          ) : heroAvatarPresentations.length > 1 ? (
+            <AgentGUIHeroAgentCarousel
+              activeAgentTargetId={
+                selectedAgentTarget?.agentTargetId ??
+                selectedAgentTarget?.targetId
+              }
+              items={heroAvatarPresentations}
+              onProviderSelect={onProviderSelect}
+              providerSelectLabel={providerSelectLabel}
             />
           ) : (
-            <img
-              aria-hidden="true"
+            <AgentGUIAgentAvatarVisual
               className={styles.emptyHeroIconEffect}
-              draggable={false}
-              src={heroIconUrl}
-              alt=""
+              presentation={heroAvatarPresentations[0]!}
             />
           )}
           <h2 className={styles.emptyHeroTitle}>{content.title}</h2>
@@ -394,30 +548,6 @@ function providerGateAction(
   }
 }
 
-export function AgentGUIAllProviderGridIcon({
-  activeProvider,
-  className,
-  icons
-}: {
-  activeProvider?: string;
-  className?: string;
-  icons: readonly AgentGUIProviderIconPresentation[];
-}): React.JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      className={[styles.providerRailAvatar, className]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <AgentGUILaunchpadIconGrid
-        activeProvider={activeProvider}
-        icons={icons}
-      />
-    </span>
-  );
-}
-
 export function AgentGUIUnifiedProviderIcon({
   presentation
 }: {
@@ -432,38 +562,6 @@ export function AgentGUIUnifiedProviderIcon({
         draggable={false}
         src={iconUrl}
       />
-    </span>
-  );
-}
-
-function AgentGUILaunchpadIconGrid({
-  activeProvider,
-  icons
-}: {
-  activeProvider?: string;
-  icons: readonly AgentGUIProviderIconPresentation[];
-}): React.JSX.Element {
-  const normalizedActiveProvider = activeProvider
-    ? normalizeManagedAgentProvider(activeProvider)
-    : null;
-  return (
-    <span aria-hidden="true" className={styles.agentAvatar}>
-      {icons.map((icon) => {
-        return (
-          <span
-            key={`${icon.provider}:${icon.iconUrl}`}
-            className={styles.agentAvatar}
-            data-provider-active={
-              normalizedActiveProvider === null
-                ? undefined
-                : normalizeManagedAgentProvider(icon.provider) ===
-                  normalizedActiveProvider
-            }
-          >
-            <AgentGUIProviderIconVisual imageClassName="" icon={icon} />
-          </span>
-        );
-      })}
     </span>
   );
 }
@@ -485,6 +583,41 @@ export function AgentGUIProviderIconVisual({
       draggable={false}
       src={icon.iconUrl}
     />
+  );
+}
+
+function AgentGUIAgentAvatarVisual({
+  className,
+  imageClassName,
+  presentation
+}: {
+  className?: string;
+  imageClassName?: string;
+  presentation: AgentGUIAgentAvatarPresentation;
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(styles.agentAvatar, className)}
+      data-agent-target-id={presentation.agentTargetId}
+    >
+      <img
+        alt=""
+        className={cn(styles.agentAvatarImage, imageClassName)}
+        draggable={false}
+        src={presentation.iconUrl}
+      />
+      {presentation.badge?.iconUrl ? (
+        <span className={styles.agentAvatarBadge}>
+          <img
+            alt=""
+            className={styles.agentAvatarBadgeImage}
+            draggable={false}
+            src={presentation.badge.iconUrl}
+          />
+        </span>
+      ) : null}
+    </span>
   );
 }
 

@@ -39,10 +39,7 @@ import {
 } from "../../agentActivityRuntime";
 import { agentColorfulUrl } from "../../managedAgentIconAssets";
 import { createTestAgentSessionEngine } from "../../shared/testing/createTestAgentSessionEngine";
-import {
-  MANAGED_AGENT_ICON_URLS,
-  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
-} from "../../shared/managedAgentIcons";
+import { MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS } from "../../shared/managedAgentIcons";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -1355,62 +1352,80 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(allIcon).toHaveAttribute("src", agentColorfulUrl);
   });
 
-  it("renders the empty hero icon area with the All tile launchpad grid", () => {
+  it("renders the empty hero icon area with the vinyl carousel", () => {
+    const codexTarget = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      badge: {
+        iconUrl: "app://owner-avatar.png",
+        label: "Owner avatar"
+      }
+    };
     const { container } = renderAgentGUINodeView({
-      viewModel: {
-        ...createViewModel(),
+      viewModel: createViewModel({
         conversationFilter: { kind: "all" },
+        selectedAgentTarget: codexTarget,
         agentTargets: [
           createLocalAgentGUIAgentTarget("claude-code"),
-          createLocalAgentGUIAgentTarget("codex")
+          codexTarget
         ]
-      }
+      })
     });
 
-    const heroIconGrid = container.querySelector(
-      ".agent-gui-node__empty-hero-icon-slot > .agent-gui-node__agent-avatar > .agent-gui-node__agent-avatar"
+    const carousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(heroIconGrid).not.toBeNull();
-    expect(heroIconGrid?.children).toHaveLength(4);
+    expect(carousel).not.toBeNull();
     expect(
-      Array.from(heroIconGrid?.children ?? []).map((item) =>
-        item.querySelector("img")?.getAttribute("src")
+      carousel?.querySelector(
+        "canvas.agent-gui-node__empty-hero-carousel-canvas"
       )
-    ).toEqual([
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex,
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"],
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor,
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti
-    ]);
+    ).not.toBeNull();
+    expect(carousel?.querySelector(".agent-gui-vinyl-player")).not.toBeNull();
+    const items = Array.from(
+      carousel?.querySelectorAll(".agent-gui-node__empty-hero-carousel-item") ??
+        []
+    );
+    expect(items).toHaveLength(2);
     expect(
-      Array.from(heroIconGrid?.children ?? []).map((item) =>
-        item.getAttribute("data-provider-active")
+      items.filter(
+        (item) => item.getAttribute("data-provider-active") === "true"
       )
-    ).toEqual(["true", "false", "false", "false"]);
+    ).toHaveLength(1);
+    const activeItem = items.find(
+      (item) => item.getAttribute("data-provider-active") === "true"
+    );
+    expect(activeItem?.getAttribute("data-provider")).toBe("codex");
+    expect(activeItem).toHaveAccessibleName(/Codex, Owner avatar/u);
   });
 
-  it("remounts the empty hero icon when switching provider targets", () => {
+  it("keeps the vinyl carousel mounted and centers the selected target", () => {
     const codexTarget = createLocalAgentGUIAgentTarget("codex");
     const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     const { container, rerender } = renderAgentGUINodeView({
-      viewModel: {
-        ...createViewModel(),
+      viewModel: createViewModel({
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
         },
         selectedAgentTarget: codexTarget,
         agentTargets: [codexTarget, claudeTarget]
-      }
+      })
     });
 
-    const initialIcon = container.querySelector<HTMLImageElement>(
-      ".agent-gui-node__empty-hero-icon-effect"
+    const initialCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(initialIcon).not.toBeNull();
-    expect(initialIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_ICON_URLS.codex
+    const initialItems = Array.from(
+      initialCarousel?.querySelectorAll(
+        ".agent-gui-node__empty-hero-carousel-item"
+      ) ?? []
     );
+    expect(initialCarousel).not.toBeNull();
+    expect(
+      initialItems
+        .find((item) => item.getAttribute("data-provider-active") === "true")
+        ?.getAttribute("data-provider")
+    ).toBe("codex");
 
     rerender(
       buildAgentGUINodeViewElement({
@@ -1425,14 +1440,63 @@ describe("AgentGUINodeView layout persistence", () => {
       })
     );
 
-    const nextIcon = container.querySelector<HTMLImageElement>(
-      ".agent-gui-node__empty-hero-icon-effect"
+    const nextCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(nextIcon).not.toBeNull();
-    expect(nextIcon).not.toBe(initialIcon);
-    expect(nextIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_ICON_URLS["claude-code"]
+    const nextItems = Array.from(
+      nextCarousel?.querySelectorAll(
+        ".agent-gui-node__empty-hero-carousel-item"
+      ) ?? []
     );
+    expect(nextCarousel).toBe(initialCarousel);
+    expect(nextItems).toEqual(initialItems);
+    expect(
+      nextItems
+        .find((item) => item.getAttribute("data-provider-active") === "true")
+        ?.getAttribute("data-provider")
+    ).toBe("claude-code");
+  });
+
+  it("preserves the vinyl carousel canvas across readiness changes", () => {
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const agentTargets = [codexTarget, claudeTarget];
+    const { container, rerender } = renderAgentGUINodeView({
+      viewModel: createViewModel({
+        selectedAgentTarget: codexTarget,
+        agentTargets
+      })
+    });
+    const initialCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
+    );
+    const initialCanvas = initialCarousel?.querySelector("canvas");
+    expect(initialCarousel).not.toBeNull();
+    expect(initialCanvas).not.toBeNull();
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: createViewModel({
+          providerReadinessGate: { status: "not_installed" },
+          selectedAgentTarget: claudeTarget,
+          agentTargets
+        })
+      })
+    );
+
+    const nextCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
+    );
+    expect(nextCarousel).toBe(initialCarousel);
+    expect(nextCarousel?.querySelector("canvas")).toBe(initialCanvas);
+    expect(
+      nextCarousel?.querySelector(
+        '[data-provider="claude-code"][data-provider-active="true"]'
+      )
+    ).not.toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toBeInTheDocument();
   });
 
   it("omits disabled provider options in the empty hero provider select", async () => {
@@ -1906,7 +1970,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
   });
 
-  it("uses Cursor colorful artwork in the empty hero icon", () => {
+  it("uses the host-provided Cursor artwork in the vinyl player", () => {
     const agentTargets = [
       createLocalAgentGUIAgentTarget("codex"),
       {
@@ -1924,20 +1988,19 @@ describe("AgentGUINodeView layout persistence", () => {
         handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
-      viewModel: {
-        ...createViewModel(),
+      viewModel: createViewModel({
         conversationFilter: {
           kind: "agentTarget",
           agentTargetId: agentTargets[1]!.agentTargetId ?? ""
         },
         selectedAgentTarget: agentTargets[1]!,
         agentTargets
-      }
+      })
     });
 
     expect(
-      document.querySelector(".agent-gui-node__empty-hero-icon-effect")
-    ).toHaveAttribute("src", MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.cursor);
+      document.querySelector(".agent-gui-vinyl-player__label img")
+    ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
   });
 
   it("renders the composer from the selected provider target", () => {

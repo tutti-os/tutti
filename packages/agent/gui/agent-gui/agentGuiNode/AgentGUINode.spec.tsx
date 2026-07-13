@@ -21,7 +21,10 @@ import {
   normalizeAgentActivitySession,
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
-import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
+import {
+  MANAGED_AGENT_ICON_URLS,
+  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
+} from "../../shared/managedAgentIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import {
   AgentActivityRuntimeProvider,
@@ -1801,10 +1804,10 @@ describe("AgentGUINode", () => {
       name: "What can Codex help you with?"
     });
     const iconEffect = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-effect"
+      ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
     );
-    const launchpadIcon = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-slot > .agent-gui-node__agent-avatar > .agent-gui-node__agent-avatar"
+    const heroCarousel = document.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
 
     expect(queryComposerEditor()).not.toBeNull();
@@ -1813,9 +1816,8 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toBeNull();
-    expect(launchpadIcon).not.toBeNull();
-    expect(launchpadIcon?.children).toHaveLength(4);
+    expect(iconEffect).not.toBeNull();
+    expect(heroCarousel).toBeNull();
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
@@ -1847,12 +1849,23 @@ describe("AgentGUINode", () => {
         name: "agentHost.agentGui.providerSwitchLabel"
       })
     ).toHaveTextContent("Claude Code");
-    const iconEffect = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-effect"
+    const heroCarousel = document.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(iconEffect).toHaveAttribute(
+    expect(heroCarousel).not.toBeNull();
+    expect(
+      heroCarousel?.querySelector(
+        '[data-provider="claude-code"][data-provider-active="true"]'
+      )
+    ).not.toBeNull();
+    expect(
+      heroCarousel?.querySelector(".agent-gui-vinyl-player")
+    ).not.toBeNull();
+    expect(
+      heroCarousel?.querySelector(".agent-gui-vinyl-player__label img")
+    ).toHaveAttribute(
       "src",
-      MANAGED_AGENT_ICON_URLS["claude-code"]
+      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
     );
   });
 

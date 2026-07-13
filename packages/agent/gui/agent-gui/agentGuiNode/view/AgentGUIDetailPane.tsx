@@ -40,11 +40,8 @@ import {
 } from "./agentGUIDetailModelHelpers";
 import { AgentGUIBottomDockPane } from "./AgentGUIBottomDockPane";
 import {
-  AgentGUIEmptyHeroPane,
-  AgentGUIProviderReadinessGatePane,
+  AgentGUIEmptyHomePane,
   EMPTY_HOME_SUGGESTIONS,
-  agentGUILaunchpadIconPresentations,
-  agentGUIProviderIconPresentation,
   resolveAgentGUIHeroIconUrl
 } from "./AgentGUIEmptyState";
 import { AgentGUIDetailHeader } from "./AgentGUIDetailHeader";
@@ -577,19 +574,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const emptyHeroProvider =
     viewModel.rail.selectedAgentTarget?.provider ??
     viewModel.shell.data.provider;
-  const emptyHeroProviderLabel =
-    labels.emptyProviderForProvider?.(emptyHeroProvider) ??
-    labels.emptyProvider ??
-    "";
-  const emptyHeroLabel =
-    labels.emptyForProvider?.(emptyHeroProvider) ?? labels.empty;
-  const emptyHeroIconPresentations = useMemo(
-    () =>
-      viewModel.rail.conversationFilter.kind === "all"
-        ? agentGUILaunchpadIconPresentations()
-        : [agentGUIProviderIconPresentation(emptyHeroProvider)],
-    [emptyHeroProvider, viewModel.rail.conversationFilter]
-  );
   const disabledProviderTarget = selectedAgentTargetComingSoon
     ? (viewModel.rail.selectedAgentTarget ?? null)
     : null;
@@ -710,38 +694,30 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   disabledProviderTarget.unavailableReason ?? null
               })}
             </>
-          ) : emptyProviderReadinessGate ? (
-            <AgentGUIProviderReadinessGatePane
+          ) : (
+            <AgentGUIEmptyHomePane
               provider={emptyHeroProvider}
-              gate={emptyProviderReadinessGate}
+              providerReadinessGate={emptyProviderReadinessGate}
               showAllProviders={
                 viewModel.rail.conversationFilter.kind === "all"
               }
-              labels={labels}
-            />
-          ) : (
-            <AgentGUIEmptyHeroPane
-              provider={emptyHeroProvider}
-              emptyLabel={emptyHeroLabel}
-              emptyProvider={emptyHeroProviderLabel}
-              iconPresentations={emptyHeroIconPresentations}
-              inlineNoticeChrome={inlineNoticeChrome}
-              isRespondingApproval={viewModel.interaction.isRespondingApproval}
-              onSubmitApprovalOption={submitApprovalOption}
-              onRetryActivation={retryActivation}
-              onAuthLogin={authLogin}
-              onContinueInNewConversation={continueInNewConversation}
+              agentTargets={composerProviderTargets}
+              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
               onProviderSelect={
                 canSwitchComposerProvider &&
                 viewModel.rail.activeConversationId === null
                   ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
-              agentTargets={composerProviderTargets}
-              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
+              inlineNoticeChrome={inlineNoticeChrome}
+              isRespondingApproval={viewModel.interaction.isRespondingApproval}
+              onSubmitApprovalOption={submitApprovalOption}
+              onRetryActivation={retryActivation}
+              onAuthLogin={authLogin}
+              onContinueInNewConversation={continueInNewConversation}
               chromeLabels={chromeLabels}
               composerProps={emptyHeroComposerProps}
-              providerSelectLabel={labels.providerSwitchLabel}
+              labels={labels}
               suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
               suggestionsCloseLabel={labels.homeSuggestionsClose}
               onSelectSuggestion={handleSelectHomeSuggestion}
