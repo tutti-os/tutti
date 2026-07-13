@@ -9095,7 +9095,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   top: calc(50% - 210px);
   left: 50%;
   width: min(400px, calc(100% - 64px));
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(0.9);
+  transform-origin: center center;
 }
 
 .agent-gui-node__empty-hero-carousel-placeholder {
