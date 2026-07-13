@@ -7338,12 +7338,18 @@ button.agent-gui-node__conversation-section-toggle:hover
   isolation: isolate;
   z-index: 2;
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
   border: 1px solid var(--agent-gui-border-subtle);
   border-radius: 12px;
   background: var(--agent-gui-surface-raised);
   box-shadow: 0 8px 24px rgb(0 0 0 / 4%);
   transition: box-shadow 140ms ease;
+}
+
+.agent-gui-node__composer-hero-prompt-input-area {
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  margin-inline: 4px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8262,12 +8268,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-input-group-hero
   .agent-gui-node__composer-project-row {
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-project-row .agent-gui-node__composer-menu-trigger {
@@ -9437,9 +9443,17 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
      the canvas edges), intersected with a vertical band so tiles sinking
      down the wheel melt away instead of being cut by the canvas bottom. */
   mask-image:
-    linear-gradient(90deg, transparent 4%, #000 30%, #000 70%, transparent 96%),
-    linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 30%,
+      #000 70%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
   mask-composite: intersect;
+  mask-size: 100% 100%;
+  mask-position: center;
 }
 
 .agent-gui-node__empty-hero-carousel[data-icons-ready="true"]
