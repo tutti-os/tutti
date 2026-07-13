@@ -131,6 +131,7 @@ function sessionCapabilitiesFromValue(
     return null;
   }
   return {
+    activeTurnGuidance: capabilities.activeTurnGuidance === true,
     browserUse: capabilities.browserUse === true,
     compact: capabilities.compact === true,
     computerUse: capabilities.computerUse === true,

@@ -48,7 +48,6 @@ export interface PendingSubmitIntentRecord {
   errorCode: string | null;
   errorMessage: string | null;
   expiresAtUnixMs: number;
-  guidance: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
   status: PendingSubmitStatus;
@@ -176,10 +175,9 @@ export interface SubmitRequestedIntent {
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   expiresAtUnixMs: number;
-  guidance?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
-  routing?: "auto" | "immediate";
+  routing?: "auto" | "immediate" | "send_now";
   runtimeContent?: readonly AgentPromptContentBlock[];
   workspaceId: string;
 }

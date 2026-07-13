@@ -66,8 +66,8 @@ export interface PromptQueueRemovedIntent {
   promptId: string;
 }
 
-export interface PromptQueuePromotedIntent {
-  type: "queue/promoted";
+export interface PromptQueueSendNowRequestedIntent {
+  type: "queue/sendNowRequested";
   agentSessionId: string;
   cancelCommandId: string;
   promptId: string;
@@ -93,7 +93,7 @@ export interface PromptQueueSessionCleanedIntent {
 
 export type PromptQueueIntent =
   | PromptQueueEnqueuedIntent
-  | PromptQueuePromotedIntent
+  | PromptQueueSendNowRequestedIntent
   | PromptQueueRemovedIntent
   | PromptQueueResumedIntent
   | PromptQueueSessionCleanedIntent

@@ -74,6 +74,7 @@ test("agent composer options project the typed slash command policy", () => {
 test("agent composer options project typed pre-session capabilities separately from the tool catalog", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("cursor", {
     capabilities: {
+      activeTurnGuidance: false,
       browserUse: true,
       compact: false,
       computerUse: false,

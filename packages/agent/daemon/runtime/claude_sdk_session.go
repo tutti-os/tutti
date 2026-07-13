@@ -130,6 +130,7 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 		CapabilityRateLimits,
 		CapabilityPlanMode,
 		CapabilityInterrupt,
+		CapabilityActiveTurnGuidance,
 		CapabilityPermissionModeChangeDuringTurn,
 		CapabilitySkills,
 		"review",

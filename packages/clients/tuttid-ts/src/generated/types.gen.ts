@@ -1443,6 +1443,10 @@ export type WorkspaceAgentCapabilities = {
   rateLimits: boolean;
   planMode: boolean;
   interrupt: boolean;
+  /**
+   * The provider can accept a user prompt as guidance for the currently running turn without canceling it or creating a normal next turn.
+   */
+  activeTurnGuidance: boolean;
   browserUse: boolean;
   computerUse: boolean;
   goalPause: boolean;

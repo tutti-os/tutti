@@ -48,13 +48,15 @@ export function sessionLifecycleReducer(
   state: SessionLifecycleState,
   intent: EngineIntent,
   context: {
-    queuePromotionAccepted: boolean;
+    queueSendNowRequiresCancel: boolean;
+    sendNowSubmitRequiresCancel?: boolean;
     sendResultValidation?: SendInputResultValidation | null;
     interactionResultValidation?: ScopedSessionResultValidation | null;
     settingsResultValidation?: ScopedSessionResultValidation | null;
     cancelResultValidation?: CancelResultValidation | null;
   } = {
-    queuePromotionAccepted: false
+    queueSendNowRequiresCancel: false,
+    sendNowSubmitRequiresCancel: false
   }
 ): EngineReducerResult<SessionLifecycleState> {
   switch (intent.type) {
@@ -110,8 +112,19 @@ export function sessionLifecycleReducer(
       return requestCancel(state, intent);
     case "session/settingsUpdateRequested":
       return requestSettingsUpdate(state, intent);
-    case "queue/promoted":
-      return context.queuePromotionAccepted
+    case "submit/requested":
+      return context.sendNowSubmitRequiresCancel
+        ? requestCancel(state, {
+            type: "session/cancelRequested",
+            agentSessionId: intent.agentSessionId,
+            commandId: `submit:cancel:${intent.clientSubmitId}`,
+            awaitingTurnExpiresAtUnixMs:
+              intent.requestedAtUnixMs + TURN_CANCEL_TIMEOUT_MS,
+            timeoutMs: TURN_CANCEL_TIMEOUT_MS
+          })
+        : unchanged(state);
+    case "queue/sendNowRequested":
+      return context.queueSendNowRequiresCancel
         ? requestCancel(state, {
             type: "session/cancelRequested",
             agentSessionId: intent.agentSessionId,

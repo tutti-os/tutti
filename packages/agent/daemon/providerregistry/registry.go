@@ -625,6 +625,7 @@ var knownCapabilities = []string{
 	CapabilityRateLimits,
 	CapabilityPlanMode,
 	CapabilityInterrupt,
+	CapabilityActiveTurnGuidance,
 	CapabilityBrowserUse,
 	CapabilityComputerUse,
 	CapabilityGoalPause,

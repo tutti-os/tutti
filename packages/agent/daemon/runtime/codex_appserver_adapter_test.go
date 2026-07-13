@@ -3982,7 +3982,7 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 		t.Fatalf("account = %#v", account)
 	}
 	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
-	if !containsString(capabilities, "steer") || !containsString(capabilities, "rateLimits") {
+	if !containsString(capabilities, CapabilityActiveTurnGuidance) || !containsString(capabilities, CapabilityRateLimits) {
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 	commands, _ := state.RuntimeContext["commands"].([]string)

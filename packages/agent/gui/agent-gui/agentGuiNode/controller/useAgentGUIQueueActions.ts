@@ -112,7 +112,7 @@ export function useAgentGUIQueueActions({
         cancelCommandId: createAgentGUIConversationId(),
         promptId: normalizedQueuedPromptId,
         timeoutMs: 30_000,
-        type: "queue/promoted"
+        type: "queue/sendNowRequested"
       });
     },
     [activeConversationIdRef, previewMode, sessionEngine]

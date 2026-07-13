@@ -74,7 +74,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean; immediate?: boolean }
+      options?: { immediate?: boolean; sendNow?: boolean }
     ) => void
   >;
   isComposerHomeRef: RefObject<boolean>;
@@ -168,7 +168,7 @@ export function useAgentGUISubmitInteractionActions(
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { guidance?: boolean; immediate?: boolean }
+      options?: { immediate?: boolean; sendNow?: boolean }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -214,10 +214,13 @@ export function useAgentGUISubmitInteractionActions(
         content: normalizedContent,
         expiresAtUnixMs: submittedAtUnixMs + 120_000,
         ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
-        ...(options?.guidance === true ? { guidance: true } : {}),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         requestedAtUnixMs: submittedAtUnixMs,
-        ...(options?.immediate === true ? { routing: "immediate" } : {}),
+        ...(options?.immediate === true
+          ? { routing: "immediate" as const }
+          : options?.sendNow === true
+            ? { routing: "send_now" as const }
+            : {}),
         runtimeContent: toRuntimeSendContent(normalizedContent),
         type: "submit/requested",
         workspaceId
@@ -290,7 +293,7 @@ export function useAgentGUISubmitInteractionActions(
       agentSessionId: string,
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
-      options?: { bypassLocalQueue?: boolean; guidance?: boolean }
+      options?: { sendNow?: boolean }
     ) => {
       if (isSessionMarkedNonResumable(agentSessionId)) {
         setDetailError(
@@ -314,8 +317,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
-        guidance: options?.guidance === true,
-        immediate: options?.bypassLocalQueue === true
+        sendNow: options?.sendNow === true
       });
     },
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
@@ -483,7 +485,7 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { bypassLocalQueue: true, guidance: true }
+        { sendNow: true }
       );
     },
     [

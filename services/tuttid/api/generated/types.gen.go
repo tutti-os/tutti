@@ -3815,6 +3815,8 @@ type WorkspaceAgentBackgroundAgents struct {
 
 // WorkspaceAgentCapabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
 type WorkspaceAgentCapabilities struct {
+	// ActiveTurnGuidance The provider can accept a user prompt as guidance for the currently running turn without canceling it or creating a normal next turn.
+	ActiveTurnGuidance             bool `json:"activeTurnGuidance"`
 	BrowserUse                     bool `json:"browserUse"`
 	Compact                        bool `json:"compact"`
 	ComputerUse                    bool `json:"computerUse"`

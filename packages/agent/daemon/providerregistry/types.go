@@ -258,6 +258,7 @@ const (
 	CapabilityRateLimits                     = "rateLimits"
 	CapabilityPlanMode                       = "planMode"
 	CapabilityInterrupt                      = "interrupt"
+	CapabilityActiveTurnGuidance             = "activeTurnGuidance"
 	CapabilityBrowserUse                     = "browserUse"
 	CapabilityComputerUse                    = "computerUse"
 	CapabilityGoalPause                      = "goalPause"

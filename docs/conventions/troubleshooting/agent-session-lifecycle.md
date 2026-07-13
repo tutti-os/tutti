@@ -172,8 +172,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Fix:
   In AgentGUI, drive active projection, active live state, submit blocking, and
   queue decisions from a live `AgentActivityRuntime` lifecycle before falling
-  back to `activeSessionState`. Keep guidance/steer as the explicit queue
-  bypass path; ordinary composer sends while busy should queue. In the daemon,
+  back to `activeSessionState`. Ordinary composer sends while busy should
+  queue; explicit send-now intents must use capability-selected native guidance
+  or exact-turn cancel-then-send. In the daemon,
   keep the steer exception, but require the terminal provider id to be non-empty
   and drop empty-id terminal notifications for bound active turns. Keep the
   narrow exception for goal-adopted turns whose ownership came from
@@ -190,6 +191,41 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [useAgentGUINodeController.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx)
   [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
+### Busy-turn message insertion fails or ends without sending the prompt
+
+- Symptom:
+  Sending a prompt with the composer guidance shortcut or choosing “send now”
+  on a queued prompt fails for ACP-backed agents, reports a turn-scoped
+  cancellation/guidance error, or cancels the turn without sending the prompt.
+- Quick checks:
+  Inspect the canonical session capabilities and engine commands. Codex and
+  Claude sessions should advertise `activeTurnGuidance`; standard ACP sessions
+  should advertise `interrupt` without `activeTurnGuidance`. Confirm that no
+  renderer branch selects behavior from a provider ID.
+- Root cause:
+  Message insertion is one product intent with two transport realizations.
+  Treating every provider as native guidance sends a same-turn request that the
+  standard ACP protocol does not define. Treating every provider as
+  cancel-then-send discards
+  Codex `turn/steer` and Claude SDK `guide`, and can couple prompt delivery to a
+  server-owned queue that does not exist.
+- Fix:
+  Keep the prompt queue in the workspace `AgentSessionEngine`. Resolve send-now
+  from typed runtime capabilities: use native guidance when
+  `activeTurnGuidance` is true; otherwise use exact-turn cancel when `interrupt`
+  is true, retain the prompt in the frontend queue, and send it normally only
+  after validated cancellation or authoritative turn settlement. Route both the
+  composer shortcut and queued-item action through the same atomic engine
+  transition.
+- Validation:
+  Cover both entry points and both capability combinations. Native guidance must
+  emit a guidance send with no cancel. ACP fallback must emit cancel with no
+  prompt send, then emit one normal prompt send after cancellation settles.
+- References:
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+  [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
 ### Codex goal stops after a turn while the goal remains active
 

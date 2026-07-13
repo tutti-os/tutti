@@ -31,6 +31,8 @@ func generatedAgentCapabilities(raw []string) tuttigenerated.WorkspaceAgentCapab
 			capabilities.ModelImageInputRequired = true
 		case "interrupt":
 			capabilities.Interrupt = true
+		case "activeTurnGuidance":
+			capabilities.ActiveTurnGuidance = true
 		case "permissionModeChangeDeferred":
 			capabilities.PermissionModeChangeDeferred = true
 		case "permissionModeChangeDuringTurn":

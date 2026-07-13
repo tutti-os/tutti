@@ -3,10 +3,13 @@ import {
   engineRuntimeReducer
 } from "./engineRuntime.reducer.ts";
 import {
-  canPromoteQueuedPrompt,
   createInitialPromptQueueState,
   promptQueueReducer
 } from "./promptQueue.reducer.ts";
+import {
+  resolvePromptSendNowStrategy,
+  resolveQueuedPromptSendNowStrategy
+} from "./promptQueue.sendNow.ts";
 import { canCancelQueuedSubmit } from "./promptQueue.lookup.ts";
 import {
   createInitialPendingIntentsState,
@@ -187,6 +190,15 @@ export function rootEngineReducer(
   const submitSession = submitSessionId
     ? state.sessionLifecycle.sessionsById[submitSessionId]
     : undefined;
+  const submitSendNowStrategy =
+    submitIntent?.type === "submit/requested" &&
+    submitIntent.routing === "send_now"
+      ? resolvePromptSendNowStrategy(
+          state.promptQueue,
+          submitSessionId,
+          submitSession?.capabilities
+        )
+      : null;
   const queueRecord = submitIntent
     ? state.promptQueue.recordsBySessionId[submitSessionId]
     : undefined;
@@ -197,6 +209,9 @@ export function rootEngineReducer(
     submitWorkspaceId &&
     submitSession?.workspaceId === submitWorkspaceId &&
     submitIntent.content.length > 0 &&
+    (submitIntent.type !== "submit/requested" ||
+      submitIntent.routing !== "send_now" ||
+      submitSendNowStrategy !== null) &&
     !state.sessionLifecycle.deletedSessionIds[submitSessionId] &&
     !state.pendingIntents.submitsByClientSubmitId[submitId] &&
     !queueRecord?.prompts.some(
@@ -210,11 +225,24 @@ export function rootEngineReducer(
     planTurnValid &&
     submitRequestAccepted
   );
+  const sendNowStrategy =
+    intent.type === "submit/requested" && intent.routing === "send_now"
+      ? submitSendNowStrategy
+      : intent.type === "queue/sendNowRequested"
+        ? resolveQueuedPromptSendNowStrategy(
+            state.promptQueue,
+            intent.agentSessionId,
+            intent.promptId,
+            state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
+              ?.capabilities
+          )
+        : null;
   const promptQueue = promptQueueReducer(state.promptQueue, intent, {
+    cancelResultValidation,
     deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
     planFeedbackAccepted: feedbackAccepted,
     submitRequestAccepted,
-    cancelResultValidation
+    sendNowStrategy
   });
   const planDecisions = planDecisionReducer(state.planDecisions, intent, {
     feedbackAccepted,
@@ -231,13 +259,11 @@ export function rootEngineReducer(
     state.sessionLifecycle,
     intent,
     {
-      queuePromotionAccepted:
-        intent.type === "queue/promoted" &&
-        canPromoteQueuedPrompt(
-          state.promptQueue,
-          intent.agentSessionId,
-          intent.promptId
-        ),
+      queueSendNowRequiresCancel: sendNowStrategy === "cancel_then_send",
+      sendNowSubmitRequiresCancel:
+        intent.type === "submit/requested" &&
+        submitRequestAccepted &&
+        sendNowStrategy === "cancel_then_send",
       sendResultValidation,
       interactionResultValidation,
       settingsResultValidation,

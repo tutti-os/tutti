@@ -1067,7 +1067,8 @@ For normal first-message creation, the controller creates an optimistic
 conversation id and enters that conversation surface immediately while
 activation is pending. The optimistic session is not durable yet, so any
 ordinary follow-up submit targeting `startingConversationIdRef.current` must
-enter the local queued-prompt runtime instead of calling `sendInput` directly.
+enter the workspace engine's prompt queue instead of calling `sendInput`
+directly.
 After activation succeeds, the controller attaches the durable conversation and
 reconciles the optimistic user message before loading runtime projection. For
 Claude Code,
@@ -1103,24 +1104,35 @@ ready-looking session while the turn is still being processed, the desktop
 service can preserve optimistic `working` until a later authoritative event
 settles the session.
 
-When an existing conversation is busy, normal composer submits may be captured
-as local queued prompts so the next turn can run after the current one settles.
-Composer guidance is different: `Cmd+Enter` on macOS, or `Ctrl+Enter` on other
-platforms, sends the draft as active-turn guidance and bypasses the local queue.
-The submit request sets the daemon `guidance` flag so runtime handling can
-dispatch to provider-specific active-turn guidance without opening a normal next
-turn. Codex app-server maps this to `turn/steer`; Claude SDK maps it through the
-sidecar live prompt queue. `Shift+Enter` remains the multiline composer shortcut
-and must not submit either a normal prompt or guidance.
+When an existing conversation is busy, normal composer submits enter the
+workspace engine's prompt queue so the next turn can run after the current one
+settles. `Cmd+Enter` on macOS, `Ctrl+Enter` on other platforms, and “send now”
+on an existing queued prompt all express the same higher-level intent: deliver
+this prompt before waiting for the current turn to finish normally. The engine
+resolves that intent from the canonical session capabilities, never from the
+provider name:
+
+- `activeTurnGuidance = true`: send the queued prompt with `guidance = true`.
+  Codex app-server maps this to `turn/steer`; Claude SDK maps it to the sidecar
+  `guide` request. The current turn remains active.
+- otherwise, `interrupt = true`: keep the prompt in the frontend queue, cancel
+  the exact active turn, and send the prompt as a normal prompt only after a
+  validated cancel result or an authoritative settled-turn update.
+
+The submit-and-send-now transition is atomic inside `AgentSessionEngine`. The
+controller must not first send a normal prompt and then try to promote it, and
+the daemon must not own a second prompt queue. `Shift+Enter` remains the
+multiline composer shortcut and must not submit either a normal prompt or a
+send-now intent.
 Active composer state must prefer a live `AgentActivityRuntime` turn lifecycle
 over the selected session view/control state. `getState` and legacy state patch
 paths can temporarily report a settled or available control state while the
 runtime snapshot still has `turnLifecycle.activeTurnId` with a live phase. In
 that split state, AgentGuiNode must keep the transcript/loading projection busy,
 set normal `canSubmit` false, and let ordinary composer sends enter the local
-queue. Only explicit guidance actions bypass that queue and steer the active
-turn. Legacy `idle` turn patches clear `activeTurnId`; they must not leave a
-stale active-turn block behind.
+queue. Only an explicit send-now action may select native guidance or
+exact-turn cancel-then-send. Legacy `idle` turn patches clear `activeTurnId`;
+they must not leave a stale active-turn block behind.
 
 The submit target is not just a render detail. A detail-page composer must not
 fall back to `startConversation` because a UI-local active conversation ref is
@@ -1366,17 +1378,17 @@ continues without either signal.
 
 ### Layer Ownership Summary
 
-| Layer                                    | Owns                                                                                                   | Must not own                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `tuttid` agent service                   | provider runtime start, exec, resume/cancel, validation, persistence reports                           | AgentGUI view state                                           |
-| `ActivityProjection`                     | persisted session/message projection and `agent.activity.updated` publication                          | React projection or local UI overlays                         |
-| desktop `WorkspaceAgentActivityService`  | activity facade, canonical engine/controller access, mutation/reconcile coordination                   | transcript rendering semantics or large query/import adapters |
-| desktop activity query/import operations | normalized daemon query projection and external-session import refresh workflow                        | engine/controller ownership or independent activity state     |
-| `AgentActivityRuntime`                   | AgentGUI-facing source of durable activity data and commands                                           | independent session/message storage                           |
-| `AgentQueuedPromptRuntime`               | ephemeral busy-session queued prompts keyed by workspace and agent session, drain claims, retry blocks | persisted node/session/message state                          |
-| AgentGuiNode controller/stores           | selection, drafts, loading/error state, pending overlays, command sequencing                           | authoritative session/message state or queued prompt storage  |
-| shared projection/model helpers          | deterministic conversion from snapshots/messages to view models                                        | provider transport calls                                      |
-| React views                              | DOM interaction and rendering from `viewModel`/`actions`                                               | fetching or mutating durable activity directly                |
+| Layer                                    | Owns                                                                                                                | Must not own                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `tuttid` agent service                   | provider runtime start, exec, resume/cancel, validation, persistence reports                                        | AgentGUI view state                                                       |
+| `ActivityProjection`                     | persisted session/message projection and `agent.activity.updated` publication                                       | React projection or local UI overlays                                     |
+| desktop `WorkspaceAgentActivityService`  | activity facade, canonical engine/controller access, mutation/reconcile coordination                                | transcript rendering semantics or large query/import adapters             |
+| desktop activity query/import operations | normalized daemon query projection and external-session import refresh workflow                                     | engine/controller ownership or independent activity state                 |
+| `AgentActivityRuntime`                   | AgentGUI-facing source of durable activity data and commands                                                        | independent session/message storage                                       |
+| workspace `AgentSessionEngine`           | canonical frontend session/turn/interaction entities, pending intents, ephemeral prompt queues, correlated commands | daemon persistence or provider transport implementation                   |
+| AgentGuiNode controller/stores           | selection, drafts, loading/error state, pending overlays                                                            | authoritative session/message state, queued prompts, or provider strategy |
+| shared projection/model helpers          | deterministic conversion from snapshots/messages to view models                                                     | provider transport calls                                                  |
+| React views                              | DOM interaction and rendering from `viewModel`/`actions`                                                            | fetching or mutating durable activity directly                            |
 
 The standalone Agent window follows the same composition rule: the sidebar
 shell owns panel selection, width, and mount timing; file/app/message routing,
@@ -1621,69 +1633,38 @@ ephemeral presentation state and resets with the panel lifecycle.
 ### Busy Queued Prompts
 
 Busy-session queued prompts are AgentGUI-owned ephemeral interaction state. They
-live in `AgentQueuedPromptRuntime`, not in Workbench node snapshots, not in
-`AgentActivityRuntime` durable session/message snapshots, and not in
-conversation-list or session-view compatibility stores.
+live in the workspace `AgentSessionEngine` prompt-queue reducer, not in
+Workbench node snapshots, daemon session/message persistence, conversation-list
+compatibility stores, or a second server-side queue. Queue identity is the
+engine workspace identity plus `agentSessionId`, so every AgentGUI surface using
+the same injected workspace engine observes the same queue.
 
-The desktop activity-runtime-services helper reuses one queued-prompt runtime
-for each workspace activity service and workspace id, then the AgentGUI
-workbench host injects that runtime into every AgentGUI workbench node. Queue
-identity is `(workspaceId, agentSessionId)`, so reopening a minimized node or
-opening another workbench node for the same agent session sees the same queue
-instead of forking by node id.
+Queued prompts are session-scoped user intent, not active-detail UI state.
+React controllers may dispatch typed queue intents and render selectors, but
+must not decide provider strategy, call provider transports, or maintain a
+parallel queue. The engine claims one head prompt with an in-flight command ID;
+command result correlation and uncertain-delivery state prevent duplicate sends
+when acknowledgements, timeouts, and authoritative activity events race.
 
-Draining is claim-based. Any drain owner must call
-`claimNextToDrain({ workspaceId, agentSessionId, ownerId })` and may call
-`AgentActivityRuntime.sendInput` only for the returned claim. Completion and
-release are validated by `claimId`, which prevents a stale owner from deleting a
-newer claim or sending the same queued prompt twice. A panel unmount must not
-eagerly release an in-flight drain claim; the owner that already called
-`sendInput` must complete or release that exact `claimId` when the send settles.
-If the owner disappears before the send settles, the claim lease is the recovery
-path so a queued prompt cannot stay permanently stuck at the head of the queue.
-
-Queued prompts are session-scoped user intent, not active-detail UI intent. The
-desktop activity-runtime-services helper keeps a workspace-level queued prompt
-drain coordinator alive alongside the shared queued-prompt runtime, so target
-sessions can drain even when every AgentGUI panel is closed. Desktop runtime
-services are reused for the same workspace activity service and workspace id;
-repeated host-input construction must not create competing queued-prompt
-runtimes or drain owners. React controllers must not claim, drain, send, or
-interrupt sessions for queued prompts; they only enqueue, display, promote,
-edit, remove, and render claim state owned by the runtime/service. The
-workspace-level coordinator owns both sending and the "send next" interrupt:
-when the queue head is marked as send-next and the target session is still busy,
-the coordinator cancels the active turn before waiting for activity to become
-ready and then sending the queued prompt. Background drains must not clear the
-active conversation's draft, detail error, or submit spinner. Drain readiness
-must follow activity projection and retry-block timestamps instead of raw
-`controlState` fields such as
-`pendingInteractive`, because those fields are not guaranteed to be cleared by
-every activity `state_patch`. Queued-prompt drainers must not locally decide
-that an `active_turn` block or a lingering `turnLifecycle.activeTurnId` is
-stale; they should wait until the shared activity projection reports
-`submitAvailability.state = "available"` and no active turn remains. When a
-drain attempt hits an active-turn conflict, the retry block must be recorded
-from the ready activity version observed before calling `sendInput`, using the
-same activity-version source that the next drain gate compares. Do not read a
-mutable activity snapshot after the awaited send fails: the failure may arrive
-with a newer settled/available activity update, and blocking that newer version
-would strand the queued prompt until another unrelated activity event. The
-retry block still prevents immediately re-claiming against the exact same
-pre-send ready state.
+Drain readiness comes only from canonical session/turn entities. A normal queue
+head sends when availability becomes `available`. A send-now prompt is resolved
+from runtime capabilities: native active-turn guidance may send while the exact
+turn remains blocked; cancel-then-send records the selected prompt as
+`sendNextPromptId`, issues an exact `turn/cancel`, and sends a normal prompt only
+after the cancel result validates or the canonical turn settles. Metadata-only
+session patches and locally inferred idle states cannot unlock the queue.
 
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before
 issuing the cancel, so the drainer must not fire the next queued prompt the
 moment the session becomes available. Only an explicit user send lifts the
-hold — composer submit calls `resumeQueue`, and `promotePrompt` ("send now"
-on a queued item) clears the suspension in the queue core. The drainer's own
-send-next interrupt path never suspends: intent is captured at its source,
-never inferred from the cancel outcome.
+hold — composer submit resumes the queue, and a send-now intent clears the
+suspension in the queue core. The send-now cancel path never suspends: intent is
+captured at its source, never inferred from the cancel outcome.
 
 Preview-mode AgentGUI surfaces are read-only for this runtime: they may render an
 existing queue if injected into the same context, but they must not enqueue,
-claim, drain, promote, edit, or delete queued prompts.
+send now, edit, or delete queued prompts.
 
 Queued prompt previews must treat prompt image blocks as the same send contract
 used by the composer and runtime: an image may be inline `data`, a staged

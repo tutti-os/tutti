@@ -6,6 +6,11 @@ import {
   createInitialPromptQueueState,
   promptQueueReducer
 } from "./promptQueue.reducer.ts";
+import {
+  resolvePromptSendNowStrategy,
+  resolveQueuedPromptSendNowStrategy,
+  type PromptQueueSendNowStrategy
+} from "./promptQueue.sendNow.ts";
 import type { EngineCommand, EngineCommandResultIntent } from "./types.ts";
 
 test("queued prompt waits for a busy turn and sends when canonical lifecycle settles", () => {
@@ -57,6 +62,46 @@ test("immediate submit preserves diagnostics on the send command", () => {
       ? result.commands[0].submitDiagnostics
       : null,
     submitDiagnostics
+  );
+});
+
+test("send-now submit atomically becomes native guidance for a capable active turn", () => {
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  });
+  const result = reduce(loaded.state, {
+    ...submit("prompt-guidance"),
+    routing: "send_now"
+  });
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(
+    result.commands[0]?.type === "queue/sendPrompt"
+      ? result.commands[0].guidance
+      : undefined,
+    true
+  );
+});
+
+test("send-now submit stays queued for cancel-then-send fallback", () => {
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  });
+  const result = reduce(
+    loaded.state,
+    { ...submit("prompt-fallback"), routing: "send_now" },
+    "cancel_then_send"
+  );
+  assert.equal(result.commands.length, 0);
+  assert.equal(
+    result.state.recordsBySessionId["session-1"]?.sendNextPromptId,
+    "prompt-fallback"
+  );
+  assert.equal(
+    result.state.recordsBySessionId["session-1"]?.prompts[0]?.guidance,
+    undefined
   );
 });
 
@@ -136,7 +181,7 @@ test("metadata-only session updates do not prove a queued turn completed", () =>
   assert.equal(completed.state.recordsBySessionId["session-1"]?.inFlight, null);
 });
 
-test("stale snapshots and stale cancel results cannot release a newer running turn", () => {
+test("native guidance uses the current running turn despite a stale settled snapshot", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",
     sessions: [session("running", 3)]
@@ -151,29 +196,13 @@ test("stale snapshots and stale cancel results cannot release a newer running tu
     staleSnapshot.state.recordsBySessionId["session-1"]?.availability.state,
     "blocked"
   );
-  state = reduce(staleSnapshot.state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
-  }).state;
-  const staleCancel = reduce(state, {
-    ...commandResult("cancel-1", "turn/cancel", "succeeded"),
-    value: {
-      cancel: { canceled: true, reason: "turn_canceled" as const },
-      turn: {
-        ...session("running", 2).activeTurn!,
-        phase: "settled",
-        outcome: "canceled"
-      }
-    }
-  });
-  assert.equal(staleCancel.commands.length, 0);
+  const guided = reduce(staleSnapshot.state, sendNow("prompt-1"));
+  assert.equal(guided.commands[0]?.type, "queue/sendPrompt");
   assert.equal(
-    staleCancel.state.recordsBySessionId["session-1"]?.availability.state,
-    "blocked"
+    guided.commands[0]?.type === "queue/sendPrompt"
+      ? guided.commands[0].guidance
+      : false,
+    true
   );
 });
 
@@ -201,7 +230,7 @@ test("user stop suspends automatic drain until an explicit resume", () => {
   assert.equal(resumed.commands[0]?.type, "queue/sendPrompt");
 });
 
-test("promoting a prompt while busy cancels once then sends after cancellation", () => {
+test("send now uses native guidance without cancel when the provider supports it", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",
     sessions: [session("running", 1)]
@@ -209,15 +238,14 @@ test("promoting a prompt while busy cancels once then sends after cancellation",
   state = reduce(state, enqueue("prompt-1")).state;
   state = reduce(state, enqueue("prompt-2")).state;
 
-  const promoted = reduce(state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-2",
-    timeoutMs: 30_000
-  });
-  assert.equal(promoted.commands.length, 0);
+  const promoted = reduce(state, sendNow("prompt-2"));
+  assert.equal(promoted.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(
+    promoted.commands[0]?.type === "queue/sendPrompt"
+      ? promoted.commands[0].guidance
+      : false,
+    true
+  );
   assert.deepEqual(
     promoted.state.recordsBySessionId["session-1"]?.prompts.map(
       (prompt) => prompt.id
@@ -225,33 +253,22 @@ test("promoting a prompt while busy cancels once then sends after cancellation",
     ["prompt-2", "prompt-1"]
   );
 
-  const settledSnapshot = reduce(promoted.state, {
-    type: "session/snapshotReceived",
-    sessions: [session("settled", 2)]
-  });
-  assert.equal(settledSnapshot.commands[0]?.type, "queue/sendPrompt");
   assert.deepEqual(
-    settledSnapshot.commands[0]?.type === "queue/sendPrompt"
-      ? settledSnapshot.commands[0].submitDiagnostics
+    promoted.commands[0]?.type === "queue/sendPrompt"
+      ? promoted.commands[0].submitDiagnostics
       : null,
     submitDiagnostics
   );
 });
 
-test("cancel result can release send-next without waiting for snapshot ordering", () => {
+test("cancel-then-send fallback waits for cancellation before normal send", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",
     sessions: [session("running", 1)]
   }).state;
   state = reduce(state, enqueue("prompt-1")).state;
-  const promoted = reduce(state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
-  });
+  const promoted = reduce(state, sendNow("prompt-1"), "cancel_then_send");
+  assert.equal(promoted.commands.length, 0);
   const cancelIntent = {
     ...commandResult("cancel-1", "turn/cancel", "succeeded"),
     value: {
@@ -269,14 +286,21 @@ test("cancel result can release send-next without waiting for snapshot ordering"
     }
   };
   const canceled = promptQueueReducer(promoted.state, cancelIntent, {
-    deletedSessionIds: {},
     cancelResultValidation: {
       kind: "valid",
       response: cancelIntent.value
-    }
+    },
+    deletedSessionIds: {},
+    sendNowStrategy: null
   });
   assert.equal(canceled.commands.length, 1);
   assert.equal(canceled.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(
+    canceled.commands[0]?.type === "queue/sendPrompt"
+      ? canceled.commands[0].guidance
+      : undefined,
+    undefined
+  );
 });
 
 test("a full settled snapshot preserves the observed turn needed by a late send result", () => {
@@ -358,14 +382,7 @@ test("send failure stays visible until the failed prompt is explicitly promoted"
   });
   assert.equal(sameVersion.commands.length, 0);
 
-  const retried = reduce(sameVersion.state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
-  });
+  const retried = reduce(sameVersion.state, sendNow("prompt-1"));
   assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
 });
 
@@ -383,14 +400,7 @@ test("non-conflict send failure marks the head and promotion clears the failure"
     failed.state.recordsBySessionId["session-1"]?.failedPromptId,
     "prompt-1"
   );
-  const retried = reduce(failed.state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
-  });
+  const retried = reduce(failed.state, sendNow("prompt-1"));
   assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
 });
 
@@ -410,14 +420,7 @@ test("send timeout is uncertain until a canonical turn proves acceptance", () =>
     timedOut.state.recordsBySessionId["session-1"]?.uncertainDelivery?.promptId,
     "prompt-1"
   );
-  const retryBlocked = reduce(timedOut.state, {
-    type: "queue/promoted",
-    agentSessionId: "session-1",
-    awaitingTurnExpiresAtUnixMs: 30_000,
-    cancelCommandId: "cancel-1",
-    promptId: "prompt-1",
-    timeoutMs: 30_000
-  });
+  const retryBlocked = reduce(timedOut.state, sendNow("prompt-1"));
   assert.equal(retryBlocked.commands.length, 0);
   state = reduce(retryBlocked.state, {
     type: "session/snapshotReceived",
@@ -459,9 +462,39 @@ test("send timeout is uncertain until a canonical turn proves acceptance", () =>
 
 function reduce(
   state: ReturnType<typeof createInitialPromptQueueState>,
-  intent: Parameters<typeof promptQueueReducer>[1]
+  intent: Parameters<typeof promptQueueReducer>[1],
+  strategy?: PromptQueueSendNowStrategy
 ) {
-  return promptQueueReducer(state, intent);
+  return promptQueueReducer(state, intent, {
+    deletedSessionIds: {},
+    sendNowStrategy:
+      intent.type === "submit/requested" && intent.routing === "send_now"
+        ? (strategy ??
+          resolvePromptSendNowStrategy(state, intent.agentSessionId, {
+            activeTurnGuidance: true,
+            interrupt: true
+          }))
+        : intent.type === "queue/sendNowRequested"
+          ? (strategy ??
+            resolveQueuedPromptSendNowStrategy(
+              state,
+              intent.agentSessionId,
+              intent.promptId,
+              { activeTurnGuidance: true, interrupt: true }
+            ))
+          : null
+  });
+}
+
+function sendNow(promptId: string) {
+  return {
+    type: "queue/sendNowRequested" as const,
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    cancelCommandId: "cancel-1",
+    promptId,
+    timeoutMs: 30_000
+  };
 }
 
 function enqueue(promptId: string) {

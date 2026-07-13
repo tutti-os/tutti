@@ -9,6 +9,7 @@ export const AGENT_CAPABILITY_KEYS = [
   "rateLimits",
   "planMode",
   "interrupt",
+  "activeTurnGuidance",
   "browserUse",
   "computerUse",
   "goalPause",

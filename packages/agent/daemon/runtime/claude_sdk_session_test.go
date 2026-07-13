@@ -51,7 +51,7 @@ func TestClaudeCodeSDKAdapterSessionStateSeedsCommandsAndCapabilities(t *testing
 		}
 	}
 	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
-	for _, want := range []string{CapabilityImageInput, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt, CapabilitySkills, "review"} {
+	for _, want := range []string{CapabilityImageInput, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt, CapabilityActiveTurnGuidance, CapabilitySkills, "review"} {
 		if !containsString(capabilities, want) {
 			t.Fatalf("capabilities = %#v, missing %q", capabilities, want)
 		}

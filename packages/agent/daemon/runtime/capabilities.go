@@ -19,6 +19,7 @@ const (
 	CapabilityRateLimits                     = providerregistry.CapabilityRateLimits
 	CapabilityPlanMode                       = providerregistry.CapabilityPlanMode
 	CapabilityInterrupt                      = providerregistry.CapabilityInterrupt
+	CapabilityActiveTurnGuidance             = providerregistry.CapabilityActiveTurnGuidance
 	CapabilityBrowserUse                     = providerregistry.CapabilityBrowserUse
 	CapabilityComputerUse                    = providerregistry.CapabilityComputerUse
 	CapabilityPlanImplementation             = providerregistry.CapabilityPlanImplementation

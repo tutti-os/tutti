@@ -14,6 +14,7 @@ func TestCodexAppServerCapabilitiesUseSharedVocabulary(t *testing.T) {
 		CapabilityTokenUsage,
 		CapabilityRateLimits,
 		CapabilityInterrupt,
+		CapabilityActiveTurnGuidance,
 	} {
 		if !containsString(capabilities, want) {
 			t.Fatalf("codex capabilities = %v, missing %q", capabilities, want)
@@ -40,6 +41,9 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	if containsString(opencode, CapabilityCompact) || containsString(opencode, "review") {
 		t.Fatalf("opencode capabilities = %v, must not advertise command capabilities without provider commands", opencode)
 	}
+	if containsString(opencode, CapabilityActiveTurnGuidance) {
+		t.Fatalf("opencode capabilities = %v, must use cancel-then-send instead of native guidance", opencode)
+	}
 	opencodeWithReview := standardACPCapabilities(ProviderOpenCode, false, acpLiveStateSnapshot{
 		availableCommands: []AgentSessionCommand{{Name: "compact"}, {Name: "review"}},
 	})
@@ -56,6 +60,9 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	}
 	if containsString(cursor, CapabilitySkills) {
 		t.Fatalf("cursor capabilities too permissive: %v", cursor)
+	}
+	if containsString(cursor, CapabilityActiveTurnGuidance) {
+		t.Fatalf("cursor capabilities = %v, must use cancel-then-send instead of native guidance", cursor)
 	}
 
 	// 其他 ACP provider：保守派生——interrupt 恆有；imageInput 跟隨 promptImage；

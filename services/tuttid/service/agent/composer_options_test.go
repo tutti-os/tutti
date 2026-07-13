@@ -8,7 +8,7 @@ import (
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()
 	claude := composerProviderCapabilities("claude-code", true)
-	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"} {
+	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "activeTurnGuidance"} {
 		if !slices.Contains(claude, want) {
 			t.Fatalf("claude defaults = %v, missing %q", claude, want)
 		}
@@ -19,6 +19,9 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	}
 	if !slices.Contains(codex, "compact") || !slices.Contains(codex, "skills") {
 		t.Fatalf("codex defaults = %v", codex)
+	}
+	if !slices.Contains(codex, "activeTurnGuidance") {
+		t.Fatalf("codex defaults = %v, missing native active-turn guidance", codex)
 	}
 	tuttiAgent := composerProviderCapabilities("tutti-agent", true)
 	if !slices.Contains(tuttiAgent, "planMode") || !slices.Contains(tuttiAgent, "compact") || !slices.Contains(tuttiAgent, "skills") {
@@ -39,6 +42,9 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	}
 	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "planMode") {
 		t.Fatalf("opencode defaults = %v, missing planMode", got)
+	}
+	if got := composerProviderCapabilities("opencode", true); slices.Contains(got, "activeTurnGuidance") {
+		t.Fatalf("opencode defaults = %v, must use cancel-then-send", got)
 	}
 	if got := composerProviderCapabilities("cursor", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") || !slices.Contains(got, "planMode") {
 		t.Fatalf("cursor defaults = %v, missing imageInput, interrupt, or planMode", got)

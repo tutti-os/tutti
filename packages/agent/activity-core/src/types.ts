@@ -605,6 +605,7 @@ export interface AgentActivitySessionCapabilities {
   rateLimits: boolean;
   planMode: boolean;
   interrupt: boolean;
+  activeTurnGuidance: boolean;
   browserUse: boolean;
   computerUse: boolean;
   goalPause: boolean;
