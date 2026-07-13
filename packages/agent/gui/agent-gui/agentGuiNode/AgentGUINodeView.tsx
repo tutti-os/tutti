@@ -1081,7 +1081,7 @@ function buildAgentConversationHandoffPrompt(input: {
     input.labels,
     input.uiLanguage
   );
-  const mentionLabel = `${sourceAgentLabel}${title ? ` ${title}` : ""}`.trim();
+  const mentionLabel = title || sourceAgentLabel;
   const href = createAgentSessionMentionHref({
     agentTargetId: conversation.agentTargetId,
     agentSessionId: conversation.id,

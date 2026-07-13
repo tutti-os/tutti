@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
+import type { AgentGUIAgentTarget } from "../../types";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import {
   AgentGUINodeView,
@@ -50,6 +51,7 @@ const composerMock = vi.hoisted(() => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
     provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -153,6 +155,7 @@ vi.mock("./AgentComposer", () => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
     provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -163,6 +166,7 @@ vi.mock("./AgentComposer", () => ({
       compactSupported: props.compactSupported,
       hasActiveConversation: props.hasActiveConversation,
       isSendingTurn: props.isSendingTurn,
+      onHandoffConversation: props.onHandoffConversation,
       provider: props.provider,
       onSubmit: props.onSubmit,
       showStopButton: props.showStopButton,
@@ -1994,6 +1998,47 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)).toMatchObject({
       provider: "claude-code"
     });
+  });
+
+  it("uses only the conversation title in the handoff mention label", () => {
+    const sourceTarget = createLocalAgentGUIAgentTarget("codex");
+    const handoffTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const conversation = createConversationSummary("session-1", {
+      agentTargetId: sourceTarget.agentTargetId,
+      title: "Repair login flow"
+    });
+    const onHandoffConversation =
+      vi.fn<NonNullable<AgentGUINodeViewProps["onHandoffConversation"]>>();
+
+    renderAgentGUINodeView({
+      onHandoffConversation,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation],
+        selectedAgentTarget: sourceTarget,
+        agentTargets: [sourceTarget, handoffTarget],
+        handoffAgentTargets: [handoffTarget]
+      }
+    });
+
+    act(() => {
+      composerMock.calls.at(-1)?.onHandoffConversation?.(handoffTarget);
+    });
+
+    expect(onHandoffConversation).toHaveBeenCalledTimes(1);
+    expect(onHandoffConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentTargetId: handoffTarget.agentTargetId,
+        provider: "claude-code"
+      })
+    );
+    const draftPrompt = onHandoffConversation.mock.calls[0]?.[0].draftPrompt;
+    expect(draftPrompt).toMatch(
+      /^\[@Repair login flow\]\(mention:\/\/agent-session\/session-1\?/
+    );
+    expect(draftPrompt).not.toContain("Codex Repair login flow");
   });
 
   it("hides provider switching in the title for an active session", () => {
@@ -5443,6 +5488,7 @@ interface RenderAgentGUINodeViewOptions {
   isAgentProviderReady?: boolean;
   onConversationRailWidthChanged?: (widthPx: number) => void;
   onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
+  onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   accountMenuState?: AgentGUINodeViewProps["accountMenuState"];
@@ -5463,6 +5509,7 @@ function buildAgentGUINodeViewElement({
   isActive = true,
   isAgentProviderReady = true,
   onConversationRailWidthChanged = vi.fn(),
+  onHandoffConversation,
   onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
@@ -5486,6 +5533,7 @@ function buildAgentGUINodeViewElement({
         renderProviderReadinessGateState={renderProviderReadinessGateState}
         providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
+        onHandoffConversation={onHandoffConversation}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
         slashStatusLimits={slashStatusLimits}

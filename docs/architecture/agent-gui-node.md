@@ -185,6 +185,10 @@ in-session provider switch: AgentGUI serializes the active session as a single
 `agent-session` mention in a draft prompt, passes the selected provider target
 through the host launch callback, and the desktop workbench opens a new empty
 composer for that target via the existing draft prefill activation path. The
+mention's visible label must use the source conversation title without
+prefixing the source agent or provider name, because the submitted draft also
+becomes the new conversation's initial title. Source agent identity stays in
+the mention metadata instead of being duplicated into title text. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
 a Codex panel before the draft prefill effect runs. The prefilled handoff panel
