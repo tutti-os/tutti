@@ -87,7 +87,7 @@ func (r *recordingReporter) waitForReports(
 	}
 }
 
-func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *testing.T) {
+func TestControllerStartFailureCreatesFailedSessionAndStateOnlyReport(t *testing.T) {
 	t.Parallel()
 
 	reporter := &recordingReporter{}
@@ -123,14 +123,8 @@ func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *test
 	if len(reports[0].report.StatePatches) != 1 {
 		t.Fatalf("state patches = %#v, want failed session patch", reports[0].report.StatePatches)
 	}
-	if len(reports[0].report.MessageUpdates) != 1 {
-		t.Fatalf("message updates = %#v, want visible failure message", reports[0].report.MessageUpdates)
-	}
-	item := reports[0].report.MessageUpdates[0]
-	if item.Payload["kind"] != visibleErrorKind ||
-		item.Payload["phase"] != "start" ||
-		item.Payload["detail"] != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("visible start failure item = %#v", item)
+	if len(reports[0].report.MessageUpdates) != 0 {
+		t.Fatalf("message updates = %#v, want none without a turn id", reports[0].report.MessageUpdates)
 	}
 }
 

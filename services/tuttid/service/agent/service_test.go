@@ -1739,6 +1739,9 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 		cleanupCalls[0].AgentSessionID != "session-1" {
 		t.Fatalf("cleanup calls = %#v", cleanupCalls)
 	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want 0 after start failure", len(runtime.execCalls))
+	}
 }
 
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {

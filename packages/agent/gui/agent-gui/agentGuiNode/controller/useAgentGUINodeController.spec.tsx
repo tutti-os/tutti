@@ -11556,6 +11556,90 @@ describe("useAgentGUINodeController", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("localizes config dependency failures and keeps safe diagnostics", async () => {
+    await setAgentGuiI18nTestLocale("en");
+    const configError = Object.assign(
+      new Error(
+        "codex configuration dependency model_instructions_file is unavailable"
+      ),
+      {
+        code: "workspace_operation_failed",
+        reason: "agent.config_dependency_unavailable",
+        params: {
+          provider: "codex",
+          configKey: "model_instructions_file",
+          dependencyPath: "profiles/instructions.md",
+          failureKind: "missing",
+          sourcePath: "/Users/example/.codex/profiles/instructions.md"
+        },
+        retryable: false,
+        statusCode: 502
+      }
+    );
+    const activate = vi.fn(
+      async (_input: AgentHostActivateAgentSessionInput) => {
+        throw configError;
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+    const reportDiagnostic = vi.fn();
+    (
+      window as unknown as { agentActivityRuntime: AgentActivityRuntime }
+    ).agentActivityRuntime.reportDiagnostic = reportDiagnostic;
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("create one"));
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    expect(result.current.viewModel.detailError).toBe(
+      "Codex configuration references a file that is unavailable. Check its local configuration and try again."
+    );
+    const diagnosticPayload = reportDiagnostic.mock.calls.find(
+      ([payload]) => payload?.event === "agent.gui.caught_error"
+    )?.[0];
+    expect(diagnosticPayload).toEqual({
+      details: expect.objectContaining({
+        error: expect.objectContaining({
+          code: "workspace_operation_failed",
+          configKey: "model_instructions_file",
+          dependencyPath: "profiles/instructions.md",
+          dependencyProvider: "codex",
+          failureKind: "missing",
+          reason: "agent.config_dependency_unavailable",
+          retryable: false,
+          statusCode: 502
+        }),
+        errorCode: null,
+        phase: "create_conversation",
+        provider: "codex"
+      }),
+      event: "agent.gui.caught_error",
+      level: "error",
+      source: "agent-gui",
+      workspaceId: "room-1"
+    });
+    expect(JSON.stringify(diagnosticPayload)).not.toContain("/Users/example");
+  });
+
   it("clears the per-session messages-loading flag when a new conversation activation fails", async () => {
     const activate = vi.fn(
       async (_input: AgentHostActivateAgentSessionInput) => {

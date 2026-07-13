@@ -178,6 +178,7 @@ import {
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
+import { getAgentGUIConfigDependencyErrorDetails } from "./agentGuiController.errorHelpers";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { pendingInterruptActionForDisplayStatus } from "./pendingInterrupt";
 import {
@@ -1345,6 +1346,7 @@ function normalizeAgentGUIDiagnosticError(
       ? (error as Record<string, unknown>)
       : null;
   const appErrorCode = getAgentGUIErrorCode(error);
+  const configDependency = getAgentGUIConfigDependencyErrorDetails(error);
   const explicitCode = typeof record?.code === "string" ? record.code : null;
   const hasStructuredCode = appErrorCode !== null || explicitCode !== null;
   const nativeRuntimeError =
@@ -1361,6 +1363,14 @@ function normalizeAgentGUIDiagnosticError(
     ...(typeof record?.reason === "string" ? { reason: record.reason } : {}),
     ...(typeof record?.retryable === "boolean"
       ? { retryable: record.retryable }
+      : {}),
+    ...(configDependency
+      ? {
+          configKey: configDependency.configKey,
+          dependencyPath: configDependency.dependencyPath,
+          dependencyProvider: configDependency.provider,
+          failureKind: configDependency.failureKind
+        }
       : {})
   };
   if (nativeRuntimeError) {
@@ -1535,6 +1545,18 @@ function buildResumeSessionNotLocalActivationError(message?: string | null): {
 }
 
 function getAgentGUIErrorMessage(error: unknown): string {
+  const configDependency = getAgentGUIConfigDependencyErrorDetails(error);
+  if (configDependency) {
+    const provider =
+      AGENT_PROVIDER_LABEL[
+        configDependency.provider as keyof typeof AGENT_PROVIDER_LABEL
+      ] ||
+      configDependency.provider ||
+      translate("sidebar.fallbackAgentLabel");
+    return translate("messages.agentConfigDependencyUnavailable", {
+      provider
+    });
+  }
   if (isProviderSessionNotFoundErrorCode(getAgentGUIErrorCode(error))) {
     return translate("messages.agentProviderSessionNotFound");
   }

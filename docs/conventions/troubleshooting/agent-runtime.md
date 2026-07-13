@@ -19,7 +19,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes](./agent-provider-setup.md#cursor-sessions-create-project-cursorskills-or-agentsmd-changes)
 - [Codex provider shows login required when global service tier is legacy](./agent-provider-setup.md#codex-provider-shows-login-required-when-global-service-tier-is-legacy)
 - [Codex provider shows login required when only an API key is configured](./agent-provider-setup.md#codex-provider-shows-login-required-when-only-an-api-key-is-configured)
-- [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)
+- [Codex session fails when a config-relative dependency is unavailable](./agent-provider-setup.md#codex-session-fails-when-a-config-relative-dependency-is-unavailable)
 - [Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings](./agent-provider-setup.md#codex-custom-modelprovider-mixes-models-duplicates-replies-or-shows-metadata-warnings)
 - [Claude SDK Grep or Glob unavailable despite Claude Code preset](./agent-provider-setup.md#claude-sdk-grep-or-glob-unavailable-despite-claude-code-preset)
 - [Concurrent agent CLI installs corrupt shared npm global state](./agent-provider-setup.md#concurrent-agent-cli-installs-corrupt-shared-npm-global-state)
