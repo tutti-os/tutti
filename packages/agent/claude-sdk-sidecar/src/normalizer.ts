@@ -429,10 +429,19 @@ function subagentLaunchMetadata(
   result?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   // Nested agent launches stream through the parent query without a locally
-  // observed tool_use block, so the tool name may be unknown here. The launch
-  // result text is the authoritative signal, not the tool call type.
+  // observed tool_use block, so the tool name may be unknown here — an
+  // unknown name stays eligible. A known non-delegate tool (Read, Bash, …)
+  // never launches an agent: its output can quote a launch confirmation
+  // verbatim (test fixtures, logs) without being one, and treating it as a
+  // launch fabricates a background agent that never completes.
+  const toolName = stringValue(tool.name);
+  if (toolName && toolCallType(toolName) !== "subagent") {
+    return undefined;
+  }
+  // The launch confirmation IS the whole result text; anchored so a phrase
+  // buried inside longer output never counts.
   const text = toolResultText(result);
-  if (!/Async agent launched successfully/i.test(text)) {
+  if (!/^\s*Async agent launched successfully/i.test(text)) {
     return undefined;
   }
   const agentID =

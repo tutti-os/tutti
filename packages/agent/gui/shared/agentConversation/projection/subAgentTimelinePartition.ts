@@ -492,7 +492,13 @@ function collectCollabCards(
       return {
         callId: card.callId,
         startedAtUnixMs: card.startedAtUnixMs,
-        task: stringValue(input?.task),
+        // Codex collab spawns carry `task`; Claude Code delegate (Task/Agent)
+        // calls carry `prompt` + `description` instead.
+        task: firstString(
+          stringValue(input?.task),
+          stringValue(input?.prompt),
+          stringValue(input?.description)
+        ),
         agentName: stringValue(input?.agentName),
         callStatus: subAgentStatusFromCallStatus(card.latestCallStatus),
         receiverThreadIds: card.receiverThreadIds,

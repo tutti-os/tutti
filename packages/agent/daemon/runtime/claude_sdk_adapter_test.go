@@ -344,6 +344,209 @@ func TestClaudeCodeSDKAdapterPreservesSubagentParentToolUseID(t *testing.T) {
 	if metadata["parentToolUseId"] != "toolu-task" {
 		t.Fatalf("message update payload = %#v, want nested metadata parentToolUseId", update.Payload)
 	}
+	if events[0].OwnerThreadID != "claude-subagent:toolu-task" || events[0].OwnerCallID != "toolu-task" {
+		t.Fatalf("child tool owner = %q/%q, want lane owner ids for sub-agent lane attachment", events[0].OwnerThreadID, events[0].OwnerCallID)
+	}
+	if update.Payload["ownerThreadId"] != "claude-subagent:toolu-task" || update.Payload["ownerCallId"] != "toolu-task" {
+		t.Fatalf("message update payload = %#v, want persisted ownerThreadId/ownerCallId", update.Payload)
+	}
+}
+
+func TestClaudeCodeSDKAdapterEmitsSubagentLaneMarkersOnTaskStart(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingACPRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_started",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-task",
+			"toolName":   "Task",
+			"input": map[string]any{
+				"description":   "Map render paths",
+				"prompt":        "Find all render call sites",
+				"subagent_type": "Explore",
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("tool_started terminal=%v err=%v", terminal, err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("events = %#v, want tool row + name marker + started lifecycle marker", events)
+	}
+	if events[0].OwnerThreadID != "" || events[0].OwnerCallID != "" {
+		t.Fatalf("spawn card owner = %q/%q, want unstamped main-transcript row", events[0].OwnerThreadID, events[0].OwnerCallID)
+	}
+	name, lifecycle := events[1], events[2]
+	if name.Payload.Metadata["messageKind"] != "subAgentName" || name.Payload.Metadata["subAgentName"] != "Map render paths" {
+		t.Fatalf("name marker = %#v, want description as lane name", name.Payload.Metadata)
+	}
+	if lifecycle.Payload.Metadata["messageKind"] != "subAgentLifecycle" || lifecycle.Payload.Metadata["subAgentLifecycleStatus"] != "started" {
+		t.Fatalf("lifecycle marker = %#v, want started marker so the lane renders immediately", lifecycle.Payload.Metadata)
+	}
+	for _, marker := range []activityshared.Event{name, lifecycle} {
+		if marker.OwnerThreadID != "claude-subagent:toolu-task" || marker.OwnerCallID != "toolu-task" {
+			t.Fatalf("marker owner = %q/%q, want lane owner ids", marker.OwnerThreadID, marker.OwnerCallID)
+		}
+	}
+
+	// A repeated update with the same description must not re-emit the name
+	// marker; a sync completion without task status settles the lane.
+	completed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_completed",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-task",
+			"toolName":   "Task",
+			"input": map[string]any{
+				"description":   "Map render paths",
+				"prompt":        "Find all render call sites",
+				"subagent_type": "Explore",
+			},
+			"output": map[string]any{"text": "Done"},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
+	}
+	if len(completed) != 2 {
+		t.Fatalf("completed events = %#v, want tool row + completed lifecycle marker", completed)
+	}
+	if completed[1].Payload.Metadata["subAgentLifecycleStatus"] != "completed" {
+		t.Fatalf("completed lifecycle marker = %#v, want completed status", completed[1].Payload.Metadata)
+	}
+}
+
+func TestClaudeCodeSDKAdapterFlattensNestedSubagentsIntoRootLane(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingACPRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	// The sub-agent launched by toolu-root spawns its own sub-agent via a
+	// nested Task call (toolu-nested); the grandchild's tools reference the
+	// nested call as parent.
+	_, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_started",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-nested",
+			"toolName":   "Task",
+			"input":      map[string]any{"description": "Nested delegate", "prompt": "Dig deeper"},
+			"metadata":   map[string]any{"parentToolUseId": "toolu-root"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("nested task tool_started err=%v", err)
+	}
+	grandchild, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "tool_completed",
+		Payload: map[string]any{
+			"turnId":     "turn-task",
+			"toolCallId": "toolu-grandchild-read",
+			"toolName":   "Read",
+			"input":      map[string]any{"file_path": "/repo/a.go"},
+			"output":     map[string]any{"text": "ok"},
+			"metadata":   map[string]any{"parentToolUseId": "toolu-nested"},
+		},
+	})
+	if err != nil || len(grandchild) != 1 {
+		t.Fatalf("grandchild events = %#v err=%v, want single owner-stamped tool row", grandchild, err)
+	}
+	if grandchild[0].OwnerThreadID != "claude-subagent:toolu-root" || grandchild[0].OwnerCallID != "toolu-root" {
+		t.Fatalf("grandchild owner = %q/%q, want root lane (nested delegations flatten)", grandchild[0].OwnerThreadID, grandchild[0].OwnerCallID)
+	}
+
+	// The nested task's lifecycle must not settle the root lane.
+	nestedLifecycle, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "task_completed",
+		Payload: map[string]any{
+			"turnId":          "turn-task",
+			"taskId":          "task-nested",
+			"parentToolUseId": "toolu-nested",
+			"status":          "completed",
+			"summary":         "Nested done",
+		},
+	})
+	if err != nil {
+		t.Fatalf("nested task_completed err=%v", err)
+	}
+	for _, event := range nestedLifecycle {
+		if event.Payload.Metadata["messageKind"] == "subAgentLifecycle" {
+			t.Fatalf("nested task lifecycle emitted lane marker %#v; must not settle the root lane", event.Payload.Metadata)
+		}
+	}
+}
+
+func TestClaudeCodeSDKRuntimeContextWritesEmptyBackgroundAgents(t *testing.T) {
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+
+	// runtimeContext merges per-key into the persisted session record; the
+	// empty state must be written explicitly or a stale "waiting for N
+	// background agents" snapshot survives restarts forever.
+	backgroundAgents, ok := claudeSDKRuntimeContext(session, adapterSession)["backgroundAgents"].(map[string]any)
+	if !ok {
+		t.Fatal("runtimeContext omitted backgroundAgents; stale persisted state would never clear")
+	}
+	if backgroundAgents["count"] != 0 {
+		t.Fatalf("backgroundAgents = %#v, want explicit empty state", backgroundAgents)
+	}
+}
+
+func TestClaudeCodeSDKAdapterSettlesRunningLanesOnTurnCancel(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session := standardTestSession(ProviderClaudeCode)
+	adapterSession := &claudeSDKAdapterSession{
+		conn:            &recordingClaudeSDKConnection{},
+		pendingRequests: make(map[string]*pendingACPRequest),
+		liveState:       newClaudeSDKLiveState(),
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
+
+	_, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type: "task_started",
+		Payload: map[string]any{
+			"turnId":          "turn-task",
+			"taskId":          "task-1",
+			"parentToolUseId": "toolu-agent",
+			"description":     "Long running research",
+			"status":          "running",
+		},
+	})
+	if err != nil {
+		t.Fatalf("task_started err=%v", err)
+	}
+	canceled, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-task", claudeSDKSidecarEvent{
+		Type:    "turn_canceled",
+		Payload: map[string]any{"turnId": "turn-task"},
+	})
+	if err != nil || !terminal {
+		t.Fatalf("turn_canceled terminal=%v err=%v", terminal, err)
+	}
+	var stopped *activityshared.Event
+	for index := range canceled {
+		if canceled[index].Payload.Metadata["messageKind"] == "subAgentLifecycle" {
+			stopped = &canceled[index]
+		}
+	}
+	if stopped == nil {
+		t.Fatalf("turn_canceled events = %#v, want stopped lane lifecycle marker", canceled)
+	}
+	if stopped.Payload.Metadata["subAgentLifecycleStatus"] != "stopped" || stopped.OwnerCallID != "toolu-agent" {
+		t.Fatalf("stopped marker = %#v owner=%q, want stopped status on the running lane", stopped.Payload.Metadata, stopped.OwnerCallID)
+	}
 }
 
 func TestClaudeCodeSDKAdapterTracksSDKBackgroundAgents(t *testing.T) {
@@ -379,8 +582,15 @@ func TestClaudeCodeSDKAdapterTracksSDKBackgroundAgents(t *testing.T) {
 	if err != nil || terminal {
 		t.Fatalf("tool_completed terminal=%v err=%v", terminal, err)
 	}
-	if len(started) != 3 {
-		t.Fatalf("started events = %#v, want call + activity + session update", started)
+	if len(started) != 4 {
+		t.Fatalf("started events = %#v, want call + lane name marker + activity + session update", started)
+	}
+	nameMarker := started[1]
+	if nameMarker.OwnerThreadID != "claude-subagent:toolu-agent" || nameMarker.OwnerCallID != "toolu-agent" {
+		t.Fatalf("name marker owner = %q/%q, want lane owner ids", nameMarker.OwnerThreadID, nameMarker.OwnerCallID)
+	}
+	if nameMarker.Payload.Metadata["messageKind"] != "subAgentName" || nameMarker.Payload.Metadata["subAgentName"] != "Explore codebase structure" {
+		t.Fatalf("name marker metadata = %#v, want subAgentName marker", nameMarker.Payload.Metadata)
 	}
 	backgroundAgents := sdkBackgroundAgentsFromEvents(t, started)
 	if backgroundAgents["count"] != 1 {
@@ -400,11 +610,21 @@ func TestClaudeCodeSDKAdapterTracksSDKBackgroundAgents(t *testing.T) {
 	if err != nil || terminal {
 		t.Fatalf("task_completed terminal=%v err=%v", terminal, err)
 	}
-	if len(completed) != 2 {
-		t.Fatalf("completed events = %#v, want activity + session update", completed)
+	if len(completed) != 3 {
+		t.Fatalf("completed events = %#v, want activity + session update + lane lifecycle marker", completed)
 	}
 	if completed[0].Payload.TurnID != "turn-task" {
 		t.Fatalf("task completed turnID = %q, want fallback to parent turn", completed[0].Payload.TurnID)
+	}
+	lifecycle := completed[2]
+	if lifecycle.OwnerThreadID != "claude-subagent:toolu-agent" || lifecycle.OwnerCallID != "toolu-agent" {
+		t.Fatalf("lifecycle marker owner = %q/%q, want lane owner ids", lifecycle.OwnerThreadID, lifecycle.OwnerCallID)
+	}
+	if lifecycle.Payload.Metadata["messageKind"] != "subAgentLifecycle" || lifecycle.Payload.Metadata["subAgentLifecycleStatus"] != "completed" {
+		t.Fatalf("lifecycle marker metadata = %#v, want completed subAgentLifecycle marker", lifecycle.Payload.Metadata)
+	}
+	if lifecycle.Payload.TurnID != "turn-task" {
+		t.Fatalf("lifecycle marker turnID = %q, want launching turn", lifecycle.Payload.TurnID)
 	}
 	backgroundAgents = sdkBackgroundAgentsFromEvents(t, completed)
 	if backgroundAgents["count"] != 0 {
@@ -626,8 +846,8 @@ func TestClaudeCodeSDKAdapterKeepsLateBackgroundAgentEventsWithPayloadTurnID(t *
 	if err != nil || terminal {
 		t.Fatalf("late task_completed terminal=%v err=%v", terminal, err)
 	}
-	if len(completed) != 2 {
-		t.Fatalf("late task_completed events = %#v, want activity + session update", completed)
+	if len(completed) != 3 {
+		t.Fatalf("late task_completed events = %#v, want activity + session update + lane lifecycle marker", completed)
 	}
 	if completed[0].Payload.TurnID != "turn-task" {
 		t.Fatalf("late task_completed turnID = %q, want payload turn", completed[0].Payload.TurnID)
