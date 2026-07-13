@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { AgentGUIProvider } from "@tutti-os/agent-gui";
 import { createDecorator } from "@tutti-os/infra/di";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
@@ -146,7 +146,6 @@ export interface IWorkspaceWorkbenchHostService {
 
   approveWindowClose(): Promise<void>;
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
-  loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;

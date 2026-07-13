@@ -13,9 +13,9 @@ import type {
 } from "../preferences/index.ts";
 import type {
   AgentProviderProbeListInput,
-  AgentProviderProbeListResult,
-  AgentGUIAgent
+  AgentProviderProbeListResult
 } from "@tutti-os/agent-gui";
+import type { DesktopAgentDirectorySnapshot } from "./agentDirectory.ts";
 import type {
   AgentProviderStatus,
   WorkspaceAgentProvider
@@ -268,10 +268,10 @@ export interface DesktopHostWindowCloseRequestPayload {
 }
 
 export interface DesktopHostOpenAgentWindowInput {
+  agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
   agentSessionId?: string | null;
   agentTargetId?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
   minimizeSourceWindow?: boolean;
   provider?: string | null;
   workspaceId: string;

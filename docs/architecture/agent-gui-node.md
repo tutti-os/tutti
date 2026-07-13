@@ -1353,16 +1353,23 @@ continues without either signal.
 
 ### Layer Ownership Summary
 
-| Layer                                   | Owns                                                                                                   | Must not own                                                 |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `tuttid` agent service                  | provider runtime start, exec, resume/cancel, validation, persistence reports                           | AgentGUI view state                                          |
-| `ActivityProjection`                    | persisted session/message projection and `agent.activity.updated` publication                          | React projection or local UI overlays                        |
-| desktop `WorkspaceAgentActivityService` | runtime adapter, snapshot controller, optimistic bridge, event reconcile, desktop/tuttid client calls  | transcript rendering semantics                               |
-| `AgentActivityRuntime`                  | AgentGUI-facing source of durable activity data and commands                                           | independent session/message storage                          |
-| `AgentQueuedPromptRuntime`              | ephemeral busy-session queued prompts keyed by workspace and agent session, drain claims, retry blocks | persisted node/session/message state                         |
-| AgentGuiNode controller/stores          | selection, drafts, loading/error state, pending overlays, command sequencing                           | authoritative session/message state or queued prompt storage |
-| shared projection/model helpers         | deterministic conversion from snapshots/messages to view models                                        | provider transport calls                                     |
-| React views                             | DOM interaction and rendering from `viewModel`/`actions`                                               | fetching or mutating durable activity directly               |
+| Layer                                    | Owns                                                                                                   | Must not own                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `tuttid` agent service                   | provider runtime start, exec, resume/cancel, validation, persistence reports                           | AgentGUI view state                                           |
+| `ActivityProjection`                     | persisted session/message projection and `agent.activity.updated` publication                          | React projection or local UI overlays                         |
+| desktop `WorkspaceAgentActivityService`  | activity facade, canonical engine/controller access, mutation/reconcile coordination                   | transcript rendering semantics or large query/import adapters |
+| desktop activity query/import operations | normalized daemon query projection and external-session import refresh workflow                        | engine/controller ownership or independent activity state     |
+| `AgentActivityRuntime`                   | AgentGUI-facing source of durable activity data and commands                                           | independent session/message storage                           |
+| `AgentQueuedPromptRuntime`               | ephemeral busy-session queued prompts keyed by workspace and agent session, drain claims, retry blocks | persisted node/session/message state                          |
+| AgentGuiNode controller/stores           | selection, drafts, loading/error state, pending overlays, command sequencing                           | authoritative session/message state or queued prompt storage  |
+| shared projection/model helpers          | deterministic conversion from snapshots/messages to view models                                        | provider transport calls                                      |
+| React views                              | DOM interaction and rendering from `viewModel`/`actions`                                               | fetching or mutating durable activity directly                |
+
+The standalone Agent window follows the same composition rule: the sidebar
+shell owns panel selection, width, and mount timing; file/app/message routing,
+BrowserNode lifecycle, and TerminalNode lifecycle live in focused panel
+components. Extracting those panels must not move Message Center session state
+or terminal/browser runtime state into the shell.
 
 ## User-Visible Interaction Contracts
 
@@ -1675,6 +1682,11 @@ Path-backed queued prompt thumbnails should use the activity runtime
 prompt-asset reader when workspace/session context is available, and otherwise
 avoid rendering a broken image while keeping the queued content unchanged for
 sending.
+Their async reader has an explicit request owner keyed by runtime,
+workspace, session, queue item, attachment/path, MIME type, name, and URL/data
+identity. Context changes cancel the old logical request, and late results must
+not update the current preview. DOM callback refs and element connectivity are
+not request lifecycle or cancellation primitives.
 
 ### Approval And Ask-User Prompts
 
@@ -1786,25 +1798,26 @@ become a durable activity data source.
 
 Use this map before editing:
 
-| Path                                                                                                        | Layer                               | Notes                                                                                                                                          |
-| ----------------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/agent/activity-core/src/**`                                                                       | Durable activity core               | Host-agnostic adapter/controller/types. No React, Electron, or desktop clients.                                                                |
-| `apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts` | Desktop service implementation      | Owns the desktop adapter, `tuttid` calls, reconciliation, generated files, imports, event handling, and local optimistic service behavior.     |
-| `apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts`      | Runtime adapter                     | Wraps the desktop service into the `AgentActivityRuntime` interface and adds analytics/diagnostics.                                            |
-| `apps/desktop/src/renderer/src/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx`                | Desktop product adapter             | Assembles workbench state, desktop preferences, provider status, mention providers, file references, and passes props into `AgentGUI`.         |
-| `packages/agent/gui/AgentGUI.tsx`                                                                           | Package entry UI                    | Thin provider composition: i18n, tooltip, runtime/host providers, `AgentGUINode`.                                                              |
-| `packages/agent/gui/agentActivityRuntime.tsx`                                                               | AgentGUI runtime interface          | Public React/context interface for durable activity data and commands.                                                                         |
-| `packages/agent/gui/agentActivityHost.tsx` and `host/agentHostApi.ts`                                       | Host capability interface           | Files, clipboard, account/user projects, workspace helpers, probes, persistence. Legacy session APIs are not production data sources.          |
-| `packages/agent/gui/workbench/**`                                                                           | Host-agnostic workbench integration | Dock entries, launch descriptor, provider mapping, workbench node state helpers. Desktop still owns product-specific body rendering.           |
-| `packages/agent/gui/agent-gui/agentGuiNode/controller/**`                                                   | Node controller implementation      | UI orchestration and command sequencing. Prefer focused helper files over growing the main hook.                                               |
-| `packages/agent/gui/agent-gui/agentGuiNode/model/**`                                                        | Node model and policy               | Pure status, provider, settings, draft, slash command, layout, project resolution, and conversation projection helpers.                        |
-| `packages/agent/gui/agent-gui/agentGuiNode/agentRichText/**`                                                | Composer document layer             | Tiptap document, mentions, tokens, IME, prompt images, serialization helpers.                                                                  |
-| `packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx`                                            | Node view                           | Renders the rail/detail/composer and owns DOM-only state. Keep data fetching out.                                                              |
-| `packages/agent/gui/shared/agentConversation/**`                                                            | Transcript module                   | Reusable contracts, projection, rules, and rendering components shared by AgentGuiNode, Message Center, and standalone conversation rendering. |
-| `packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/**`                   | AgentGUI conversation-list UI store | Package-owned store despite the legacy path name. Owns query state, local pending overlays, read state, and runtime-snapshot projection.       |
-| `packages/agent/gui/contexts/workspace/presentation/renderer/agentSessions/**`                              | Active session UI store             | Package-owned active-session view state, overlay messages, control state, watcher counts, and event retention.                                 |
-| `packages/agent/gui/agent-message-center/**`                                                                | Message center surface              | Consumes activity/prompt projections to show attention items outside the full node.                                                            |
-| `packages/agent/gui/agent-conversation/**`                                                                  | Standalone transcript export        | Reuses the same detail-to-conversation projection and transcript components without the full node.                                             |
+| Path                                                                                                        | Layer                               | Notes                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/agent/activity-core/src/**`                                                                       | Durable activity core               | Host-agnostic adapter/controller/types. No React, Electron, or desktop clients.                                                                                            |
+| `apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.ts` | Desktop activity facade             | Owns engine access, mutation/reconcile coordination, event handling, and local optimistic service behavior; focused query/import collaborators own those daemon workflows. |
+| `apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts`      | Runtime adapter                     | Wraps the desktop service into the `AgentActivityRuntime` interface and adds analytics/diagnostics.                                                                        |
+| `apps/desktop/src/renderer/src/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx`                | Desktop product adapter             | Assembles workbench state, desktop preferences, provider status, mention providers, file references, and passes props into `AgentGUI`.                                     |
+| `packages/agent/gui/AgentGUI.tsx`                                                                           | Package entry UI                    | Thin provider composition: i18n, tooltip, runtime/host providers, `AgentGUINode`.                                                                                          |
+| `packages/agent/gui/agentActivityRuntime.tsx`                                                               | AgentGUI runtime interface          | Public React/context interface for durable activity data and commands.                                                                                                     |
+| `packages/agent/gui/agentActivityHost.tsx` and `host/agentHostApi.ts`                                       | Host capability interface           | Files, clipboard, account/user projects, workspace helpers, probes, persistence. Legacy session APIs are not production data sources.                                      |
+| `packages/agent/gui/workbench/**`                                                                           | Host-agnostic workbench integration | Dock entries, launch descriptor, provider mapping, workbench node state helpers. Desktop still owns product-specific body rendering.                                       |
+| `packages/agent/gui/agent-gui/agentGuiNode/controller/**`                                                   | Node controller implementation      | UI orchestration and command sequencing. Prefer focused helper files over growing the main hook.                                                                           |
+| `packages/agent/gui/agent-gui/agentGuiNode/model/**`                                                        | Node model and policy               | Pure status, provider, settings, draft, slash command, layout, project resolution, and conversation projection helpers.                                                    |
+| `packages/agent/gui/agent-gui/agentGuiNode/agentRichText/**`                                                | Composer document layer             | Tiptap document, mentions, tokens, IME, prompt images, serialization helpers.                                                                                              |
+| `packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx`                                            | Node view                           | Renders the rail/detail/composer and owns DOM-only state. Keep data fetching out.                                                                                          |
+| `packages/agent/gui/app/renderer/i18n/locales/*.agentGui.ts`                                                | AgentGUI locale vertical            | Owns the complete `agentHost.agentGui` dictionary per locale and composes smaller provider/runtime/slash fragments internally.                                             |
+| `packages/agent/gui/shared/agentConversation/**`                                                            | Transcript module                   | Reusable contracts, projection, rules, and rendering components shared by AgentGuiNode, Message Center, and standalone conversation rendering.                             |
+| `packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/**`                   | AgentGUI conversation-list UI store | Package-owned store despite the legacy path name. Owns query state, local pending overlays, read state, and runtime-snapshot projection.                                   |
+| `packages/agent/gui/contexts/workspace/presentation/renderer/agentSessions/**`                              | Active session UI store             | Package-owned active-session view state, overlay messages, control state, watcher counts, and event retention.                                                             |
+| `packages/agent/gui/agent-message-center/**`                                                                | Message center surface              | Consumes activity/prompt projections to show attention items outside the full node.                                                                                        |
+| `packages/agent/gui/agent-conversation/**`                                                                  | Standalone transcript export        | Reuses the same detail-to-conversation projection and transcript components without the full node.                                                                         |
 
 ## Layering Invariants
 
@@ -1909,16 +1922,28 @@ wait while the directory is loading, then require an exact `agentTargetId`
 match. A missing explicit id must not fall back to a sibling that happens to use
 the same provider or to the first directory entry.
 
-Directory loading has three distinct outcomes: unknown/loading, successfully
-loaded (including `[]`), and failed. Hosts may cache successful empty results,
-but a failed request must clear its cache so a later load can retry; it must not
-be converted into an authoritative empty directory. Window/bootstrap transport
-must serialize an explicit `agents: []` so detached windows preserve this
-distinction instead of reverting to loading. Conversely, a source snapshot
-whose capture timestamp is still null must omit `agents`; serializing its
-temporary empty array would falsely convert loading into a successful empty
-directory and can display a coming-soon/unavailable state before discovery has
-run.
+The host directory port publishes an explicit `idle | loading | ready | error`
+lifecycle. `ready` may contain an authoritative empty `agents: []`; `error`
+retains the last successful directory while exposing the failure, and the
+directory service—not a shell focus effect or React component—owns retry and
+refresh policy. Workbench dock payload resolution, new-launch validation, body
+rendering, and detached-window handoff must read the same live port snapshot.
+They must not combine static `agents/agentsLoading` inputs with a second dynamic
+resolver.
+
+The public `AgentGUI` wrapper accepts that lifecycle snapshot as its single
+directory input. Normalized `agentTargets`, their loading flag, provider-rail
+mode/presentation, and the internal rail-empty slot are private node inputs and
+must not remain writable alongside the public directory.
+
+Detached-window bootstrap transport serializes the complete directory
+snapshot, including lifecycle, capture time, presentation entries, and trusted
+target presentations. The new window hydrates its local canonical directory
+service before first paint, subscribes to that service, and refreshes the same
+owner. It must not copy the bootstrap array into React state or infer loading
+from `agents.length`/a missing timestamp. A failed or loading snapshot therefore
+remains distinguishable from an authoritative ready-empty directory across the
+window boundary.
 
 The public directory entry owns its presentation and availability:
 
@@ -1974,14 +1999,17 @@ the resolved icon, label, and optional owner badge. The DOM rail, single-agent
 empty state, and WebGL empty-home carousel consume that same presentation;
 renderer adapters may differ, but they must not create parallel icon-only
 models that can silently discard badge or identity fields.
-The WebGL adapter owns badge image loading and GPU resource lifecycle. Remote
-badge images must be requested with anonymous CORS before assigning `src`, and
-the asset host must return an origin-clean response. The adapter must keep an
-asset-independent visible owner marker until decode, canvas conversion, and
-texture upload all succeed; any load, decode, conversion, or upload failure
-keeps that fallback instead of leaving the badge material hidden. Scene disposal
-must detach image callbacks, cancel owned loads, and release badge textures,
-materials, and geometry alongside the primary avatar resources.
+One carousel image-load owner fetches and decodes icon, vinyl-cover, and badge
+images for a complete item generation. Remote badge images must be requested
+with anonymous CORS before assigning `src`, and the asset host must return an
+origin-clean response. Replacing or unmounting a generation cancels all of its
+pending image callbacks and clears unfinished sources. The Three.js scene must
+receive decoded images and must never create a fallback `Image` loader of its
+own; it owns only GPU texture/material/geometry lifetime. It keeps an
+asset-independent visible owner marker until texture upload succeeds, so any
+load, decode, conversion, or upload failure leaves the fallback visible. Scene
+disposal releases textures, materials, and geometry after the component has
+detached the scene from its decoded-image generation.
 
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is

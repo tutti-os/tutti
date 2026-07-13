@@ -657,6 +657,33 @@ export function readBaseline(baselinePath) {
   return JSON.parse(readFileSync(baselinePath, "utf8"));
 }
 
+export function findStaleIdentityExemptFiles(
+  workspaceRoot,
+  identityExemptFiles
+) {
+  return identityExemptFiles.filter(
+    (relativePath) => !existsSync(join(workspaceRoot, relativePath))
+  );
+}
+
+function reportStaleIdentityExemptFiles(workspaceRoot, identityExemptFiles) {
+  const staleFiles = findStaleIdentityExemptFiles(
+    workspaceRoot,
+    identityExemptFiles
+  );
+  if (staleFiles.length === 0) {
+    return false;
+  }
+  console.error(
+    "agent-gui degradation baseline has stale identity exemptions:"
+  );
+  for (const file of staleFiles) {
+    console.error(`- ${file}`);
+  }
+  console.error("\nRemove exemptions when their files are removed or renamed.");
+  return true;
+}
+
 function writeBaseline(baselinePath, baseline) {
   mkdirSync(dirname(baselinePath), { recursive: true });
   writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
@@ -665,6 +692,9 @@ function writeBaseline(baselinePath, baseline) {
 function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
   const existingBaseline = readBaseline(baselinePath);
   const identityExemptFiles = existingBaseline?.identityExemptFiles ?? [];
+  if (reportStaleIdentityExemptFiles(workspaceRoot, identityExemptFiles)) {
+    return 1;
+  }
   const metrics = collectMetrics({ identityExemptFiles, workspaceRoot });
 
   if (updateBaseline) {
@@ -725,6 +755,9 @@ function runFullMode({ workspaceRoot, baselinePath, updateBaseline }) {
 function runStagedMode({ workspaceRoot, baselinePath }) {
   const existingBaseline = readBaseline(baselinePath);
   const identityExemptFiles = existingBaseline?.identityExemptFiles ?? [];
+  if (reportStaleIdentityExemptFiles(workspaceRoot, identityExemptFiles)) {
+    return 1;
+  }
 
   const diffOutput = execFileSync(
     "git",

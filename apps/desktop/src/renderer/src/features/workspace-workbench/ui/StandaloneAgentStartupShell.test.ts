@@ -21,6 +21,22 @@ const toolSidebarSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentToolSidebar.tsx"),
   "utf8"
 );
+const toolSidebarPanelSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentToolSidebarPanel.tsx"),
+  "utf8"
+);
+const toolLoadingStateSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentToolLoadingState.tsx"),
+  "utf8"
+);
+const browserToolPanelSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentBrowserToolPanel.tsx"),
+  "utf8"
+);
+const terminalPanelSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentTerminalPanel.tsx"),
+  "utf8"
+);
 const workspaceWindowSource = readFileSync(
   resolve(
     currentDirectory,
@@ -91,14 +107,16 @@ test("standalone Agent startup shell keeps the rail and new-conversation hero vi
 test("standalone Agent tool panels expose loading UI while deferred modules start", () => {
   assert.match(
     toolSidebarSource,
-    /activePanel === panel \? \(\s*<ToolSidebarLoadingState/
+    /activePanel === panel \? \(\s*<StandaloneAgentToolLoadingState/
   );
-  assert.match(
-    toolSidebarSource,
-    /function ToolSidebarLoadingState[\s\S]*?<Spinner/
-  );
+  assert.match(toolLoadingStateSource, /<Spinner/);
+  const deferredPanelSources = [
+    toolSidebarPanelSource,
+    browserToolPanelSource,
+    terminalPanelSource
+  ].join("\n");
   assert.doesNotMatch(
-    toolSidebarSource,
+    deferredPanelSources,
     /<Suspense fallback=\{null\}>\s*<Lazy(?:WorkspaceFileManagerPane|StandaloneAgentAppCenterToolPanel|StandaloneAgentMessageCenterToolPanel|BrowserNode|TerminalNode)/
   );
 });

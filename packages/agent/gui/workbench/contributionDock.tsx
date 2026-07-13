@@ -32,7 +32,10 @@ import {
   normalizeAgentGUIAgents,
   projectAgentGUIAgentsToInternalTargets
 } from "../agents.ts";
-import type { AgentGUIAgent, AgentGUIAgentTarget } from "../types.ts";
+import type {
+  AgentGUIAgentDirectoryPort,
+  AgentGUIAgentTarget
+} from "../types.ts";
 import type {
   AgentGuiWorkbenchContributionCopy,
   AgentGuiWorkbenchContributionCopyOverrides,
@@ -86,17 +89,15 @@ export type AgentGuiWorkbenchProviderAvailability = Partial<
 >;
 
 export interface BuildAgentGuiDockEntriesInput {
+  agentDirectory: AgentGUIAgentDirectoryPort;
   defaultProvider?: AgentGuiWorkbenchProvider | null;
-  defaultAgentTargetId?: string | null;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   label?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  agentsLoading?: boolean;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId?: string;
-  agents?: readonly AgentGUIAgent[] | null;
   unifiedDockIconUrl?: string;
 }
 
@@ -111,6 +112,7 @@ export function buildAgentGuiDockEntries(
   );
   return [
     createAgentGuiWorkbenchDockEntry({
+      agentDirectory: input.agentDirectory,
       aggregateProviders: agentGuiWorkbenchDefaultDockProviders,
       icon: input.unifiedDockIconUrl
         ? createAgentGuiWorkbenchUnifiedDockIcon({
@@ -135,11 +137,7 @@ export function buildAgentGuiDockEntries(
 export function resolveAgentGuiUnifiedDockLaunchPayload(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
-    | "defaultProvider"
-    | "defaultAgentTargetId"
-    | "providerAvailability"
-    | "agentsLoading"
-    | "agents"
+    "agentDirectory" | "defaultProvider" | "providerAvailability"
   >
 ): {
   provider: AgentGuiWorkbenchProvider;
@@ -201,6 +199,7 @@ export function resolveAgentGuiWorkbenchContributionCopy(
 }
 
 function createAgentGuiWorkbenchDockEntry(input: {
+  agentDirectory: AgentGUIAgentDirectoryPort;
   aggregateProviders?: readonly AgentGuiWorkbenchProvider[];
   icon: ReactNode;
   label: string;
@@ -250,6 +249,7 @@ function createAgentGuiWorkbenchDockEntry(input: {
     providePopupItemPreview: (item) =>
       input.renderPreview
         ? createAgentGuiWorkbenchPreviewContent({
+            agentDirectory: input.agentDirectory,
             item,
             label: input.label,
             provider: input.provider,
@@ -369,66 +369,78 @@ export function providerFromActivation(
 
 export function resolveAgentGuiWorkbenchLaunchPayload(
   request: WorkbenchHostLaunchRequest,
-  input: Pick<
-    CreateAgentGuiWorkbenchContributionInput,
-    "resolveDockLaunchPayload"
-  >
-): unknown {
-  if (
-    request.reason !== "dock" ||
-    agentGuiWorkbenchDockIdentityFromIdentifier(request.dockEntryId)?.kind !==
-      "unifiedAggregate" ||
-    !isEmptyAgentGuiWorkbenchDockLaunchPayload(request.payload)
-  ) {
+  input: {
+    agentDirectory: AgentGUIAgentDirectoryPort;
+    defaultProvider?: AgentGuiWorkbenchProvider | null;
+    providerAvailability?: AgentGuiWorkbenchProviderAvailability;
+  }
+): unknown | null {
+  if (hasAgentSessionId(request.payload)) {
     return request.payload;
   }
-  const resolved =
-    input.resolveDockLaunchPayload?.({
-      dockEntryId: request.dockEntryId,
-      payload: request.payload,
-      reason: request.reason
-    }) ?? request.payload;
-  if (
-    isOpenInNewWindowLaunchPayload(request.payload) &&
-    resolved &&
-    typeof resolved === "object" &&
-    !Array.isArray(resolved)
-  ) {
-    return { ...(resolved as Record<string, unknown>), openInNewWindow: true };
+  const snapshot = input.agentDirectory.getSnapshot();
+  const agents = normalizeAgentGUIAgents(snapshot.agents);
+  const payload = isRecord(request.payload) ? request.payload : {};
+  const isUnifiedDockLaunch =
+    request.reason === "dock" &&
+    agentGuiWorkbenchDockIdentityFromIdentifier(request.dockEntryId)?.kind ===
+      "unifiedAggregate";
+  const explicitAgentTargetId = isUnifiedDockLaunch
+    ? null
+    : readTrimmedString(payload.agentTargetId);
+  if (explicitAgentTargetId) {
+    const explicitAgent = agents.find(
+      (agent) =>
+        agent.agentTargetId === explicitAgentTargetId &&
+        agent.availability.status === "ready"
+    );
+    if (
+      !explicitAgent ||
+      !isAgentGuiWorkbenchProvider(explicitAgent.provider)
+    ) {
+      return null;
+    }
+    return {
+      ...payload,
+      agentTargetId: explicitAgent.agentTargetId,
+      provider: explicitAgent.provider
+    };
   }
-  return resolved;
+  const requestedProvider = providerFromState(payload);
+  const resolved = resolveAgentGuiUnifiedDockLaunchPayload({
+    agentDirectory: input.agentDirectory,
+    defaultProvider: requestedProvider ?? input.defaultProvider,
+    providerAvailability: input.providerAvailability
+  });
+  if (!resolved.agentTargetId) {
+    return null;
+  }
+  return { ...payload, ...resolved };
 }
 
-function isOpenInNewWindowLaunchPayload(payload: unknown): boolean {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+function hasAgentSessionId(payload: unknown): boolean {
+  if (!isRecord(payload)) {
     return false;
   }
-  return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
+  return readTrimmedString(payload.agentSessionId) !== null;
 }
 
-function isEmptyAgentGuiWorkbenchDockLaunchPayload(payload: unknown): boolean {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return true;
-  }
-  const typed = payload as Record<string, unknown>;
-  return (
-    typeof typed.agentSessionId !== "string" &&
-    typeof typed.draftPrompt !== "string"
-  );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readTrimmedString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function resolveUnifiedAgentGuiDockTarget(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
-    | "defaultProvider"
-    | "defaultAgentTargetId"
-    | "providerAvailability"
-    | "agentsLoading"
-    | "agents"
+    "agentDirectory" | "defaultProvider" | "providerAvailability"
   >
 ): AgentGUIAgentTarget | null {
   const targets = projectAgentGUIAgentsToInternalTargets(
-    normalizeAgentGUIAgents(input.agents)
+    normalizeAgentGUIAgents(input.agentDirectory.getSnapshot().agents)
   ).filter(
     (
       target
@@ -440,16 +452,6 @@ function resolveUnifiedAgentGuiDockTarget(
       target.disabled !== true &&
       isAgentGuiProviderAvailable(target.provider, input.providerAvailability)
   );
-  const defaultAgentTargetId = input.defaultAgentTargetId?.trim();
-  if (defaultAgentTargetId) {
-    const explicitTarget = targets.find(
-      (target) => target.targetId === defaultAgentTargetId
-    );
-    if (explicitTarget) {
-      return explicitTarget;
-    }
-  }
-
   if (
     input.defaultProvider &&
     isUnifiedAgentGuiDockProvider(input.defaultProvider) &&
@@ -473,7 +475,7 @@ function resolveUnifiedAgentGuiDockTarget(
 function resolveUnifiedAgentGuiDockProvider(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
-    "defaultProvider" | "providerAvailability" | "agents"
+    "agentDirectory" | "defaultProvider" | "providerAvailability"
   >
 ): AgentGuiWorkbenchProvider {
   if (
@@ -558,6 +560,7 @@ export function providerTargetLaunchPayloadFromRequest(
 }
 
 export function createAgentGuiWorkbenchPreviewContent(input: {
+  agentDirectory: AgentGUIAgentDirectoryPort;
   item: WorkbenchHostDockPopupItemInput;
   label?: string;
   provider?: AgentGuiWorkbenchProvider;
@@ -585,6 +588,7 @@ export function createAgentGuiWorkbenchPreviewContent(input: {
     element: input.renderPreview(
       createAgentGuiWorkbenchPreviewBodyContext(input.item),
       {
+        agentDirectory: input.agentDirectory,
         nodeTypeId: agentGuiWorkbenchTypeId,
         onStateChange: () => undefined,
         provider

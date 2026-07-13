@@ -80,8 +80,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onStateChange,
   previewMode = false,
   providerStatusBootstrapSnapshot = null,
-  agents,
-  agentsLoading = false,
+  agentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
   comingSoonAgentProviders,
@@ -100,6 +99,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   resolveWorkspaceReferenceInitialTarget,
   workspaceId
 }: DesktopAgentGUIWorkbenchBodyProps): JSX.Element {
+  const agents = agentDirectory.agents;
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
@@ -685,8 +685,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   return (
     <>
       <AgentGUI
-        agents={agents}
-        agentsLoading={agentsLoading}
+        agentDirectory={agentDirectory}
         allAgentsPresentation={allAgentsPresentation}
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}

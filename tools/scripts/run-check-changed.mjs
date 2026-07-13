@@ -154,6 +154,18 @@ function buildChangedLanes() {
     });
   }
 
+  if (changedFiles.some(isAgentActivityRuntimeBoundaryRelevant)) {
+    addLane({
+      key: "boundary:agent-activity-runtime",
+      label: "boundary:agent-activity-runtime",
+      command: [
+        ...pnpmCommand,
+        "run",
+        "check:agent-activity-runtime-boundaries"
+      ]
+    });
+  }
+
   if (
     changedFiles.some(
       (file) =>
@@ -550,6 +562,22 @@ function isUiBoundaryRelevant(file) {
       file.startsWith("packages/") ||
       file.startsWith("tools/")) &&
     /\.(?:css|json|js|jsx|mjs|ts|tsx)$/u.test(file)
+  );
+}
+
+export function isAgentActivityRuntimeBoundaryRelevant(file) {
+  return (
+    file.startsWith("packages/agent/gui/") ||
+    file.startsWith("packages/agent/activity-core/") ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/workspace-agent/"
+    ) ||
+    file.startsWith(
+      "apps/desktop/src/renderer/src/features/workspace-workbench/"
+    ) ||
+    file === "tools/scripts/check-agent-activity-runtime-boundaries.mjs" ||
+    file === "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs" ||
+    file.startsWith("tools/fixtures/agent-activity-runtime-boundaries/")
   );
 }
 

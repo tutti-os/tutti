@@ -9,13 +9,13 @@ import type {
   AgentGUIProvider,
   AgentGUIAllAgentsPresentation,
   AgentGUIAgentsEmptyRenderer,
-  AgentGUIAgent
+  AgentGUIAgent,
+  AgentGUIAgentDirectoryPort
 } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
 import {
   createAgentGuiWorkbenchContribution,
-  resolveAgentGuiUnifiedDockLaunchPayload,
   type AgentGuiWorkbenchConversationIdentity
 } from "@tutti-os/agent-gui/workbench/contribution";
 import { selectWorkspaceAgentConsumerSession } from "@tutti-os/agent-activity-core";
@@ -102,18 +102,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
-  const readAgentDirectory = () => {
-    const snapshot = input.agentsService.getSnapshot();
-    return {
-      agents: snapshot.agents,
-      agentsLoading: snapshot.capturedAtUnixMs === null,
-      defaultAgentTargetId: resolveDefaultAgentTargetId({
-        agents: snapshot.agents,
-        defaultProvider: input.defaultAgentProvider
-      })
-    };
-  };
-  const initialAgentDirectory = readAgentDirectory();
+  const initialAgentDirectory = input.agentsService.getSnapshot();
   const defaultAgentProvider = isWorkspaceAgentGuiProviderEnabledForNewEntry(
     input.defaultAgentProvider,
     initialAgentDirectory.agents
@@ -176,7 +165,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
-      agentsService: input.agentsService,
+      agentsService: helpers.agentDirectory,
       allAgentsPresentation: input.allAgentsPresentation,
       renderAgentsEmpty: input.renderAgentsEmpty,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
@@ -225,49 +214,22 @@ export function createWorkspaceAgentGuiContribution(input: {
     unifiedDockIconUrl: input.unifiedDockIconUrl,
     frame: workspaceAgentGuiNodeFrame,
     defaultProvider: defaultAgentProvider,
-    defaultAgentTargetId: initialAgentDirectory.defaultAgentTargetId,
+    agentDirectory: input.agentsService,
     providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
       input.agentProviderStatusService
     ),
-    agents: undefined,
-    resolveDockLaunchPayload: () => {
-      const agentDirectory = readAgentDirectory();
-      const currentDefaultProvider =
-        isWorkspaceAgentGuiProviderEnabledForNewEntry(
-          input.defaultAgentProvider,
-          agentDirectory.agents
-        )
-          ? input.defaultAgentProvider
-          : null;
-      return resolveAgentGuiUnifiedDockLaunchPayload({
-        defaultProvider: currentDefaultProvider,
-        defaultAgentTargetId: agentDirectory.defaultAgentTargetId,
-        providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
-          input.agentProviderStatusService
-        ),
-        agentsLoading: agentDirectory.agentsLoading,
-        agents: agentDirectory.agents
-      });
-    },
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
     onOpenDetachedWindow: (request) => {
-      // Hand off whatever this window already has cached right now — do not
-      // block the click on a full provider probe (it can take seconds and
-      // makes opening the window feel unresponsive). The detached window
-      // hydrates from this snapshot instantly, then keeps checking any
-      // providers it's still missing in the background (see
-      // StandaloneAgentWindow's own ensureAll effect); hydrate only ever
-      // merges in new data, so a partial hand-off here is safe.
-      const agentDirectory = input.agentsService.getSnapshot();
+      // Transfer the complete lifecycle snapshot synchronously. The detached
+      // window hydrates its canonical directory service before first paint and
+      // then refreshes that same service; it does not create React-owned
+      // loading or retry state.
       input.hostWindowApi.openAgentWindow({
+        agentDirectorySnapshot: input.agentsService.getSnapshot(),
         agentSessionId: request.agentSessionId,
         agentTargetId: request.agentTargetId,
         providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
-        agents:
-          agentDirectory.capturedAtUnixMs === null
-            ? undefined
-            : agentDirectory.agents,
         provider: request.provider,
         workspaceId: request.workspaceId
       });
@@ -309,9 +271,9 @@ export function createWorkspaceAgentGuiContribution(input: {
 
 type DesktopWorkspaceAgentGUIWorkbenchBodyProps = Omit<
   DesktopAgentGUIWorkbenchBodyProps,
-  "agents" | "agentsLoading" | "defaultAgentTargetId"
+  "agentDirectory" | "defaultAgentTargetId"
 > & {
-  agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
+  agentsService: AgentGUIAgentDirectoryPort;
   defaultAgentProvider?: string | null;
 };
 
@@ -334,8 +296,7 @@ function DesktopWorkspaceAgentGUIWorkbenchBody({
     },
     createElement(LazyDesktopAgentGUIWorkbenchBody, {
       ...props,
-      agents: snapshot.agents,
-      agentsLoading: snapshot.capturedAtUnixMs === null,
+      agentDirectory: snapshot,
       defaultAgentTargetId: resolveDefaultAgentTargetId({
         agents: snapshot.agents,
         defaultProvider: defaultAgentProvider

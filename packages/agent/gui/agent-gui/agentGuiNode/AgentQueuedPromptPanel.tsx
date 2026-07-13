@@ -1,4 +1,5 @@
 import {
+  Component,
   useLayoutEffect,
   useRef,
   useState,
@@ -17,7 +18,6 @@ import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
 } from "../../shared/AgentMessageMarkdown";
-import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
 import type { AgentGUIQueuedPromptVM } from "./model/agentGuiNodeTypes";
 import {
@@ -32,6 +32,15 @@ import {
   CanvasNodeTrashLinedIcon
 } from "../shared/canvasNodeChromeIcons";
 import styles from "./AgentGUINode.styles";
+import {
+  QueuedPromptImageLoadOwner,
+  queuedPromptImageHasSafeRemoteUrl,
+  queuedPromptImageLoadRequestIdentity
+} from "./queuedPromptImageLoadOwner";
+import {
+  useOptionalAgentActivityRuntime,
+  type AgentActivityRuntime
+} from "../../agentActivityRuntime";
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
@@ -81,23 +90,6 @@ function queuedPromptImageDataUrl(
   return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
 }
 
-function queuedPromptImageHasSafeRemoteUrl(
-  image: QueuedPromptImageBlock
-): boolean {
-  const value = image.url?.trim() ?? "";
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      Boolean(url.hostname) &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
-}
-
 function queuedPromptImageImmediateSource(
   image: QueuedPromptImageBlock
 ): string | null {
@@ -114,101 +106,124 @@ function queuedPromptImageKey(
     index,
     image.attachmentId?.trim() ?? "",
     image.path?.trim() ?? "",
+    image.url?.trim() ?? "",
+    image.data?.trim() ?? "",
     image.name?.trim() ?? "",
     image.mimeType
   ].join(":");
 }
 
-function AgentQueuedPromptImage({
-  agentSessionId,
-  image,
-  imageKey,
-  workspaceId
-}: {
+interface AgentQueuedPromptImageProps {
   agentSessionId?: string | null;
   image: QueuedPromptImageBlock;
   imageKey: string;
+  runtime: AgentActivityRuntime | null;
   workspaceId?: string | null;
-}): React.JSX.Element | null {
-  const runtime = useOptionalAgentActivityRuntime();
-  const [loadedSource, setLoadedSource] = useState<string | null>(null);
-  const loadingKeyRef = useRef<string | null>(null);
-  const normalizedWorkspaceId = workspaceId?.trim() ?? "";
-  const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
-  const attachmentId = image.attachmentId?.trim() ?? "";
-  const path = image.path?.trim() ?? "";
-  const source = queuedPromptImageImmediateSource(image) ?? loadedSource;
+}
 
-  if (source) {
-    return (
+interface AgentQueuedPromptImageState {
+  requestIdentity: string;
+  source: string | null;
+}
+
+class AgentQueuedPromptImage extends Component<
+  AgentQueuedPromptImageProps,
+  AgentQueuedPromptImageState
+> {
+  private loadOwner: QueuedPromptImageLoadOwner | null = null;
+
+  state: AgentQueuedPromptImageState = {
+    requestIdentity: "",
+    source: null
+  };
+
+  componentDidMount(): void {
+    this.syncLoadOwner();
+  }
+
+  componentDidUpdate(previousProps: AgentQueuedPromptImageProps): void {
+    if (
+      previousProps.runtime !== this.props.runtime ||
+      this.requestIdentity(previousProps) !== this.requestIdentity(this.props)
+    ) {
+      this.syncLoadOwner();
+    }
+  }
+
+  componentWillUnmount(): void {
+    this.loadOwner?.dispose();
+    this.loadOwner = null;
+  }
+
+  render(): React.JSX.Element | null {
+    const source =
+      queuedPromptImageImmediateSource(this.props.image) ??
+      (this.state.requestIdentity === this.requestIdentity(this.props)
+        ? this.state.source
+        : null);
+
+    return source ? (
       <ZoomableImage
-        alt={image.name?.trim() || ""}
+        alt={this.props.image.name?.trim() || ""}
         className={styles.composerQueuedPromptImage}
         draggable={false}
         src={source}
         wrapElement="span"
       />
-    );
-  }
-  if (
-    !normalizedWorkspaceId ||
-    (!attachmentId && !path) ||
-    queuedPromptImageHasSafeRemoteUrl(image) ||
-    (!runtime?.readSessionAttachment && !runtime?.readPromptAsset)
-  ) {
-    return null;
+    ) : null;
   }
 
-  const loadSource = (element: HTMLSpanElement | null): void => {
-    if (!element || loadingKeyRef.current === imageKey) {
+  private requestIdentity(props: AgentQueuedPromptImageProps): string {
+    return queuedPromptImageLoadRequestIdentity({
+      agentSessionId: props.agentSessionId?.trim() ?? "",
+      attachmentId: props.image.attachmentId?.trim() ?? "",
+      imageKey: props.imageKey,
+      mimeType: props.image.mimeType,
+      name: props.image.name?.trim() ?? "",
+      path: props.image.path?.trim() ?? "",
+      remoteUrl: props.image.url?.trim() ?? "",
+      workspaceId: props.workspaceId?.trim() ?? ""
+    });
+  }
+
+  private syncLoadOwner(): void {
+    this.loadOwner?.dispose();
+    this.loadOwner = null;
+    const { image, runtime } = this.props;
+    const workspaceId = this.props.workspaceId?.trim() ?? "";
+    const agentSessionId = this.props.agentSessionId?.trim() ?? "";
+    const attachmentId = image.attachmentId?.trim() ?? "";
+    const path = image.path?.trim() ?? "";
+    const remoteUrl = image.url?.trim() ?? "";
+    const requestIdentity = this.requestIdentity(this.props);
+    if (
+      queuedPromptImageImmediateSource(image) ||
+      !runtime ||
+      !workspaceId ||
+      (!attachmentId && !path) ||
+      queuedPromptImageHasSafeRemoteUrl(remoteUrl) ||
+      (!runtime.readSessionAttachment && !runtime.readPromptAsset)
+    ) {
+      this.setState({ requestIdentity, source: null });
       return;
     }
-    loadingKeyRef.current = imageKey;
-    const readAsset = async (): Promise<
-      { data: string; mimeType: string } | undefined
-    > => {
-      if (attachmentId) {
-        return await runtime.readSessionAttachment?.({
-          workspaceId: normalizedWorkspaceId,
-          agentSessionId: normalizedAgentSessionId,
-          attachmentId
-        });
-      }
-      return await runtime.readPromptAsset?.({
-        workspaceId: normalizedWorkspaceId,
-        agentSessionId: normalizedAgentSessionId,
+    this.setState({ requestIdentity, source: null });
+    this.loadOwner = new QueuedPromptImageLoadOwner(
+      {
+        agentSessionId,
+        attachmentId,
+        imageKey: this.props.imageKey,
         mimeType: image.mimeType,
-        name: image.name,
-        path
-      });
-    };
-    void readAsset()
-      .then((asset) => {
-        if (!asset || !element.isConnected) {
-          return;
-        }
-        setLoadedSource(`data:${asset.mimeType};base64,${asset.data}`);
-      })
-      .catch((error: unknown) => {
-        console.warn(
-          "[agent-gui]",
-          JSON.stringify({
-            event: "agent.gui.queued_prompt_image_load_failed",
-            level: "warn",
-            source: "agent-gui",
-            workspaceId: normalizedWorkspaceId,
-            details: {
-              agentSessionId: normalizedAgentSessionId || null,
-              attachmentId: attachmentId || null,
-              path: path || null,
-              error: error instanceof Error ? error.message : String(error)
-            }
-          })
-        );
-      });
-  };
-
-  return <span ref={loadSource} hidden />;
+        name: image.name?.trim() ?? "",
+        path,
+        remoteUrl,
+        runtime,
+        workspaceId
+      },
+      (source) => this.setState({ requestIdentity, source })
+    );
+    this.loadOwner.start();
+  }
 }
 
 /**
@@ -248,6 +263,7 @@ export function AgentQueuedPromptPanel({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentQueuedPromptPanelProps): React.JSX.Element {
   "use memo";
+  const runtime = useOptionalAgentActivityRuntime();
   const [isExpanded, setIsExpanded] = useState(false);
   const singlePromptTextRef = useRef<HTMLDivElement | null>(null);
   const queuedPromptListRef = useRef<HTMLDivElement | null>(null);
@@ -451,6 +467,7 @@ export function AgentQueuedPromptPanel({
                             agentSessionId={agentSessionId}
                             image={image}
                             imageKey={imageKey}
+                            runtime={runtime}
                             workspaceId={workspaceId}
                           />
                         );

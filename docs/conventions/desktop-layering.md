@@ -336,6 +336,9 @@ Rules:
 - pass that service into AgentGUI, MessageCenter, and other workspace workbench
   contributions that need agent activity
 - keep controller/cache ownership inside `WorkspaceAgentActivityService`
+- keep daemon session-directory query projection and external-import refresh
+  workflows in focused internal operation collaborators; the public service
+  remains the facade and the only owner of engine/reconcile coordination
 - use the shared business-event stream only as a live update signal
 - reconcile session and message state through the normal `tuttid` HTTP client
   APIs, including message `afterVersion` reads after reconnect

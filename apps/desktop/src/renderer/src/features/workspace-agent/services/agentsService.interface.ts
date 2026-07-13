@@ -1,30 +1,11 @@
 import { createDecorator } from "@tutti-os/infra/di";
 import type {
-  AgentTarget,
-  AgentTargetProvider,
-  AgentTargetSource
-} from "@tutti-os/client-tuttid-ts";
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+  DesktopAgentDirectorySnapshot,
+  DesktopAgentTargetPresentation
+} from "@shared/contracts/agentDirectory.ts";
 
-export interface AgentTargetPresentation {
-  agentTargetId: string;
-  createdAtUnixMs: number;
-  enabled: boolean;
-  iconKey?: string | null;
-  iconUrl: string;
-  launchRefType: AgentTarget["launchRef"]["type"];
-  name: string;
-  provider: AgentTargetProvider;
-  sortOrder: number;
-  source: AgentTargetSource;
-  updatedAtUnixMs: number;
-}
-
-export interface AgentsSnapshot {
-  agents: readonly AgentGUIAgent[];
-  agentTargets: readonly AgentTargetPresentation[];
-  capturedAtUnixMs: number | null;
-}
+export type AgentsSnapshot = DesktopAgentDirectorySnapshot;
+export type AgentTargetPresentation = DesktopAgentTargetPresentation;
 
 export interface IAgentsService {
   readonly _serviceBrand: undefined;
@@ -33,6 +14,7 @@ export interface IAgentsService {
   getAgentTarget(input: {
     agentTargetId: string;
   }): AgentTargetPresentation | null;
+  hydrate(snapshot: AgentsSnapshot): void;
   load(signal?: AbortSignal): Promise<AgentsSnapshot>;
   refresh(signal?: AbortSignal): Promise<AgentsSnapshot>;
   subscribe(listener: () => void): () => void;

@@ -1,6 +1,6 @@
 import type {
   AgentActivityRuntime,
-  AgentGUIAgent,
+  AgentGUIAgentDirectorySnapshot,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
   AgentGUIAgentsEmptyRenderer,
@@ -53,8 +53,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
-  agents: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
+  agentDirectory: AgentGUIAgentDirectorySnapshot;
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
@@ -138,8 +137,7 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&
-    previous.agents === next.agents &&
-    previous.agentsLoading === next.agentsLoading &&
+    previous.agentDirectory === next.agentDirectory &&
     previous.allAgentsPresentation?.iconUrl ===
       next.allAgentsPresentation?.iconUrl &&
     previous.renderAgentsEmpty === next.renderAgentsEmpty &&

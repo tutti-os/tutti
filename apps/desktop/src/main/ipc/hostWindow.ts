@@ -220,10 +220,10 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
     throw new Error("workspaceId is required to open an agent window");
   }
   return {
+    agentDirectorySnapshot: input.agentDirectorySnapshot ?? null,
     agentSessionID: input.agentSessionId?.trim() || null,
     agentTargetID: input.agentTargetId?.trim() || null,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
-    agents: input.agents,
     provider: input.provider?.trim() || null,
     workspaceID
   };

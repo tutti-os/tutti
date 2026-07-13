@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { AgentGUIProvider } from "@tutti-os/agent-gui";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
   workspaceWorkbenchDesktopI18nKeys,
@@ -123,7 +123,6 @@ import {
   IAgentsService,
   type IAgentsService as AgentsService
 } from "../../../workspace-agent/services/agentsService.interface.ts";
-import { AgentGuiAgentsLoader } from "./agentGuiAgentsLoader.ts";
 import {
   createWorkbenchHostSessionConfiguration,
   WorkbenchHostCoordinator,
@@ -230,7 +229,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   };
   private readonly windowCloseRequestTracker =
     createWindowCloseRequestTracker();
-  private readonly agentGuiAgentsLoader: AgentGuiAgentsLoader;
 
   constructor(
     externalDependencies: WorkspaceWorkbenchHostExternalDependencies,
@@ -292,19 +290,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           resolve: (update, current) => this.resolveHostInput(update, current)
         })
     });
-    this.agentGuiAgentsLoader = new AgentGuiAgentsLoader(() =>
-      this.dependencies.agentsService.load().then((snapshot) => snapshot.agents)
-    );
-    this.dependencies.agentsService.subscribe(() => {
-      this.agentGuiAgentsLoader.invalidate();
-    });
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
-    });
-    // Provider visibility changes (e.g. the Cursor feature gate) invalidate the
-    // cached agent target list so the next load reflects the new gate.
-    this.dependencies.subscribeAgentProviderVisibility?.(() => {
-      this.agentGuiAgentsLoader.invalidate();
     });
     this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
@@ -312,10 +299,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   approveWindowClose(): Promise<void> {
     return this.dependencies.hostWindowApi.approveClose();
-  }
-
-  loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]> {
-    return this.agentGuiAgentsLoader.load();
   }
 
   onWindowCloseRequest(

@@ -1,7 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const workspaceRoot = resolve(new URL("../..", import.meta.url).pathname);
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const defaultWorkspaceRoot = resolve(scriptDirectory, "../..");
+const workspaceRoot = process.env.TUTTI_WORKSPACE_ROOT ?? defaultWorkspaceRoot;
+const ts = await loadTypeScriptModule();
 const agentGuiRoot = resolve(workspaceRoot, "packages/agent/gui");
 const desktopRendererRoot = resolve(
   workspaceRoot,
@@ -94,20 +98,38 @@ const forbiddenPatterns = [
 ];
 
 const violations = [];
-
-for (const scanRoot of [agentGuiRoot, desktopRendererRoot]) {
-  for (const filePath of walk(scanRoot)) {
+const scannedFiles = [agentGuiRoot, desktopRendererRoot]
+  .filter(existsSync)
+  .flatMap((scanRoot) => [...walk(scanRoot)])
+  .filter((filePath) => {
     const relativePath = relative(workspaceRoot, filePath);
-    if (!isScannedSourceFile(relativePath) || allowedFiles.has(relativePath)) {
-      continue;
+    return isScannedSourceFile(relativePath) && !allowedFiles.has(relativePath);
+  });
+const program = ts.createProgram({
+  rootNames: scannedFiles,
+  options: {
+    allowJs: true,
+    checkJs: false,
+    jsx: ts.JsxEmit.Preserve,
+    noResolve: true,
+    skipLibCheck: true,
+    target: ts.ScriptTarget.Latest
+  }
+});
+const typeChecker = program.getTypeChecker();
+
+for (const filePath of scannedFiles) {
+  const relativePath = relative(workspaceRoot, filePath);
+  const source = readFileSync(filePath, "utf8");
+  if (relativePath.startsWith("apps/desktop/src/renderer/src/features/")) {
+    const sourceFile = program.getSourceFile(filePath);
+    if (!sourceFile) {
+      throw new Error(`Unable to parse ${relativePath}`);
     }
-    const source = readFileSync(filePath, "utf8");
-    if (
-      relativePath.startsWith("apps/desktop/src/renderer/src/features/") &&
-      source.includes("getSessionEngine") &&
-      source.includes("useSyncExternalStore")
-    ) {
-      const index = source.indexOf("useSyncExternalStore");
+    for (const index of findDirectSessionEngineSubscriptions(
+      sourceFile,
+      typeChecker
+    )) {
       violations.push({
         column: columnNumber(source, index),
         file: relativePath,
@@ -115,18 +137,18 @@ for (const scanRoot of [agentGuiRoot, desktopRendererRoot]) {
         line: lineNumber(source, index)
       });
     }
-    for (const rule of forbiddenPatterns) {
-      if (!isRuleInScope(rule, relativePath)) {
-        continue;
-      }
-      for (const match of source.matchAll(rule.pattern)) {
-        violations.push({
-          column: columnNumber(source, match.index ?? 0),
-          file: relativePath,
-          label: rule.label,
-          line: lineNumber(source, match.index ?? 0)
-        });
-      }
+  }
+  for (const rule of forbiddenPatterns) {
+    if (!isRuleInScope(rule, relativePath)) {
+      continue;
+    }
+    for (const match of source.matchAll(rule.pattern)) {
+      violations.push({
+        column: columnNumber(source, match.index ?? 0),
+        file: relativePath,
+        label: rule.label,
+        line: lineNumber(source, match.index ?? 0)
+      });
     }
   }
 }
@@ -181,6 +203,129 @@ function isRuleInScope(rule, relativePath) {
   return true;
 }
 
+function findDirectSessionEngineSubscriptions(sourceFile, typeChecker) {
+  const positions = [];
+
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      isUseSyncExternalStoreCall(node.expression) &&
+      node.arguments.some((argument) =>
+        expressionDependsOnSessionEngine(
+          argument,
+          typeChecker,
+          new Set(),
+          new Set()
+        )
+      )
+    ) {
+      positions.push(node.expression.getStart(sourceFile));
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return positions;
+}
+
+function isUseSyncExternalStoreCall(expression) {
+  return (
+    (ts.isIdentifier(expression) &&
+      expression.text === "useSyncExternalStore") ||
+    (ts.isPropertyAccessExpression(expression) &&
+      expression.name.text === "useSyncExternalStore")
+  );
+}
+
+function expressionDependsOnSessionEngine(
+  node,
+  typeChecker,
+  visitedNodes,
+  visitedSymbols
+) {
+  if (visitedNodes.has(node)) {
+    return false;
+  }
+  visitedNodes.add(node);
+
+  if (ts.isCallExpression(node) && isGetSessionEngineCall(node.expression)) {
+    return true;
+  }
+
+  if (ts.isIdentifier(node) && !isPropertyNameIdentifier(node)) {
+    const symbol = typeChecker.getSymbolAtLocation(node);
+    if (symbol && !visitedSymbols.has(symbol)) {
+      visitedSymbols.add(symbol);
+      for (const declaration of symbol.declarations ?? []) {
+        const valueNode = declarationValueNode(declaration);
+        if (
+          valueNode &&
+          expressionDependsOnSessionEngine(
+            valueNode,
+            typeChecker,
+            visitedNodes,
+            visitedSymbols
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+
+  let dependsOnSessionEngine = false;
+  ts.forEachChild(node, (child) => {
+    if (
+      !dependsOnSessionEngine &&
+      expressionDependsOnSessionEngine(
+        child,
+        typeChecker,
+        visitedNodes,
+        visitedSymbols
+      )
+    ) {
+      dependsOnSessionEngine = true;
+    }
+  });
+  return dependsOnSessionEngine;
+}
+
+function isGetSessionEngineCall(expression) {
+  return (
+    (ts.isIdentifier(expression) && expression.text === "getSessionEngine") ||
+    (ts.isPropertyAccessExpression(expression) &&
+      expression.name.text === "getSessionEngine")
+  );
+}
+
+function isPropertyNameIdentifier(node) {
+  return (
+    (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) ||
+    (ts.isPropertyAssignment(node.parent) && node.parent.name === node) ||
+    (ts.isMethodDeclaration(node.parent) && node.parent.name === node)
+  );
+}
+
+function declarationValueNode(declaration) {
+  if (
+    ts.isVariableDeclaration(declaration) ||
+    ts.isBindingElement(declaration) ||
+    ts.isParameter(declaration) ||
+    ts.isPropertyDeclaration(declaration) ||
+    ts.isPropertyAssignment(declaration)
+  ) {
+    return declaration.initializer ?? null;
+  }
+  if (
+    ts.isFunctionDeclaration(declaration) ||
+    ts.isMethodDeclaration(declaration) ||
+    ts.isGetAccessorDeclaration(declaration)
+  ) {
+    return declaration.body ?? null;
+  }
+  return null;
+}
+
 function lineNumber(source, index) {
   return source.slice(0, index).split("\n").length;
 }
@@ -188,4 +333,28 @@ function lineNumber(source, index) {
 function columnNumber(source, index) {
   const previousNewline = source.lastIndexOf("\n", index - 1);
   return index - previousNewline;
+}
+
+async function loadTypeScriptModule() {
+  const candidateRoots = [workspaceRoot, defaultWorkspaceRoot];
+  const candidatePaths = candidateRoots.flatMap((root) => [
+    join(root, "node_modules/typescript/lib/typescript.js"),
+    join(root, "apps/desktop/node_modules/typescript/lib/typescript.js"),
+    join(
+      root,
+      "packages/clients/tuttid-ts/node_modules/typescript/lib/typescript.js"
+    )
+  ]);
+
+  for (const candidatePath of candidatePaths) {
+    if (!existsSync(candidatePath)) {
+      continue;
+    }
+    const module = await import(pathToFileURL(candidatePath).href);
+    return module.default ?? module;
+  }
+
+  throw new Error(
+    "Unable to locate a TypeScript runtime for check-agent-activity-runtime-boundaries.mjs"
+  );
 }

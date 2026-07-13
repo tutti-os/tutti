@@ -20,6 +20,18 @@ const standaloneAgentToolSidebarSource = readFileSync(
   new URL("./StandaloneAgentToolSidebar.tsx", import.meta.url),
   "utf8"
 );
+const standaloneAgentToolSidebarPanelSource = readFileSync(
+  new URL("./StandaloneAgentToolSidebarPanel.tsx", import.meta.url),
+  "utf8"
+);
+const standaloneAgentBrowserToolPanelSource = readFileSync(
+  new URL("./StandaloneAgentBrowserToolPanel.tsx", import.meta.url),
+  "utf8"
+);
+const standaloneAgentTerminalPanelSource = readFileSync(
+  new URL("./StandaloneAgentTerminalPanel.tsx", import.meta.url),
+  "utf8"
+);
 const standaloneAgentToolSidebarToolbarSource = readFileSync(
   new URL("./StandaloneAgentToolSidebarToolbar.tsx", import.meta.url),
   "utf8"
@@ -38,28 +50,28 @@ const workspaceAgentMessageCenterActionSource = readFileSync(
 );
 
 test("standalone Agent tools load their OS node UI on demand", () => {
-  assert.match(standaloneAgentToolSidebarSource, /<LazyBrowserNode/);
-  assert.match(standaloneAgentToolSidebarSource, /hidden=\{hidden\}/);
+  assert.match(standaloneAgentBrowserToolPanelSource, /<LazyBrowserNode/);
+  assert.match(standaloneAgentBrowserToolPanelSource, /hidden=\{hidden\}/);
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentToolSidebarPanelSource,
     /<StandaloneAgentBrowserToolPanel[\s\S]*?hidden=\{!active\}/
   );
-  assert.match(standaloneAgentToolSidebarSource, /<LazyTerminalNode/);
+  assert.match(standaloneAgentTerminalPanelSource, /<LazyTerminalNode/);
   assert.doesNotMatch(standaloneAgentToolSidebarSource, /<WorkbenchHost/);
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentTerminalPanelSource,
     /data-standalone-agent-terminal-close="true"/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentToolSidebarPanelSource,
     /<LazyStandaloneAgentAppCenterToolPanel/
   );
   assert.doesNotMatch(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentToolSidebarPanelSource,
     /<WorkspaceAppCenterPane/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentToolSidebarPanelSource,
     /workspace\.appCenter\.backToApps/
   );
   assert.match(
@@ -85,7 +97,7 @@ test("standalone Agent right sidebar reserves layout space and reveals requested
     /dispatch\(\{ panel: "files", type: "open-panel" \}\)/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentToolSidebarPanelSource,
     /<LazyWorkspaceFileManagerPane[\s\S]*?revealIntent=\{fileOpenRequest\}/
   );
 });
@@ -109,7 +121,7 @@ test("standalone Agent right sidebar animates its shell before mounting heavy co
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /contentReadyPanels\.includes\(panel\)[\s\S]*?motion-safe:animate-in[\s\S]*?<ToolSidebarPanel/
+    /contentReadyPanels\.includes\(panel\)[\s\S]*?motion-safe:animate-in[\s\S]*?<StandaloneAgentToolSidebarPanel/
   );
 });
 

@@ -5,9 +5,15 @@ import { AgentGUI, type AgentGUIProps } from "./AgentGUI";
 
 function createAgentGUIProps(locale: AgentGUIProps["locale"]): AgentGUIProps {
   return {
+    agentDirectory: {
+      agents: [],
+      capturedAtUnixMs: null,
+      error: null,
+      status: "ready"
+    },
     locale,
     frame: { previewMode: false }
-  } as AgentGUIProps;
+  } as unknown as AgentGUIProps;
 }
 
 vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {

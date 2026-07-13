@@ -30,6 +30,9 @@ export {
 } from "./agentTargets";
 export type {
   AgentGUIAgent,
+  AgentGUIAgentDirectoryPort,
+  AgentGUIAgentDirectorySnapshot,
+  AgentGUIAgentDirectoryStatus,
   AgentGUIAgentAvailability,
   AgentGUIAgentAvailabilityAction,
   AgentGUIAgentAvailabilityStatus,

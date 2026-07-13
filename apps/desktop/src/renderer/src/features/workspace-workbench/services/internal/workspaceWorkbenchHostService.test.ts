@@ -91,34 +91,6 @@ test("workspace workbench host releases owned wallpaper URLs on disposal", () =>
   );
 });
 
-test("workspace workbench host session resolution keeps stable refs and isolates dynamic dock updates", () => {
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /const cached = current\?\.state/
-  );
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /cached\.renderFilesNodeBodyRef\.current = input\.renderFilesNodeBody;[\s\S]*?hostInput: this\.createHostInputWithDynamicDockEntries\(/
-  );
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /const dockSignature = createWorkspaceDynamicDockSignature\(\{[\s\S]*?cached\.dynamicDockSignature === dockSignature[\s\S]*?return cached\.dynamicHostInput/
-  );
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /cached\.dynamicHostInput = dynamicHostInput;\s+return dynamicHostInput/
-  );
-  assert.match(
-    workspaceWorkbenchHostServiceSource,
-    /agentsService: this\.dependencies\.agentsService/
-  );
-  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cached\.agents/);
-  assert.doesNotMatch(
-    workspaceWorkbenchHostServiceSource,
-    /cached\.defaultAgentTargetId/
-  );
-});
-
 test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {
   assert.equal(
     shouldCloseTerminalNodeAfterError(

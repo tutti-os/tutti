@@ -96,12 +96,12 @@ async function showStandaloneAgentWindow(
     agentWindow,
     () => {
       loadAgentWindowContent(agentWindow, {
+        agentDirectorySnapshot: input.agentDirectorySnapshot,
         agentSessionID: input.agentSessionID,
         agentTargetID: input.agentTargetID,
         dockPlacement: options.getDockPlacement(),
         locale: options.getLocale(),
         providerStatusSnapshot: input.providerStatusSnapshot,
-        agents: input.agents,
         provider: input.provider,
         rendererUrl: options.rendererUrl,
         theme: options.getTheme(),

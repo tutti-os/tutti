@@ -960,7 +960,9 @@ function createAgentsService(
   const snapshot: AgentsSnapshot = {
     agentTargets,
     capturedAtUnixMs: 1780272000000,
-    agents: mapAgentTargetPresentationsToAgents(agentTargets)
+    agents: mapAgentTargetPresentationsToAgents(agentTargets),
+    error: null,
+    status: "ready"
   };
   return {
     async load() {

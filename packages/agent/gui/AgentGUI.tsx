@@ -3,7 +3,10 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentActivityRuntime } from "./agentActivityRuntime";
 import type { AgentHostInputApi } from "./host/agentHostApi";
-import type { AgentGUIAgent, AgentGUIAllAgentsPresentation } from "./types";
+import type {
+  AgentGUIAgentDirectorySnapshot,
+  AgentGUIAllAgentsPresentation
+} from "./types";
 import type { AgentGUIAgentsEmptyRenderer } from "./agent-gui/agentGuiNode/AgentGUINodeView";
 import {
   normalizeAgentGUIAgents,
@@ -16,46 +19,62 @@ import {
 import { AgentActivityHostProvider } from "./agentActivityHost";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
 
-export interface AgentGUIProps extends Omit<AgentGUINodeProps, "agents"> {
-  agents: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
+type AgentGUIPublicHostCapabilities = Omit<
+  AgentGUINodeProps["hostCapabilities"],
+  | "agentTargets"
+  | "agentTargetsLoading"
+  | "providerRailAllPresentation"
+  | "providerRailMode"
+>;
+
+type AgentGUIPublicRenderSlots = Omit<
+  AgentGUINodeProps["renderSlots"],
+  "providerRailEmpty"
+>;
+
+export interface AgentGUIProps extends Omit<
+  AgentGUINodeProps,
+  "hostCapabilities" | "renderSlots"
+> {
+  agentDirectory: AgentGUIAgentDirectorySnapshot;
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   agentActivityRuntime: AgentActivityRuntime;
   agentHostApi?: AgentHostInputApi | null;
   i18n?: I18nRuntime<string> | null;
   locale?: AgentGuiI18nLocale;
+  hostCapabilities: AgentGUIPublicHostCapabilities;
+  renderSlots: AgentGUIPublicRenderSlots;
 }
 
 export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
   agentHostApi,
-  agents,
-  agentsLoading = false,
+  agentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
   i18n,
   locale,
   ...props
 }: AgentGUIProps): JSX.Element {
-  const normalizedAgents = normalizeAgentGUIAgents(agents);
-  const hostCapabilities = props.hostCapabilities ?? {};
-  const renderSlots = props.renderSlots ?? {};
+  const normalizedAgents = normalizeAgentGUIAgents(agentDirectory.agents);
+  const hostCapabilities = props.hostCapabilities;
+  const renderSlots = props.renderSlots;
   const nodeProps: AgentGUINodeProps = {
     ...props,
     hostCapabilities: {
       ...hostCapabilities,
       agentTargets: projectAgentGUIAgentsToInternalTargets(normalizedAgents),
-      agentTargetsLoading: agentsLoading,
-      providerRailAllPresentation:
-        allAgentsPresentation ??
-        hostCapabilities.providerRailAllPresentation ??
-        null,
+      agentTargetsLoading:
+        agentDirectory.agents.length === 0 &&
+        (agentDirectory.status === "idle" ||
+          agentDirectory.status === "loading"),
+      providerRailAllPresentation: allAgentsPresentation ?? null,
       providerRailMode: "exact"
     },
     renderSlots: {
       ...renderSlots,
-      providerRailEmpty: renderAgentsEmpty ?? renderSlots.providerRailEmpty
+      providerRailEmpty: renderAgentsEmpty
     }
   };
   const content = (

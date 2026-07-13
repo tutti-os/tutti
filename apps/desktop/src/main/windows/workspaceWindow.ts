@@ -1,5 +1,5 @@
 import { BrowserWindow, app, screen, session, shell } from "electron";
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
 import {
   installBrowserWebviewSecurity,
@@ -252,11 +252,11 @@ export function loadAgentWindowContent(
     CreateWorkspaceWindowOptions,
     "locale" | "rendererUrl" | "workspaceID"
   > & {
+    agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
     agentSessionID?: string | null;
     agentTargetID?: string | null;
     dockPlacement: DesktopDockPlacement;
     providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-    agents?: readonly AgentGUIAgent[];
     provider?: string | null;
     theme: DesktopThemeState;
   }
@@ -270,10 +270,10 @@ export function loadAgentWindowContent(
     themeSource: options.theme.source
   };
   const intent = createAgentWindowIntent({
+    agentDirectorySnapshot: options.agentDirectorySnapshot,
     agentSessionID: options.agentSessionID,
     agentTargetID: options.agentTargetID,
     providerStatusSnapshot: options.providerStatusSnapshot,
-    agents: options.agents,
     provider: options.provider,
     workspaceID: options.workspaceID
   });

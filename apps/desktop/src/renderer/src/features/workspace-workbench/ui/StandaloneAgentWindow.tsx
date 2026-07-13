@@ -10,8 +10,6 @@ import {
   type ReactNode
 } from "react";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
-import { normalizeAgentGUIAgents } from "@tutti-os/agent-gui/agents";
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
@@ -29,10 +27,7 @@ import type {
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
-import type {
-  AgentProviderStatusSnapshot,
-  IAgentProviderStatusService as AgentProviderStatusService
-} from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
@@ -55,7 +50,6 @@ import { useTranslation } from "@renderer/i18n";
 import { AppUpdateStatus } from "@renderer/features/app-update";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
 import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebar";
-import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { StandaloneAgentStartupShell } from "./StandaloneAgentStartupShell.tsx";
 import {
   createStandaloneAgentDockPreviewCache,
@@ -63,8 +57,9 @@ import {
   readStandaloneAgentWindowFrame,
   readStandaloneAgentWindowMaximizedState
 } from "./standaloneAgentWindowHost.ts";
-
+import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
+import { resolveDesktopWindowIntent } from "@shared/contracts/windowIntent.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -89,7 +84,6 @@ const LazyDesktopAgentGUIWorkbenchBody = lazy(() =>
     default: module.DesktopAgentGUIWorkbenchBody
   }))
 );
-
 function renderStandaloneAgentSidebarFooter(): ReactNode {
   return (
     <Suspense fallback={null}>
@@ -164,17 +158,27 @@ export function StandaloneAgentWindow({
     },
     [workspaceAppCenterService, workspaceId]
   );
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const windowIntent = useMemo(
+    () => resolveDesktopWindowIntent(window.location.search),
+    []
+  );
   const launchProvider = normalizeDesktopAgentGUIProvider(
-    params.get("provider")
+    windowIntent.kind === "agent" ? windowIntent.provider : null
   );
-  const launchAgentSessionId = params.get("agentSessionId")?.trim() || null;
-  const launchAgentTargetId = params.get("agentTargetId")?.trim() || null;
-  const bootstrapAgents = useMemo(() => readBootstrapAgents(params), [params]);
-  const providerStatusBootstrapSnapshot = useMemo(
-    () => readProviderStatusBootstrapSnapshot(params),
-    [params]
-  );
+  const launchAgentSessionId =
+    windowIntent.kind === "agent"
+      ? (windowIntent.agentSessionID ?? null)
+      : null;
+  const launchAgentTargetId =
+    windowIntent.kind === "agent" ? (windowIntent.agentTargetID ?? null) : null;
+  const bootstrapAgentDirectory =
+    windowIntent.kind === "agent"
+      ? (windowIntent.agentDirectorySnapshot ?? null)
+      : null;
+  const providerStatusBootstrapSnapshot =
+    windowIntent.kind === "agent"
+      ? (windowIntent.providerStatusSnapshot ?? null)
+      : null;
   // Seed the live service from the opening window's snapshot synchronously,
   // during the first render, before any child effect gets a chance to kick
   // off its own fresh status request. Without this, `agentProviderStatusService`
@@ -191,13 +195,31 @@ export function StandaloneAgentWindow({
       agentProviderStatusService.hydrate(providerStatusBootstrapSnapshot);
     }
   }
+  const hasHydratedAgentDirectoryRef = useRef(false);
+  if (!hasHydratedAgentDirectoryRef.current) {
+    hasHydratedAgentDirectoryRef.current = true;
+    if (bootstrapAgentDirectory) {
+      agentsService.hydrate(bootstrapAgentDirectory);
+    }
+  }
+  const subscribeAgentDirectory = useCallback(
+    (listener: () => void) => agentsService.subscribe(listener),
+    [agentsService]
+  );
+  const getAgentDirectorySnapshot = useCallback(
+    () => agentsService.getSnapshot(),
+    [agentsService]
+  );
+  const agentDirectorySnapshot = useSyncExternalStore(
+    subscribeAgentDirectory,
+    getAgentDirectorySnapshot,
+    getAgentDirectorySnapshot
+  );
+  const agents = agentDirectorySnapshot.agents;
   const [frame, setFrame] = useState(readStandaloneAgentWindowFrame);
   const [isWindowMaximized, setIsWindowMaximized] = useState(
     readStandaloneAgentWindowMaximizedState
   );
-  const [agents, setAgents] = useState<
-    Awaited<ReturnType<typeof agentsService.load>>["agents"] | null
-  >(() => bootstrapAgents);
   const [nodeState, setNodeState] = useState<DesktopAgentGUIWorkbenchState>(
     () => ({
       agentTargetId: launchAgentTargetId,
@@ -336,15 +358,13 @@ export function StandaloneAgentWindow({
   const activeAgentTargetId = nodeState.agentTargetId?.trim() || null;
   const headerProvider = resolveDesktopAgentGUIProviderForAgentTarget(
     activeAgentTargetId,
-    agents ?? undefined,
+    agents,
     readStandaloneNodeProvider(nodeState, launchProvider)
   );
-  const headerAgentTarget =
-    activeAgentTargetId && agents
-      ? (agents.find(
-          (target) => target.agentTargetId === activeAgentTargetId
-        ) ?? null)
-      : null;
+  const headerAgentTarget = activeAgentTargetId
+    ? (agents.find((target) => target.agentTargetId === activeAgentTargetId) ??
+      null)
+    : null;
   const headerConversationIconFallbackUrl =
     resolveAgentGuiSessionProviderIconUrl(headerProvider);
   const headerConversationIconUrl =
@@ -432,23 +452,7 @@ export function StandaloneAgentWindow({
   }, []);
 
   useEffect(() => {
-    let disposed = false;
-    const loadAgents = () => {
-      void agentsService
-        .load()
-        .then((snapshot) => {
-          if (!disposed) {
-            setAgents(snapshot.agents);
-          }
-        })
-        .catch(() => undefined);
-    };
-    loadAgents();
-    window.addEventListener("focus", loadAgents);
-    return () => {
-      disposed = true;
-      window.removeEventListener("focus", loadAgents);
-    };
+    void agentsService.refresh().catch(() => undefined);
   }, [agentsService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
@@ -529,18 +533,18 @@ export function StandaloneAgentWindow({
   );
   const handleDuplicateStandaloneWindow = useCallback(() => {
     void hostWindowApi.openAgentWindow({
+      agentDirectorySnapshot,
       agentSessionId: nodeState.lastActiveAgentSessionId,
       agentTargetId: activeAgentTargetId,
       providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
-      agents: agents ?? undefined,
       minimizeSourceWindow: false,
       provider: headerProvider,
       workspaceId
     });
   }, [
     activeAgentTargetId,
+    agentDirectorySnapshot,
     agentProviderStatusService,
-    agents,
     headerProvider,
     hostWindowApi,
     nodeState.lastActiveAgentSessionId,
@@ -642,22 +646,20 @@ export function StandaloneAgentWindow({
             onLinkAction={handleLinkAction}
             onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
             onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
-              // Hand off whatever is cached right now — see the matching note
-              // in workspaceAgentGuiContribution.ts's onOpenDetachedWindow for
-              // why we don't block this click on a full provider probe.
+              // Duplicate the complete live snapshot so the new window can
+              // hydrate before its first local refresh.
               void hostWindowApi.openAgentWindow({
                 agentSessionId,
                 providerStatusSnapshot:
                   agentProviderStatusService.getSnapshot(),
-                agents: agents ?? undefined,
+                agentDirectorySnapshot,
                 provider,
                 workspaceId
               });
             }}
             onStateChange={setNodeState}
             providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
-            agents={agents ?? []}
-            agentsLoading={agents === null}
+            agentDirectory={agentDirectorySnapshot}
             contextMentionProviders={agentGuiHostInput.contextMentionProviders}
             runtimeApi={desktopApi.runtime}
             trackAgentProviderChatReady={
@@ -701,53 +703,6 @@ export function StandaloneAgentWindow({
       ) : null}
     </main>
   );
-}
-
-function readBootstrapAgents(
-  params: URLSearchParams
-): readonly AgentGUIAgent[] | null {
-  const encodedAgents = params.get("agents");
-  if (!encodedAgents) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(encodedAgents);
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
-    return normalizeAgentGUIAgents(parsed as readonly AgentGUIAgent[]);
-  } catch {
-    return null;
-  }
-}
-
-function readProviderStatusBootstrapSnapshot(
-  params: URLSearchParams
-): AgentProviderStatusSnapshot | null {
-  const encodedSnapshot = params.get("agentProviderStatusSnapshot");
-  if (!encodedSnapshot) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(
-      encodedSnapshot
-    ) as Partial<AgentProviderStatusSnapshot>;
-    if (!parsed.capturedAt || typeof parsed.capturedAt !== "string") {
-      return null;
-    }
-    return {
-      capturedAt: parsed.capturedAt,
-      defaultProvider: parsed.defaultProvider ?? null,
-      error: parsed.error ?? null,
-      isLoading: parsed.isLoading === true,
-      pendingActions: Array.isArray(parsed.pendingActions)
-        ? parsed.pendingActions
-        : [],
-      statuses: Array.isArray(parsed.statuses) ? parsed.statuses : []
-    };
-  } catch {
-    return null;
-  }
 }
 
 function readStandaloneNodeProvider(

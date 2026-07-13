@@ -97,8 +97,9 @@ interface AgentGuiHeroCarouselTile {
 export interface AgentGuiHeroCarouselSceneOptions {
   canvas: HTMLCanvasElement;
   items: readonly AgentGUIAgentAvatarPresentation[];
-  loadedImages?: readonly (HTMLImageElement | null)[];
-  loadedCoverImages?: readonly (HTMLImageElement | null)[];
+  loadedBadgeImages: readonly (HTMLImageElement | null)[];
+  loadedImages: readonly (HTMLImageElement | null)[];
+  loadedCoverImages: readonly (HTMLImageElement | null)[];
   // Fired once the wheel settles on an integer slot after an animated move.
   onSettle: (index: number) => void;
 }
@@ -129,10 +130,7 @@ export class AgentGuiHeroCarouselScene {
   private readonly agentCount: number;
   private readonly tileCount: number;
   private readonly wheelRadius: number;
-  private readonly coverAssetsReady: boolean;
   private readonly onSettle: (index: number) => void;
-  private readonly images: HTMLImageElement[] = [];
-  private readonly ownedImages = new Set<HTMLImageElement>();
   private scroll = 0;
   private target = 0;
   private velocity = 0;
@@ -153,7 +151,6 @@ export class AgentGuiHeroCarouselScene {
     this.tileCount = this.agentCount * repeats;
     // Rim spacing fixes the wheel size: radius = arc spacing / slot angle.
     this.wheelRadius = (TILE_SPACING * this.tileCount) / (Math.PI * 2);
-    this.coverAssetsReady = options.loadedCoverImages != null;
     this.onSettle = options.onSettle;
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
@@ -254,35 +251,17 @@ export class AgentGuiHeroCarouselScene {
       });
     }
     options.items.forEach((item, agentIndex) => {
-      const loadedImage = options.loadedImages?.[agentIndex] ?? null;
-      const image = loadedImage ?? new Image();
-      if (!loadedImage) {
-        image.decoding = "async";
-        image.loading = "eager";
-        image.setAttribute("fetchpriority", "high");
-        this.ownedImages.add(image);
-      }
-      this.images.push(image);
-      image.onload = () => {
-        if (this.disposed) {
-          return;
-        }
+      const image = options.loadedImages[agentIndex] ?? null;
+      if (image) {
         this.applyImageTexture(image, agentIndex);
-      };
-      if (image.complete && image.naturalWidth > 0) {
-        this.applyImageTexture(image, agentIndex);
-      } else if (!loadedImage) {
-        image.src = item.iconUrl;
       }
-      const coverImage = options.loadedCoverImages?.[agentIndex] ?? null;
+      const coverImage = options.loadedCoverImages[agentIndex] ?? null;
       if (coverImage) {
-        this.images.push(coverImage);
-        if (coverImage.complete && coverImage.naturalWidth > 0) {
-          this.applyCoverImageTexture(coverImage, agentIndex);
-        }
+        this.applyCoverImageTexture(coverImage, agentIndex);
       }
-      if (item.badge?.iconUrl) {
-        this.loadBadgeImage(item.badge.iconUrl, agentIndex);
+      const badgeImage = options.loadedBadgeImages[agentIndex] ?? null;
+      if (item.badge?.iconUrl && badgeImage) {
+        this.applyBadgeImageTexture(badgeImage, agentIndex);
       }
     });
 
@@ -432,14 +411,6 @@ export class AgentGuiHeroCarouselScene {
       cancelAnimationFrame(this.recordSpinFrameHandle);
       this.recordSpinFrameHandle = null;
     }
-    for (const image of this.images) {
-      image.onload = null;
-      image.onerror = null;
-      if (this.ownedImages.has(image)) {
-        image.src = "";
-      }
-    }
-    this.ownedImages.clear();
     for (const tile of this.tiles) {
       tile.badgeMesh.geometry.dispose();
       tile.badgeMesh.material.dispose();
@@ -612,18 +583,11 @@ export class AgentGuiHeroCarouselScene {
     }
     const vinylTexture = vinylRecordTexture(image, () => this.requestRender());
     this.textures.add(vinylTexture);
-    const fallbackCoverTexture = this.coverAssetsReady
-      ? coverImageTexture(image, () => this.requestRender())
-      : null;
-    if (fallbackCoverTexture) {
-      this.textures.add(fallbackCoverTexture);
-    }
     for (const tile of this.tiles) {
       if (tile.poseGroup.userData.agentIndex === agentIndex) {
         tile.faceMaterial.map = vinylTexture;
         tile.faceMaterial.visible = true;
         tile.faceMaterial.needsUpdate = true;
-        tile.coverTexture = fallbackCoverTexture;
         tile.vinylTexture = vinylTexture;
         tile.ready = true;
       }
@@ -647,53 +611,6 @@ export class AgentGuiHeroCarouselScene {
       }
     }
     this.applyPoses();
-  }
-
-  private loadBadgeImage(badgeUrl: string, agentIndex: number): void {
-    const image = new Image();
-    // CanvasTexture uploads require an origin-clean source. The owning CDN
-    // must answer this anonymous CORS request with an appropriate
-    // Access-Control-Allow-Origin header; otherwise onerror keeps the
-    // programmatic badge fallback visible.
-    image.crossOrigin = "anonymous";
-    image.decoding = "async";
-    image.loading = "eager";
-    this.ownedImages.add(image);
-    this.images.push(image);
-    let settled = false;
-    const keepFallback = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      this.requestRender();
-    };
-    const applyDecodedImage = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      this.applyBadgeImageTexture(image, agentIndex);
-    };
-    image.onload = () => {
-      if (this.disposed) {
-        return;
-      }
-      let decode: Promise<void> | undefined;
-      try {
-        decode = image.decode?.();
-      } catch {
-        keepFallback();
-        return;
-      }
-      if (decode) {
-        void decode.then(applyDecodedImage).catch(keepFallback);
-        return;
-      }
-      applyDecodedImage();
-    };
-    image.onerror = keepFallback;
-    image.src = badgeUrl;
   }
 
   private applyBadgeImageTexture(

@@ -6,17 +6,11 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import type { AgentGUIProvider } from "../../types";
-import claudeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/claude-vinyl.png";
-import codexVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/codex-vinyl.png";
-import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cursor-vinyl.png";
-import hermesVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/hermes-vinyl.png";
-import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
-import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
-import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 import { AgentGuiHeroCarouselScene } from "./agentGuiHeroCarouselScene";
 import { AgentGUIVinylPlayer } from "./AgentGUIVinylPlayer";
 import styles from "./AgentGUINode.styles";
+import { AgentGuiHeroCarouselImageLoad } from "./agentGuiHeroCarouselImageLoad";
 
 export interface AgentGUIHeroCarouselSelectInput {
   provider: AgentGUIProvider;
@@ -32,6 +26,7 @@ interface AgentGUIHeroAgentCarouselProps {
 
 interface AgentGUIHeroAgentCarouselState {
   centerIndex: number;
+  badgeImages: readonly (HTMLImageElement | null)[];
   coverImages: readonly (HTMLImageElement | null)[];
   iconKey: string;
   images: readonly (HTMLImageElement | null)[];
@@ -41,16 +36,6 @@ interface AgentGUIHeroAgentCarouselState {
 const CAROUSEL_WHEEL_STEP_THRESHOLD = 42;
 const CAROUSEL_WHEEL_STEP_COOLDOWN_MS = 110;
 const CAROUSEL_DRAG_STEP_PX = 52;
-
-const AGENT_VINYL_COVER_BY_PROVIDER: Readonly<Record<string, string>> = {
-  "claude-code": claudeVinylAssetUrl,
-  codex: codexVinylAssetUrl,
-  cursor: cursorVinylAssetUrl,
-  hermes: hermesVinylAssetUrl,
-  openclaw: openclawVinylAssetUrl,
-  opencode: opencodeVinylAssetUrl,
-  "tutti-agent": tuttiVinylAssetUrl
-};
 
 function activeAgentIndex(props: AgentGUIHeroAgentCarouselProps): number {
   if (!props.activeAgentTargetId) {
@@ -67,7 +52,7 @@ function carouselIconKey(
   return items
     .map(
       (item) =>
-        `${item.agentTargetId}:${item.iconUrl}:${item.badge?.iconUrl ?? ""}`
+        `${item.agentTargetId}:${item.provider}:${item.iconUrl}:${item.badge?.iconUrl ?? ""}`
     )
     .join("|");
 }
@@ -76,57 +61,6 @@ function emptyPreloadedCarouselImages(
   length: number
 ): (HTMLImageElement | null)[] {
   return Array.from({ length }).map((): HTMLImageElement | null => null);
-}
-
-function preloadImage(url: string | null): Promise<HTMLImageElement | null> {
-  if (!url) {
-    return Promise.resolve(null);
-  }
-  return new Promise((resolve) => {
-    const image = new Image();
-    let settled = false;
-    const settle = (value: HTMLImageElement | null): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolve(value);
-    };
-    const resolveDecoded = (): void => {
-      const decode = image.decode?.();
-      if (decode) {
-        void decode.then(() => settle(image)).catch(() => settle(image));
-        return;
-      }
-      settle(image);
-    };
-    image.decoding = "async";
-    image.loading = "eager";
-    image.setAttribute("fetchpriority", "high");
-    image.onload = resolveDecoded;
-    image.onerror = () => settle(null);
-    image.src = url;
-    if (image.complete) {
-      if (image.naturalWidth > 0) {
-        resolveDecoded();
-      } else {
-        settle(null);
-      }
-    }
-  });
-}
-
-async function preloadCarouselImages(
-  item: AgentGUIAgentAvatarPresentation
-): Promise<{
-  cover: HTMLImageElement | null;
-  icon: HTMLImageElement | null;
-}> {
-  const [icon, cover] = await Promise.all([
-    preloadImage(item.iconUrl),
-    preloadImage(AGENT_VINYL_COVER_BY_PROVIDER[item.provider] ?? null)
-  ]);
-  return { cover, icon };
 }
 
 // Three.js, ResizeObserver, image decoding, and a non-passive wheel listener
@@ -141,6 +75,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
   private scene: AgentGuiHeroCarouselScene | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private imagePreloadGeneration = 0;
+  private imageLoad: AgentGuiHeroCarouselImageLoad | null = null;
   private wheelListenerAttached = false;
   private wheelAccumulated = 0;
   private wheelLastStepAt = 0;
@@ -149,6 +84,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
   private pointerActivatedIndex: number | null = null;
 
   state: AgentGUIHeroAgentCarouselState = {
+    badgeImages: [],
     centerIndex: Math.max(activeAgentIndex(this.props), 0),
     coverImages: [],
     iconKey: carouselIconKey(this.props.items),
@@ -168,6 +104,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
       this.setState(
         {
           centerIndex: Math.max(activeAgentIndex(this.props), 0),
+          badgeImages: [],
           coverImages: [],
           iconKey,
           images: [],
@@ -195,6 +132,8 @@ export class AgentGUIHeroAgentCarousel extends Component<
     this.imagePreloadGeneration += 1;
     this.removeWheelListener();
     this.disposeScene();
+    this.imageLoad?.cancel();
+    this.imageLoad = null;
   }
 
   private interactive(): boolean {
@@ -202,16 +141,24 @@ export class AgentGUIHeroAgentCarousel extends Component<
   }
 
   private preloadImages(): void {
+    this.imageLoad?.cancel();
+    this.imageLoad = null;
     const generation = ++this.imagePreloadGeneration;
     const items = this.props.items;
     if (items.length === 0) {
-      this.setState({ coverImages: [], images: [], imagesReady: true });
+      this.setState({
+        badgeImages: [],
+        coverImages: [],
+        images: [],
+        imagesReady: true
+      });
       return;
     }
     if (typeof Image !== "function") {
       this.setState(
         {
           coverImages: emptyPreloadedCarouselImages(items.length),
+          badgeImages: emptyPreloadedCarouselImages(items.length),
           images: emptyPreloadedCarouselImages(items.length),
           imagesReady: true
         },
@@ -221,11 +168,14 @@ export class AgentGUIHeroAgentCarousel extends Component<
     }
 
     this.setState({
+      badgeImages: emptyPreloadedCarouselImages(items.length),
       coverImages: emptyPreloadedCarouselImages(items.length),
       images: emptyPreloadedCarouselImages(items.length),
       imagesReady: false
     });
-    void Promise.all(items.map(preloadCarouselImages)).then((preloaded) => {
+    const imageLoad = new AgentGuiHeroCarouselImageLoad(items);
+    this.imageLoad = imageLoad;
+    void imageLoad.result.then((preloaded) => {
       if (
         generation !== this.imagePreloadGeneration ||
         carouselIconKey(this.props.items) !== this.state.iconKey
@@ -234,8 +184,9 @@ export class AgentGUIHeroAgentCarousel extends Component<
       }
       this.setState(
         {
-          coverImages: preloaded.map((entry) => entry.cover),
-          images: preloaded.map((entry) => entry.icon),
+          badgeImages: preloaded.badges,
+          coverImages: preloaded.covers,
+          images: preloaded.icons,
           imagesReady: true
         },
         () => this.mountScene()
@@ -259,6 +210,7 @@ export class AgentGUIHeroAgentCarousel extends Component<
       canvas,
       items: this.props.items,
       loadedCoverImages: this.state.coverImages,
+      loadedBadgeImages: this.state.badgeImages,
       loadedImages: this.state.images,
       onSettle: this.handleSceneSettle
     });

@@ -288,7 +288,7 @@ describe("AgentGuiHeroCarouselScene", () => {
     globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("loads badge textures, picks badges, mirrors opacity, and disposes resources", () => {
+  it("uploads decoded badge textures, picks badges, mirrors opacity, and disposes GPU resources", () => {
     const loadedImage = {
       complete: true,
       height: 100,
@@ -315,12 +315,14 @@ describe("AgentGuiHeroCarouselScene", () => {
           iconUrl: "app://agent-2.png"
         }
       ],
+      loadedBadgeImages: [loadedImage, null],
+      loadedCoverImages: [null, null],
       loadedImages: [loadedImage, loadedImage],
       onSettle: vi.fn()
     });
 
     expect(scene).not.toBeNull();
-    expect(FakeImage.instances[0]?.crossOrigin).toBe("anonymous");
+    expect(FakeImage.instances).toHaveLength(0);
     const badgeMeshes = threeState.meshes.filter(
       (mesh) => mesh.geometry.kind === "badge"
     );
@@ -351,8 +353,6 @@ describe("AgentGuiHeroCarouselScene", () => {
     ).toBe(true);
 
     scene?.dispose();
-    expect(FakeImage.instances[0]?.onerror).toBeNull();
-    expect(FakeImage.instances[0]?.src).toBe("");
     expect(threeState.rendererDisposed).toBe(true);
     expect(threeState.materials.every((material) => material.disposed)).toBe(
       true
@@ -360,13 +360,12 @@ describe("AgentGuiHeroCarouselScene", () => {
     expect(threeState.textures.every((texture) => texture.disposed)).toBe(true);
   });
 
-  it("keeps a visible programmatic badge and schedules a scene update when loading fails", () => {
-    FakeImage.nextLoadFailure = true;
+  it("keeps a visible programmatic badge when the decoded badge is unavailable", () => {
     const requestAnimationFrame = vi.mocked(globalThis.requestAnimationFrame);
-    const scene = createSceneWithBadge();
+    const scene = createSceneWithBadge(null);
     const badgeMaterials = badgeMaterialsForAgent(0);
 
-    expect(FakeImage.instances[0]?.crossOrigin).toBe("anonymous");
+    expect(FakeImage.instances).toHaveLength(0);
     expect(badgeMaterials.every((material) => material.visible)).toBe(true);
     expect(badgeMaterials.every((material) => material.map == null)).toBe(true);
     expect(requestAnimationFrame).toHaveBeenCalled();
@@ -374,21 +373,9 @@ describe("AgentGuiHeroCarouselScene", () => {
     scene?.dispose();
   });
 
-  it("keeps the fallback when decode fails", async () => {
-    FakeImage.nextDecodeFailure = true;
-    const scene = createSceneWithBadge();
-
-    await Promise.resolve();
-    const badgeMaterials = badgeMaterialsForAgent(0);
-    expect(badgeMaterials.every((material) => material.visible)).toBe(true);
-    expect(badgeMaterials.every((material) => material.map == null)).toBe(true);
-
-    scene?.dispose();
-  });
-
   it("disposes a rejected texture and keeps the fallback when WebGL upload fails", () => {
     threeState.failTextureUpload = true;
-    const scene = createSceneWithBadge();
+    const scene = createSceneWithBadge(createLoadedImage());
     const badgeMaterials = badgeMaterialsForAgent(0);
 
     expect(badgeMaterials.every((material) => material.visible)).toBe(true);
@@ -400,14 +387,20 @@ describe("AgentGuiHeroCarouselScene", () => {
   });
 });
 
-function createSceneWithBadge(): AgentGuiHeroCarouselScene | null {
-  const loadedImage = {
+function createLoadedImage(): HTMLImageElement {
+  return {
     complete: true,
     height: 100,
     naturalWidth: 100,
     onload: null,
     width: 100
   } as unknown as HTMLImageElement;
+}
+
+function createSceneWithBadge(
+  badgeImage: HTMLImageElement | null
+): AgentGuiHeroCarouselScene | null {
+  const loadedImage = createLoadedImage();
   return AgentGuiHeroCarouselScene.create({
     canvas: document.createElement("canvas"),
     items: [
@@ -423,6 +416,8 @@ function createSceneWithBadge(): AgentGuiHeroCarouselScene | null {
         }
       }
     ],
+    loadedBadgeImages: [badgeImage],
+    loadedCoverImages: [null],
     loadedImages: [loadedImage],
     onSettle: vi.fn()
   });

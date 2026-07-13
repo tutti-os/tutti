@@ -1,8 +1,30 @@
 # AgentGUI Refactor Remaining Issues
 
-This document records the architecture issues intentionally deferred from the
-current merge cycle. It is a handoff checklist, not a replacement for the
-durable design in `docs/architecture/agent-gui-node.md`.
+Status: resolved on the AgentGUI refactor branch.
+
+This document now preserves the original handoff findings as a completion
+record. The durable design remains in `docs/architecture/agent-gui-node.md`.
+
+## Resolution summary
+
+| Original issue                        | Resolution                                                                                            |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Activity boundary false positive      | The checker follows the actual `useSyncExternalStore` argument dependency and has pass/fail fixtures. |
+| Static and live Workbench directories | One live directory port drives body, dock, validation, and handoff.                                   |
+| Detached-window second directory      | Full lifecycle snapshot hydration plus canonical service subscription/refresh.                        |
+| Oversized Desktop orchestration       | Tool panels and activity query/import capabilities were extracted behind focused boundaries.          |
+| Implicit directory lifecycle          | Explicit `idle/loading/ready/error`, retained cache, and service-owned retry.                         |
+| Public AgentGUI dual target props     | One directory snapshot; normalized target/rail inputs are no longer caller-writable.                  |
+| DOM-ref queued image loading          | Explicit request owner with complete identity and stale-result cancellation.                          |
+| Shallow locale extraction             | Complete English and Chinese `agentGui` subtrees are vertical locale modules.                         |
+| Missing changed-aware boundary lane   | Relevant package, Desktop, checker, and fixture changes schedule the lane.                            |
+| Obsolete Workbench loader             | Interface, implementation, subscription, and tests were removed.                                      |
+| Source-text startup regression test   | Live directory behavior is tested without contribution recomposition.                                 |
+| Dual carousel image owners            | One decoded-image load owner feeds a GPU-only Three.js scene.                                         |
+| Removed-file degradation exemption    | Stale entry removed; checker now rejects nonexistent exemptions.                                      |
+
+The issue descriptions below are the original evidence retained for audit
+history; they no longer describe the current implementation.
 
 ## Recommended order
 

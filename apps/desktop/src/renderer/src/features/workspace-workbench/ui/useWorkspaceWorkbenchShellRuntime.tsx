@@ -258,14 +258,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
-    const loadAgents = () => {
-      void agentsService.load().catch(() => undefined);
-    };
-    loadAgents();
-    window.addEventListener("focus", loadAgents);
-    return () => {
-      window.removeEventListener("focus", loadAgents);
-    };
+    void agentsService.load().catch(() => undefined);
     // The Desktop projection applies provider gates while loading the daemon
     // target list, so a gate flip must reload the snapshot.
   }, [agentsService, comingSoonAgentProviders, state.workspace.id]);

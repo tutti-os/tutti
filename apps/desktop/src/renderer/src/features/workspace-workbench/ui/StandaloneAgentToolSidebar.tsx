@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -12,8 +10,6 @@ import {
 } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
-import type { BrowserNodeI18nKey } from "@tutti-os/browser-node/i18n";
-import type { TerminalNodeI18nKey } from "@tutti-os/workspace-terminal/i18n";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle
@@ -23,17 +19,14 @@ import {
   CloseIcon,
   MaximizeIcon,
   RestoreIcon,
-  Spinner,
   cn
 } from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
 import { useTranslation } from "@renderer/i18n";
-import { getWorkspaceTerminalSurfaceRuntime } from "../services/workspaceTerminalSurfaceRuntime.ts";
 import {
   createStandaloneAgentToolSidebarState,
   reduceStandaloneAgentToolSidebarState,
-  type StandaloneAgentSharedToolPanelId,
   type StandaloneAgentToolLauncherPanelId,
   type StandaloneAgentToolPanelId
 } from "./standaloneAgentToolSidebarModel.ts";
@@ -43,49 +36,16 @@ import {
   type ToolSidebarCopy,
   type ToolSidebarReminderCounts
 } from "./StandaloneAgentToolSidebarToolbar.tsx";
-import {
-  createStandaloneAgentDirectToolHost,
-  createStandaloneAgentToolHostGroup,
-  createStandaloneAgentBrowserToolFeature
-} from "./standaloneAgentToolWorkbench.ts";
-import { standaloneAgentBrowserDefaultUrl } from "./standaloneAgentToolWorkbench.ts";
+import { createStandaloneAgentToolHostGroup } from "./standaloneAgentToolWorkbench.ts";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
+import {
+  StandaloneAgentToolSidebarPanel,
+  type StandaloneAgentFileOpenRequest
+} from "./StandaloneAgentToolSidebarPanel.tsx";
+import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
+import { StandaloneAgentTerminalPanel } from "./StandaloneAgentTerminalPanel.tsx";
 
-const LazyBrowserNode = lazy(() =>
-  import("@tutti-os/browser-node/react").then(({ BrowserNode }) => ({
-    default: BrowserNode
-  }))
-);
-const LazyTerminalNode = lazy(() =>
-  import("@tutti-os/workspace-terminal/react").then(({ TerminalNode }) => ({
-    default: TerminalNode
-  }))
-);
-const LazyWorkspaceFileManagerPane = lazy(() =>
-  import("@renderer/features/workspace-file-manager/ui/WorkspaceFileManagerPane.tsx").then(
-    ({ WorkspaceFileManagerPane }) => ({
-      default: WorkspaceFileManagerPane
-    })
-  )
-);
-const LazyStandaloneAgentAppCenterToolPanel = lazy(() =>
-  import("./StandaloneAgentAppCenterToolPanel.tsx").then(
-    ({ StandaloneAgentAppCenterToolPanel }) => ({
-      default: StandaloneAgentAppCenterToolPanel
-    })
-  )
-);
-const LazyStandaloneAgentMessageCenterToolPanel = lazy(() =>
-  import("./StandaloneAgentMessageCenterToolPanel.tsx").then(
-    ({ StandaloneAgentMessageCenterToolPanel }) => ({
-      default: StandaloneAgentMessageCenterToolPanel
-    })
-  )
-);
-
-const browserNodeLoadFailedI18nKey: BrowserNodeI18nKey = "loadFailed";
-const terminalCloseGuardDescriptionI18nKey: TerminalNodeI18nKey =
-  "closeGuard.description";
+export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 const standaloneAgentToolPanelContentMountDelayMs = 260;
 
 interface StandaloneAgentToolSidebarProps {
@@ -106,11 +66,6 @@ interface StandaloneAgentToolSidebarProps {
   onToolHostReady: (host: WorkbenchHostHandle | null) => void;
   resizeWindowContentWidth: (width: number) => Promise<{ width: number }>;
   workspaceId: string;
-}
-
-export interface StandaloneAgentFileOpenRequest {
-  path: string;
-  requestID: string;
 }
 
 export function StandaloneAgentToolSidebar({
@@ -390,7 +345,7 @@ export function StandaloneAgentToolSidebar({
                   >
                     {contentReadyPanels.includes(panel) ? (
                       <div className="h-full min-h-0 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-reduce:animate-none">
-                        <ToolSidebarPanel
+                        <StandaloneAgentToolSidebarPanel
                           active={activePanel === panel}
                           appI18n={appI18n}
                           activityService={activityService}
@@ -407,7 +362,7 @@ export function StandaloneAgentToolSidebar({
                         />
                       </div>
                     ) : activePanel === panel ? (
-                      <ToolSidebarLoadingState
+                      <StandaloneAgentToolLoadingState
                         label={i18n.t("common.loading")}
                       />
                     ) : null}
@@ -431,366 +386,4 @@ export function StandaloneAgentToolSidebar({
       </div>
     </>
   );
-}
-
-function ToolSidebarPanel({
-  active,
-  appI18n,
-  activityService,
-  browserApi,
-  contributions,
-  fileOpenRequest,
-  i18n,
-  locale,
-  messageCenterOpen,
-  onCloseMessageCenter,
-  onOpenMessageCenterChat,
-  panel,
-  workspaceId
-}: {
-  active: boolean;
-  appI18n: I18nRuntime<string>;
-  activityService: WorkspaceAgentActivityService;
-  browserApi?: DesktopBrowserApi;
-  contributions: readonly WorkbenchContribution[] | undefined;
-  fileOpenRequest: StandaloneAgentFileOpenRequest | null;
-  i18n: I18nRuntime<string>;
-  locale: ReturnType<typeof useTranslation>["locale"];
-  messageCenterOpen: boolean;
-  onCloseMessageCenter: () => void;
-  onOpenMessageCenterChat: (input: {
-    agentSessionId: string;
-    provider: string;
-  }) => void;
-  panel: StandaloneAgentToolPanelId;
-  workspaceId: string;
-}): ReactNode {
-  if (panel === "files") {
-    return (
-      <Suspense
-        fallback={<ToolSidebarLoadingState label={i18n.t("common.loading")} />}
-      >
-        <LazyWorkspaceFileManagerPane
-          className="h-full"
-          revealIntent={fileOpenRequest}
-          workspaceID={workspaceId}
-        />
-      </Suspense>
-    );
-  }
-  if (panel === "apps") {
-    return (
-      <Suspense
-        fallback={<ToolSidebarLoadingState label={i18n.t("common.loading")} />}
-      >
-        <LazyStandaloneAgentAppCenterToolPanel
-          active={active}
-          backLabel={i18n.t("workspace.appCenter.backToApps")}
-          contributions={contributions}
-          unavailableLabel={i18n.t(
-            "workspace.agentGui.toolSidebar.unavailable"
-          )}
-          workspaceId={workspaceId}
-        />
-      </Suspense>
-    );
-  }
-  if (panel === "messages") {
-    return (
-      <Suspense
-        fallback={<ToolSidebarLoadingState label={i18n.t("common.loading")} />}
-      >
-        <LazyStandaloneAgentMessageCenterToolPanel
-          activityService={activityService}
-          i18n={i18n}
-          locale={locale}
-          open={messageCenterOpen}
-          workspaceId={workspaceId}
-          onClose={onCloseMessageCenter}
-          onOpenChat={onOpenMessageCenterChat}
-        />
-      </Suspense>
-    );
-  }
-  if (panel === "browser") {
-    return browserApi ? (
-      <StandaloneAgentBrowserToolPanel
-        appI18n={appI18n}
-        browserApi={browserApi}
-        hidden={!active}
-        loadingLabel={i18n.t("common.loading")}
-      />
-    ) : null;
-  }
-  return null;
-}
-
-function ToolSidebarLoadingState({ label }: { label: string }): ReactNode {
-  return (
-    <div
-      aria-busy="true"
-      className="flex h-full min-h-0 items-center justify-center"
-    >
-      <Spinner className="text-[var(--text-tertiary)]" size={18} />
-      <span className="sr-only" role="status">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function StandaloneAgentBrowserToolPanel({
-  appI18n,
-  browserApi,
-  hidden,
-  loadingLabel
-}: {
-  appI18n: I18nRuntime<string>;
-  browserApi: DesktopBrowserApi;
-  hidden: boolean;
-  loadingLabel: string;
-}): ReactNode {
-  const [nodeId] = useState(createStandaloneAgentBrowserNodeId);
-  const feature = useMemo(
-    () =>
-      createStandaloneAgentBrowserToolFeature({
-        browserApi,
-        i18n: appI18n,
-        nodeId
-      }),
-    [appI18n, browserApi, nodeId]
-  );
-  const [activationFailed, setActivationFailed] = useState(false);
-  const runtimeState = useExternalStoreValue(
-    feature.runtimeStore.subscribe,
-    () => feature.runtimeStore.getNodeState(nodeId),
-    () => feature.runtimeStore.getNodeState(nodeId)
-  );
-
-  useEffect(() => {
-    const disconnect = feature.connect();
-    setActivationFailed(false);
-    void browserApi
-      .activate({
-        navigationPolicy: null,
-        nodeId,
-        profileId: null,
-        sessionMode: "shared",
-        url: standaloneAgentBrowserDefaultUrl
-      })
-      .catch(() => setActivationFailed(true));
-    return () => {
-      disconnect();
-      void browserApi.close({ nodeId }).catch(() => undefined);
-    };
-  }, [browserApi, feature, nodeId]);
-
-  return (
-    <div
-      className="relative h-full min-h-0 overflow-hidden"
-      data-standalone-agent-browser-surface="true"
-    >
-      <Suspense fallback={<ToolSidebarLoadingState label={loadingLabel} />}>
-        <LazyBrowserNode
-          defaultUrl={standaloneAgentBrowserDefaultUrl}
-          feature={feature}
-          hidden={hidden}
-          nodeId={nodeId}
-          syncDefaultUrl
-        />
-      </Suspense>
-      {activationFailed && runtimeState.lifecycle === "cold" ? (
-        <div
-          className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-secondary)]"
-          role="status"
-        >
-          {feature.i18n.t(browserNodeLoadFailedI18nKey)}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function createStandaloneAgentBrowserNodeId(): string {
-  const instanceId =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `browser:standalone-agent-tool:${instanceId}`;
-}
-
-function StandaloneAgentTerminalPanel({
-  closeLabel,
-  contributions,
-  loadingLabel,
-  onClose,
-  open,
-  setToolHost,
-  unavailableLabel
-}: {
-  closeLabel: string;
-  contributions: readonly WorkbenchContribution[] | undefined;
-  loadingLabel: string;
-  onClose: () => void;
-  open: boolean;
-  setToolHost: (
-    panel: StandaloneAgentSharedToolPanelId,
-    host: WorkbenchHostHandle | null
-  ) => void;
-  unavailableLabel: string;
-}): ReactNode {
-  const runtime = useMemo(() => {
-    const contribution = contributions?.find(
-      (candidate) => candidate.id === "workspace-terminal"
-    );
-    return contribution
-      ? getWorkspaceTerminalSurfaceRuntime(contribution)
-      : null;
-  }, [contributions]);
-  const [nodeId] = useState(createStandaloneAgentTerminalNodeId);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [launchError, setLaunchError] = useState(false);
-  const launchPromiseRef = useRef<Promise<void> | null>(null);
-  const directHost = useMemo(createStandaloneAgentDirectToolHost, []);
-  const externalState = useExternalStoreValue(
-    runtime?.subscribe ?? emptySubscribe,
-    () => runtime?.getExternalState(sessionId) ?? null,
-    () => null
-  );
-
-  useEffect(() => {
-    setToolHost("terminal", directHost.host);
-    return () => setToolHost("terminal", null);
-  }, [directHost, setToolHost]);
-
-  useEffect(() => {
-    directHost.setNode(
-      sessionId
-        ? {
-            instanceId: sessionId,
-            nodeId,
-            resolveCloseEffect: async () => {
-              const latestState = runtime?.getExternalState(sessionId) ?? null;
-              if (
-                !runtime ||
-                !latestState ||
-                latestState.status === "created" ||
-                latestState.status === "exited" ||
-                latestState.status === "failed"
-              ) {
-                return null;
-              }
-              try {
-                const guard = await runtime.feature.closeGuard.check({
-                  sessionId
-                });
-                if (
-                  !guard.requiresConfirmation ||
-                  guard.reason === "not-running" ||
-                  guard.status === "exited" ||
-                  guard.status === "failed"
-                ) {
-                  return null;
-                }
-              } catch {
-                // Preserve the OS terminal's conservative close behavior when
-                // the daemon cannot resolve the guard state.
-              }
-              return {
-                description: runtime.feature.i18n.t(
-                  terminalCloseGuardDescriptionI18nKey
-                ),
-                nodeId,
-                title: latestState.title,
-                typeId: "workspace-terminal"
-              };
-            },
-            title: externalState?.title ?? "",
-            typeId: "workspace-terminal"
-          }
-        : null
-    );
-  }, [directHost, externalState?.title, nodeId, runtime, sessionId]);
-
-  useEffect(() => {
-    if (!open || !runtime || sessionId || launchPromiseRef.current) {
-      return;
-    }
-    setLaunchError(false);
-    const launchPromise = runtime
-      .createSession()
-      .then((session) => setSessionId(session.sessionId))
-      .catch(() => setLaunchError(true))
-      .finally(() => {
-        if (launchPromiseRef.current === launchPromise) {
-          launchPromiseRef.current = null;
-        }
-      });
-    launchPromiseRef.current = launchPromise;
-  }, [open, runtime, sessionId]);
-
-  return (
-    <section
-      aria-hidden={!open}
-      className={cn(
-        "relative shrink-0 overflow-hidden border-t border-[var(--border-1)] bg-[var(--background-fronted)] transition-[height] duration-200 ease-out",
-        !open && "pointer-events-none border-t-0"
-      )}
-      data-standalone-agent-terminal-panel="true"
-      style={{ height: open ? "clamp(220px, 42vh, 440px)" : "0px" }}
-    >
-      {open ? (
-        <Button
-          aria-label={closeLabel}
-          className="absolute top-2 right-2 z-20 bg-[var(--background-panel)] shadow-sm"
-          data-standalone-agent-terminal-close="true"
-          size="icon-sm"
-          title={closeLabel}
-          type="button"
-          variant="chrome"
-          onClick={onClose}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <CloseIcon aria-hidden className="size-3.5" />
-        </Button>
-      ) : null}
-      <div
-        className="h-full min-h-0 overflow-hidden"
-        data-standalone-agent-terminal-surface="true"
-      >
-        {runtime && sessionId ? (
-          <Suspense fallback={<ToolSidebarLoadingState label={loadingLabel} />}>
-            <LazyTerminalNode
-              externalState={externalState}
-              feature={runtime.feature}
-              nodeId={nodeId}
-              sessionId={sessionId}
-              showHeader={false}
-            />
-          </Suspense>
-        ) : launchError || !runtime ? (
-          <div
-            className="flex h-full items-center justify-center text-sm text-[var(--text-secondary)]"
-            role="status"
-          >
-            {unavailableLabel}
-          </div>
-        ) : (
-          <ToolSidebarLoadingState label={loadingLabel} />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function createStandaloneAgentTerminalNodeId(): string {
-  const instanceId =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `workspace-terminal:standalone-agent-tool:${instanceId}`;
-}
-
-function emptySubscribe(): () => void {
-  return () => undefined;
 }

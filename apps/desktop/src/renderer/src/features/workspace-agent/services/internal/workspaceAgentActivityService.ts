@@ -37,6 +37,8 @@ import {
   registerAgentActivityStoreDiagnostics
 } from "./workspaceAgentActivityDiagnostics.ts";
 import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
+import { WorkspaceAgentActivityQueryOperations } from "./workspaceAgentActivityQueryOperations.ts";
+import { WorkspaceAgentActivityImportOperations } from "./workspaceAgentActivityImportOperations.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -87,6 +89,8 @@ export class WorkspaceAgentActivityService
   readonly _serviceBrand = undefined;
 
   private readonly dependencies: WorkspaceAgentActivityServiceDependencies;
+  private readonly importOperations: WorkspaceAgentActivityImportOperations;
+  private readonly queryOperations: WorkspaceAgentActivityQueryOperations;
   private readonly workspaceLoadsInFlight = new Map<
     string,
     Promise<AgentActivitySnapshot>
@@ -102,6 +106,16 @@ export class WorkspaceAgentActivityService
     // diagnostics.
     registerAgentActivityStoreDiagnostics(dependencies.runtimeApi);
     this.dependencies = dependencies;
+    this.queryOperations = new WorkspaceAgentActivityQueryOperations(
+      dependencies.tuttidClient
+    );
+    this.importOperations = new WorkspaceAgentActivityImportOperations({
+      hostFilesApi: dependencies.hostFilesApi,
+      refreshActivity: (workspaceId) => this.load(workspaceId),
+      refreshUserProjects: () =>
+        this.dependencies.workspaceUserProjectService?.refresh(),
+      tuttidClient: dependencies.tuttidClient
+    });
   }
 
   getSnapshot(workspaceId: string): AgentActivitySnapshot {
@@ -223,78 +237,19 @@ export class WorkspaceAgentActivityService
       IWorkspaceAgentActivityService["listAgentGeneratedFiles"]
     >[0]
   ): ReturnType<IWorkspaceAgentActivityService["listAgentGeneratedFiles"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    return this.dependencies.tuttidClient.listWorkspaceAgentGeneratedFiles(
-      workspaceId,
-      {
-        limit: input.limit,
-        query: input.query?.trim() || undefined,
-        sessionCwd: input.sessionCwd?.trim() || undefined
-      }
-    );
+    return this.queryOperations.listAgentGeneratedFiles(input);
   }
 
   async listSessionsPage(
     input: Parameters<IWorkspaceAgentActivityService["listSessionsPage"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["listSessionsPage"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.listWorkspaceAgentSessions(
-        workspaceId,
-        {
-          limit: input.limit,
-          searchQuery: input.searchQuery?.trim() || undefined
-        },
-        {
-          signal: input.signal
-        }
-      );
-    return {
-      hasMore: false,
-      nextCursor: undefined,
-      sessions: response.sessions.map((session) =>
-        agentActivitySessionFromTuttidSession(workspaceId, session)
-      ),
-      workspaceId: response.workspaceId
-    };
+    return this.queryOperations.listSessionsPage(input);
   }
 
   async listSessionSections(
     input: Parameters<IWorkspaceAgentActivityService["listSessionSections"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["listSessionSections"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSections(
-        workspaceId,
-        {
-          agentTargetId: input.agentTargetId?.trim() || undefined,
-          limitPerSection: input.limitPerSection
-        },
-        {
-          signal: input.signal
-        }
-      );
-    const pinned = response.pinned ?? { hasMore: false, sessions: [] };
-    return {
-      pinned: {
-        hasMore: pinned.hasMore,
-        nextCursor: pinned.nextCursor,
-        sessions: pinned.sessions.map((session) =>
-          agentActivitySessionFromTuttidSession(workspaceId, session)
-        )
-      },
-      sections: response.sections.map((section) => ({
-        hasMore: section.hasMore,
-        kind: section.kind,
-        nextCursor: section.nextCursor,
-        sectionKey: section.sectionKey,
-        sessions: section.sessions.map((session) =>
-          agentActivitySessionFromTuttidSession(workspaceId, session)
-        ),
-        userProject: section.userProject
-      })),
-      workspaceId: response.workspaceId
-    };
+    return this.queryOperations.listSessionSections(input);
   }
 
   async listPinnedSessionsPage(
@@ -302,26 +257,7 @@ export class WorkspaceAgentActivityService
       IWorkspaceAgentActivityService["listPinnedSessionsPage"]
     >[0]
   ): ReturnType<IWorkspaceAgentActivityService["listPinnedSessionsPage"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.listWorkspaceAgentPinnedSessionPage(
-        workspaceId,
-        {
-          agentTargetId: input.agentTargetId?.trim() || undefined,
-          cursor: input.cursor?.trim() || undefined,
-          limit: input.limit
-        },
-        {
-          signal: input.signal
-        }
-      );
-    return {
-      hasMore: response.page.hasMore,
-      nextCursor: response.page.nextCursor,
-      sessions: response.page.sessions.map((session) =>
-        agentActivitySessionFromTuttidSession(workspaceId, session)
-      )
-    };
+    return this.queryOperations.listPinnedSessionsPage(input);
   }
 
   async listSessionSectionPage(
@@ -329,51 +265,13 @@ export class WorkspaceAgentActivityService
       IWorkspaceAgentActivityService["listSessionSectionPage"]
     >[0]
   ): ReturnType<IWorkspaceAgentActivityService["listSessionSectionPage"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSectionPage(
-        workspaceId,
-        {
-          agentTargetId: input.agentTargetId?.trim() || undefined,
-          cursor: input.cursor?.trim() || undefined,
-          limit: input.limit,
-          sectionKey: input.sectionKey
-        },
-        {
-          signal: input.signal
-        }
-      );
-    return {
-      hasMore: response.section.hasMore,
-      kind: response.section.kind,
-      nextCursor: response.section.nextCursor,
-      sectionKey: response.section.sectionKey,
-      sessions: response.section.sessions.map((session) =>
-        agentActivitySessionFromTuttidSession(workspaceId, session)
-      ),
-      userProject: response.section.userProject
-    };
+    return this.queryOperations.listSessionSectionPage(input);
   }
 
   async countSessionSection(
     input: Parameters<IWorkspaceAgentActivityService["countSessionSection"]>[0]
   ): ReturnType<IWorkspaceAgentActivityService["countSessionSection"]> {
-    const workspaceId = normalizeWorkspaceId(input.workspaceId);
-    const response =
-      await this.dependencies.tuttidClient.countWorkspaceAgentSessionSection(
-        workspaceId,
-        {
-          agentTargetId: input.agentTargetId?.trim() || undefined,
-          sectionKey: input.sectionKey
-        },
-        { signal: input.signal }
-      );
-    return {
-      agentTargetId: response.agentTargetId,
-      count: response.count,
-      sectionKey: response.sectionKey,
-      workspaceId: response.workspaceId
-    };
+    return this.queryOperations.countSessionSection(input);
   }
 
   async deleteSessionSection(
@@ -424,10 +322,7 @@ export class WorkspaceAgentActivityService
       IWorkspaceAgentActivityService["scanExternalSessionImports"]
     >[1]
   ): ReturnType<IWorkspaceAgentActivityService["scanExternalSessionImports"]> {
-    return this.dependencies.tuttidClient.scanWorkspaceExternalAgentSessionImports(
-      normalizeWorkspaceId(workspaceId),
-      request
-    );
+    return this.importOperations.scan(workspaceId, request);
   }
 
   async importExternalSessions(
@@ -436,21 +331,11 @@ export class WorkspaceAgentActivityService
       IWorkspaceAgentActivityService["importExternalSessions"]
     >[1]
   ): ReturnType<IWorkspaceAgentActivityService["importExternalSessions"]> {
-    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-    const result =
-      await this.dependencies.tuttidClient.importWorkspaceExternalAgentSessions(
-        normalizedWorkspaceId,
-        request
-      );
-    await Promise.all([
-      this.load(normalizedWorkspaceId),
-      this.dependencies.workspaceUserProjectService?.refresh()
-    ]);
-    return result;
+    return this.importOperations.import(workspaceId, request);
   }
 
   async selectExternalSessionImportArchive(): Promise<string | null> {
-    return (await this.dependencies.hostFilesApi?.selectAppArchive()) ?? null;
+    return this.importOperations.selectArchive();
   }
 
   async setSessionPinned(input: {

@@ -427,6 +427,25 @@ test("full mode fails with instructions when the baseline is missing", async () 
   assert.match(result.stderr, /baseline is missing/);
 });
 
+test("full mode rejects identity exemptions whose files no longer exist", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "agent-gui-degradation-"));
+  const baselinePath = join(workspaceRoot, "baseline/agent-gui.json");
+  await mkdir(dirname(baselinePath), { recursive: true });
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({
+      identityExemptFiles: ["packages/agent/gui/providerTargets.ts"],
+      metrics: {}
+    })}\n`
+  );
+
+  const result = runScript(workspaceRoot, baselinePath, []);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /stale identity exemptions/);
+  assert.match(result.stderr, /providerTargets\.ts/);
+});
+
 function runScript(workspaceRoot, baselinePath, args) {
   return spawnSync(process.execPath, [scriptPath, ...args], {
     encoding: "utf8",

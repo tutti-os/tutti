@@ -144,6 +144,19 @@ also rejects the deleted `workspaceAgentActivityTypes` aggregate, handwritten
 session/snapshot/presence mirrors, module-global runtime resolver access, and
 deprecated session lifecycle reads. The desktop reconcile diagnostics module
 has a narrow serialization-only exception for legacy lifecycle evidence.
+Direct React external-store subscription enforcement follows the actual
+`useSyncExternalStore(...)` argument dependency: an argument that directly or
+indirectly resolves to `getSessionEngine(...)` is rejected, while another store
+subscription in a file that separately reads the engine is allowed. Keep both
+the passing unrelated-store fixture and failing direct-engine fixture when this
+analysis changes; file-level token coexistence is not a valid substitute for
+the call relationship.
+
+`pnpm check:changed` schedules this activity-runtime boundary lane whenever a
+change touches `packages/agent/gui`, `packages/agent/activity-core`, Desktop's
+`workspace-agent` or `workspace-workbench` features, or the checker/fixture
+implementation itself. This keeps the same boundary in the normal changed-file
+loop instead of discovering violations only in `check:full`.
 
 ## Agent GUI Degradation Ratchet
 
@@ -170,7 +183,9 @@ is protected by a degradation ratchet:
   documents are illustrative only.
 - `identityExemptFiles` in the baseline lists identity-display files (provider
   icons, labels, title projections) whose provider branches are tracked in a
-  separate bucket. The list may only shrink.
+  separate bucket. The list may only shrink, and the checker rejects entries
+  whose files no longer exist so removed seams cannot leave permanent stale
+  exemptions.
 - `pnpm check:agent-gui-degradation:staged` runs in `pre-commit` and blocks
   new degradation patterns on staged added lines: uncommented timers (a
   `// timing: <reason>` comment is required outside engine/reducer/selector

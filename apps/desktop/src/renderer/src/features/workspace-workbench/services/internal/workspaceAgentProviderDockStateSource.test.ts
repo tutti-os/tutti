@@ -23,7 +23,9 @@ function createWorkspaceAgentProviderDockStateSource(
       getSnapshot: () => ({
         agents,
         agentTargets: [],
-        capturedAtUnixMs: 1
+        capturedAtUnixMs: 1,
+        error: null,
+        status: "ready"
       }),
       subscribe: () => () => {}
     }
@@ -112,7 +114,9 @@ test("agent provider dock state source reacts to live agent directory updates", 
       getSnapshot: () => ({
         agents,
         agentTargets: [],
-        capturedAtUnixMs: 1
+        capturedAtUnixMs: 1,
+        error: null,
+        status: "ready"
       }),
       subscribe: (listener) => {
         listeners.add(listener);

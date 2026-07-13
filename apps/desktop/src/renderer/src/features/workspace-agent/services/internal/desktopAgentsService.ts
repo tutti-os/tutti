@@ -7,6 +7,7 @@ import type {
 } from "../agentsService.interface.ts";
 
 export interface DesktopAgentsServiceDependencies {
+  clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
   now?: () => number;
   resolveAgentTargetIconUrl?: (identity: {
     iconKey: string | null;
@@ -14,13 +15,20 @@ export interface DesktopAgentsServiceDependencies {
   }) => string;
   /** Feature gate: gated providers keep their targets but are forced disabled (coming soon). */
   isAgentTargetProviderGated?: (provider: string) => boolean;
+  retryDelayMs?: number;
+  setTimeout?: (
+    callback: () => void,
+    delayMs: number
+  ) => ReturnType<typeof setTimeout>;
   tuttidClient: Pick<TuttidClient, "listAgentTargets">;
 }
 
 const EMPTY_AGENTS_SNAPSHOT: AgentsSnapshot = Object.freeze({
   agents: Object.freeze([]),
   agentTargets: Object.freeze([]),
-  capturedAtUnixMs: null
+  capturedAtUnixMs: null,
+  error: null,
+  status: "idle"
 });
 
 export class DesktopAgentsService implements IAgentsService {
@@ -30,6 +38,7 @@ export class DesktopAgentsService implements IAgentsService {
   private readonly listeners = new Set<() => void>();
   private loadPromise: Promise<AgentsSnapshot> | null = null;
   private requestSequence = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private snapshot: AgentsSnapshot = EMPTY_AGENTS_SNAPSHOT;
 
   constructor(dependencies: DesktopAgentsServiceDependencies) {
@@ -54,18 +63,22 @@ export class DesktopAgentsService implements IAgentsService {
     );
   }
 
-  load(signal?: AbortSignal): Promise<AgentsSnapshot> {
-    if (!this.loadPromise) {
-      this.loadPromise = this.fetchSnapshot(signal).finally(() => {
-        this.loadPromise = null;
-      });
+  hydrate(snapshot: AgentsSnapshot): void {
+    if (this.snapshot.status !== "idle" || snapshot.status === "idle") {
+      return;
     }
-    return this.loadPromise;
+    this.setSnapshot(snapshot);
+  }
+
+  load(signal?: AbortSignal): Promise<AgentsSnapshot> {
+    if (this.snapshot.status === "ready") {
+      return Promise.resolve(this.snapshot);
+    }
+    return this.requestSnapshot(signal);
   }
 
   refresh(signal?: AbortSignal): Promise<AgentsSnapshot> {
-    this.loadPromise = null;
-    return this.fetchSnapshot(signal);
+    return this.requestSnapshot(signal);
   }
 
   subscribe(listener: () => void): () => void {
@@ -75,40 +88,107 @@ export class DesktopAgentsService implements IAgentsService {
     };
   }
 
+  private requestSnapshot(signal?: AbortSignal): Promise<AgentsSnapshot> {
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    this.clearScheduledRetry();
+    const request = this.fetchSnapshot(signal).finally(() => {
+      if (this.loadPromise === request) {
+        this.loadPromise = null;
+      }
+    });
+    this.loadPromise = request;
+    return request;
+  }
+
   private async fetchSnapshot(signal?: AbortSignal): Promise<AgentsSnapshot> {
     if (signal?.aborted) {
       return this.snapshot;
     }
+    const previousSnapshot = this.snapshot;
     const requestSequence = ++this.requestSequence;
-    const response = await this.dependencies.tuttidClient.listAgentTargets();
-    if (signal?.aborted || requestSequence !== this.requestSequence) {
-      return this.snapshot;
-    }
-    const daemonAgentTargets = mapAgentTargetsToPresentations(
-      response.targets,
-      {
-        resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
+    this.setSnapshot({
+      ...previousSnapshot,
+      error: null,
+      status: "loading"
+    });
+    try {
+      const response = await this.dependencies.tuttidClient.listAgentTargets();
+      if (signal?.aborted || requestSequence !== this.requestSequence) {
+        if (requestSequence === this.requestSequence) {
+          this.setSnapshot(previousSnapshot);
+        }
+        return this.snapshot;
       }
-    );
-    const agentTargets = daemonAgentTargets.map((target) =>
-      this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
-        ? { ...target, enabled: false }
-        : target
-    );
-    const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets).map(
-      (agent) =>
+      const daemonAgentTargets = mapAgentTargetsToPresentations(
+        response.targets,
+        {
+          resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
+        }
+      );
+      const agentTargets = daemonAgentTargets.map((target) =>
+        this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
+          ? { ...target, enabled: false }
+          : target
+      );
+      const agents = mapAgentTargetPresentationsToAgents(
+        daemonAgentTargets
+      ).map((agent) =>
         this.dependencies.isAgentTargetProviderGated?.(agent.provider) === true
           ? { ...agent, availability: { status: "coming_soon" as const } }
           : agent
-    );
-    const nextSnapshot: AgentsSnapshot = {
-      agents,
-      agentTargets,
-      capturedAtUnixMs: this.dependencies.now?.() ?? Date.now()
-    };
-    this.snapshot = nextSnapshot;
+      );
+      const nextSnapshot: AgentsSnapshot = {
+        agents,
+        agentTargets,
+        capturedAtUnixMs: this.dependencies.now?.() ?? Date.now(),
+        error: null,
+        status: "ready"
+      };
+      this.setSnapshot(nextSnapshot);
+      return nextSnapshot;
+    } catch (error) {
+      if (signal?.aborted || requestSequence !== this.requestSequence) {
+        if (requestSequence === this.requestSequence) {
+          this.setSnapshot(previousSnapshot);
+        }
+        return this.snapshot;
+      }
+      this.setSnapshot({
+        ...previousSnapshot,
+        error: error instanceof Error ? error.message : String(error),
+        status: "error"
+      });
+      this.scheduleRetry();
+      throw error;
+    }
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryTimer) {
+      return;
+    }
+    const schedule = this.dependencies.setTimeout ?? setTimeout;
+    this.retryTimer = schedule(() => {
+      this.retryTimer = null;
+      void this.requestSnapshot().catch(() => undefined);
+    }, this.dependencies.retryDelayMs ?? 5_000);
+    this.retryTimer.unref?.();
+  }
+
+  private clearScheduledRetry(): void {
+    if (!this.retryTimer) {
+      return;
+    }
+    const cancel = this.dependencies.clearTimeout ?? clearTimeout;
+    cancel(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  private setSnapshot(snapshot: AgentsSnapshot): void {
+    this.snapshot = snapshot;
     this.emit();
-    return nextSnapshot;
   }
 
   private emit(): void {

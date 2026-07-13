@@ -2,7 +2,6 @@
   "identityExemptFiles": [
     "packages/agent/gui/agentGuiSessionProviderIconUrls.ts",
     "packages/agent/gui/app/renderer/shell/utils/format.ts",
-    "packages/agent/gui/providerTargets.ts",
     "packages/agent/gui/shared/agentConversationTitleProjection.ts",
     "packages/agent/gui/shared/managedAgentProviders.ts",
     "packages/agent/gui/shared/workspaceAgentProviderLabel.ts"
@@ -10,8 +9,8 @@
   "metrics": {
     "effectCount": 155,
     "fileLines": {
-      "packages/agent/gui/app/renderer/i18n/locales/en.ts": 2578,
-      "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 2415
+      "packages/agent/gui/app/renderer/i18n/locales/en.ts": 1893,
+      "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 1773
     },
     "goFileLengthExemptions": 2,
     "identityProviderBranches": 2,

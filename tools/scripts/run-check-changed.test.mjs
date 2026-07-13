@@ -4,10 +4,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  isAgentActivityRuntimeBoundaryRelevant,
   printSummary,
   runLanes,
   selectExistingLintFiles
 } from "./run-check-changed.mjs";
+
+test("activity runtime boundary lane covers package, desktop adapter, and checker changes", () => {
+  for (const file of [
+    "packages/agent/gui/AgentGUI.tsx",
+    "packages/agent/activity-core/src/engine/engine.ts",
+    "apps/desktop/src/renderer/src/features/workspace-agent/services/runtime.ts",
+    "apps/desktop/src/renderer/src/features/workspace-workbench/ui/Agent.tsx",
+    "tools/scripts/check-agent-activity-runtime-boundaries.mjs",
+    "tools/scripts/check-agent-activity-runtime-boundaries.test.mjs"
+  ]) {
+    assert.equal(isAgentActivityRuntimeBoundaryRelevant(file), true, file);
+  }
+  assert.equal(
+    isAgentActivityRuntimeBoundaryRelevant(
+      "apps/desktop/src/renderer/src/features/workspace-file-manager/file.ts"
+    ),
+    false
+  );
+});
 
 test("selectExistingLintFiles drops deleted lint targets", () => {
   const changedFiles = [

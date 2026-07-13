@@ -109,6 +109,24 @@ export interface AgentGUIAgent {
   provider: AgentGUIProvider;
 }
 
+export type AgentGUIAgentDirectoryStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error";
+
+export interface AgentGUIAgentDirectorySnapshot {
+  agents: readonly AgentGUIAgent[];
+  capturedAtUnixMs: number | null;
+  error: string | null;
+  status: AgentGUIAgentDirectoryStatus;
+}
+
+export interface AgentGUIAgentDirectoryPort {
+  getSnapshot(): AgentGUIAgentDirectorySnapshot;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface AgentGUIAllAgentsPresentation {
   iconUrl?: string | null;
 }
