@@ -295,8 +295,13 @@ export const AgentGUIHeroAgentCarousel = memo(
       }
       scene.moveTo(centerIndexRef.current, false);
       const resize = (): void => {
-        const rect = stage.getBoundingClientRect();
-        scene.setSize(rect.width, rect.height);
+        // Use layout (client) dimensions, not getBoundingClientRect: the stage
+        // sits inside a `scale(0.9)` layer, so the bounding rect is the
+        // transformed size (integer * 0.9 = fractional). Feeding that fraction
+        // to renderer.setSize() floors the WebGL buffer to a size that no
+        // longer matches the canvas's CSS box, leaving a ~1px seam at the
+        // edges. clientWidth/Height are pre-transform integer layout px.
+        scene.setSize(stage.clientWidth, stage.clientHeight);
       };
       resize();
       const observer =
