@@ -196,7 +196,9 @@ delimited by ---`, and the composer skill picker may show partial or
   After switching from Browser Node to another panel in the same layout region,
   the new panel title or sidebar appears but the previous web page still covers
   part of its content. The panel selection state correctly identifies only the
-  new panel as active.
+  new panel as active. The same root cause can make a Browser Node header menu
+  or dialog appear unresponsive: its trigger changes state, but the open Portal
+  is visually covered by the guest page.
 - Quick checks:
   Inspect the mounted `BrowserNode` and its `<webview>` in DevTools. If the
   parent panel has `visibility: hidden`, `display: none`, or an inactive class
@@ -212,15 +214,28 @@ delimited by ---`, and the composer skill picker may show partial or
   active state into every mounted Browser Node through its `hidden` prop, while
   retaining the mounted component when session preservation is required. Keep
   tools in separate layout regions, such as a bottom terminal tray, on an
-  independent visibility state.
+  independent visibility state. For Browser Node-owned dialogs, track open
+  overlays by node id and mark the registered webview invisible until all modal
+  overlay owners close; do not unmount the webview or discard its session.
+  Render header menus inline through one `MenuSurface` positioned from the
+  browser header, and do not hide the webview for that inline menu. Keep nested
+  action views inside the same surface instead of opening Radix or
+  viewport-menu Portals above the guest. Portaled controls opened from a dialog,
+  such as `SelectContent`, must use the `--z-dialog-popover` semantic layer. The
+  ordinary `--z-popover` layer renders behind dialog content and makes the
+  control appear unresponsive even though its open state changed correctly.
 - Validation:
   Cover every switch among panels in the shared region, verify the inactive
   Browser Node receives `hidden={true}`, and verify an independently placed
-  terminal remains open throughout the same switches. Renderer-only visibility
-  changes can use HMR; preload or Electron-main changes still require a process
-  restart.
+  terminal remains open throughout the same switches. Also open the Browser
+  Node overflow menu, its submenus, settings dialog, and clear-data confirmation
+  above a loaded guest page; verify the webview returns after each overlay
+  closes. Renderer-only visibility changes can use HMR; preload or Electron-main
+  changes still require a process restart.
 - References:
   [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
+  [browserNodeHostOverlayStore.ts](../../../packages/browser/workbench-node/src/react/browserNodeHostOverlayStore.ts)
+  [dropdown-menu.tsx](../../../packages/ui/system/src/components/dropdown-menu/dropdown-menu.tsx)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
 
 ### IME composition leaks native input into xterm terminals

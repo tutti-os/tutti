@@ -210,51 +210,17 @@ export function AgentGuiWorkbenchHeader({
             onOpenDetachedWindow
           })
         : null,
-      createElement(
-        Button as never,
-        {
-          "aria-label": toggleLabel,
-          className: conversationRailToggleButtonClassName,
-          "data-agent-gui-conversation-rail-auto-collapsed":
-            isConversationRailAutoCollapsed ? "true" : undefined,
-          "data-agent-gui-conversation-rail-collapsed":
-            isConversationRailCollapsed ? "true" : undefined,
-          "data-testid": "agent-gui-toggle-conversation-rail",
-          size: "icon-sm",
-          title: toggleLabel,
-          type: "button",
-          variant: "ghost",
-          onClick: (event) => {
-            event.stopPropagation();
-            onToggleConversationRail(!isConversationRailCollapsed);
-          },
-          onDoubleClick: (event) => event.stopPropagation(),
-          onPointerDown: (event) => event.stopPropagation()
-        },
-        createElement(PanelIcon, { className: headerChromeIconClassName })
-      ),
+      createConversationRailToggleButton({
+        isAutoCollapsed: isConversationRailAutoCollapsed,
+        isCollapsed: isConversationRailCollapsed,
+        label: toggleLabel,
+        onToggleConversationRail
+      }),
       isConversationRailCollapsed && onCreateConversation
-        ? createElement(
-            Button as never,
-            {
-              "aria-label": copy.newConversation,
-              className: headerChromeIconButtonClassName,
-              size: "icon-sm",
-              title: copy.newConversation,
-              type: "button",
-              variant: "ghost",
-              onClick: (event) => {
-                event.stopPropagation();
-                onCreateConversation();
-              },
-              onDoubleClick: (event) => event.stopPropagation(),
-              onPointerDown: (event) => event.stopPropagation()
-            },
-            createElement(CreateChatIcon, {
-              "aria-hidden": true,
-              className: headerChromeIconClassName
-            })
-          )
+        ? createNewConversationButton({
+            label: copy.newConversation,
+            onCreateConversation
+          })
         : null,
       isConversationRailCollapsed && sessionTitle
         ? createElement(
@@ -327,6 +293,54 @@ export function AgentGuiWorkbenchHeader({
   );
 }
 
+function createConversationRailToggleButton({
+  isAutoCollapsed,
+  isCollapsed,
+  label,
+  onToggleConversationRail
+}: {
+  isAutoCollapsed: boolean;
+  isCollapsed: boolean;
+  label: string;
+  onToggleConversationRail: (nextCollapsed: boolean) => void;
+}): ReactNode {
+  const button = createElement(
+    Button as never,
+    {
+      "aria-label": label,
+      className: conversationRailToggleButtonClassName,
+      "data-agent-gui-conversation-rail-auto-collapsed": isAutoCollapsed
+        ? "true"
+        : undefined,
+      "data-agent-gui-conversation-rail-collapsed": isCollapsed
+        ? "true"
+        : undefined,
+      "data-testid": "agent-gui-toggle-conversation-rail",
+      size: "icon-sm",
+      type: "button",
+      variant: "ghost",
+      onClick: (event) => {
+        event.stopPropagation();
+        onToggleConversationRail(!isCollapsed);
+      },
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    createElement(PanelIcon, { className: headerChromeIconClassName })
+  );
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
+}
+
 function createDetachedWindowButton({
   label,
   onOpenDetachedWindow
@@ -351,6 +365,46 @@ function createDetachedWindowButton({
       onPointerDown: (event) => event.stopPropagation()
     },
     createElement(ExternalLink, {
+      "aria-hidden": true,
+      className: headerChromeIconClassName
+    })
+  );
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
+}
+
+function createNewConversationButton({
+  label,
+  onCreateConversation
+}: {
+  label: string;
+  onCreateConversation: () => void;
+}): ReactNode {
+  const button = createElement(
+    Button as never,
+    {
+      "aria-label": label,
+      className: headerChromeIconButtonClassName,
+      size: "icon-sm",
+      type: "button",
+      variant: "ghost",
+      onClick: (event) => {
+        event.stopPropagation();
+        onCreateConversation();
+      },
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    createElement(CreateChatIcon, {
       "aria-hidden": true,
       className: headerChromeIconClassName
     })

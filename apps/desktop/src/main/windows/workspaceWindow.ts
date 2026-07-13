@@ -26,6 +26,7 @@ import {
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
 import { resolveCenteredWindowBounds } from "./workspaceWindowBounds.ts";
+import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -42,6 +43,11 @@ export interface CreateWorkspaceWindowOptions {
 }
 
 const workspaceWindows = new Set<BrowserWindow>();
+// DAU/PV belongs to the first workspace renderer for the lifetime of this main
+// process. Do not derive this from workspaceWindows.size: closing the owner
+// must not let a later window report another process-level open/pageview.
+const primaryWindowAnalyticsClaim = createPrimaryWindowAnalyticsClaim();
+const reportPredefinePageviewByWindow = new WeakMap<BrowserWindow, boolean>();
 const workspaceWindowHeaderHeightPx = 52;
 const workspaceWindowMacTrafficLightInsetPx = 16;
 const workspaceWindowMacTrafficLightSizePx = 12;
@@ -105,6 +111,10 @@ export function createWorkspaceWindow(
       webviewTag: true
     }
   });
+  reportPredefinePageviewByWindow.set(
+    workspaceWindow,
+    primaryWindowAnalyticsClaim.claim()
+  );
 
   const pendingWorkspaceAppGuestPartitions: (string | null | undefined)[] = [];
   installBrowserWebviewSecurity({
@@ -254,6 +264,8 @@ export function loadAgentWindowContent(
   const windowIntentSearchOptions = {
     dockPlacement: options.dockPlacement,
     locale: options.locale,
+    reportPredefinePageview:
+      reportPredefinePageviewByWindow.get(agentWindow) === true,
     themeAppearance: options.theme.appearance,
     themeSource: options.theme.source
   };
@@ -297,6 +309,8 @@ export function loadWorkspaceWindowContent(
   const windowIntentSearchOptions = {
     dockPlacement: options.dockPlacement,
     locale: options.locale,
+    reportPredefinePageview:
+      reportPredefinePageviewByWindow.get(workspaceWindow) === true,
     themeAppearance: options.theme.appearance,
     themeSource: options.theme.source
   };

@@ -7,6 +7,14 @@ test("BrowserNode hides webviews for node-level and host-window minimization", (
   assert.equal(
     shouldHideBrowserNodeWebview({
       hidden: false,
+      isHostOverlayOpen: true,
+      isHostMinimizing: false
+    }),
+    true
+  );
+  assert.equal(
+    shouldHideBrowserNodeWebview({
+      hidden: false,
       isHostMinimizing: false
     }),
     false
@@ -48,6 +56,6 @@ test("browser workbench nodes pass minimized state to BrowserNode", () => {
   assert.match(workspaceAppSource, /hidden=\{context\.node\.isMinimized\}/);
   assert.match(
     browserNodeSource,
-    /shouldHideBrowserNodeWebview\(\{\s*hidden,\s*isHostMinimizing\s*\}\)\s*&&\s*"invisible"/
+    /shouldHideBrowserNodeWebview\(\{[\s\S]*?hidden,[\s\S]*?isHostMinimizing,[\s\S]*?isHostOverlayOpen:[\s\S]*?\}\)\s*&&\s*"invisible"/
   );
 });

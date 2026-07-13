@@ -1652,6 +1652,12 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s
     );
     expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*{[^}]*padding-right:\s*0;/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-workbench-header__detached-window\s*{\s*margin-left:\s*auto;/s
     );
     expect(css).toMatch(

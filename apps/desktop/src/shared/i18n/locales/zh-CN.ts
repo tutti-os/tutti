@@ -137,8 +137,8 @@ export const zhCN = {
       switchWorkspaceUnavailable: "暂时无法加载工作区列表。"
     },
     agentGui: {
-      collapseConversationRail: "收起会话列表",
-      expandConversationRail: "展开会话列表",
+      collapseConversationRail: "隐藏侧边栏",
+      expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
       newConversation: "新建会话",
       openDetachedWindow: "在独立窗口打开",

@@ -110,9 +110,9 @@ export type AgentGuiWorkbenchContributionCopyOverrides =
   Partial<AgentGuiWorkbenchContributionCopy>;
 
 export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
-  collapseConversationRail: "Collapse conversation rail",
+  collapseConversationRail: "Hide sidebar",
   close: "Close",
-  expandConversationRail: "Expand conversation rail",
+  expandConversationRail: "Show sidebar",
   fallbackAgentLabel: "Agent",
   maximize: "Maximize",
   minimize: "Minimize",

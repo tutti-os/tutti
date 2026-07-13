@@ -3,14 +3,9 @@ import {
   ArrowRightIcon,
   Badge,
   Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Input,
   LaunchIcon,
   LoadingIcon,
-  MoreHorizontalIcon,
   RefreshIcon,
   WarningLinedIcon,
   ViewportMenuSurface,
@@ -18,18 +13,30 @@ import {
   menuItemClassName
 } from "@tutti-os/ui-system";
 import type { WorkbenchDisplayMode } from "@tutti-os/workbench-surface";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from "react";
 import type { HTMLAttributes, JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type { BrowserNodeControllerState } from "../core/nodeController.ts";
 import type {
   BrowserNodeNavigationPolicy,
   BrowserNodeRuntimeError,
+  BrowserNodeRuntimeState,
   BrowserNodeSessionMode
 } from "../core/types.ts";
 import { useBrowserNodeController } from "./useBrowserNodeController.ts";
 import { useBrowserNodeWebview } from "./useBrowserNodeWebview.ts";
+import { BrowserNodeActionsMenu } from "./BrowserNodeActionsMenu.tsx";
 import { shouldHideBrowserNodeWebview } from "./webviewVisibility.ts";
+import {
+  isBrowserNodeHostOverlayOpen,
+  subscribeBrowserNodeHostOverlay
+} from "./browserNodeHostOverlayStore.ts";
 
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
@@ -103,6 +110,7 @@ export function BrowserNode({
   });
   const runtime = state.runtime;
   const isHostMinimizing = useHostWindowMinimizing();
+  const isHostOverlayOpen = useBrowserNodeHostOverlayOpen(nodeId);
   const lastNavigatedUrlRef = useRef<string | null>(
     state.runtime.url?.trim() || null
   );
@@ -167,6 +175,8 @@ export function BrowserNode({
           feature={feature}
           isCold={runtime.lifecycle === "cold"}
           isLoading={runtime.isLoading}
+          nodeId={nodeId}
+          runtime={runtime}
           onDraftUrlChange={(nextUrl) => controller.setDraftUrl(nextUrl)}
           onFocusRequest={onFocusRequest}
           onSubmitUrl={() => {
@@ -206,8 +216,12 @@ export function BrowserNode({
             className={cn(
               "absolute inset-0 h-full w-full border-0 bg-[var(--background-panel)]",
               isShowingLoadError ? "hidden pointer-events-none" : "visible",
-              shouldHideBrowserNodeWebview({ hidden, isHostMinimizing }) &&
-                "invisible"
+              shouldHideBrowserNodeWebview({
+                hidden,
+                isHostMinimizing,
+                isHostOverlayOpen:
+                  isHostOverlayOpen || devToolsContextMenu !== null
+              }) && "invisible"
             )}
             data-browser-node-webview="true"
             partition={webviewPartition}
@@ -287,6 +301,18 @@ export function BrowserNode({
   );
 }
 
+function useBrowserNodeHostOverlayOpen(nodeId: string): boolean {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeBrowserNodeHostOverlay(nodeId, listener),
+    [nodeId]
+  );
+  const getSnapshot = useCallback(
+    () => isBrowserNodeHostOverlayOpen(nodeId),
+    [nodeId]
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+}
+
 export interface BrowserNodeWorkbenchHeaderProps {
   className?: string;
   defaultActions?: ReactNode;
@@ -330,6 +356,7 @@ export function BrowserNodeWorkbenchHeader({
       feature={feature}
       isCold={runtime.lifecycle === "cold"}
       isLoading={runtime.isLoading}
+      nodeId={nodeId}
       onCloseRequest={onCloseRequest}
       onDraftUrlChange={(nextUrl) => controller.setDraftUrl(nextUrl)}
       onFocusRequest={onFocusRequest}
@@ -359,6 +386,7 @@ export function BrowserNodeWorkbenchHeader({
       onReload={() => {
         void controller.reload().catch(() => undefined);
       }}
+      runtime={runtime}
       withBorder={false}
     />
   );
@@ -375,6 +403,7 @@ export function BrowserNodeHeader({
   feature,
   isCold = false,
   isLoading,
+  nodeId,
   onCloseRequest,
   onDraftUrlChange,
   onFocusRequest,
@@ -384,6 +413,7 @@ export function BrowserNodeHeader({
   onOpenExternal,
   onReload,
   onSubmitUrl,
+  runtime,
   withBorder = true
 }: {
   canGoBack: boolean;
@@ -396,6 +426,7 @@ export function BrowserNodeHeader({
   feature: BrowserNodeFeature;
   isCold?: boolean;
   isLoading: boolean;
+  nodeId: string;
   onCloseRequest?: () => void;
   onDraftUrlChange: (nextUrl: string) => void;
   onFocusRequest?: () => void;
@@ -405,6 +436,7 @@ export function BrowserNodeHeader({
   onOpenExternal?: () => void;
   onReload: () => void;
   onSubmitUrl: () => void;
+  runtime: BrowserNodeRuntimeState;
   withBorder?: boolean;
 }): JSX.Element {
   const [reloadAnimationKey, setReloadAnimationKey] = useState(0);
@@ -417,7 +449,7 @@ export function BrowserNodeHeader({
   return (
     <div
       className={cn(
-        "flex h-[var(--workbench-header-height,38px)] min-h-[var(--workbench-header-height,38px)] items-center gap-2 bg-[var(--background-panel)] px-2 pl-3",
+        "relative z-[1] flex h-[var(--workbench-header-height,38px)] min-h-[var(--workbench-header-height,38px)] items-center gap-2 overflow-visible bg-[var(--background-panel)] px-2 pl-3",
         withBorder ? "border-b border-border" : null,
         className
       )}
@@ -516,27 +548,12 @@ export function BrowserNodeHeader({
           <LaunchIcon className="size-[15px]" />
         </BrowserNodeHeaderButton>
       ) : null}
-      {onOpenDevTools ? (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={feature.i18n.t("actions.more")}
-              className="rounded-md"
-              size="icon-sm"
-              title={feature.i18n.t("actions.more")}
-              type="button"
-              variant="chrome"
-            >
-              <MoreHorizontalIcon className="size-[15px] rotate-90" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-40">
-            <DropdownMenuItem onSelect={onOpenDevTools}>
-              {feature.i18n.t("actions.openDevTools")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
+      <BrowserNodeActionsMenu
+        feature={feature}
+        nodeId={nodeId}
+        onOpenDevTools={onOpenDevTools}
+        runtime={runtime}
+      />
       {isCold ? (
         <Badge
           className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"

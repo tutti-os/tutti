@@ -1,8 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentGuiWorkbenchHeader } from "./header.ts";
 
 describe("AgentGuiWorkbenchHeader", () => {
+  it.each([
+    { collapsed: false, label: "Hide sidebar" },
+    { collapsed: true, label: "Show sidebar" }
+  ])("shows the $label tooltip on hover", async ({ collapsed, label }) => {
+    render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Hide sidebar",
+          expandConversationRail: "Show sidebar",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation"
+        }}
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed={collapsed}
+        nodeId="agent-gui-node-1"
+        onToggleConversationRail={() => {}}
+      />
+    );
+
+    const toggleButton = screen.getByRole("button", { name: label });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(toggleButton, { pointerType: "mouse" });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(label);
+  });
+
+  it("shows the new conversation tooltip on hover", async () => {
+    render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Hide sidebar",
+          expandConversationRail: "Show sidebar",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation"
+        }}
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed
+        nodeId="agent-gui-node-1"
+        onCreateConversation={() => {}}
+        onToggleConversationRail={() => {}}
+      />
+    );
+
+    const newConversationButton = screen.getByRole("button", {
+      name: "New conversation"
+    });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    fireEvent.pointerMove(newConversationButton, { pointerType: "mouse" });
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "New conversation"
+    );
+  });
+
   it("can hide the generic app title for a standalone window", () => {
     render(
       <AgentGuiWorkbenchHeader

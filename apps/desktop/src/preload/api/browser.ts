@@ -18,6 +18,18 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
         payload
       );
     },
+    chooseDownloadDirectory(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.chooseDownloadDirectory,
+        payload
+      );
+    },
+    clearBrowsingData(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.clearBrowsingData,
+        payload
+      );
+    },
     close(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.close, payload);
     },
@@ -26,6 +38,15 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
     },
     goForward(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.goForward, payload);
+    },
+    findInPage(payload) {
+      return invokeDesktopApi(desktopIpcChannels.browser.findInPage, payload);
+    },
+    importCookies(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.importCookies,
+        payload
+      );
     },
     navigate(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.navigate, payload);
@@ -49,6 +70,12 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
     openExternal(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.openExternal, payload);
     },
+    performDownloadAction(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.performDownloadAction,
+        payload
+      );
+    },
     onEvent(listener: (event: BrowserNodeEvent) => void): () => void {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -69,6 +96,9 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
         payload
       );
     },
+    printPage(payload) {
+      return invokeDesktopApi(desktopIpcChannels.browser.printPage, payload);
+    },
     registerGuest(payload) {
       return invokeDesktopApi(
         desktopIpcChannels.browser.registerGuest,
@@ -77,6 +107,30 @@ export function createBrowserDesktopApi(): DesktopBrowserApi {
     },
     reload(payload) {
       return invokeDesktopApi(desktopIpcChannels.browser.reload, payload);
+    },
+    saveScreenshot(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.saveScreenshot,
+        payload
+      );
+    },
+    setDeviceEmulation(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.setDeviceEmulation,
+        payload
+      );
+    },
+    setZoomFactor(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.setZoomFactor,
+        payload
+      );
+    },
+    stopFindInPage(payload) {
+      return invokeDesktopApi(
+        desktopIpcChannels.browser.stopFindInPage,
+        payload
+      );
     },
     unregisterGuest(payload) {
       return invokeDesktopApi(

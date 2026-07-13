@@ -139,8 +139,8 @@ export const en = {
       switchWorkspaceUnavailable: "Unable to load workspaces right now."
     },
     agentGui: {
-      collapseConversationRail: "Collapse session list",
-      expandConversationRail: "Expand session list",
+      collapseConversationRail: "Hide sidebar",
+      expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
       openDetachedWindow: "Open in detached window",

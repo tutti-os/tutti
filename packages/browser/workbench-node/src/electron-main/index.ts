@@ -6,6 +6,7 @@ export type {
 export {
   registerBrowserNodeElectronMain,
   type BrowserNodeElectronDevToolsContextMenuInput,
+  type BrowserNodeElectronScreenshotSaveInput,
   type BrowserNodeElectronMainChannels,
   type RegisterBrowserNodeElectronMainInput
 } from "./registerElectronMain.ts";

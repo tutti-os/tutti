@@ -23,6 +23,22 @@ daemon lifecycle  ──direct▶  merge common params  ──▶  best-effort H
 Renderer does not load or initialize any Tea SDK. It only sends raw event
 payloads to tuttid via a local HTTP call. tuttid is the sole Tea client.
 
+### Multi-window pageview ownership
+
+The desktop main process grants predefine pageview ownership to only the first
+workspace renderer window created during the current app process. It encodes
+that decision in the window bootstrap query as
+`reportPredefinePageview=1|0`. The owning window reports the initial
+`app.pageview` and later focus pageviews; secondary OS or standalone Agent
+windows do not start the predefine pageview listener.
+
+Ownership is process-scoped and is not transferred when the first window
+closes. A new desktop process creates a new owner. Browser-only and legacy
+renderer routes without the bootstrap parameter keep pageview reporting
+enabled for compatibility. This gate applies only to the predefine
+`app.pageview` stream used for DAU/PV measurement; workspace and feature
+business events continue to report from the window where the action occurs.
+
 **Why tuttid owns reporting:**
 
 - tuttid always starts before the renderer, so there is no Tea SDK startup

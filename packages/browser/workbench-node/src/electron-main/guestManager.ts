@@ -1,31 +1,48 @@
 import type {
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
-  BrowserNodeRuntimeError,
   BrowserNodeSessionMode
 } from "../core/types.ts";
 import {
   normalizeHostBrowserComparableUrl,
   resolveBrowserNavigationUrl,
-  resolveHostBrowserNavigationUrl,
-  type BrowserNavigationUrlResolution
+  resolveHostBrowserNavigationUrl
 } from "../core/url.ts";
 import type {
   BrowserGuestManager,
   BrowserGuestManagerInput,
-  BrowserGuestNativeImage,
   BrowserPreferredColorScheme,
   BrowserGuestWebContents
 } from "./types.ts";
-
-const browserPreviewMaxWidth = 260;
-const browserPreviewMaxHeight = 170;
-const abortedNavigationErrorCode = -3;
+import { createBrowserGuestDownloadController } from "./guestDownloads.ts";
+import {
+  clearBrowserGuestData,
+  printBrowserGuestPage,
+  readFoundInPageResult,
+  saveBrowserGuestScreenshot,
+  setBrowserGuestDeviceEmulation,
+  setBrowserGuestZoomFactor
+} from "./guestPageActions.ts";
+import { importBrowserGuestCookies } from "./cookieImport.ts";
+import {
+  canGuestGoBack,
+  canGuestGoForward,
+  emitBrowserNavigationFailed,
+  goGuestBack,
+  goGuestForward,
+  isAbortedNavigationError,
+  isBrowserNavigationAllowedByPolicy,
+  isGoogleGisOAuthPopupUrl,
+  isHttpErrorStatusCode,
+  resizeBrowserPreviewImage,
+  resolveBrowserNodeUrlError
+} from "./guestNavigation.ts";
 
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
   contents: BrowserGuestWebContents | null;
   desiredUrl: string;
+  findQuery: string;
   lifecycle: BrowserNodeLifecycle;
   listeners: Array<{
     event: string;
@@ -38,166 +55,6 @@ interface BrowserGuestSession {
   sessionMode: BrowserNodeSessionMode;
   sessionPartition: string | null;
   webContentsId: number | null;
-}
-
-function canGuestGoBack(contents: BrowserGuestWebContents): boolean {
-  return contents.navigationHistory?.canGoBack() ?? contents.canGoBack();
-}
-
-function canGuestGoForward(contents: BrowserGuestWebContents): boolean {
-  return contents.navigationHistory?.canGoForward() ?? contents.canGoForward();
-}
-
-function goGuestBack(contents: BrowserGuestWebContents): void {
-  if (contents.navigationHistory) {
-    contents.navigationHistory.goBack();
-    return;
-  }
-  contents.goBack();
-}
-
-function goGuestForward(contents: BrowserGuestWebContents): void {
-  if (contents.navigationHistory) {
-    contents.navigationHistory.goForward();
-    return;
-  }
-  contents.goForward();
-}
-
-function resolveBrowserNodeUrlError(
-  resolved: BrowserNavigationUrlResolution
-): BrowserNodeRuntimeError {
-  if (resolved.errorCode === "invalid-url") {
-    return { code: "invalid-url" };
-  }
-
-  if (resolved.errorCode === "unsupported-protocol") {
-    return {
-      code: "unsupported-protocol",
-      params: resolved.errorParams
-    };
-  }
-
-  return { code: "unsupported-url" };
-}
-
-function resizeBrowserPreviewImage(
-  image: BrowserGuestNativeImage
-): BrowserGuestNativeImage {
-  if (image.isEmpty?.() === true || !image.resize || !image.getSize) {
-    return image;
-  }
-
-  const size = image.getSize();
-  if (size.width <= 0 || size.height <= 0) {
-    return image;
-  }
-
-  const scale = Math.min(
-    1,
-    browserPreviewMaxWidth / size.width,
-    browserPreviewMaxHeight / size.height
-  );
-  if (scale >= 1) {
-    return image;
-  }
-
-  return image.resize({
-    height: Math.max(1, Math.round(size.height * scale)),
-    quality: "good",
-    width: Math.max(1, Math.round(size.width * scale))
-  });
-}
-
-function isAbortedNavigationError(input: {
-  errorCode?: number;
-  errorDescription?: string;
-}): boolean {
-  return (
-    input.errorCode === abortedNavigationErrorCode ||
-    input.errorDescription === "ERR_ABORTED"
-  );
-}
-
-function isHttpErrorStatusCode(statusCode: number | undefined): boolean {
-  return statusCode !== undefined && statusCode >= 400;
-}
-
-function emitBrowserNavigationFailed(input: {
-  emit: BrowserGuestManagerInput["emit"];
-  errorCode?: number;
-  errorDescription?: string;
-  nodeId: string;
-}): void {
-  input.emit({
-    code: "navigation-failed",
-    diagnosticMessage: input.errorDescription,
-    nodeId: input.nodeId,
-    params:
-      input.errorCode === undefined
-        ? undefined
-        : { errorCode: input.errorCode },
-    type: "error"
-  });
-}
-
-function isGoogleGisOAuthPopupUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.hostname !== "accounts.google.com" ||
-      (parsed.pathname !== "/o/oauth2/v2/auth" &&
-        parsed.pathname !== "/o/oauth2/auth")
-    ) {
-      return false;
-    }
-
-    const isGisSdkPopup =
-      parsed.searchParams.get("gsiwebsdk") === "gis_attributes";
-    const isPopupResponse =
-      parsed.searchParams.get("display") === "popup" &&
-      (parsed.searchParams.get("response_mode") === "form_post" ||
-        parsed.searchParams.get("redirect_uri") === "gis_transform");
-
-    return isGisSdkPopup || isPopupResponse;
-  } catch {
-    return false;
-  }
-}
-
-function resolveBrowserNavigationOrigin(url: string): string | null {
-  const resolved = resolveBrowserNavigationUrl(url);
-  if (!resolved.url) {
-    return null;
-  }
-
-  try {
-    return new URL(resolved.url).origin;
-  } catch {
-    return null;
-  }
-}
-
-function isBrowserNavigationAllowedByPolicy(input: {
-  policy: BrowserNodeNavigationPolicy | null;
-  url: string;
-}): boolean {
-  if (!input.policy) {
-    return true;
-  }
-
-  if (input.policy.mode === "same-origin") {
-    const policyOrigin = resolveBrowserNavigationOrigin(input.policy.originUrl);
-    const nextOrigin = resolveBrowserNavigationOrigin(input.url);
-    return (
-      policyOrigin !== null &&
-      nextOrigin !== null &&
-      policyOrigin === nextOrigin
-    );
-  }
-
-  return true;
 }
 
 async function applyPreferredColorSchemeToGuest(
@@ -232,17 +89,29 @@ async function applyPreferredColorSchemeToGuest(
 }
 
 export function createBrowserGuestManager({
+  chooseDownloadDirectory,
   emit,
   getPreferredColorScheme,
   logger,
+  openDownloadedFile,
   openExternal,
   prepareSession,
   resolveWebContents,
+  saveScreenshot,
+  selectCookieImport,
+  showDownloadedFile,
   syncPreferredColorScheme,
   subscribePreferredColorScheme
 }: BrowserGuestManagerInput): BrowserGuestManager {
   const sessions = new Map<string, BrowserGuestSession>();
   const nodeIdByWebContentsId = new Map<number, string>();
+  const downloadController = createBrowserGuestDownloadController({
+    emit,
+    getNodeIdByWebContentsId: (webContentsId) =>
+      nodeIdByWebContentsId.get(webContentsId),
+    openDownloadedFile,
+    showDownloadedFile
+  });
   let preferredColorScheme = getPreferredColorScheme?.() ?? null;
 
   const getSession = (
@@ -279,6 +148,7 @@ export function createBrowserGuestManager({
       appliedColorScheme: null,
       contents: null,
       desiredUrl: input?.url ?? "about:blank",
+      findQuery: "",
       lifecycle: "cold",
       listeners: [],
       navigationFailureSequence: 0,
@@ -310,7 +180,8 @@ export function createBrowserGuestManager({
       type: "state",
       url: contents
         ? contents.getURL() || session.desiredUrl
-        : session.desiredUrl
+        : session.desiredUrl,
+      zoomFactor: contents?.zoomFactor ?? 1
     });
   };
 
@@ -419,6 +290,18 @@ export function createBrowserGuestManager({
       });
     };
     const onDestroyed = () => detachGuest(session);
+    const onFoundInPage = (...args: unknown[]) => {
+      const result = readFoundInPageResult(args[1]);
+      if (!result) {
+        return;
+      }
+      emit({
+        ...result,
+        nodeId: session.nodeId,
+        query: session.findQuery,
+        type: "find-result"
+      });
+    };
     const onWillNavigate = (...args: unknown[]) => {
       const event =
         args[0] && typeof args[0] === "object" && "preventDefault" in args[0]
@@ -448,7 +331,8 @@ export function createBrowserGuestManager({
       { event: "page-title-updated", listener: onStateChange },
       { event: "will-navigate", listener: onWillNavigate },
       { event: "did-fail-load", listener: onFailLoad },
-      { event: "destroyed", listener: onDestroyed }
+      { event: "destroyed", listener: onDestroyed },
+      { event: "found-in-page", listener: onFoundInPage }
     ];
 
     for (const record of records) {
@@ -591,6 +475,22 @@ export function createBrowserGuestManager({
 
       return resizeBrowserPreviewImage(image).toDataURL();
     },
+    async chooseDownloadDirectory(input) {
+      const browserSession = sessions.get(input.nodeId);
+      const electronSession = browserSession?.contents?.session;
+      if (!chooseDownloadDirectory || !electronSession?.setDownloadPath) {
+        return { canceled: true, directoryPath: null };
+      }
+      const directoryPath = await chooseDownloadDirectory();
+      if (!directoryPath) {
+        return { canceled: true, directoryPath: null };
+      }
+      electronSession.setDownloadPath(directoryPath);
+      return { canceled: false, directoryPath };
+    },
+    async clearBrowsingData(input) {
+      await clearBrowserGuestData(sessions.get(input.nodeId)?.contents);
+    },
     close(input) {
       const session = sessions.get(input.nodeId);
       if (session) {
@@ -643,6 +543,40 @@ export function createBrowserGuestManager({
       }
       return Promise.resolve();
     },
+    findInPage(input) {
+      const browserSession = sessions.get(input.nodeId);
+      const contents = browserSession?.contents;
+      const text = input.text.trim();
+      if (!browserSession || !contents || contents.isDestroyed()) {
+        return Promise.resolve();
+      }
+      browserSession.findQuery = text;
+      if (!contents.findInPage || text.length === 0) {
+        contents.stopFindInPage?.("clearSelection");
+        emit({
+          activeMatchOrdinal: 0,
+          finalUpdate: true,
+          matches: 0,
+          nodeId: input.nodeId,
+          query: text,
+          type: "find-result"
+        });
+        return Promise.resolve();
+      }
+      contents.findInPage(text, {
+        findNext: input.findNext,
+        forward: input.forward
+      });
+      return Promise.resolve();
+    },
+    async importCookies(input) {
+      const contents = sessions.get(input.nodeId)?.contents;
+      if (!contents || contents.isDestroyed() || !contents.session?.cookies) {
+        return { canceled: false, imported: 0, skipped: 0 };
+      }
+      const source = selectCookieImport ? await selectCookieImport() : null;
+      return importBrowserGuestCookies(contents, source);
+    },
     handleGuestOpenUrl(webContentsId, input) {
       const nodeId = nodeIdByWebContentsId.get(webContentsId);
       const session = nodeId ? sessions.get(nodeId) : null;
@@ -679,6 +613,9 @@ export function createBrowserGuestManager({
       }
       await Promise.resolve(openExternal(resolved.url));
     },
+    async performDownloadAction(input) {
+      await downloadController.perform(input);
+    },
     openDevTools(input) {
       const session = sessions.get(input.nodeId);
       const contents = session?.contents ?? null;
@@ -705,6 +642,9 @@ export function createBrowserGuestManager({
         sessionPartition: input.sessionPartition,
         url: resolveOptionalDesiredUrl(input.url)
       });
+    },
+    printPage(input) {
+      return printBrowserGuestPage(sessions.get(input.nodeId)?.contents);
     },
     async registerGuest(input) {
       await prepareSession?.({
@@ -748,6 +688,9 @@ export function createBrowserGuestManager({
       session.contents = contents;
       session.webContentsId = input.webContentsId;
       nodeIdByWebContentsId.set(input.webContentsId, input.nodeId);
+      if (contents.session) {
+        downloadController.attach(contents.session);
+      }
       session.lifecycle = "active";
       contents.setWindowOpenHandler?.(({ url }) => {
         if (isGoogleGisOAuthPopupUrl(url)) {
@@ -776,6 +719,45 @@ export function createBrowserGuestManager({
       }
       return Promise.resolve();
     },
+    async saveScreenshot(input) {
+      return saveBrowserGuestScreenshot(
+        sessions.get(input.nodeId)?.contents,
+        input,
+        saveScreenshot
+      );
+    },
+    setDeviceEmulation(input) {
+      setBrowserGuestDeviceEmulation(
+        sessions.get(input.nodeId)?.contents,
+        input.preset
+      );
+      return Promise.resolve();
+    },
+    setZoomFactor(input) {
+      const browserSession = sessions.get(input.nodeId);
+      if (!setBrowserGuestZoomFactor(browserSession?.contents, input)) {
+        return Promise.resolve();
+      }
+      publishState(browserSession!);
+      return Promise.resolve();
+    },
+    stopFindInPage(input) {
+      const browserSession = sessions.get(input.nodeId);
+      const contents = browserSession?.contents;
+      if (browserSession) {
+        browserSession.findQuery = "";
+      }
+      contents?.stopFindInPage?.(input.action ?? "clearSelection");
+      emit({
+        activeMatchOrdinal: 0,
+        finalUpdate: true,
+        matches: 0,
+        nodeId: input.nodeId,
+        query: "",
+        type: "find-result"
+      });
+      return Promise.resolve();
+    },
     unregisterGuest(input) {
       const session = sessions.get(input.nodeId);
       if (!session || session.webContentsId !== input.webContentsId) {
@@ -787,6 +769,7 @@ export function createBrowserGuestManager({
     },
     dispose() {
       unsubscribePreferredColorScheme?.();
+      downloadController.dispose();
     }
   };
 }

@@ -10,6 +10,8 @@ import {
 } from "./index.ts";
 import { createBrowserGuestManager } from "./guestManager.ts";
 import type {
+  BrowserGuestDownloadItem,
+  BrowserGuestElectronSession,
   BrowserGuestNativeImage,
   BrowserGuestWebContents,
   BrowserGuestWindowOpenHandlerResponse
@@ -525,6 +527,111 @@ test("opens Browser Node guest devtools for a registered node", async () => {
   assert.deepEqual(contents.openDevToolsOptions, [
     { activate: true, mode: "detach" }
   ]);
+});
+
+test("runs Browser Node page actions against the registered guest", async () => {
+  const contents = new MockBrowserGuestWebContents(18);
+  const events: BrowserNodeEvent[] = [];
+  let screenshotFileName = "";
+  let openedDownloadPath = "";
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openDownloadedFile: (path) => {
+      openedDownloadPath = path;
+    },
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null),
+    saveScreenshot: async (capture) => {
+      screenshotFileName = capture.suggestedFileName;
+      return { filePath: "/tmp/example.png", saved: true };
+    }
+  });
+
+  contents.title = "Example / Home";
+  await manager.registerGuest({
+    nodeId: "browser-actions",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: contents.id
+  });
+
+  await manager.findInPage({
+    findNext: false,
+    forward: true,
+    nodeId: "browser-actions",
+    text: "hello"
+  });
+  assert.deepEqual(contents.findInPageCalls, [
+    {
+      options: { findNext: false, forward: true },
+      text: "hello"
+    }
+  ]);
+  contents.emit(
+    "found-in-page",
+    {},
+    {
+      activeMatchOrdinal: 2,
+      finalUpdate: true,
+      matches: 4
+    }
+  );
+  assert.deepEqual(
+    [...events].reverse().find((event) => event.type === "find-result"),
+    {
+      activeMatchOrdinal: 2,
+      finalUpdate: true,
+      matches: 4,
+      nodeId: "browser-actions",
+      query: "hello",
+      type: "find-result"
+    }
+  );
+
+  await manager.setZoomFactor({ nodeId: "browser-actions", zoomFactor: 8 });
+  assert.equal(contents.zoomFactor, 5);
+
+  await manager.printPage({ nodeId: "browser-actions" });
+  assert.equal(contents.printCalls, 1);
+
+  assert.deepEqual(
+    await manager.saveScreenshot({
+      mode: "visible",
+      nodeId: "browser-actions"
+    }),
+    {
+      filePath: "/tmp/example.png",
+      saved: true
+    }
+  );
+  assert.equal(screenshotFileName, "Example - Home.png");
+
+  await manager.clearBrowsingData({ nodeId: "browser-actions" });
+  assert.equal(contents.electronSession.clearCacheCalls, 1);
+  assert.equal(contents.electronSession.clearStorageDataCalls, 1);
+  assert.equal(contents.reloadCalls, 1);
+
+  const download = new MockBrowserGuestDownloadItem();
+  contents.electronSession.emit("will-download", {}, download, contents);
+  const downloadEvent = [...events]
+    .reverse()
+    .find((event) => event.type === "download");
+  assert.equal(downloadEvent?.type, "download");
+  if (downloadEvent?.type !== "download") {
+    throw new Error("expected Browser Node download event");
+  }
+  await manager.performDownloadAction({
+    action: "pause",
+    downloadId: downloadEvent.download.id,
+    nodeId: "browser-actions"
+  });
+  assert.equal(download.pauseCalls, 1);
+  await manager.performDownloadAction({
+    action: "open",
+    downloadId: downloadEvent.download.id,
+    nodeId: "browser-actions"
+  });
+  assert.equal(openedDownloadPath, "/tmp/report.pdf");
 });
 
 test("blocks cross-origin Browser Node guest navigation for policy-bound sessions", async () => {
@@ -1231,7 +1338,16 @@ class MockBrowserGuestWebContents
   destroyed = false;
   loadedUrls: string[] = [];
   loading = false;
+  printCalls = 0;
+  reloadCalls = 0;
+  findInPageCalls: Array<{
+    options: Record<string, unknown> | undefined;
+    text: string;
+  }> = [];
+  readonly electronSession = new MockBrowserGuestElectronSession();
+  readonly session: BrowserGuestElectronSession = this.electronSession;
   title = "";
+  zoomFactor = 1;
   windowOpenHandler:
     | ((details: { url: string }) => BrowserGuestWindowOpenHandlerResponse)
     | null = null;
@@ -1264,6 +1380,11 @@ class MockBrowserGuestWebContents
 
   getTitle(): string {
     return this.title;
+  }
+
+  findInPage(text: string, options?: Record<string, unknown>): number {
+    this.findInPageCalls.push({ options, text });
+    return this.findInPageCalls.length;
   }
 
   getURL(): string {
@@ -1301,11 +1422,90 @@ class MockBrowserGuestWebContents
     this.openDevToolsOptions.push(options);
   }
 
-  reload(): void {}
+  print(
+    _options: Record<string, unknown>,
+    callback: (success: boolean, failureReason: string) => void
+  ): void {
+    this.printCalls += 1;
+    callback(true, "");
+  }
+
+  reload(): void {
+    this.reloadCalls += 1;
+  }
 
   setWindowOpenHandler(
     handler: (details: { url: string }) => BrowserGuestWindowOpenHandlerResponse
   ): void {
     this.windowOpenHandler = handler;
+  }
+
+  stopFindInPage(): void {}
+}
+
+class MockBrowserGuestElectronSession
+  extends EventEmitter
+  implements BrowserGuestElectronSession
+{
+  clearCacheCalls = 0;
+  clearStorageDataCalls = 0;
+
+  async clearCache(): Promise<void> {
+    this.clearCacheCalls += 1;
+  }
+
+  async clearStorageData(): Promise<void> {
+    this.clearStorageDataCalls += 1;
+  }
+}
+
+class MockBrowserGuestDownloadItem
+  extends EventEmitter
+  implements BrowserGuestDownloadItem
+{
+  pauseCalls = 0;
+  paused = false;
+
+  canResume(): boolean {
+    return true;
+  }
+
+  cancel(): void {}
+
+  getFilename(): string {
+    return "report.pdf";
+  }
+
+  getReceivedBytes(): number {
+    return 25;
+  }
+
+  getSavePath(): string {
+    return "/tmp/report.pdf";
+  }
+
+  getState(): "progressing" {
+    return "progressing";
+  }
+
+  getTotalBytes(): number {
+    return 100;
+  }
+
+  getURL(): string {
+    return "https://example.com/report.pdf";
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  pause(): void {
+    this.pauseCalls += 1;
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
   }
 }

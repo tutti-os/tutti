@@ -12,13 +12,16 @@ export interface BrowserNodeRuntimeStore {
 const defaultBrowserNodeRuntimeState: BrowserNodeRuntimeState = {
   canGoBack: false,
   canGoForward: false,
+  downloads: [],
   error: null,
+  findResult: null,
   isAttachedToWindow: false,
   isLoading: false,
   isOccluded: false,
   lifecycle: "cold",
   title: null,
-  url: null
+  url: null,
+  zoomFactor: 1
 };
 
 const chromiumErrorPageUrlPrefix = "chrome-error://";
@@ -80,17 +83,7 @@ export function createBrowserNodeRuntimeStore(): BrowserNodeRuntimeStore {
 
       const previous =
         runtimeByNodeId[event.nodeId] ?? defaultBrowserNodeRuntimeState;
-      const next =
-        event.type === "state"
-          ? resolveNextState(previous, event)
-          : {
-              ...previous,
-              error: {
-                code: event.code,
-                diagnosticMessage: event.diagnosticMessage,
-                params: event.params
-              }
-            };
+      const next = resolveNextRuntimeState(previous, event);
 
       runtimeByNodeId = {
         ...runtimeByNodeId,
@@ -130,6 +123,53 @@ export function createBrowserNodeRuntimeStore(): BrowserNodeRuntimeStore {
   };
 }
 
+function resolveNextRuntimeState(
+  previous: BrowserNodeRuntimeState,
+  event: Exclude<BrowserNodeEvent, { type: "closed" | "open-url" }>
+): BrowserNodeRuntimeState {
+  if (event.type === "state") {
+    return resolveNextState(previous, event);
+  }
+  if (event.type === "find-result") {
+    return {
+      ...previous,
+      findResult: {
+        activeMatchOrdinal: event.activeMatchOrdinal,
+        finalUpdate: event.finalUpdate,
+        matches: event.matches,
+        query: event.query
+      }
+    };
+  }
+  if (event.type === "download") {
+    return {
+      ...previous,
+      downloads: upsertBrowserNodeDownload(previous.downloads, event.download)
+    };
+  }
+  return {
+    ...previous,
+    error: {
+      code: event.code,
+      diagnosticMessage: event.diagnosticMessage,
+      params: event.params
+    }
+  };
+}
+
+function upsertBrowserNodeDownload(
+  downloads: readonly BrowserNodeRuntimeState["downloads"][number][],
+  download: BrowserNodeRuntimeState["downloads"][number]
+): readonly BrowserNodeRuntimeState["downloads"][number][] {
+  const existingIndex = downloads.findIndex((item) => item.id === download.id);
+  if (existingIndex < 0) {
+    return [download, ...downloads];
+  }
+  const next = [...downloads];
+  next[existingIndex] = download;
+  return next;
+}
+
 function resolveNextState(
   previous: BrowserNodeRuntimeState,
   event: Extract<BrowserNodeEvent, { type: "state" }>
@@ -156,6 +196,7 @@ function resolveNextState(
     isOccluded: event.isOccluded,
     lifecycle: event.lifecycle,
     title: nextTitle,
-    url: nextUrl
+    url: nextUrl,
+    zoomFactor: event.zoomFactor ?? previous.zoomFactor
   };
 }

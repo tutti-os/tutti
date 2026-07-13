@@ -5,15 +5,27 @@ export {
   type CreateBrowserNodeFeatureInput
 } from "./core/feature.ts";
 export { resolveBrowserNavigationUrl } from "./core/url.ts";
+export { resolveBrowserSessionPartition } from "./core/session.ts";
 export type {
   BrowserNodeActivationInput,
   BrowserNodeClosedEvent,
   BrowserNodeContextMenuPoint,
+  BrowserNodeCookieImportResult,
+  BrowserNodeDevicePreset,
   BrowserNodeDebugDump,
+  BrowserNodeDownloadAction,
+  BrowserNodeDownloadActionInput,
+  BrowserNodeDownloadEvent,
+  BrowserNodeDownloadDirectoryResult,
+  BrowserNodeDownloadState,
+  BrowserNodeDownloadStatus,
   BrowserNodeErrorCode,
   BrowserNodeErrorEvent,
   BrowserNodeErrorParams,
   BrowserNodeEvent,
+  BrowserNodeFindInPageInput,
+  BrowserNodeFindResult,
+  BrowserNodeFindResultEvent,
   BrowserNodeGuestOpenUrlInput,
   BrowserNodeHostApi,
   BrowserNodeLifecycle,
@@ -26,9 +38,15 @@ export type {
   BrowserNodeRegisterGuestInput,
   BrowserNodeRuntimeError,
   BrowserNodeRuntimeState,
+  BrowserNodeSaveScreenshotInput,
+  BrowserNodeScreenshotMode,
+  BrowserNodeScreenshotSaveResult,
   BrowserNodeSessionMode,
+  BrowserNodeSetDeviceEmulationInput,
+  BrowserNodeSetZoomFactorInput,
   BrowserNodeShowDevToolsContextMenuInput,
   BrowserNodeStateEvent,
+  BrowserNodeStopFindInPageInput,
   BrowserNodeUnregisterGuestInput
 } from "./core/types.ts";
 export type {

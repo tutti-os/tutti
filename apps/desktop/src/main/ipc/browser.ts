@@ -1,5 +1,16 @@
-import { ipcMain, nativeTheme, shell, webContents } from "electron";
+import {
+  app,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  session,
+  shell,
+  webContents
+} from "electron";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBrowserSessionPartition } from "@tutti-os/browser-node";
 import { registerBrowserNodeElectronMain } from "@tutti-os/browser-node/electron-main";
 import type { BrowserNodeElectronLogger } from "@tutti-os/browser-node/electron-main";
 import {
@@ -27,6 +38,7 @@ type BrowserInvokeChannel = Exclude<
 >;
 
 const prefersColorSchemeFeatureName = "prefers-color-scheme";
+const maximumCookieImportBytes = 10 * 1024 * 1024;
 
 function getPreferredColorScheme(
   preferences: DesktopHostPreferencesState
@@ -41,6 +53,7 @@ export function registerBrowserIpc(
   preferences: DesktopHostPreferencesState
 ): void {
   const logger = getDesktopLogger();
+  const preparedDownloadSessions = new WeakSet<Electron.Session>();
 
   registerBrowserNodeElectronMain({
     channels: {
@@ -52,12 +65,33 @@ export function registerBrowserIpc(
         ? desktopIpcChannels.browser.showDevToolsContextMenu
         : undefined
     },
+    async chooseDownloadDirectory(ownerWindow) {
+      const result = await dialog.showOpenDialog(ownerWindow, {
+        properties: ["openDirectory", "createDirectory"]
+      });
+      return result.canceled ? null : (result.filePaths[0] ?? null);
+    },
     getOwnerWindow(event) {
       return resolveOwnerWindowFromEvent(event as Electron.IpcMainInvokeEvent);
     },
     getPreferredColorScheme: () => getPreferredColorScheme(preferences),
     logger,
+    openDownloadedFile: async (path) => {
+      const error = await shell.openPath(path);
+      if (error) {
+        throw new Error(error);
+      }
+    },
     openExternal: (url) => openBrowserNodeExternalUrl(url, logger),
+    prepareSession(payload) {
+      const browserSession = session.fromPartition(
+        resolveBrowserSessionPartition(payload)
+      );
+      if (!preparedDownloadSessions.has(browserSession)) {
+        browserSession.setDownloadPath(app.getPath("downloads"));
+        preparedDownloadSessions.add(browserSession);
+      }
+    },
     registerHandler(channel, handler) {
       registerDesktopIpcHandler(
         channel as BrowserInvokeChannel & DesktopInvokeChannel,
@@ -92,6 +126,39 @@ export function registerBrowserIpc(
       });
       return resolved;
     },
+    async saveScreenshot({ dataUrl, ownerWindow, suggestedFileName }) {
+      const result = await dialog.showSaveDialog(ownerWindow, {
+        defaultPath: join(app.getPath("downloads"), suggestedFileName),
+        filters: [{ extensions: ["png"], name: "PNG" }]
+      });
+      if (result.canceled || !result.filePath) {
+        return { filePath: null, saved: false };
+      }
+      const encodedImage = dataUrl.match(/^data:image\/png;base64,(.+)$/)?.[1];
+      if (!encodedImage) {
+        throw new Error("Browser screenshot did not contain PNG data");
+      }
+      await writeFile(result.filePath, Buffer.from(encodedImage, "base64"));
+      return { filePath: result.filePath, saved: true };
+    },
+    async selectCookieImport(ownerWindow) {
+      const result = await dialog.showOpenDialog(ownerWindow, {
+        properties: ["openFile"]
+      });
+      const filePath = result.canceled ? null : (result.filePaths[0] ?? null);
+      if (!filePath) {
+        return null;
+      }
+      const metadata = await stat(filePath);
+      if (!metadata.isFile() || metadata.size > maximumCookieImportBytes) {
+        throw new Error("Browser Cookie import file is invalid or too large");
+      }
+      return {
+        contents: await readFile(filePath, "utf8"),
+        fileName: filePath.split(/[\\/]/).at(-1) ?? "cookies"
+      };
+    },
+    showDownloadedFile: (path) => shell.showItemInFolder(path),
     async syncPreferredColorScheme(contents, scheme) {
       const guestContents = contents as Electron.WebContents;
       const wasAttached = guestContents.debugger.isAttached();

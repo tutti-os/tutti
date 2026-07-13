@@ -151,7 +151,9 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         return;
       }
 
-      ownerWindow.minimize();
+      if (input.minimizeSourceWindow !== false) {
+        ownerWindow.minimize();
+      }
     }
   );
 

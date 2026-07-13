@@ -312,6 +312,15 @@ intent. That window is Agent-only, but it is not a separate app bundle or a
 separate data owner. It reuses the workspace renderer services, preload host
 capabilities, `tuttid` client, `WorkspaceAgentActivityService`, account state,
 provider status, and project/file services for the same `workspaceId`.
+The standalone Agent header reuses that button to duplicate its current native
+window. It hands off the active session, agent target, provider, agents, and
+provider-status snapshot, and explicitly keeps the source standalone window
+visible. The duplicate reconstructs UI from the shared durable activity source;
+it must not clone or fork AgentGUI session state in the renderer.
+When the conversation rail collapses, the standalone Agent header remains a
+full-width window control surface and keeps its secondary tool actions anchored
+to the right window edge. Content-width caps belong to the conversation body,
+not to the header control row.
 Standalone Agent window state may keep a minimal UI-local workbench node
 context, but durable conversations, session activation, login, provider
 readiness, and file/project data must still flow through the shared desktop

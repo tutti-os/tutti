@@ -121,13 +121,16 @@ function createBrowserRuntimeState(
   return {
     canGoBack: false,
     canGoForward: false,
+    downloads: [],
     error: null,
+    findResult: null,
     isAttachedToWindow: true,
     isLoading: false,
     isOccluded: false,
     lifecycle: "active",
     title: null,
     url: null,
+    zoomFactor: 1,
     ...overrides
   };
 }

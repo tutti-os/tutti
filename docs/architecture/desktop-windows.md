@@ -112,6 +112,12 @@ When a user opens the Agent-only window from a workspace window:
 4. once the Agent-only window is ready and shown, desktop minimizes the source
    workspace window
 
+When the same open-window control is used inside an Agent-only window, desktop
+opens another Agent-only window for the current session and agent target while
+keeping the source Agent window visible. Provider status and agent snapshots are
+handed off through the same bootstrap path; the new window remains a second view
+over shared durable activity rather than a copied activity store.
+
 When a user changes the startup interface in Settings, desktop persists the
 preference and immediately replaces the current native window with the selected
 Agent-only or OS workspace window. The replacement request carries the selected

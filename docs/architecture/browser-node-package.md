@@ -85,6 +85,15 @@ The Browser Node package owns:
 
 - browser node state and lifecycle
 - navigation, back, forward, reload, close, and URL normalization
+- page find, printing, zoom, visible-area and full-page screenshot capture,
+  fixed device emulation, Cookie import, and browsing-data clearing against the
+  registered guest
+- the browser settings surface for current-session device, zoom, screenshot,
+  download, Cookie, and data controls
+- node-scoped host-overlay visibility coordination so Electron guest surfaces
+  cannot cover package menus or dialogs
+- download lifecycle state and generic pause, resume, cancel, open, and reveal
+  actions
 - address bar rendering and generic input resolution
 - session, profile, and incognito partition logic
 - React body and optional header surface
@@ -105,12 +114,38 @@ The host owns:
 - address search provider policy
 - IPC channel registration and preload global wiring
 - external URL opening policy
+- native screenshot save dialogs and file writes
+- native Cookie-file and download-directory selection, file reading, file
+  opening, and file revealing
 - loopback preview target resolution
 - bridge namespace, such as `__tsh` or `__tutti`
 - bridge methods, such as TSH agent/game/share actions or future Tutti actions
 - product authorization and host allowlist policy
 - daemon or server clients
 - any business mutation triggered by a guest page
+
+Browser data actions are scoped through the registered guest's Electron
+session. Clearing data therefore affects the active Browser Node partition:
+all nodes using the shared partition observe the clear, while profile and
+incognito partitions remain isolated. Hosts must not redirect a clear request
+to Electron's default session.
+
+Download progress is package-owned runtime state because it is generic browser
+mechanics. The host still owns operating-system paths and shell integration;
+the package never chooses a product download directory or opens local files
+without an explicit host callback.
+
+Browser settings in the reusable React surface are session-scoped. Device
+emulation and zoom are applied to the registered guest, while a chosen download
+directory is applied to that guest's Electron session. These controls do not
+make popup or external-navigation security policy configurable.
+
+Cookie import accepts JSON arrays (or an object with a `cookies` array) and
+Netscape Cookie files. The host selects and reads the file in the main process;
+file contents and Cookie values never cross into the renderer or diagnostics.
+The package validates each entry and writes it only to the registered guest's
+Electron session Cookie store. Invalid or rejected entries are counted and
+skipped without logging their values.
 
 ## Host Interface Shape
 
@@ -209,6 +244,8 @@ The Browser Node package must preserve these invariants:
 - `allowpopups` is denied by default
 - navigation is limited to HTTP and HTTPS unless a host explicitly extends it
 - local preview proxying is optional and routed through host-provided policy
+- Cookie files are read in the host main process and imported only into the
+  active registered guest session
 
 ## Why One Deep Package
 

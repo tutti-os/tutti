@@ -14,6 +14,7 @@ test("encodeDesktopWindowIntent includes locale and theme bootstrap parameters",
     {
       dockPlacement: "left",
       locale: "zh-CN",
+      reportPredefinePageview: true,
       themeAppearance: "dark",
       themeSource: "dark"
     }
@@ -24,8 +25,21 @@ test("encodeDesktopWindowIntent includes locale and theme bootstrap parameters",
   assert.equal(params.get("workspaceId"), "workspace-1");
   assert.equal(params.get("lang"), "zh-CN");
   assert.equal(params.get("dockPlacement"), "left");
+  assert.equal(params.get("reportPredefinePageview"), "1");
   assert.equal(params.get("themeSource"), "dark");
   assert.equal(params.get("theme"), "dark");
+});
+
+test("encodeDesktopWindowIntent disables predefine pageview for secondary windows", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      provider: "codex",
+      workspaceID: "workspace-1"
+    }),
+    { reportPredefinePageview: false }
+  );
+
+  assert.equal(new URLSearchParams(search).get("reportPredefinePageview"), "0");
 });
 
 test("applyDesktopWindowIntent preserves theme bootstrap parameters in development URLs", () => {

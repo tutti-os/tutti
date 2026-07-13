@@ -28,6 +28,7 @@ export type DesktopWindowIntent =
 export interface DesktopWindowIntentSearchOptions {
   dockPlacement?: DesktopDockPlacement;
   locale?: DesktopLocale;
+  reportPredefinePageview?: boolean;
   themeAppearance?: DesktopThemeAppearance;
   themeSource?: DesktopThemeSource;
 }
@@ -75,6 +76,12 @@ export function encodeDesktopWindowIntent(
   }
   if (options.dockPlacement) {
     params.set("dockPlacement", options.dockPlacement);
+  }
+  if (typeof options.reportPredefinePageview === "boolean") {
+    params.set(
+      "reportPredefinePageview",
+      options.reportPredefinePageview ? "1" : "0"
+    );
   }
   if (options.themeSource) {
     params.set("themeSource", options.themeSource);

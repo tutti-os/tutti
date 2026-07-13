@@ -4680,16 +4680,16 @@ aside.workspace-agents-status-panel
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
   .agent-gui-workbench-header__primary {
   grid-column: 1 / -1;
-  width: min(100%, 720px);
+  width: 100%;
   background: transparent;
 }
 
 /*
  * In the collapsed empty state there is no session title to anchor the control
  * cluster, so the detached-window button's margin-left:auto would strand the
- * icons (in the middle of the 720px content cap, or at the far window edge).
- * Drop the auto push so the controls sit as a compact group right after the
- * traffic lights instead.
+ * icons at the far window edge. Drop the auto push so those window controls sit
+ * as a compact group right after the traffic lights instead. Secondary tool
+ * actions retain their own right alignment across the full header width.
  */
 .agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"][data-agent-gui-workbench-header-has-session="false"]
   .agent-gui-workbench-header__detached-window {
@@ -4844,6 +4844,13 @@ aside.workspace-agents-status-panel
   padding-right: var(--agent-gui-workbench-header-padding-x);
   pointer-events: auto;
   -webkit-app-region: no-drag;
+}
+
+/* The collapsed primary row already supplies the header's right inset. Avoid
+   stacking the accessory inset when actions move out of the detail column. */
+.agent-gui-workbench-header[data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__secondary-accessory {
+  padding-right: 0;
 }
 
 .agent-gui-workbench-header__agent-name,
