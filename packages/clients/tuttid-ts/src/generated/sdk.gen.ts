@@ -391,6 +391,9 @@ import type {
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
+  StopWorkspaceAppData,
+  StopWorkspaceAppErrors,
+  StopWorkspaceAppResponses,
   SubmitWorkspaceAgentInteractiveData,
   SubmitWorkspaceAgentInteractiveErrors,
   SubmitWorkspaceAgentInteractiveResponses,
@@ -1427,6 +1430,22 @@ export const retryWorkspaceApp = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/apps/{appID}/retry",
+    ...options
+  });
+
+/**
+ * Stop one running workspace app
+ */
+export const stopWorkspaceApp = <ThrowOnError extends boolean = false>(
+  options: Options<StopWorkspaceAppData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StopWorkspaceAppResponses,
+    StopWorkspaceAppErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/stop",
     ...options
   });
 

@@ -913,6 +913,7 @@ function createDependenciesStub(): {
       searchWorkspaceFiles: fail,
       startEnabledWorkspaceApps: fail,
       stopAllWorkspaceApps: fail,
+      stopWorkspaceApp: fail,
       putDesktopPreferences: fail,
       terminateWorkspaceTerminal: fail,
       trackEvents: async () => {},

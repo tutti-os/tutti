@@ -125,6 +125,15 @@ type TerminalService struct {
 	manager *terminalSessionManager
 }
 
+// Close terminates every PTY owned by the daemon. Window/view teardown must
+// not call this method; it is reserved for application-level daemon shutdown.
+func (s *TerminalService) Close() {
+	if s == nil || s.manager == nil {
+		return
+	}
+	s.manager.close()
+}
+
 func (s *TerminalService) ensureManager() *terminalSessionManager {
 	if s.manager == nil {
 		s.manager = newTerminalSessionManager()
@@ -333,6 +342,26 @@ func (m *terminalSessionManager) terminate(workspaceID string, terminalID string
 	}
 
 	return session.snapshot(), nil
+}
+
+func (m *terminalSessionManager) close() {
+	type terminalIdentity struct {
+		workspaceID string
+		terminalID  string
+	}
+	m.mu.Lock()
+	identities := make([]terminalIdentity, 0, len(m.sessions))
+	for terminalID, session := range m.sessions {
+		identities = append(identities, terminalIdentity{
+			workspaceID: session.workspaceID,
+			terminalID:  terminalID,
+		})
+	}
+	m.mu.Unlock()
+
+	for _, identity := range identities {
+		_, _ = m.terminate(identity.workspaceID, identity.terminalID)
+	}
 }
 
 func (m *terminalSessionManager) resize(workspaceID string, terminalID string, input ResizeTerminalInput) (TerminalSession, error) {

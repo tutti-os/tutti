@@ -4,23 +4,13 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode
 } from "react";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
-import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
-import {
-  normalizeAgentGUIAgents,
-  type AgentGUIAgent
-} from "@tutti-os/agent-gui";
-import type {
-  WorkspaceAgentProvider,
-  WorkspaceSummary
-} from "@tutti-os/client-tuttid-ts";
+import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
-  AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
   agentGuiWorkbenchProviderRailWidthPx,
   type AgentGuiWorkbenchConversationRailToggleDetail,
   type AgentGuiWorkbenchNewConversationDetail
@@ -34,41 +24,40 @@ import type {
   WorkbenchSize
 } from "@tutti-os/workbench-surface";
 import {
-  AgentEnvPanel,
   createDesktopAgentGUIWorkbenchHostInput,
   DesktopAgentGUIWorkbenchBody,
-  desktopAgentGUIOpenSessionActivationType,
   ensureAllDesktopManagedAgentProviderStatuses,
   IAgentsService,
   normalizeDesktopAgentGUIProvider,
   type DesktopAgentGUIProvider,
-  type AgentProviderStatusSnapshot,
   type AgentProviderStatusService,
   type WorkspaceAgentActivityService
 } from "@renderer/features/workspace-agent";
 import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
+import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import type { DesktopAgentGUIWorkbenchState } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { DesktopApi, DesktopHostWindowApi } from "@preload/types";
+import { resolveDesktopWindowIntent } from "@shared/contracts/windowIntent.ts";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import { useTranslation } from "@renderer/i18n";
-import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
-import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
-import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
-import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
-import type {
-  WorkspaceWallpaperDisplayMode,
-  WorkspaceWallpaperId
-} from "../services/workspaceWallpaper";
+import { useStandaloneFusionLaunchCoordinators } from "../services/useStandaloneFusionLaunchCoordinators.ts";
+import {
+  createStandaloneAgentWindowLaunchPayload,
+  resolveStandaloneAgentInitialActivation,
+  resolveStandaloneAgentWindowBootstrap
+} from "../services/standaloneAgentWindowIntent.ts";
+import { resolveWorkspaceAgentProviderLaunchIntent } from "../services/workspaceOpenFeatureRequest.ts";
+import { StandaloneAgentWindowPanelHosts } from "./StandaloneAgentWindowPanelHosts.tsx";
 
 const standaloneAgentNodeId = "standalone-agent-window-node";
 const standaloneAgentInstanceKey = "standalone-agent-window";
@@ -106,18 +95,36 @@ export function StandaloneAgentWindow({
   const agentsService = useService(IAgentsService);
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const workbenchHostService = useWorkspaceWorkbenchHostService();
   const workspaceId = workspace.id;
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const launchBootstrap = useMemo(
+    () =>
+      resolveStandaloneAgentWindowBootstrap(
+        resolveDesktopWindowIntent(window.location.search)
+      ),
+    []
+  );
   const launchProvider = normalizeDesktopAgentGUIProvider(
-    params.get("provider")
+    launchBootstrap.provider
   );
-  const launchAgentSessionId = params.get("agentSessionId")?.trim() || null;
-  const launchAgentTargetId = params.get("agentTargetId")?.trim() || null;
-  const bootstrapAgents = useMemo(() => readBootstrapAgents(params), [params]);
-  const providerStatusBootstrapSnapshot = useMemo(
-    () => readProviderStatusBootstrapSnapshot(params),
-    [params]
-  );
+  const launchAgentSessionId = launchBootstrap.agentSessionId;
+  const launchAgentTargetId = launchBootstrap.agentTargetId;
+  const launchDraftPrompt = launchBootstrap.draftPrompt;
+  const launchAutoSubmit = launchBootstrap.autoSubmit;
+  const launchUserProjectPath = launchBootstrap.userProjectPath;
+  const launchAgentFeature = launchBootstrap.agentFeature;
+  const fusionWindowId = launchBootstrap.fusionWindowId;
+  const usesNativeWindowChrome = fusionWindowId !== null;
+  const fusionLaunch = useStandaloneFusionLaunchCoordinators({
+    appCenterService: workspaceAppCenterService,
+    desktopApi,
+    enabled: fusionWindowId !== null,
+    workbenchHostService,
+    workspaceId
+  });
+  const bootstrapAgents = launchBootstrap.agents;
+  const providerStatusBootstrapSnapshot =
+    launchBootstrap.providerStatusSnapshot;
   // Seed the live service from the opening window's snapshot synchronously,
   // during the first render, before any child effect gets a chance to kick
   // off its own fresh status request. Without this, `agentProviderStatusService`
@@ -151,13 +158,14 @@ export function StandaloneAgentWindow({
   const [activation, setActivation] = useState<
     WorkbenchHostNodeBodyContext["activation"]
   >(() =>
-    launchAgentSessionId
-      ? {
-          payload: { agentSessionId: launchAgentSessionId },
-          sequence: 1,
-          type: desktopAgentGUIOpenSessionActivationType
-        }
-      : null
+    resolveStandaloneAgentInitialActivation({
+      agentSessionId: launchAgentSessionId,
+      agentTargetId: launchAgentTargetId,
+      autoSubmit: launchAutoSubmit,
+      draftPrompt: launchDraftPrompt,
+      provider: launchProvider,
+      userProjectPath: launchUserProjectPath
+    })
   );
   const agentGuiHostInput = useMemo(
     () =>
@@ -191,8 +199,9 @@ export function StandaloneAgentWindow({
     [desktopApi.dockPreviewCache]
   );
   const instanceId = useMemo(
-    () => `agent-gui:${launchProvider}:standalone:${workspaceId}`,
-    [launchProvider, workspaceId]
+    () =>
+      fusionWindowId ?? `agent-gui:${launchProvider}:standalone:${workspaceId}`,
+    [fusionWindowId, launchProvider, workspaceId]
   );
   const activeAgentTargetId = nodeState.agentTargetId?.trim() || null;
   const headerProvider = resolveDesktopAgentGUIProviderForAgentTarget(
@@ -212,6 +221,10 @@ export function StandaloneAgentWindow({
     headerAgentTarget?.iconUrl ?? headerConversationIconFallbackUrl;
   const headerConversationTitle =
     nodeState.lastActiveConversationTitle?.trim() || null;
+  const fusionWindowTitle =
+    headerConversationTitle ??
+    headerAgentTarget?.name ??
+    i18n.t("workspace.agentGui.fallbackAgentLabel");
   const headerConversationRailWidthPx =
     typeof nodeState.conversationRailWidthPx === "number" &&
     Number.isFinite(nodeState.conversationRailWidthPx)
@@ -226,10 +239,64 @@ export function StandaloneAgentWindow({
               current?.sequence === sequence ? null : current
             );
           }
+        },
+        launchNode: async (input) => {
+          if (!fusionWindowId) {
+            return null;
+          }
+          const descriptor = await fusionLaunch.openWorkbenchNode(input);
+          return descriptor?.windowInstanceId ?? null;
         }
       }),
-    []
+    [fusionLaunch, fusionWindowId]
   );
+  const handledConnectFeatureRef = useRef(false);
+
+  useEffect(() => {
+    if (launchAgentFeature !== "connect" || handledConnectFeatureRef.current) {
+      return;
+    }
+    handledConnectFeatureRef.current = true;
+    void (async () => {
+      await agentProviderStatusService
+        .ensureLoaded({ providers: [launchProvider] })
+        .catch(() => null);
+      const intent = resolveWorkspaceAgentProviderLaunchIntent(
+        agentProviderStatusService.getStatus(launchProvider)
+      );
+      if (intent.kind === "action") {
+        await agentProviderStatusService.runAction(
+          launchProvider,
+          intent.actionId,
+          { workbenchHost: host, workspaceId }
+        );
+      }
+    })().catch(() => undefined);
+  }, [
+    agentProviderStatusService,
+    host,
+    launchAgentFeature,
+    launchProvider,
+    workspaceId
+  ]);
+
+  useEffect(() => {
+    if (!fusionWindowId) {
+      return;
+    }
+    void desktopApi.fusion
+      .updateWindow({
+        resourceId: nodeState.lastActiveAgentSessionId?.trim() || null,
+        title: fusionWindowTitle,
+        windowInstanceId: fusionWindowId
+      })
+      .catch(() => undefined);
+  }, [
+    desktopApi.fusion,
+    fusionWindowId,
+    fusionWindowTitle,
+    nodeState.lastActiveAgentSessionId
+  ]);
   const context = useMemo<
     WorkbenchHostNodeBodyContext<DesktopAgentGUIWorkbenchState, null>
   >(
@@ -281,8 +348,6 @@ export function StandaloneAgentWindow({
   }, []);
 
   useEffect(() => {
-    // The main process pushes maximize/fullscreen transitions through the host
-    // window layout event; keep the traffic-light icon in sync with it.
     const handleLayout = (event: Event) => {
       const detail = (event as CustomEvent<{ maximized?: boolean }>).detail;
       setIsWindowMaximized(detail?.maximized === true);
@@ -355,15 +420,43 @@ export function StandaloneAgentWindow({
   }, [instanceId]);
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {
+      const anchor = target === "computerUse" ? "computer-use" : "browser-use";
+      if (fusionWindowId) {
+        void fusionLaunch.openSettings({ anchor, section: "general" });
+        return;
+      }
       workspaceSettingsService.openPanel(
         { id: workspaceId },
         {
-          anchor: target === "computerUse" ? "computer-use" : "browser-use",
+          anchor,
           section: "general"
         }
       );
     },
-    [workspaceId, workspaceSettingsService]
+    [fusionLaunch, fusionWindowId, workspaceId, workspaceSettingsService]
+  );
+  const handleLinkAction = useCallback(
+    (action: Parameters<typeof runDesktopAgentGUILinkAction>[0]) => {
+      if (!fusionWindowId) {
+        return;
+      }
+      void runDesktopAgentGUILinkAction(action, {
+        homeDirectory: desktopApi.platform.homeDirectory,
+        launchAgentGui: fusionLaunch.openAgent,
+        launchGroupChat: fusionLaunch.openGroupChat,
+        launchWorkspaceApp: fusionLaunch.openWorkspaceApp,
+        launchWorkspaceFiles: fusionLaunch.openFiles,
+        launchWorkspaceIssueManager: fusionLaunch.openIssueManager,
+        openBrowserUrl: fusionLaunch.openBrowser,
+        workspaceId
+      });
+    },
+    [
+      desktopApi.platform.homeDirectory,
+      fusionLaunch,
+      fusionWindowId,
+      workspaceId
+    ]
   );
 
   return (
@@ -400,14 +493,20 @@ export function StandaloneAgentWindow({
           conversationIconFallbackUrl={headerConversationIconFallbackUrl}
           conversationTitle={headerConversationTitle}
           displayMode={isWindowMaximized ? "fullscreen" : "floating"}
-          data-agent-gui-standalone-window-header="true"
-          data-workbench-drag-handle="true"
+          {...(usesNativeWindowChrome
+            ? { "data-agent-gui-native-window-content-header": "true" }
+            : {
+                "data-agent-gui-standalone-window-header": "true",
+                "data-workbench-drag-handle": "true" as const
+              })}
           isConversationRailAutoCollapsed={false}
           isConversationRailCollapsed={
             nodeState.conversationRailCollapsed === true
           }
           nodeId={standaloneAgentNodeId}
           providerRailWidthPx={agentGuiWorkbenchProviderRailWidthPx}
+          showWindowControls={!usesNativeWindowChrome}
+          style={usesNativeWindowChrome ? { cursor: "default" } : undefined}
           title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
           windowActions={{
             close: () => {
@@ -434,18 +533,37 @@ export function StandaloneAgentWindow({
           context={context}
           computerUseApi={desktopApi.computerUse}
           dockPreviewCache={dockPreviewCache}
+          onLinkAction={fusionWindowId ? handleLinkAction : undefined}
           onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
           onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
             // Hand off whatever is cached right now — see the matching note
             // in workspaceAgentGuiContribution.ts's onOpenDetachedWindow for
             // why we don't block this click on a full provider probe.
-            void hostWindowApi.openAgentWindow({
-              agentSessionId,
-              providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
-              agents: agents ?? undefined,
-              provider,
-              workspaceId
-            });
+            if (fusionWindowId) {
+              void fusionLaunch.openPayloadWindow({
+                kind: "agent",
+                payload: createStandaloneAgentWindowLaunchPayload({
+                  agentSessionId,
+                  agents: agents ?? undefined,
+                  provider,
+                  providerStatusSnapshot:
+                    agentProviderStatusService.getSnapshot()
+                }),
+                resourceId: agentSessionId
+              });
+            } else {
+              void hostWindowApi.openAgentWindow({
+                launchPayload: createStandaloneAgentWindowLaunchPayload({
+                  agentSessionId,
+                  agents: agents ?? undefined,
+                  provider,
+                  providerStatusSnapshot:
+                    agentProviderStatusService.getSnapshot()
+                }),
+                resourceId: agentSessionId,
+                workspaceId
+              });
+            }
           }}
           onStateChange={setNodeState}
           providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
@@ -482,174 +600,20 @@ export function StandaloneAgentWindow({
         />
       </div>
       <StandaloneAgentWindowPanelHosts
+        agentFeature={launchAgentFeature}
         agentProviderStatusService={agentProviderStatusService}
+        desktopApi={desktopApi}
+        focusedProvider={launchProvider}
+        fusionWindowId={fusionWindowId}
         host={host}
         workspace={workspace}
+        onLaunchNode={async (input) => {
+          const descriptor = await fusionLaunch.openWorkbenchNode(input);
+          return descriptor?.windowInstanceId ?? null;
+        }}
       />
     </main>
   );
-}
-
-function StandaloneAgentWindowPanelHosts({
-  agentProviderStatusService,
-  host,
-  workspace
-}: {
-  agentProviderStatusService: AgentProviderStatusService;
-  host: WorkbenchHostHandle;
-  workspace: WorkspaceSummary;
-}): ReactNode {
-  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const settingsPanelRequest = useWorkspaceSettingsPanelRequest();
-  const lastHandledSettingsRequestRef = useRef(
-    settingsPanelRequest.requestSequence
-  );
-  const [externalImportWizardProviders, setExternalImportWizardProviders] =
-    useState<WorkspaceAgentProvider[] | undefined>(undefined);
-  const [externalImportWizardOpen, setExternalImportWizardOpen] =
-    useState(false);
-  const wallpaperRevision = useSyncExternalStore(
-    (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
-    () => workbenchHostService.getWallpaperRevision(),
-    () => workbenchHostService.getWallpaperRevision()
-  );
-  const selectedWallpaperID = useMemo(
-    () => workbenchHostService.readWallpaperId(workspace.id),
-    [wallpaperRevision, workbenchHostService, workspace.id]
-  );
-  const selectedWallpaperDisplayMode = useMemo(
-    () => workbenchHostService.readWallpaperDisplayMode(workspace.id),
-    [wallpaperRevision, workbenchHostService, workspace.id]
-  );
-  const openExternalAgentImport = useCallback(
-    (providers?: WorkspaceAgentProvider[]) => {
-      setExternalImportWizardProviders(providers);
-      setExternalImportWizardOpen(true);
-    },
-    []
-  );
-  useEffect(() => {
-    const openImportWizard = (): void => {
-      openExternalAgentImport();
-    };
-    window.addEventListener(
-      AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
-      openImportWizard
-    );
-    return () => {
-      window.removeEventListener(
-        AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
-        openImportWizard
-      );
-    };
-  }, [openExternalAgentImport]);
-  const selectWallpaper = useCallback(
-    (wallpaperId: WorkspaceWallpaperId) => {
-      workbenchHostService.writeWallpaperId(workspace.id, wallpaperId);
-    },
-    [workbenchHostService, workspace.id]
-  );
-  const selectWallpaperDisplayMode = useCallback(
-    (displayMode: WorkspaceWallpaperDisplayMode) => {
-      workbenchHostService.writeWallpaperDisplayMode(workspace.id, displayMode);
-    },
-    [workbenchHostService, workspace.id]
-  );
-
-  useEffect(() => {
-    if (
-      settingsPanelRequest.requestSequence ===
-      lastHandledSettingsRequestRef.current
-    ) {
-      return;
-    }
-    lastHandledSettingsRequestRef.current =
-      settingsPanelRequest.requestSequence;
-    workspaceSettingsService.openPanel(
-      { id: workspace.id },
-      settingsPanelRequest.section
-        ? {
-            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
-          }
-        : undefined
-    );
-  }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);
-
-  return (
-    <>
-      <WorkspaceSettingsPanel
-        onOpenExternalAgentImport={() => openExternalAgentImport()}
-        onSelectWallpaper={selectWallpaper}
-        onSelectWallpaperDisplayMode={selectWallpaperDisplayMode}
-        selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}
-        selectedWallpaperID={selectedWallpaperID}
-        workspace={workspace}
-      />
-      <ExternalAgentSessionImportPrompt
-        workspaceId={workspace.id}
-        onOpenImport={openExternalAgentImport}
-      />
-      <ExternalAgentSessionImportWizard
-        initialProviders={externalImportWizardProviders}
-        open={externalImportWizardOpen}
-        workspace={workspace}
-        onOpenChange={setExternalImportWizardOpen}
-      />
-      <AgentEnvPanel
-        agentProviderStatusService={agentProviderStatusService}
-        workspaceId={workspace.id}
-        workbenchHost={host}
-      />
-    </>
-  );
-}
-
-function readBootstrapAgents(
-  params: URLSearchParams
-): readonly AgentGUIAgent[] | null {
-  const encodedAgents = params.get("agents");
-  if (!encodedAgents) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(encodedAgents);
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
-    return normalizeAgentGUIAgents(parsed as readonly AgentGUIAgent[]);
-  } catch {
-    return null;
-  }
-}
-
-function readProviderStatusBootstrapSnapshot(
-  params: URLSearchParams
-): AgentProviderStatusSnapshot | null {
-  const encodedSnapshot = params.get("agentProviderStatusSnapshot");
-  if (!encodedSnapshot) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(
-      encodedSnapshot
-    ) as Partial<AgentProviderStatusSnapshot>;
-    if (!parsed.capturedAt || typeof parsed.capturedAt !== "string") {
-      return null;
-    }
-    return {
-      capturedAt: parsed.capturedAt,
-      defaultProvider: parsed.defaultProvider ?? null,
-      error: parsed.error ?? null,
-      isLoading: parsed.isLoading === true,
-      pendingActions: Array.isArray(parsed.pendingActions)
-        ? parsed.pendingActions
-        : [],
-      statuses: Array.isArray(parsed.statuses) ? parsed.statuses : []
-    };
-  } catch {
-    return null;
-  }
 }
 
 function readStandaloneNodeProvider(
@@ -708,6 +672,9 @@ function createDockPreviewCache(
 
 function createStandaloneAgentHost(input: {
   clearActivation(nodeId: string, sequence: number): void;
+  launchNode(
+    input: Parameters<WorkbenchHostHandle["launchNode"]>[0]
+  ): Promise<string | null>;
 }): WorkbenchHostHandle {
   const snapshot = {
     activeDragNodeId: null,
@@ -736,7 +703,7 @@ function createStandaloneAgentHost(input: {
       ...snapshot,
       surfaceSize: readWindowSize()
     }),
-    launchNode: async () => null,
+    launchNode: input.launchNode,
     load: async () => undefined,
     minimizeNode: () => undefined,
     reconcileProjectedNodes: () => undefined,

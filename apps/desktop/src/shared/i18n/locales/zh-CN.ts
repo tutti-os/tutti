@@ -59,6 +59,42 @@ export const zhCN = {
     retryAction: "重试"
   },
   desktop: {
+    fusion: {
+      modeRestart: {
+        disableDetail:
+          "设置已保存。立即重启 Tutti 可恢复 Workspace 窗口并关闭 Fusion 窗口；后台任务将遵循正常退出流程。",
+        disableMessage: "关闭 Fusion Mode？",
+        enableDetail:
+          "设置已保存。立即重启 Tutti 可用悬浮 Dock 和多个原生窗口替代 Workspace 窗口。",
+        enableMessage: "开启 Fusion Mode？",
+        laterAction: "稍后",
+        restartAction: "立即重启",
+        title: "重启 Tutti 以切换模式"
+      },
+      shortcutErrors: {
+        conflict: "此快捷键已被占用，请为 Fusion Dock 选择其他快捷键。",
+        invalid: "请为 Fusion Dock 选择有效的快捷键。",
+        unsupported: "当前系统无法注册此快捷键。"
+      },
+      tray: {
+        backgroundTasks: "后台任务",
+        newWindow: "新建窗口",
+        noBackgroundTasks: "暂无后台任务",
+        settings: "设置",
+        showDock: "显示 Dock"
+      },
+      windowKinds: {
+        agent: "Agent",
+        appCenter: "App Center",
+        browser: "浏览器",
+        filePreview: "文件预览",
+        files: "文件",
+        issueManager: "Issue Manager",
+        settings: "设置",
+        terminal: "终端",
+        workspaceApp: "Workspace App"
+      }
+    },
     installGuard: {
       detail:
         "Tutti 正在从下载的磁盘镜像中运行。请先移动到 Applications，再继续使用，这样后续更新才能正常安装。",
@@ -114,10 +150,81 @@ export const zhCN = {
       window: "窗口"
     },
     quitShortcut: {
-      confirmToastTitle: "再次敲击 Command + Q 即可退出Tutti"
+      confirmFusionToastTitle:
+        "再次按下 Command + Q 将退出 Tutti 并停止后台任务",
+      confirmToastTitle: "再次按下 Command + Q 即可退出 Tutti"
     }
   },
   workspace: {
+    fusion: {
+      actionFailed: "暂时无法完成此 Fusion 操作。",
+      appCenterUnavailable:
+        "App Center 当前不可用，因此暂时无法恢复这个 Workspace App。",
+      attachedWindowCount: "已连接 {{count}} 个窗口",
+      backgroundOnly: "仅在后台运行",
+      backgroundTasks: "后台任务",
+      cancelAgentTurn: "取消当前 Agent 轮次",
+      cancelTurn: "取消轮次",
+      closeWindow: "关闭窗口",
+      focusAttachedWindow: "聚焦已连接窗口",
+      hideDock: "隐藏 Dock",
+      kind: {
+        agent: "Agent",
+        appCenter: "App Center",
+        browser: "浏览器",
+        filePreview: "文件预览",
+        files: "文件",
+        issueManager: "Issue Manager",
+        settings: "设置",
+        terminal: "终端",
+        workspaceApp: "Workspace App"
+      },
+      launchers: "新建窗口",
+      nativeWindowCount: "{{count}} 个原生窗口",
+      newWindowFor: "新建 {{kind}} 窗口",
+      newWindowShortcutHint:
+        "按 Command 或 Control + Enter 可新建一个独立窗口。",
+      noBackgroundTasks: "暂无后台任务",
+      noSearchResults: "没有匹配的工具、窗口或后台任务",
+      noWindows: "暂无打开的窗口",
+      openOrFocus: "打开或聚焦",
+      reconnectTask: "重新连接后台任务",
+      recoverableSession: "可恢复会话",
+      runtimeManaged: "由系统管理",
+      searchLabel: "搜索 Fusion Dock",
+      searchPlaceholder: "搜索工具、窗口和后台任务",
+      shortcutConflict: "此快捷键已被占用，请为 Fusion Dock 选择其他快捷键。",
+      shortcutInvalid: "请为 Fusion Dock 选择有效的快捷键。",
+      shortcutUnsupported: "当前系统无法注册此快捷键。",
+      status: {
+        canceled: "已取消",
+        completed: "已完成",
+        created: "已创建",
+        detached: "已断开",
+        failed: "失败",
+        preparing: "准备中",
+        restartRequired: "需要重启",
+        running: "运行中",
+        starting: "启动中",
+        stopping: "停止中",
+        unknown: "未知",
+        warning: "警告",
+        waiting: "等待中"
+      },
+      stop: "停止",
+      stopTask: "停止任务",
+      stopUnavailable: "无法在此处停止此任务",
+      toolLoading: "正在加载 Fusion 窗口",
+      toolUnavailable: "此 Fusion 窗口当前不可用。",
+      toolUnavailableTitle: "Fusion 窗口不可用",
+      visibility: {
+        hidden: "已隐藏",
+        minimized: "已最小化",
+        visible: "可见"
+      },
+      windowResult: "已打开窗口",
+      windows: "窗口"
+    },
     fallback: {
       loadingDescription: "正在通过桌面桥接恢复你的工作区上下文。",
       loadingTitle: "正在加载工作区",
@@ -781,10 +888,25 @@ export const zhCN = {
       },
       lab: {
         clearShortcutLabel: "清除 {{label}}",
+        fusionDockVisibilityDescription:
+          "选择在 Fusion Mode 下何时显示 Tutti Dock。",
+        fusionDockVisibilityLabel: "Dock 显示方式",
+        fusionDockVisibilityOptions: {
+          always: "始终显示",
+          autoHide: "自动隐藏",
+          shortcutOnly: "仅通过快捷键显示"
+        },
+        fusionModeDescription:
+          "通过悬浮 Dock 和菜单栏入口，在多个独立原生窗口中打开 Tutti 工具。",
+        fusionModeLabel: "Fusion Mode",
+        fusionModeRestartRequired: "重启 Tutti 后此更改生效。",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
         preferencesSaveFailed: "暂时无法更新实验室设置。",
         shortcutUnbound: "未绑定",
+        toggleFusionDockShortcutDescription:
+          "在 Mac 的任意位置打开 Fusion Dock 搜索；再次按下可隐藏 Dock。",
+        toggleFusionDockShortcutLabel: "打开 Fusion Dock 搜索",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作。",
         workbenchShortcutsLabel: "工作台快捷键"
       },

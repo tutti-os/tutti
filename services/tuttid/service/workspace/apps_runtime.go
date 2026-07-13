@@ -65,6 +65,23 @@ func (s *AppCenterService) Retry(ctx context.Context, workspaceID string, appID 
 	return s.publishInstalledAppRuntime(ctx, workspaceID, appPackage, installation, runtimeState), nil
 }
 
+func (s *AppCenterService) Stop(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {
+		return workspacebiz.WorkspaceApp{}, err
+	}
+
+	appPackage, installation, err := s.installedPackage(ctx, workspaceID, appID)
+	if err != nil {
+		return workspacebiz.WorkspaceApp{}, err
+	}
+	runtimeState, err := s.runner().Stop(ctx, workspaceID, appPackage.AppID)
+	if err != nil {
+		return workspacebiz.WorkspaceApp{}, err
+	}
+	s.deactivateAppCLI(workspaceID, appPackage.AppID)
+	return s.publishInstalledAppRuntime(ctx, workspaceID, appPackage, installation, runtimeState), nil
+}
+
 func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string) ([]workspacebiz.WorkspaceApp, error) {
 	startedAt := time.Now()
 	if _, err := s.workspaceSummary(ctx, workspaceID); err != nil {

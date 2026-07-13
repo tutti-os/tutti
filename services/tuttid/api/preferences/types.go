@@ -13,6 +13,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 	workbenchShortcuts := tuttigenerated.DesktopWorkbenchShortcuts{
 		NewAgentConversation: optionalStringPointer(value.WorkbenchShortcuts.NewAgentConversation),
 		NewSameTypeWindow:    optionalStringPointer(value.WorkbenchShortcuts.NewSameTypeWindow),
+		ToggleFusionDock:     optionalStringPointer(value.WorkbenchShortcuts.ToggleFusionDock),
 	}
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),

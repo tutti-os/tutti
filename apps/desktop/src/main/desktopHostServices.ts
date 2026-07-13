@@ -15,9 +15,19 @@ import { createWorkspaceLaunchDesktopAdapters } from "./host/workspaceLaunchDesk
 import type { DesktopLogger } from "./logging";
 import { getDesktopThemeState } from "./desktopTheme";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import {
+  isFusionModeEnabled,
+  resolveFusionDockVisibility
+} from "../shared/featureFlags/catalog.ts";
+import {
+  createFusionWindowCoordinator,
+  type DesktopFusionWindowCoordinator,
+  type FusionDockVisibilityMode
+} from "./windows/fusionWindowCoordinator.ts";
 
 export interface DesktopHostServices {
   fileDialogs: DesktopFileDialogAccess;
+  fusion: DesktopFusionWindowCoordinator;
   preferences: DesktopHostPreferencesState;
   workspaceLaunch: WorkspaceLaunch;
 }
@@ -49,6 +59,24 @@ export async function createDesktopHostServices(
   const fileDialogs = createDesktopFileDialogAccess({
     getLocale: () => preferences.getLocale()
   });
+  const fusion = createFusionWindowCoordinator({
+    active: isFusionModeEnabled(preferences.getFeatureFlags()),
+    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+    enableDevelopmentReloadShortcut:
+      options.enableDevelopmentReloadShortcut === true,
+    getDockPlacement: () => preferences.getDockPlacement(),
+    getDockVisibilityMode: () =>
+      resolveFusionDockVisibilityMode(preferences.getFeatureFlags()),
+    getLocale: () => preferences.getLocale(),
+    getShortcutBinding: () =>
+      preferences.getWorkbenchShortcuts().toggleFusionDock,
+    getTheme: () => getDesktopThemeState(preferences.getThemeSource()),
+    logger: options.logger,
+    preloadPath: options.preloadPath,
+    rendererUrl: options.rendererUrl,
+    subscribePreferences: (listener) => preferences.subscribe(listener),
+    workspaceAppPreloadPath: options.workspaceAppPreloadPath
+  });
   const workspaceLaunch = createWorkspaceLaunch({
     adapters: createWorkspaceLaunchDesktopAdapters({
       enableDevelopmentReloadShortcut:
@@ -61,12 +89,27 @@ export async function createDesktopHostServices(
       rendererUrl: options.rendererUrl,
       workspaceAppPreloadPath: options.workspaceAppPreloadPath
     }),
+    fusion,
     tuttidClient: options.tuttidClient
   });
 
   return {
     fileDialogs,
+    fusion,
     preferences,
     workspaceLaunch
   };
+}
+
+function resolveFusionDockVisibilityMode(
+  flags: ReturnType<DesktopHostPreferencesState["getFeatureFlags"]>
+): FusionDockVisibilityMode {
+  switch (resolveFusionDockVisibility(flags)) {
+    case "autoHide":
+      return "auto-hide";
+    case "shortcutOnly":
+      return "shortcut-only";
+    default:
+      return "always";
+  }
 }

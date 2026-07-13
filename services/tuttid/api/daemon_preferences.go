@@ -418,6 +418,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			ToggleFusionDock:     optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.ToggleFusionDock),
 		},
 		Locale:                  locale,
 		MinimizeAnimation:       minimizeAnimation,

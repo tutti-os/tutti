@@ -28,4 +28,7 @@ func TestDefaultDesktopPreferencesHasEmptyFlags(t *testing.T) {
 	if len(d.FeatureFlags) != 0 {
 		t.Fatalf("want empty flags, got %v", d.FeatureFlags)
 	}
+	if d.WorkbenchShortcuts.ToggleFusionDock != DefaultDesktopToggleFusionDockShortcut {
+		t.Fatalf("toggle Fusion Dock shortcut = %q, want %q", d.WorkbenchShortcuts.ToggleFusionDock, DefaultDesktopToggleFusionDockShortcut)
+	}
 }

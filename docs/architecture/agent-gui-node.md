@@ -291,19 +291,18 @@ action.
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.
 
-Conversation rail "open in new window" actions are internal workbench-window
-launches, not Electron `BrowserWindow` launches. The action should stay inside
-the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
-`requestWorkspaceAgentGuiLaunch`, the workspace launch handler calls
-`host.launchNode`, and AgentGUI opens the requested session through an
-`agent-gui:open-session` activation. Normal session launches may reuse an
-already-open node only when workbench node state says that node is currently
-showing the requested session. A session-keyed instance id from older snapshots
-is only a legacy window identity hint, not proof of the node's current session.
-If no current-session match exists, the launch should use a provider target or
-panel-scoped AgentGUI container and then activate the durable session. The
-explicit new-window action must pass `openInNewWindow` so the descriptor creates
-a fresh panel-scoped AgentGUI instance while still activating the same durable
+Conversation rail "open in new window" actions go through the host-owned
+`requestWorkspaceAgentGuiLaunch` coordinator; AgentGUI must not choose an
+Electron or Workbench shell itself. In Workspace Workbench mode, the registered
+handler calls `host.launchNode`, and AgentGUI opens the requested session through
+an `agent-gui:open-session` activation. In Fusion Mode, the registered handler
+routes the same typed request through `FusionWindowCoordinator` and creates a
+native Agent window for that workspace and session. Normal session launches may
+reuse an already-open shell only when its current state says that it is showing
+the requested session. A session-keyed instance id from older snapshots is only
+a legacy window identity hint, not proof of the shell's current session. The
+explicit new-window action must pass `openInNewWindow` so the active
+presentation mode creates a fresh shell while still activating the same durable
 session.
 The detached Agent button in desktop chrome is a different window boundary: it
 asks main to create an Electron `BrowserWindow` with the `view=agent` renderer
@@ -311,6 +310,31 @@ intent. That window is Agent-only, but it is not a separate app bundle or a
 separate data owner. It reuses the workspace renderer services, preload host
 capabilities, `tuttid` client, `WorkspaceAgentActivityService`, account state,
 provider status, and project/file services for the same `workspaceId`.
+In Fusion Mode, the same shell is created through
+`FusionWindowCoordinator`. Its `windowInstanceId` is native-window identity;
+its `agentSessionId` is the daemon resource identity. Closing the native window
+always destroys that renderer and removes the window descriptor, but it does
+not cancel the active Agent turn. The Fusion Dock discovers the session from
+`tuttid`, and reconnecting creates another Agent window with the same durable
+session id. Explicit Stop from the Dock cancels the current turn instead of
+closing an arbitrary native window.
+Agent notifications have one owner per workspace and presentation mode. In
+Workspace Workbench mode, the legacy Workspace container owns outcome
+notifications and Workspace chrome owns waiting approval or interactive-prompt
+notifications. In Fusion Mode, the resident Fusion Dock owns both kinds. Its
+owner set is dynamic: the current Dock workspace plus each workspace with an
+Agent background resource or native Agent window gets a subscription, and a
+subscription is disposed when the workspace leaves that set.
+
+The standalone Fusion Message Center only displays waiting items and submits
+the user's decision. It does not emit a second notification or handle host
+notification navigation. Waiting notifications owned by the Fusion Dock use
+OS/background presentation only; the interactive decision toast remains a
+legacy Workspace behavior. Outcome notifications may show a foreground toast
+on the Dock, and activating that toast calls the Fusion window API directly.
+Outcome and waiting OS-notification navigation likewise focuses an attached
+window matching `(workspaceId, "agent", agentSessionId)` or reconnects that
+durable session through the Fusion window API.
 Standalone Agent window state may keep a minimal UI-local workbench node
 context, but durable conversations, session activation, login, provider
 readiness, and file/project data must still flow through the shared desktop
@@ -1293,6 +1317,16 @@ with a newer settled/available activity update, and blocking that newer version
 would strand the queued prompt until another unrelated activity event. The
 retry block still prevents immediately re-claiming against the exact same
 pre-send ready state.
+
+"Every AgentGUI panel is closed" above means every panel within the same live
+renderer activity-service scope. A queued prompt is still renderer-memory
+state and is not a `tuttid` background resource. Destroying a Fusion Agent
+BrowserWindow destroys that scope; only turns already accepted by `tuttid`
+are guaranteed to survive and appear in the Fusion Dock. Do not label an
+unsent queued prompt as a background task or recreate it from window metadata.
+If queued prompts later need to survive native-window destruction, add a
+daemon-owned queue contract with idempotent claim semantics rather than using
+hidden BrowserWindows or cross-renderer local storage.
 
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before

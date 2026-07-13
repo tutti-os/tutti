@@ -66,14 +66,18 @@ export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
 
+export const defaultDesktopToggleFusionDockShortcut = "Meta+Shift+Space";
+
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;
   newSameTypeWindow: string | null;
+  toggleFusionDock: string | null;
 }
 
 export const defaultDesktopWorkbenchShortcuts: DesktopWorkbenchShortcuts = {
   newAgentConversation: null,
-  newSameTypeWindow: null
+  newSameTypeWindow: null,
+  toggleFusionDock: defaultDesktopToggleFusionDockShortcut
 };
 
 export const desktopAgentConversationDetailModes = [
@@ -416,7 +420,13 @@ export function normalizeDesktopWorkbenchShortcuts(
     newAgentConversation: normalizeDesktopShortcutBinding(
       value.newAgentConversation
     ),
-    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow)
+    newSameTypeWindow: normalizeDesktopShortcutBinding(value.newSameTypeWindow),
+    toggleFusionDock: Object.prototype.hasOwnProperty.call(
+      value,
+      "toggleFusionDock"
+    )
+      ? normalizeDesktopShortcutBinding(value.toggleFusionDock)
+      : defaultDesktopToggleFusionDockShortcut
   };
 }
 
@@ -429,7 +439,8 @@ export function desktopWorkbenchShortcutsEqual(
   return (
     normalizedLeft.newAgentConversation ===
       normalizedRight.newAgentConversation &&
-    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow
+    normalizedLeft.newSameTypeWindow === normalizedRight.newSameTypeWindow &&
+    normalizedLeft.toggleFusionDock === normalizedRight.toggleFusionDock
   );
 }
 

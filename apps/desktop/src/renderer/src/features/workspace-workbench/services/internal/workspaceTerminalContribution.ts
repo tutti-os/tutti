@@ -235,7 +235,9 @@ function readTerminalWorkbenchIntent(
     cwd: typeof typed.cwd === "string" ? typed.cwd : undefined,
     initialInput:
       typeof typed.initialInput === "string" ? typed.initialInput : undefined,
-    profileId: typeof typed.profileId === "string" ? typed.profileId : undefined
+    profileId:
+      typeof typed.profileId === "string" ? typed.profileId : undefined,
+    sessionId: typeof typed.sessionId === "string" ? typed.sessionId : undefined
   };
 }
 

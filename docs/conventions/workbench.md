@@ -103,6 +103,8 @@ Rules:
   side effects in feature services or controllers, not node body React files
 - keep launchpad option projection, provider catalog shaping, and stable
   Workbench node id helpers behind public desktop service seams
+- treat the desktop workspace Dock launcher catalog as the canonical entry
+  projection for both legacy Workbench and Fusion launcher surfaces
 
 The mechanical guard for the Workbench UI-to-internal rule is:
 

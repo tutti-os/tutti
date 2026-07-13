@@ -411,6 +411,9 @@ function createTransportClient(
     async stopAllWorkspaceApps() {
       throw new Error("not used");
     },
+    async stopWorkspaceApp() {
+      throw new Error("not used");
+    },
     async putDesktopPreferences() {
       throw new Error("not used");
     },

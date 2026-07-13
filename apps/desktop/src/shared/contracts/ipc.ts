@@ -13,13 +13,8 @@ import type {
 } from "../preferences/index.ts";
 import type {
   AgentProviderProbeListInput,
-  AgentProviderProbeListResult,
-  AgentGUIAgent
+  AgentProviderProbeListResult
 } from "@tutti-os/agent-gui";
-import type {
-  AgentProviderStatus,
-  WorkspaceAgentProvider
-} from "@tutti-os/client-tuttid-ts";
 import type {
   BrowserNodeActivationInput,
   BrowserNodeEvent,
@@ -60,6 +55,13 @@ import type {
   WorkspaceUserProjectSelectionPreparationInput,
   WorkspaceUserProjectServiceSnapshot
 } from "@tutti-os/workspace-user-project/contracts";
+import type {
+  DesktopFusionOpenWindowInput,
+  DesktopFusionState,
+  DesktopFusionUpdateWindowInput,
+  DesktopFusionWindowDescriptor,
+  DesktopFusionWindowTargetInput
+} from "./fusion.ts";
 
 export const desktopIpcChannels = {
   computerUse: {
@@ -141,6 +143,17 @@ export const desktopIpcChannels = {
     getLogsState: "developer:getLogsState",
     openLogDirectory: "developer:openLogDirectory",
     openLogFile: "developer:openLogFile"
+  },
+  fusion: {
+    closeWindow: "fusion:closeWindow",
+    focusWindow: "fusion:focusWindow",
+    getState: "fusion:getState",
+    hideDock: "fusion:hideDock",
+    openWindow: "fusion:openWindow",
+    showDock: "fusion:showDock",
+    state: "fusion:state",
+    toggleDock: "fusion:toggleDock",
+    updateWindow: "fusion:updateWindow"
   },
   runtime: {
     getBackendConfig: "runtime:getBackendConfig",
@@ -239,24 +252,9 @@ export interface DesktopHostWindowCloseRequestPayload {
 }
 
 export interface DesktopHostOpenAgentWindowInput {
-  agentSessionId?: string | null;
-  agentTargetId?: string | null;
-  providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
-  provider?: string | null;
+  launchPayload?: unknown;
+  resourceId?: string | null;
   workspaceId: string;
-}
-
-export interface DesktopAgentProviderStatusSnapshot {
-  capturedAt: string | null;
-  defaultProvider: WorkspaceAgentProvider | null;
-  error: string | null;
-  isLoading: boolean;
-  pendingActions: readonly {
-    actionId: string;
-    provider: WorkspaceAgentProvider;
-  }[];
-  statuses: readonly AgentProviderStatus[];
 }
 
 export interface DesktopHostWindowCloseRequestResolutionPayload {
@@ -840,6 +838,14 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.developer.getLogsState]: undefined;
   [desktopIpcChannels.developer.openLogDirectory]: undefined;
   [desktopIpcChannels.developer.openLogFile]: DesktopDeveloperLogKind;
+  [desktopIpcChannels.fusion.closeWindow]: DesktopFusionWindowTargetInput;
+  [desktopIpcChannels.fusion.focusWindow]: DesktopFusionWindowTargetInput;
+  [desktopIpcChannels.fusion.getState]: undefined;
+  [desktopIpcChannels.fusion.hideDock]: undefined;
+  [desktopIpcChannels.fusion.openWindow]: DesktopFusionOpenWindowInput;
+  [desktopIpcChannels.fusion.showDock]: undefined;
+  [desktopIpcChannels.fusion.toggleDock]: undefined;
+  [desktopIpcChannels.fusion.updateWindow]: DesktopFusionUpdateWindowInput;
   [desktopIpcChannels.runtime.getBackendConfig]: undefined;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: undefined;
   [desktopIpcChannels.runtime
@@ -978,6 +984,14 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.developer.getLogsState]: DesktopDeveloperLogsState;
   [desktopIpcChannels.developer.openLogDirectory]: void;
   [desktopIpcChannels.developer.openLogFile]: void;
+  [desktopIpcChannels.fusion.closeWindow]: void;
+  [desktopIpcChannels.fusion.focusWindow]: void;
+  [desktopIpcChannels.fusion.getState]: DesktopFusionState;
+  [desktopIpcChannels.fusion.hideDock]: void;
+  [desktopIpcChannels.fusion.openWindow]: DesktopFusionWindowDescriptor;
+  [desktopIpcChannels.fusion.showDock]: void;
+  [desktopIpcChannels.fusion.toggleDock]: void;
+  [desktopIpcChannels.fusion.updateWindow]: DesktopFusionWindowDescriptor;
   [desktopIpcChannels.runtime.getBackendConfig]: DesktopBackendConfig;
   [desktopIpcChannels.runtime.getBusinessEventStreamUrl]: string;
   [desktopIpcChannels.runtime

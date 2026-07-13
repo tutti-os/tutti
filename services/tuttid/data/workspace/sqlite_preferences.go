@@ -322,14 +322,19 @@ func encodeFeatureFlags(value map[string]bool) (string, error) {
 
 func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcuts {
 	if strings.TrimSpace(raw) == "" {
-		return preferencesbiz.DesktopWorkbenchShortcuts{}
+		return defaultDesktopWorkbenchShortcuts()
 	}
 	var decoded struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+		ToggleFusionDock     *string `json:"toggleFusionDock"`
 	}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return preferencesbiz.DesktopWorkbenchShortcuts{}
+		return defaultDesktopWorkbenchShortcuts()
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return defaultDesktopWorkbenchShortcuts()
 	}
 	deref := func(p *string) string {
 		if p == nil {
@@ -337,10 +342,21 @@ func decodeWorkbenchShortcuts(raw string) preferencesbiz.DesktopWorkbenchShortcu
 		}
 		return *p
 	}
+	toggleFusionDock := preferencesbiz.DefaultDesktopToggleFusionDockShortcut
+	if _, exists := fields["toggleFusionDock"]; exists {
+		toggleFusionDock = deref(decoded.ToggleFusionDock)
+	}
 	return preferencesbiz.NormalizeDesktopWorkbenchShortcuts(preferencesbiz.DesktopWorkbenchShortcuts{
 		NewAgentConversation: deref(decoded.NewAgentConversation),
 		NewSameTypeWindow:    deref(decoded.NewSameTypeWindow),
+		ToggleFusionDock:     toggleFusionDock,
 	})
+}
+
+func defaultDesktopWorkbenchShortcuts() preferencesbiz.DesktopWorkbenchShortcuts {
+	return preferencesbiz.DesktopWorkbenchShortcuts{
+		ToggleFusionDock: preferencesbiz.DefaultDesktopToggleFusionDockShortcut,
+	}
 }
 
 func encodeWorkbenchShortcuts(value preferencesbiz.DesktopWorkbenchShortcuts) (string, error) {
@@ -354,7 +370,12 @@ func encodeWorkbenchShortcuts(value preferencesbiz.DesktopWorkbenchShortcuts) (s
 	data, err := json.Marshal(struct {
 		NewAgentConversation *string `json:"newAgentConversation"`
 		NewSameTypeWindow    *string `json:"newSameTypeWindow"`
-	}{ptr(n.NewAgentConversation), ptr(n.NewSameTypeWindow)})
+		ToggleFusionDock     *string `json:"toggleFusionDock"`
+	}{
+		NewAgentConversation: ptr(n.NewAgentConversation),
+		NewSameTypeWindow:    ptr(n.NewSameTypeWindow),
+		ToggleFusionDock:     ptr(n.ToggleFusionDock),
+	})
 	if err != nil {
 		return "", err
 	}

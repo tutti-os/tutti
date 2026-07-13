@@ -23,6 +23,7 @@ export interface WorkspaceWindowReadyTarget {
 
 export interface AwaitWorkspaceWindowReadyOptions {
   maximizeOnShow?: boolean;
+  showOnReady?: boolean;
 }
 
 export async function awaitWorkspaceWindowReady(
@@ -61,10 +62,12 @@ export async function awaitWorkspaceWindowReady(
     const handleReadyToShow = () => {
       settle(() => {
         if (!window.isDestroyed()) {
-          if (options.maximizeOnShow !== false) {
-            window.maximize();
+          if (options.showOnReady !== false) {
+            if (options.maximizeOnShow !== false) {
+              window.maximize();
+            }
+            window.show();
           }
-          window.show();
         }
         resolve();
       });
@@ -73,10 +76,12 @@ export async function awaitWorkspaceWindowReady(
     const handleDidFinishLoad = () => {
       settle(() => {
         if (!window.isDestroyed()) {
-          if (options.maximizeOnShow !== false) {
-            window.maximize();
+          if (options.showOnReady !== false) {
+            if (options.maximizeOnShow !== false) {
+              window.maximize();
+            }
+            window.show();
           }
-          window.show();
         }
         resolve();
       });

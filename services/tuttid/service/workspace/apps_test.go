@@ -3578,6 +3578,31 @@ func TestAppCenterServiceLaunchRejectsFailedAndStoppingApps(t *testing.T) {
 	}
 }
 
+func TestAppCenterServiceStopStopsOnlyTheRequestedWorkspaceAppRuntime(t *testing.T) {
+	service, runner := newLaunchTestAppCenterService(t)
+	runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+	runner.setState(appRuntimeKey("ws-2", "local-app"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43211"),
+		Port:      intPtr(43211),
+	})
+
+	app, err := service.Stop(context.Background(), "ws-1", "local-app")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if app.Runtime.Status != workspacebiz.AppRuntimeStatusIdle {
+		t.Fatalf("Stop() status = %q, want idle", app.Runtime.Status)
+	}
+	if got := runner.State("ws-2", "local-app").Status; got != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("other workspace runtime status = %q, want running", got)
+	}
+}
+
 func TestAppCenterServiceRetryRestartsFailedApp(t *testing.T) {
 	ctx := context.Background()
 	service, runner := newLaunchTestAppCenterService(t)

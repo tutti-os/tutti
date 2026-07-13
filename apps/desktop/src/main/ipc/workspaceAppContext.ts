@@ -70,13 +70,15 @@ import {
   WorkspaceAppGuestLogRateLimiter
 } from "./workspaceAppFrontendLogging.ts";
 import { resolveWorkspaceAppOpenFilePayload } from "../host/workspaceAppFileOpen.ts";
+import { parseWorkspaceAppSessionPartition } from "../workspaceAppPartition.ts";
+import { WorkspaceAppLaunchIntentStore } from "./workspaceAppLaunchIntentStore.ts";
+import type { DesktopFusionWindowCoordinator } from "../windows/fusionWindowCoordinator.ts";
+import { canBroadcastWorkspaceAppAgentStatus } from "./workspaceAppAgentStatusBroadcastAccess.ts";
 
 const workspaceAppGuestWebContents = new Set<WebContents>();
 const workspaceAppGuestContexts = new Map<number, WorkspaceAppGuestContext>();
-const workspaceAppInitialLaunchIntents = new Map<
-  string,
-  TuttiExternalWorkspaceOpenRouteIntent
->();
+const workspaceAppInitialLaunchIntents = new WorkspaceAppLaunchIntentStore();
+const trackedWorkspaceAppLaunchIntentOwners = new WeakSet<WebContents>();
 let workspaceAppFrontendLogWriter: WorkspaceAppFrontendLogWriter | null = null;
 let workspaceAppGuestLogRateLimiter: WorkspaceAppGuestLogRateLimiter | null =
   null;
@@ -98,11 +100,16 @@ interface WorkspaceAppPrintWebContents {
 export function registerWorkspaceAppGuestWebContents(
   ownerWindow: BrowserWindow,
   contents: WebContents,
+  expectedWorkspaceID: string,
   logger?: DesktopLogger,
   partition?: string | null
 ): void {
   workspaceAppGuestWebContents.add(contents);
-  const context = readWorkspaceAppGuestContext(ownerWindow, partition);
+  const context = readWorkspaceAppGuestContext(
+    ownerWindow,
+    partition,
+    expectedWorkspaceID
+  );
   if (context) {
     workspaceAppGuestContexts.set(contents.id, context);
   } else {
@@ -130,6 +137,10 @@ export function registerWorkspaceAppContextIpc(
   endpoint: DesktopDaemonEndpoint,
   preferences: DesktopHostPreferencesState,
   options: {
+    fusion: Pick<
+      DesktopFusionWindowCoordinator,
+      "getRendererAccessContext" | "isActive"
+    >;
     logger?: DesktopLogger;
     sessionID: string;
     stateRootDir: string;
@@ -524,7 +535,21 @@ export function registerWorkspaceAppContextIpc(
   );
   ipcMain.on(
     desktopIpcChannels.appContext.agentStatusBroadcast,
-    (_event, payload: unknown) => {
+    (event, payload: unknown) => {
+      if (
+        !canBroadcastWorkspaceAppAgentStatus({
+          fusionActive: options.fusion.isActive(),
+          rendererAccess: options.fusion.getRendererAccessContext(
+            event.sender.id
+          )
+        })
+      ) {
+        logger?.warn("workspace app Agent status broadcast ignored", {
+          reason: "unauthorized_sender",
+          webContentsId: event.sender.id
+        });
+        return;
+      }
       if (
         typeof payload === "object" &&
         payload !== null &&
@@ -701,7 +726,7 @@ function forwardWorkspaceAppExternalRendererEvent(
   rendererEvent: DesktopWorkspaceAppExternalRendererEvent
 ): void {
   if (rendererEvent.type === "workspace.launchIntent") {
-    persistWorkspaceAppInitialLaunchIntent(ownerContents.id, rendererEvent);
+    persistWorkspaceAppInitialLaunchIntent(ownerContents, rendererEvent);
   }
   for (const [guestWebContentsId, context] of workspaceAppGuestContexts) {
     if (context.workspaceID !== rendererEvent.workspaceId) {
@@ -732,17 +757,13 @@ function forwardWorkspaceAppExternalRendererEvent(
 }
 
 function persistWorkspaceAppInitialLaunchIntent(
-  ownerWebContentsId: number,
+  ownerContents: WebContents,
   event: Extract<
     DesktopWorkspaceAppExternalRendererEvent,
     { type: "workspace.launchIntent" }
   >
 ): void {
-  const key = workspaceAppInitialLaunchIntentKey({
-    appID: event.appId,
-    ownerWebContentsId,
-    workspaceID: event.workspaceId
-  });
+  const ownerWebContentsId = ownerContents.id;
   let matchedGuest = false;
   for (const context of workspaceAppGuestContexts.values()) {
     if (
@@ -754,8 +775,27 @@ function persistWorkspaceAppInitialLaunchIntent(
     }
   }
   if (!matchedGuest) {
-    workspaceAppInitialLaunchIntents.set(key, event.intent);
+    workspaceAppInitialLaunchIntents.set(
+      {
+        appID: event.appId,
+        ownerWebContentsId,
+        workspaceID: event.workspaceId
+      },
+      event.intent
+    );
+    trackWorkspaceAppLaunchIntentOwner(ownerContents);
   }
+}
+
+function trackWorkspaceAppLaunchIntentOwner(ownerContents: WebContents): void {
+  if (trackedWorkspaceAppLaunchIntentOwners.has(ownerContents)) {
+    return;
+  }
+  trackedWorkspaceAppLaunchIntentOwners.add(ownerContents);
+  const ownerWebContentsId = ownerContents.id;
+  ownerContents.once("destroyed", () => {
+    workspaceAppInitialLaunchIntents.forgetOwner(ownerWebContentsId);
+  });
 }
 
 function requireWorkspaceAppGuestContext(
@@ -1304,44 +1344,25 @@ function base64UrlEncode(value: string): string {
 
 function readWorkspaceAppGuestContext(
   ownerWindow: BrowserWindow,
-  partition: string | null | undefined
+  partition: string | null | undefined,
+  expectedWorkspaceID: string
 ): WorkspaceAppGuestContext | null {
-  const prefix = "persist:tutti-app:";
-  if (!partition?.startsWith(prefix)) {
+  const identity = parseWorkspaceAppSessionPartition(partition);
+  if (!identity || identity.workspaceID !== expectedWorkspaceID) {
     return null;
   }
-  const value = partition.slice(prefix.length);
-  const separator = value.indexOf(":");
-  if (separator <= 0 || separator >= value.length - 1) {
-    return null;
-  }
-  const workspaceID = decodeURIComponent(value.slice(0, separator));
-  const appID = decodeURIComponent(value.slice(separator + 1));
-  const intentKey = workspaceAppInitialLaunchIntentKey({
+  const { appID, workspaceID } = identity;
+  const launchIntent = workspaceAppInitialLaunchIntents.take({
     appID,
     ownerWebContentsId: ownerWindow.webContents.id,
     workspaceID
   });
-  const launchIntent = workspaceAppInitialLaunchIntents.get(intentKey);
-  workspaceAppInitialLaunchIntents.delete(intentKey);
   return {
     ...(launchIntent ? { launchIntent } : {}),
     appID,
     ownerWindow,
     workspaceID
   };
-}
-
-function workspaceAppInitialLaunchIntentKey(input: {
-  appID: string;
-  ownerWebContentsId: number;
-  workspaceID: string;
-}): string {
-  return [
-    String(input.ownerWebContentsId),
-    encodeURIComponent(input.workspaceID),
-    encodeURIComponent(input.appID)
-  ].join(":");
 }
 
 function isWorkspaceAppDiagnosticPayload(

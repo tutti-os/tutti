@@ -30,6 +30,10 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 - [Desktop restart leaves an orphan tuttid](./desktop-release.md#desktop-restart-leaves-an-orphan-tuttid)
 - [App update diagnostics flood with identical download progress states](./desktop-release.md#app-update-diagnostics-flood-with-identical-download-progress-states)
 - [macOS in-app update closes Tutti but does not install the new version](./desktop-release.md#macos-in-app-update-closes-tutti-but-does-not-install-the-new-version)
+- [Fusion Mode toggle is saved but the current window does not change](./desktop-release.md#fusion-mode-toggle-is-saved-but-the-current-window-does-not-change)
+- [Fusion Mode starts without a Workspace window and the Dock seems missing](./desktop-release.md#fusion-mode-starts-without-a-workspace-window-and-the-dock-seems-missing)
+- [Fusion product window is absent from the Window menu or reopens off-screen](./desktop-release.md#fusion-product-window-is-absent-from-the-window-menu-or-reopens-off-screen)
+- [Closing a Fusion window unexpectedly stops or loses a background task](./desktop-release.md#closing-a-fusion-window-unexpectedly-stops-or-loses-a-background-task)
 - [Desktop Performance trace export runs out of memory](./desktop-release.md#desktop-performance-trace-export-runs-out-of-memory)
 
 ## [Workbench And Renderer](./workbench-renderer.md)
@@ -40,7 +44,8 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [IME composition breaks fuzzy search or controlled search inputs](./workbench-renderer.md#ime-composition-breaks-fuzzy-search-or-controlled-search-inputs)
 - [External-store snapshots churn because derived reads lose reference stability](./workbench-renderer.md#external-store-snapshots-churn-because-derived-reads-lose-reference-stability)
 - [Workbench host rebuilds when dock business status changes](./workbench-renderer.md#workbench-host-rebuilds-when-dock-business-status-changes)
-- [Effect cleanup leaves mounted refs false in React development](./workbench-renderer.md#effect-cleanup-leaves-mounted-refs-false-in-react-development)
+- [Fusion launcher rail diverges from the Workspace Dock](./workbench-renderer.md#fusion-launcher-rail-diverges-from-the-workspace-dock)
+- [Effect replay strands async work behind lifecycle or one-shot refs](./workbench-renderer.md#effect-replay-strands-async-work-behind-lifecycle-or-one-shot-refs)
 - [Workbench node body warns about updating WorkbenchNodeLayer during render](./workbench-renderer.md#workbench-node-body-warns-about-updating-workbenchnodelayer-during-render)
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
 

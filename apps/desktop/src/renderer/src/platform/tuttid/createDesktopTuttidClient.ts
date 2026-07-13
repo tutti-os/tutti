@@ -820,6 +820,9 @@ export function createDesktopTuttidClient(
     async stopAllWorkspaceApps(workspaceID) {
       return (await resolveClient()).stopAllWorkspaceApps(workspaceID);
     },
+    async stopWorkspaceApp(workspaceID, appID) {
+      return (await resolveClient()).stopWorkspaceApp(workspaceID, appID);
+    },
     async putDesktopPreferences(request) {
       return (await resolveClient()).putDesktopPreferences(request);
     },

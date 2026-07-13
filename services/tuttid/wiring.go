@@ -45,12 +45,18 @@ import (
 type tuttiWiring struct {
 	api                 tuttiapi.DaemonAPI
 	appCenterService    *workspaceservice.AppCenterService
+	appRuntimeStoppers  []daemonAppRuntimeStopper
 	workspaceStore      *workspacedata.SQLiteStore
 	analyticsReporter   reporterservice.Reporter
 	browserService      *browsersvc.Service
 	computerService     *computersvc.Service
 	agentRuntime        *agentdaemon.Runtime
 	providerAuthWatcher *agentservice.ProviderAuthWatcher
+	terminalService     interface{ Close() }
+}
+
+type daemonAppRuntimeStopper interface {
+	StopAll(context.Context)
 }
 
 type analyticsDebugEventPublisher struct {
@@ -169,8 +175,25 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
+	w.appRuntimeStoppers = resolveDaemonAppRuntimeStoppers(appCenterService, api.AppFactoryService)
 	w.agentRuntime = agentRuntime
+	if terminalService, ok := api.TerminalService.(interface{ Close() }); ok {
+		w.terminalService = terminalService
+	}
 	return nil
+}
+
+func resolveDaemonAppRuntimeStoppers(appCenterService *workspaceservice.AppCenterService, appFactoryService tuttiapi.AppFactoryService) []daemonAppRuntimeStopper {
+	stoppers := make([]daemonAppRuntimeStopper, 0, 2)
+	var appCenterRunner *workspaceservice.AppRunner
+	if appCenterService != nil && appCenterService.Runner != nil {
+		appCenterRunner = appCenterService.Runner
+		stoppers = append(stoppers, appCenterRunner)
+	}
+	if appFactory, ok := appFactoryService.(*workspaceservice.AppFactoryService); ok && appFactory.Runner != nil && appFactory.Runner != appCenterRunner {
+		stoppers = append(stoppers, appFactory.Runner)
+	}
+	return stoppers
 }
 
 func resolveAnalyticsDebugPublisher(analyticsConfig tuttitypes.AnalyticsConfig, service analyticsDebugEventStream) reporterservice.DebugPublisher {
@@ -483,11 +506,16 @@ func (w *tuttiWiring) Close() error {
 		return nil
 	}
 
-	if w.appCenterService != nil && w.appCenterService.Runner != nil {
-		w.appCenterService.Runner.StopAll(context.Background())
+	for _, runtime := range w.appRuntimeStoppers {
+		if runtime != nil {
+			runtime.StopAll(context.Background())
+		}
 	}
 	if w.appCenterService != nil {
 		w.appCenterService.StopWorkspaceAppUploadJanitor()
+	}
+	if w.terminalService != nil {
+		w.terminalService.Close()
 	}
 	if w.browserService != nil {
 		w.browserService.Close()

@@ -2781,6 +2781,9 @@ type DesktopWorkbenchShortcuts struct {
 
 	// NewSameTypeWindow Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
 	NewSameTypeWindow *string `json:"newSameTypeWindow"`
+
+	// ToggleFusionDock Global keyboard shortcut binding for showing or hiding the Fusion Dock, or null when unbound.
+	ToggleFusionDock *string `json:"toggleFusionDock"`
 }
 
 // DesktopWorkbenchWindowSnapping defines model for DesktopWorkbenchWindowSnapping.

@@ -11,6 +11,13 @@ const source = readFileSync(
   ),
   "utf8"
 );
+const fusionLabSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceFusionLabSettings.tsx"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(source, /useAnalyticsDebugPreferenceService/);
@@ -30,6 +37,47 @@ test("workspace settings panel lists appearance below general", () => {
 test("workspace settings panel uses a large desktop frame", () => {
   assert.match(source, /h-\[min\(640px,calc\(100vh-40px\)\)\]/);
   assert.match(source, /w-\[min\(960px,calc\(100vw-40px\)\)\]/);
+});
+
+test("workspace settings supports native-window content without changing the default dialog", () => {
+  assert.match(source, /presentation = "dialog"/);
+  assert.match(source, /presentation\?: "dialog" \| "window"/);
+  assert.match(
+    source,
+    /const isWindowPresentation = presentation === "window"/
+  );
+  assert.match(source, /data-workspace-settings-presentation=\{presentation\}/);
+  assert.match(source, /role=\{isWindowPresentation \? "region" : "dialog"\}/);
+  assert.match(
+    source,
+    /isWindowPresentation \? null : \(\s*<div className="col-\[1\/-1\] row-start-1/
+  );
+  assert.match(
+    source,
+    /function WorkspaceSettingsPanelPresentation[\s\S]*if \(presentation === "window"\) \{\s*return children;\s*\}[\s\S]*<WorkspaceSettingsPanelPortal/
+  );
+});
+
+test("workspace Labs exposes Fusion Mode, Dock visibility, and global shortcut controls", () => {
+  assert.match(source, /<WorkspaceFusionLabSettings/);
+  assert.match(
+    fusionLabSource,
+    /isFusionModeEnabled\(pendingFeatureFlags\)[\s\S]*resolveFusionDockVisibility\(\s*pendingFeatureFlags\s*\)/
+  );
+  assert.match(
+    fusionLabSource,
+    /workspace\.settings\.lab\.fusionModeRestartRequired/
+  );
+  assert.match(fusionLabSource, /\[LAB_FUSION_MODE_FLAG\]: enabled/);
+  assert.match(
+    fusionLabSource,
+    /withFusionDockVisibility\(featureFlags, value\)/
+  );
+  assert.match(
+    fusionLabSource,
+    /value=\{workbenchShortcuts\.toggleFusionDock\}/
+  );
+  assert.match(fusionLabSource, /toggleFusionDock: binding/);
 });
 
 test("workspace settings gates account behind Tutti Agent Switch", () => {

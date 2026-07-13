@@ -24,7 +24,11 @@ export type BrowserNodeWebviewMatcher = (
 ) => boolean;
 
 interface PendingBrowserWebviewAttach {
-  allowNativePopups: boolean;
+  params: Readonly<Record<string, string>>;
+}
+
+export interface BrowserWebviewGuestAttachedInput {
+  params: Readonly<Record<string, string>>;
 }
 
 export interface BrowserWebviewPreloadResolverInput {
@@ -153,10 +157,15 @@ export interface InstallBrowserWebviewSecurityInput {
   allowedSessionPartitions?: BrowserSessionPartitionAllowedOptions;
   contents: WebContents;
   logger?: BrowserNodeElectronLogger;
-  onGuestAttached?: (guestContents: WebContents) => void;
+  onGuestAttached?: (
+    guestContents: WebContents,
+    input: BrowserWebviewGuestAttachedInput
+  ) => void;
   openExternal: (url: string) => Promise<void> | void;
   resolvePreload?: BrowserWebviewPreloadResolver;
+  resolveSessionIdentity: (partition: string) => object;
   shouldHandleWebview?: BrowserNodeWebviewMatcher;
+  validateWebviewAttach?: BrowserNodeWebviewMatcher;
 }
 
 export function installBrowserWebviewSecurity({
@@ -166,9 +175,40 @@ export function installBrowserWebviewSecurity({
   onGuestAttached,
   openExternal,
   resolvePreload,
-  shouldHandleWebview
+  resolveSessionIdentity,
+  shouldHandleWebview,
+  validateWebviewAttach
 }: InstallBrowserWebviewSecurityInput): () => void {
-  const pendingBrowserAttaches: PendingBrowserWebviewAttach[] = [];
+  const pendingBrowserAttaches = new Map<
+    object,
+    PendingBrowserWebviewAttach[]
+  >();
+
+  const resolveAttachIdentity = (partition: string): object =>
+    resolveSessionIdentity(partition);
+  const getPendingAttachCount = () =>
+    [...pendingBrowserAttaches.values()].reduce(
+      (count, pending) => count + pending.length,
+      0
+    );
+  const enqueuePendingAttach = (
+    identity: object,
+    pending: PendingBrowserWebviewAttach
+  ) => {
+    const queue = pendingBrowserAttaches.get(identity) ?? [];
+    queue.push(pending);
+    pendingBrowserAttaches.set(identity, queue);
+  };
+  const dequeuePendingAttach = (
+    identity: object
+  ): PendingBrowserWebviewAttach | null => {
+    const queue = pendingBrowserAttaches.get(identity);
+    const pending = queue?.shift() ?? null;
+    if (queue?.length === 0) {
+      pendingBrowserAttaches.delete(identity);
+    }
+    return pending;
+  };
 
   const handleWillAttachWebview = (
     event: Event,
@@ -184,6 +224,13 @@ export function installBrowserWebviewSecurity({
       src: params.src ?? null
     });
     if (!shouldHandle) {
+      return;
+    }
+    if (validateWebviewAttach?.(params) === false) {
+      logger?.warn?.("Browser Node webview blocked", {
+        reason: "Host webview attachment policy rejected the request"
+      });
+      event.preventDefault();
       return;
     }
 
@@ -209,9 +256,26 @@ export function installBrowserWebviewSecurity({
       event.preventDefault();
       return;
     }
-    pendingBrowserAttaches.push({
-      allowNativePopups
-    });
+    const partition = params.partition;
+    if (!partition) {
+      logger?.warn?.("Browser Node webview blocked", {
+        reason: "Validated webview partition is unavailable"
+      });
+      event.preventDefault();
+      return;
+    }
+    let sessionIdentity: object;
+    try {
+      sessionIdentity = resolveAttachIdentity(partition);
+    } catch (error) {
+      logger?.warn?.("Browser Node webview blocked", {
+        error: error instanceof Error ? error.message : String(error),
+        reason: "Webview session identity resolution failed"
+      });
+      event.preventDefault();
+      return;
+    }
+    enqueuePendingAttach(sessionIdentity, { params: { ...params } });
     logger?.debug?.("Browser Node webview attach allowed", {
       partition: params.partition ?? null,
       src: params.src ?? null
@@ -222,39 +286,32 @@ export function installBrowserWebviewSecurity({
     _event: Event,
     guestContents: WebContents
   ) => {
-    const pendingAttach = pendingBrowserAttaches.shift();
+    const pendingAttach = dequeuePendingAttach(guestContents.session);
     if (!pendingAttach) {
       logger?.debug?.("Browser Node webview did attach ignored", {
         guestWebContentsId: guestContents.id ?? null,
-        pendingBrowserAttachCount: pendingBrowserAttaches.length
+        pendingBrowserAttachCount: getPendingAttachCount()
       });
       return;
     }
+    const partition = pendingAttach.params.partition;
 
     applyBrowserGuestUserAgent(guestContents, logger);
-    if (pendingAttach.allowNativePopups) {
-      guestContents.setWindowOpenHandler(({ url }) => {
-        return externalizeBrowserNodePopupWindow({
-          guestWebContentsId: guestContents.id ?? null,
-          logger,
-          openExternal,
-          url
-        });
+    guestContents.setWindowOpenHandler(({ url }) => {
+      return externalizeBrowserNodePopupWindow({
+        guestWebContentsId: guestContents.id ?? null,
+        logger,
+        openExternal,
+        url
       });
-    } else {
-      guestContents.setWindowOpenHandler(({ url }) => {
-        return externalizeBrowserNodePopupWindow({
-          guestWebContentsId: guestContents.id ?? null,
-          logger,
-          openExternal,
-          url
-        });
-      });
-    }
-    onGuestAttached?.(guestContents);
+    });
+    onGuestAttached?.(guestContents, {
+      params: pendingAttach.params
+    });
     logger?.debug?.("Browser Node webview guest attached", {
       guestWebContentsId: guestContents.id ?? null,
-      pendingBrowserAttachCount: pendingBrowserAttaches.length
+      partition,
+      pendingBrowserAttachCount: getPendingAttachCount()
     });
   };
 
@@ -264,5 +321,6 @@ export function installBrowserWebviewSecurity({
   return () => {
     contents.off("will-attach-webview", handleWillAttachWebview);
     contents.off("did-attach-webview", handleDidAttachWebview);
+    pendingBrowserAttaches.clear();
   };
 }

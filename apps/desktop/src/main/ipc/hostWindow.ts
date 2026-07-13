@@ -5,9 +5,15 @@ import {
 } from "../../shared/contracts/ipc";
 import { createDesktopWindowAccess } from "../host/desktopWindowAccess";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
+import type { DesktopFusionWindowCoordinator } from "../windows/fusionWindowCoordinator.ts";
 import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
+import {
+  assertFusionOpenWindowAccess,
+  requireFusionRendererAccess
+} from "./fusionAccess.ts";
+import { shouldMinimizeOwnerAfterAgentWindowOpen } from "./hostWindowPolicy.ts";
 
 const maxCapturePreviewDimensionPx = 512;
 const capturePreviewTimeoutMs = 2_000;
@@ -15,6 +21,10 @@ let capturePreviewQueue: Promise<void> = Promise.resolve();
 let capturePreviewSequence = 0;
 
 export interface HostWindowIpcDependencies {
+  fusion: Pick<
+    DesktopFusionWindowCoordinator,
+    "getRendererAccessContext" | "isActive"
+  >;
   workspaceLaunch: Pick<WorkspaceLaunch, "showAgentWindow">;
 }
 
@@ -139,9 +149,21 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
     desktopIpcChannels.host.window.openAgentWindow,
     async (event, input) => {
       const ownerWindow = resolveOwnerWindowFromEvent(event);
-      await deps.workspaceLaunch.showAgentWindow(
-        normalizeAgentWindowInput(input)
-      );
+      const normalizedInput = normalizeAgentWindowInput(input);
+      const fusionActive = deps.fusion.isActive();
+      if (fusionActive) {
+        const access = requireFusionRendererAccess(
+          deps.fusion.getRendererAccessContext(event.sender.id)
+        );
+        assertFusionOpenWindowAccess(access, {
+          kind: "agent",
+          workspaceId: normalizedInput.workspaceID
+        });
+      }
+      await deps.workspaceLaunch.showAgentWindow(normalizedInput);
+      if (!shouldMinimizeOwnerAfterAgentWindowOpen(fusionActive)) {
+        return;
+      }
       if (!ownerWindow || ownerWindow.isDestroyed()) {
         return;
       }
@@ -184,11 +206,8 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
     throw new Error("workspaceId is required to open an agent window");
   }
   return {
-    agentSessionID: input.agentSessionId?.trim() || null,
-    agentTargetID: input.agentTargetId?.trim() || null,
-    providerStatusSnapshot: input.providerStatusSnapshot ?? null,
-    agents: input.agents,
-    provider: input.provider?.trim() || null,
+    launchPayload: input.launchPayload,
+    resourceID: input.resourceId?.trim() || null,
     workspaceID
   };
 }

@@ -201,6 +201,41 @@ test("before quit waits for managed tuttid stop when update install is pending",
   );
 });
 
+test("before quit flushes Fusion window state before destroying windows", async () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      fusion: {
+        async activatePrimarySurface() {},
+        dispose() {},
+        async flushPersistentState() {
+          events.push("fusion:flush");
+        },
+        isActive: () => true
+      },
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {
+        events.push("tuttid:stop");
+      }),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  handlers.beforeQuit({ preventDefault() {} });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(
+    events.indexOf("fusion:flush") < events.indexOf("tuttid:stop"),
+    true
+  );
+  assert.equal(
+    events.indexOf("fusion:flush") < events.indexOf("windows:destroy-all"),
+    true
+  );
+});
+
 test("before quit does not trigger a second stop while shutdown is already in progress", async () => {
   const events: string[] = [];
   const handlers = createDesktopAppLifecycleHandlers(
@@ -279,4 +314,82 @@ test("command quit shortcut confirmation expires", () => {
 
   assert.deepEqual(events, ["toast", "toast"]);
   resetDesktopAppQuitShortcutForTest();
+});
+
+test("activate restores the most recent Fusion surface instead of opening a Workspace window", () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      fusion: {
+        async activatePrimarySurface() {
+          events.push("fusion:activate-primary-surface");
+        },
+        dispose() {},
+        async flushPersistentState() {},
+        isActive: () => true
+      },
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {}),
+      updateService: createUpdateService(events),
+      workspaceLaunch: {
+        ...createWorkspaceLaunch(),
+        async openStartupWindow() {
+          events.push("workspace:open-startup");
+        }
+      }
+    },
+    createRuntime(events)
+  );
+
+  handlers.activate();
+
+  assert.deepEqual(events, ["fusion:activate-primary-surface"]);
+});
+
+test("Fusion lifecycle keeps the app alive when every BrowserWindow closes", () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      fusion: {
+        async activatePrimarySurface() {},
+        dispose() {},
+        async flushPersistentState() {},
+        isActive: () => true
+      },
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {}),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  handlers.windowAllClosed();
+
+  assert.equal(events.includes("app:quit"), false);
+});
+
+test("will quit disposes Fusion desktop integration", () => {
+  const events: string[] = [];
+  const handlers = createDesktopAppLifecycleHandlers(
+    {
+      fusion: {
+        async activatePrimarySurface() {},
+        dispose() {
+          events.push("fusion:dispose");
+        },
+        async flushPersistentState() {},
+        isActive: () => true
+      },
+      logger: createLogger(events),
+      tuttid: createTuttidManager(async () => {}),
+      updateService: createUpdateService(events),
+      workspaceLaunch: createWorkspaceLaunch()
+    },
+    createRuntime(events)
+  );
+
+  handlers.willQuit();
+
+  assert.deepEqual(events.slice(0, 2), ["fusion:dispose", "update:dispose"]);
 });

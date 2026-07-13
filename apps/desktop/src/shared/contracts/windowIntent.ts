@@ -4,8 +4,10 @@ import type {
   DesktopThemeAppearance,
   DesktopThemeSource
 } from "../theme/index.ts";
-import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
-import type { DesktopAgentProviderStatusSnapshot } from "./ipc.ts";
+import {
+  isDesktopFusionWindowKind,
+  type DesktopFusionWindowKind
+} from "./fusion.ts";
 
 export type DesktopWindowIntent =
   | {
@@ -13,12 +15,22 @@ export type DesktopWindowIntent =
       workspaceID: string;
     }
   | {
-      agentSessionID?: string | null;
-      agentTargetID?: string | null;
-      providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot;
-      agents?: readonly AgentGUIAgent[];
+      launchPayload?: unknown;
       kind: "agent";
-      provider?: string | null;
+      resourceID: string | null;
+      windowInstanceID?: string | null;
+      workspaceID: string;
+    }
+  | {
+      kind: "fusion-dock";
+      workspaceID: string;
+    }
+  | {
+      fusionWindowKind: DesktopFusionWindowKind;
+      kind: "fusion-tool";
+      launchPayload?: unknown;
+      resourceID?: string | null;
+      windowInstanceID: string;
       workspaceID: string;
     }
   | {
@@ -42,25 +54,45 @@ export function createWorkspaceWindowIntent(
 }
 
 export function createAgentWindowIntent(input: {
-  agentSessionID?: string | null;
-  agentTargetID?: string | null;
-  providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
-  provider?: string | null;
+  launchPayload?: unknown;
+  resourceID?: string | null;
+  windowInstanceID?: string | null;
   workspaceID: string;
 }): DesktopWindowIntent {
-  const agents = normalizeAgentWindowAgents(input.agents);
-  const providerStatusSnapshot = normalizeAgentProviderStatusSnapshot(
-    input.providerStatusSnapshot
-  );
+  const windowInstanceID = input.windowInstanceID?.trim() || null;
   return {
-    agentSessionID: input.agentSessionID?.trim() || null,
-    agentTargetID: input.agentTargetID?.trim() || null,
-    ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
-    ...(agents !== undefined ? { agents } : {}),
+    ...(input.launchPayload === undefined
+      ? {}
+      : { launchPayload: input.launchPayload }),
     kind: "agent",
-    provider: input.provider?.trim() || null,
-    workspaceID: input.workspaceID
+    resourceID: input.resourceID?.trim() || null,
+    ...(windowInstanceID ? { windowInstanceID } : {}),
+    workspaceID: input.workspaceID.trim()
+  };
+}
+
+export function createFusionDockWindowIntent(
+  workspaceID: string
+): DesktopWindowIntent {
+  return { kind: "fusion-dock", workspaceID };
+}
+
+export function createFusionToolWindowIntent(input: {
+  fusionWindowKind: DesktopFusionWindowKind;
+  launchPayload?: unknown;
+  resourceID?: string | null;
+  windowInstanceID: string;
+  workspaceID: string;
+}): DesktopWindowIntent {
+  return {
+    fusionWindowKind: input.fusionWindowKind,
+    kind: "fusion-tool",
+    ...(input.launchPayload === undefined
+      ? {}
+      : { launchPayload: input.launchPayload }),
+    resourceID: input.resourceID?.trim() || null,
+    windowInstanceID: input.windowInstanceID.trim(),
+    workspaceID: input.workspaceID.trim()
   };
 }
 
@@ -86,23 +118,28 @@ export function encodeDesktopWindowIntent(
   if (intent.kind === "agent") {
     params.set("view", "agent");
     params.set("workspaceId", intent.workspaceID);
-    if (intent.agentSessionID) {
-      params.set("agentSessionId", intent.agentSessionID);
+    if (intent.resourceID) {
+      params.set("fusionResourceId", intent.resourceID);
     }
-    if (intent.agentTargetID) {
-      params.set("agentTargetId", intent.agentTargetID);
+    if (intent.windowInstanceID) {
+      params.set("fusionWindowId", intent.windowInstanceID);
     }
-    if (intent.provider) {
-      params.set("provider", intent.provider);
+    if (intent.launchPayload !== undefined) {
+      params.set("fusionLaunchPayload", JSON.stringify(intent.launchPayload));
     }
-    if (intent.agents !== undefined) {
-      params.set("agents", JSON.stringify(intent.agents));
+  } else if (intent.kind === "fusion-dock") {
+    params.set("view", "fusion-dock");
+    params.set("workspaceId", intent.workspaceID);
+  } else if (intent.kind === "fusion-tool") {
+    params.set("view", "fusion-tool");
+    params.set("workspaceId", intent.workspaceID);
+    params.set("fusionWindowId", intent.windowInstanceID);
+    params.set("fusionWindowKind", intent.fusionWindowKind);
+    if (intent.resourceID) {
+      params.set("fusionResourceId", intent.resourceID);
     }
-    if (intent.providerStatusSnapshot) {
-      params.set(
-        "agentProviderStatusSnapshot",
-        JSON.stringify(intent.providerStatusSnapshot)
-      );
+    if (intent.launchPayload !== undefined) {
+      params.set("fusionLaunchPayload", JSON.stringify(intent.launchPayload));
     }
   } else {
     params.set("view", "workspace");
@@ -130,7 +167,12 @@ export function resolveDesktopWindowIntent(
   const params = new URLSearchParams(search);
   const view = params.get("view");
 
-  if (view !== "workspace" && view !== "agent") {
+  if (
+    view !== "workspace" &&
+    view !== "agent" &&
+    view !== "fusion-dock" &&
+    view !== "fusion-tool"
+  ) {
     return {
       kind: "workspace-missing"
     };
@@ -145,13 +187,32 @@ export function resolveDesktopWindowIntent(
 
   if (view === "agent") {
     return createAgentWindowIntent({
-      agentSessionID: params.get("agentSessionId"),
-      agentTargetID: params.get("agentTargetId"),
-      providerStatusSnapshot: parseAgentProviderStatusSnapshot(
-        params.get("agentProviderStatusSnapshot")
+      launchPayload: parseFusionLaunchPayload(
+        params.get("fusionLaunchPayload")
       ),
-      agents: parseAgentWindowAgents(params.get("agents")),
-      provider: params.get("provider"),
+      resourceID: params.get("fusionResourceId"),
+      windowInstanceID: params.get("fusionWindowId"),
+      workspaceID
+    });
+  }
+
+  if (view === "fusion-dock") {
+    return createFusionDockWindowIntent(workspaceID);
+  }
+
+  if (view === "fusion-tool") {
+    const windowInstanceID = params.get("fusionWindowId")?.trim();
+    const fusionWindowKind = params.get("fusionWindowKind");
+    if (!windowInstanceID || !isDesktopFusionWindowKind(fusionWindowKind)) {
+      return { kind: "workspace-missing" };
+    }
+    return createFusionToolWindowIntent({
+      fusionWindowKind,
+      launchPayload: parseFusionLaunchPayload(
+        params.get("fusionLaunchPayload")
+      ),
+      resourceID: params.get("fusionResourceId"),
+      windowInstanceID,
       workspaceID
     });
   }
@@ -159,143 +220,13 @@ export function resolveDesktopWindowIntent(
   return createWorkspaceWindowIntent(workspaceID);
 }
 
-function normalizeAgentWindowAgents(
-  agents: readonly AgentGUIAgent[] | null | undefined
-): AgentGUIAgent[] | undefined {
-  if (agents === null || agents === undefined) {
-    return undefined;
-  }
-  return agents.flatMap((agent) => normalizeAgentWindowAgent(agent));
-}
-
-function normalizeAgentWindowAgent(value: unknown): AgentGUIAgent[] {
-  if (!value || typeof value !== "object") {
-    return [];
-  }
-  const agent = value as Partial<AgentGUIAgent>;
-  const agentTargetId = readTrimmedString(agent.agentTargetId);
-  const name = readTrimmedString(agent.name);
-  const description = readTrimmedString(agent.description);
-  const iconUrl = readTrimmedString(agent.iconUrl);
-  const provider = readTrimmedString(agent.provider) as AgentGUIProvider | null;
-  const availability = normalizeAgentWindowAvailability(agent.availability);
-  if (!agentTargetId || !name || !iconUrl || !provider || !availability) {
-    return [];
-  }
-
-  const ownerName = readTrimmedString(agent.owner?.name);
-  const ownerAvatarUrl = readTrimmedString(agent.owner?.avatarUrl);
-
-  return [
-    {
-      agentTargetId,
-      name,
-      iconUrl,
-      provider,
-      availability,
-      ...(description ? { description } : {}),
-      ...(ownerName || ownerAvatarUrl
-        ? {
-            owner: {
-              ...(ownerName ? { name: ownerName } : {}),
-              ...(ownerAvatarUrl ? { avatarUrl: ownerAvatarUrl } : {})
-            }
-          }
-        : {})
-    }
-  ];
-}
-
-function normalizeAgentWindowAvailability(
-  value: unknown
-): AgentGUIAgent["availability"] | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const availability = value as Partial<AgentGUIAgent["availability"]>;
-  const status = availability.status;
-  if (
-    status !== "ready" &&
-    status !== "checking" &&
-    status !== "coming_soon" &&
-    status !== "not_installed" &&
-    status !== "auth_required" &&
-    status !== "unavailable"
-  ) {
-    return null;
-  }
-  const reason = readTrimmedString(availability.reason);
-  const pendingAction = availability.pendingAction;
-  return {
-    status,
-    ...(reason ? { reason } : {}),
-    ...(pendingAction === "install" ||
-    pendingAction === "login" ||
-    pendingAction === "refresh"
-      ? { pendingAction }
-      : {})
-  };
-}
-
-function readTrimmedString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function parseAgentWindowAgents(
-  value: string | null
-): AgentGUIAgent[] | undefined {
+function parseFusionLaunchPayload(value: string | null): unknown {
   if (!value) {
     return undefined;
   }
   try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      return undefined;
-    }
-    return normalizeAgentWindowAgents(parsed as readonly AgentGUIAgent[]);
+    return JSON.parse(value) as unknown;
   } catch {
     return undefined;
   }
-}
-
-function parseAgentProviderStatusSnapshot(
-  value: string | null
-): DesktopAgentProviderStatusSnapshot | undefined {
-  if (!value) {
-    return undefined;
-  }
-  try {
-    return normalizeAgentProviderStatusSnapshot(JSON.parse(value));
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizeAgentProviderStatusSnapshot(
-  value: unknown
-): DesktopAgentProviderStatusSnapshot | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const snapshot = value as Partial<DesktopAgentProviderStatusSnapshot>;
-  const capturedAt = readOptionalString(snapshot.capturedAt);
-  if (!capturedAt) {
-    return undefined;
-  }
-  return {
-    capturedAt,
-    defaultProvider: readOptionalString(
-      snapshot.defaultProvider
-    ) as DesktopAgentProviderStatusSnapshot["defaultProvider"],
-    error: readOptionalString(snapshot.error),
-    isLoading: snapshot.isLoading === true,
-    pendingActions: Array.isArray(snapshot.pendingActions)
-      ? snapshot.pendingActions
-      : [],
-    statuses: Array.isArray(snapshot.statuses) ? snapshot.statuses : []
-  };
-}
-
-function readOptionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

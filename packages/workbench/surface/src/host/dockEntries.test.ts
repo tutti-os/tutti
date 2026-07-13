@@ -3,10 +3,58 @@ import test from "node:test";
 import type { WorkbenchNode } from "../core/types.ts";
 import {
   matchWorkbenchDockEntryNode,
+  orderWorkbenchDockEntries,
   resolveWorkbenchDockEntries,
   resolveWorkbenchDockEntryClick
 } from "./dockEntries.ts";
 import type { WorkbenchHostDockEntry, WorkbenchHostNodeData } from "./types.ts";
+
+test("dock entry ordering preserves section discovery and stable entry order", () => {
+  const entries = [
+    makeDockEntry("apps-later", "apps", 20),
+    makeDockEntry("tools-later", "tools", 30),
+    makeDockEntry("apps-first", "apps", 10),
+    makeDockEntry("tools-tied-a", "tools", 10),
+    makeDockEntry("tools-tied-b", "tools", 10),
+    makeDockEntry("apps-default", "apps")
+  ] as const;
+
+  assert.deepEqual(
+    orderWorkbenchDockEntries(entries).map((entry) => entry.id),
+    [
+      "apps-default",
+      "apps-first",
+      "apps-later",
+      "tools-tied-a",
+      "tools-tied-b",
+      "tools-later"
+    ]
+  );
+  assert.deepEqual(
+    entries.map((entry) => entry.id),
+    [
+      "apps-later",
+      "tools-later",
+      "apps-first",
+      "tools-tied-a",
+      "tools-tied-b",
+      "apps-default"
+    ]
+  );
+});
+
+test("dock entry ordering treats entries without a section as one section", () => {
+  const entries = [
+    makeDockEntry("unsectioned-later", undefined, 20),
+    makeDockEntry("apps", "apps", 0),
+    makeDockEntry("unsectioned-first", undefined, 10)
+  ];
+
+  assert.deepEqual(
+    orderWorkbenchDockEntries(entries).map((entry) => entry.id),
+    ["unsectioned-first", "unsectioned-later", "apps"]
+  );
+});
 
 test("dock entries match by dockEntryId before fallback matchers", () => {
   const entry: WorkbenchHostDockEntry = {
@@ -305,5 +353,20 @@ function makeNode(
     kind: typeId,
     restoreFrame: null,
     title: `${typeId}:${instanceId}`
+  };
+}
+
+function makeDockEntry(
+  id: string,
+  sectionId: string | undefined,
+  order?: number
+): WorkbenchHostDockEntry {
+  return {
+    icon: null,
+    id,
+    label: id,
+    order,
+    sectionId,
+    typeId: "test"
   };
 }

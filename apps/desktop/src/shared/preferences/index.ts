@@ -12,6 +12,7 @@ export {
   defaultDesktopMinimizeAnimation,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,
+  defaultDesktopToggleFusionDockShortcut,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
   defaultDesktopWorkbenchShortcuts,

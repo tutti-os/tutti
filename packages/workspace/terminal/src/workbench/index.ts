@@ -14,7 +14,6 @@ import type {
 import type {
   TerminalCloseGuardResult,
   TerminalHeaderAccessoryRenderer,
-  TerminalLaunchInput,
   TerminalNodeExternalState,
   TerminalPreviewChangeHandler
 } from "../contracts/index.ts";
@@ -23,6 +22,7 @@ import type { TerminalNodeFeature } from "../core/feature.ts";
 import { acquireTerminalSessionController } from "../core/sessionController.ts";
 import { resolveTerminalWorkbenchBodyProps } from "./bodyProps.ts";
 import { resolveTerminalLaunchAnalyticsTrigger } from "./launchAnalytics.ts";
+import { resolveTerminalWorkbenchSessionLaunch } from "./sessionLaunch.ts";
 import { resolveTerminalWindowCloseEffect } from "./windowCloseEffect.ts";
 import { TerminalNode, TerminalNodeHeader } from "../react/TerminalNode.tsx";
 
@@ -30,6 +30,7 @@ export interface TerminalWorkbenchIntent {
   cwd?: string | null;
   initialInput?: string | null;
   profileId?: string | null;
+  sessionId?: string | null;
 }
 
 type TerminalMinimizedPreviewProvider = Extract<
@@ -49,9 +50,7 @@ export interface CreateTerminalWorkbenchNodeDefinitionInput {
 
 export type TerminalWorkbenchLaunchInputResolver = (
   request: WorkbenchHostLaunchRequest
-) =>
-  | Promise<Partial<Omit<TerminalLaunchInput, "reason" | "workspaceId">>>
-  | Partial<Omit<TerminalLaunchInput, "reason" | "workspaceId">>;
+) => Promise<TerminalWorkbenchIntent> | TerminalWorkbenchIntent;
 
 export interface CreateTerminalWorkbenchLaunchHandlerInput {
   feature: TerminalNodeFeature;
@@ -234,13 +233,15 @@ export function createTerminalWorkbenchLaunchHandler({
     }
 
     const resolved = (await resolveLaunchInput?.(request)) ?? {};
-    const descriptor = await feature.launchService.create({
-      cwd: resolved.cwd,
-      initialInput: resolved.initialInput,
-      profileId: resolved.profileId,
+    const descriptor = await resolveTerminalWorkbenchSessionLaunch({
+      intent: resolved,
+      launchService: feature.launchService,
       reason: request.reason === "dock" ? "dock" : "intent",
       workspaceId: request.workspaceId
     });
+    if (!descriptor) {
+      return null;
+    }
 
     return {
       activation: {

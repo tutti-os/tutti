@@ -3,6 +3,10 @@ import test from "node:test";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import type { DesktopThemeState } from "@shared/theme";
+import type {
+  DesktopFeatureFlags,
+  DesktopWorkbenchShortcuts
+} from "@shared/preferences";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { DesktopPreferencesReadableStoreState } from "../../../desktop-preferences/services/desktopPreferencesTypes.ts";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
@@ -935,6 +939,51 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
+test("WorkspaceSettingsService persists Fusion flags and Dock shortcut", async () => {
+  const flagWrites: DesktopFeatureFlags[] = [];
+  const shortcutWrites: DesktopWorkbenchShortcuts[] = [];
+  const service = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        flagWrites.push(flags);
+        return flags;
+      },
+      onSetWorkbenchShortcuts: async (shortcuts) => {
+        shortcutWrites.push(shortcuts);
+        return shortcuts;
+      },
+      state: createPreferencesState({})
+    })
+  );
+
+  await service.changeFeatureFlags({
+    "lab.fusionDockAutoHide": true,
+    "lab.fusionDockShortcutOnly": false,
+    "lab.fusionMode": true
+  });
+  await service.changeWorkbenchShortcuts({
+    newAgentConversation: null,
+    newSameTypeWindow: null,
+    toggleFusionDock: "Meta+Alt+Space"
+  });
+
+  assert.deepEqual(flagWrites, [
+    {
+      "lab.fusionDockAutoHide": true,
+      "lab.fusionDockShortcutOnly": false,
+      "lab.fusionMode": true
+    }
+  ]);
+  assert.deepEqual(shortcutWrites, [
+    {
+      newAgentConversation: null,
+      newSameTypeWindow: null,
+      toggleFusionDock: "Meta+Alt+Space"
+    }
+  ]);
+});
+
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
   const refreshedWorkspaceIDs: string[] = [];
   const service = new WorkspaceSettingsService(
@@ -1402,7 +1451,8 @@ function createPreferencesState(
     updatePolicy: "prompt",
     workbenchShortcuts: {
       newAgentConversation: null,
-      newSameTypeWindow: null
+      newSameTypeWindow: null,
+      toggleFusionDock: "Meta+Shift+Space"
     },
     workbenchWindowSnapping: {
       enabled: false,

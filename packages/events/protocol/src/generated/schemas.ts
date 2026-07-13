@@ -275,13 +275,21 @@ export const preferencesDesktopPreferencesSchema = {
     workbenchShortcuts: {
       type: "object",
       additionalProperties: false,
-      required: ["newAgentConversation", "newSameTypeWindow"],
+      required: [
+        "newAgentConversation",
+        "newSameTypeWindow",
+        "toggleFusionDock"
+      ],
       properties: {
         newAgentConversation: {
           type: ["string", "null"],
           maxLength: 80
         },
         newSameTypeWindow: {
+          type: ["string", "null"],
+          maxLength: 80
+        },
+        toggleFusionDock: {
           type: ["string", "null"],
           maxLength: 80
         }
@@ -1401,13 +1409,21 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         workbenchShortcuts: {
           type: "object",
           additionalProperties: false,
-          required: ["newAgentConversation", "newSameTypeWindow"],
+          required: [
+            "newAgentConversation",
+            "newSameTypeWindow",
+            "toggleFusionDock"
+          ],
           properties: {
             newAgentConversation: {
               type: ["string", "null"],
               maxLength: 80
             },
             newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            toggleFusionDock: {
               type: ["string", "null"],
               maxLength: 80
             }
@@ -1768,13 +1784,21 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         workbenchShortcuts: {
           type: "object",
           additionalProperties: false,
-          required: ["newAgentConversation", "newSameTypeWindow"],
+          required: [
+            "newAgentConversation",
+            "newSameTypeWindow",
+            "toggleFusionDock"
+          ],
           properties: {
             newAgentConversation: {
               type: ["string", "null"],
               maxLength: 80
             },
             newSameTypeWindow: {
+              type: ["string", "null"],
+              maxLength: 80
+            },
+            toggleFusionDock: {
               type: ["string", "null"],
               maxLength: 80
             }

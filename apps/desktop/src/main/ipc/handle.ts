@@ -5,6 +5,7 @@ import type {
   DesktopInvokeResultByChannel
 } from "../../shared/contracts/ipc";
 import { toDesktopIpcResult } from "./result";
+import { assertDesktopIpcMainFrame } from "./mainFrameAccess.ts";
 
 export function registerDesktopIpcHandler<
   TChannel extends DesktopInvokeChannel
@@ -20,15 +21,16 @@ export function registerDesktopIpcHandler<
     | DesktopInvokeResultByChannel[TChannel]
 ): void {
   ipcMain.handle(channel, (event, ...args) =>
-    toDesktopIpcResult(() =>
-      Promise.resolve(
+    toDesktopIpcResult(() => {
+      assertDesktopIpcMainFrame(event);
+      return Promise.resolve(
         handler(
           event,
           ...(args as DesktopInvokePayloadByChannel[TChannel] extends undefined
             ? []
             : [payload: DesktopInvokePayloadByChannel[TChannel]])
         )
-      )
-    )
+      );
+    })
   );
 }

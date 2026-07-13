@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   defaultDesktopAgentConversationDetailMode,
+  defaultDesktopToggleFusionDockShortcut,
   desktopFeatureFlagsEqual,
   desktopAgentConversationDetailModes,
   formatDesktopShortcutBinding,
@@ -60,9 +61,27 @@ test("normalizeDesktopWorkbenchShortcuts clamps + nulls empty", () => {
   assert.deepEqual(
     normalizeDesktopWorkbenchShortcuts({
       newAgentConversation: "  Meta+K ",
-      newSameTypeWindow: ""
+      newSameTypeWindow: "",
+      toggleFusionDock: " Meta+Shift+Space "
     }),
-    { newAgentConversation: "Meta+K", newSameTypeWindow: null }
+    {
+      newAgentConversation: "Meta+K",
+      newSameTypeWindow: null,
+      toggleFusionDock: "Meta+Shift+Space"
+    }
+  );
+});
+
+test("normalizeDesktopWorkbenchShortcuts defaults only a missing Fusion Dock binding", () => {
+  assert.deepEqual(normalizeDesktopWorkbenchShortcuts({}), {
+    newAgentConversation: null,
+    newSameTypeWindow: null,
+    toggleFusionDock: defaultDesktopToggleFusionDockShortcut
+  });
+  assert.equal(
+    normalizeDesktopWorkbenchShortcuts({ toggleFusionDock: null })
+      .toggleFusionDock,
+    null
   );
 });
 

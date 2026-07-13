@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   applyDesktopWindowIntent,
   createAgentWindowIntent,
+  createFusionDockWindowIntent,
+  createFusionToolWindowIntent,
   createWorkspaceWindowIntent,
   encodeDesktopWindowIntent,
   resolveDesktopWindowIntent
@@ -45,104 +47,93 @@ test("applyDesktopWindowIntent preserves theme bootstrap parameters in developme
   );
 });
 
-test("encodeDesktopWindowIntent includes agent window route parameters", () => {
+test("Agent window intent exposes only native identity and an opaque launch payload", () => {
+  const launchPayload = {
+    arbitrary: { nested: ["value", 7] },
+    provider: "future-provider"
+  };
   const search = encodeDesktopWindowIntent(
     createAgentWindowIntent({
-      agentSessionID: " session-1 ",
-      agentTargetID: " target-1 ",
-      provider: " codex ",
-      workspaceID: "workspace-1"
+      launchPayload,
+      resourceID: " session-1 ",
+      windowInstanceID: " window-1 ",
+      workspaceID: " workspace-1 "
     })
   );
 
   const params = new URLSearchParams(search);
   assert.equal(params.get("view"), "agent");
   assert.equal(params.get("workspaceId"), "workspace-1");
-  assert.equal(params.get("agentSessionId"), "session-1");
-  assert.equal(params.get("agentTargetId"), "target-1");
-  assert.equal(params.get("provider"), "codex");
+  assert.equal(params.get("fusionResourceId"), "session-1");
+  assert.equal(params.get("fusionWindowId"), "window-1");
+  assert.equal(
+    params.get("fusionLaunchPayload"),
+    JSON.stringify(launchPayload)
+  );
+  assert.equal(params.has("provider"), false);
+  assert.equal(params.has("agentSessionId"), false);
   assert.deepEqual(resolveDesktopWindowIntent(search), {
-    agentSessionID: "session-1",
-    agentTargetID: "target-1",
     kind: "agent",
-    provider: "codex",
+    launchPayload,
+    resourceID: "session-1",
+    windowInstanceID: "window-1",
     workspaceID: "workspace-1"
   });
 });
 
-test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => {
-  const search = encodeDesktopWindowIntent(
-    createAgentWindowIntent({
-      agentSessionID: "session-1",
-      provider: "codex",
-      providerStatusSnapshot: {
-        capturedAt: "2026-07-07T00:00:00.000Z",
-        defaultProvider: "codex",
-        error: null,
-        isLoading: false,
-        pendingActions: [],
-        statuses: []
-      },
-      agents: [
-        {
-          agentTargetId: "target-1",
-          availability: { status: "ready" },
-          iconUrl: "tutti-asset://agent/codex.png",
-          name: "Codex",
-          provider: "codex"
-        }
-      ],
+test("Agent window intent drops malformed opaque JSON without interpreting it", () => {
+  assert.deepEqual(
+    resolveDesktopWindowIntent(
+      "?view=agent&workspaceId=workspace-1&fusionResourceId=session-1&fusionLaunchPayload=%7B"
+    ),
+    {
+      kind: "agent",
+      resourceID: "session-1",
       workspaceID: "workspace-1"
-    })
+    }
+  );
+});
+
+test("Fusion Dock intent round-trips without exposing Workspace chrome", () => {
+  const search = encodeDesktopWindowIntent(
+    createFusionDockWindowIntent("workspace-1")
   );
 
-  const params = new URLSearchParams(search);
-  assert.ok(params.get("agents"));
-  assert.ok(params.get("agentProviderStatusSnapshot"));
+  assert.equal(new URLSearchParams(search).get("view"), "fusion-dock");
   assert.deepEqual(resolveDesktopWindowIntent(search), {
-    agentSessionID: "session-1",
-    agentTargetID: null,
-    kind: "agent",
-    provider: "codex",
-    providerStatusSnapshot: {
-      capturedAt: "2026-07-07T00:00:00.000Z",
-      defaultProvider: "codex",
-      error: null,
-      isLoading: false,
-      pendingActions: [],
-      statuses: []
-    },
-    agents: [
-      {
-        agentTargetId: "target-1",
-        availability: { status: "ready" },
-        iconUrl: "tutti-asset://agent/codex.png",
-        name: "Codex",
-        provider: "codex"
-      }
-    ],
+    kind: "fusion-dock",
     workspaceID: "workspace-1"
   });
 });
 
-test("encodeDesktopWindowIntent preserves an explicitly loaded empty agent directory", () => {
+test("Fusion tool intent keeps native window and resource identities separate", () => {
   const search = encodeDesktopWindowIntent(
-    createAgentWindowIntent({
-      agents: [],
-      provider: "codex",
+    createFusionToolWindowIntent({
+      fusionWindowKind: "terminal",
+      launchPayload: { sessionId: "terminal-7" },
+      resourceID: "terminal-7",
+      windowInstanceID: "window-3",
       workspaceID: "workspace-1"
     })
   );
 
-  assert.equal(new URLSearchParams(search).get("agents"), "[]");
   assert.deepEqual(resolveDesktopWindowIntent(search), {
-    agentSessionID: null,
-    agentTargetID: null,
-    agents: [],
-    kind: "agent",
-    provider: "codex",
+    fusionWindowKind: "terminal",
+    kind: "fusion-tool",
+    launchPayload: { sessionId: "terminal-7" },
+    resourceID: "terminal-7",
+    windowInstanceID: "window-3",
     workspaceID: "workspace-1"
   });
+});
+
+test("Fusion tool intent rejects unknown native window kinds", () => {
+  assert.deepEqual(
+    resolveDesktopWindowIntent(
+      "?view=fusion-tool&workspaceId=workspace-1&fusionWindowId=window-1&fusionWindowKind=unknown"
+    ),
+    { kind: "workspace-missing" }
+  );
 });
 
 test("readInitialDockPlacementFromLocation resolves dock placement from search params", async () => {

@@ -8,7 +8,10 @@ import {
   resolveDesktopLoginProtocolClientRegistration,
   resolveDesktopUserDataPath
 } from "./defaults";
-import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
+import {
+  registerDesktopAppLifecycle,
+  requestDesktopAppQuitFromCommandShortcut
+} from "./desktopAppLifecycle";
 import { createDesktopAppServices } from "./desktopAppServices";
 import { startDesktopAppUpdateAnalytics } from "./appUpdateAnalytics.ts";
 import { configureApplicationMenu } from "./applicationMenu.ts";
@@ -17,6 +20,7 @@ import {
   connectDesktopHostPreferencesEventStream,
   createDesktopHostPreferencesEventStreamClient
 } from "./desktopHostPreferencesEventStream";
+import { connectDesktopFusionModeRestartCoordinator } from "./fusionModeRestartCoordinator.ts";
 import {
   createDesktopDeveloperLogsService,
   exportDesktopDeveloperLogsAndNotify
@@ -46,6 +50,12 @@ import {
   registerWorkspaceFileIconProtocol,
   registerWorkspaceFileIconProtocolScheme
 } from "./host/workspaceFileIconProtocol.ts";
+import type { DesktopFusionWindowCoordinator } from "./windows/fusionWindowCoordinator.ts";
+import { desktopIpcChannels } from "../shared/contracts/ipc.ts";
+import { isFusionModeEnabled } from "../shared/featureFlags/catalog.ts";
+
+let fusionCoordinatorForActivation: DesktopFusionWindowCoordinator | null =
+  null;
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
@@ -65,6 +75,10 @@ function applyElectronDiagnosticSwitches(): void {
 }
 
 function focusPrimaryDesktopWindow(): void {
+  if (fusionCoordinatorForActivation?.isActive()) {
+    void fusionCoordinatorForActivation.activatePrimarySurface();
+    return;
+  }
   const target = BrowserWindow.getAllWindows().find(
     (window) => !window.isDestroyed()
   );
@@ -183,6 +197,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     rendererUrl,
     workspaceAppPreloadPath
   });
+  fusionCoordinatorForActivation = desktopAppServices.fusion;
   const theme = applyDesktopThemeSource(
     desktopAppServices.preferences.getThemeSource()
   );
@@ -219,6 +234,20 @@ export async function bootstrapDesktopApp(): Promise<void> {
       ),
     getLocale: () => desktopAppServices.preferences.getLocale(),
     logger,
+    quitFromCommandShortcut: () =>
+      requestDesktopAppQuitFromCommandShortcut({
+        now: () => Date.now(),
+        quit: () => app.quit(),
+        showQuitShortcutToast: () => {
+          if (desktopAppServices.fusion.isActive()) {
+            void desktopAppServices.fusion
+              .showDockSearch()
+              .then(broadcastDesktopQuitShortcutToast);
+            return;
+          }
+          broadcastDesktopQuitShortcutToast();
+        }
+      }),
     openPerfMonitorDevTools:
       rendererUrl && envFlagEnabled(process.env.TUTTI_ENABLE_PERF_MONITOR)
         ? (ownerWindow) => {
@@ -239,6 +268,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
   registerIpcHandlers({
     daemonEndpoint: desktopAppServices.daemonEndpoint,
     fileDialogs: desktopAppServices.fileDialogs,
+    fusion: desktopAppServices.fusion,
     logger,
     workspaceFileIconCache,
     tuttidClient: desktopAppServices.tuttidClient,
@@ -281,14 +311,27 @@ export async function bootstrapDesktopApp(): Promise<void> {
     policy: desktopAppServices.preferences.getUpdatePolicy()
   });
 
-  await desktopAppServices.workspaceLaunch.openStartupWindow();
+  const fusionModeRestartCoordinator =
+    connectDesktopFusionModeRestartCoordinator({
+      currentProcessModeActive: desktopAppServices.fusion.isActive(),
+      getLocale: () => desktopAppServices.preferences.getLocale(),
+      logger,
+      preferences: desktopAppServices.preferences,
+      readPersistedMode: async () => {
+        const state =
+          await desktopAppServices.tuttidClient.getDesktopPreferences();
+        return isFusionModeEnabled(state.preferences.featureFlags);
+      }
+    });
 
   registerDesktopAppLifecycle({
+    fusion: desktopAppServices.fusion,
     logger,
     tuttid: desktopAppServices.tuttid,
     disposables: [
       hostPreferencesEventStream,
       agentPowerSaveBlocker,
+      fusionModeRestartCoordinator,
       {
         dispose() {
           appUpdateAnalytics.release();
@@ -298,4 +341,14 @@ export async function bootstrapDesktopApp(): Promise<void> {
     updateService: desktopAppServices.updateService,
     workspaceLaunch: desktopAppServices.workspaceLaunch
   });
+
+  await desktopAppServices.workspaceLaunch.openStartupWindow();
+}
+
+function broadcastDesktopQuitShortcutToast(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.webContents.isDestroyed()) {
+      window.webContents.send(desktopIpcChannels.host.window.quitShortcutToast);
+    }
+  }
 }

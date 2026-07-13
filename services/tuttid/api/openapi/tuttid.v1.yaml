@@ -1516,6 +1516,34 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/stop:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    post:
+      operationId: stopWorkspaceApp
+      tags:
+        - app-center
+      summary: Stop one running workspace app
+      responses:
+        "200":
+          description: Workspace app stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps/{appID}/rollback:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -4719,6 +4747,7 @@ components:
       required:
         - newAgentConversation
         - newSameTypeWindow
+        - toggleFusionDock
       properties:
         newAgentConversation:
           type: string
@@ -4730,6 +4759,11 @@ components:
           nullable: true
           maxLength: 80
           description: Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
+        toggleFusionDock:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Global keyboard shortcut binding for showing or hiding the Fusion Dock, or null when unbound.
     DesktopWorkbenchWindowSnapping:
       type: object
       additionalProperties: false

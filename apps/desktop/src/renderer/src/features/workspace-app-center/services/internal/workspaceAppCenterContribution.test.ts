@@ -139,6 +139,33 @@ test("workspace app launch request preserves prepared payload previous status", 
   );
 });
 
+test("workspace app launch request accepts a same-origin initial URL for native handoff", async () => {
+  const app = createApp({
+    appId: "group-chat",
+    runtimeStatus: "running",
+    launchUrl: "http://127.0.0.1:3000/"
+  });
+  const result = await resolveWorkspaceAppCenterLaunchRequest({
+    appCenterService: createAppCenterService([app]),
+    request: {
+      ...createLaunchRequestContext(),
+      payload: {
+        appId: "group-chat",
+        prepared: true,
+        url: "http://127.0.0.1:3000/#nav?messageId=message-1"
+      },
+      reason: "host",
+      typeId: workspaceAppWebviewTypeID,
+      workspaceId: "workspace-1"
+    }
+  });
+
+  assert.equal(
+    (result?.activation?.payload as { url?: string } | undefined)?.url,
+    "http://127.0.0.1:3000/#nav?messageId=message-1"
+  );
+});
+
 test("workspace app launch request restarts pending app from dock", async () => {
   const app = createApp({
     appId: "ready",

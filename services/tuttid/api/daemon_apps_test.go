@@ -655,6 +655,10 @@ func (stubWorkspaceAppCenterService) StopAll(context.Context, string) ([]workspa
 	return nil, nil
 }
 
+func (stubWorkspaceAppCenterService) Stop(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
 func (stubWorkspaceAppCenterService) Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
 	return workspacebiz.WorkspaceApp{}, nil
 }

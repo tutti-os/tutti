@@ -713,7 +713,8 @@
   pointer-events: none;
 }
 
-.desktop-dock-plate {
+.desktop-dock-plate,
+.desktop-dock--fixed-metrics {
   --desktop-dock-size: 43.2px;
   --desktop-dock-icon-half-size: 21.6px;
   --desktop-dock-gap: 16px;
@@ -738,6 +739,9 @@
   --desktop-dock-left-viewport-size: 124px;
   --desktop-dock-safe-inline: 64px;
   --desktop-dock-viewport-size: 88px;
+}
+
+.desktop-dock-plate {
   position: relative;
   box-sizing: border-box;
   display: inline-flex;

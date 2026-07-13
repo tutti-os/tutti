@@ -3,6 +3,7 @@ import type {
   DesktopComputerUseApi,
   DesktopDeveloperApi,
   DesktopDockPreviewCacheApi,
+  DesktopFusionApi,
   DesktopHostApi,
   DesktopPlatformApi,
   DesktopRuntimeApi,
@@ -41,11 +42,54 @@ export function createWebDesktopApi(): DesktopApi {
     computerUse: createWebComputerUseApi(),
     developer: createWebDeveloperApi(),
     dockPreviewCache: createWebDockPreviewCacheApi(),
+    fusion: createWebFusionApi(),
     host: createWebHostApi(),
     platform: createWebPlatformApi(),
     runtime: createWebRuntimeApi(backendConfig),
     update: createWebUpdateApi(),
     wallpaper: createWebWallpaperApi()
+  };
+}
+
+function createWebFusionApi(): DesktopFusionApi {
+  const state = {
+    active: false,
+    dockSearchExpanded: false,
+    dockSearchScope: "all" as const,
+    dockVisible: false,
+    revision: 0,
+    shortcut: { binding: "Meta+Shift+Space", error: null },
+    windows: [],
+    workspaceId: null
+  } as const;
+  return {
+    closeWindow() {
+      return Promise.reject(electronDebugRequired("fusion.closeWindow"));
+    },
+    focusWindow() {
+      return Promise.reject(electronDebugRequired("fusion.focusWindow"));
+    },
+    getState() {
+      return Promise.resolve(state);
+    },
+    hideDock() {
+      return Promise.resolve();
+    },
+    openWindow() {
+      return Promise.reject(electronDebugRequired("fusion.openWindow"));
+    },
+    onState() {
+      return () => undefined;
+    },
+    showDock() {
+      return Promise.reject(electronDebugRequired("fusion.showDock"));
+    },
+    toggleDock() {
+      return Promise.reject(electronDebugRequired("fusion.toggleDock"));
+    },
+    updateWindow() {
+      return Promise.reject(electronDebugRequired("fusion.updateWindow"));
+    }
   };
 }
 

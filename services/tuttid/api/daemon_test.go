@@ -66,6 +66,7 @@ type stubPreferencesService struct {
 type stubAppCenterService struct {
 	launchFn func(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	retryFn  func(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
+	stopFn   func(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 }
 
 type stubAgentSessionService struct {
@@ -196,6 +197,13 @@ func (stubAppCenterService) StartEnabled(context.Context, string) ([]workspacebi
 
 func (stubAppCenterService) StopAll(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
 	return nil, nil
+}
+
+func (s stubAppCenterService) Stop(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+	if s.stopFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.stopFn(ctx, workspaceID, appID)
 }
 
 func (stubAppCenterService) Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
@@ -1230,6 +1238,40 @@ func TestDaemonAPIGeneratedRoutesLaunchWorkspaceApp(t *testing.T) {
 	var response tuttigenerated.WorkspaceAppResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
 	if response.App.AppId != "app-1" || response.App.Status != tuttigenerated.WorkspaceAppRuntimeStatusRunning {
+		t.Fatalf("response app = %#v", response.App)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesStopWorkspaceApp(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AppCenterService: stubAppCenterService{
+			stopFn: func(_ context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if appID != "app-1" {
+					t.Fatalf("appID = %q, want app-1", appID)
+				}
+				return workspaceAppForRouteTest(appID, workspacebiz.AppRuntimeStatusIdle), nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/apps/app-1/stop",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAppResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.App.AppId != "app-1" || response.App.Status != tuttigenerated.WorkspaceAppRuntimeStatusIdle {
 		t.Fatalf("response app = %#v", response.App)
 	}
 }

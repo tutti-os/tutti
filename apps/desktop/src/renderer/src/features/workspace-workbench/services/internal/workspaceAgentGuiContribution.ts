@@ -32,6 +32,7 @@ import type {
 } from "@preload/types";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
+import { createStandaloneAgentWindowLaunchPayload } from "../standaloneAgentWindowIntent.ts";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -241,11 +242,15 @@ export function createWorkspaceAgentGuiContribution(input: {
       // StandaloneAgentWindow's own ensureAll effect); hydrate only ever
       // merges in new data, so a partial hand-off here is safe.
       input.hostWindowApi.openAgentWindow({
-        agentSessionId: request.agentSessionId,
-        agentTargetId: request.agentTargetId,
-        providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
-        agents: request.agents,
-        provider: request.provider,
+        launchPayload: createStandaloneAgentWindowLaunchPayload({
+          agentSessionId: request.agentSessionId,
+          agentTargetId: request.agentTargetId,
+          providerStatusSnapshot:
+            input.agentProviderStatusService.getSnapshot(),
+          agents: request.agents,
+          provider: request.provider
+        }),
+        resourceId: request.agentSessionId,
         workspaceId: request.workspaceId
       });
     },

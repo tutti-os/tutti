@@ -162,6 +162,14 @@ func registerWorkspaceAppRoutes(mux *http.ServeMux, wrapper *tuttigenerated.Serv
 		wrapper.RetryWorkspaceApp(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.StopWorkspaceApp(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/rollback", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

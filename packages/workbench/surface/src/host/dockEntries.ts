@@ -39,14 +39,13 @@ export function resolveWorkbenchDockEntryAnchorKey(
   return entry.anchorKey ?? entry.id;
 }
 
-export function resolveWorkbenchDockEntries(input: {
-  dockEntries: readonly WorkbenchHostDockEntry[];
-  minimizedNodeIds: ReadonlySet<string>;
-  nodes: readonly WorkbenchNode<WorkbenchHostNodeData>[];
-}): ResolvedWorkbenchHostDockEntry[] {
+export function orderWorkbenchDockEntries(
+  dockEntries: readonly WorkbenchHostDockEntry[]
+): WorkbenchHostDockEntry[] {
   const sectionOrder = new Map<string, number>();
   let nextSectionIndex = 0;
-  const sortedEntries = [...input.dockEntries]
+
+  return dockEntries
     .map((entry, index) => {
       const sectionId = entry.sectionId ?? "";
       if (!sectionOrder.has(sectionId)) {
@@ -70,12 +69,22 @@ export function resolveWorkbenchDockEntries(input: {
         return orderDelta;
       }
       return left.index - right.index;
-    });
+    })
+    .map(({ entry }) => entry);
+}
+
+export function resolveWorkbenchDockEntries(input: {
+  dockEntries: readonly WorkbenchHostDockEntry[];
+  minimizedNodeIds: ReadonlySet<string>;
+  nodes: readonly WorkbenchNode<WorkbenchHostNodeData>[];
+}): ResolvedWorkbenchHostDockEntry[] {
+  const orderedEntries = orderWorkbenchDockEntries(input.dockEntries);
 
   let previousSectionId: string | null = null;
   const resolvedEntries: ResolvedWorkbenchHostDockEntry[] = [];
 
-  for (const { entry, sectionId } of sortedEntries) {
+  for (const entry of orderedEntries) {
+    const sectionId = entry.sectionId ?? "";
     const matchedNodes = input.nodes.filter((node) =>
       matchWorkbenchDockEntryNode(entry, node)
     );

@@ -1,7 +1,10 @@
 import {
+  createContext,
   createElement,
+  useContext,
   type HTMLAttributes,
   type MouseEvent,
+  type ReactNode,
   type SVGProps
 } from "react";
 import type {
@@ -16,6 +19,25 @@ import {
 
 type WorkspaceWorkbenchTrafficLightTone = "close" | "maximize" | "minimize";
 
+export type WorkspaceWorkbenchWindowChromeMode = "native" | "workbench";
+
+const WorkspaceWorkbenchWindowChromeContext =
+  createContext<WorkspaceWorkbenchWindowChromeMode>("workbench");
+
+export function WorkspaceWorkbenchWindowChromeProvider({
+  children,
+  mode
+}: {
+  children: ReactNode;
+  mode: WorkspaceWorkbenchWindowChromeMode;
+}): React.JSX.Element {
+  return createElement(
+    WorkspaceWorkbenchWindowChromeContext.Provider,
+    { value: mode },
+    children
+  );
+}
+
 export function WorkspaceWorkbenchTrafficLights({
   className,
   displayMode,
@@ -29,7 +51,12 @@ export function WorkspaceWorkbenchTrafficLights({
     WorkbenchHostNodeHeaderWindowActions,
     "close" | "minimize" | "toggleDisplayMode"
   >;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  const windowChromeMode = useContext(WorkspaceWorkbenchWindowChromeContext);
+  if (windowChromeMode === "native") {
+    return null;
+  }
+
   const isFullscreen = displayMode === "fullscreen";
 
   return createElement(

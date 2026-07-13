@@ -12,11 +12,13 @@ import type { DesktopDaemonEndpoint } from "../transport/paths";
 import { registerBrowserIpc } from "./browser";
 import { registerComputerUseIpc } from "./computerUse";
 import { registerDockPreviewCacheIpc } from "./dockPreviewCache";
+import { registerFusionIpc } from "./fusion.ts";
 import { getDesktopLogSessionID, type DesktopLogger } from "../logging";
 import { resolveDesktopDefaultsFromEnv } from "../defaults";
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
 import type { DesktopWorkspaceAppPayload } from "../../shared/contracts/ipc";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import type { DesktopFusionWindowCoordinator } from "../windows/fusionWindowCoordinator.ts";
 
 export interface IpcRegistrationDependencies {
   daemonEndpoint: DesktopDaemonEndpoint;
@@ -28,6 +30,7 @@ export interface IpcRegistrationDependencies {
     | "selectDirectory"
     | "selectUploadFiles"
   >;
+  fusion: DesktopFusionWindowCoordinator;
   logger: DesktopLogger;
   tuttidClient: Pick<
     TuttidClient,
@@ -51,6 +54,7 @@ export interface IpcRegistrationDependencies {
 
 export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
   registerWorkspaceAppContextIpc(deps.daemonEndpoint, deps.preferences, {
+    fusion: deps.fusion,
     logger: deps.logger,
     sessionID: getDesktopLogSessionID(),
     stateRootDir: resolveDesktopDefaultsFromEnv().state.rootDir
@@ -58,12 +62,14 @@ export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
   registerBrowserIpc(deps.preferences);
   registerComputerUseIpc();
   registerDockPreviewCacheIpc();
+  registerFusionIpc(deps.fusion);
   registerDeveloperIpc(deps.preferences, deps.tuttidClient);
   registerRuntimeIpc(deps.daemonEndpoint, deps.logger);
   registerUpdateIpc(deps.updateService);
   registerWallpaperIpc();
   registerHostIpc({
     fileDialogs: deps.fileDialogs,
+    fusion: deps.fusion,
     openWorkspaceAppFolder: deps.openWorkspaceAppFolder,
     workspaceFileIconCache: deps.workspaceFileIconCache,
     workspaceLaunch: deps.workspaceLaunch

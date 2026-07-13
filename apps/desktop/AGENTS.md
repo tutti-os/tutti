@@ -33,9 +33,11 @@ The authoritative desktop directory shape lives in [docs/conventions/desktop-lay
 
 Current naming guidance:
 
-- use `workspaceWindow` for the primary in-workspace shell window
-- use `dashboardWindow` for the no-context launcher window
-- prefer `view=workspace` and `view=dashboard` over vague names such as `main`
+- use `Workspace` or `workspaceWindow` for the legacy Workbench shell
+- use `Agent`, `Fusion Dock`, and `Fusion tool` for their typed standalone
+  renderer shells and native-window roles
+- prefer the explicit `view=workspace`, `view=agent`, `view=fusion-dock`, and
+  `view=fusion-tool` intents over vague names such as `main`
 
 ## Action rules
 

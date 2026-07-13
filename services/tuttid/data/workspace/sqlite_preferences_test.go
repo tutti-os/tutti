@@ -342,8 +342,17 @@ func TestDesktopPreferencesFeatureFlagsRoundtrip(t *testing.T) {
 	store := openTestSQLiteStore(t)
 	ctx := context.Background()
 	in := preferencesbiz.DefaultDesktopPreferences()
-	in.FeatureFlags = map[string]bool{"lab.enabled": true, "lab.workbenchShortcuts": true}
-	in.WorkbenchShortcuts = preferencesbiz.DesktopWorkbenchShortcuts{NewAgentConversation: "Meta+K"}
+	in.FeatureFlags = map[string]bool{
+		"lab.enabled":                true,
+		"lab.fusionDockAutoHide":     true,
+		"lab.fusionDockShortcutOnly": false,
+		"lab.fusionMode":             true,
+		"lab.workbenchShortcuts":     true,
+	}
+	in.WorkbenchShortcuts = preferencesbiz.DesktopWorkbenchShortcuts{
+		NewAgentConversation: "Meta+K",
+		ToggleFusionDock:     "Meta+Shift+Space",
+	}
 	if _, err := store.PutDesktopPreferences(ctx, in); err != nil {
 		t.Fatal(err)
 	}
@@ -351,10 +360,24 @@ func TestDesktopPreferencesFeatureFlagsRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.FeatureFlags["lab.enabled"] || !got.FeatureFlags["lab.workbenchShortcuts"] {
+	if !got.FeatureFlags["lab.enabled"] || !got.FeatureFlags["lab.workbenchShortcuts"] || !got.FeatureFlags["lab.fusionMode"] || !got.FeatureFlags["lab.fusionDockAutoHide"] || got.FeatureFlags["lab.fusionDockShortcutOnly"] {
 		t.Fatalf("flags not persisted: %v", got.FeatureFlags)
 	}
-	if got.WorkbenchShortcuts.NewAgentConversation != "Meta+K" || got.WorkbenchShortcuts.NewSameTypeWindow != "" {
+	if got.WorkbenchShortcuts.NewAgentConversation != "Meta+K" || got.WorkbenchShortcuts.NewSameTypeWindow != "" || got.WorkbenchShortcuts.ToggleFusionDock != "Meta+Shift+Space" {
 		t.Fatalf("shortcuts wrong: %+v", got.WorkbenchShortcuts)
+	}
+}
+
+func TestDecodeWorkbenchShortcutsMigratesMissingFusionDockBinding(t *testing.T) {
+	t.Parallel()
+
+	got := decodeWorkbenchShortcuts(`{"newAgentConversation":"Meta+K","newSameTypeWindow":null}`)
+	if got.ToggleFusionDock != preferencesbiz.DefaultDesktopToggleFusionDockShortcut {
+		t.Fatalf("toggle Fusion Dock shortcut = %q, want %q", got.ToggleFusionDock, preferencesbiz.DefaultDesktopToggleFusionDockShortcut)
+	}
+
+	explicitlyUnbound := decodeWorkbenchShortcuts(`{"newAgentConversation":null,"newSameTypeWindow":null,"toggleFusionDock":null}`)
+	if explicitlyUnbound.ToggleFusionDock != "" {
+		t.Fatalf("explicitly unbound toggle Fusion Dock shortcut = %q, want empty", explicitlyUnbound.ToggleFusionDock)
 	}
 }

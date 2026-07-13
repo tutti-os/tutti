@@ -85,7 +85,6 @@ import {
   desktopSleepPreventionModes,
   desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
-  formatDesktopShortcutBinding,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
   type DesktopAgentConversationDetailMode,
@@ -129,13 +128,14 @@ import {
   workspaceWallpaperDisplayModes,
   workspaceWallpaperOptions
 } from "../services/workspaceWallpaper";
+import { WorkspaceFusionLabSettings } from "./WorkspaceFusionLabSettings.tsx";
+import { WorkspaceLabShortcutRow } from "./WorkspaceLabShortcutRow.tsx";
+import {
+  workspaceSettingsInputClass,
+  workspaceSettingsSelectContentClass,
+  workspaceSettingsSelectTriggerClass
+} from "./workspaceSettingsStyles.ts";
 
-const workspaceSettingsSelectTriggerClass =
-  "w-full h-8 min-w-0 overflow-hidden rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-left text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 *:data-[slot=select-value]:!block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:flex-1 *:data-[slot=select-value]:overflow-hidden *:data-[slot=select-value]:text-left *:data-[slot=select-value]:text-ellipsis *:data-[slot=select-value]:whitespace-nowrap";
-const workspaceSettingsSelectContentClass =
-  "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--tutti-select-content-min-width:100%] !outline-none !ring-0";
-const workspaceSettingsInputClass =
-  "h-8 w-full rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-150 placeholder:text-[var(--text-tertiary)] hover:bg-[var(--transparency-hover)] focus-visible:border-[var(--border-focus)]";
 const workspaceManagedModelInputClass = `${workspaceSettingsInputClass} focus-visible:!border-[var(--border-1)]`;
 const workspaceManagedModelProviderPrefixClass =
   "flex h-8 items-center justify-end px-2 text-[11px] text-[var(--text-secondary)]";
@@ -177,6 +177,7 @@ export function WorkspaceSettingsPanel({
   onOpenExternalAgentImport,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
+  presentation = "dialog",
   selectedWallpaperDisplayMode,
   selectedWallpaperID,
   workspace
@@ -186,6 +187,7 @@ export function WorkspaceSettingsPanel({
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
   ) => void;
+  presentation?: "dialog" | "window";
   selectedWallpaperDisplayMode: WorkspaceWallpaperDisplayMode;
   selectedWallpaperID: WorkspaceWallpaperId;
   workspace: WorkspaceSummary;
@@ -239,45 +241,64 @@ export function WorkspaceSettingsPanel({
     return null;
   }
 
+  const isWindowPresentation = presentation === "window";
   return (
-    <WorkspaceSettingsPanelPortal
-      dialogOpen={false}
+    <WorkspaceSettingsPanelPresentation
+      presentation={presentation}
       onClose={() => {
         settingsService.closePanel();
       }}
     >
       <section
-        aria-labelledby="workspace-settings-title"
-        aria-modal="true"
-        className="relative z-[1] grid h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,640px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        aria-label={
+          isWindowPresentation ? t("workspace.settings.title") : undefined
+        }
+        aria-labelledby={
+          isWindowPresentation ? undefined : "workspace-settings-title"
+        }
+        aria-modal={isWindowPresentation ? undefined : "true"}
+        className={cn(
+          "relative grid grid-cols-[160px_minmax(0,1fr)] overflow-hidden bg-[var(--background-fronted)] text-[var(--text-primary)] [-webkit-app-region:no-drag] max-[760px]:grid-cols-1",
+          isWindowPresentation
+            ? "h-full w-full grid-rows-[minmax(0,1fr)] max-[760px]:grid-rows-[auto_minmax(0,1fr)]"
+            : "z-[1] h-[min(640px,calc(100vh-40px))] w-[min(960px,calc(100vw-40px))] origin-center grid-rows-[auto_minmax(0,1fr)] rounded-2xl border border-[var(--border-1)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,640px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        )}
         data-workspace-settings-panel="true"
-        role="dialog"
+        data-workspace-settings-presentation={presentation}
+        role={isWindowPresentation ? "region" : "dialog"}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px] max-[760px]:px-5">
-          <h2
-            id="workspace-settings-title"
-            className="m-0 text-[15px] font-semibold leading-[1.3] text-[var(--text-primary)]"
-          >
-            {t("workspace.settings.title")}
-          </h2>
-          <Button
-            aria-label={t("workspace.settings.close")}
-            size="icon-sm"
-            title={t("workspace.settings.close")}
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              settingsService.closePanel();
-            }}
-          >
-            <CloseIcon className="size-4" />
-          </Button>
-        </div>
+        {isWindowPresentation ? null : (
+          <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px] max-[760px]:px-5">
+            <h2
+              id="workspace-settings-title"
+              className="m-0 text-[15px] font-semibold leading-[1.3] text-[var(--text-primary)]"
+            >
+              {t("workspace.settings.title")}
+            </h2>
+            <Button
+              aria-label={t("workspace.settings.close")}
+              size="icon-sm"
+              title={t("workspace.settings.close")}
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                settingsService.closePanel();
+              }}
+            >
+              <CloseIcon className="size-4" />
+            </Button>
+          </div>
+        )}
 
         <aside
           aria-label={t("workspace.settings.nav.sectionsLabel")}
-          className="col-start-1 row-start-2 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3 max-[760px]:row-start-2 max-[760px]:overflow-x-auto max-[760px]:border-b max-[760px]:border-r-0 max-[760px]:px-3 max-[760px]:pb-3.5 max-[760px]:pt-5"
+          className={cn(
+            "col-start-1 flex min-h-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border-1)] bg-[var(--background-fronted)] px-3 pb-4 pt-3 max-[760px]:overflow-x-auto max-[760px]:border-b max-[760px]:border-r-0 max-[760px]:px-3 max-[760px]:pb-3.5 max-[760px]:pt-5",
+            isWindowPresentation
+              ? "row-start-1 max-[760px]:row-start-1"
+              : "row-start-2 max-[760px]:row-start-2"
+          )}
         >
           {[
             {
@@ -345,7 +366,14 @@ export function WorkspaceSettingsPanel({
           })}
         </aside>
 
-        <div className="col-start-2 row-start-2 flex min-h-0 flex-col max-[760px]:col-start-1 max-[760px]:row-start-3">
+        <div
+          className={cn(
+            "col-start-2 flex min-h-0 flex-col max-[760px]:col-start-1",
+            isWindowPresentation
+              ? "row-start-1 max-[760px]:row-start-2"
+              : "row-start-2 max-[760px]:row-start-3"
+          )}
+        >
           <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0 max-[760px]:px-5 max-[760px]:pb-6">
             {settingsState.activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
@@ -586,7 +614,7 @@ export function WorkspaceSettingsPanel({
           </div>
         </div>
       </section>
-    </WorkspaceSettingsPanelPortal>
+    </WorkspaceSettingsPanelPresentation>
   );
 }
 
@@ -1611,6 +1639,14 @@ function WorkspaceLabSettingsSection({
 
   return (
     <SettingsRows>
+      <WorkspaceFusionLabSettings
+        changingFeatureFlags={changingFeatureFlags}
+        featureFlags={featureFlags}
+        onFeatureFlagsChange={onFeatureFlagsChange}
+        onWorkbenchShortcutsChange={onWorkbenchShortcutsChange}
+        workbenchShortcuts={workbenchShortcuts}
+      />
+
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
@@ -1654,80 +1690,6 @@ function WorkspaceLabSettingsSection({
         }}
       />
     </SettingsRows>
-  );
-}
-
-function WorkspaceLabShortcutRow({
-  disabled,
-  label,
-  value,
-  onChange
-}: {
-  disabled: boolean;
-  label: string;
-  value: string | null;
-  onChange: (binding: string | null) => void;
-}) {
-  const { t } = useTranslation();
-  const clearLabel = t("workspace.settings.lab.clearShortcutLabel", { label });
-  return (
-    <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-      <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-          {label}
-        </strong>
-      </div>
-      <div className="flex w-[220px] min-w-[220px] items-center gap-2 max-[560px]:w-full max-[560px]:min-w-0">
-        <Input
-          aria-label={label}
-          className={cn(
-            workspaceSettingsInputClass,
-            "font-mono text-[12px]",
-            disabled && "opacity-70"
-          )}
-          disabled={disabled}
-          placeholder={t("workspace.settings.lab.shortcutUnbound")}
-          readOnly
-          value={value ?? ""}
-          onKeyDown={(event) => {
-            if (disabled) {
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            if (
-              event.key === "Backspace" ||
-              event.key === "Delete" ||
-              event.key === "Escape"
-            ) {
-              onChange(null);
-              return;
-            }
-            const binding = formatDesktopShortcutBinding({
-              altKey: event.altKey,
-              ctrlKey: event.ctrlKey,
-              key: event.key,
-              metaKey: event.metaKey,
-              shiftKey: event.shiftKey
-            });
-            if (binding) {
-              onChange(binding);
-            }
-          }}
-        />
-        <Button
-          aria-label={clearLabel}
-          disabled={disabled || value === null}
-          size="icon-sm"
-          title={clearLabel}
-          type="button"
-          variant="ghost"
-          onClick={() => onChange(null)}
-        >
-          <DeleteIcon className="size-3.5" />
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -2271,6 +2233,26 @@ function workspaceSettingsFileDefaultOpenerLabelKey(
   opener: DesktopFileDefaultOpener
 ): DesktopI18nKey {
   return `workspace.settings.developer.fileDefaultOpenerOptions.${opener}`;
+}
+
+function WorkspaceSettingsPanelPresentation({
+  children,
+  onClose,
+  presentation
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  presentation: "dialog" | "window";
+}) {
+  if (presentation === "window") {
+    return children;
+  }
+
+  return (
+    <WorkspaceSettingsPanelPortal dialogOpen={false} onClose={onClose}>
+      {children}
+    </WorkspaceSettingsPanelPortal>
+  );
 }
 
 function WorkspaceSettingsPanelPortal({

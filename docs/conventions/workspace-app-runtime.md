@@ -123,6 +123,31 @@ component. If runtime requirements need to become more selective later, add a
 capability list such as runtime component requirements rather than restoring a
 single-kind manifest field.
 
+## Runtime Lifecycle
+
+Workspace App processes are daemon-owned background resources keyed by
+`(workspaceId, appId)`. A renderer webview is only a view onto that resource:
+closing or destroying the webview must not stop the app process.
+
+Use the typed daemon endpoints for explicit lifecycle actions:
+
+- `POST /v1/workspaces/{workspaceID}/apps/{appID}/launch` starts or reconnects
+  to one app runtime.
+- `POST /v1/workspaces/{workspaceID}/apps/{appID}/stop` stops only that app
+  runtime.
+- `POST /v1/workspaces/{workspaceID}/apps/stop-all` stops all app runtimes in
+  the workspace and is reserved for explicit bulk shutdown flows.
+
+Desktop window-close handling must remain separate from these stop operations.
+The daemon runner and App Center service remain authoritative for runtime state;
+Electron main and renderer code must not infer process lifetime from whether an
+app window is visible.
+
+Daemon shutdown stops every daemon-owned app runner, including both installed
+App Center runtimes and transient App Factory validation runtimes. Keep new app
+runtime owners registered with the composition-root shutdown path so `Cmd+Q`,
+updates, and parent-process loss cannot orphan a child process.
+
 ## Runtime Overrides
 
 Supported daemon overrides:

@@ -6,7 +6,8 @@ import { createTuttidEventStreamClient } from "./eventStreamClient.ts";
 const defaultFeatureFlags = {};
 const defaultWorkbenchShortcuts = {
   newAgentConversation: null,
-  newSameTypeWindow: null
+  newSameTypeWindow: null,
+  toggleFusionDock: "Meta+Shift+Space"
 };
 
 test("tuttid event stream client dispatches typed topic events", async () => {

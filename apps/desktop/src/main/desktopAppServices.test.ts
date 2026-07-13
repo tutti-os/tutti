@@ -55,6 +55,57 @@ function createHostServices(): DesktopHostServices {
         throw new Error("not used");
       }
     },
+    fusion: {
+      async activatePrimarySurface() {},
+      async closeWindow() {},
+      dispose() {},
+      async focusWindow() {},
+      async flushPersistentState() {},
+      getRendererAccessContext() {
+        return null;
+      },
+      getState() {
+        return {
+          active: false,
+          dockSearchExpanded: false,
+          dockSearchScope: "all",
+          dockVisible: false,
+          revision: 0,
+          shortcut: { binding: null, error: null },
+          windows: [],
+          workspaceId: null
+        };
+      },
+      getStateForWorkspace(workspaceId: string) {
+        return {
+          active: false,
+          dockSearchExpanded: false,
+          dockSearchScope: "all",
+          dockVisible: false,
+          revision: 0,
+          shortcut: { binding: null, error: null },
+          windows: [],
+          workspaceId
+        };
+      },
+      getWindowDescriptor() {
+        return null;
+      },
+      async hideDock() {},
+      isActive() {
+        return false;
+      },
+      async openWindow() {
+        throw new Error("not used");
+      },
+      async showDock() {},
+      async showDockSearch() {},
+      async start() {},
+      async toggleDock() {},
+      async updateWindow() {
+        throw new Error("not used");
+      }
+    },
     preferences: {
       getAgentComposerDefaultsByProvider() {
         return {};

@@ -257,17 +257,15 @@ export function createApplicationMenuTemplate({
         { role: "togglefullscreen" }
       ]
     },
-    {
-      label: translator.t("desktop.menu.window"),
-      submenu: isMac
-        ? [
-            { role: "minimize" },
-            { role: "zoom" },
-            { type: "separator" },
-            { role: "front" }
-          ]
-        : [{ role: "minimize" }, { role: "close" }]
-    },
+    isMac
+      ? {
+          label: translator.t("desktop.menu.window"),
+          role: "windowMenu"
+        }
+      : {
+          label: translator.t("desktop.menu.window"),
+          submenu: [{ role: "minimize" }, { role: "close" }]
+        },
     {
       label: translator.t("desktop.menu.help"),
       submenu: [

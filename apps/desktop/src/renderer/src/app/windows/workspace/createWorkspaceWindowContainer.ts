@@ -27,6 +27,7 @@ import {
   createAgentProviderTerminalCommandRunner,
   createWorkspaceAgentOutcomeForegroundNotificationPresenter,
   createWorkspaceAgentOutcomeNotificationController,
+  registerFusionDockService,
   registerWorkspaceWorkbenchServices
 } from "@renderer/features/workspace-workbench";
 import {
@@ -77,12 +78,18 @@ export interface WorkspaceWindowContainerResult {
   workspaceUserProjectService: IWorkspaceUserProjectService;
 }
 
-export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult {
+export interface CreateWorkspaceWindowContainerOptions {
+  ownsAgentOutcomeNotifications?: boolean;
+}
+
+export function createWorkspaceWindowContainer(
+  options: CreateWorkspaceWindowContainerOptions = {}
+): WorkspaceWindowContainerResult {
   const environment = resolveDesktopEnvironment(window.tutti);
   const desktopApi = environment.desktopApi;
-  const routeWorkspaceID = new URLSearchParams(window.location.search).get(
-    "workspaceId"
-  );
+  const routeSearchParams = new URLSearchParams(window.location.search);
+  const routeWorkspaceID = routeSearchParams.get("workspaceId");
+  const routeView = routeSearchParams.get("view") ?? "workspace";
   const activeWorkspaceID =
     routeWorkspaceID || environment.startupWorkspaceID || "__default__";
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
@@ -240,18 +247,21 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       void workspaceAgentServices.agentsService.refresh().catch(() => {});
     }
   );
-  const agentOutcomeNotificationController =
-    createWorkspaceAgentOutcomeNotificationController({
-      foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
-      notifications: notificationService,
-      translate,
-      workspaceAgentActivityService:
-        workspaceAgentServices.workspaceAgentActivityService,
-      workspaceId: activeWorkspaceID
-    });
-  disposeAgentOutcomeNotificationController = () => {
-    agentOutcomeNotificationController.dispose();
-  };
+  if (options.ownsAgentOutcomeNotifications !== false) {
+    const agentOutcomeNotificationController =
+      createWorkspaceAgentOutcomeNotificationController({
+        foreground:
+          createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
+        notifications: notificationService,
+        translate,
+        workspaceAgentActivityService:
+          workspaceAgentServices.workspaceAgentActivityService,
+        workspaceId: activeWorkspaceID
+      });
+    disposeAgentOutcomeNotificationController = () => {
+      agentOutcomeNotificationController.dispose();
+    };
+  }
   const richTextAtService = registerRichTextAtServices(registry, {
     agentsService: workspaceAgentServices.agentsService,
     tuttidClient,
@@ -289,6 +299,13 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       await workspaceAgentServices.agentsService.refresh();
     }
   });
+  if (routeView === "fusion-dock") {
+    registerFusionDockService(registry, {
+      fusionApi: desktopApi.fusion,
+      resourceClient: tuttidClient,
+      workspaceId: activeWorkspaceID
+    });
+  }
   return {
     agentProviderStatusService:
       workspaceAgentServices.agentProviderStatusService,

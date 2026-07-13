@@ -10,6 +10,7 @@ import {
   type WorkspaceLaunchAdapters,
   type WorkspaceLaunchOwnerWindow
 } from "./workspaceLaunch.ts";
+import type { DesktopFusionWindowCoordinator } from "../windows/fusionWindowCoordinator.ts";
 
 function createWorkspaceSummary(id: string): WorkspaceSummary {
   return {
@@ -552,6 +553,9 @@ function createTransportClient(
     async stopAllWorkspaceApps() {
       throw new Error("not used");
     },
+    async stopWorkspaceApp() {
+      throw new Error("not used");
+    },
     async putDesktopPreferences() {
       throw new Error("not used");
     },
@@ -795,4 +799,67 @@ test("workspace launch warns and rejects when startup workspace window fails", a
   await assert.rejects(launch.openStartupWindow(), /workspace failed/);
   assert.ok(warnedError instanceof Error);
   assert.equal(warnedError.message, "workspace failed");
+});
+
+test("workspace launch starts Fusion without creating the legacy Workspace window", async () => {
+  const events: string[] = [];
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showWorkspaceWindow(workspaceID) {
+        events.push(`workspace:${workspaceID}`);
+      }
+    }),
+    fusion: {
+      isActive: () => true,
+      async start(workspaceID: string) {
+        events.push(`fusion:${workspaceID}`);
+      }
+    } as unknown as DesktopFusionWindowCoordinator,
+    tuttidClient: createTransportClient({
+      async getStartupWorkspace() {
+        return createWorkspaceSummary("ws-fusion");
+      }
+    })
+  });
+
+  await launch.openStartupWindow();
+
+  assert.deepEqual(events, ["fusion:ws-fusion"]);
+});
+
+test("workspace launch treats the Fusion agent entrypoint as an explicit new window", async () => {
+  const requests: unknown[] = [];
+  const launchPayload = {
+    arbitrary: { nested: ["value", 7] },
+    provider: "future-provider"
+  };
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters(),
+    fusion: {
+      isActive: () => true,
+      async openWindow(
+        input: Parameters<DesktopFusionWindowCoordinator["openWindow"]>[0]
+      ) {
+        requests.push(input);
+        return {} as never;
+      }
+    } as unknown as DesktopFusionWindowCoordinator,
+    tuttidClient: createTransportClient()
+  });
+
+  await launch.showAgentWindow({
+    launchPayload,
+    resourceID: "session-a",
+    workspaceID: "workspace-a"
+  });
+
+  assert.deepEqual(requests, [
+    {
+      forceNew: true,
+      kind: "agent",
+      launchPayload,
+      resourceId: "session-a",
+      workspaceId: "workspace-a"
+    }
+  ]);
 });

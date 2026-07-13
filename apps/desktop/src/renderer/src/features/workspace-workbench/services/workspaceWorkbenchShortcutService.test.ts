@@ -18,7 +18,11 @@ function keyEvent(
 }
 
 test("matches configured binding", () => {
-  const shortcuts = { newAgentConversation: "Meta+K", newSameTypeWindow: null };
+  const shortcuts = {
+    newAgentConversation: "Meta+K",
+    newSameTypeWindow: null,
+    toggleFusionDock: "Meta+Shift+Space"
+  };
   assert.equal(
     resolveWorkbenchShortcutAction(
       keyEvent({ key: "k", metaKey: true }),
@@ -32,7 +36,8 @@ test("returns null when binding unset", () => {
   assert.equal(
     resolveWorkbenchShortcutAction(keyEvent({ key: "k", metaKey: true }), {
       newAgentConversation: null,
-      newSameTypeWindow: null
+      newSameTypeWindow: null,
+      toggleFusionDock: "Meta+Shift+Space"
     }),
     null
   );

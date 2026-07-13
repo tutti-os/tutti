@@ -9,6 +9,7 @@ import type {
 import type { TerminalNodeExternalState } from "../contracts/index.ts";
 import type { TerminalNodeFeature } from "../core/feature.ts";
 import { resolveTerminalWorkbenchBodyProps } from "./bodyProps.ts";
+import { resolveTerminalWorkbenchSessionLaunch } from "./sessionLaunch.ts";
 import { resolveTerminalWindowCloseEffect } from "./windowCloseEffect.ts";
 
 const workbenchIndexSource = readFileSync(resolve("src/workbench/index.ts"), {
@@ -61,6 +62,36 @@ test("terminal minimized dock preview is component-provided, not snapshot", () =
     workbenchIndexSource,
     /kind:\s*"component",\s*providePreview:\s*provideMinimizedPreview/s
   );
+});
+
+test("terminal workbench launch reconnects an existing session without creating one", async () => {
+  let createCount = 0;
+  const descriptor = await resolveTerminalWorkbenchSessionLaunch({
+    intent: { sessionId: "terminal-7" },
+    launchService: {
+      async create() {
+        createCount += 1;
+        throw new Error("unexpected create");
+      },
+      async get(sessionId: string) {
+        return {
+          cwd: "/workspace",
+          profileId: null,
+          runtimeKind: "local",
+          sessionId,
+          status: "detached",
+          title: "Build server"
+        };
+      },
+      async terminate() {}
+    },
+    reason: "intent",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(createCount, 0);
+  assert.equal(descriptor?.sessionId, "terminal-7");
+  assert.equal(descriptor?.title, "Build server");
 });
 
 function createTerminalWorkbenchBodyTestContext({

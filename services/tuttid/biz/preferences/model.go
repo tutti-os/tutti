@@ -27,6 +27,7 @@ const (
 	DefaultDesktopEnableCursorAgent           = false
 	DefaultDesktopEnableOpenCodeAgent         = false
 	DefaultDesktopThemeSource                 = "dark"
+	DefaultDesktopToggleFusionDockShortcut    = "Meta+Shift+Space"
 	DefaultDesktopUpdateChannel               = "rc"
 	DefaultDesktopUpdatePolicy                = "prompt"
 	DefaultDesktopWindowSnappingEnabled       = false
@@ -85,6 +86,7 @@ func LocalAgentTargetIDForProvider(provider string) string {
 type DesktopWorkbenchShortcuts struct {
 	NewAgentConversation string
 	NewSameTypeWindow    string
+	ToggleFusionDock     string
 }
 
 func DefaultDesktopPreferences() DesktopPreferences {
@@ -118,7 +120,9 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		UpdatePolicy:                 DefaultDesktopUpdatePolicy,
 		WindowSnappingEnabled:        DefaultDesktopWindowSnappingEnabled,
 		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
-		WorkbenchShortcuts:           DesktopWorkbenchShortcuts{},
+		WorkbenchShortcuts: DesktopWorkbenchShortcuts{
+			ToggleFusionDock: DefaultDesktopToggleFusionDockShortcut,
+		},
 	}
 }
 
@@ -315,5 +319,6 @@ func NormalizeDesktopWorkbenchShortcuts(value DesktopWorkbenchShortcuts) Desktop
 	return DesktopWorkbenchShortcuts{
 		NewAgentConversation: NormalizeDesktopShortcutBinding(value.NewAgentConversation),
 		NewSameTypeWindow:    NormalizeDesktopShortcutBinding(value.NewSameTypeWindow),
+		ToggleFusionDock:     NormalizeDesktopShortcutBinding(value.ToggleFusionDock),
 	}
 }

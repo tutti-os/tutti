@@ -158,7 +158,7 @@ Desktop summary:
 
 - `main/` owns Electron lifecycle, daemon/runtime composition, host access, transport, IPC, update integration, and window creation
 - `preload/` owns the typed bridge surface exposed to renderer
-- `renderer/src/app/windows/*` owns renderer window composition shells such as `dashboard` and `workspace`
+- `renderer/src/app/windows/*` owns typed renderer composition shells for Workspace, Agent, Fusion Dock, and standalone Fusion tool windows
 - `renderer/src/features/*` owns reusable renderer feature modules
 - `renderer/src/features/*/services/*` owns feature service public surfaces, while `services/internal/**` stays private to the owning feature
 - `renderer` consumes shared visual foundations from `packages/ui/system` instead of growing its own token or primitive layer

@@ -59,6 +59,44 @@ export const en = {
     retryAction: "Retry"
   },
   desktop: {
+    fusion: {
+      modeRestart: {
+        disableDetail:
+          "The setting is saved. Restart Tutti now to restore the Workspace window and close Fusion windows. Background tasks will follow the normal quit flow.",
+        disableMessage: "Turn off Fusion Mode?",
+        enableDetail:
+          "The setting is saved. Restart Tutti now to replace the Workspace window with the floating Dock and native windows.",
+        enableMessage: "Turn on Fusion Mode?",
+        laterAction: "Later",
+        restartAction: "Restart Now",
+        title: "Restart Tutti to switch modes"
+      },
+      shortcutErrors: {
+        conflict:
+          "That shortcut is already in use. Choose another shortcut for the Fusion Dock.",
+        invalid: "Choose a valid shortcut for the Fusion Dock.",
+        unsupported:
+          "This shortcut cannot be registered on your current system."
+      },
+      tray: {
+        backgroundTasks: "Background tasks",
+        newWindow: "New window",
+        noBackgroundTasks: "No background tasks",
+        settings: "Settings",
+        showDock: "Show Dock"
+      },
+      windowKinds: {
+        agent: "Agent",
+        appCenter: "App Center",
+        browser: "Browser",
+        filePreview: "File preview",
+        files: "Files",
+        issueManager: "Issue Manager",
+        settings: "Settings",
+        terminal: "Terminal",
+        workspaceApp: "Workspace App"
+      }
+    },
     installGuard: {
       detail:
         "Tutti is running from the downloaded disk image. Move it to Applications before continuing so updates can install correctly.",
@@ -115,10 +153,83 @@ export const en = {
       window: "Window"
     },
     quitShortcut: {
+      confirmFusionToastTitle:
+        "Press Command + Q again to quit Tutti and stop background tasks",
       confirmToastTitle: "Press Command + Q again to quit Tutti"
     }
   },
   workspace: {
+    fusion: {
+      actionFailed: "We couldn't complete that Fusion action.",
+      appCenterUnavailable:
+        "App Center is unavailable, so this Workspace App cannot be restored yet.",
+      attachedWindowCount: "{{count}} attached windows",
+      backgroundOnly: "Running in the background",
+      backgroundTasks: "Background tasks",
+      cancelAgentTurn: "Cancel the active Agent turn",
+      cancelTurn: "Cancel turn",
+      closeWindow: "Close window",
+      focusAttachedWindow: "Focus attached window",
+      hideDock: "Hide Dock",
+      kind: {
+        agent: "Agent",
+        appCenter: "App Center",
+        browser: "Browser",
+        filePreview: "File preview",
+        files: "Files",
+        issueManager: "Issue Manager",
+        settings: "Settings",
+        terminal: "Terminal",
+        workspaceApp: "Workspace App"
+      },
+      launchers: "New windows",
+      nativeWindowCount: "{{count}} native windows",
+      newWindowFor: "New {{kind}} window",
+      newWindowShortcutHint:
+        "Press Command or Control + Enter to open a separate new window.",
+      noBackgroundTasks: "No background tasks",
+      noSearchResults: "No matching windows, tools, or background tasks",
+      noWindows: "No open windows",
+      openOrFocus: "Open or focus",
+      reconnectTask: "Reconnect to background task",
+      recoverableSession: "Recoverable session",
+      runtimeManaged: "Managed",
+      searchLabel: "Search Fusion Dock",
+      searchPlaceholder: "Search tools, windows, and background tasks",
+      shortcutConflict:
+        "That shortcut is already in use. Choose another shortcut for the Fusion Dock.",
+      shortcutInvalid: "Choose a valid shortcut for the Fusion Dock.",
+      shortcutUnsupported:
+        "This shortcut cannot be registered on your current system.",
+      status: {
+        canceled: "Canceled",
+        completed: "Completed",
+        created: "Created",
+        detached: "Detached",
+        failed: "Failed",
+        preparing: "Preparing",
+        restartRequired: "Restart required",
+        running: "Running",
+        starting: "Starting",
+        stopping: "Stopping",
+        unknown: "Unknown",
+        warning: "Warning",
+        waiting: "Waiting"
+      },
+      stop: "Stop",
+      stopTask: "Stop task",
+      stopUnavailable: "This task cannot be stopped here",
+      toolLoading: "Loading Fusion window",
+      toolUnavailable: "This Fusion window is unavailable right now.",
+      toolUnavailableTitle: "Fusion window unavailable",
+      visibility: {
+        hidden: "Hidden",
+        minimized: "Minimized",
+        visible: "Visible"
+      },
+      windowResult: "Open window",
+      windows: "Windows"
+    },
     fallback: {
       loadingDescription:
         "Restoring your workspace context through the desktop bridge.",
@@ -822,10 +933,25 @@ export const en = {
       },
       lab: {
         clearShortcutLabel: "Clear {{label}}",
+        fusionDockVisibilityDescription:
+          "Choose when the Tutti Dock remains visible in Fusion Mode.",
+        fusionDockVisibilityLabel: "Dock visibility",
+        fusionDockVisibilityOptions: {
+          always: "Always visible",
+          autoHide: "Automatically hide",
+          shortcutOnly: "Shortcut only"
+        },
+        fusionModeDescription:
+          "Open Tutti tools in independent native windows with a floating Dock and menu bar entry.",
+        fusionModeLabel: "Fusion Mode",
+        fusionModeRestartRequired: "Restart Tutti to apply this change.",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
         preferencesSaveFailed: "We couldn't update Lab preferences.",
         shortcutUnbound: "Unbound",
+        toggleFusionDockShortcutDescription:
+          "Open Fusion Dock search from anywhere on your Mac; press it again to hide the Dock.",
+        toggleFusionDockShortcutLabel: "Open Fusion Dock search",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
         workbenchShortcutsLabel: "Workbench shortcuts"

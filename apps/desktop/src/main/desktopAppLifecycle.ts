@@ -4,6 +4,7 @@ import type { WorkspaceLaunch } from "./host/workspaceLaunch";
 import type { DesktopLogger } from "./logging";
 import type { TuttidManager } from "./daemon/tuttidManager";
 import type { AppUpdateService } from "./update/appUpdateService";
+import type { DesktopFusionWindowCoordinator } from "./windows/fusionWindowCoordinator.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -29,6 +30,10 @@ interface DesktopElectronModule {
 
 export interface DesktopAppLifecycleDependencies {
   disposables?: readonly DesktopAppLifecycleDisposable[];
+  fusion?: Pick<
+    DesktopFusionWindowCoordinator,
+    "activatePrimarySurface" | "dispose" | "flushPersistentState" | "isActive"
+  >;
   logger: DesktopLogger;
   tuttid: TuttidManager;
   updateService: AppUpdateService;
@@ -103,6 +108,10 @@ export function createDesktopAppLifecycleHandlers(
 
   return {
     activate() {
+      if (deps.fusion?.isActive()) {
+        void deps.fusion.activatePrimarySurface();
+        return;
+      }
       if (runtime.getWindowCount() === 0) {
         void deps.workspaceLaunch.openStartupWindow();
       }
@@ -123,6 +132,13 @@ export function createDesktopAppLifecycleHandlers(
       );
       void (async () => {
         try {
+          await deps.fusion?.flushPersistentState();
+        } catch (error: unknown) {
+          deps.logger.error("failed to flush Fusion window state during quit", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+        try {
           await deps.tuttid.stop();
         } catch (error: unknown) {
           deps.logger.error("failed to stop managed tuttid during quit", {
@@ -136,6 +152,7 @@ export function createDesktopAppLifecycleHandlers(
     },
 
     willQuit() {
+      deps.fusion?.dispose();
       for (const disposable of deps.disposables ?? []) {
         disposable.dispose();
       }
@@ -145,6 +162,9 @@ export function createDesktopAppLifecycleHandlers(
 
     windowAllClosed() {
       deps.logger.info("all desktop windows closed");
+      if (deps.fusion?.isActive()) {
+        return;
+      }
       if (process.platform !== "darwin") {
         runtime.quit();
       }

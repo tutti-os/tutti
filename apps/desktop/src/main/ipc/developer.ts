@@ -1,4 +1,4 @@
-import { ipcMain, shell } from "electron";
+import { shell } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import {
   desktopIpcChannels,
@@ -11,7 +11,7 @@ import {
 } from "../developerLogsDesktop.ts";
 import type { DesktopHostPreferencesState } from "../desktopHostPreferences";
 import { resolveDesktopDefaultsFromEnv } from "../defaults";
-import { toDesktopIpcResult } from "./result";
+import { registerDesktopIpcHandler } from "./handle.ts";
 
 export function registerDeveloperIpc(
   preferences: DesktopHostPreferencesState,
@@ -27,28 +27,26 @@ export function registerDeveloperIpc(
   const defaults = resolveDesktopDefaultsFromEnv();
   const service = createDesktopDeveloperLogsService(preferences, tuttidClient);
 
-  ipcMain.handle(desktopIpcChannels.developer.getLogsState, () =>
-    toDesktopIpcResult(() => service.getLogsState())
+  registerDesktopIpcHandler(desktopIpcChannels.developer.getLogsState, () =>
+    service.getLogsState()
   );
-  ipcMain.handle(desktopIpcChannels.developer.clearLogs, () =>
-    toDesktopIpcResult(() => service.clearLogs())
+  registerDesktopIpcHandler(desktopIpcChannels.developer.clearLogs, () =>
+    service.clearLogs()
   );
-  ipcMain.handle(desktopIpcChannels.developer.exportLogs, () =>
-    toDesktopIpcResult(() =>
-      exportDesktopDeveloperLogsAndNotify(preferences, tuttidClient)
-    )
+  registerDesktopIpcHandler(desktopIpcChannels.developer.exportLogs, () =>
+    exportDesktopDeveloperLogsAndNotify(preferences, tuttidClient)
   );
-  ipcMain.handle(desktopIpcChannels.developer.openLogDirectory, () =>
-    toDesktopIpcResult(async () => {
+  registerDesktopIpcHandler(
+    desktopIpcChannels.developer.openLogDirectory,
+    async () => {
       await openPathOrThrow(defaults.state.logsDir);
-    })
+    }
   );
-  ipcMain.handle(
+  registerDesktopIpcHandler(
     desktopIpcChannels.developer.openLogFile,
-    (_event, kind: DesktopDeveloperLogKind) =>
-      toDesktopIpcResult(async () => {
-        await openPathOrThrow(resolveLogFilePath(kind, service, defaults));
-      })
+    async (_event, kind: DesktopDeveloperLogKind) => {
+      await openPathOrThrow(resolveLogFilePath(kind, service, defaults));
+    }
   );
 }
 

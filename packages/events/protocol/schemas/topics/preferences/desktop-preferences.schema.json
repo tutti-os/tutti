@@ -102,13 +102,21 @@
     "workbenchShortcuts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["newAgentConversation", "newSameTypeWindow"],
+      "required": [
+        "newAgentConversation",
+        "newSameTypeWindow",
+        "toggleFusionDock"
+      ],
       "properties": {
         "newAgentConversation": {
           "type": ["string", "null"],
           "maxLength": 80
         },
         "newSameTypeWindow": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "toggleFusionDock": {
           "type": ["string", "null"],
           "maxLength": 80
         }

@@ -212,6 +212,31 @@ test("application menu routes Command-W through the shortcut close handler", () 
   assert.equal(receivedOwnerWindow, ownerWindow);
 });
 
+test("application menu delegates macOS window discovery to the native Window menu", () => {
+  const menu = createApplicationMenuTemplate({
+    getLocale: () => "zh-CN",
+    platform: "darwin"
+  });
+
+  const windowMenu = menu.find((item) => item.label === "窗口");
+  assert.ok(windowMenu);
+  assert.equal(windowMenu.role, "windowMenu");
+  assert.equal(windowMenu.submenu, undefined);
+});
+
+test("application menu keeps an explicit window submenu off macOS", () => {
+  const menu = createApplicationMenuTemplate({ platform: "linux" });
+
+  const windowMenu = menu.find((item) => item.label === "Window");
+  assert.ok(windowMenu);
+  assert.equal(windowMenu.role, undefined);
+  assert.ok(Array.isArray(windowMenu.submenu));
+  assert.deepEqual(
+    windowMenu.submenu.map((item) => item.role),
+    ["minimize", "close"]
+  );
+});
+
 test("application menu exposes Perf Monitor DevTools when configured", () => {
   const ownerWindow = {};
   let receivedOwnerWindow: unknown;

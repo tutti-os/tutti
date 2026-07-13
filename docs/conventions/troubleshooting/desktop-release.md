@@ -280,6 +280,201 @@ target app`. Compare `/Applications/Tutti.app/Contents/Info.plist` with the
   [desktopAppLifecycle.ts](../../../apps/desktop/src/main/desktopAppLifecycle.ts)
   [desktopAppServices.ts](../../../apps/desktop/src/main/desktopAppServices.ts)
 
+### Fusion Mode toggle is saved but the current window does not change
+
+- Symptom:
+  The Fusion Mode switch changes and remains persisted, but the current
+  Workspace window stays open or the current Fusion Dock stays active. An
+  unrelated preference change may repeatedly show a restart prompt. On macOS,
+  the renderer and remote-debugging endpoint may instead appear frozen while
+  no restart prompt is visible.
+- Quick checks:
+  Compare durable `lab.fusionMode` with `fusion.isActive()`. The latter is the
+  startup-selected presentation mode and intentionally stays fixed for the
+  lifetime of the current Electron process. Confirm the main-process desktop
+  preferences event stream receives `preferences.desktop.updated` and that a
+  localized native restart dialog appears when the two values differ. If main
+  is sampled inside `-[NSAlert runModal]` but no alert is visible, inspect
+  whether the message box was created without an owning BrowserWindow.
+- Root cause:
+  Changing only the persisted flag cannot safely mutate a live presentation
+  mode. Reading the flag dynamically from `isActive()` creates a half-switched
+  process where Fusion IPC policy changes before the Dock, Tray, workspace
+  identity, and window registry are ready. Previously, a static restart hint
+  also left no direct way to apply the saved mode. A parentless macOS
+  `NSAlert` can additionally open behind the active Tutti window while holding
+  the modal run loop, which makes a correctly delivered preference event look
+  like a no-op.
+- Fix:
+  Keep the current process mode static. Independently subscribe the
+  main-process restart coordinator to authoritative desktop preferences in
+  both modes. Prompt once for each mismatching target; **Later** suppresses
+  duplicates until the preference returns to the current mode. Before
+  relaunching, read the durable preference again and restart only when it still
+  differs, then call `app.relaunch()` before `app.quit()` so the normal daemon
+  shutdown gate remains in control. Activate Tutti and attach the native
+  message box to the focused BrowserWindow, or a visible fallback, so the
+  restart decision cannot be hidden behind the window that changed the flag.
+- Validation:
+  Starting once in each mode, toggle to the other mode and verify the localized
+  native dialog appears. Choose **Later**, publish unrelated preference updates,
+  and confirm the prompt does not repeat. Toggle back to the current mode and
+  away again to confirm suppression resets. Finally choose **Restart Now** and
+  verify the next process uses the selected mode; also revert the preference
+  while the dialog is open and confirm accepting the stale dialog does not
+  restart Tutti. Repeat once while another app is frontmost and verify the
+  alert is physically on screen and the debugging endpoint remains responsive.
+- References:
+  [fusionModeRestartController.ts](../../../apps/desktop/src/main/fusionModeRestartController.ts)
+  [fusionModeRestartCoordinator.ts](../../../apps/desktop/src/main/fusionModeRestartCoordinator.ts)
+  [bootstrap.ts](../../../apps/desktop/src/main/bootstrap.ts)
+  [desktop-windows.md](../../architecture/desktop-windows.md)
+
+### Fusion Mode starts without a Workspace window and the Dock seems missing
+
+- Symptom:
+  After enabling Fusion Mode and restarting, no Workspace window opens. The
+  floating Dock is also not visible, so Tutti appears not to have started even
+  though the menu-bar item and `tuttid` process remain alive.
+- Quick checks:
+  Confirm `lab.fusionMode` is enabled in desktop preferences. Use the Tutti
+  menu-bar item to select **Show Dock**, or open the Tutti application icon's
+  system Dock menu and select **Show Dock**. The ordinary system Dock icon click
+  focuses the most-recent product window first, so use its menu when a product
+  window exists but the floating Dock is hidden. Inspect the configured
+  visibility mode and `workbenchShortcuts.toggleFusionDock`; an explicit
+  `null` means the shortcut is unbound. Check Fusion state for `conflict` or
+  `invalid`, and inspect `fusion-dock-bounds.json` under the desktop user-data
+  directory when the Dock may have been saved on a removed display. If
+  Electron prints
+  `NSWindow does not support nonactivating panel styleMask 0x80`, inspect the
+  Dock constructor for `type: "panel"`; `BrowserWindow.isVisible()` and a live
+  renderer are not proof that WindowServer put the window on screen.
+  If the menu-bar item is blank only in a packaged build, confirm
+  `fusion-tray-icon.png` exists under `process.resourcesPath`; Electron Builder
+  does not include the `buildResources` directory inside `app.asar` by default.
+- Root cause:
+  Not opening a Workspace window is expected in Fusion Mode. A shortcut-only
+  visibility policy, a conflicting global accelerator, or stale multi-display
+  bounds can make the persistent entry point look absent. On Electron 35,
+  `type: "panel"` applies the macOS nonactivating-panel style to Electron's
+  NSWindow implementation. AppKit rejects that mask while Electron's panel
+  show path skips application activation, leaving an internally visible Dock
+  with no physical on-screen window.
+- Fix:
+  Reveal the Dock from the menu-bar item or system Dock menu, choose a
+  non-conflicting shortcut, or switch visibility to always visible. The
+  shortcut shows the temporary expanded search surface and focuses its input;
+  it is not a second persistent window/task panel. Dock bounds resolution must
+  fall back to the primary display when the saved display no longer exists; do
+  not create a Workspace window as a fallback for a hidden Dock. Use a normal
+  frameless, transparent BrowserWindow for the Dock and omit `type: "panel"`;
+  `setAlwaysOnTop(..., "floating")` and
+  `setVisibleOnAllWorkspaces(..., { visibleOnFullScreen: true })` independently
+  provide the required floating and cross-Space behavior. Ship the Tray template
+  image through `build.extraResources` and resolve the packaged path from
+  `process.resourcesPath`, while development continues to use `build/icon.png`.
+- Validation:
+  Hide the Dock through its close control, then repeat while it is focused by
+  pressing `Command+W`; neither action should quit Tutti. Recover it
+  independently from the menu-bar item and the system Dock menu. Starting from the visible narrow
+  rail, press the configured shortcut and verify the Dock expands from
+  `88x520` to `420x520`, the search input receives focus, and a second press
+  hides it. Then disconnect the display that held the Dock and confirm it moves
+  into the primary display work area. On macOS confirm both bounds are
+  physically on screen, not merely marked visible by Electron, and keep a pure
+  window-options test that rejects a reintroduced `type` field.
+- References:
+  [desktop-windows.md](../../architecture/desktop-windows.md)
+  [fusionWindowCoordinator.ts](../../../apps/desktop/src/main/windows/fusionWindowCoordinator.ts)
+  [fusionDockBounds.ts](../../../apps/desktop/src/main/windows/fusionDockBounds.ts)
+  [fusionDockWindowOptions.ts](../../../apps/desktop/src/main/windows/fusionDockWindowOptions.ts)
+
+### Fusion product window is absent from the Window menu or reopens off-screen
+
+- Symptom:
+  A Fusion Agent, terminal, browser, file, Workspace App, App Center, settings,
+  or Issue Manager window has no native traffic lights, is absent from the
+  macOS Window menu or Mission Control, or reopens on a display that is no
+  longer connected. Explicit New Window requests may also stack exactly on top
+  of an existing instance.
+- Quick checks:
+  Confirm the coordinator passes `windowChrome: "native"` for both Agent and
+  Fusion tool windows. Business windows should have
+  `excludedFromShownWindowsMenu=false` and
+  `setHiddenInMissionControl(false)`; the floating Dock intentionally uses the
+  opposite policy. Inspect the application menu for Electron's native
+  `windowMenu` role rather than a hand-built minimize/close submenu. Compare the
+  target's normal bounds with `fusion-business-window-bounds.json`, including
+  the saved display ID and the workspace-scoped `(kind, resourceId)` key.
+- Root cause:
+  The legacy detached Agent and Fusion Agent share a renderer route but require
+  different outer chrome, so inferring chrome only from `windowKind` can apply
+  the legacy frameless shell to a Fusion window. A hand-built Window menu also
+  omits macOS window discovery. Off-screen restoration occurs when Dock and
+  product placement share one policy, when a removed display ID is trusted
+  without clamping, or when maximized/full-screen bounds are persisted as the
+  normal frame.
+- Fix:
+  Select native or renderer chrome explicitly at the main-process creation
+  boundary. Give product windows the standard AppKit frame, system Window menu,
+  distinguishable native title, and ordinary Mission Control/Spaces behavior;
+  exclude only the launcher Dock. Persist `getNormalBounds()` separately from
+  Dock placement, restore the exact workspace/resource identity when possible,
+  cascade `forceNew` instances away from an occupied origin, and clamp normal
+  windows to an available work area after display changes without
+  unmaximizing or leaving full screen.
+- Validation:
+  Open multiple Agent, terminal, browser, and Workspace App windows. Confirm
+  native traffic lights, move/resize/minimize/full-screen, Window-menu
+  selection, Mission Control, App Exposé, and cross-display movement all use
+  system behavior. Move an exact resource window to a secondary display,
+  reopen it to confirm restoration, then disconnect that display and confirm
+  the normal window returns inside an available work area. Explicit New Window
+  should cascade. Finally disable Fusion Mode and verify the legacy Workspace
+  window and detached Agent chrome remain unchanged.
+- References:
+  [desktop-windows.md](../../architecture/desktop-windows.md)
+  [applicationMenu.ts](../../../apps/desktop/src/main/applicationMenu.ts)
+  [fusionBusinessWindowBounds.ts](../../../apps/desktop/src/main/windows/fusionBusinessWindowBounds.ts)
+  [fusionWindowCoordinator.ts](../../../apps/desktop/src/main/windows/fusionWindowCoordinator.ts)
+  [workspaceWindow.ts](../../../apps/desktop/src/main/windows/workspaceWindow.ts)
+
+### Closing a Fusion window unexpectedly stops or loses a background task
+
+- Symptom:
+  Closing an Agent, terminal, or Workspace App native window removes the item
+  from the Dock or stops its process, or a closed Browser window incorrectly
+  remains listed as a background task.
+- Quick checks:
+  Compare `FusionWindowRegistry.list()` with the daemon list endpoints for
+  Agent sessions, terminals, and Workspace Apps. A closed native window must be
+  absent from the registry. Its daemon resource should remain active until an
+  explicit cancel, terminate, or single-app stop request. Browser, files,
+  preview, and settings should have no daemon resource row. If the same
+  resource ID exists in two workspaces, confirm each row is attached only to a
+  window with the same workspace and kind.
+- Root cause:
+  Window lifecycle and task lifecycle were coupled, or background state was
+  projected from BrowserWindow visibility instead of daemon truth. Keeping a
+  hidden BrowserWindow after close is the same ownership error in reverse.
+- Fix:
+  Remove every closed descriptor and launch record from the main registry.
+  Project background resources from `tuttid`, join them to windows by stable
+  `(workspaceId, kind, resourceId)` identity, make native close release only the
+  renderer view, and keep Stop as a separate typed domain command.
+- Validation:
+  Start two terminals, an Agent turn, a Workspace App, and a normal Browser.
+  Close all five windows. The four daemon resources should remain reconnectable
+  while the Browser disappears. Stop each resource from the Dock and confirm
+  only that resource settles. Repeat with colliding test resource IDs in two
+  workspaces and confirm focus, reconnect, and Stop stay in the owning
+  workspace.
+- References:
+  [desktop-windows.md](../../architecture/desktop-windows.md)
+  [workspace-terminal.md](../../architecture/workspace-terminal.md)
+  [workspace-app-runtime.md](../workspace-app-runtime.md)
+
 ### Desktop Performance trace export runs out of memory
 
 - Symptom:

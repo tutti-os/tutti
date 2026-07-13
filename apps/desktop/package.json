@@ -18,6 +18,10 @@
     "afterAllArtifactBuild": "scripts/notarize-mac-dmg-artifacts.mjs",
     "extraResources": [
       {
+        "from": "build/icon.png",
+        "to": "fusion-tray-icon.png"
+      },
+      {
         "from": "build/tuttid",
         "to": "bin"
       },

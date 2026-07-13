@@ -277,8 +277,10 @@ export interface TerminalLaunchService {
 ```
 
 The shared package may call `create(...)` when a workbench dock item launches a
-new terminal. Closing a terminal calls host-provided close guard and termination
-capabilities; it must not be implemented as transport `detach(...)`.
+new terminal. It may call `get(sessionId)` when a host reconnects a view to an
+existing session. Closing the terminal entity calls host-provided close guard
+and termination capabilities; it must not be implemented as transport
+`detach(...)`.
 
 ### Close Guard
 
@@ -303,6 +305,18 @@ export interface TerminalCloseGuardService {
   check(input: { sessionId: string }): Promise<TerminalCloseGuardResult>;
 }
 ```
+
+This definition applies to a Workbench terminal-node close and an explicit
+Stop Terminal command. It does not mean that destroying every renderer view of
+the terminal terminates the session.
+
+In Fusion Mode, closing the native window releases the terminal controller
+lease and sends transport `detach`; `tuttid` keeps the PTY alive. The floating
+Dock identifies that daemon session by `(workspaceId, "terminal", sessionId)`
+and can reconnect it by launching with the same workspace and session. Explicit
+Stop still checks product policy where applicable and calls `terminate`.
+Workspace Workbench node close keeps its existing close-guard-and-terminate
+behavior.
 
 ### Links, Drops, Diagnostics, And Output Hooks
 
@@ -495,7 +509,8 @@ This frame shape is already close to the TSH desktop transport and is a good
 candidate for reuse by tuttid, but the shared React package should consume the
 typed transport events, not raw WebSocket frames.
 
-Close is intentionally not a stream frame. Closing a workbench terminal flows
+Stop is intentionally not a stream frame. Closing a Workbench terminal node or
+explicitly stopping a Fusion terminal flows
 through `TerminalCloseGuardService.check(...)` and
 `TerminalLaunchService.terminate(...)` so that close and detach cannot be
 confused.
@@ -732,7 +747,9 @@ The current Tutti vertical is complete and runtime verified:
 - `services/tuttid` owns local pty lifecycle, snapshots, close guards, and the
   terminal HTTP/WebSocket API.
 - Desktop owns the concrete tuttid adapter, host link/drop policies, workbench
-  registration, and close confirmation wiring.
+  registration, close confirmation wiring, and Fusion view detach/reconnect.
+- Managed-daemon shutdown closes every live terminal manager session so an
+  explicit Tutti quit cannot leave child PTYs behind.
 - Snapshot and sequence replay remain authoritative after renderer remount or
   daemon reconnect; screen cache is presentation acceleration only.
 - Browser WebSocket attach may use the terminal-only `access_token` query

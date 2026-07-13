@@ -44,6 +44,13 @@ import type {
   DesktopArchiveAgentPromptFileInput,
   DesktopArchiveAgentPromptFileResult
 } from "../shared/contracts/ipc";
+import type {
+  DesktopFusionOpenWindowInput,
+  DesktopFusionState,
+  DesktopFusionUpdateWindowInput,
+  DesktopFusionWindowDescriptor,
+  DesktopFusionWindowTargetInput
+} from "../shared/contracts/fusion.ts";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 
 export interface DesktopRuntimeApi {
@@ -68,6 +75,22 @@ export interface DesktopDeveloperApi {
 export interface DesktopDockPreviewCacheApi {
   read(input: DesktopReadDockPreviewInput): Promise<string | null>;
   write(input: DesktopWriteDockPreviewInput): Promise<void>;
+}
+
+export interface DesktopFusionApi {
+  closeWindow(input: DesktopFusionWindowTargetInput): Promise<void>;
+  focusWindow(input: DesktopFusionWindowTargetInput): Promise<void>;
+  getState(): Promise<DesktopFusionState>;
+  hideDock(): Promise<void>;
+  openWindow(
+    input: DesktopFusionOpenWindowInput
+  ): Promise<DesktopFusionWindowDescriptor>;
+  onState(listener: (state: DesktopFusionState) => void): () => void;
+  showDock(): Promise<void>;
+  toggleDock(): Promise<void>;
+  updateWindow(
+    input: DesktopFusionUpdateWindowInput
+  ): Promise<DesktopFusionWindowDescriptor>;
 }
 
 export interface DesktopPlatformApi {
@@ -260,6 +283,7 @@ export interface DesktopApi {
   computerUse: DesktopComputerUseApi;
   developer: DesktopDeveloperApi;
   dockPreviewCache: DesktopDockPreviewCacheApi;
+  fusion: DesktopFusionApi;
   platform: DesktopPlatformApi;
   host: DesktopHostApi;
   runtime: DesktopRuntimeApi;

@@ -4,7 +4,11 @@ export {
   createWorkbenchHostI18nRuntime,
   workbenchHostI18nResources
 } from "./host/workbenchHostI18n.ts";
-export { resolveWorkbenchHostPrepareClose } from "./host/hostConfig.ts";
+export {
+  resolveWorkbenchHostDockEntries,
+  resolveWorkbenchHostPrepareClose
+} from "./host/hostConfig.ts";
+export { orderWorkbenchDockEntries } from "./host/dockEntries.ts";
 export { workbenchFocusInputActivationType } from "./host/activations.ts";
 export type {
   WorkbenchDockPreviewCache,

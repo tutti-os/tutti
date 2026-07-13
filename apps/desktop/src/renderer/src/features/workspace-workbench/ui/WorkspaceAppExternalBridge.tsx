@@ -20,7 +20,10 @@ import type {
   DesktopWorkspaceAppExternalRendererRequest
 } from "@shared/contracts/ipc";
 import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-core/contracts";
-import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
+import {
+  resolveWorkspaceMentionLinkAction,
+  type WorkspaceLinkAction
+} from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator.ts";
 import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
@@ -66,6 +69,13 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
 interface WorkspaceAppExternalBridgeProps {
   api?: DesktopWorkspaceAppExternalHostApi;
   openFile: (input: TuttiExternalFileOpenInput) => Promise<void>;
+  openSettings?: (
+    input: Extract<
+      DesktopWorkspaceAppExternalRendererRequest,
+      { operation: "settings.open" }
+    >["input"]
+  ) => Promise<void> | void;
+  runLinkAction?: (action: WorkspaceLinkAction) => Promise<boolean>;
   workspaceId: string;
 }
 
@@ -77,6 +87,8 @@ interface PendingFileSelect {
 export function WorkspaceAppExternalBridge({
   api,
   openFile,
+  openSettings,
+  runLinkAction,
   workspaceId
 }: WorkspaceAppExternalBridgeProps): ReactElement | null {
   const hostService = useWorkspaceWorkbenchHostService();
@@ -180,6 +192,10 @@ export function WorkspaceAppExternalBridge({
           await openFile(request.input);
           return undefined;
         case "settings.open":
+          if (openSettings) {
+            await openSettings(request.input);
+            return undefined;
+          }
           settingsService.openPanel(
             { id: workspaceId },
             {
@@ -200,18 +216,20 @@ export function WorkspaceAppExternalBridge({
           if (!action) {
             throw new Error("Unsupported reference link.");
           }
-          const opened = await runDesktopAgentGUILinkAction(action, {
-            launchAgentGui: requestWorkspaceAgentGuiLaunch,
-            launchWorkspaceApp: async ({ appId, workspaceId }) => {
-              await appCenterService.openApp({ appId, workspaceId });
-              return true;
-            },
-            launchGroupChat: requestGroupChatLaunch,
-            launchWorkspaceFiles: () => false,
-            launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
-            openBrowserUrl: () => false,
-            workspaceId
-          });
+          const opened = runLinkAction
+            ? await runLinkAction(action)
+            : await runDesktopAgentGUILinkAction(action, {
+                launchAgentGui: requestWorkspaceAgentGuiLaunch,
+                launchWorkspaceApp: async ({ appId, workspaceId }) => {
+                  await appCenterService.openApp({ appId, workspaceId });
+                  return true;
+                },
+                launchGroupChat: requestGroupChatLaunch,
+                launchWorkspaceFiles: () => false,
+                launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
+                openBrowserUrl: () => false,
+                workspaceId
+              });
           if (!opened) {
             throw new Error("Unable to open reference link.");
           }
@@ -245,6 +263,8 @@ export function WorkspaceAppExternalBridge({
       hostService,
       openFile,
       openFileSelect,
+      openSettings,
+      runLinkAction,
       settingsService,
       userProjectsApi,
       workspaceId

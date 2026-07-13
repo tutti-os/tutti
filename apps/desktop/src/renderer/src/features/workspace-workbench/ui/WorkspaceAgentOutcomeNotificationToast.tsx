@@ -12,7 +12,11 @@ import type {
 const WORKSPACE_AGENT_OUTCOME_TOAST_DURATION = 6000;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
 
-export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): WorkspaceAgentOutcomeForegroundNotificationPresenter {
+export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(input?: {
+  openAgent?: (
+    notification: WorkspaceAgentOutcomeForegroundNotification
+  ) => Promise<void> | void;
+}): WorkspaceAgentOutcomeForegroundNotificationPresenter {
   return {
     show(notification) {
       toast.custom(
@@ -28,13 +32,19 @@ export function createWorkspaceAgentOutcomeForegroundNotificationPresenter(): Wo
             onClose={() => toast.dismiss(id)}
             onOpen={() => {
               toast.dismiss(id);
-              void requestWorkspaceAgentGuiLaunch({
-                agentSessionId: notification.agentSessionId,
-                provider: normalizeDesktopAgentGUIProvider(
-                  notification.provider
-                ),
-                workspaceId: notification.workspaceId
-              });
+              const openAgent =
+                input?.openAgent ??
+                (() =>
+                  requestWorkspaceAgentGuiLaunch({
+                    agentSessionId: notification.agentSessionId,
+                    provider: normalizeDesktopAgentGUIProvider(
+                      notification.provider
+                    ),
+                    workspaceId: notification.workspaceId
+                  }).then(() => undefined));
+              void Promise.resolve(openAgent(notification)).catch(
+                () => undefined
+              );
             }}
           />
         ),

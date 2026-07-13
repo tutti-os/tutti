@@ -72,7 +72,11 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
     reporterService: input.reporterService
   });
   const appTitle = resolveWorkspaceAppDisplayName(app);
-  const url = resolveWorkspaceAppOpenUrl(app.launchUrl, payload?.intent);
+  const url = resolveWorkspaceAppOpenUrl(
+    app.launchUrl,
+    payload?.intent,
+    payload?.url
+  );
 
   return {
     activation: {
@@ -180,6 +184,7 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
   intent?: WorkspaceAppOpenRouteIntent;
   prepared: boolean;
   prevStatus?: AppCenterAppOpenedParams["prevStatus"];
+  url?: string;
 } | null {
   const payload =
     request.payload && typeof request.payload === "object"
@@ -188,6 +193,7 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
           intent?: unknown;
           prepared?: unknown;
           prevStatus?: unknown;
+          url?: unknown;
         })
       : null;
   const appId = typeof payload?.appId === "string" ? payload.appId.trim() : "";
@@ -200,11 +206,13 @@ function readWorkspaceAppLaunchPayload(request: WorkbenchHostLaunchRequest): {
       ? payload.prevStatus
       : undefined;
   const intent = readWorkspaceAppOpenRouteIntent(payload?.intent);
+  const url = typeof payload?.url === "string" ? payload.url.trim() : "";
   return {
     appId,
     ...(intent ? { intent } : {}),
     prepared: payload?.prepared === true,
-    prevStatus
+    prevStatus,
+    ...(url ? { url } : {})
   };
 }
 
@@ -236,8 +244,16 @@ function readWorkspaceAppOpenRouteIntent(
 
 function resolveWorkspaceAppOpenUrl(
   launchUrl: string,
-  intent: WorkspaceAppOpenRouteIntent | undefined
+  intent: WorkspaceAppOpenRouteIntent | undefined,
+  requestedUrl?: string
 ): string {
+  const sameOriginRequestedUrl = resolveSameOriginWorkspaceAppUrl(
+    launchUrl,
+    requestedUrl
+  );
+  if (sameOriginRequestedUrl) {
+    return sameOriginRequestedUrl;
+  }
   if (!intent) {
     return launchUrl;
   }
@@ -251,6 +267,22 @@ function resolveWorkspaceAppOpenUrl(
     return url.toString();
   } catch {
     return launchUrl;
+  }
+}
+
+function resolveSameOriginWorkspaceAppUrl(
+  launchUrl: string,
+  requestedUrl: string | undefined
+): string | null {
+  if (!requestedUrl) {
+    return null;
+  }
+  try {
+    const launch = new URL(launchUrl);
+    const requested = new URL(requestedUrl);
+    return launch.origin === requested.origin ? requested.toString() : null;
+  } catch {
+    return null;
   }
 }
 

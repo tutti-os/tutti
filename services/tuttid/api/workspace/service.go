@@ -49,6 +49,7 @@ type AppCenterService interface {
 	Retry(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error)
 	StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
+	Stop(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 	StopAll(context.Context, string) ([]workspacebiz.WorkspaceApp, error)
 	Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
 }

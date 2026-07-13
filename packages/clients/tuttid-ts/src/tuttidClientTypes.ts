@@ -464,6 +464,7 @@ export interface TuttidClient {
     workspaceID: string
   ): Promise<WorkspaceAppListResponse>;
   stopAllWorkspaceApps(workspaceID: string): Promise<WorkspaceAppListResponse>;
+  stopWorkspaceApp(workspaceID: string, appID: string): Promise<WorkspaceApp>;
   listWorkspaceIssues(
     workspaceID: string,
     request: {

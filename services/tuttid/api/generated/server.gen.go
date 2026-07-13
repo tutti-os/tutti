@@ -268,6 +268,9 @@ type ServerInterface interface {
 	// Roll back one workspace app to a previous package version
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/rollback)
 	RollbackWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
+	// Stop one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/stop)
+	StopWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
 	// Uninstall one installed app from a workspace
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/uninstall)
 	UninstallWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID)
@@ -3643,6 +3646,47 @@ func (siw *ServerInterfaceWrapper) RollbackWorkspaceApp(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// StopWorkspaceApp operation middleware
+func (siw *ServerInterfaceWrapper) StopWorkspaceApp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appID" -------------
+	var appID WorkspaceAppID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appID", r.PathValue("appID"), &appID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopWorkspaceApp(w, r, workspaceID, appID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UninstallWorkspaceApp operation middleware
 func (siw *ServerInterfaceWrapper) UninstallWorkspaceApp(w http.ResponseWriter, r *http.Request) {
 
@@ -6634,6 +6678,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/reload-local", wrapper.ReloadLocalWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/retry", wrapper.RetryWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/rollback", wrapper.RollbackWorkspaceApp)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/stop", wrapper.StopWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uninstall", wrapper.UninstallWorkspaceApp)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads", wrapper.PrepareWorkspaceAppUpload)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/apps/{appID}/uploads/{uploadID}", wrapper.CancelWorkspaceAppUpload)
@@ -15614,6 +15659,123 @@ func (response RollbackWorkspaceApp503JSONResponse) VisitRollbackWorkspaceAppRes
 	return err
 }
 
+type StopWorkspaceAppRequestObject struct {
+	WorkspaceID WorkspaceID    `json:"workspaceID"`
+	AppID       WorkspaceAppID `json:"appID"`
+}
+
+type StopWorkspaceAppResponseObject interface {
+	VisitStopWorkspaceAppResponse(w http.ResponseWriter) error
+}
+
+type StopWorkspaceApp200JSONResponse WorkspaceAppResponse
+
+func (response StopWorkspaceApp200JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response StopWorkspaceApp400JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response StopWorkspaceApp401JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp404JSONResponse struct {
+	WorkspaceAppNotFoundErrorJSONResponse
+}
+
+func (response StopWorkspaceApp404JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response StopWorkspaceApp405JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response StopWorkspaceApp502JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopWorkspaceApp503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response StopWorkspaceApp503JSONResponse) VisitStopWorkspaceAppResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UninstallWorkspaceAppRequestObject struct {
 	WorkspaceID WorkspaceID    `json:"workspaceID"`
 	AppID       WorkspaceAppID `json:"appID"`
@@ -23158,6 +23320,9 @@ type StrictServerInterface interface {
 	// Roll back one workspace app to a previous package version
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/rollback)
 	RollbackWorkspaceApp(ctx context.Context, request RollbackWorkspaceAppRequestObject) (RollbackWorkspaceAppResponseObject, error)
+	// Stop one running workspace app
+	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/stop)
+	StopWorkspaceApp(ctx context.Context, request StopWorkspaceAppRequestObject) (StopWorkspaceAppResponseObject, error)
 	// Uninstall one installed app from a workspace
 	// (POST /v1/workspaces/{workspaceID}/apps/{appID}/uninstall)
 	UninstallWorkspaceApp(ctx context.Context, request UninstallWorkspaceAppRequestObject) (UninstallWorkspaceAppResponseObject, error)
@@ -25858,6 +26023,33 @@ func (sh *strictHandler) RollbackWorkspaceApp(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RollbackWorkspaceAppResponseObject); ok {
 		if err := validResponse.VisitRollbackWorkspaceAppResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopWorkspaceApp operation middleware
+func (sh *strictHandler) StopWorkspaceApp(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, appID WorkspaceAppID) {
+	var request StopWorkspaceAppRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AppID = appID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopWorkspaceApp(ctx, request.(StopWorkspaceAppRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopWorkspaceApp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopWorkspaceAppResponseObject); ok {
+		if err := validResponse.VisitStopWorkspaceAppResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

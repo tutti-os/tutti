@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import {
   enforceBrowserWebviewSecurity,
-  installBrowserWebviewSecurity,
+  installBrowserWebviewSecurity as installBrowserWebviewSecurityBase,
   isBrowserNodeWebviewAttach,
   registerBrowserNodeElectronMain,
   sanitizeBrowserGuestUserAgent
@@ -17,8 +17,34 @@ import type {
 import type { BrowserNodeEvent } from "../core/types.ts";
 
 type InstallBrowserWebviewSecurityInput = Parameters<
-  typeof installBrowserWebviewSecurity
+  typeof installBrowserWebviewSecurityBase
 >[0];
+type TestInstallBrowserWebviewSecurityInput = Omit<
+  InstallBrowserWebviewSecurityInput,
+  "resolveSessionIdentity"
+> &
+  Partial<Pick<InstallBrowserWebviewSecurityInput, "resolveSessionIdentity">>;
+
+const testSessionIdentities = new Map<string, object>();
+
+function installBrowserWebviewSecurity(
+  input: TestInstallBrowserWebviewSecurityInput
+) {
+  return installBrowserWebviewSecurityBase({
+    ...input,
+    resolveSessionIdentity:
+      input.resolveSessionIdentity ?? resolveTestSessionIdentity
+  });
+}
+
+function resolveTestSessionIdentity(partition: string): object {
+  let identity = testSessionIdentities.get(partition);
+  if (!identity) {
+    identity = { partition };
+    testSessionIdentities.set(partition, identity);
+  }
+  return identity;
+}
 
 test("enforces Browser Node webview security policy", () => {
   const webPreferences: Record<string, unknown> = {
@@ -208,6 +234,7 @@ test("ignores non-Browser Node webviews when installing owner security hooks", (
     "did-attach-webview",
     {},
     {
+      session: createGuestSession(params.partition!),
       setWindowOpenHandler() {
         setWindowOpenHandlerCount += 1;
       }
@@ -258,6 +285,7 @@ test("handles additional allowed Browser Node webview partitions", () => {
     {},
     {
       id: 41,
+      session: createGuestSession(params.partition!),
       setWindowOpenHandler() {
         setWindowOpenHandlerCount += 1;
       }
@@ -270,6 +298,117 @@ test("handles additional allowed Browser Node webview partitions", () => {
   assert.equal(setWindowOpenHandlerCount, 1);
   assert.equal(params.allowpopups, undefined);
   assert.equal(params.src, "http://127.0.0.1:4100/");
+});
+
+test("reports the validated attach parameters with each guest", () => {
+  const contents = new EventEmitter();
+  const attached: Array<{ guestId: number; partition: string | undefined }> =
+    [];
+  const appParams = {
+    partition: "persist:tutti-app:workspace:hello",
+    src: "http://127.0.0.1:4100/"
+  };
+  const browserParams = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  const sessions = new Map([
+    [appParams.partition, createGuestSession(appParams.partition)],
+    [browserParams.partition, createGuestSession(browserParams.partition)]
+  ]);
+  const resolveSessionIdentity = (partition: string) => {
+    const identity = sessions.get(partition);
+    if (!identity) {
+      throw new Error(`unexpected partition: ${partition}`);
+    }
+    return identity;
+  };
+  const allow = {
+    preventDefault() {
+      throw new Error("webview should not be blocked");
+    }
+  };
+
+  const cleanup = installBrowserWebviewSecurity({
+    allowedSessionPartitions: {
+      additionalAllowedPrefixes: ["persist:tutti-app:"]
+    },
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    onGuestAttached: (guestContents, attach) => {
+      attached.push({
+        guestId: guestContents.id,
+        partition: attach.params.partition
+      });
+    },
+    openExternal: () => undefined,
+    resolveSessionIdentity
+  });
+
+  contents.emit("will-attach-webview", allow, {}, appParams);
+  contents.emit("will-attach-webview", allow, {}, browserParams);
+  contents.emit(
+    "did-attach-webview",
+    {},
+    createAttachedGuest(42, sessions.get(browserParams.partition)!)
+  );
+  contents.emit(
+    "did-attach-webview",
+    {},
+    createAttachedGuest(41, sessions.get(appParams.partition)!)
+  );
+  cleanup();
+
+  assert.deepEqual(attached, [
+    { guestId: 42, partition: browserParams.partition },
+    { guestId: 41, partition: appParams.partition }
+  ]);
+});
+
+test("blocks additional partitions rejected by the host attachment policy", () => {
+  const contents = new EventEmitter();
+  const params: Record<string, string> = {
+    partition: "persist:tutti-app:workspace-b:hello",
+    src: "http://127.0.0.1:4100/"
+  };
+  let didPreventDefault = false;
+  let guestAttachedCount = 0;
+  const cleanup = installBrowserWebviewSecurity({
+    allowedSessionPartitions: {
+      additionalAllowedPrefixes: ["persist:tutti-app:"]
+    },
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    onGuestAttached: () => {
+      guestAttachedCount += 1;
+    },
+    openExternal: () => undefined,
+    validateWebviewAttach: ({ partition }) =>
+      partition === "persist:tutti-app:workspace-a:hello"
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        didPreventDefault = true;
+      }
+    },
+    {},
+    params
+  );
+  contents.emit(
+    "did-attach-webview",
+    {},
+    {
+      id: 42,
+      session: createGuestSession(params.partition!)
+    }
+  );
+  cleanup();
+
+  assert.equal(didPreventDefault, true);
+  assert.equal(guestAttachedCount, 0);
 });
 
 test("externalizes popup windows before Browser Node guests register", () => {
@@ -307,6 +446,7 @@ test("externalizes popup windows before Browser Node guests register", () => {
     {},
     {
       id: 42,
+      session: createGuestSession(params.partition!),
       setWindowOpenHandler(handler: WindowOpenHandler) {
         captured.windowOpenHandler = handler;
       }
@@ -372,6 +512,7 @@ test("allows attached guests to override the default window-open handler", () =>
     {},
     {
       id: 42,
+      session: createGuestSession(params.partition!),
       setWindowOpenHandler(handler: WindowOpenHandler) {
         captured.windowOpenHandler = handler;
       }
@@ -402,6 +543,21 @@ test("sanitizes Electron token from Browser Node guest user agents", () => {
     "Mozilla/5.0 AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36"
   );
 });
+
+function createAttachedGuest(
+  id: number,
+  session: ReturnType<typeof createGuestSession>
+) {
+  return {
+    id,
+    session,
+    setWindowOpenHandler() {}
+  };
+}
+
+function createGuestSession(partition: string) {
+  return resolveTestSessionIdentity(partition);
+}
 
 test("applies sanitized user agent when Browser Node webviews attach", () => {
   const contents = new EventEmitter();
@@ -435,6 +591,7 @@ test("applies sanitized user agent when Browser Node webviews attach", () => {
       getUserAgent() {
         return userAgent;
       },
+      session: createGuestSession(params.partition!),
       setUserAgent(nextUserAgent: string) {
         userAgent = nextUserAgent;
       },

@@ -46,14 +46,11 @@ export function createWorkspaceLaunchDesktopAdapters(
         agentWindow,
         () => {
           loadAgentWindowContent(agentWindow, {
-            agentSessionID: input.agentSessionID,
-            agentTargetID: input.agentTargetID,
             dockPlacement: options.getDockPlacement(),
+            launchPayload: input.launchPayload,
             locale: options.getLocale(),
-            providerStatusSnapshot: input.providerStatusSnapshot,
-            agents: input.agents,
-            provider: input.provider,
             rendererUrl: options.rendererUrl,
+            resourceID: input.resourceID,
             theme: options.getTheme(),
             workspaceID: input.workspaceID
           });

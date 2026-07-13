@@ -40,8 +40,10 @@ apps/desktop/
 Current concrete shape is still intentionally small:
 
 - `main` contains bootstrap composition, daemon supervision, host access, transport, IPC, update, generated defaults, logging, and window modules
-- `preload` currently boots through a single entrypoint
-- `renderer` currently resolves dashboard and workspace window shells from one bundle
+- `preload` currently boots through a single main-window entrypoint plus
+  narrower guest entries
+- `renderer` resolves Workspace, Agent, Fusion Dock, and Fusion tool shells
+  from one bundle
 - `renderer` organizes growing UI behavior as feature modules with service-owned state
 - `shared` is used for narrow desktop-local contracts and i18n resources shared across main, preload, and renderer
 
@@ -73,7 +75,6 @@ apps/desktop/src/
     src/
       app/
         windows/
-          dashboard/
           workspace/
       features/
         <feature>/
@@ -99,10 +100,13 @@ Reading rules:
 - `main/desktopHostServices.ts` owns host-side service composition such as preferences, file dialogs, and workspace launch wiring
 - `main/desktopAppServices.ts` composes daemon runtime, host services, and updater into the app-facing service set used by bootstrap
 - `main/desktopAppLifecycle.ts` owns Electron application lifecycle event registration
-- `main/windows/*` are Electron window shells, not business modules
+- `main/windows/*` are Electron window shells and native-window coordination,
+  not business modules
 - `main/windows/*` owns native window intents such as close and development reload shortcuts; renderer should respond to typed close requests instead of inferring native lifecycle from `beforeunload`
-- `preload/entries/*` are capability-entry assembly points, even if only one entry exists today
-- `renderer/src/app/windows/*` are renderer window composition shells such as `dashboard` and `workspace`
+- `preload/entries/*` are capability-entry assembly points for the main renderer and isolated guest surfaces such as Browser and Workspace App windows
+- `renderer/src/app/windows/*` are renderer window composition shells; a
+  window intent may select Workspace, Agent, Fusion Dock, or a standalone
+  Fusion feature surface
 - `renderer/src/features/*` are reusable renderer feature modules
 - `renderer/src/features/*/services/internal/**` is private implementation for the owning feature
 - desktop business-facing capabilities should usually surface through `ipc/*` and `preload/api/*`
@@ -143,6 +147,8 @@ Current responsibilities include:
 - app bootstrap
 - app-service composition
 - window creation
+- native-window instance coordination, Dock placement, menu-bar integration,
+  and global shortcuts
 - daemon start and stop
 - transport endpoint resolution
 - IPC registration
@@ -161,6 +167,29 @@ Current responsibilities include:
 - implement business rules
 - reinterpret business workflows
 - hold complex business state that belongs in `tuttid`
+
+### Native Multi-Window Rule
+
+Electron main may hold a live native-window registry containing window kind,
+instance identity, focus order, visibility, and an optional daemon resource
+identifier. That registry exists solely for native lifecycle and desktop
+integration.
+
+It must not:
+
+- retain a closed or hidden BrowserWindow as a background-task surrogate
+- infer task liveness from the presence of a window
+- copy Agent, terminal, or Workspace App business state into main
+- parse or reconstruct renderer-owned feature launch payloads; main may carry
+  them opaquely alongside native window and resource identity
+- let individual renderer features construct their own BrowserWindow
+  infrastructure
+
+Background-resource lists come from `tuttid` and are joined to live windows at
+the UI boundary by `(workspaceId, kind, resourceId)`. Resource IDs alone are
+not cross-workspace identities. A renderer view may be destroyed while its
+daemon resource continues. Stop and close therefore remain separate typed
+commands.
 
 If logic is not Electron-specific, it should usually move out of `apps/desktop`.
 
@@ -213,7 +242,8 @@ Normalization-specific rule:
 
 Current state:
 
-- desktop currently uses one preload entrypoint that composes the typed API surface
+- top-level product windows use one preload entrypoint that composes the typed
+  API surface; browser and Workspace App guests keep their narrower entries
 
 It should:
 
@@ -233,7 +263,8 @@ It should not:
 
 Current state:
 
-- renderer currently uses one React bundle and resolves window shells by startup view
+- renderer uses one React bundle and resolves Workspace, Agent, Fusion Dock,
+  and standalone Fusion tool shells by typed startup view
 - renderer window shells create window-scoped dependency containers and assemble features
 - feature services own renderer-local state, commands, and preload adapters
 
@@ -527,8 +558,12 @@ Windows are shells, not separate products.
 
 Current implementation:
 
-- dashboard and workspace are separate Electron windows
-- both currently resolve through one preload entry and one renderer bundle
+- Workspace Workbench, detached Agent, Fusion Dock, and Fusion product windows
+  are separate Electron windows
+- top-level product windows resolve through one preload entry and one renderer
+  bundle; typed window intent selects the shell
+- `FusionWindowCoordinator` is the single BrowserWindow coordination boundary
+  for Fusion product windows
 
 Preferred growth path:
 
@@ -538,9 +573,11 @@ Preferred growth path:
 
 That means:
 
-- `renderer/src/app/windows/dashboard` and `renderer/src/app/windows/workspace` remain shell entrypoints
+- `renderer/src/app/windows/*` remains the composition boundary for renderer
+  window shells
 - future reusable product modules should grow under `renderer/src/features/*`
-- do not split `dashboard` or `workspace` into separate renderer bundles unless capability boundaries truly diverge
+- do not split window kinds into separate renderer bundles unless capability
+  boundaries truly diverge
 
 Do not copy feature code per window unless the behavior truly diverges.
 Do not split into separate preload entries or renderer bundles just because multiple windows exist; split only when capability boundaries become materially different.
@@ -549,10 +586,17 @@ Do not split into separate preload entries or renderer bundles just because mult
 
 The current user-facing shell model is:
 
-- restore a recent workspace when possible
-- otherwise open the dashboard launcher
-- open the selected workspace in a workspace window
-- close the dashboard after launching a workspace
+- resolve the startup workspace through `tuttid`
+- open one Workspace Workbench window in the default mode
+- create the resident floating Dock and menu-bar entry, without a Workspace
+  window, in Fusion Mode
+- open feature surfaces in independently managed native windows in Fusion Mode
+- keep Agent, terminal, and Workspace App resources daemon-owned after their
+  windows close
+- keep renderer integrations that require a resident owner in the Fusion Dock,
+  including Agent binding-context publication, Agent notification navigation,
+  and application-update status/action UI; standalone product windows must not
+  duplicate the Agent resident owners or repeat that update UI
 
 See [Desktop Windows](../architecture/desktop-windows.md) for the current window behavior and lifecycle model.
 

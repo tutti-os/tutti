@@ -358,6 +358,10 @@ export type DesktopWorkbenchShortcuts = {
    * Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
    */
   newSameTypeWindow: string | null;
+  /**
+   * Global keyboard shortcut binding for showing or hiding the Fusion Dock, or null when unbound.
+   */
+  toggleFusionDock: string | null;
 };
 
 export type DesktopWorkbenchWindowSnapping = {
@@ -4654,6 +4658,56 @@ export type RetryWorkspaceAppResponses = {
 
 export type RetryWorkspaceAppResponse =
   RetryWorkspaceAppResponses[keyof RetryWorkspaceAppResponses];
+
+export type StopWorkspaceAppData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/stop";
+};
+
+export type StopWorkspaceAppErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StopWorkspaceAppError =
+  StopWorkspaceAppErrors[keyof StopWorkspaceAppErrors];
+
+export type StopWorkspaceAppResponses = {
+  /**
+   * Workspace app stopped
+   */
+  200: WorkspaceAppResponse;
+};
+
+export type StopWorkspaceAppResponse =
+  StopWorkspaceAppResponses[keyof StopWorkspaceAppResponses];
 
 export type RollbackWorkspaceAppData = {
   body: RollbackWorkspaceAppRequest;

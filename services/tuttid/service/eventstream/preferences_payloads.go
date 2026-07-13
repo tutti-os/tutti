@@ -67,6 +67,7 @@ type desktopWorkbenchWindowSnappingPayload struct {
 type desktopWorkbenchShortcutsPayload struct {
 	NewAgentConversation *string `json:"newAgentConversation"`
 	NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	ToggleFusionDock     *string `json:"toggleFusionDock"`
 }
 
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload

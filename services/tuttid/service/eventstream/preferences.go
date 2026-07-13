@@ -50,6 +50,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			WorkbenchShortcuts: desktopWorkbenchShortcutsPayload{
 				NewAgentConversation: shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewAgentConversation),
 				NewSameTypeWindow:    shortcutPointerFromBiz(preferences.WorkbenchShortcuts.NewSameTypeWindow),
+				ToggleFusionDock:     shortcutPointerFromBiz(preferences.WorkbenchShortcuts.ToggleFusionDock),
 			},
 			Locale:                  preferences.Locale,
 			MinimizeAnimation:       preferences.MinimizeAnimation,
@@ -178,6 +179,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			ToggleFusionDock:     shortcutStringFromPayload(decoded.Preferences.WorkbenchShortcuts.ToggleFusionDock),
 		},
 		Locale:                  decoded.Preferences.Locale,
 		MinimizeAnimation:       decoded.Preferences.MinimizeAnimation,

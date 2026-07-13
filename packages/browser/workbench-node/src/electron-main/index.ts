@@ -19,6 +19,7 @@ export {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach,
   type BrowserNodeWebviewMatcher,
+  type BrowserWebviewGuestAttachedInput,
   type BrowserWebviewPreloadResolver,
   type BrowserWebviewPreloadResolverInput,
   type BrowserWebviewSecurityInput,

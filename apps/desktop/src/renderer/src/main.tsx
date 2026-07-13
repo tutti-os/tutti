@@ -3,6 +3,7 @@ import * as React from "react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { TooltipProvider } from "@tutti-os/ui-system";
+import { resolveDesktopWindowIntent } from "@shared/contracts/windowIntent.ts";
 import { RendererApp } from "./app";
 import { I18nProvider } from "./i18n";
 import { NativeTooltipSuppressor } from "./lib/nativeTooltipSuppression";
@@ -20,10 +21,29 @@ import "./style.css";
 // mounts (module-global registry; the agent-gui pipeline reads it during render).
 registerDesktopPastedTextMention();
 
+const rendererWindowIntent = resolveDesktopWindowIntent(window.location.search);
+document.documentElement.dataset.tuttiWindowSurface =
+  rendererWindowIntent.kind === "fusion-dock" ? "transparent" : "opaque";
+
 const root = document.querySelector<HTMLDivElement>("#app");
 
 if (!root) {
   throw new Error("Renderer root element '#app' was not found.");
+}
+
+if (rendererWindowIntent.kind === "fusion-dock") {
+  const transparentWindowCanvasClasses = [
+    "min-w-0",
+    "w-full",
+    "h-full",
+    "min-h-0",
+    "overflow-hidden",
+    "bg-none",
+    "bg-transparent"
+  ];
+  for (const element of [document.documentElement, document.body, root]) {
+    element.classList.add(...transparentWindowCanvasClasses);
+  }
 }
 
 const logRendererDiagnostic = createRendererDiagnosticSink();

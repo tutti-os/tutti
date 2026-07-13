@@ -1,6 +1,5 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
-import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
+import type { DesktopFusionWindowCoordinator } from "../windows/fusionWindowCoordinator.ts";
 
 export interface WorkspaceLaunchOwnerWindow {
   close(): void;
@@ -14,11 +13,8 @@ export interface WorkspaceLaunchAdapters {
 }
 
 export interface WorkspaceLaunchAgentWindowInput {
-  agentSessionID?: string | null;
-  agentTargetID?: string | null;
-  providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  agents?: readonly AgentGUIAgent[];
-  provider?: string | null;
+  launchPayload?: unknown;
+  resourceID?: string | null;
   workspaceID: string;
 }
 
@@ -33,6 +29,7 @@ export interface WorkspaceLaunch {
 
 export interface WorkspaceLaunchDependencies {
   adapters: WorkspaceLaunchAdapters;
+  fusion?: DesktopFusionWindowCoordinator;
   tuttidClient: Pick<TuttidClient, "getStartupWorkspace">;
 }
 
@@ -43,6 +40,10 @@ export function createWorkspaceLaunch(
     async openStartupWindow() {
       try {
         const workspaceID = await resolveStartupWorkspaceID();
+        if (deps.fusion?.isActive()) {
+          await deps.fusion.start(workspaceID);
+          return;
+        }
         await deps.adapters.showWorkspaceWindow(workspaceID);
       } catch (error) {
         deps.adapters.warnStartupWindowResolutionFailure(error);
@@ -50,7 +51,17 @@ export function createWorkspaceLaunch(
       }
     },
 
-    showAgentWindow(input) {
+    async showAgentWindow(input) {
+      if (deps.fusion?.isActive()) {
+        await deps.fusion.openWindow({
+          forceNew: true,
+          kind: "agent",
+          launchPayload: input.launchPayload,
+          resourceId: input.resourceID,
+          workspaceId: input.workspaceID
+        });
+        return;
+      }
       return deps.adapters.showAgentWindow(input);
     },
     showWorkspace
@@ -68,6 +79,12 @@ export function createWorkspaceLaunch(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
   ): Promise<void> {
+    if (deps.fusion?.isActive()) {
+      await deps.fusion.start(workspaceID);
+      await deps.fusion.showDock();
+      forceCloseWindow(ownerWindow);
+      return;
+    }
     await deps.adapters.showWorkspaceWindow(workspaceID);
     forceCloseWindow(ownerWindow);
   }

@@ -425,16 +425,16 @@ test("shared tuttid client lists workspace agent sessions with query params", as
   });
 });
 
-test("shared tuttid client launches workspace apps", async () => {
-  let requestMethod = "";
-  let requestPath = "";
+test("shared tuttid client launches and stops workspace apps", async () => {
+  const requests: Array<{ method: string; path: string }> = [];
 
   const client = createTuttidClient({
     fetch: async (input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init);
-      requestMethod = request.method;
-      requestPath = new URL(request.url).pathname;
+      const requestPath = new URL(request.url).pathname;
+      requests.push({ method: request.method, path: requestPath });
+      const stopped = requestPath.endsWith("/stop");
 
       return new Response(
         JSON.stringify({
@@ -451,13 +451,13 @@ test("shared tuttid client launches workspace apps", async () => {
             updateAvailable: false,
             installed: true,
             enabled: true,
-            status: "running",
+            status: stopped ? "idle" : "running",
             stateRevision: 2,
-            launchUrl: "http://127.0.0.1:3000",
-            port: 3000,
+            launchUrl: stopped ? null : "http://127.0.0.1:3000",
+            port: stopped ? null : 3000,
             failureReason: null,
             lastError: null,
-            startedAtUnixMs: 1,
+            startedAtUnixMs: stopped ? null : 1,
             updatedAtUnixMs: 2,
             source: "imported",
             exportable: true,
@@ -483,11 +483,16 @@ test("shared tuttid client launches workspace apps", async () => {
   });
 
   const app = await client.launchWorkspaceApp("ws-1", "app-1");
+  const stoppedApp = await client.stopWorkspaceApp("ws-1", "app-1");
 
-  assert.equal(requestMethod, "POST");
-  assert.equal(requestPath, "/v1/workspaces/ws-1/apps/app-1/launch");
+  assert.deepEqual(requests, [
+    { method: "POST", path: "/v1/workspaces/ws-1/apps/app-1/launch" },
+    { method: "POST", path: "/v1/workspaces/ws-1/apps/app-1/stop" }
+  ]);
   assert.equal(app.appId, "app-1");
   assert.equal(app.status, "running");
+  assert.equal(stoppedApp.appId, "app-1");
+  assert.equal(stoppedApp.status, "idle");
 });
 
 test("shared tuttid client lists workspace app references with exact body", async () => {

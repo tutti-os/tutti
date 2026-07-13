@@ -28,6 +28,7 @@ import {
   searchWorkspaceAppReferences,
   startEnabledWorkspaceApps,
   stopAllWorkspaceApps,
+  stopWorkspaceApp,
   uninstallWorkspaceApp
 } from "./generated/index.ts";
 import type { Client } from "./generated/client/index.ts";
@@ -65,6 +66,7 @@ type WorkspaceAppsClient = Pick<
   | "rollbackWorkspaceApp"
   | "startEnabledWorkspaceApps"
   | "stopAllWorkspaceApps"
+  | "stopWorkspaceApp"
   | "uninstallWorkspaceApp"
 >;
 
@@ -241,6 +243,13 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
         path: { workspaceID }
       });
       return unwrapData(response, "Stop workspace apps request failed.");
+    },
+    async stopWorkspaceApp(workspaceID, appID) {
+      const response = await stopWorkspaceApp({
+        client,
+        path: { appID, workspaceID }
+      });
+      return unwrapData(response, "Stop workspace app request failed.").app;
     },
     async listWorkspaceAppFactoryJobs(workspaceID) {
       const response = await listWorkspaceAppFactoryJobs({

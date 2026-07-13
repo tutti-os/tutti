@@ -123,6 +123,44 @@ func TestTerminalServiceCreatesLocalPTYAndSnapshotsOutput(t *testing.T) {
 	}
 }
 
+func TestTerminalServiceCloseTerminatesEverySession(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows terminal support needs ConPTY-specific implementation")
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	service := &TerminalService{}
+	first, err := service.Create(context.Background(), "ws-1", CreateTerminalInput{})
+	if err != nil {
+		t.Fatalf("create first terminal: %v", err)
+	}
+	second, err := service.Create(context.Background(), "ws-2", CreateTerminalInput{})
+	if err != nil {
+		t.Fatalf("create second terminal: %v", err)
+	}
+
+	service.Close()
+	service.Close()
+
+	for _, input := range []struct {
+		workspaceID string
+		terminalID  string
+	}{{"ws-1", first.ID}, {"ws-2", second.ID}} {
+		session, getErr := service.Get(context.Background(), input.workspaceID, input.terminalID)
+		if getErr != nil {
+			t.Fatalf("get terminal %s: %v", input.terminalID, getErr)
+		}
+		if session.Status != TerminalStatusExited {
+			t.Fatalf(
+				"terminal %s status = %q, want %q",
+				input.terminalID,
+				session.Status,
+				TerminalStatusExited,
+			)
+		}
+	}
+}
+
 func TestTerminalServiceCreatesShellWithXtermEnvironment(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows terminal support needs ConPTY-specific implementation")
