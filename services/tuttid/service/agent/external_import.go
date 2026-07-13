@@ -200,7 +200,7 @@ func externalImportAgentTargetID(provider string) string {
 
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string) (externalScanData, error) {
 	if strings.TrimSpace(archivePath) != "" {
-		if len(providers) > 0 && !providersIncludeClaudeCode(providers) {
+		if len(providers) > 0 && !providersIncludeArchiveImportParser(providers) {
 			return externalScanData{}, fmt.Errorf(
 				"%w: a Claude export archive scan requires the claude-code provider",
 				ErrInvalidArgument,
@@ -261,9 +261,10 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 	return data, nil
 }
 
-func providersIncludeClaudeCode(providers []string) bool {
+func providersIncludeArchiveImportParser(providers []string) bool {
 	for _, provider := range providers {
-		if agentproviderbiz.Normalize(provider) == agentproviderbiz.ClaudeCode {
+		descriptor, ok := providerregistry.Find(provider)
+		if ok && descriptor.ExternalImport.ParserKind == providerregistry.ExternalImportParserKindClaudeJSONL {
 			return true
 		}
 	}

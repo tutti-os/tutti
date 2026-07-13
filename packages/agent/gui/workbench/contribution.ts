@@ -513,7 +513,6 @@ import {
 import type { AgentGuiWorkbenchProviderAvailability } from "./contributionDock.tsx";
 export {
   agentGuiWorkbenchCompactVisibleAreaRatio,
-  agentGuiWorkbenchDefaultCopy,
   agentGuiWorkbenchDefaultNodeFrame,
   agentGuiWorkbenchDefaultUsableHeightRatio,
   agentGuiWorkbenchDefaultUsableWidthRatio,

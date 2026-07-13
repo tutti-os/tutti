@@ -192,6 +192,12 @@ test("keeps exemptions exact", () => {
     true
   );
   assert.equal(
+    isExemptPath(
+      "services/tuttid/service/agent/external_import_claude_export.go"
+    ),
+    true
+  );
+  assert.equal(
     isExemptPath("services/tuttid/service/agent/external_import_policy.go"),
     false
   );

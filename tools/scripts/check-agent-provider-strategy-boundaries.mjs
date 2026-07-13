@@ -30,6 +30,9 @@ const exemptFiles = new Set([
   "packages/agent/daemon/runtime/acp_provider_openclaw.go",
   "services/tuttid/biz/agentprovider/provider.go",
   "services/tuttid/service/agent/external_import_parse.go",
+  // The Claude archive importer translates Claude's provider-owned export
+  // format. Cross-provider archive eligibility stays descriptor-driven.
+  "services/tuttid/service/agent/external_import_claude_export.go",
   "services/tuttid/service/agentstatus/registry.go"
 ]);
 const providerBehaviorCollectionName =

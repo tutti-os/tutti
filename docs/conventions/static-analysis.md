@@ -86,8 +86,9 @@ literal switch cases, and provider-specific Set or array membership dispatch in
 Go, TypeScript, and TSX production sources. Plain provider catalogs and enum
 validation remain allowed when they do not select behavior.
 It keeps an explicit exemption list for registry declarations, generated API
-enums, and exact provider-owned adapter/parser implementations; additions to
-that list require an ownership reason and must not hide cross-provider policy.
+enums, and exact provider-owned adapter/parser implementations (including
+format-specific external-import parsers); additions to that list require an
+ownership reason and must not hide cross-provider policy.
 Its fixture suite must exercise every registered provider so a newly migrated
 provider cannot silently remain outside the boundary rule.
 
