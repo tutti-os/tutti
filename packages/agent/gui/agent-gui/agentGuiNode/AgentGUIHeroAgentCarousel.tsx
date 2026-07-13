@@ -117,7 +117,7 @@ function useAgentGUIHeroCarouselImages(
 }
 
 // Empty-hero agent switcher for the "All" tab: a ring of same-sized agent
-// tiles rendered with three.js (see agentGuiHeroCarouselScene) so tiles
+// records rendered with three.js (see agentGuiHeroCarouselScene) so records
 // farther around the ring genuinely shrink and fade with perspective.
 // Wheel, drag, and arrow keys spin the ring; the centered agent commits once
 // the spin settles; clicking a tile (canvas raycast or the visually-hidden
@@ -218,7 +218,9 @@ export const AgentGUIHeroAgentCarousel = memo(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [carouselImages.images, carouselImages.ready, iconKey]);
 
-    // Follow external agent switches (left rail, hero title dropdown).
+    // Provider selection can also come from the rail or title control. Keep
+    // that selected agent in the carousel's center so the spinning record and
+    // the composer below always describe the same target.
     useEffect(() => {
       if (activeIconIndex >= 0 && activeIconIndex !== centerIndexRef.current) {
         centerIndexRef.current = activeIconIndex;
@@ -283,6 +285,7 @@ export const AgentGUIHeroAgentCarousel = memo(
       null
     );
     const suppressClickRef = useRef(false);
+    const pointerActivatedIndexRef = useRef<number | null>(null);
     const handlePointerDown = (
       event: ReactPointerEvent<HTMLDivElement>
     ): void => {
@@ -308,6 +311,7 @@ export const AgentGUIHeroAgentCarousel = memo(
       }
       drag.anchorX = event.clientX;
       suppressClickRef.current = true;
+      pointerActivatedIndexRef.current = null;
       // Dragging left pulls the next agent (to the right) into the center.
       stepBy(deltaX < 0 ? 1 : -1);
     };
@@ -323,6 +327,7 @@ export const AgentGUIHeroAgentCarousel = memo(
         return;
       }
       suppressClickRef.current = false;
+      pointerActivatedIndexRef.current = null;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -361,23 +366,67 @@ export const AgentGUIHeroAgentCarousel = memo(
       );
     };
 
+    const activateOnPointerDown = (
+      index: number,
+      event: ReactPointerEvent
+    ): void => {
+      if (event.button !== 0) {
+        return;
+      }
+      pointerActivatedIndexRef.current = index;
+      handleItemClick(index);
+    };
+
+    const activateOnClick = (index: number): void => {
+      if (pointerActivatedIndexRef.current === index) {
+        pointerActivatedIndexRef.current = null;
+        return;
+      }
+      pointerActivatedIndexRef.current = null;
+      handleItemClick(index);
+    };
+
+    const handleCanvasPointerDown = (
+      event: ReactPointerEvent<HTMLCanvasElement>
+    ): void => {
+      const index = pickAt(event);
+      if (index !== null) {
+        activateOnPointerDown(index, event);
+      }
+    };
+
     const handleCanvasClick = (
       event: ReactMouseEvent<HTMLCanvasElement>
     ): void => {
       const index = pickAt(event);
       if (index !== null) {
-        handleItemClick(index);
+        activateOnClick(index);
       }
     };
 
     const handleCanvasHover = (
       event: ReactPointerEvent<HTMLCanvasElement>
     ): void => {
+      const scene = sceneRef.current;
       const canvas = canvasRef.current;
-      if (!canvas) {
+      if (!scene || !canvas) {
         return;
       }
-      canvas.style.cursor = pickAt(event) !== null ? "pointer" : "";
+      const rect = canvas.getBoundingClientRect();
+      const hoveredIndex = scene.hover(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+        rect.width,
+        rect.height
+      );
+      canvas.style.cursor = hoveredIndex !== null ? "pointer" : "";
+    };
+
+    const handleCanvasLeave = (): void => {
+      sceneRef.current?.clearHover();
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = "";
+      }
     };
 
     return (
@@ -400,7 +449,9 @@ export const AgentGUIHeroAgentCarousel = memo(
           aria-hidden="true"
           className={styles.emptyHeroCarouselCanvas}
           onClick={interactive ? handleCanvasClick : undefined}
+          onPointerDown={interactive ? handleCanvasPointerDown : undefined}
           onPointerMove={interactive ? handleCanvasHover : undefined}
+          onPointerLeave={interactive ? handleCanvasLeave : undefined}
         />
         {items.map((item, index) => {
           // Visually-hidden switchers keep the ring reachable by keyboard,
@@ -425,7 +476,8 @@ export const AgentGUIHeroAgentCarousel = memo(
                 aria-label={label}
                 aria-pressed={isCenter}
                 title={item.label}
-                onClick={() => handleItemClick(index)}
+                onPointerDown={(event) => activateOnPointerDown(index, event)}
+                onClick={() => activateOnClick(index)}
               >
                 {item.label}
               </button>

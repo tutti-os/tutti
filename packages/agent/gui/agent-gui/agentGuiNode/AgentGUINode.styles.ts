@@ -121,6 +121,10 @@ const styles = {
   emptyHeroCarousel: "agent-gui-node__empty-hero-carousel",
   emptyHeroCarouselCanvas: "agent-gui-node__empty-hero-carousel-canvas",
   emptyHeroCarouselItem: "agent-gui-node__empty-hero-carousel-item",
+  emptyHeroCarouselLayer: "agent-gui-node__empty-hero-carousel-layer",
+  emptyHeroCarouselPlaceholder:
+    "agent-gui-node__empty-hero-carousel-placeholder",
+  emptyHeroCarouselStage: "agent-gui-node__empty-hero-carousel-stage",
   emptyHeroIconEffect: "agent-gui-node__empty-hero-icon-effect",
   emptyHeroIconRail: "agent-gui-node__empty-hero-icon-rail",
   emptyHeroIconRailItem: "agent-gui-node__empty-hero-icon-rail-item",

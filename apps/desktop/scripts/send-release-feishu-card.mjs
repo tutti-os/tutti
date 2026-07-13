@@ -58,10 +58,10 @@ function resolveReleaseKind(tag) {
 
 function resolveIntroText(tag) {
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub RC Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 RC 预览通道，可从下方入口下载安装包。`;
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return `**${tag}** 已构建并发布为 GitHub Beta Pre-release，可从下方入口下载安装包。`;
+    return `**${tag}** 已构建并同步到 Beta 预览通道，可从下方入口下载安装包。`;
   }
   return `**${tag}** 已构建并发布为 GitHub Release，可从下方入口下载安装包。`;
 }

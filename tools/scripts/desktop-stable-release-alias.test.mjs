@@ -22,7 +22,14 @@ test("desktop stable release alias body points at the concrete stable release", 
     body,
     /Current stable release: \[v0\.1\.16\]\(https:\/\/github\.com\/tutti-os\/tutti\/releases\/tag\/v0\.1\.16\)/
   );
-  assert.match(body, /newer release candidates exist/);
+  assert.match(
+    body,
+    /GitHub Releases is reserved for the recommended stable build/
+  );
+  assert.match(
+    body,
+    /RC and beta downloads are distributed through their preview channels/
+  );
   assert.match(body, new RegExp(SECTION_END));
   assert.match(body, /## Release Summary\n\nStable notes/);
 });

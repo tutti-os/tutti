@@ -4,6 +4,41 @@
 
 Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
 
+### AgentGUI rejects a pasted image as unsupported before send
+
+- Symptom:
+  Pasting or dropping a supported PNG, JPEG, or WebP into a provider that
+  advertises `imageInput` fails with
+  `agent prompt image input is unsupported`. Desktop diagnostics may show
+  `agent.gui.composer.image_upload.resolved` with `hasPath = true`, followed by
+  a daemon failure at `service.send.prompt_validated`; no provider turn starts.
+- Quick checks:
+  Confirm the submitted image block is path-backed after the desktop host
+  archives the draft. If the block has `path` but no `data`, `url`, or
+  `attachmentId`, verify the controller is using preflight validation rather
+  than the strict runtime validator before `PersistRequestContent` runs.
+- Root cause:
+  A managed desktop path is an ingress staging source. The daemon must accept
+  it during capability preflight, then copy and hydrate it before runtime
+  execution. Applying the strict provider-content validator during preflight
+  rejects the path before the attachment store can canonicalize it.
+- Fix:
+  Keep separate preflight and runtime image validators. Preflight accepts and
+  preserves the managed path for adapter capability checks. Runtime execution
+  remains strict and receives only the hydrated image representation. Do not
+  retain base64 in the renderer or move attachment persistence before provider
+  capability checks.
+- Validation:
+  Cover the full path-backed chain: controller preflight accepts the path,
+  service execution receives hydrated data without a path, direct runtime
+  execution still rejects path-only content, and unsupported providers create
+  no attachment files. Run `go test ./packages/agent/daemon/runtime
+./services/tuttid/service/agent`.
+- References:
+  [prompt_content.go](../../../packages/agent/daemon/runtime/prompt_content.go)
+  [controller.go](../../../packages/agent/daemon/runtime/controller.go)
+  [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
+
 ### AgentGUI Stop reports no active turn after cancel succeeds
 
 - Symptom:

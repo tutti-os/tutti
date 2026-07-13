@@ -6644,7 +6644,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__timeline-centered {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
 }
 
@@ -8967,7 +8967,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: flex;
   width: 100%;
   min-height: 100%;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px clamp(32px, 4vw, 48px) 40px;
 }
@@ -8992,9 +8992,38 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
    slot; keep it centered in the hero column. */
 .agent-gui-node__empty-hero-icon-slot:has(
   > .agent-gui-node__empty-hero-carousel
-) {
+),
+.agent-gui-node__empty-hero-icon-slot[data-carousel-placeholder="true"] {
   width: min(400px, 100%);
-  height: auto;
+  height: 112px;
+}
+
+.agent-gui-node__empty-hero-carousel-stage {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+}
+
+.agent-gui-node__empty-hero-carousel-layer {
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  left: 50%;
+  width: min(400px, calc(100% - 64px));
+  transform: translateX(-50%);
+}
+
+.agent-gui-node__empty-hero-carousel-placeholder {
+  width: min(400px, 100%);
+  height: 112px;
+  flex: 0 0 auto;
+}
+
+/* Keep the overlayed carousel interactive while the ready/gated body below it
+   changes independently. */
+.agent-gui-node__empty-hero-carousel-layer
+  > .agent-gui-node__empty-hero-carousel {
+  pointer-events: auto;
 }
 
 .agent-gui-node__empty-hero-icon-effect {
@@ -9067,7 +9096,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 /* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent
-   tiles (see agentGuiHeroCarouselScene.ts). Tiles farther around the ring
+   records (see agentGuiHeroCarouselScene.ts). Records farther around the ring
    genuinely shrink and fade with perspective; visuals live on the canvas,
    while visually-hidden buttons keep the switcher reachable by keyboard,
    screen readers, and DOM tests. */
@@ -9098,13 +9127,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
      the canvas edges), intersected with a vertical band so tiles sinking
      down the wheel melt away instead of being cut by the canvas bottom. */
   mask-image:
-    linear-gradient(
-      90deg,
-      transparent 12%,
-      #000 36%,
-      #000 64%,
-      transparent 88%
-    ),
+    linear-gradient(90deg, transparent 4%, #000 30%, #000 70%, transparent 96%),
     linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
   mask-composite: intersect;
 }
@@ -9150,7 +9173,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 /* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
 .agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect,
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel {
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel,
+.agent-gui-node__empty-provider-gate
+  > .agent-gui-node__empty-hero-carousel-placeholder {
   margin-bottom: 16px;
 }
 

@@ -276,7 +276,7 @@ func (a *ClaudeCodeSDKAdapter) Close(_ context.Context, session Session) error {
 }
 
 func (*ClaudeCodeSDKAdapter) ValidatePromptContent(_ Session, content []PromptContentBlock) error {
-	return validateRuntimePromptContentImages(content)
+	return validatePromptContentImagesForPreflight(content)
 }
 
 func (a *ClaudeCodeSDKAdapter) Exec(

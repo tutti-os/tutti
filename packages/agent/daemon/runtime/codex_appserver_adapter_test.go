@@ -1550,6 +1550,11 @@ func TestCodexAppServerAdapterExecImagePrompt(t *testing.T) {
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
+	if err := adapter.ValidatePromptContent(session, []PromptContentBlock{{
+		Type: "image", MimeType: "image/png", Path: "/managed/agent-prompt-assets/screen.png",
+	}}); err != nil {
+		t.Fatalf("ValidatePromptContent path-backed image: %v", err)
+	}
 	if err := adapter.ValidatePromptContent(session, []PromptContentBlock{{Type: "image", MimeType: "image/png", Data: "aGk="}}); err != nil {
 		t.Fatalf("ValidatePromptContent: %v", err)
 	}

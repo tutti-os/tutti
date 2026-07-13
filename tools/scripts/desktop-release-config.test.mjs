@@ -178,6 +178,12 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
     workflow,
     /TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL:\s+\${{\s*vars\.TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL\s*}}/
   );
+  assert.ok(
+    workflow.includes(
+      "RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}"
+    ),
+    "Feishu cards should link to the matching release, including authorized RC and beta drafts"
+  );
   assert.match(workflow, /RELEASE_ASSET_DIRECTORY:\s+release-assets/);
 });
 
@@ -306,7 +312,7 @@ test("desktop release workflow generates summaries and stable changelog metadata
   );
 });
 
-test("desktop release workflow keeps GitHub release draft until assets are ready", async () => {
+test("desktop release workflow keeps prereleases as drafts and reserves the public list for stable", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const publishJobMatch = workflow.match(
     /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
@@ -319,23 +325,54 @@ test("desktop release workflow keeps GitHub release draft until assets are ready
   const notesIndex = publishJob.indexOf(
     "name: Update release notes with direct downloads"
   );
-  const publishIndex = publishJob.indexOf("name: Publish GitHub release");
+  const publishIndex = publishJob.indexOf(
+    "name: Publish stable GitHub release"
+  );
+  const archiveIndex = publishJob.indexOf(
+    "name: Archive public GitHub prereleases"
+  );
   const stableAliasIndex = publishJob.indexOf(
     "name: Refresh stable release alias"
   );
 
   assert.notEqual(stageIndex, -1, "release assets should be staged");
-  assert.notEqual(publishIndex, -1, "release should be published explicitly");
+  assert.notEqual(
+    publishIndex,
+    -1,
+    "stable release should be published explicitly"
+  );
+  assert.notEqual(
+    archiveIndex,
+    -1,
+    "legacy public prereleases should be archived"
+  );
   assert.notEqual(stableAliasIndex, -1, "stable release alias should refresh");
   assert.match(publishJob, /draft:\s*true/);
   assert.match(
     publishJob,
     /gh release edit "\$\{TUTTI_DESKTOP_RELEASE_TAG\}" --draft=false/
   );
+  assert.match(
+    publishJob,
+    /if:\s*\$\{\{\s*needs\.resolve\.outputs\.release_prerelease\s*!=\s*'true'\s*\}\}/
+  );
+  assert.match(
+    publishJob,
+    /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/releases\?per_page=100" --paginate/
+  );
+  assert.match(
+    publishJob,
+    /select\(\.prerelease and \(\.draft \| not\)\) \| \.id/
+  );
+  assert.match(
+    publishJob,
+    /gh api --method PATCH "repos\/\$\{GITHUB_REPOSITORY\}\/releases\/\$\{release_id\}"[\s\\]*-F draft=true/
+  );
   assert.ok(stageIndex < s3Index);
   assert.ok(s3Index < notesIndex);
   assert.ok(notesIndex < publishIndex);
-  assert.ok(publishIndex < stableAliasIndex);
+  assert.ok(publishIndex < archiveIndex);
+  assert.ok(archiveIndex < stableAliasIndex);
 });
 
 test("desktop release workflow refreshes the stable alias without taking Latest", async () => {

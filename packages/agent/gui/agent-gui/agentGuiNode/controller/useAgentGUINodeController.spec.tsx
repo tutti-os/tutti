@@ -775,7 +775,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("resets the empty composer provider when switching the rail filter back to All", async () => {
+  it("keeps the All filter while resetting a disabled empty composer target", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -825,7 +825,8 @@ describe("useAgentGUINodeController", () => {
               agentTargetId: "local:claude-code",
               provider: "claude-code",
               ref: { kind: "local-provider", provider: "claude-code" },
-              label: "Claude Code"
+              label: "Claude Code",
+              disabled: true
             }
           ],
           providerReadinessGates: {

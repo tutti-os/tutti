@@ -605,7 +605,8 @@ jobs:
             updated-release-body.md
           gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
 
-      - name: Publish GitHub release
+      - name: Publish stable GitHub release
+        if: ${{ needs.resolve.outputs.release_prerelease != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TUTTI_DESKTOP_RELEASE_MAKE_LATEST: ${{ needs.resolve.outputs.release_make_latest }}
@@ -615,6 +616,22 @@ jobs:
             args+=(--latest)
           fi
           "${args[@]}"
+
+      - name: Archive public GitHub prereleases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | select(.prerelease and (.draft | not)) | .id' |
+            while IFS= read -r release_id; do
+              if [[ -z "${release_id}" ]]; then
+                continue
+              fi
+
+              echo "Archiving published prerelease ${release_id} as a draft."
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+                -F draft=true >/dev/null
+            done
 
       - name: Refresh stable release alias
         env:

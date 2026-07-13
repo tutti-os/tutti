@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
+import type { AgentGUIAgentTarget } from "../../types";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import {
   AgentGUINodeView,
@@ -50,6 +51,7 @@ const composerMock = vi.hoisted(() => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
     provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -153,6 +155,7 @@ vi.mock("./AgentComposer", () => ({
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
     provider?: string;
     showStopButton?: boolean;
     usage?: AgentGUINodeViewModel["usage"];
@@ -163,6 +166,7 @@ vi.mock("./AgentComposer", () => ({
       compactSupported: props.compactSupported,
       hasActiveConversation: props.hasActiveConversation,
       isSendingTurn: props.isSendingTurn,
+      onHandoffConversation: props.onHandoffConversation,
       provider: props.provider,
       onSubmit: props.onSubmit,
       showStopButton: props.showStopButton,
@@ -786,6 +790,36 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
+  it("selects All without selecting a fallback target from a disabled target", () => {
+    const actions = createActions();
+    const disabledCodexTarget = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      disabled: true
+    };
+    renderAgentGUINodeView({
+      actions,
+      viewModel: {
+        ...createViewModel(),
+        conversationFilter: {
+          kind: "agentTarget",
+          agentTargetId: disabledCodexTarget.agentTargetId ?? ""
+        },
+        selectedAgentTarget: disabledCodexTarget,
+        agentTargets: [
+          disabledCodexTarget,
+          createLocalAgentGUIAgentTarget("claude-code")
+        ]
+      }
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "All" }));
+
+    expect(actions.updateConversationFilter).toHaveBeenCalledWith({
+      kind: "all"
+    });
+    expect(actions.selectConversationFilterTarget).not.toHaveBeenCalled();
+  });
+
   it("keeps unavailable provider rail targets visually disabled but selectable", () => {
     const actions = createActions();
     const tuttiTarget = {
@@ -1142,13 +1176,17 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("selects only the All tile for all-conversation mode", () => {
+    const disabledCodexTarget = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      disabled: true
+    };
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+        selectedAgentTarget: disabledCodexTarget,
         agentTargets: [
-          createLocalAgentGUIAgentTarget("codex"),
+          disabledCodexTarget,
           createLocalAgentGUIAgentTarget("claude-code")
         ]
       }
@@ -1253,7 +1291,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(activeItem).toHaveAccessibleName(/Codex, Owner avatar/u);
   });
 
-  it("remounts the empty hero icon when switching provider targets", () => {
+  it("keeps the empty hero agent nodes mounted and centers the selected target", () => {
     const codexTarget = createLocalAgentGUIAgentTarget("codex");
     const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     const { container, rerender } = renderAgentGUINodeView({
@@ -1268,13 +1306,21 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    const initialIcon = container.querySelector<HTMLImageElement>(
-      ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
+    const initialCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(initialIcon).not.toBeNull();
-    expect(initialIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
+    const initialItems = Array.from(
+      initialCarousel?.querySelectorAll(
+        ".agent-gui-node__empty-hero-carousel-item"
+      ) ?? []
     );
+    expect(initialCarousel).not.toBeNull();
+    expect(initialItems).toHaveLength(2);
+    expect(
+      initialItems
+        .find((item) => item.getAttribute("data-provider-active") === "true")
+        ?.getAttribute("data-provider")
+    ).toBe("codex");
 
     rerender(
       buildAgentGUINodeViewElement({
@@ -1289,14 +1335,91 @@ describe("AgentGUINodeView layout persistence", () => {
       })
     );
 
-    const nextIcon = container.querySelector<HTMLImageElement>(
-      ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
+    const nextCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(nextIcon).not.toBeNull();
-    expect(nextIcon).not.toBe(initialIcon);
-    expect(nextIcon?.getAttribute("src")).toBe(
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
+    const nextItems = Array.from(
+      nextCarousel?.querySelectorAll(
+        ".agent-gui-node__empty-hero-carousel-item"
+      ) ?? []
     );
+    expect(nextCarousel).toBe(initialCarousel);
+    expect(nextItems).toEqual(initialItems);
+    expect(
+      nextItems
+        .find((item) => item.getAttribute("data-provider-active") === "true")
+        ?.getAttribute("data-provider")
+    ).toBe("claude-code");
+  });
+
+  it("starts carousel target selection on pointer down without double-selecting on click", () => {
+    const actions = createActions();
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const { container } = renderAgentGUINodeView({
+      actions,
+      viewModel: createViewModel({
+        selectedAgentTarget: codexTarget,
+        agentTargets: [codexTarget, claudeTarget]
+      })
+    });
+    const claudeItem = container.querySelector<HTMLButtonElement>(
+      '.agent-gui-node__empty-hero-carousel-item[data-provider="claude-code"]'
+    );
+    expect(claudeItem).not.toBeNull();
+
+    fireEvent.pointerDown(claudeItem!, { button: 0, pointerId: 1 });
+
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledTimes(1);
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+      provider: "claude-code",
+      agentTargetId: claudeTarget.targetId
+    });
+
+    fireEvent.click(claudeItem!);
+    expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the hero carousel canvas when the selected target enters a readiness gate", () => {
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const agentTargets = [codexTarget, claudeTarget];
+    const { container, rerender } = renderAgentGUINodeView({
+      viewModel: createViewModel({
+        selectedAgentTarget: codexTarget,
+        agentTargets
+      })
+    });
+    const initialCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
+    );
+    const initialCanvas = initialCarousel?.querySelector("canvas");
+    expect(initialCarousel).not.toBeNull();
+    expect(initialCanvas).not.toBeNull();
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        viewModel: createViewModel({
+          providerReadinessGate: { status: "not_installed" },
+          selectedAgentTarget: claudeTarget,
+          agentTargets
+        })
+      })
+    );
+
+    const nextCarousel = container.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
+    );
+    expect(nextCarousel).toBe(initialCarousel);
+    expect(nextCarousel?.querySelector("canvas")).toBe(initialCanvas);
+    expect(
+      nextCarousel?.querySelector(
+        '[data-provider="claude-code"][data-provider-active="true"]'
+      )
+    ).not.toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toBeInTheDocument();
   });
 
   it("renders the selected agent badge in the single-agent empty hero", () => {
@@ -1816,7 +1939,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
   });
 
-  it("uses the host-provided Cursor icon in the empty hero icon", () => {
+  it("keeps the host-provided Cursor target in the empty hero carousel", () => {
     const agentTargets = [
       createLocalAgentGUIAgentTarget("codex"),
       {
@@ -1845,11 +1968,11 @@ describe("AgentGUINodeView layout persistence", () => {
       }
     });
 
-    expect(
-      document.querySelector(
-        ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
-      )
-    ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
+    const cursorItem = document.querySelector(
+      `.agent-gui-node__empty-hero-carousel-item[data-agent-target-id="${agentTargets[1]!.agentTargetId}"]`
+    );
+    expect(cursorItem).not.toBeNull();
+    expect(cursorItem).toHaveAttribute("data-provider", "cursor");
   });
 
   it("renders the composer from the selected provider target", () => {
@@ -1875,6 +1998,47 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)).toMatchObject({
       provider: "claude-code"
     });
+  });
+
+  it("uses only the conversation title in the handoff mention label", () => {
+    const sourceTarget = createLocalAgentGUIAgentTarget("codex");
+    const handoffTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const conversation = createConversationSummary("session-1", {
+      agentTargetId: sourceTarget.agentTargetId,
+      title: "Repair login flow"
+    });
+    const onHandoffConversation =
+      vi.fn<NonNullable<AgentGUINodeViewProps["onHandoffConversation"]>>();
+
+    renderAgentGUINodeView({
+      onHandoffConversation,
+      viewModel: {
+        ...createViewModel(),
+        activeConversation: conversation,
+        activeConversationId: conversation.id,
+        conversations: [conversation],
+        selectedAgentTarget: sourceTarget,
+        agentTargets: [sourceTarget, handoffTarget],
+        handoffAgentTargets: [handoffTarget]
+      }
+    });
+
+    act(() => {
+      composerMock.calls.at(-1)?.onHandoffConversation?.(handoffTarget);
+    });
+
+    expect(onHandoffConversation).toHaveBeenCalledTimes(1);
+    expect(onHandoffConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentTargetId: handoffTarget.agentTargetId,
+        provider: "claude-code"
+      })
+    );
+    const draftPrompt = onHandoffConversation.mock.calls[0]?.[0].draftPrompt;
+    expect(draftPrompt).toMatch(
+      /^\[@Repair login flow\]\(mention:\/\/agent-session\/session-1\?/
+    );
+    expect(draftPrompt).not.toContain("Codex Repair login flow");
   });
 
   it("hides provider switching in the title for an active session", () => {
@@ -5196,12 +5360,18 @@ describe("AgentGUINodeView provider readiness gate", () => {
   });
 
   it("renders the aggregate agents checking gate when the All tab is active", () => {
-    renderAgentGUINodeView({
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const { container } = renderAgentGUINodeView({
       viewModel: createViewModel({
         conversationFilter: { kind: "all" },
         providerReadinessGate: {
           status: "checking"
-        }
+        },
+        selectedAgentTarget: codexTarget,
+        agentTargets: [
+          codexTarget,
+          createLocalAgentGUIAgentTarget("claude-code")
+        ]
       })
     });
 
@@ -5210,8 +5380,14 @@ describe("AgentGUINodeView provider readiness gate", () => {
     expect(gate).toHaveTextContent("providerGateCheckingTitle");
     expect(gate).toHaveTextContent("providerGateCheckingAgentsDescription");
     expect(
-      gate.querySelector(".agent-gui-node__empty-hero-carousel")
+      container.querySelector(".agent-gui-node__empty-hero-carousel-stage")
     ).not.toBeNull();
+    expect(
+      container.querySelector(".agent-gui-node__empty-hero-carousel")
+    ).not.toBeNull();
+    expect(
+      gate.querySelector(".agent-gui-node__empty-hero-carousel")
+    ).toBeNull();
     expect(
       gate.querySelector("img.agent-gui-node__empty-hero-icon-effect")
     ).toBeNull();
@@ -5312,6 +5488,7 @@ interface RenderAgentGUINodeViewOptions {
   isAgentProviderReady?: boolean;
   onConversationRailWidthChanged?: (widthPx: number) => void;
   onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
+  onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   accountMenuState?: AgentGUINodeViewProps["accountMenuState"];
@@ -5332,6 +5509,7 @@ function buildAgentGUINodeViewElement({
   isActive = true,
   isAgentProviderReady = true,
   onConversationRailWidthChanged = vi.fn(),
+  onHandoffConversation,
   onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
@@ -5355,6 +5533,7 @@ function buildAgentGUINodeViewElement({
         renderProviderReadinessGateState={renderProviderReadinessGateState}
         providerRailAllPresentation={providerRailAllPresentation}
         onLinkAction={onLinkAction}
+        onHandoffConversation={onHandoffConversation}
         isActive={isActive}
         isAgentProviderReady={isAgentProviderReady}
         slashStatusLimits={slashStatusLimits}

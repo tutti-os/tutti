@@ -18,10 +18,7 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
-import {
-  MANAGED_AGENT_ICON_URLS,
-  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
-} from "../../shared/managedAgentIcons";
+import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -2033,13 +2030,14 @@ describe("AgentGUINode", () => {
         name: "agentHost.agentGui.providerSwitchLabel"
       })
     ).toHaveTextContent("Claude Code");
-    const iconEffect = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
+    const heroCarousel = document.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(iconEffect).toHaveAttribute(
-      "src",
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
+    const activeClaudeItem = heroCarousel?.querySelector(
+      '[data-provider="claude-code"][data-provider-active="true"]'
     );
+    expect(heroCarousel).not.toBeNull();
+    expect(activeClaudeItem).not.toBeNull();
   });
 
   it("resolves provider-specific hero icon artwork", () => {

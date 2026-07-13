@@ -22,7 +22,7 @@ Use the focused runtime index or open one area directly:
 
 Electron startup, daemon supervision, macOS packaging, updates, and performance diagnostics.
 
-- [Desktop stable release alias disappears or stays below a prerelease](./desktop-release.md#desktop-stable-release-alias-disappears-or-stays-below-a-prerelease)
+- [Desktop stable release alias disappears or is not first on Releases](./desktop-release.md#desktop-stable-release-alias-disappears-or-is-not-first-on-releases)
 - [Desktop dev GUI exits before opening](./desktop-release.md#desktop-dev-gui-exits-before-opening)
 - [macOS updates fail from a mounted DMG](./desktop-release.md#macos-updates-fail-from-a-mounted-dmg)
 - [macOS Gatekeeper dialogs appear during Codex provider probing](./desktop-release.md#macos-gatekeeper-dialogs-appear-during-codex-provider-probing)

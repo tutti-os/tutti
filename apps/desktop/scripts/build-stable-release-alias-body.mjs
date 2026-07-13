@@ -34,7 +34,7 @@ function buildStableReleaseAliasBody(release) {
     "",
     `Current stable release: [${stableRelease.tag}](${stableRelease.url})`,
     "",
-    "This floating release is refreshed after every desktop release so the GitHub Releases page opens on the stable build, even when newer release candidates exist.",
+    "This floating release is refreshed after every desktop release. GitHub Releases is reserved for the recommended stable build; RC and beta downloads are distributed through their preview channels.",
     SECTION_END
   ];
 

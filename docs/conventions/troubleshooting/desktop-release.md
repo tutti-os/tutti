@@ -2,43 +2,43 @@
 
 [Back to troubleshooting index](./README.md)
 
-### Desktop stable release alias disappears or stays below a prerelease
+### Desktop stable release alias disappears or is not first on Releases
 
 - Symptom:
   The desktop release workflow publishes a concrete release, but the
   `Refresh stable release alias` step fails with `Committer identity unknown`,
   the GitHub Releases page no longer has a `stable` entry after a failed RC
-  publish, or `stable` remains below a newer RC after its tag was refreshed.
+  publish, or the GitHub Releases list still puts a newer RC above `stable`.
 - Quick checks:
   Inspect the failed `Desktop Release` run's `Refresh stable release alias`
   step. If the log shows `git tag -a` or `gh release delete stable --cleanup-tag`,
   the workflow is using the unsafe annotated-tag refresh path. Also check
   `gh release view stable` and `git ls-remote --tags origin stable` to confirm
-  whether the release, tag, or both are missing. For ordering failures, compare
-  `gh release view stable --json createdAt` with the prerelease commit time;
-  moving a tag alone does not refresh the release's captured `createdAt`.
+  whether the release, tag, or both are missing. For ordering failures, list
+  public prereleases with `gh api 'repos/$GITHUB_REPOSITORY/releases?per_page=100'
+--jq '.[] | select(.prerelease and (.draft | not)) | .tag_name'` and confirm
+  the workflow ran `Archive public GitHub prereleases`.
 - Root cause:
   Annotated tags require a configured Git committer identity in GitHub Actions.
   Deleting the old floating release and tag before creating the replacement
   leaves the repository in a half-refreshed state if tag creation fails.
-  Separately, pointing `stable` directly at an older concrete stable commit
-  gives the alias that older commit time, and moving a tag after its GitHub
-  Release already exists does not update the release ordering timestamp.
+  GitHub's public Releases list has no supported pin or explicit order field.
+  Recreating the alias and assigning it a newer commit timestamp does not
+  reliably place it above public prereleases.
 - Fix:
-  Create a tag-only alias commit whose tree matches the concrete stable commit,
-  whose parent is that concrete commit, and whose timestamp is newer than the
-  just-published release. Verify the tree and parent, force-push the lightweight
-  `stable` tag to the alias commit, then delete and recreate the floating
-  `stable` GitHub Release so GitHub captures the new commit time. Delete only
-  the old release (`gh release delete stable --yes`) and never pass
-  `--cleanup-tag` from this step. Keep the concrete stable release as `Latest`.
+  Keep RC and beta GitHub Releases as drafts and distribute them through the
+  S3 preview-channel metadata instead. The workflow must archive any older
+  public prereleases with `PATCH draft=true`, then refresh the floating
+  `stable` release. Delete only the old stable alias (`gh release delete stable
+--yes`) and never pass `--cleanup-tag`; keep the concrete stable release as
+  `Latest`.
 - Validation:
   Run `node --test ./tools/scripts/desktop-release-config.test.mjs` and verify
-  the workflow test checks the alias tree and parent, enforces tag push before
-  release recreation, and rejects `git tag -a`, `--cleanup-tag`, and deleting
-  `refs/tags/stable`. After a live release, confirm the GitHub Releases page and
-  API list `stable` first while `/releases/latest` still resolves to the
-  concrete stable semver release.
+  the workflow test checks that stable is the only release promoted from draft,
+  archives legacy public prereleases, checks the alias tree and parent, and
+  rejects `git tag -a`, `--cleanup-tag`, and deleting `refs/tags/stable`. After
+  a live release, confirm the GitHub Releases page lists `stable` first while
+  `/releases/latest` still resolves to the concrete stable semver release.
 - References:
   [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
   [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)

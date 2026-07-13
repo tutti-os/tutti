@@ -164,6 +164,46 @@ func TestControllerStartPassesProviderTargetRefToAdapterSession(t *testing.T) {
 	}
 }
 
+func TestControllerPreflightsPathBackedImageButExecRequiresHydratedContent(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingPromptAdapter{
+		recordingStartAdapter: recordingStartAdapter{provider: ProviderCodex},
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	content := []PromptContentBlock{{
+		Type:     "image",
+		MimeType: "image/png",
+		Path:     "/managed/agent-prompt-assets/screen.png",
+	}}
+	if err := controller.ValidatePromptContent(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Content:        content,
+	}); err != nil {
+		t.Fatalf("ValidatePromptContent: %v", err)
+	}
+	if len(adapter.validated) != 1 || adapter.validated[0].Path != content[0].Path {
+		t.Fatalf("adapter validated content = %#v, want path-backed image", adapter.validated)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Content:        content,
+	}); !errors.Is(err, ErrPromptImageUnsupported) {
+		t.Fatalf("Exec error = %v, want ErrPromptImageUnsupported", err)
+	}
+}
+
 func TestControllerSetTitleUpdatesLiveSession(t *testing.T) {
 	t.Parallel()
 
@@ -2003,6 +2043,16 @@ func (streamingMessageOnlyAdapter) Cancel(context.Context, Session, string) ([]a
 type recordingStartAdapter struct {
 	provider string
 	started  Session
+}
+
+type recordingPromptAdapter struct {
+	recordingStartAdapter
+	validated []PromptContentBlock
+}
+
+func (a *recordingPromptAdapter) ValidatePromptContent(_ Session, content []PromptContentBlock) error {
+	a.validated = append([]PromptContentBlock(nil), content...)
+	return validatePromptContentImagesForPreflight(content)
 }
 
 func (a *recordingStartAdapter) Provider() string { return a.provider }

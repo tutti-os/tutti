@@ -81,8 +81,10 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 			mimeType := strings.TrimSpace(block.MimeType)
 			data := strings.TrimSpace(block.Data)
 			imageURL := strings.TrimSpace(block.URL)
+			attachmentID := strings.TrimSpace(block.AttachmentID)
+			path := strings.TrimSpace(block.Path)
 			if !runtimePromptImageMimeTypeSupported(mimeType) ||
-				(data == "" && imageURL == "" && strings.TrimSpace(block.AttachmentID) == "") ||
+				(data == "" && imageURL == "" && attachmentID == "" && path == "") ||
 				(data != "" && imageURL != "") ||
 				(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 				continue
@@ -92,8 +94,9 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 				MimeType:     mimeType,
 				Data:         data,
 				URL:          imageURL,
-				AttachmentID: strings.TrimSpace(block.AttachmentID),
+				AttachmentID: attachmentID,
 				Name:         strings.TrimSpace(block.Name),
+				Path:         path,
 			})
 		case "skill", "mention":
 			name := strings.TrimSpace(block.Name)
@@ -111,7 +114,15 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 	return out
 }
 
+func validatePromptContentImagesForPreflight(content []PromptContentBlock) error {
+	return validatePromptContentImages(content, true)
+}
+
 func validateRuntimePromptContentImages(content []PromptContentBlock) error {
+	return validatePromptContentImages(content, false)
+}
+
+func validatePromptContentImages(content []PromptContentBlock, allowPathOnly bool) error {
 	for _, block := range content {
 		if strings.TrimSpace(block.Type) != "image" {
 			continue
@@ -119,8 +130,10 @@ func validateRuntimePromptContentImages(content []PromptContentBlock) error {
 		data := strings.TrimSpace(block.Data)
 		imageURL := strings.TrimSpace(block.URL)
 		attachmentID := strings.TrimSpace(block.AttachmentID)
+		path := strings.TrimSpace(block.Path)
+		hasSource := data != "" || imageURL != "" || attachmentID != "" || (allowPathOnly && path != "")
 		if !runtimePromptImageMimeTypeSupported(block.MimeType) ||
-			(data == "" && imageURL == "" && attachmentID == "") ||
+			!hasSource ||
 			(data != "" && imageURL != "") ||
 			(imageURL != "" && !runtimePromptImageURLSafe(imageURL)) {
 			return ErrPromptImageUnsupported
