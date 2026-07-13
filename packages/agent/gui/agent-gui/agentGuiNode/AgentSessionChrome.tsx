@@ -150,7 +150,8 @@ export function AgentSessionChrome({
       ? labels.activatingSession
       : (visibleRecovery?.message ?? "");
   const recoveryHasInlineAction =
-    visibleRecovery?.kind === "resume-unavailable" ||
+    (visibleRecovery?.kind === "resume-unavailable" &&
+      visibleRecovery.followupAction === "continue-in-new-conversation") ||
     (visibleRecovery?.kind === "failed" &&
       (visibleRecovery.followupAction === "continue-in-new-conversation" ||
         visibleRecovery.canRetry !== false));
@@ -289,7 +290,9 @@ export function AgentSessionChrome({
               </ChromeMessageTooltip>
             </div>
             <div className={styles.chromeInlineActions}>
-              {visibleRecovery.kind === "resume-unavailable" ? (
+              {visibleRecovery.kind === "resume-unavailable" &&
+              visibleRecovery.followupAction ===
+                "continue-in-new-conversation" ? (
                 <Button
                   type="button"
                   variant="ghost"

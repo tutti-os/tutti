@@ -554,6 +554,7 @@
 
   .agent-gui-chrome__card--warning,
   .agent-gui-chrome__card--danger,
+  .agent-gui-chrome__card--success,
   .agent-gui-chrome__card--muted,
   .agent-gui-chrome__card--connecting {
     animation: none !important;
@@ -2920,6 +2921,8 @@ aside.workspace-agents-status-panel
 .agent-gui-chrome__card--warning
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
 .agent-gui-chrome__card--danger
+  .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
+.agent-gui-chrome__card--success
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
 .agent-gui-chrome__card--muted
   .agent-gui-chrome__message:not(.agent-gui-chrome__notice-message),
