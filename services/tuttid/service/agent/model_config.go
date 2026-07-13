@@ -19,9 +19,14 @@ func readCodexConfiguredModelProvider() string {
 	return readCodexTopLevelConfigString("model_provider")
 }
 
+func readCodexConfiguredModelCatalogPath() string {
+	return readCodexTopLevelConfigString("model_catalog_json")
+}
+
 // codexUsesCustomModelProvider reports whether config.toml routes Codex
-// through a non-default model_provider. Empty and "openai" keep the official
-// model/list catalog; any other provider can only serve its configured model.
+// through a non-default model_provider. Empty and "openai" use the default
+// provider catalog. Custom providers may expose a configured model catalog,
+// but otherwise need the conservative configured-model-only fallback.
 func codexUsesCustomModelProvider() bool {
 	provider := strings.ToLower(strings.TrimSpace(readCodexConfiguredModelProvider()))
 	return provider != "" && provider != "openai"
