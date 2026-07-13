@@ -58,9 +58,12 @@ export function agentActivityComposerOptionsFromTuttidResult(
     models:
       modelsFromLiveConfig.length > 0 ? modelsFromLiveConfig : modelsFromConfig,
     reasoningEfforts:
-      reasoningEffortsFromConfig.length > 0
-        ? reasoningEffortsFromConfig
-        : reasoningEffortsFromLiveConfig,
+      reasoningEffortsFromLiveConfig.length > 0
+        ? settingOptionsWithLocalizedPresentation(
+            reasoningEffortsFromLiveConfig,
+            reasoningEffortsFromConfig
+          )
+        : reasoningEffortsFromConfig,
     reasoningOptionsByModel: reasoningOptionsByModelFromValue(
       runtimeContext.modelReasoningOptionsByModel
     ),
@@ -90,6 +93,34 @@ export function agentActivityComposerOptionsFromTuttidResult(
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
   };
+}
+
+function settingOptionsWithLocalizedPresentation(
+  options: AgentActivityComposerSettingOption[],
+  localizedOptions: AgentActivityComposerSettingOption[]
+): AgentActivityComposerSettingOption[] {
+  if (options.length === 0 || localizedOptions.length === 0) {
+    return options;
+  }
+  const localizedByValue = new Map(
+    localizedOptions.map((option) => [option.value, option] as const)
+  );
+  return options.map((option) => {
+    const localized = localizedByValue.get(option.value);
+    if (!localized) {
+      return option;
+    }
+    const localizedOption = {
+      ...option,
+      label:
+        localized.label !== localized.value || option.label === option.value
+          ? localized.label
+          : option.label
+    };
+    return localized.description
+      ? { ...localizedOption, description: localized.description }
+      : localizedOption;
+  });
 }
 
 function sessionCapabilitiesFromValue(

@@ -331,7 +331,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 ref={input.promptInputAreaRef}
                 className={cn(
                   "w-full min-w-0 self-start",
-                  !isHeroLayout && "agent-gui-node__composer-prompt-input-area"
+                  !isHeroLayout && "agent-gui-node__composer-prompt-input-area",
+                  isHeroLayout &&
+                    "agent-gui-node__composer-hero-prompt-input-area"
                 )}
                 data-has-draft-images={
                   draftImages.length > 0 ? "true" : undefined

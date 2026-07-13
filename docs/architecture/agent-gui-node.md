@@ -1889,12 +1889,17 @@ The public directory entry owns its presentation and availability:
   move the selected directory-owned node into the center without reordering the
   host array, including when the selected target enters or leaves a readiness
   gate; keep the carousel canvas outside the ready/gated body branch so its
-  scroll position and animation are not reset; rotate the centered record by
-  default, temporarily give playback to the record under the pointer, return
-  playback to the current center when hover leaves, preserve each record's
-  stopped angle when playback moves elsewhere, and fade records progressively
-  by distance from the center while keeping the next outer record partially
-  visible on each side; target
+  scroll position and animation are not reset; pin the overlaid carousel layer
+  to the rendered placeholder slot and resynchronize it when the hero body
+  resizes or the ready/gated subtree changes, so wrapped titles and growing
+  composers cannot move beneath the records; size the WebGL canvas from integer
+  layout dimensions instead of transformed bounds, and dissolve records beyond
+  the immediate neighbours to avoid fractional edge seams; rotate the centered
+  record by default, temporarily give playback to the record under the pointer,
+  return playback to the current center when hover leaves, preserve each
+  record's stopped angle when playback moves elsewhere, and fade records
+  progressively by distance from the center while keeping the next outer record
+  partially visible on each side; target
   changes should prime the wheel spring with an immediate directional impulse
   and avoid duplicate WebGL submissions from playback and wheel animation; use
   a shallow lit cylinder beneath the icon texture when rendering the record so

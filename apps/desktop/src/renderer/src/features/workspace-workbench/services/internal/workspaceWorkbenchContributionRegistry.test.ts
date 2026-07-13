@@ -231,9 +231,21 @@ test("default desktop contribution adapters keep current contribution, node, and
   );
   assert.match(
     agentGuiPackageSource,
+    /dockEntries: buildAgentGuiDockEntries\(\{/
+  );
+
+  const agentGuiDockSource = readFileSync(
+    new URL(
+      "../../../../../../../../../packages/agent/gui/workbench/contributionDock.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  );
+  assert.match(
+    agentGuiDockSource,
     /id: agentGuiWorkbenchUnifiedDockEntryId\(\)/
   );
-  assert.match(agentGuiPackageSource, /order: input\.order/);
+  assert.match(agentGuiDockSource, /order: input\.order/);
   assert.match(agentGuiPackageSource, /typeId: agentGuiWorkbenchTypeId/);
 });
 

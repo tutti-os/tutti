@@ -3479,6 +3479,11 @@ describe("AgentComposer", () => {
     expect(
       container.querySelector(".agent-gui-node__composer-input-shell")
     ).toHaveClass("agent-gui-node__composer-input-shell-hero");
+    expect(
+      container.querySelector(
+        ".agent-gui-node__composer-hero-prompt-input-area"
+      )
+    ).not.toBeNull();
   });
 
   it("renders hero prompt tips as a CSS ticker without editing the draft", () => {

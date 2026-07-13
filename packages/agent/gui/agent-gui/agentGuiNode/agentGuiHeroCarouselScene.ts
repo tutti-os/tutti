@@ -37,6 +37,11 @@ const VISIBLE_ARC_CURVATURE = 0.9;
 const MIN_RECORD_OPACITY = 0.22;
 const RECORD_FADE_RANGE_SLOTS = 4.5;
 const RECORD_FADE_CURVE = 1.45;
+// Records past the immediate neighbours dissolve to fully transparent so no
+// half-faded sliver lingers at the stage edges. The kill band begins beyond
+// the adjacent records and reaches zero just after two slots.
+const RECORD_EDGE_KILL_START_SLOTS = 1.2;
+const RECORD_EDGE_KILL_END_SLOTS = 2.05;
 // A lightly underdamped spring keeps the wheel tactile without the delayed,
 // low-velocity ramp that made clicks feel unresponsive.
 const SPRING_STIFFNESS = 120;
@@ -774,8 +779,16 @@ export class AgentGuiHeroCarouselScene {
         -angle * VISIBLE_ARC_CURVATURE
       );
       tile.recordGroup.rotation.z = isCenterTile ? -tile.rotation : 0;
+      const edgeKill =
+        1 -
+        THREE.MathUtils.smoothstep(
+          Math.abs(offset),
+          RECORD_EDGE_KILL_START_SLOTS,
+          RECORD_EDGE_KILL_END_SLOTS
+        );
       const opacity =
-        MIN_RECORD_OPACITY + (1 - MIN_RECORD_OPACITY) * rangeOpacity;
+        (MIN_RECORD_OPACITY + (1 - MIN_RECORD_OPACITY) * rangeOpacity) *
+        edgeKill;
       tile.faceMaterial.opacity = opacity;
       tile.edgeMaterial.opacity = isCenterTile ? opacity : 0;
       tile.badgeMesh.material.opacity = opacity;

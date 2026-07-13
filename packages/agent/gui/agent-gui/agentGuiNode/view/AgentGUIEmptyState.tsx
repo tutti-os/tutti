@@ -1,4 +1,4 @@
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -39,6 +39,7 @@ import type {
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
 import type { ChromeLabels } from "./AgentGUIDetailHeader";
+import { AgentGUIEmptyHeroCarouselStage } from "./AgentGUIEmptyHeroCarouselStage";
 import styles from "../AgentGUINode.styles";
 
 export interface AgentGUIProviderIconPresentation {
@@ -79,42 +80,6 @@ export function shouldEmphasizeEmptyHeroProvider(label: string): boolean {
 
 export const EMPTY_HOME_SUGGESTIONS: readonly AgentHomeSuggestionCategory[] =
   Object.freeze([]);
-
-interface AgentGUIEmptyHeroCarouselStageProps {
-  activeAgentTargetId?: string | null;
-  children: ReactNode;
-  items: readonly AgentGUIAgentAvatarPresentation[];
-  onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  providerSelectLabel: string;
-}
-
-// Keep the carousel outside the ready/readiness-gate branch. Runtime
-// readiness changes must not replace the WebGL canvas or reset its position.
-export function AgentGUIEmptyHeroCarouselStage({
-  activeAgentTargetId,
-  children,
-  items,
-  onProviderSelect,
-  providerSelectLabel
-}: AgentGUIEmptyHeroCarouselStageProps): React.JSX.Element {
-  "use memo";
-
-  return (
-    <div className={styles.emptyHeroCarouselStage}>
-      {items.length > 1 ? (
-        <div className={styles.emptyHeroCarouselLayer}>
-          <AgentGUIHeroAgentCarousel
-            activeAgentTargetId={activeAgentTargetId}
-            items={items}
-            onProviderSelect={onProviderSelect}
-            providerSelectLabel={providerSelectLabel}
-          />
-        </div>
-      ) : null}
-      {children}
-    </div>
-  );
-}
 
 interface AgentGUIEmptyHomePaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];

@@ -268,8 +268,11 @@ export class AgentGUIHeroAgentCarousel extends Component<
     }
     scene.moveTo(this.state.centerIndex, false);
     const resize = (): void => {
-      const rect = stage.getBoundingClientRect();
-      scene.setSize(rect.width, rect.height);
+      // Use layout dimensions rather than the transformed bounding rect. The
+      // carousel layer is scaled, so getBoundingClientRect() can return
+      // fractional dimensions that no longer match the canvas CSS box after
+      // WebGL floors its drawing buffer size.
+      scene.setSize(stage.clientWidth, stage.clientHeight);
     };
     resize();
     this.resizeObserver =

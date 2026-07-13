@@ -5942,17 +5942,14 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__conversation-list-skeleton-rib {
   height: 12px;
-  transform-origin: left center;
 }
 
 .agent-gui-node__conversation-list-skeleton-rib-primary {
   width: 78%;
-  transform: rotate(1deg);
 }
 
 .agent-gui-node__conversation-list-skeleton-rib-secondary {
   width: 52%;
-  transform: rotate(-1deg);
   opacity: 0.72;
 }
 
@@ -7354,12 +7351,18 @@ button.agent-gui-node__conversation-section-toggle:hover
   isolation: isolate;
   z-index: 2;
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
   border: 1px solid var(--agent-gui-border-subtle);
   border-radius: 12px;
   background: var(--agent-gui-surface-raised);
   box-shadow: 0 8px 24px rgb(0 0 0 / 4%);
   transition: box-shadow 140ms ease;
+}
+
+.agent-gui-node__composer-hero-prompt-input-area {
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  margin-inline: 4px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8278,12 +8281,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-input-group-hero
   .agent-gui-node__composer-project-row {
-  padding: 2px 12px;
+  padding: 2px 8px;
 }
 
 .agent-gui-node__composer-project-row .agent-gui-node__composer-menu-trigger {
@@ -9108,10 +9111,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__empty-hero-carousel-layer {
   position: absolute;
   z-index: 1;
-  top: calc(50% - 210px);
+
+  /* The stage measures the body's placeholder slot and pins the layer to it;
+     the calc() remains only as the first-paint estimate. */
+  top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
   left: 50%;
-  width: min(400px, calc(100% - 64px));
-  transform: translateX(-50%);
+  width: round(nearest, min(400px, calc(100% - 64px)), 1px);
+  transform: translateX(-50%) scale(0.8);
+  transform-origin: center center;
 }
 
 .agent-gui-node__empty-hero-carousel-placeholder {
@@ -9390,14 +9397,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 0;
   transition: opacity 120ms ease-out;
 
-  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides
-     (the fully-transparent stops sit where the outermost tiles ride, not at
-     the canvas edges), intersected with a vertical band so tiles sinking
-     down the wheel melt away instead of being cut by the canvas bottom. */
+  /* Fade-out mask: the horizontal fade runs edge to edge so there is no dead
+     band beside the integer-aligned canvas buffer. The vertical band melts
+     tiles sinking down the wheel instead of clipping them at the bottom. */
   mask-image:
-    linear-gradient(90deg, transparent 4%, #000 30%, #000 70%, transparent 96%),
-    linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 20%,
+      #000 80%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
   mask-composite: intersect;
+  mask-size: 100% 100%;
+  mask-position: center;
 }
 
 .agent-gui-node__empty-hero-carousel[data-icons-ready="true"]

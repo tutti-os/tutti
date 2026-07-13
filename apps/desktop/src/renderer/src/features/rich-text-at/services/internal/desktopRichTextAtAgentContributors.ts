@@ -79,15 +79,17 @@ export function createAgentTargetAtContributor(contributorInput: {
           getItemSubtitle: (item) => item.description,
           getItemIconUrl: (item) => item.iconUrl,
           toInsertResult(item) {
+            const description =
+              item.description === item.displayName ? "" : item.description;
             return createDesktopRichTextMentionInsertResult({
               entityId: item.targetId,
               label: item.displayName,
               scope: compactStringRecord({ workspaceId: item.workspaceId }),
               presentation: compactMentionPresentation({
                 agentProviderId: item.provider,
-                description: item.description,
+                description,
                 iconUrl: item.iconUrl,
-                subtitle: item.description
+                subtitle: description
               })
             });
           },
@@ -107,13 +109,15 @@ export function createAgentTargetAtContributor(contributorInput: {
                 workspaceId
               }).find((target) => target.targetId === identity.entityId);
               if (!item) return null;
+              const description =
+                item.description === item.displayName ? "" : item.description;
               return {
                 label: item.displayName,
                 presentation: compactMentionPresentation({
                   agentProviderId: item.provider,
-                  description: item.description,
+                  description,
                   iconUrl: item.iconUrl,
-                  subtitle: item.description
+                  subtitle: description
                 })
               };
             });
