@@ -1922,6 +1922,50 @@ func TestServiceSendInputRejectsUnsupportedImageBeforePersistingAttachment(t *te
 	}
 }
 
+func TestServiceSendInputHydratesPathBackedImageAfterPreflight(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	stateRoot := t.TempDir()
+	sourceRoot := filepath.Join(stateRoot, promptAttachmentSourceDirName)
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatalf("mkdir source root: %v", err)
+	}
+	sourcePath := filepath.Join(sourceRoot, "screen.png")
+	if err := os.WriteFile(sourcePath, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatalf("write source image: %v", err)
+	}
+	service.PromptAttachmentStore = PromptAttachmentStore{RootDir: stateRoot}
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "codex",
+		Status:      "ready",
+		Visible:     true,
+	}
+
+	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+		Content: []PromptContentBlock{{
+			Type:     "image",
+			MimeType: "image/png",
+			Path:     sourcePath,
+			Name:     "screen.png",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SendInput error = %v, want nil", err)
+	}
+	if len(runtime.validateCalls) != 1 || len(runtime.validateCalls[0].Content) != 1 || runtime.validateCalls[0].Content[0].Path != sourcePath {
+		t.Fatalf("validate calls = %#v, want path-backed preflight content", runtime.validateCalls)
+	}
+	if len(runtime.execCalls) != 1 || len(runtime.execCalls[0].Content) != 1 {
+		t.Fatalf("exec calls = %#v, want one hydrated image", runtime.execCalls)
+	}
+	execImage := runtime.execCalls[0].Content[0]
+	if execImage.Data != "aW1hZ2UtYnl0ZXM=" || execImage.AttachmentID == "" || execImage.Path != "" {
+		t.Fatalf("exec image = %#v, want hydrated data+attachment without path", execImage)
+	}
+}
+
 func TestServiceSendInputRejectsInvalidImageURLBeforeResumingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)

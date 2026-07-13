@@ -18,10 +18,7 @@ import type {
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
-import {
-  MANAGED_AGENT_ICON_URLS,
-  MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS
-} from "../../shared/managedAgentIcons";
+import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -39,7 +36,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import type { AgentGUINodeData } from "../../types";
-import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
 const mockCreateConversation = vi.fn();
@@ -975,9 +972,9 @@ describe("AgentGUINode", () => {
   it("opens Agent settings directly for the unified All provider filter", () => {
     mockViewModel = createViewModel({
       conversationFilter: { kind: "all" },
-      providerTargets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        createLocalAgentGUIProviderTarget("claude-code")
+      agentTargets: [
+        createLocalAgentGUIAgentTarget("codex"),
+        createLocalAgentGUIAgentTarget("claude-code")
       ]
     });
 
@@ -994,15 +991,15 @@ describe("AgentGUINode", () => {
 
   it("renders rail config usage from the unified provider filter target", async () => {
     const onAgentProbeDemandChange = vi.fn();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     mockViewModel = createViewModel({
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
       },
-      selectedProviderTarget: codexTarget,
-      providerTargets: [codexTarget, claudeTarget]
+      selectedAgentTarget: codexTarget,
+      agentTargets: [codexTarget, claudeTarget]
     });
 
     renderAgentGUINode({
@@ -1055,14 +1052,14 @@ describe("AgentGUINode", () => {
     // the config menu with zero feedback. It must instead show an explicit
     // "unavailable" placeholder plus the refresh control so the user can retry.
     const onAgentProbeRefreshRequest = vi.fn();
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     mockViewModel = createViewModel({
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
       },
-      selectedProviderTarget: claudeTarget,
-      providerTargets: [claudeTarget]
+      selectedAgentTarget: claudeTarget,
+      agentTargets: [claudeTarget]
     });
 
     renderAgentGUINode({
@@ -1102,14 +1099,14 @@ describe("AgentGUINode", () => {
   });
 
   it("does not show the unavailable limits placeholder while usage is still loading", async () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     mockViewModel = createViewModel({
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
       },
-      selectedProviderTarget: claudeTarget,
-      providerTargets: [claudeTarget]
+      selectedAgentTarget: claudeTarget,
+      agentTargets: [claudeTarget]
     });
 
     renderAgentGUINode({
@@ -1178,14 +1175,14 @@ describe("AgentGUINode", () => {
 
   it("requests a fresh agent probe when the rail config menu opens", () => {
     const onAgentProbeRefreshRequest = vi.fn();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
     mockViewModel = createViewModel({
       conversationFilter: {
         kind: "agentTarget",
         agentTargetId: codexTarget.agentTargetId ?? ""
       },
-      selectedProviderTarget: codexTarget,
-      providerTargets: [codexTarget]
+      selectedAgentTarget: codexTarget,
+      agentTargets: [codexTarget]
     });
 
     renderAgentGUINode({
@@ -1988,7 +1985,7 @@ describe("AgentGUINode", () => {
       name: "What can Codex help you with?"
     });
     const iconEffect = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-effect"
+      ".agent-gui-node__empty-hero-icon-effect .agent-gui-node__agent-avatar-image"
     );
     const heroCarousel = document.querySelector(
       ".agent-gui-node__empty-hero-carousel"
@@ -2008,7 +2005,7 @@ describe("AgentGUINode", () => {
   });
 
   it("renders the empty hero from the selected provider target", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     mockViewModel = createViewModel({
       data: {
         provider: "codex",
@@ -2019,11 +2016,8 @@ describe("AgentGUINode", () => {
         kind: "agentTarget",
         agentTargetId: claudeTarget.agentTargetId ?? ""
       },
-      selectedProviderTarget: claudeTarget,
-      providerTargets: [
-        createLocalAgentGUIProviderTarget("codex"),
-        claudeTarget
-      ]
+      selectedAgentTarget: claudeTarget,
+      agentTargets: [createLocalAgentGUIAgentTarget("codex"), claudeTarget]
     });
 
     renderAgentGUINode();
@@ -2036,13 +2030,14 @@ describe("AgentGUINode", () => {
         name: "agentHost.agentGui.providerSwitchLabel"
       })
     ).toHaveTextContent("Claude Code");
-    const iconEffect = document.querySelector(
-      ".agent-gui-node__empty-hero-icon-effect"
+    const heroCarousel = document.querySelector(
+      ".agent-gui-node__empty-hero-carousel"
     );
-    expect(iconEffect).toHaveAttribute(
-      "src",
-      MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"]
+    const activeClaudeItem = heroCarousel?.querySelector(
+      '[data-provider="claude-code"][data-provider-active="true"]'
     );
+    expect(heroCarousel).not.toBeNull();
+    expect(activeClaudeItem).not.toBeNull();
   });
 
   it("resolves provider-specific hero icon artwork", () => {
@@ -3262,8 +3257,8 @@ describe("AgentGUINode", () => {
         lastActiveAgentSessionId: null,
         conversationRailWidthPx: null
       },
-      selectedProviderTarget: {
-        ...createLocalAgentGUIProviderTarget("claude-code"),
+      selectedAgentTarget: {
+        ...createLocalAgentGUIAgentTarget("claude-code"),
         agentTargetId: "local:claude-code"
       },
       activeConversation: null,
@@ -4437,7 +4432,7 @@ describe("AgentGUINode", () => {
   });
 
   it("shows OpenCode review from the adapter-owned fallback command", () => {
-    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    const opencodeTarget = createLocalAgentGUIAgentTarget("opencode");
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       data: {
@@ -4445,8 +4440,8 @@ describe("AgentGUINode", () => {
         lastActiveAgentSessionId: null,
         conversationRailWidthPx: null
       },
-      selectedProviderTarget: opencodeTarget,
-      providerTargets: [opencodeTarget],
+      selectedAgentTarget: opencodeTarget,
+      agentTargets: [opencodeTarget],
       draftPrompt: "/rev",
       availableCommands: []
     });
@@ -4456,7 +4451,7 @@ describe("AgentGUINode", () => {
   });
 
   it("shows OpenCode review when the provider advertises it", () => {
-    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    const opencodeTarget = createLocalAgentGUIAgentTarget("opencode");
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       data: {
@@ -4464,8 +4459,8 @@ describe("AgentGUINode", () => {
         lastActiveAgentSessionId: null,
         conversationRailWidthPx: null
       },
-      selectedProviderTarget: opencodeTarget,
-      providerTargets: [opencodeTarget],
+      selectedAgentTarget: opencodeTarget,
+      agentTargets: [opencodeTarget],
       draftPrompt: "/rev",
       availableCommands: [{ name: "review", description: "Review changes" }]
     });
@@ -4475,7 +4470,7 @@ describe("AgentGUINode", () => {
   });
 
   it("opens the OpenCode review picker from slash command selection", () => {
-    const opencodeTarget = createLocalAgentGUIProviderTarget("opencode");
+    const opencodeTarget = createLocalAgentGUIAgentTarget("opencode");
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       data: {
@@ -4483,8 +4478,8 @@ describe("AgentGUINode", () => {
         lastActiveAgentSessionId: null,
         conversationRailWidthPx: null
       },
-      selectedProviderTarget: opencodeTarget,
-      providerTargets: [opencodeTarget],
+      selectedAgentTarget: opencodeTarget,
+      agentTargets: [opencodeTarget],
       draftPrompt: "/rev",
       availableCommands: [{ name: "review", description: "Review changes" }]
     });
@@ -7684,10 +7679,10 @@ function createViewModel(
       lastActiveAgentSessionId: null,
       conversationRailWidthPx: null
     },
-    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
-    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
-    providerTargetsLoading: false,
+    selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+    agentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    handoffAgentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    agentTargetsLoading: false,
     conversations: [],
     userProjects: [],
     activeConversation: null,

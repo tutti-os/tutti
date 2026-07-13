@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -90,6 +91,27 @@ func TestValidateRuntimePromptContentImagesRejectsUnsafeOrAmbiguousURL(t *testin
 		if err := validateRuntimePromptContentImages([]PromptContentBlock{block}); err != ErrPromptImageUnsupported {
 			t.Fatalf("validateRuntimePromptContentImages(%#v) = %v, want ErrPromptImageUnsupported", block, err)
 		}
+	}
+}
+
+func TestPromptContentPreflightAcceptsPathBackedImageBeforeRuntimeHydration(t *testing.T) {
+	t.Parallel()
+
+	content := []PromptContentBlock{{
+		Type:     "image",
+		MimeType: " image/png ",
+		Path:     " /managed/agent-prompt-assets/screen.png ",
+		Name:     " screen.png ",
+	}}
+	if err := validatePromptContentImagesForPreflight(content); err != nil {
+		t.Fatalf("validatePromptContentImagesForPreflight() error = %v, want nil", err)
+	}
+	normalized := normalizeRuntimePromptContentForValidation(content)
+	if len(normalized) != 1 || normalized[0].Path != "/managed/agent-prompt-assets/screen.png" {
+		t.Fatalf("normalized content = %#v, want path-backed image", normalized)
+	}
+	if err := validateRuntimePromptContentImages(content); !errors.Is(err, ErrPromptImageUnsupported) {
+		t.Fatalf("validateRuntimePromptContentImages() error = %v, want ErrPromptImageUnsupported", err)
 	}
 }
 

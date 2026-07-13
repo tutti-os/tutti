@@ -31,12 +31,12 @@ test("release Feishu card marks rc tags as prereleases", () => {
     resolveReleaseKind("v1.12.19-rc.0"),
     "Release candidate prerelease"
   );
-  assert.match(resolveIntroText("v1.12.19-rc.0"), /GitHub RC Pre-release/);
+  assert.match(resolveIntroText("v1.12.19-rc.0"), /RC 预览通道/);
 });
 
 test("release Feishu card marks beta tags as prereleases", () => {
   assert.equal(resolveReleaseKind("v1.12.19-beta.0"), "Beta prerelease");
-  assert.match(resolveIntroText("v1.12.19-beta.0"), /GitHub Beta Pre-release/);
+  assert.match(resolveIntroText("v1.12.19-beta.0"), /Beta 预览通道/);
 });
 
 test("release Feishu card includes tsh-aligned release context fields", () => {

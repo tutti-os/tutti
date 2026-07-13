@@ -50,8 +50,8 @@ describe("agentGuiConversationFilter", () => {
 
   it("keeps the filter model independent from composer state", () => {
     const composerState = Object.freeze({
-      defaultProviderTargetId: "local:codex",
-      selectedProviderTarget: "local:codex"
+      defaultAgentTargetId: "local:codex",
+      selectedAgentTarget: "local:codex"
     });
 
     const filterState = createAgentGUIConversationFilterState({
@@ -65,11 +65,11 @@ describe("agentGuiConversationFilter", () => {
         agentTargetId: "local:claude-code"
       }
     });
-    expect(filterState).not.toHaveProperty("defaultProviderTargetId");
-    expect(filterState).not.toHaveProperty("selectedProviderTarget");
+    expect(filterState).not.toHaveProperty("defaultAgentTargetId");
+    expect(filterState).not.toHaveProperty("selectedAgentTarget");
     expect(composerState).toEqual({
-      defaultProviderTargetId: "local:codex",
-      selectedProviderTarget: "local:codex"
+      defaultAgentTargetId: "local:codex",
+      selectedAgentTarget: "local:codex"
     });
   });
 });

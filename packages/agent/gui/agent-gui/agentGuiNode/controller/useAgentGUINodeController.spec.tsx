@@ -476,9 +476,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     expect(result.current.viewModel.data.provider).toBe("codex");
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "codex"
-    );
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe("codex");
     expect(result.current.viewModel.data.agentTargetId).toBe("local:codex");
     expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
     for (const [updater] of onDataChange.mock.calls) {
@@ -530,7 +528,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -621,7 +619,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -720,7 +718,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -777,7 +775,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("resets the empty composer provider when switching the rail filter back to All", async () => {
+  it("keeps the All filter while resetting a disabled empty composer target", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -814,7 +812,7 @@ describe("useAgentGUINodeController", () => {
           avoidGroupingEdits: false,
           data,
           defaultAgentTargetId: "local:codex",
-          providerTargets: [
+          agentTargets: [
             {
               targetId: "local:codex",
               agentTargetId: "local:codex",
@@ -827,7 +825,8 @@ describe("useAgentGUINodeController", () => {
               agentTargetId: "local:claude-code",
               provider: "claude-code",
               ref: { kind: "local-provider", provider: "claude-code" },
-              label: "Claude Code"
+              label: "Claude Code",
+              disabled: true
             }
           ],
           providerReadinessGates: {
@@ -851,7 +850,7 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     expect(result.current.viewModel.providerReadinessGate?.status).toBe(
@@ -877,9 +876,7 @@ describe("useAgentGUINodeController", () => {
         kind: "all"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
-      "codex"
-    );
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe("codex");
     expect(result.current.viewModel.data).toMatchObject({
       provider: "codex",
       agentTargetId: "local:codex",
@@ -924,7 +921,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -978,7 +975,7 @@ describe("useAgentGUINodeController", () => {
       },
       { timeout: 10_000 }
     );
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     await waitFor(() => {
@@ -1028,7 +1025,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1070,7 +1067,7 @@ describe("useAgentGUINodeController", () => {
       kind: "agentTarget",
       agentTargetId: "local:claude-code"
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     const appliedData = onDataChange.mock.calls.reduce(
@@ -1118,7 +1115,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1156,7 +1153,7 @@ describe("useAgentGUINodeController", () => {
         kind: "all"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
   });
@@ -1177,7 +1174,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1210,7 +1207,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "claude-code"
       );
     });
@@ -1225,7 +1222,7 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "codex"
       );
     });
@@ -1248,7 +1245,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1276,7 +1273,7 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "claude-code"
       );
     });
@@ -1292,7 +1289,7 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "codex"
       );
     });
@@ -1307,7 +1304,7 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "claude-code"
       );
     });
@@ -1345,7 +1342,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1392,7 +1389,7 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
   });
@@ -1413,7 +1410,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "daemon-claude"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "daemon-claude",
             agentTargetId: "daemon-claude",
@@ -1430,7 +1427,7 @@ describe("useAgentGUINodeController", () => {
       })
     );
 
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     expect(result.current.viewModel.data.provider).toBe("claude-code");
@@ -1455,7 +1452,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1480,7 +1477,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "claude-code"
       );
     });
@@ -1513,7 +1510,7 @@ describe("useAgentGUINodeController", () => {
         avoidGroupingEdits: false,
         data: initialData,
         defaultAgentTargetId: "local:codex",
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1538,7 +1535,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
         agentTargetId: "local:codex",
         provider: "codex"
       });
@@ -1570,7 +1567,7 @@ describe("useAgentGUINodeController", () => {
         avoidGroupingEdits: false,
         data: initialData,
         defaultAgentTargetId: "missing-codex",
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1595,7 +1592,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
         agentTargetId: "missing-codex",
         disabled: true,
         ref: { kind: "missing-agent" }
@@ -1630,7 +1627,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:codex-1",
             agentTargetId: "shared-agent:codex-1",
@@ -1662,7 +1659,7 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "shared-agent:codex-1"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget.targetId).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.targetId).toBe(
       "shared-agent:codex-1"
     );
     // Node data is controlled by the host; selection is persisted through the
@@ -1703,7 +1700,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1730,7 +1727,7 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:openclaw"
       });
     });
-    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+    expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
       provider: "openclaw",
       targetId: "local:openclaw",
       disabled: true
@@ -1770,7 +1767,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -1834,8 +1831,8 @@ describe("useAgentGUINodeController", () => {
     function failFastProps(input: {
       agentTargetId: string | null;
       activeSessionId: string;
-      providerTargets?: FailFastProps["providerTargets"];
-      providerTargetsLoading?: boolean;
+      agentTargets?: FailFastProps["agentTargets"];
+      agentTargetsLoading?: boolean;
     }): FailFastProps {
       return {
         workspaceId: "room-1",
@@ -1845,8 +1842,8 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(input.activeSessionId, "codex", {
           agentTargetId: input.agentTargetId
         }),
-        providerTargets: input.providerTargets ?? localCodexDirectory,
-        providerTargetsLoading: input.providerTargetsLoading ?? false,
+        agentTargets: input.agentTargets ?? localCodexDirectory,
+        agentTargetsLoading: input.agentTargetsLoading ?? false,
         onDataChange: vi.fn()
       };
     }
@@ -1909,8 +1906,8 @@ describe("useAgentGUINodeController", () => {
         props: failFastProps({
           agentTargetId: "deleted-agent",
           activeSessionId: "ghost-session",
-          providerTargets: [],
-          providerTargetsLoading: true
+          agentTargets: [],
+          agentTargetsLoading: true
         })
       });
 
@@ -1993,7 +1990,7 @@ describe("useAgentGUINodeController", () => {
         props: failFastProps({
           agentTargetId: null,
           activeSessionId: "legacy-session",
-          providerTargets: sharedOnlyDirectory
+          agentTargets: sharedOnlyDirectory
         })
       });
 
@@ -2032,7 +2029,7 @@ describe("useAgentGUINodeController", () => {
         props: failFastProps({
           agentTargetId: "shared-agent:codex-1",
           activeSessionId: "shared-session",
-          providerTargets: sharedDirectory
+          agentTargets: sharedDirectory
         })
       });
 
@@ -2147,7 +2144,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2181,7 +2178,7 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "codex"
       );
     });
@@ -2196,7 +2193,7 @@ describe("useAgentGUINodeController", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+      expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
         "codex"
       );
     });
@@ -2229,7 +2226,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData(null, "codex", {
           agentTargetId: "local:codex"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2317,7 +2314,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2379,7 +2376,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2481,7 +2478,7 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2593,7 +2590,7 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2625,7 +2622,7 @@ describe("useAgentGUINodeController", () => {
         })
       );
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     expect(result.current.viewModel.data.provider).toBe("claude-code");
@@ -2684,7 +2681,7 @@ describe("useAgentGUINodeController", () => {
             }
           }
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",
@@ -2716,7 +2713,7 @@ describe("useAgentGUINodeController", () => {
         })
       );
     });
-    expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
+    expect(result.current.viewModel.selectedAgentTarget.provider).toBe(
       "claude-code"
     );
     await waitFor(() => {
@@ -2777,7 +2774,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:claude-code",
             agentTargetId: "local:claude-code",
@@ -3605,7 +3602,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:agent-1",
             agentTargetId: "agent-target-1",
@@ -3631,7 +3628,7 @@ describe("useAgentGUINodeController", () => {
         })
       );
     });
-    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+    expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
       targetId: "shared-agent:agent-1",
       provider: "codex",
       label: "Alice's Codex"
@@ -3671,7 +3668,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:agent-1",
             provider: "codex",
@@ -3721,8 +3718,8 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [],
-        providerTargetsLoading: true,
+        agentTargets: [],
+        agentTargetsLoading: true,
         onDataChange: vi.fn()
       })
     );
@@ -3761,7 +3758,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [],
+        agentTargets: [],
         onDataChange: vi.fn()
       })
     );
@@ -3792,12 +3789,12 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [],
+        agentTargets: [],
         onDataChange: vi.fn()
       })
     );
 
-    expect(result.current.viewModel.providerTargets).toEqual([]);
+    expect(result.current.viewModel.agentTargets).toEqual([]);
   });
 
   it("renders exactly the provided targets in exact rail mode (no placeholders or catalog padding)", () => {
@@ -3814,7 +3811,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:alice-codex",
             provider: "codex",
@@ -3841,7 +3838,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     expect(
-      result.current.viewModel.providerTargets.map((target) => target.targetId)
+      result.current.viewModel.agentTargets.map((target) => target.targetId)
     ).toEqual(["shared-agent:alice-codex", "shared-agent:bob-claude"]);
   });
 
@@ -3859,12 +3856,12 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null),
-        providerTargets: [],
+        agentTargets: [],
         onDataChange: vi.fn()
       })
     );
 
-    expect(result.current.viewModel.providerTargets).toEqual([]);
+    expect(result.current.viewModel.agentTargets).toEqual([]);
   });
 
   it("sends fallback local agent target ids without provider target refs when provider targets are omitted", async () => {
@@ -3942,7 +3939,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: initialData,
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:codex-1",
             agentTargetId: "shared-agent:codex-1",
@@ -3960,7 +3957,7 @@ describe("useAgentGUINodeController", () => {
     );
 
     expect(result.current.viewModel.canSubmit).toBe(false);
-    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+    expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
       agentTargetId: "local:claude-code",
       disabled: true,
       provider: "claude-code",
@@ -4006,8 +4003,8 @@ describe("useAgentGUINodeController", () => {
     };
     const { result, rerender } = renderHook(
       (props: {
-        providerTargets: readonly (typeof targetA)[];
-        providerTargetsLoading: boolean;
+        agentTargets: readonly (typeof targetA)[];
+        agentTargetsLoading: boolean;
       }) =>
         useAgentGUINodeController({
           workspaceId: "room-1",
@@ -4020,13 +4017,13 @@ describe("useAgentGUINodeController", () => {
         }),
       {
         initialProps: {
-          providerTargets: [targetA],
-          providerTargetsLoading: true
+          agentTargets: [targetA],
+          agentTargetsLoading: true
         }
       }
     );
 
-    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+    expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
       agentTargetId: "codex-b",
       disabled: true,
       ref: { kind: "loading" }
@@ -4036,8 +4033,8 @@ describe("useAgentGUINodeController", () => {
     });
     expect(result.current.viewModel.canSubmit).toBe(false);
 
-    rerender({ providerTargets: [targetA], providerTargetsLoading: false });
-    expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+    rerender({ agentTargets: [targetA], agentTargetsLoading: false });
+    expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
       agentTargetId: "codex-b",
       disabled: true,
       ref: { kind: "missing-agent" }
@@ -4048,15 +4045,15 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.canSubmit).toBe(false);
 
     rerender({
-      providerTargets: [targetA, targetB],
-      providerTargetsLoading: false
+      agentTargets: [targetA, targetB],
+      agentTargetsLoading: false
     });
     await waitFor(() => {
-      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
         agentTargetId: "codex-b"
       });
       expect(
-        result.current.viewModel.selectedProviderTarget?.disabled
+        result.current.viewModel.selectedAgentTarget?.disabled
       ).toBeUndefined();
       expect(result.current.viewModel.canSubmit).toBe(true);
     });
@@ -4193,7 +4190,7 @@ describe("useAgentGUINodeController", () => {
           data: agentGuiData("session-1", "codex", {
             agentTargetId: "local:codex"
           }),
-          providerTargets: [
+          agentTargets: [
             {
               targetId: "local:codex",
               agentTargetId: "local:codex",
@@ -4235,7 +4232,7 @@ describe("useAgentGUINodeController", () => {
         kind: "agentTarget",
         agentTargetId: "local:cursor"
       });
-      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
         provider: "cursor",
         targetId: "local:cursor"
       });
@@ -4278,8 +4275,8 @@ describe("useAgentGUINodeController", () => {
     type PrefillPromptRequest = Parameters<
       typeof useAgentGUINodeController
     >[0]["prefillPromptRequest"];
-    type ProviderTargets = NonNullable<
-      Parameters<typeof useAgentGUINodeController>[0]["providerTargets"]
+    type AgentTargets = NonNullable<
+      Parameters<typeof useAgentGUINodeController>[0]["agentTargets"]
     >;
     const request: PrefillPromptRequest = {
       agentTargetId: "codex-b",
@@ -4288,7 +4285,7 @@ describe("useAgentGUINodeController", () => {
       provider: "codex",
       sequence: 11
     };
-    const targets: ProviderTargets = [
+    const targets: AgentTargets = [
       {
         targetId: "codex-a",
         agentTargetId: "codex-a",
@@ -4305,10 +4302,7 @@ describe("useAgentGUINodeController", () => {
       }
     ];
     const { result, rerender } = renderHook(
-      (props: {
-        providerTargets: ProviderTargets;
-        providerTargetsLoading: boolean;
-      }) =>
+      (props: { agentTargets: AgentTargets; agentTargetsLoading: boolean }) =>
         useAgentGUINodeController({
           workspaceId: "room-1",
           currentUserId: "user-1",
@@ -4323,8 +4317,8 @@ describe("useAgentGUINodeController", () => {
         }),
       {
         initialProps: {
-          providerTargets: [] as ProviderTargets,
-          providerTargetsLoading: true
+          agentTargets: [] as AgentTargets,
+          agentTargetsLoading: true
         }
       }
     );
@@ -4333,12 +4327,12 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).not.toBe("Run on B");
     expect(unactivate).not.toHaveBeenCalled();
 
-    rerender({ providerTargets: targets, providerTargetsLoading: false });
+    rerender({ agentTargets: targets, agentTargetsLoading: false });
 
     await waitFor(() => {
       expect(result.current.viewModel.activeConversationId).toBeNull();
       expect(result.current.viewModel.draftPrompt).toBe("Run on B");
-      expect(result.current.viewModel.selectedProviderTarget).toMatchObject({
+      expect(result.current.viewModel.selectedAgentTarget).toMatchObject({
         agentTargetId: "codex-b"
       });
     });
@@ -4369,7 +4363,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData("session-1", "codex", {
           agentTargetId: "codex-a"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "codex-a",
             agentTargetId: "codex-a",
@@ -7503,7 +7497,7 @@ describe("useAgentGUINodeController", () => {
         data: agentGuiData("session-1", "codex", {
           agentTargetId: "codex-a"
         }),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "codex-a",
             agentTargetId: "codex-a",
@@ -7535,9 +7529,9 @@ describe("useAgentGUINodeController", () => {
       });
     });
     await waitFor(() => {
-      expect(
-        result.current.viewModel.selectedProviderTarget?.agentTargetId
-      ).toBe("codex-b");
+      expect(result.current.viewModel.selectedAgentTarget?.agentTargetId).toBe(
+        "codex-b"
+      );
     });
     act(() => {
       result.current.actions.submitPrompt(promptBlocks("start on B"));
@@ -8406,7 +8400,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData(null, "openclaw"),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:openclaw",
             agentTargetId: "local:openclaw",
@@ -14785,7 +14779,7 @@ describe("useAgentGUINodeController", () => {
           workspacePath: "/workspace",
           avoidGroupingEdits: false,
           data,
-          providerTargets: [
+          agentTargets: [
             {
               targetId: "target-a",
               agentTargetId: "target-a",
@@ -20336,7 +20330,7 @@ describe("useAgentGUINodeController", () => {
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
         data: agentGuiData("codex-session"),
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "local:codex",
             agentTargetId: "local:codex",

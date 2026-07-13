@@ -185,6 +185,10 @@ in-session provider switch: AgentGUI serializes the active session as a single
 `agent-session` mention in a draft prompt, passes the selected provider target
 through the host launch callback, and the desktop workbench opens a new empty
 composer for that target via the existing draft prefill activation path. The
+mention's visible label must use the source conversation title without
+prefixing the source agent or provider name, because the submitted draft also
+becomes the new conversation's initial title. Source agent identity stays in
+the mention metadata instead of being duplicated into title text. The
 prefill activation provider is authoritative for the new workbench panel's
 initial provider chrome, so choosing Codex from a Claude Code session must open
 a Codex panel before the draft prefill effect runs. The prefilled handoff panel
@@ -843,6 +847,15 @@ persists the normalized `attachmentId`. The managed source path must live under
 the daemon state root's `agent-prompt-assets` directory, and the daemon must
 re-check the resolved source path, symlink target, file type, and size before
 copying it into the session attachment store.
+Image validation is intentionally two-phase. The preflight that runs before
+attachment persistence may accept a managed `path` as an ingress source so it
+can check provider image capability without writing files. That does not make
+the path valid provider content. After the daemon copies and hydrates the
+source, `Controller.Exec` applies the strict runtime validator to the resulting
+`data`, `url`, or `attachmentId` representation. Keep runtime execution strict,
+and do not move attachment persistence ahead of capability preflight merely to
+make path-backed drafts pass validation; unsupported providers must still fail
+without creating session attachment files.
 Shared callers may instead supply a URL-backed image block when they already
 uploaded the image. That source must be an absolute HTTPS URL without embedded
 userinfo and must retain a supported PNG, JPEG, or WebP MIME type. `data` and
@@ -1565,9 +1578,52 @@ The public directory entry owns its presentation and availability:
 - show no aggregate `All` entry when exactly one agent exists
 - show `All` plus the host-ordered rail and home carousel when multiple agents
   exist
+- keep the multi-agent home carousel mounted when the selected agent changes;
+  move the selected directory-owned node into the center without reordering the
+  host array, including when the selected target enters or leaves a readiness
+  gate; keep the carousel canvas outside the ready/gated body branch so its
+  scroll position and animation are not reset; rotate the centered record by
+  default, temporarily give playback to the record under the pointer, return
+  playback to the current center when hover leaves, preserve each record's
+  stopped angle when playback moves elsewhere, and fade records progressively
+  by distance from the center while keeping the next outer record partially
+  visible on each side; target
+  changes should prime the wheel spring with an immediate directional impulse
+  and avoid duplicate WebGL submissions from playback and wheel animation; use
+  a shallow lit cylinder beneath the icon texture when rendering the record so
+  thickness, rim reflection, and side perspective remain part of the same
+  mounted Three.js scene instead of pre-rendered replacement assets; keep
+  one-shot redraw and spring animation RAF handles separate so a pending resize
+  or texture render cannot suppress a new interaction, let the spring frame own
+  the single pose/render pass during movement, share record geometry, and cull
+  repeated records outside the visible center range; start pointer-driven
+  carousel movement on primary `pointerdown`, then suppress the matching click
+  activation so the spring begins on press without double-selecting the target;
+  selection updates the title, composer, and controls below the carousel;
+  respect reduced motion by suppressing record playback animation; keep the
+  empty-home content on a fixed top anchor so readiness and composer height
+  changes grow downward instead of vertically re-centering the whole hero
 - persist and pass only `agentTargetId` for target selection and launch
 - use `agentTargetId` as the opaque activity-core composer `targetKey`; never
   derive a cache key from provider
+
+The package-internal normalized target vocabulary is
+`AgentGUIAgentTarget` / `agentTargets`. Do not reintroduce
+`AgentGUIProviderTarget` or `providerTargets`: provider is execution metadata,
+while `agentTargetId` is selection and launch identity. Agent avatar chrome is
+projected once from an agent target into a shared avatar presentation containing
+the resolved icon, label, and optional owner badge. The DOM rail, single-agent
+empty state, and WebGL empty-home carousel consume that same presentation;
+renderer adapters may differ, but they must not create parallel icon-only
+models that can silently discard badge or identity fields.
+The WebGL adapter owns badge image loading and GPU resource lifecycle. Remote
+badge images must be requested with anonymous CORS before assigning `src`, and
+the asset host must return an origin-clean response. The adapter must keep an
+asset-independent visible owner marker until decode, canvas conversion, and
+texture upload all succeed; any load, decode, conversion, or upload failure
+keeps that fallback instead of leaving the badge material hidden. Scene disposal
+must detach image callbacks, cancel owned loads, and release badge textures,
+materials, and geometry alongside the primary avatar resources.
 
 New-session surfaces, including the composer, batch runner, App Center, and
 issue-manager launchers, must fail or disable launch when no `agentTargetId` is

@@ -1,7 +1,7 @@
 import type {
   AgentGUIAgent,
   AgentGUIAgentAvailabilityStatus,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "./types.ts";
 
 export function normalizeAgentGUIAgents(
@@ -83,7 +83,7 @@ export function resolveAgentGUISelectedDirectoryAgent(input: {
 /** Package-internal bridge while the carried node is migrated to agent names. */
 export function projectAgentGUIAgentsToInternalTargets(
   agents: readonly AgentGUIAgent[]
-): AgentGUIProviderTarget[] {
+): AgentGUIAgentTarget[] {
   return agents.map((agent) => ({
     targetId: agent.agentTargetId,
     agentTargetId: agent.agentTargetId,

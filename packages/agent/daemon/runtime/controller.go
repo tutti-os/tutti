@@ -1136,7 +1136,7 @@ func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) e
 	if err != nil {
 		return err
 	}
-	if err := validateRuntimePromptContentImages(input.Content); err != nil {
+	if err := validatePromptContentImagesForPreflight(input.Content); err != nil {
 		return err
 	}
 	content := normalizeRuntimePromptContentForValidation(input.Content)

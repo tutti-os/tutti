@@ -170,7 +170,7 @@ import {
 } from "../../shared/managedAgentIcons";
 import { cursorColorfulUrl } from "../../managedAgentIconAssets";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
+import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../types";
 
 export { formatSlashStatusTokenCount };
 
@@ -316,15 +316,15 @@ export interface AgentComposerProps {
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  selectedProviderTarget?: AgentGUIProviderTarget | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  handoffProviderTargets?: readonly AgentGUIProviderTarget[];
+  selectedAgentTarget?: AgentGUIAgentTarget | null;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   providerSelectReadonly?: boolean;
   onProviderSelect?: (input: {
     provider: AgentGUIProvider;
     agentTargetId?: string | null;
   }) => void;
-  onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
+  onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
@@ -886,8 +886,8 @@ function resolveComposerProviderIconUrl(provider: AgentGUIProvider): string {
   );
 }
 
-function resolveComposerProviderTargetIconUrl(
-  target: AgentGUIProviderTarget
+function resolveComposerAgentTargetIconUrl(
+  target: AgentGUIAgentTarget
 ): string {
   if (normalizeManagedAgentProvider(target.provider) === "cursor") {
     return cursorColorfulUrl;
@@ -1112,9 +1112,9 @@ export function AgentComposer({
   queuedPrompts,
   drainingQueuedPromptId,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
-  selectedProviderTarget = null,
-  providerTargets = [],
-  handoffProviderTargets,
+  selectedAgentTarget = null,
+  agentTargets = [],
+  handoffAgentTargets,
   providerSelectReadonly = false,
   onProviderSelect,
   onHandoffConversation,
@@ -2911,21 +2911,21 @@ export function AgentComposer({
     ? styles.composerHero
     : styles.composer;
   const providerSwitchTargets = useMemo(
-    () => providerTargets.filter(Boolean),
-    [providerTargets]
+    () => agentTargets.filter(Boolean),
+    [agentTargets]
   );
   const enabledProviderSwitchTargets = useMemo(
     () => providerSwitchTargets.filter((target) => target.disabled !== true),
     [providerSwitchTargets]
   );
   const selectedAgentTargetId =
-    selectedProviderTarget?.targetId ?? `local:${provider}`;
+    selectedAgentTarget?.targetId ?? `local:${provider}`;
   const selectedProviderSwitchTarget =
     providerSwitchTargets.find(
       (target) => target.targetId === selectedAgentTargetId
     ) ??
     providerSwitchTargets.find((target) => target.provider === provider) ??
-    selectedProviderTarget;
+    selectedAgentTarget;
   const providerMenuTargets =
     selectedProviderSwitchTarget &&
     !enabledProviderSwitchTargets.some(
@@ -2933,15 +2933,15 @@ export function AgentComposer({
     )
       ? [selectedProviderSwitchTarget, ...enabledProviderSwitchTargets]
       : enabledProviderSwitchTargets;
-  const enabledHandoffProviderTargets = useMemo(
+  const enabledHandoffAgentTargets = useMemo(
     () =>
-      (handoffProviderTargets ?? providerMenuTargets).filter(
+      (handoffAgentTargets ?? providerMenuTargets).filter(
         (target) => target.disabled !== true
       ),
-    [handoffProviderTargets, providerMenuTargets]
+    [handoffAgentTargets, providerMenuTargets]
   );
   const handoffMenuTargets = selectedProviderSwitchTarget
-    ? enabledHandoffProviderTargets.filter((target) => {
+    ? enabledHandoffAgentTargets.filter((target) => {
         if (target.targetId === selectedProviderSwitchTarget.targetId) {
           return false;
         }
@@ -2951,10 +2951,10 @@ export function AgentComposer({
         const targetAgentTargetId = target.agentTargetId ?? target.targetId;
         return targetAgentTargetId !== selectedAgentTargetId;
       })
-    : enabledHandoffProviderTargets;
+    : enabledHandoffAgentTargets;
   const selectedProviderLabel =
     selectedProviderSwitchTarget?.label ??
-    selectedProviderTarget?.label ??
+    selectedAgentTarget?.label ??
     provider;
   const effectiveHandoffLabel = handoffLabel || labels.handoffConversation;
   const effectiveHandoffMenuLabel =
@@ -4312,9 +4312,7 @@ export function AgentComposer({
                                 alt=""
                                 aria-hidden="true"
                                 className="size-4 shrink-0 rounded-[4px]"
-                                src={resolveComposerProviderTargetIconUrl(
-                                  target
-                                )}
+                                src={resolveComposerAgentTargetIconUrl(target)}
                               />
                               <span className="min-w-0 truncate">
                                 {target.label}
@@ -4361,7 +4359,7 @@ export function AgentComposer({
                         alt=""
                         aria-hidden="true"
                         className="size-4 shrink-0 rounded-[4px]"
-                        src={resolveComposerProviderTargetIconUrl(
+                        src={resolveComposerAgentTargetIconUrl(
                           selectedProviderSwitchTarget
                         )}
                       />
@@ -4386,7 +4384,7 @@ export function AgentComposer({
                             alt=""
                             aria-hidden="true"
                             className="size-4 shrink-0 rounded-[4px]"
-                            src={resolveComposerProviderTargetIconUrl(target)}
+                            src={resolveComposerAgentTargetIconUrl(target)}
                           />
                           <span className="min-w-0 truncate">
                             {target.label}

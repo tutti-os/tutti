@@ -114,26 +114,26 @@ export interface AgentGUIAllAgentsPresentation {
   iconUrl?: string | null;
 }
 
-export interface AgentGUIProviderTargetRef {
+export interface AgentGUIAgentTargetRef {
   kind: string;
   provider: AgentGUIProvider;
   [key: string]: unknown;
 }
 
-export interface AgentGUIProviderTargetBadge {
+export interface AgentGUIAgentTargetBadge {
   iconUrl: string;
   label?: string;
 }
 
-export interface AgentGUIProviderTarget {
+export interface AgentGUIAgentTarget {
   targetId: string;
   agentTargetId?: string | null;
   provider: AgentGUIProvider;
-  ref: AgentGUIProviderTargetRef;
+  ref: AgentGUIAgentTargetRef;
   label: string;
   description?: string;
   iconUrl?: string | null;
-  badge?: AgentGUIProviderTargetBadge | null;
+  badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;

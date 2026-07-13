@@ -1677,6 +1677,11 @@ func TestClaudeCodeSDKAdapterAcceptsImagePromptContent(t *testing.T) {
 		t.Fatalf("ValidatePromptContent URL image = %v, want nil", err)
 	}
 	if err := adapter.ValidatePromptContent(session, []PromptContentBlock{
+		{Type: "image", MimeType: "image/png", Path: "/managed/agent-prompt-assets/screen.png"},
+	}); err != nil {
+		t.Fatalf("ValidatePromptContent path-backed image = %v, want nil", err)
+	}
+	if err := adapter.ValidatePromptContent(session, []PromptContentBlock{
 		{Type: "image", MimeType: "image/gif", Data: "aW1hZ2U="},
 	}); !errors.Is(err, ErrPromptImageUnsupported) {
 		t.Fatalf("ValidatePromptContent unsupported image = %v, want ErrPromptImageUnsupported", err)

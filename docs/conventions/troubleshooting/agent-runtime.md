@@ -37,6 +37,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 
 - [AgentGUI Stop reports no active turn after cancel succeeds](./agent-session-lifecycle.md#agentgui-stop-reports-no-active-turn-after-cancel-succeeds)
 - [AgentGUI send blocked by active_turn after settled snapshot](./agent-session-lifecycle.md#agentgui-send-blocked-by-activeturn-after-settled-snapshot)
+- [AgentGUI rejects a pasted image as unsupported before send](./agent-session-lifecycle.md#agentgui-rejects-a-pasted-image-as-unsupported-before-send)
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)

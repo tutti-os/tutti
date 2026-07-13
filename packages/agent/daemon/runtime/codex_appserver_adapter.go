@@ -432,7 +432,7 @@ func (a *CodexAppServerAdapter) SetProviderLaunchPreparer(preparer ProviderLaunc
 
 func (*CodexAppServerAdapter) ValidatePromptContent(_ Session, content []PromptContentBlock) error {
 	// Codex app-server accepts text, image, and localImage user input items.
-	return validateRuntimePromptContentImages(content)
+	return validatePromptContentImagesForPreflight(content)
 }
 
 func (a *CodexAppServerAdapter) commandString() string {

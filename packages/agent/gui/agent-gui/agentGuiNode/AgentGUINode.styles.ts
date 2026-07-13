@@ -1,4 +1,8 @@
 const styles = {
+  agentAvatar: "agent-gui-node__agent-avatar",
+  agentAvatarBadge: "agent-gui-node__agent-avatar-badge",
+  agentAvatarBadgeImage: "agent-gui-node__agent-avatar-badge-image",
+  agentAvatarImage: "agent-gui-node__agent-avatar-image",
   bottomDock: "agent-gui-node__bottom-dock",
   bottomDockPrompt: "agent-gui-node__bottom-dock-prompt",
   bottomDockScrollToBottom: "agent-gui-node__bottom-dock-scroll-to-bottom",
@@ -117,6 +121,10 @@ const styles = {
   emptyHeroCarousel: "agent-gui-node__empty-hero-carousel",
   emptyHeroCarouselCanvas: "agent-gui-node__empty-hero-carousel-canvas",
   emptyHeroCarouselItem: "agent-gui-node__empty-hero-carousel-item",
+  emptyHeroCarouselLayer: "agent-gui-node__empty-hero-carousel-layer",
+  emptyHeroCarouselPlaceholder:
+    "agent-gui-node__empty-hero-carousel-placeholder",
+  emptyHeroCarouselStage: "agent-gui-node__empty-hero-carousel-stage",
   emptyHeroIconEffect: "agent-gui-node__empty-hero-icon-effect",
   emptyHeroIconRail: "agent-gui-node__empty-hero-icon-rail",
   emptyHeroIconRailItem: "agent-gui-node__empty-hero-icon-rail-item",
@@ -161,8 +169,6 @@ const styles = {
   providerRailAvatar: "agent-gui-node__provider-rail-avatar",
   providerRailAvatarIcon: "agent-gui-node__provider-rail-avatar-icon",
   providerRailAvatarImage: "agent-gui-node__provider-rail-avatar-image",
-  providerRailBadge: "agent-gui-node__provider-rail-badge",
-  providerRailBadgeImage: "agent-gui-node__provider-rail-badge-image",
   emptyHeroIconSlot: "agent-gui-node__empty-hero-icon-slot",
   providerRailConfigButton: "agent-gui-node__provider-rail-config-button",
   providerRailFooter: "agent-gui-node__provider-rail-footer",

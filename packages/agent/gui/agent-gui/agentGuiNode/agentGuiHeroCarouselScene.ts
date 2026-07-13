@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
 
 // Three.js scene behind the empty-hero agent carousel, modelled after
-// animos.app's "Wheel Carousel": same-sized flat tiles ride the rim of a
+// animos.app's "Wheel Carousel": same-sized vinyl records ride the rim of a
 // giant wheel whose hub sits far below the stage. The focused agent stands
 // upright at the top of the wheel; neighbours tilt tangentially and sink down
 // the sides, and the wheel ticks forward with a springy overshoot. The wheel
@@ -11,27 +12,51 @@ const CAMERA_FOV_DEG = 14;
 const CAMERA_Z = 7.5;
 // The wheel aims for about this many slots around its full rim; the icon
 // sequence repeats as often as needed to get close, which also fixes the
-// slot angle (2*PI / slots) and keeps neighbour tilts gentle (~17deg).
-const WHEEL_TARGET_SLOTS = 21;
+// slot angle (2*PI / slots). A broad virtual wheel keeps the visible records
+// on a shallow arc instead of exposing an obvious circular silhouette.
+const WHEEL_TARGET_SLOTS = 40;
 // Center-to-center distance between neighbouring tiles along the rim; tiles
 // are 1 unit wide, so the remainder is the visible gap. The wheel radius is
 // derived from this, so wider spacing also grows the wheel itself.
-const TILE_SPACING = 1.35;
+const TILE_SPACING = 1.55;
+// Compress the visible portion of the wheel into a shallow arc. Horizontal
+// spacing still follows the circular loop, while vertical drop and tangent
+// tilt are reduced so the records read as a row rather than a ring.
+const VISIBLE_ARC_CURVATURE = 0.9;
 // Side fade-out is a CSS gradient mask on the canvas element (see
 // agentactivity.css): tiles dissolve spatially as they approach the stage
 // edges instead of fading per-tile by angle.
-// On top of that, only the focused tile is fully opaque — every other tile
-// rests at this opacity (the transition interpolates while the wheel spins).
-const UNFOCUSED_OPACITY = 0.55;
-// Underdamped spring for the wheel's "tick": stiffness sets the pace, and a
-// damping ratio below 1 gives the anticipation-and-overshoot landing.
-const SPRING_STIFFNESS = 90;
-const SPRING_DAMPING_RATIO = 0.62;
+// Opacity fades continuously with distance from the focused slot. The CSS mask
+// still softens the physical canvas edges, while this range fade makes every
+// record step down progressively as it moves away from the center.
+const MIN_RECORD_OPACITY = 0.22;
+const RECORD_FADE_RANGE_SLOTS = 4.5;
+const RECORD_FADE_CURVE = 1.45;
+// A lightly underdamped spring keeps the wheel tactile without the delayed,
+// low-velocity ramp that made clicks feel unresponsive.
+const SPRING_STIFFNESS = 120;
+const SPRING_DAMPING_RATIO = 0.78;
+const SPRING_MIN_LAUNCH_VELOCITY = 2.6;
 const SPRING_SETTLE_EPSILON = 0.001;
 const SPRING_SETTLE_VELOCITY = 0.02;
+const MAX_FRAME_DELTA_SECONDS = 0.032;
 const TEXTURE_SIZE = 256;
-const TEXTURE_CORNER_RADIUS = 0.05;
+const BADGE_CORNER_RADIUS = 0.5;
+const BADGE_DIAMETER = 0.36;
+const BADGE_OFFSET = 0.4;
 const MAX_PIXEL_RATIO = 2;
+const RECORD_RADIUS_RATIO = 0.47;
+const RECORD_LABEL_RADIUS_RATIO = 0.41;
+const RECORD_SPINDLE_RADIUS_RATIO = 0.035;
+const RECORD_SPIN_SECONDS = 7;
+const RECORD_MODEL_SCALE = 1.3;
+const RECORD_MODEL_RADIUS = 0.475;
+const RECORD_MODEL_THICKNESS = 0.065;
+const RECORD_MODEL_TILT_X = -0.11;
+const RECORD_MODEL_SIDE_TILT_FACTOR = 0.18;
+const RECORD_MODEL_MAX_SIDE_TILT = 0.16;
+const RECORD_RENDER_RANGE_SLOTS = 3.4;
+const RECORD_EDGE_SEGMENTS = 48;
 
 // Signed ring offset of tile `index` for a continuous scroll position, in
 // (-count / 2, count / 2].
@@ -49,9 +74,10 @@ function ringOffset(index: number, scroll: number, count: number): number {
   return offset;
 }
 
-// Draws the icon into a rounded-rect canvas so square, full-bleed PNGs get
-// rounded tiles without custom shaders.
-function roundedIconTexture(
+// Composites each host-provided agent icon into the paper label of a shared
+// vinyl-record treatment. The monochrome groove/rim palette is intentionally
+// material-specific; the label keeps the host artwork and brand color intact.
+function vinylRecordTexture(
   image: HTMLImageElement,
   onReadyRender: () => void
 ): THREE.CanvasTexture {
@@ -60,11 +86,143 @@ function roundedIconTexture(
   canvas.height = TEXTURE_SIZE;
   const context = canvas.getContext("2d");
   if (context) {
-    const radius = TEXTURE_SIZE * TEXTURE_CORNER_RADIUS;
+    const center = TEXTURE_SIZE / 2;
+    const recordRadius = TEXTURE_SIZE * RECORD_RADIUS_RATIO;
+    const labelRadius = recordRadius * RECORD_LABEL_RADIUS_RATIO;
+
+    context.clearRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+    context.save();
+    context.beginPath();
+    context.arc(center, center, recordRadius, 0, Math.PI * 2);
+    context.clip();
+
+    const recordFill = context.createRadialGradient(
+      center * 0.92,
+      center * 0.88,
+      labelRadius,
+      center,
+      center,
+      recordRadius
+    );
+    recordFill.addColorStop(0, "rgb(26 26 27)");
+    recordFill.addColorStop(0.54, "rgb(5 5 6)");
+    recordFill.addColorStop(0.82, "rgb(18 18 19)");
+    recordFill.addColorStop(1, "rgb(3 3 4)");
+    context.fillStyle = recordFill;
+    context.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+
+    // Closely spaced low-contrast rings read as pressed vinyl grooves without
+    // competing with the center artwork at the small carousel size.
+    for (
+      let radius = labelRadius + 4;
+      radius < recordRadius - 3;
+      radius += 3.5
+    ) {
+      const grooveIndex = Math.round((radius - labelRadius) / 3.5);
+      context.beginPath();
+      context.arc(center, center, radius, 0, Math.PI * 2);
+      context.strokeStyle =
+        grooveIndex % 3 === 0
+          ? "rgb(255 255 255 / 0.12)"
+          : "rgb(255 255 255 / 0.055)";
+      context.lineWidth = grooveIndex % 3 === 0 ? 0.7 : 0.45;
+      context.stroke();
+    }
+
+    // A narrow diagonal sheen makes the grooves visible on both light and
+    // dark application themes while leaving most of the record near-black.
+    context.save();
+    context.translate(center, center);
+    context.rotate(-Math.PI / 4);
+    const sheen = context.createLinearGradient(
+      -recordRadius,
+      0,
+      recordRadius,
+      0
+    );
+    sheen.addColorStop(0, "rgb(255 255 255 / 0)");
+    sheen.addColorStop(0.42, "rgb(255 255 255 / 0.02)");
+    sheen.addColorStop(0.5, "rgb(255 255 255 / 0.18)");
+    sheen.addColorStop(0.58, "rgb(255 255 255 / 0.02)");
+    sheen.addColorStop(1, "rgb(255 255 255 / 0)");
+    context.fillStyle = sheen;
+    context.fillRect(
+      -recordRadius,
+      -recordRadius,
+      recordRadius * 2,
+      recordRadius * 2
+    );
+    context.restore();
+    context.restore();
+
+    // Crop the existing provider artwork into a circular paper label. Cover
+    // fit preserves the bold center mark of square/full-bleed app icons.
+    context.save();
+    context.beginPath();
+    context.arc(center, center, labelRadius, 0, Math.PI * 2);
+    context.clip();
+    const scale = Math.max(
+      (labelRadius * 2) / image.width,
+      (labelRadius * 2) / image.height
+    );
+    const width = image.width * scale;
+    const height = image.height * scale;
+    context.drawImage(
+      image,
+      center - width / 2,
+      center - height / 2,
+      width,
+      height
+    );
+    context.restore();
+
+    context.beginPath();
+    context.arc(center, center, labelRadius, 0, Math.PI * 2);
+    context.strokeStyle = "rgb(255 255 255 / 0.2)";
+    context.lineWidth = 1;
+    context.stroke();
+
+    context.beginPath();
+    context.arc(
+      center,
+      center,
+      recordRadius * RECORD_SPINDLE_RADIUS_RATIO,
+      0,
+      Math.PI * 2
+    );
+    context.fillStyle = "rgb(5 5 6)";
+    context.fill();
+    context.strokeStyle = "rgb(255 255 255 / 0.18)";
+    context.lineWidth = 0.75;
+    context.stroke();
+
+    context.beginPath();
+    context.arc(center, center, recordRadius - 0.75, 0, Math.PI * 2);
+    context.strokeStyle = "rgb(255 255 255 / 0.32)";
+    context.lineWidth = 1.25;
+    context.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  onReadyRender();
+  return texture;
+}
+
+function roundedIconTexture(
+  image: HTMLImageElement,
+  onReadyRender: () => void,
+  cornerRadius: number
+): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = TEXTURE_SIZE;
+  canvas.height = TEXTURE_SIZE;
+  const context = canvas.getContext("2d");
+  if (context) {
+    const radius = TEXTURE_SIZE * cornerRadius;
     context.beginPath();
     context.roundRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE, radius);
     context.clip();
-    // Cover-fit so non-square icons fill the tile.
     const scale = Math.max(
       TEXTURE_SIZE / image.width,
       TEXTURE_SIZE / image.height
@@ -87,12 +245,20 @@ function roundedIconTexture(
 }
 
 interface AgentGuiHeroCarouselTile {
-  mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  badgeMesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
+  edgeMaterial: THREE.MeshStandardMaterial;
+  edgeMesh: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>;
+  faceMaterial: THREE.MeshBasicMaterial;
+  faceMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  poseGroup: THREE.Group;
+  ready: boolean;
+  recordGroup: THREE.Group;
+  rotation: number;
 }
 
 export interface AgentGuiHeroCarouselSceneOptions {
   canvas: HTMLCanvasElement;
-  iconUrls: readonly string[];
+  items: readonly AgentGUIAgentAvatarPresentation[];
   loadedImages?: readonly (HTMLImageElement | null)[];
   // Fired once the wheel settles on an integer slot after an animated move.
   onSettle: (index: number) => void;
@@ -114,8 +280,11 @@ export class AgentGuiHeroCarouselScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly edgeGeometry: THREE.CylinderGeometry;
+  private readonly faceGeometry: THREE.PlaneGeometry;
   private readonly raycaster = new THREE.Raycaster();
   private readonly tiles: AgentGuiHeroCarouselTile[] = [];
+  private readonly textures = new Set<THREE.Texture>();
   // Number of distinct agents; the wheel holds agentCount * repeats tiles
   // (the icon sequence repeated), and scroll/target count TILE slots.
   private readonly agentCount: number;
@@ -127,12 +296,16 @@ export class AgentGuiHeroCarouselScene {
   private scroll = 0;
   private target = 0;
   private velocity = 0;
-  private frameHandle: number | null = null;
+  private renderFrameHandle: number | null = null;
+  private springFrameHandle: number | null = null;
+  private recordSpinFrameHandle: number | null = null;
   private lastFrameAt: number | null = null;
+  private lastRecordSpinFrameAt: number | null = null;
+  private hoveredTile: AgentGuiHeroCarouselTile | null = null;
   private disposed = false;
 
   private constructor(options: AgentGuiHeroCarouselSceneOptions) {
-    this.agentCount = options.iconUrls.length;
+    this.agentCount = options.items.length;
     const repeats = Math.max(
       1,
       Math.round(WHEEL_TARGET_SLOTS / Math.max(this.agentCount, 1))
@@ -151,21 +324,93 @@ export class AgentGuiHeroCarouselScene {
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV_DEG, 1, 0.1, 50);
     this.camera.position.set(0, 0, CAMERA_Z);
 
+    // The label artwork remains color-stable on an unlit face plane. These
+    // lights shape the thin cylinder underneath so its rim and side wall react
+    // like a real pressed record as it moves around the wheel.
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.25));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    keyLight.position.set(-2.5, 3.5, 5);
+    this.scene.add(keyLight);
+    const rimLight = new THREE.DirectionalLight(0x9fb7ff, 0.9);
+    rimLight.position.set(4, -1.5, 2.5);
+    this.scene.add(rimLight);
+
+    // Every repeated record has the same shape. Share the GPU vertex buffers
+    // and keep the edge tessellation above the pixel density visible here.
+    this.faceGeometry = new THREE.PlaneGeometry(1, 1);
+    this.edgeGeometry = new THREE.CylinderGeometry(
+      RECORD_MODEL_RADIUS,
+      RECORD_MODEL_RADIUS,
+      RECORD_MODEL_THICKNESS,
+      RECORD_EDGE_SEGMENTS,
+      1,
+      true
+    );
+
     // The icon sequence repeats around the wheel; every copy of an agent's
-    // tile shares one texture but keeps its own material (per-tile fade).
+    // record shares one face texture but keeps its own materials (per-record
+    // fade). A shallow cylinder supplies actual thickness beneath the face.
     for (let slot = 0; slot < this.tileCount; slot++) {
-      const geometry = new THREE.PlaneGeometry(1, 1);
-      const material = new THREE.MeshBasicMaterial({
+      const agentIndex = slot % this.agentCount;
+      const poseGroup = new THREE.Group();
+      const recordGroup = new THREE.Group();
+      recordGroup.scale.setScalar(RECORD_MODEL_SCALE);
+      const faceMaterial = new THREE.MeshBasicMaterial({
         transparent: true,
         depthWrite: false,
         visible: false
       });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData.agentIndex = slot % this.agentCount;
-      this.scene.add(mesh);
-      this.tiles.push({ mesh });
+      const faceMesh = new THREE.Mesh(this.faceGeometry, faceMaterial);
+      faceMesh.position.z = RECORD_MODEL_THICKNESS / 2 + 0.002;
+      faceMesh.userData.agentIndex = agentIndex;
+
+      const edgeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x070708,
+        metalness: 0.42,
+        roughness: 0.28,
+        transparent: true,
+        depthWrite: false
+      });
+      const edgeMesh = new THREE.Mesh(this.edgeGeometry, edgeMaterial);
+      edgeMesh.rotation.x = Math.PI / 2;
+
+      const badgeMaterial = new THREE.MeshBasicMaterial({
+        transparent: true,
+        depthWrite: false,
+        // The solid circle is the owner marker's asset-independent fallback.
+        // Keep it visible while the optional remote avatar is loading or when
+        // that avatar cannot safely become a WebGL texture.
+        visible: options.items[slot % this.agentCount]?.badge != null
+      });
+      const badgeMesh = new THREE.Mesh(
+        new THREE.CircleGeometry(BADGE_DIAMETER / 2, 32),
+        badgeMaterial
+      );
+      badgeMesh.position.set(
+        BADGE_OFFSET,
+        -BADGE_OFFSET,
+        RECORD_MODEL_THICKNESS / 2 + 0.01
+      );
+      badgeMesh.userData.agentIndex = agentIndex;
+
+      recordGroup.add(edgeMesh, faceMesh);
+      poseGroup.add(recordGroup, badgeMesh);
+      poseGroup.visible = false;
+      poseGroup.userData.agentIndex = agentIndex;
+      this.scene.add(poseGroup);
+      this.tiles.push({
+        badgeMesh,
+        edgeMaterial,
+        edgeMesh,
+        faceMaterial,
+        faceMesh,
+        poseGroup,
+        ready: false,
+        recordGroup,
+        rotation: 0
+      });
     }
-    options.iconUrls.forEach((iconUrl, agentIndex) => {
+    options.items.forEach((item, agentIndex) => {
       const loadedImage = options.loadedImages?.[agentIndex] ?? null;
       const image = loadedImage ?? new Image();
       if (!loadedImage) {
@@ -184,11 +429,15 @@ export class AgentGuiHeroCarouselScene {
       if (image.complete && image.naturalWidth > 0) {
         this.applyImageTexture(image, agentIndex);
       } else if (!loadedImage) {
-        image.src = iconUrl;
+        image.src = item.iconUrl;
+      }
+      if (item.badge?.iconUrl) {
+        this.loadBadgeImage(item.badge.iconUrl, agentIndex);
       }
     });
 
     this.applyPoses();
+    this.startRecordSpin();
   }
 
   setSize(width: number, height: number): void {
@@ -216,6 +465,7 @@ export class AgentGuiHeroCarouselScene {
   // icon sequence repeats); returns the normalized agent index.
   stepBy(direction: 1 | -1): number {
     this.target += direction;
+    this.primeSpringMotion();
     this.animate();
     return this.targetIndex();
   }
@@ -247,6 +497,7 @@ export class AgentGuiHeroCarouselScene {
     }
     this.target += best ?? 0;
     if (animateMove) {
+      this.primeSpringMotion();
       this.animate();
       return;
     }
@@ -258,6 +509,34 @@ export class AgentGuiHeroCarouselScene {
 
   // Canvas-relative pointer coordinates -> agent index, or null.
   pick(x: number, y: number, width: number, height: number): number | null {
+    const tile = this.pickTile(x, y, width, height);
+    const index = tile?.poseGroup.userData.agentIndex;
+    return typeof index === "number" ? index : null;
+  }
+
+  // Gives playback to the record beneath the pointer. When no record is
+  // hovered, playback returns to the record nearest the center.
+  hover(x: number, y: number, width: number, height: number): number | null {
+    const tile = this.pickTile(x, y, width, height);
+    if (tile !== this.hoveredTile) {
+      this.hoveredTile = tile;
+      this.startRecordSpin();
+    }
+    const index = tile?.poseGroup.userData.agentIndex;
+    return typeof index === "number" ? index : null;
+  }
+
+  clearHover(): void {
+    this.hoveredTile = null;
+    this.startRecordSpin();
+  }
+
+  private pickTile(
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): AgentGuiHeroCarouselTile | null {
     if (this.disposed || width <= 0 || height <= 0) {
       return null;
     }
@@ -269,32 +548,60 @@ export class AgentGuiHeroCarouselScene {
     const meshes = this.tiles
       .filter(
         (tile) =>
-          tile.mesh.material.visible && tile.mesh.material.opacity > 0.05
+          tile.poseGroup.visible &&
+          tile.faceMaterial.visible &&
+          tile.faceMaterial.opacity > 0.05
       )
-      .map((tile) => tile.mesh);
+      .flatMap((tile) =>
+        tile.badgeMesh.material.visible
+          ? [tile.faceMesh, tile.badgeMesh]
+          : [tile.faceMesh]
+      );
     const hit = this.raycaster.intersectObjects(meshes, false)[0];
-    const index = hit?.object.userData.agentIndex;
-    return typeof index === "number" ? index : null;
+    if (!hit) {
+      return null;
+    }
+    return (
+      this.tiles.find(
+        (tile) => tile.faceMesh === hit.object || tile.badgeMesh === hit.object
+      ) ?? null
+    );
   }
 
   dispose(): void {
     this.disposed = true;
-    if (this.frameHandle !== null) {
-      cancelAnimationFrame(this.frameHandle);
-      this.frameHandle = null;
+    if (this.renderFrameHandle !== null) {
+      cancelAnimationFrame(this.renderFrameHandle);
+      this.renderFrameHandle = null;
+    }
+    if (this.springFrameHandle !== null) {
+      cancelAnimationFrame(this.springFrameHandle);
+      this.springFrameHandle = null;
+    }
+    if (this.recordSpinFrameHandle !== null) {
+      cancelAnimationFrame(this.recordSpinFrameHandle);
+      this.recordSpinFrameHandle = null;
     }
     for (const image of this.images) {
       image.onload = null;
+      image.onerror = null;
       if (this.ownedImages.has(image)) {
         image.src = "";
       }
     }
     this.ownedImages.clear();
     for (const tile of this.tiles) {
-      tile.mesh.geometry.dispose();
-      tile.mesh.material.map?.dispose();
-      tile.mesh.material.dispose();
+      tile.badgeMesh.geometry.dispose();
+      tile.badgeMesh.material.dispose();
+      tile.faceMaterial.dispose();
+      tile.edgeMaterial.dispose();
     }
+    for (const texture of this.textures) {
+      texture.dispose();
+    }
+    this.textures.clear();
+    this.faceGeometry.dispose();
+    this.edgeGeometry.dispose();
     // Do NOT force a context loss here: React StrictMode replays the mount
     // effect on the SAME canvas element, and a forced loss would hand the
     // second scene a dead context (white "sad canvas"). Disposing the
@@ -322,21 +629,41 @@ export class AgentGuiHeroCarouselScene {
       this.onSettle(this.targetIndex());
       return;
     }
-    if (this.frameHandle === null) {
+    if (this.springFrameHandle === null) {
+      // A one-shot resize/texture render must never masquerade as an active
+      // spring. Cancel it and let the interaction frame render immediately.
+      if (this.renderFrameHandle !== null) {
+        cancelAnimationFrame(this.renderFrameHandle);
+        this.renderFrameHandle = null;
+      }
       this.lastFrameAt = null;
-      this.frameHandle = requestAnimationFrame(this.frame);
+      this.springFrameHandle = requestAnimationFrame(this.frame);
+    }
+  }
+
+  private primeSpringMotion(): void {
+    const delta = this.target - this.scroll;
+    const direction = Math.sign(delta);
+    if (direction === 0) {
+      return;
+    }
+    // Preserve an already-fast motion in the correct direction. Fresh clicks
+    // and reversals receive a small impulse so visible movement begins on the
+    // first animation frame instead of waiting for the spring to accelerate.
+    if (this.velocity * direction < SPRING_MIN_LAUNCH_VELOCITY) {
+      this.velocity = direction * SPRING_MIN_LAUNCH_VELOCITY;
     }
   }
 
   private readonly frame = (now: number): void => {
-    this.frameHandle = null;
+    this.springFrameHandle = null;
     if (this.disposed) {
       return;
     }
     const dt =
       this.lastFrameAt === null
         ? 1 / 60
-        : Math.min((now - this.lastFrameAt) / 1000, 0.05);
+        : Math.min((now - this.lastFrameAt) / 1000, MAX_FRAME_DELTA_SECONDS);
     this.lastFrameAt = now;
     const delta = this.target - this.scroll;
     if (
@@ -356,15 +683,73 @@ export class AgentGuiHeroCarouselScene {
     this.scroll += this.velocity * dt;
     this.applyPoses();
     this.renderer.render(this.scene, this.camera);
-    this.frameHandle = requestAnimationFrame(this.frame);
+    this.springFrameHandle = requestAnimationFrame(this.frame);
   };
 
-  private requestRender(): void {
-    if (this.disposed || this.frameHandle !== null) {
+  private startRecordSpin(): void {
+    if (
+      this.disposed ||
+      this.prefersReducedMotion() ||
+      this.recordSpinFrameHandle !== null
+    ) {
       return;
     }
-    this.frameHandle = requestAnimationFrame(() => {
-      this.frameHandle = null;
+    this.lastRecordSpinFrameAt = null;
+    this.recordSpinFrameHandle = requestAnimationFrame(this.recordSpinFrame);
+  }
+
+  private readonly recordSpinFrame = (now: number): void => {
+    this.recordSpinFrameHandle = null;
+    const spinningTile = this.hoveredTile ?? this.centerTile();
+    if (this.disposed || !spinningTile || this.prefersReducedMotion()) {
+      return;
+    }
+    const dt =
+      this.lastRecordSpinFrameAt === null
+        ? 1 / 60
+        : Math.min(
+            (now - this.lastRecordSpinFrameAt) / 1000,
+            MAX_FRAME_DELTA_SECONDS
+          );
+    this.lastRecordSpinFrameAt = now;
+    spinningTile.rotation =
+      (spinningTile.rotation + (Math.PI * 2 * dt) / RECORD_SPIN_SECONDS) %
+      (Math.PI * 2);
+    // While the spring is moving it owns the single pose/render pass. The spin
+    // loop only advances its scalar angle, avoiding duplicate transforms.
+    if (this.springFrameHandle === null) {
+      this.applyPoses();
+      this.renderer.render(this.scene, this.camera);
+    }
+    this.recordSpinFrameHandle = requestAnimationFrame(this.recordSpinFrame);
+  };
+
+  private centerTile(): AgentGuiHeroCarouselTile | null {
+    let centeredTile: AgentGuiHeroCarouselTile | null = null;
+    let centeredOffset = Number.POSITIVE_INFINITY;
+    this.tiles.forEach((tile, index) => {
+      if (!tile.ready) {
+        return;
+      }
+      const offset = Math.abs(ringOffset(index, this.scroll, this.tileCount));
+      if (offset < centeredOffset) {
+        centeredTile = tile;
+        centeredOffset = offset;
+      }
+    });
+    return centeredTile;
+  }
+
+  private requestRender(): void {
+    if (
+      this.disposed ||
+      this.renderFrameHandle !== null ||
+      this.springFrameHandle !== null
+    ) {
+      return;
+    }
+    this.renderFrameHandle = requestAnimationFrame(() => {
+      this.renderFrameHandle = null;
       if (!this.disposed) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -375,14 +760,99 @@ export class AgentGuiHeroCarouselScene {
     if (this.disposed) {
       return;
     }
-    const texture = roundedIconTexture(image, () => this.requestRender());
+    const texture = vinylRecordTexture(image, () => this.requestRender());
+    this.textures.add(texture);
     for (const tile of this.tiles) {
-      if (tile.mesh.userData.agentIndex === agentIndex) {
-        tile.mesh.material.map = texture;
-        tile.mesh.material.visible = true;
-        tile.mesh.material.needsUpdate = true;
+      if (tile.poseGroup.userData.agentIndex === agentIndex) {
+        tile.faceMaterial.map = texture;
+        tile.faceMaterial.visible = true;
+        tile.faceMaterial.needsUpdate = true;
+        tile.ready = true;
       }
     }
+    this.applyPoses();
+    this.startRecordSpin();
+  }
+
+  private loadBadgeImage(badgeUrl: string, agentIndex: number): void {
+    const image = new Image();
+    // CanvasTexture uploads require an origin-clean source. The owning CDN
+    // must answer this anonymous CORS request with an appropriate
+    // Access-Control-Allow-Origin header; otherwise onerror keeps the
+    // programmatic badge fallback visible.
+    image.crossOrigin = "anonymous";
+    image.decoding = "async";
+    image.loading = "eager";
+    this.ownedImages.add(image);
+    this.images.push(image);
+    let settled = false;
+    const keepFallback = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.requestRender();
+    };
+    const applyDecodedImage = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      this.applyBadgeImageTexture(image, agentIndex);
+    };
+    image.onload = () => {
+      if (this.disposed) {
+        return;
+      }
+      let decode: Promise<void> | undefined;
+      try {
+        decode = image.decode?.();
+      } catch {
+        keepFallback();
+        return;
+      }
+      if (decode) {
+        void decode.then(applyDecodedImage).catch(keepFallback);
+        return;
+      }
+      applyDecodedImage();
+    };
+    image.onerror = keepFallback;
+    image.src = badgeUrl;
+  }
+
+  private applyBadgeImageTexture(
+    image: HTMLImageElement,
+    agentIndex: number
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    let texture: THREE.CanvasTexture | null = null;
+    try {
+      texture = roundedIconTexture(
+        image,
+        () => this.requestRender(),
+        BADGE_CORNER_RADIUS
+      );
+      // Force the upload before replacing the fallback material. This makes
+      // Canvas/WebGL failures transactional instead of leaving a visible
+      // material pointing at a texture that can never upload.
+      this.renderer.initTexture(texture);
+    } catch {
+      texture?.dispose();
+      this.requestRender();
+      return;
+    }
+    this.textures.add(texture);
+    for (const tile of this.tiles) {
+      if (tile.poseGroup.userData.agentIndex === agentIndex) {
+        tile.badgeMesh.material.map = texture;
+        tile.badgeMesh.material.visible = true;
+        tile.badgeMesh.material.needsUpdate = true;
+      }
+    }
+    this.requestRender();
   }
 
   private applyPoses(): void {
@@ -391,18 +861,48 @@ export class AgentGuiHeroCarouselScene {
       // Angle from the top of the wheel; the focused tile (offset 0) stands
       // upright at 12 o'clock, neighbours ride down the rim.
       const offset = ringOffset(index, this.scroll, this.tileCount);
+      const visible =
+        tile.ready && Math.abs(offset) <= RECORD_RENDER_RANGE_SLOTS;
+      tile.poseGroup.visible = visible;
+      if (!visible) {
+        return;
+      }
       const angle = offset * step;
       const x = this.wheelRadius * Math.sin(angle);
-      const y = this.wheelRadius * (Math.cos(angle) - 1);
-      tile.mesh.position.set(x, y, 0);
+      const y =
+        this.wheelRadius * (Math.cos(angle) - 1) * VISIBLE_ARC_CURVATURE;
+      tile.poseGroup.position.set(x, y, 0);
       // Tangent to the rim: the tile's top edge keeps pointing away from the
       // wheel's hub.
-      tile.mesh.rotation.z = -angle;
-      // Only the focused slot is fully opaque; a tile brightens as it
-      // approaches the top and dims as it leaves.
-      const focus = THREE.MathUtils.clamp(1 - Math.abs(offset), 0, 1);
-      tile.mesh.material.opacity =
-        UNFOCUSED_OPACITY + (1 - UNFOCUSED_OPACITY) * focus;
+      // The focused slot is fully opaque and records fade progressively by
+      // distance, restoring the wheel's visible center-to-edge range gradient.
+      const fadeProgress = THREE.MathUtils.clamp(
+        1 - Math.abs(offset) / RECORD_FADE_RANGE_SLOTS,
+        0,
+        1
+      );
+      const rangeOpacity = Math.pow(
+        THREE.MathUtils.smoothstep(fadeProgress, 0, 1),
+        RECORD_FADE_CURVE
+      );
+      // The tile tangent still follows the wheel. Record playback rotation is
+      // independent, so only the currently hovered record advances while all
+      // others retain the angle where their previous hover ended.
+      tile.poseGroup.rotation.set(
+        RECORD_MODEL_TILT_X,
+        THREE.MathUtils.clamp(
+          -angle * RECORD_MODEL_SIDE_TILT_FACTOR,
+          -RECORD_MODEL_MAX_SIDE_TILT,
+          RECORD_MODEL_MAX_SIDE_TILT
+        ),
+        -angle * VISIBLE_ARC_CURVATURE
+      );
+      tile.recordGroup.rotation.z = -tile.rotation;
+      const opacity =
+        MIN_RECORD_OPACITY + (1 - MIN_RECORD_OPACITY) * rangeOpacity;
+      tile.faceMaterial.opacity = opacity;
+      tile.edgeMaterial.opacity = opacity;
+      tile.badgeMesh.material.opacity = opacity;
     });
   }
 }
