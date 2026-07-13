@@ -9098,7 +9098,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   top: calc(50% - 210px);
   left: 50%;
   width: round(nearest, min(400px, calc(100% - 64px)), 1px);
-  transform: translateX(-50%) scale(0.9);
+  transform: translateX(-50%) scale(0.8);
   transform-origin: center center;
 }
 
@@ -9435,15 +9435,23 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   opacity: 0;
   transition: opacity 120ms ease-out;
 
-  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides
-     (the fully-transparent stops sit where the outermost tiles ride, not at
-     the canvas edges), intersected with a vertical band so tiles sinking
-     down the wheel melt away instead of being cut by the canvas bottom. */
+  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides,
+     intersected with a vertical band so tiles sinking down the wheel melt away
+     instead of being cut by the canvas bottom. The horizontal fade runs edge
+     to edge (0%/100%) so there is no dead band between the fade and the canvas
+     sides; the canvas buffer is integer-aligned (see
+     AgentGUIHeroAgentCarousel resize), so nothing hard-cuts at the edge. */
   mask-image:
-    linear-gradient(90deg, transparent 0%, #000 30%, #000 70%, transparent 88%),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      #000 20%,
+      #000 80%,
+      transparent 100%
+    ),
     linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
   mask-composite: intersect;
-  mask-size: calc(100% + 2px) calc(100% + 2px);
+  mask-size: 100% 100%;
   mask-position: center;
 }
 
