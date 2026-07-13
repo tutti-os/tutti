@@ -1252,6 +1252,10 @@ export const zhCN = {
     workspaceClosingBanner: "这个工作区正在关闭，连接即将断开。",
     workspaceClosingStatus: "工作区关闭中",
     workspaceAgentMessageExpand: "展开全部",
+    workspaceAgentMermaidRendering: "正在渲染图表…",
+    workspaceAgentMermaidDiagramLabel: "Mermaid 图表",
+    workspaceAgentMermaidRenderFailed:
+      "无法渲染此图表，已改为显示 Mermaid 源码。",
     workspaceAgentActivityStatusWorking: "运行中",
     workspaceAgentActivityStatusWaiting: "等待中",
     workspaceAgentActivityStatusIdle: "已完成",

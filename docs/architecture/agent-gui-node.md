@@ -2112,6 +2112,15 @@ that open workspace file nodes should validate explicit agent-command file
 targets before launching the files surface, so a speculative or stale agent
 path does not open a misleading workbench node.
 
+Rendered transcript diagrams follow the same explicit-contract rule. Only
+fenced `mermaid` code blocks are promoted to diagrams; ordinary code blocks and
+plain prose that happen to start with a Mermaid keyword remain text. Diagram
+rendering is lazy-loaded and starts only after response streaming completes so
+token updates do not repeatedly parse and lay out a graph. Mermaid runs with
+strict security, HTML labels disabled, and bounded text/edge limits. A loading
+or parse failure must preserve the original source instead of leaving a blank
+transcript row.
+
 Provider host-app-context prompts should mirror that contract: when agents
 reference code or workspace files in responses, instruct them to emit Markdown
 links with filename labels and absolute filesystem targets such as
