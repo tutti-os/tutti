@@ -141,6 +141,7 @@ func TestVisibleFailureCodeClassifiesTuttiInsufficientCredits(t *testing.T) {
 	for _, detail := range []string{
 		`unexpected status 402 Payment Required: pre-deduct credits failed, url: https://llm-api.tutti.sh/v1/responses`,
 		`unexpected status 402 Payment Required: {"error":{"message":"insufficient credits","type":"billing_error","code":"insufficient_credits"}}`,
+		`You've hit your usage limit. Insufficient credits. View Tutti plans at https://tutti.sh/profile/plan, or try again later.`,
 	} {
 		if got := visibleFailureCode(detail); got != "insufficient_credits" {
 			t.Fatalf("visibleFailureCode(%q) = %q, want insufficient_credits", detail, got)

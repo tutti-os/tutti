@@ -813,12 +813,16 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   generic provider failure.
 - Invariants:
   Preserve machine-readable billing codes across commerce, token usage, the LLM
-  gateway, and the agent runtime. Only an actual `INSUFFICIENT_CREDITS` decision
-  may become HTTP 402 / `insufficient_credits`; dependency failures remain 5xx.
-  Unexpected 4xx business responses are non-retryable unless explicitly known
-  to be transient (408, 425, or 429). Classify actionable account failures before
-  generic quota/provider buckets, and route account actions through the host
-  link-action boundary rather than opening URLs directly from transcript UI.
+  gateway, and the agent runtime. Commerce exposes depleted credits as
+  `ResourceExhausted/CREDITS_INSUFFICIENT`; token usage translates only that
+  decision to the OpenAI-compatible `429 usage_limit_reached` envelope with code
+  `insufficient_credits`, which legacy Tutti Agent releases already treat as
+  terminal. The gateway adds the Tutti plans promo header so the parsed terminal
+  error retains actionable account context. Dependency failures remain 5xx.
+  Classify actionable account failures before generic quota/provider buckets,
+  and route account actions through the host link-action boundary rather than
+  opening URLs directly from transcript UI.
 - Validation:
-  Cover the service error mapping, protocol retry predicate, daemon visible-error
-  classification, and the rendered plans-page action as separate boundary tests.
+  Cover the commerce RPC error mapping, token-usage envelope, gateway promo
+  header, daemon visible-error classification, and rendered plans-page action as
+  separate boundary tests.
