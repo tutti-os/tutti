@@ -353,13 +353,17 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   same symptom even though the user never selected a project.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
-  sessions should resolve as no-project before `cwd` is matched against parent
-  user-project paths. For imported sessions, inspect `runtimeContext` for the
-  daemon-owned `externalImportNoProject` marker. Claude data-export sessions
-  should also carry `externalImportResumeSupported: false`. Check both the in-memory
-  `rememberNoProjectPath` path and the restart fallback that recognizes
-  `Documents/tutti/session-<uuid>`. Codex external history can also record its
-  own scratch cwd under `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
+  sessions should carry `runtimeContext.noProject: true` in the daemon report
+  before `cwd` is matched against parent user-project paths. If the create
+  request contains that marker but the reported state does not, inspect
+  `runtime.Controller.State`: it must preserve the session launch context while
+  adding provider adapter state. For imported sessions, inspect `runtimeContext`
+  for the daemon-owned `externalImportNoProject` marker. Claude data-export
+  sessions should also carry `externalImportResumeSupported: false`. Check both
+  the in-memory `rememberNoProjectPath` path and the restart fallback that
+  recognizes `Documents/tutti/session-<uuid>`. Codex external history can also
+  record its own scratch cwd under
+  `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -371,8 +375,15 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   trap because provider transcripts may record `$HOME` or a provider-owned
   scratch working directory as the cwd when no project was selected; that intent
   must be persisted as session metadata rather than inferred later from
-  user-project prefix matching.
+  user-project prefix matching. A second loss point is runtime state projection:
+  rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
+  or replacing it wholesale with `StateAdapter` output, drops launch-scoped
+  markers such as `noProject` before durable rail classification runs.
 - Fix:
+  Build runtime state from a clone of the session launch `RuntimeContext`, overlay
+  canonical session fields, and merge provider `StateAdapter` context as a patch
+  instead of replacing the map. Provider values win on collisions, while
+  launch-only markers remain available to the durable classifier.
   Persist Agent GUI rail grouping in daemon-owned
   `workspace_agent_sessions.rail_section_*` fields from the shared
   `services/tuttid/data/workspace` classifier. Migration and session-state
@@ -384,10 +395,13 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
+  `cd packages/agent/daemon && go test ./runtime`,
   `cd services/tuttid && go test ./service/agent ./api -run 'ExternalImport|ParseCodex|ParseClaude'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
 - References:
+  [controller_state.go](../../../packages/agent/daemon/runtime/controller_state.go)
+  [controller_state_test.go](../../../packages/agent/daemon/runtime/controller_state_test.go)
   [external_import_parse.go](../../../services/tuttid/service/agent/external_import_parse.go)
   [external_import_projects.go](../../../services/tuttid/service/agent/external_import_projects.go)
   [agentGuiConversationModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)

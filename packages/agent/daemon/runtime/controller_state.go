@@ -103,13 +103,8 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 		SubmitAvailability: cloneRuntimeSubmitAvailability(session.SubmitAvailability),
 		PermissionModeID:   session.PermissionModeID,
 		Settings:           normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
-		RuntimeContext: map[string]any{
-			"cwd":              session.CWD,
-			"title":            session.Title,
-			"permissionModeId": session.PermissionModeID,
-			"visible":          session.Visible,
-		},
-		UpdatedAtUnixMS: session.UpdatedAtUnixMS,
+		RuntimeContext:     sessionRuntimeContextSnapshot(session),
+		UpdatedAtUnixMS:    session.UpdatedAtUnixMS,
 	}
 	if snapshot.Settings != nil {
 		snapshot.RuntimeContext["model"] = snapshot.Settings.Model
@@ -157,7 +152,7 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 			snapshot.AuthState = override.AuthState
 		}
 		if override.RuntimeContext != nil {
-			snapshot.RuntimeContext = override.RuntimeContext
+			snapshot.RuntimeContext = mergeRuntimeContextPatch(snapshot.RuntimeContext, override.RuntimeContext)
 		}
 		if override.PendingInteractive != nil {
 			snapshot.PendingInteractive = override.PendingInteractive
@@ -198,12 +193,19 @@ func (c *Controller) sessionStateSnapshot(session Session) SessionStateSnapshot 
 		),
 		PermissionModeID: session.PermissionModeID,
 		Settings:         normalizeOptionalSessionSettings(session.Settings, session.Provider, session.PermissionModeID),
-		RuntimeContext: map[string]any{
-			"cwd":              session.CWD,
-			"title":            session.Title,
-			"permissionModeId": session.PermissionModeID,
-			"visible":          session.Visible,
-		},
-		UpdatedAtUnixMS: session.UpdatedAtUnixMS,
+		RuntimeContext:   sessionRuntimeContextSnapshot(session),
+		UpdatedAtUnixMS:  session.UpdatedAtUnixMS,
 	}
+}
+
+func sessionRuntimeContextSnapshot(session Session) map[string]any {
+	runtimeContext := clonePayload(session.RuntimeContext)
+	if runtimeContext == nil {
+		runtimeContext = map[string]any{}
+	}
+	runtimeContext["cwd"] = session.CWD
+	runtimeContext["title"] = session.Title
+	runtimeContext["permissionModeId"] = session.PermissionModeID
+	runtimeContext["visible"] = session.Visible
+	return runtimeContext
 }
