@@ -51,7 +51,7 @@ export function createWorkspaceLaunchDesktopAdapters(
             dockPlacement: options.getDockPlacement(),
             locale: options.getLocale(),
             providerStatusSnapshot: input.providerStatusSnapshot,
-            providerTargets: input.providerTargets,
+            agents: input.agents,
             provider: input.provider,
             rendererUrl: options.rendererUrl,
             theme: options.getTheme(),

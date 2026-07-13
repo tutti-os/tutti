@@ -160,6 +160,22 @@ func TestAppServerUserInputIncludesSkillAndMentionItems(t *testing.T) {
 	}
 }
 
+func TestAppServerUserInputMapsImageDataAndURLSources(t *testing.T) {
+	t.Parallel()
+	signedURL := "https://bucket.example/image.webp?token=secret"
+	got := appServerUserInput([]PromptContentBlock{
+		{Type: "image", MimeType: "image/png", Data: "aGk="},
+		{Type: "image", MimeType: "image/webp", URL: signedURL},
+	})
+	want := []map[string]any{
+		{"type": "image", "url": "data:image/png;base64,aGk="},
+		{"type": "image", "url": signedURL},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appServerUserInput = %#v, want %#v", got, want)
+	}
+}
+
 func TestCodexAppServerAdapterRoutesLinkedChildThreadEvents(t *testing.T) {
 	t.Parallel()
 

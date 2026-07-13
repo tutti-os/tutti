@@ -97,6 +97,49 @@ temporary bridge for community apps whose catalog metadata has not caught up.
 
 Remote catalog entries must include `distribution.iconUrl`, `distribution.artifactUrl`, `distribution.artifactSha256`, and a manifest icon asset. The zip package must contain a complete app package with `tutti.app.json`, `bootstrap.sh`, `AGENTS.md`, and the manifest icon asset.
 
+`catalog.json` keeps `schemaVersion: "tutti.app.catalog.v1"` so old daemons
+continue to accept it. Its `apps[]` array is the legacy-safe projection: for
+each app it contains the highest active release whose `minTuttiVersion` is
+`0.0.0`. New daemons also read the additive compatibility frontier:
+
+```json
+{
+  "schemaVersion": "tutti.app.catalog.v1",
+  "apps": [{ "manifest": { "appId": "vibe-design", "version": "0.1.0" } }],
+  "compatibility": {
+    "apps": {
+      "vibe-design": [
+        {
+          "minTuttiVersion": "0.0.0",
+          "app": { "manifest": { "appId": "vibe-design", "version": "0.1.0" } }
+        },
+        {
+          "minTuttiVersion": "0.12.0",
+          "app": { "manifest": { "appId": "vibe-design", "version": "0.2.0" } }
+        }
+      ]
+    }
+  }
+}
+```
+
+The full compatibility entries contain the same manifest, localization, and
+remote distribution fields as `apps[]`; they are abbreviated above only for
+clarity. The frontier keeps only versions that can be selected for some Tutti
+version. The builder rejects catalog output above 1 MiB because legacy daemons
+enforce that response limit.
+
+Each app also owns `apps/<appId>/versions.json`. It retains the full active and
+withdrawn release history plus the explicit `minTuttiVersion` for each
+immutable release. `latest.json` remains the absolute latest published release
+and is not a compatibility input.
+
+Managed Desktop passes its version to `tuttid` through `TUTTI_APP_VERSION`.
+The daemon applies compatibility selection consistently to list, refresh,
+install, and update workflows. Missing or invalid host versions use `apps[]`.
+An installed app is updateable only when the selected catalog version is
+greater; catalog selection never automatically downgrades an app.
+
 When a package manifest declares `localizationInfo`, release tooling reads the
 referenced package-local manifest locale files and writes their `name`,
 `description`, and `tags` into the catalog entry `localizations` field. App
@@ -117,10 +160,11 @@ External app repositories should call `.github/workflows/publish-tutti-app-relea
 5. Runs `@tutti-os/app-release-tools`.
 6. Generates a zip, immutable `release.json`, and mutable `latest.json`.
 7. Refuses to overwrite an existing immutable release version.
-8. Uploads the release directory and `latest.json` to S3.
+8. Uploads the immutable release directory, then conditionally updates
+   `versions.json` and `latest.json`.
 9. Creates the release tag when `create_release_tag` is enabled.
-10. Optionally merges the app into `catalog.json` when `publish_catalog` is
-    enabled.
+10. Optionally rebuilds that app from `versions.json` and conditionally merges
+    it into `catalog.json` when `publish_catalog` is enabled.
 
 Production app releases are manually dispatched from GitHub Actions with a
 `release_bump` value of `patch`, `minor`, or `major`. The reusable workflow
@@ -129,6 +173,11 @@ fetches existing tags with the configured `release_tag_prefix` (default
 semver version from the greater of those sources, publishes the S3 release,
 verifies the artifact, then creates an annotated release tag such as
 `vibe-design-v1.2.4`. The workflow never edits or commits the source manifest.
+
+Every normal release must pass an explicit `min_tutti_version`. Use `0.0.0`
+only when the release is safe for every legacy Tutti client. Missing
+compatibility metadata fails before package upload; there is no permissive
+default.
 
 Staging app releases do not create release tags. When `release_bump` is empty,
 the reusable workflow publishes `manifest.version+<short git sha>` from the
@@ -140,15 +189,16 @@ should publish the staging catalog by default so App Center sees the merged app
 without a second manual dispatch. Manual staging dispatch remains useful for
 catalog repair, reruns, and targeted validation.
 
-When `publish_catalog` is enabled, releases targeting the same S3 bucket and
-prefix are serialized so concurrent app releases cannot overwrite each other's
-catalog merge. The release workflow reads the existing catalog from the same S3
-prefix when it exists, merges the newly published app `latest.json`, verifies
-the merged catalog artifact metadata, uploads `catalog.json`, and optionally
-invalidates the catalog path when `catalog_cloudfront_distribution_id` is set.
-The release upload role must be allowed to read and write that `catalog.json`
-object, and must have CloudFront invalidation permissions when invalidation is
-enabled.
+GitHub Actions concurrency groups are repository-scoped and cannot serialize
+catalog writes from different app repositories. Mutable `versions.json`,
+`latest.json`, and `catalog.json` writes therefore use S3 ETag preconditions and
+retry after `412 Precondition Failed`. The release workflow reads the existing
+catalog from the same S3 prefix, rebuilds the selected app from `versions.json`,
+and optionally invalidates the catalog path when
+`catalog_cloudfront_distribution_id` is set.
+The release upload role must be allowed to read and write the app's
+`versions.json`, `latest.json`, and the shared `catalog.json` object, and must
+have CloudFront invalidation permissions when invalidation is enabled.
 
 Caller workflows usually pass `catalog_cloudfront_distribution_id` from
 `TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID` or the shared
@@ -161,26 +211,29 @@ cache TTL.
 
 The release workflow also supports `catalog_only: true` for catalog repair and
 refresh operations. In catalog-only mode it skips package build, version bump,
-release metadata generation, and immutable artifact upload, then merges the
-existing `apps/<appId>/latest.json` from the target S3 prefix into
-`catalog.json`. App repositories may expose this as a manual input; the Tutti
+release metadata generation, and immutable artifact upload, then rebuilds the
+app from `apps/<appId>/versions.json` and merges it into `catalog.json`. App
+repositories may expose this as a manual input; the Tutti
 catalog workflows provide the same repair path when a caller workflow does not
 expose catalog-only dispatch.
 
 Retrying a release version is allowed only when the existing immutable
-`release.json` matches the newly generated release metadata. In that case the
-workflow repairs mutable state such as `latest.json`, catalog metadata, and
-CloudFront invalidation without re-uploading immutable artifacts.
+`release.json` matches the newly generated release metadata. Release archives
+normalize entry order, timestamps, and optional zip metadata so rebuilding the
+same package produces the same artifact SHA-256. In that case the workflow
+repairs mutable state such as `latest.json`, catalog metadata, and CloudFront
+invalidation without re-uploading immutable artifacts.
 
 Each app uploads under:
 
 ```text
 apps/<appId>/<version>/
 apps/<appId>/latest.json
+apps/<appId>/versions.json
 ```
 
 The Tutti repository owns `.github/workflows/publish-tutti-app-catalog.yml`.
-That workflow reads selected `apps/<appId>/latest.json` files from S3 and
+That workflow reads selected `apps/<appId>/versions.json` files from S3 and
 publishes one shared `catalog.json`. It defaults to merge mode, which preserves
 existing catalog apps and updates only selected app ids. Replace mode publishes
 only the selected app ids and should be used only for deliberate full catalog
@@ -200,21 +253,23 @@ There are three normal publishing modes:
 
 Catalog merges are explicit. App repository release workflows are scoped to the
 current `app_id`: `publish_catalog: true` and `catalog_only: true` merge only
-that app's `apps/<appId>/latest.json` into `catalog.json`. If app A published a
+that app's `apps/<appId>/versions.json` into `catalog.json`. If app A published a
 release without catalog publication, app B's later release with
 `publish_catalog: true` preserves the existing catalog and updates B only; it
 does not discover and add A. To add or refresh multiple apps at once, use the
 Tutti catalog workflow with every desired app listed in `app_ids`, or run each
 app's catalog-only dispatch separately. No catalog path scans S3 for all
-published `apps/*/latest.json`.
+published app indexes.
 
 Production and staging release metadata must stay on separate S3 prefixes:
 
 ```text
 tutti-app-releases/apps/<appId>/latest.json
+tutti-app-releases/apps/<appId>/versions.json
 tutti-app-releases/catalog.json
 
 tutti-app-releases-staging/apps/<appId>/latest.json
+tutti-app-releases-staging/apps/<appId>/versions.json
 tutti-app-releases-staging/catalog.json
 ```
 

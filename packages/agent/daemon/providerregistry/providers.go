@@ -68,7 +68,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			Capabilities: []string{CapabilityImageInput, CapabilitySkills, CapabilityCompact, CapabilityTokenUsage, CapabilityRateLimits, CapabilityPlanMode, CapabilityInterrupt}, PermissionConfigurable: true, DefaultPermissionModeID: "auto",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model", Reasoning: "reasoning_effort", Speed: "service_tier", Permission: "mode"},
 		},
-		Target:  TargetDescriptor{ID: TuttiAgentTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: true, SortOrder: 40},
+		Target:  TargetDescriptor{ID: TuttiAgentTargetID, LaunchRefType: TargetLaunchRefTypeLocalCLI, Enabled: false, SortOrder: 40},
 		Events:  EventsDescriptor{Enabled: true, Aliases: []string{"tutti_agent"}, TurnLifecycleProjection: TurnLifecycleProjectionExplicit},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentLocalIPC},
 		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, InstallBootstrap: true, RefreshOnAccountChange: true},
@@ -78,7 +78,7 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 func nexightDescriptor() ProviderDescriptor {
 	descriptor := unsupportedACPDescriptor(NexightProviderID, NexightTargetID, "Nexight", "tutti", "agentHost.agentGui.conversationFilterNexight", []string{"tutti"}, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "nexight-acp", Command: []string{"nexight-acp"}, AuthRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
-		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyNexight, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "read-only"}, {InputID: "auto", RuntimeID: "auto"}, {InputID: "full-access", RuntimeID: "full-access"}}, DeriveImageInputFromPrompt: true, DeriveCompactFromCommands: true},
+		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyNexight, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "read-only"}, {InputID: "auto", RuntimeID: "auto"}, {InputID: "full-access", RuntimeID: "full-access"}}, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"nexight"}, AdapterBinaryNames: []string{"nexight-acp"}, AuthMarkerPaths: []string{"~/.nexight/auth.json", "~/.tutti/nexight/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
 		Capabilities: []string{CapabilityInterrupt}, PermissionConfigurable: true, DefaultPermissionModeID: "auto", PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}},
 	}, 60)
@@ -89,7 +89,7 @@ func nexightDescriptor() ProviderDescriptor {
 func hermesDescriptor() ProviderDescriptor {
 	descriptor := unsupportedACPDescriptor(HermesProviderID, HermesTargetID, "Hermes Agent", "hermes", "agentHost.agentGui.conversationFilterHermes", []string{"hermes-agent", "hermes agent"}, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "hermes-acp", Command: []string{"hermes", "acp"}, AuthRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
-		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyGeneric, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "yolo"}}, DefaultPermissionModeRuntimeID: "yolo", StartupDiagnostics: true, DeriveImageInputFromPrompt: true, DeriveCompactFromCommands: true},
+		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyGeneric, PermissionModes: []RuntimePermissionModeDescriptor{{InputID: "yolo", RuntimeID: "yolo"}}, DefaultPermissionModeRuntimeID: "yolo", StartupDiagnostics: true, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{Kind: StatusKindGenericCLI, BinaryNames: []string{"hermes"}, AuthMarkerPaths: []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"}, LoginArgs: []string{"login"}}, ComposerProfileDescriptor{
 		Capabilities: []string{CapabilityInterrupt}, DefaultPermissionModeID: "yolo", PermissionModes: []PermissionModeDescriptor{{ID: "yolo", Semantic: "unconfigurable"}},
 	}, 70)
@@ -104,7 +104,7 @@ func hermesDescriptor() ProviderDescriptor {
 func openClawDescriptor() ProviderDescriptor {
 	descriptor := unsupportedACPDescriptor(OpenClawProviderID, OpenClawTargetID, "OpenClaw", "openclaw", "agentHost.agentGui.conversationFilterOpenClaw", []string{"open-claw"}, RuntimeDescriptor{
 		Kind: RuntimeKindStandardACP, Name: "openclaw-acp", Command: []string{"openclaw", "acp", "-v"}, AuthRequiredMessage: "OpenClaw ACP requires authentication in the runtime VM; ensure OpenClaw host credentials are synced before starting Agent GUI",
-		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyOpenClaw, DeriveImageInputFromPrompt: true, DeriveCompactFromCommands: true},
+		StandardACP: StandardACPRuntimeDescriptor{AdapterStrategy: StandardACPAdapterStrategyOpenClaw, DeriveImageInputFromPrompt: true, DeriveCapabilitiesFromCommands: []string{CapabilityCompact}},
 	}, StatusDescriptor{
 		Kind: StatusKindGenericCLI, BinaryNames: []string{"openclaw"}, AuthMarkerPaths: []string{"~/.openclaw/auth.json", "~/.config/openclaw/auth.json"}, LoginArgs: []string{"login"},
 		Install: InstallerDescriptor{Kind: InstallerKindShellCommand, DisplayCommand: "npm install -g openclaw", ShellCommand: "npm install -g openclaw"},

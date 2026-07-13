@@ -135,6 +135,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListAgentTargets(w, r)
 	})
 
+	mux.HandleFunc("/v1/agent-targets/{agentTargetID}/enabled", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SetSystemAgentTargetEnabled(w, r)
+	})
+
 	mux.HandleFunc("/v1/user-projects", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -371,11 +379,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodGet:
+			wrapper.ListWorkspaceAgentSessionSections(w, r)
+		case http.MethodDelete:
+			wrapper.DeleteWorkspaceAgentSessionSection(w, r)
+		default:
 			tuttitypes.WriteMethodNotAllowed(w)
-			return
 		}
-		wrapper.ListWorkspaceAgentSessionSections(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/page", func(w http.ResponseWriter, r *http.Request) {
@@ -384,6 +395,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 			return
 		}
 		wrapper.ListWorkspaceAgentSessionSectionPage(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/count", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CountWorkspaceAgentSessionSection(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page", func(w http.ResponseWriter, r *http.Request) {

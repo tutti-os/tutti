@@ -333,8 +333,18 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		t.Fatalf("app factory skill missing manifest reference: %#v", appFactorySkill.Files)
 	}
 	runtimeEnvReference := appFactorySkill.Files["references/runtime-env.md"]
-	if !strings.Contains(runtimeEnvReference, "@tutti-os/agent-acp-kit` detection") {
-		t.Fatalf("runtime env reference should route agent provider choices through app-owned agent-acp-kit detection:\n%s", runtimeEnvReference)
+	if !strings.Contains(runtimeEnvReference, "@tutti-os/agent-acp-kit/tutti") {
+		t.Fatalf("runtime env reference should route Agent provider choices through the kit facade:\n%s", runtimeEnvReference)
+	}
+	for _, want := range []string{
+		"TUTTI_API_BASE_URL",
+		"TUTTI_APP_SERVER_TOKEN",
+		"TUTTI_WORKSPACE_ID",
+		"Never send it to browser code",
+	} {
+		if !strings.Contains(runtimeEnvReference, want) {
+			t.Fatalf("runtime env reference missing %q:\n%s", want, runtimeEnvReference)
+		}
 	}
 	tuttiCLIReference := appFactorySkill.Files["references/tutti-cli-commands.md"]
 	if !strings.Contains(tuttiCLIReference, "@tutti-os/agent-acp-kit") {
@@ -354,14 +364,83 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	if !ok {
 		t.Fatalf("agent workspace app skill missing agent-acp-kit reference: %#v", agentWorkspaceAppSkill.Files)
 	}
+	dynamicProviderReference, ok := agentWorkspaceAppSkill.Files["references/dynamic-agent-providers.md"]
+	if !ok {
+		t.Fatalf("agent workspace app skill missing dynamic-agent-providers reference: %#v", agentWorkspaceAppSkill.Files)
+	}
 	for _, want := range []string{
-		"Do not hand-roll provider detection",
-		"Claude Code and Codex",
-		"localAgentRuntime.detect",
+		"kit owns provider plugins",
+		"dynamic-agent-providers.md",
+		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentComposerOptions",
+		"loadTuttiAgentSkillContext",
+		"Do not pass a mode",
+		"await createManagedAgentRunContextFromHeaders",
+		"browserUse",
+		"computerUse",
+		"do **not** install a tool",
+		"Omit the fields when the capability is unavailable",
 	} {
 		if !strings.Contains(agentACPReference, want) {
 			t.Fatalf("agent-acp-kit reference missing %q:\n%s", want, agentACPReference)
 		}
+	}
+	for _, forbidden := range []string{
+		"toKitAgentProviderId",
+		"toDaemonAgentProviderId",
+		"getManagedAgentInvocationCredentialFromHeaders",
+		"isManagedAgentInvocationProviderId",
+		"managedCredential &&",
+		"agent-providers/status",
+		"TUTTI_APP_SERVER_TOKEN",
+		"appPolicyAllowsBrowser",
+		"appPolicyAllowsComputer",
+	} {
+		if strings.Contains(agentACPReference, forbidden) {
+			t.Fatalf("agent-acp-kit reference contains obsolete guidance %q:\n%s", forbidden, agentACPReference)
+		}
+	}
+	for _, want := range []string{
+		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentComposerOptions",
+		"source: \"standalone\"",
+		"TuttiIntegrationError",
+		"availability.reasonCode",
+		"kit_runtime_unavailable",
+		"@tutti-os/agent-acp-kit/tutti/contracts",
+		"claude` to `claude-code",
+		"`tutti-agent` is the canonical Tutti Agent provider ID",
+		"stale `nexight` state is rejected",
+	} {
+		if !strings.Contains(dynamicProviderReference, want) {
+			t.Fatalf("dynamic provider reference missing %q:\n%s", want, dynamicProviderReference)
+		}
+	}
+	for _, forbidden := range []string{
+		"TuttiAppAgentCatalogClient",
+		"toKitAgentProviderId",
+		"toDaemonAgentProviderId",
+		"agent-providers/status",
+		"TUTTI_APP_SERVER_TOKEN",
+		"nexight: \"tutti-agent\"",
+		"`nexight` and `tutti-agent` remain distinct",
+	} {
+		if strings.Contains(dynamicProviderReference, forbidden) {
+			t.Fatalf("dynamic provider reference contains obsolete guidance %q:\n%s", forbidden, dynamicProviderReference)
+		}
+	}
+	releaseReference := agentWorkspaceAppSkill.Files["references/github-actions-release.md"]
+	for _, want := range []string{
+		`min_tutti_version: "0.1.19"`,
+		"without publishing a new release",
+		"When `min_tutti_version` is greater than `0.0.0`",
+	} {
+		if !strings.Contains(releaseReference, want) {
+			t.Fatalf("release reference missing %q:\n%s", want, releaseReference)
+		}
+	}
+	if strings.Contains(releaseReference, "existing latest release") {
+		t.Fatalf("release reference should not describe catalog-only as publishing latest:\n%s", releaseReference)
 	}
 	if strings.Contains(agentACPReference, `command: "pnpm"`) {
 		t.Fatalf("agent-acp-kit reference should not use bare pnpm in packaged MCP examples:\n%s", agentACPReference)
@@ -483,7 +562,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"Default new apps to a Node server",
 		"@tutti-os/agent-acp-kit",
 		"TUTTI_CLI agent/codex/session polling",
-		"Claude Code and Codex provider options",
+		"Tutti workspace-app scoped agent APIs",
+		"dynamic-agent-providers.md",
 	} {
 		if !strings.Contains(constraints, want) {
 			t.Fatalf("context constraints missing %q: %#v", want, mentionContext.Constraints)

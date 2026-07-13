@@ -1797,23 +1797,26 @@ function CheckboxStoryboard() {
 function StorySwitch({
   checked,
   disabled = false,
+  loading = false,
   label,
   onCheckedChange
 }: {
   checked: boolean;
   disabled?: boolean;
+  loading?: boolean;
   label: string;
   onCheckedChange?: (checked: boolean) => void;
 }) {
   return (
     <label
       className={`inline-flex items-center gap-3 text-left text-[13px] font-normal text-[rgb(0,0,0)] ${
-        disabled ? "cursor-not-allowed opacity-50" : ""
+        disabled || loading ? "cursor-not-allowed opacity-50" : ""
       }`}
     >
       <Switch
         checked={checked}
         disabled={disabled}
+        loading={loading}
         onCheckedChange={onCheckedChange}
       />
       <span>{label}</span>
@@ -1836,6 +1839,7 @@ function SwitchStoryboard() {
           <div className="grid gap-3">
             <StorySwitch checked label="Checked" />
             <StorySwitch checked={false} label="Unchecked" />
+            <StorySwitch checked loading label="Loading" />
             <StorySwitch checked disabled label="Disabled checked" />
             <StorySwitch checked={false} disabled label="Disabled unchecked" />
           </div>
@@ -3425,16 +3429,16 @@ function SonnerStoryboard() {
         >
           <div className="flex min-h-[128px] items-start justify-end p-4">
             <div
-              className="grid w-[min(360px,100%)] gap-1.5 rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] px-3.5 py-3 text-left text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]"
+              className="grid w-[min(360px,100%)] gap-1.5 rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] p-3 text-left text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]"
               role="status"
             >
               <div className="flex min-w-0 items-start gap-2">
                 <WarningLinedIcon className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="m-0 text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+                  <p className="m-0 text-[13px] font-medium leading-5 text-[var(--text-primary)]">
                     Agent needs your decision
                   </p>
-                  <p className="m-0 mt-0.5 text-[11px] leading-5 text-[var(--text-secondary)]">
+                  <p className="m-0 mt-0.5 text-[11px] leading-[1.3] text-[var(--text-secondary)]">
                     Review the waiting session in Agent messages.
                   </p>
                 </div>
@@ -3545,7 +3549,7 @@ export function App() {
 
   return (
     <div
-      className="min-h-screen bg-[var(--storyboard-canvas)] font-[var(--font-ui)] text-[var(--storyboard-ink)] transition-colors duration-200"
+      className="min-h-screen bg-[var(--background-1)] font-[var(--font-ui)] text-[var(--storyboard-ink)] transition-colors duration-200"
       data-storyboard-language={language}
       data-storyboard-theme={themeMode}
       style={themeVars}

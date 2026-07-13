@@ -2,7 +2,7 @@ import type { TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type { AgentUsageQuota } from "../../shared/contracts/dto";
 import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
-import type { AgentGUIProviderTarget } from "../../types";
+import type { AgentGUIAgentTarget } from "../../types";
 import type { AgentComposerSlashStatusLimit } from "./AgentComposer";
 import type { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
 
@@ -203,13 +203,13 @@ export function resolveAgentGUIRailStatusProvider(input: {
   conversationFilter: ReturnType<
     typeof useAgentGUINodeController
   >["viewModel"]["rail"]["conversationFilter"];
-  providerTargets: readonly AgentGUIProviderTarget[];
+  agentTargets: readonly AgentGUIAgentTarget[];
 }): AgentProvider | null {
   const filter = input.conversationFilter;
   if (filter.kind !== "agentTarget") {
     return null;
   }
-  const target = input.providerTargets.find(
+  const target = input.agentTargets.find(
     (candidate) =>
       candidate.disabled !== true &&
       (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId

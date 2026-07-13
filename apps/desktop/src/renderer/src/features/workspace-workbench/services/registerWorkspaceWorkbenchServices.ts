@@ -20,8 +20,10 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
+import { WorkbenchHostCoordinator } from "./internal/workbenchHostCoordinator.ts";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
+import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
@@ -48,6 +50,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
   wallpaperApi: DesktopWallpaperApi;
+  onAgentTargetsChanged?: () => void | Promise<void>;
 }
 
 export function registerWorkspaceWorkbenchServices(
@@ -62,6 +65,10 @@ export function registerWorkspaceWorkbenchServices(
         tuttidClient: input.tuttidClient
       }
     ])
+  );
+  registry.register(
+    IWorkbenchHostCoordinator,
+    new SyncDescriptor(WorkbenchHostCoordinator)
   );
   registry.register(
     IWorkspaceWorkbenchHostService,
@@ -93,8 +100,10 @@ export function registerWorkspaceWorkbenchServices(
         client: createDesktopWorkspaceSettingsClient({
           computerUseApi: input.computerUseApi,
           developerApi: input.developerApi,
-          runtimeApi: input.runtimeApi
-        })
+          runtimeApi: input.runtimeApi,
+          tuttidClient: input.tuttidClient
+        }),
+        onAgentTargetsChanged: input.onAgentTargetsChanged
       }
     ])
   );

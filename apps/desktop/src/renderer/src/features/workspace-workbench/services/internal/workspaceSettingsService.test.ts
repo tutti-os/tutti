@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import type { DesktopThemeState } from "@shared/theme";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { DesktopPreferencesReadableStoreState } from "../../../desktop-preferences/services/desktopPreferencesTypes.ts";
@@ -43,6 +44,193 @@ test("WorkspaceSettingsService hides the developer panel by default", () => {
   });
 
   assert.equal(service.store.developerPanelVisible, false);
+});
+
+test("WorkspaceSettingsService reads Tutti Agent visibility from the daemon target", async () => {
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => [createTuttiAgentTarget(true)]
+    })
+  });
+
+  await waitForAsyncInitialization();
+
+  assert.equal(service.store.tuttiAgentSwitchEnabled, true);
+});
+
+test("WorkspaceSettingsService persists Tutti Agent visibility before updating UI", async () => {
+  let persisted: boolean | null = null;
+  let refreshes = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => [createTuttiAgentTarget(true)],
+      setSystemAgentTargetEnabled: async (_agentTargetID, enabled) => {
+        persisted = enabled;
+        return createTuttiAgentTarget(enabled);
+      }
+    }),
+    onAgentTargetsChanged: async () => {
+      refreshes += 1;
+    }
+  });
+  await waitForAsyncInitialization();
+
+  await service.setTuttiAgentSwitchEnabled(false);
+
+  assert.equal(persisted, false);
+  assert.equal(service.store.tuttiAgentSwitchEnabled, false);
+  assert.equal(refreshes, 1);
+});
+
+test("WorkspaceSettingsService migrates a legacy switch value into the daemon once", async () => {
+  const writes: boolean[] = [];
+  let markedComplete = false;
+  let refreshes = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => [createTuttiAgentTarget(true)],
+      setSystemAgentTargetEnabled: async (_agentTargetID, enabled) => {
+        writes.push(enabled);
+        return createTuttiAgentTarget(enabled);
+      }
+    }),
+    onAgentTargetsChanged: async () => {
+      refreshes += 1;
+    },
+    tuttiAgentSwitchMigration: {
+      clearComplete: () => {},
+      hasMigrated: () => false,
+      markComplete: () => {
+        markedComplete = true;
+        return true;
+      },
+      readLegacyEnabled: () => ({ enabled: false, status: "value" })
+    }
+  });
+
+  await waitForAsyncInitialization();
+
+  assert.deepEqual(writes, [false]);
+  assert.equal(markedComplete, true);
+  assert.equal(refreshes, 1);
+  assert.equal(service.store.tuttiAgentSwitchEnabled, false);
+});
+
+test("WorkspaceSettingsService serializes startup initialization before a user toggle", async () => {
+  const initialTargets = createDeferred<AgentTarget[]>();
+  const writes: boolean[] = [];
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: () => initialTargets.promise,
+      setSystemAgentTargetEnabled: async (_agentTargetID, enabled) => {
+        writes.push(enabled);
+        return createTuttiAgentTarget(enabled);
+      }
+    }),
+    tuttiAgentSwitchMigration: {
+      clearComplete: () => {},
+      hasMigrated: () => true,
+      markComplete: () => true,
+      readLegacyEnabled: () => ({ status: "missing" })
+    }
+  });
+
+  const toggle = service.setTuttiAgentSwitchEnabled(false);
+  initialTargets.resolve([createTuttiAgentTarget(true)]);
+  await toggle;
+
+  assert.deepEqual(writes, [false]);
+  assert.equal(service.store.tuttiAgentSwitchEnabled, false);
+});
+
+test("WorkspaceSettingsService retries failed daemon initialization when settings opens", async () => {
+  let attempts = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("daemon starting");
+        }
+        return [createTuttiAgentTarget(true)];
+      }
+    })
+  });
+  await waitForAsyncInitialization();
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.tuttiAgentSwitchEnabled);
+
+  assert.equal(attempts, 2);
+});
+
+test("WorkspaceSettingsService leaves migration pending after a legacy read error", async () => {
+  let markedComplete = false;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => [createTuttiAgentTarget(true)]
+    }),
+    tuttiAgentSwitchMigration: {
+      clearComplete: () => {},
+      hasMigrated: () => false,
+      markComplete: () => {
+        markedComplete = true;
+        return true;
+      },
+      readLegacyEnabled: () => ({ status: "error" })
+    }
+  });
+
+  await waitForAsyncInitialization();
+
+  assert.equal(markedComplete, false);
+  assert.equal(service.store.tuttiAgentSwitchEnabled, false);
+});
+
+test("WorkspaceSettingsService does not apply legacy state when the migration marker cannot persist", async () => {
+  const writes: boolean[] = [];
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      listAgentTargets: async () => [createTuttiAgentTarget(true)],
+      setSystemAgentTargetEnabled: async (_agentTargetID, enabled) => {
+        writes.push(enabled);
+        return createTuttiAgentTarget(enabled);
+      }
+    }),
+    tuttiAgentSwitchMigration: {
+      clearComplete: () => {},
+      hasMigrated: () => false,
+      markComplete: () => false,
+      readLegacyEnabled: () => ({ enabled: false, status: "value" })
+    }
+  });
+
+  await waitForAsyncInitialization();
+
+  assert.deepEqual(writes, []);
+  assert.equal(service.store.tuttiAgentSwitchEnabled, false);
+});
+
+test("WorkspaceSettingsService keeps daemon state when visibility update fails", async () => {
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        listAgentTargets: async () => [createTuttiAgentTarget(true)],
+        setSystemAgentTargetEnabled: async () => {
+          throw new Error("daemon unavailable");
+        }
+      })
+    },
+    createDesktopPreferencesService({ state: createPreferencesState({}) }),
+    notifications.service
+  );
+  await waitForAsyncInitialization();
+
+  await service.setTuttiAgentSwitchEnabled(false);
+
+  assert.equal(service.store.tuttiAgentSwitchEnabled, true);
+  assert.equal(notifications.items.length, 1);
 });
 
 test("WorkspaceSettingsService reveals the developer panel", () => {
@@ -1041,6 +1229,10 @@ function createWorkspaceSettingsClient(
         reason: "not-installed"
       }
     }),
+    listAgentTargets: async () => [],
+    setSystemAgentTargetEnabled: async () => {
+      throw new Error("not used");
+    },
     clearLogs: async () => ({
       clearedFiles: 0,
       clearedPaths: [],
@@ -1077,6 +1269,36 @@ function createWorkspaceSettingsClient(
     testManagedModelProvider: async () => {},
     ...overrides
   };
+}
+
+function createTuttiAgentTarget(enabled: boolean): AgentTarget {
+  return {
+    createdAtUnixMs: 1,
+    enabled,
+    iconKey: "tutti-agent",
+    id: "local:tutti-agent",
+    launchRef: { provider: "tutti-agent", type: "local_cli" },
+    name: "Tutti Agent",
+    provider: "tutti-agent",
+    sortOrder: 30,
+    source: "system",
+    updatedAtUnixMs: 1
+  };
+}
+
+async function waitForAsyncInitialization(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function createDesktopPreferencesService(input: {

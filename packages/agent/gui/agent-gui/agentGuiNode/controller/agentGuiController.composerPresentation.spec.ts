@@ -14,8 +14,6 @@ describe("composer target presentation", () => {
   const selectedTarget = {
     agentTargetId: "local:codex",
     provider: "codex" as const,
-    providerTargetId: null,
-    providerTargetRef: null,
     targetId: "local:codex",
     data: {
       provider: "codex" as const,

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
 type PermissionModeSemantic string
@@ -156,7 +156,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		modelOptions = []ComposerConfigOptionValue{}
 	}
 	runtimeContext := map[string]any{
-		"capabilities":     composerProviderCapabilities(provider),
+		"capabilities":     composerProviderCapabilities(provider, s.computerUseAvailable()),
 		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions),
 		"model":            nullableString(effectiveSettings.Model),
 		"permissionModeId": nullableString(effectiveSettings.PermissionModeID),
@@ -216,7 +216,7 @@ func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {
 // render the composer before a session exists. Once a session is live the
 // adapter-reported runtimeContext.capabilities takes precedence (GUI-side
 // resolution). Keys mirror packages/agent/daemon/runtime/capabilities.go.
-func composerProviderCapabilities(provider string) []string {
+func composerProviderCapabilities(provider string, computerUseAvailable bool) []string {
 	if !composerProfileKnown(provider) {
 		return nil
 	}
@@ -225,16 +225,23 @@ func composerProviderCapabilities(provider string) []string {
 	// Browser use is delivered as a default MCP server to every provider, so the
 	// composer advertises it up front when enabled. Live sessions re-report it
 	// from session env (runtime adapters), which takes precedence in the GUI.
-	if agentsidecarservice.BrowserUseDefaultEnabled() {
+	if runtimeprep.BrowserUseDefaultEnabled() {
 		capabilities = append(capabilities, "browserUse")
 	}
 	// Computer use requires a local cua-driver before the composer advertises it
 	// up front. Live sessions re-report it from session env (runtime adapters),
 	// which takes precedence in the GUI.
-	if agentsidecarservice.ComputerUseAvailable() {
+	if computerUseAvailable && runtimeprep.ComputerUseDefaultEnabled() {
 		capabilities = append(capabilities, "computerUse")
 	}
 	return capabilities
+}
+
+func (s *Service) computerUseAvailable() bool {
+	if s == nil || s.ComputerUseAvailable == nil {
+		return false
+	}
+	return s.ComputerUseAvailable()
 }
 
 func resolveComposerEffectiveSettings(
@@ -478,7 +485,16 @@ func composerProviderSupportsComputerUse(provider string) bool {
 }
 
 func composerProviderSupportsCapability(provider string, capability string) bool {
-	for _, advertised := range composerProviderCapabilities(provider) {
+	if !composerProfileKnown(provider) {
+		return false
+	}
+	if capability == "browserUse" {
+		return runtimeprep.BrowserUseDefaultEnabled()
+	}
+	if capability == "computerUse" {
+		return runtimeprep.ComputerUseDefaultEnabled()
+	}
+	for _, advertised := range composerProfileFor(provider).Capabilities {
 		if advertised == capability {
 			return true
 		}
@@ -562,36 +578,6 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 		CurrentValue: selected,
 		DefaultValue: selected,
 		Options:      values,
-	}
-}
-
-func composerReasoningConfig(provider string, selected string, locale string) ComposerConfigOption {
-	values := reasoningEffortValuesForProvider(provider)
-	options := make([]ComposerConfigOptionValue, 0, len(values)+1)
-	containsSelected := false
-	for _, value := range values {
-		if value == selected {
-			containsSelected = true
-		}
-		options = append(options, ComposerConfigOptionValue{
-			ID:    value,
-			Label: reasoningEffortLabel(value, locale),
-			Value: value,
-		})
-	}
-	selected = normalizeReasoningEffortForProvider(provider, selected)
-	if selected != "" && !containsSelected {
-		options = append(options, ComposerConfigOptionValue{
-			ID:    selected,
-			Label: reasoningEffortLabel(selected, locale),
-			Value: selected,
-		})
-	}
-	return ComposerConfigOption{
-		Configurable: composerProfileFor(provider).ReasoningEffort,
-		CurrentValue: selected,
-		DefaultValue: selected,
-		Options:      options,
 	}
 }
 
@@ -732,49 +718,4 @@ func composerSpeedConfig(provider string, selected string, locale string) Compos
 		DefaultValue: selected,
 		Options:      options,
 	}
-}
-
-func reasoningEffortOptions(provider string, selected string) []map[string]string {
-	values := reasoningEffortValuesForProvider(provider)
-	options := make([]map[string]string, 0, len(values)+1)
-	containsSelected := false
-	for _, value := range values {
-		if value == selected {
-			containsSelected = true
-		}
-		options = append(options, map[string]string{
-			"name":  reasoningEffortLabel(value, preferencesbiz.DefaultDesktopLocale),
-			"value": value,
-		})
-	}
-	selected = normalizeReasoningEffortForProvider(provider, selected)
-	if selected != "" && !containsSelected {
-		options = append(options, map[string]string{
-			"name":  reasoningEffortLabel(selected, preferencesbiz.DefaultDesktopLocale),
-			"value": selected,
-		})
-	}
-	return options
-}
-
-func reasoningEffortValuesForProvider(provider string) []string {
-	profile := composerProfileFor(provider)
-	return append([]string(nil), profile.ReasoningEffortValues...)
-}
-
-func normalizeReasoningEffortForProvider(provider string, value string) string {
-	provider = agentprovider.Normalize(provider)
-	if !composerProfileFor(provider).ReasoningEffort {
-		return ""
-	}
-	normalized := strings.TrimSpace(value)
-	if normalized == "minimal" || normalized == "none" {
-		for _, candidate := range reasoningEffortValuesForProvider(provider) {
-			if candidate == normalized {
-				return normalized
-			}
-		}
-		return composerDefaultReasoningEffort(provider)
-	}
-	return normalized
 }

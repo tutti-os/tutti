@@ -158,14 +158,21 @@ func (a *CodexAppServerAdapter) requestActiveTurnCancel(agentSessionID string) (
 	return "", true
 }
 
-func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, turnID string) bool {
+func (a *CodexAppServerAdapter) setSessionActiveTurnID(
+	agentSessionID string,
+	expectedTurn *codexAppServerActiveTurn,
+	turnID string,
+) bool {
 	if a == nil {
 		return false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession != nil {
+	// A fast terminal notification can settle and clear this turn before the
+	// turn/start RPC result reaches its caller. Do not let that stale result
+	// rebind the provider id after the slot is already empty or reused.
+	if appSession != nil && appSession.activeTurn == expectedTurn {
 		appSession.activeTurnID = strings.TrimSpace(turnID)
 		// The binding starts unconfirmed; a matching turn/started notification
 		// confirms it via confirmSessionActiveTurnStarted.

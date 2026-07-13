@@ -286,7 +286,7 @@ export function useAgentGUIConversationRail({
               conversationFilter,
               provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
               snapshot: {
-                composerOptionsByProvider: {},
+                composerOptionsByTargetKey: {},
                 presences: [],
                 sessionMessagesById: {},
                 sessions: page.sessions,
@@ -371,7 +371,7 @@ export function useAgentGUIConversationRail({
             conversationFilter,
             provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
             snapshot: {
-              composerOptionsByProvider: {},
+              composerOptionsByTargetKey: {},
               presences: [],
               sessionMessagesById: {},
               sessions: pageSection.sessions,

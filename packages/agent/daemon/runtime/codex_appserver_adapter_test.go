@@ -1578,7 +1578,12 @@ func TestCodexAppServerAdapterFetchesChildThreadNickname(t *testing.T) {
 		defer mu.Unlock()
 		markers = append(markers, events...)
 	})
-	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-1")
+	appTurn := &codexAppServerActiveTurn{}
+	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
+		t.Fatal("beginActiveTurn failed")
+	}
+	defer adapter.endActiveTurn(session.AgentSessionID, appTurn)
+	adapter.setSessionActiveTurnID(session.AgentSessionID, appTurn, "turn-1")
 
 	// Registering a child (parent collab item/started) must trigger an async
 	// thread/read: codex assigns spawned agents an agentNickname on the Thread
@@ -1711,7 +1716,7 @@ func TestCodexAppServerAdapterDropsEmptyTerminalIDForBoundActiveTurn(t *testing.
 	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
 		t.Fatal("beginActiveTurn failed")
 	}
-	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-real")
+	adapter.setSessionActiveTurnID(session.AgentSessionID, appTurn, "turn-real")
 	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-real")
 
 	adapter.completeActiveTurn(session.AgentSessionID, map[string]any{"status": "completed"})
@@ -1744,7 +1749,7 @@ func TestCodexAppServerAdapterDropsEmptyTerminalIDForUnconfirmedActiveTurn(t *te
 	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
 		t.Fatal("beginActiveTurn failed")
 	}
-	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-steer-stub")
+	adapter.setSessionActiveTurnID(session.AgentSessionID, appTurn, "turn-steer-stub")
 
 	adapter.completeActiveTurn(session.AgentSessionID, map[string]any{"status": "completed"})
 
@@ -1765,7 +1770,12 @@ func TestCodexAppServerAdapterConfirmActiveTurnStartedScopedToBoundID(t *testing
 	t.Parallel()
 
 	adapter, _, session := startedAppServerAdapter(t)
-	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-bound")
+	appTurn := &codexAppServerActiveTurn{}
+	if !adapter.beginActiveTurn(session.AgentSessionID, appTurn) {
+		t.Fatal("beginActiveTurn failed")
+	}
+	defer adapter.endActiveTurn(session.AgentSessionID, appTurn)
+	adapter.setSessionActiveTurnID(session.AgentSessionID, appTurn, "turn-bound")
 
 	// A turn/started for a different turn (e.g. racing with a steered
 	// turn/start rebinding the id in between) must not confirm the current

@@ -56,8 +56,19 @@ Current behavior:
 
 That root command now uses a repository-owned Node orchestration script so the stable entrypoint stays the same while independent checks can run in parallel in bounded phases:
 
-- phase 1 runs generated-artifact and repository-rule checks in parallel
-- phase 2 runs lint, typecheck, and test commands in parallel only after phase 1 passes
+- the preparation phase generates builtin app assets once
+- the preflight phase runs generated-artifact and repository-rule checks in parallel
+- the validation phase runs lint, typecheck, and blocking test commands in parallel only after preflight passes
+
+Compact output is the default for both local and automated callers. Each task
+writes its complete output under `.tmp/check-full-runs`; successful phases print
+only timing summaries. A failed task immediately prints up to 120 filtered
+lines, preserving its assertion, location, and stack context while removing
+runner boilerplate and repeated consecutive lines. Use
+`pnpm check:full -- --verbose` only when live child-process output is needed, or
+`--tail-lines <n>` to adjust each failed task's excerpt. The latest
+machine-readable task results and log paths are recorded in
+`.tmp/check-full-runs/latest.json`.
 
 That full validation currently includes:
 
@@ -83,6 +94,14 @@ Rules:
 - `pre-push` should stay aligned with first-pass pull-request CI checks
 - slower cross-workspace validation belongs here rather than in `pre-commit`
 - if a check is too expensive for `pre-commit`, keep it in `pre-push` and CI
+
+TypeScript package tests and Go workspace tests use discovery-based runners
+instead of root package/module whitelists. Successful runs print compact
+summaries with the slowest lanes; complete lane logs and a machine-readable
+`latest.json` are stored under `.tmp/test-runs`. Every `go.work` module,
+including `packages/agent/daemon`, participates in the blocking Go test gate.
+The focused agent daemon command and its stabilization expectations are
+documented in [Testing](./testing.md).
 
 For PR branches that often need rebasing or force-pushing, use
 `pnpm push:checked` instead of running `pnpm check:full` and `git push`

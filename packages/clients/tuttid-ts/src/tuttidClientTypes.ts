@@ -32,6 +32,7 @@ import type {
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
   DeleteWorkspaceAgentSessionResponse,
+  DeleteWorkspaceAgentSessionSectionResponse,
   DeleteIssueManagerContextRefResponse,
   DeleteIssueManagerIssueResponse,
   DeleteIssueManagerTaskResponse,
@@ -67,6 +68,7 @@ import type {
   IssueManagerTopic,
   IssueManagerTopicListResponse,
   ListAgentTargetsResponse,
+  AgentTarget,
   ListWorkspacesResponse,
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
@@ -105,6 +107,7 @@ import type {
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionPageResponse,
+  WorkspaceAgentSessionSectionCountResponse,
   WorkspaceAgentSessionSectionPageResponse,
   WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
@@ -143,6 +146,10 @@ export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
+  setSystemAgentTargetEnabled(
+    agentTargetID: string,
+    enabled: boolean
+  ): Promise<AgentTarget>;
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;
@@ -257,6 +264,14 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<DeleteWorkspaceAgentSessionResponse>;
+  deleteWorkspaceAgentSessionSection(
+    workspaceID: string,
+    request: {
+      sectionKey: string;
+      agentTargetId?: string;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<DeleteWorkspaceAgentSessionSectionResponse>;
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
@@ -512,6 +527,14 @@ export interface TuttidClient {
     },
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionSectionPageResponse>;
+  countWorkspaceAgentSessionSection(
+    workspaceID: string,
+    request: {
+      sectionKey: string;
+      agentTargetId?: string;
+    },
+    requestOptions?: TuttidRequestOptions
+  ): Promise<WorkspaceAgentSessionSectionCountResponse>;
   listWorkspaceAgentPinnedSessionPage(
     workspaceID: string,
     request?: {

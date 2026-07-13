@@ -1,9 +1,24 @@
 import { createElement } from "react";
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceBrowserContribution } from "../workspaceBrowserContribution.ts";
 import { WorkspaceWorkbenchTrafficLights } from "../../../ui/WorkspaceWorkbenchTrafficLights.ts";
 
-export const browserWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type BrowserWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "appI18n"
+  | "browserApi"
+  | "browserService"
+  | "dockIcons"
+  | "i18n"
+  | "reporterService"
+  | "runtimeApi"
+  | "workspaceId"
+>;
+
+export const browserWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<BrowserWorkbenchContributionContext> =
   {
     id: "workspace-browser",
     order: 20,

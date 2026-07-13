@@ -11,7 +11,6 @@ export interface WorkspaceFileDropEntry {
 
 interface WorkspaceFileDropPayload {
   entries?: unknown;
-  paths?: unknown;
 }
 
 function normalizeWorkspaceFileDropEntryKind(
@@ -58,32 +57,20 @@ function normalizeWorkspaceFileDropPaths(paths: readonly string[]): string[] {
 
 export function writeWorkspaceFileDropData(
   dataTransfer: DataTransfer,
-  entriesOrPaths: readonly WorkspaceFileDropEntry[] | readonly string[]
+  entries: readonly WorkspaceFileDropEntry[]
 ): void {
-  if (entriesOrPaths.length === 0) {
+  if (entries.length === 0) {
     return;
   }
-  const firstItem = entriesOrPaths[0];
-  const writeStructuredEntries = typeof firstItem !== "string";
-  const normalizedEntries = writeStructuredEntries
-    ? normalizeWorkspaceFileDropEntries(
-        entriesOrPaths as readonly WorkspaceFileDropEntry[]
-      )
-    : [];
-  const normalizedPaths = writeStructuredEntries
-    ? normalizedEntries.map((entry) => entry.path)
-    : normalizeWorkspaceFileDropPaths(entriesOrPaths as readonly string[]);
-  if (normalizedPaths.length === 0) {
+  const normalizedEntries = normalizeWorkspaceFileDropEntries(entries);
+  if (normalizedEntries.length === 0) {
     return;
   }
+  const normalizedPaths = normalizedEntries.map((entry) => entry.path);
   dataTransfer.effectAllowed = "copy";
   dataTransfer.setData(
     WORKSPACE_FILE_DROP_MIME_TYPE,
-    JSON.stringify(
-      writeStructuredEntries
-        ? { entries: normalizedEntries }
-        : { paths: normalizedPaths }
-    )
+    JSON.stringify({ entries: normalizedEntries })
   );
   dataTransfer.setData("text/plain", normalizedPaths.join("\n"));
 }
@@ -106,8 +93,7 @@ export function readWorkspaceFileDropPaths(
 }
 
 export function readWorkspaceFileDropEntries(
-  dataTransfer: DataTransfer | null | undefined,
-  options: { includeLegacyPaths?: boolean } = {}
+  dataTransfer: DataTransfer | null | undefined
 ): WorkspaceFileDropEntry[] {
   if (!hasWorkspaceFileDropData(dataTransfer)) {
     return [];
@@ -135,18 +121,7 @@ export function readWorkspaceFileDropEntries(
         })
       );
     }
-    if (options.includeLegacyPaths === false || !Array.isArray(parsed.paths)) {
-      return [];
-    }
-    return normalizeWorkspaceFileDropEntries(
-      parsed.paths
-        .filter((value): value is string => typeof value === "string")
-        .map((path) => ({
-          path,
-          name: basenameWorkspacePath(path),
-          kind: "unknown"
-        }))
-    );
+    return [];
   } catch {
     return [];
   }

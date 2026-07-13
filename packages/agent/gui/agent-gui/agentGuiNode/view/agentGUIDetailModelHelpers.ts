@@ -14,7 +14,7 @@ import type {
   AgentGUINodeViewModel,
   AgentGUISessionChrome
 } from "../model/agentGuiNodeTypes";
-import type { AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIAgentTarget } from "../../../types";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
 
@@ -210,7 +210,7 @@ export function buildAgentConversationHandoffPrompt(input: {
   activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
   currentUserId?: string | null;
   labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">;
-  selectedProviderTarget: AgentGUIProviderTarget | null;
+  selectedAgentTarget: AgentGUIAgentTarget | null;
   uiLanguage: UiLanguage;
   workspaceId: string;
 }): string {
@@ -219,7 +219,7 @@ export function buildAgentConversationHandoffPrompt(input: {
     return "";
   }
   const sourceAgentLabel =
-    input.selectedProviderTarget?.label?.trim() || conversation.provider;
+    input.selectedAgentTarget?.label?.trim() || conversation.provider;
   const title = conversationPlainTitle(
     conversation,
     input.labels,

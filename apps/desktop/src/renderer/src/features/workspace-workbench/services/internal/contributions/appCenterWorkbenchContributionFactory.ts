@@ -1,4 +1,7 @@
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import type { BrowserNodeFeature } from "@tutti-os/browser-node";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
@@ -22,7 +25,18 @@ const browserFeaturesByWorkspaceId = new Map<
   CachedWorkspaceAppBrowserFeature
 >();
 
-export const appCenterWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type AppCenterWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "appCenterService"
+  | "appI18n"
+  | "browserApi"
+  | "browserService"
+  | "reporterService"
+  | "runtimeApi"
+  | "workspaceId"
+>;
+
+export const appCenterWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<AppCenterWorkbenchContributionContext> =
   {
     id: "workspace-app-center",
     order: 18,

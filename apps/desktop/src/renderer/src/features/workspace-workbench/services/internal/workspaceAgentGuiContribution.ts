@@ -1,10 +1,9 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
-  AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderTarget
+  AgentGUIAllAgentsPresentation,
+  AgentGUIAgentsEmptyRenderer,
+  AgentGUIAgent
 } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
@@ -69,20 +68,17 @@ export function createWorkspaceAgentGuiContribution(input: {
     typeof createAgentGuiWorkbenchContribution
   >[0]["unifiedDockIconUrl"];
   defaultAgentProvider?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   hostFilesApi: DesktopHostFilesApi;
   hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
-  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -99,7 +95,7 @@ export function createWorkspaceAgentGuiContribution(input: {
 }): WorkbenchContribution {
   const defaultAgentProvider = isWorkspaceAgentGuiProviderEnabledForNewEntry(
     input.defaultAgentProvider,
-    input.providerTargets
+    input.agents
   )
     ? input.defaultAgentProvider
     : null;
@@ -167,13 +163,12 @@ export function createWorkspaceAgentGuiContribution(input: {
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
-      providerTargets: input.providerTargets,
-      providerTargetsLoading: input.providerTargetsLoading,
-      providerRailAllPresentation: input.providerRailAllPresentation,
-      providerRailMode: input.providerRailMode,
-      renderProviderRailEmpty: input.renderProviderRailEmpty,
+      agents: input.agents,
+      agentsLoading: input.agentsLoading,
+      allAgentsPresentation: input.allAgentsPresentation,
+      renderAgentsEmpty: input.renderAgentsEmpty,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
-      defaultProviderTargetId: input.defaultProviderTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,
@@ -218,21 +213,21 @@ export function createWorkspaceAgentGuiContribution(input: {
     unifiedDockIconUrl: input.unifiedDockIconUrl,
     frame: workspaceAgentGuiNodeFrame,
     defaultProvider: defaultAgentProvider,
-    defaultProviderTargetId: input.defaultProviderTargetId,
+    defaultAgentTargetId: input.defaultAgentTargetId,
     providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
       input.agentProviderStatusService
     ),
-    providerTargets: input.providerTargets,
-    providerTargetsLoading: input.providerTargetsLoading,
+    agents: input.agents,
+    agentsLoading: input.agentsLoading,
     resolveDockLaunchPayload: () =>
       resolveAgentGuiUnifiedDockLaunchPayload({
         defaultProvider: defaultAgentProvider,
-        defaultProviderTargetId: input.defaultProviderTargetId,
+        defaultAgentTargetId: input.defaultAgentTargetId,
         providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
           input.agentProviderStatusService
         ),
-        providerTargetsLoading: input.providerTargetsLoading,
-        targets: input.providerTargets
+        agentsLoading: input.agentsLoading,
+        agents: input.agents
       }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
@@ -248,7 +243,7 @@ export function createWorkspaceAgentGuiContribution(input: {
         agentSessionId: request.agentSessionId,
         agentTargetId: request.agentTargetId,
         providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
-        providerTargets: request.providerTargets,
+        agents: request.agents,
         provider: request.provider,
         workspaceId: request.workspaceId
       });
@@ -280,7 +275,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     resolveDockPopupIdentity: (state) =>
       resolveWorkspaceAgentGuiDockPopupIdentity(state, {
         dockIconUrls: input.dockIconUrls,
-        providerTargets: input.providerTargets,
+        agents: input.agents,
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
@@ -290,7 +285,7 @@ export function createWorkspaceAgentGuiContribution(input: {
 
 function isWorkspaceAgentGuiProviderEnabledForNewEntry(
   provider: string | null | undefined,
-  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
+  agents: readonly AgentGUIAgent[] | null | undefined
 ): provider is AgentGuiWorkbenchProvider {
   if (!isAgentGuiWorkbenchProvider(provider)) {
     return false;
@@ -301,8 +296,9 @@ function isWorkspaceAgentGuiProviderEnabledForNewEntry(
   ) {
     return true;
   }
-  return (providerTargets ?? []).some(
-    (target) => target.provider === provider && target.disabled !== true
+  return (agents ?? []).some(
+    (agent) =>
+      agent.provider === provider && agent.availability.status === "ready"
   );
 }
 
@@ -344,7 +340,7 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
     dockIconUrls?: Parameters<
       typeof createAgentGuiWorkbenchContribution
     >[0]["dockIconUrls"];
-    providerTargets?: readonly AgentGUIProviderTarget[];
+    agents?: readonly AgentGUIAgent[];
     workspaceAgentActivityService: IWorkspaceAgentActivityService;
     workspaceId: string;
   }
@@ -365,22 +361,21 @@ function resolveWorkspaceAgentGuiDockPopupIdentity(
   // flashes the wrong (codex) icon; the committed agentTargetId is correct
   // immediately.
   const agentTargetId = session?.agentTargetId ?? state?.agentTargetId ?? null;
-  const providerTarget = agentTargetId
-    ? (input.providerTargets?.find(
-        (target) => target.agentTargetId === agentTargetId
-      ) ?? null)
+  const agent = agentTargetId
+    ? (input.agents?.find((target) => target.agentTargetId === agentTargetId) ??
+      null)
     : null;
   const resolvedProvider = isAgentGuiWorkbenchProvider(session?.provider)
     ? session.provider
-    : isAgentGuiWorkbenchProvider(providerTarget?.provider)
-      ? providerTarget.provider
+    : isAgentGuiWorkbenchProvider(agent?.provider)
+      ? agent.provider
       : null;
   const title = session?.title?.trim() || null;
   // Never fall back to a concrete provider's icon (e.g. codex) while the real
   // provider is still unknown — leave iconUrl null so the header renders a
   // neutral placeholder until the provider resolves.
   const iconUrl =
-    providerTarget?.iconUrl ??
+    agent?.iconUrl ??
     (resolvedProvider
       ? (resolveAgentGuiSessionProviderIconUrl(resolvedProvider) ??
         input.dockIconUrls?.[resolvedProvider] ??

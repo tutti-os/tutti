@@ -125,9 +125,7 @@ export function normalizeIssueManagerNodeState(
     issueSearchQuery: state?.issueSearchQuery?.trim() ?? "",
     issueStatusFilter: state?.issueStatusFilter ?? "all",
     selectedAgentTargetId:
-      state?.selectedAgentTargetId?.trim() ||
-      legacySelectedAgentTargetId(state) ||
-      "local:codex",
+      state?.selectedAgentTargetId?.trim() || "local:codex",
     selectedExecutionDirectory: normalizeNullableString(
       state?.selectedExecutionDirectory
     ),
@@ -135,15 +133,6 @@ export function normalizeIssueManagerNodeState(
     selectedTaskId: normalizeNullableString(state?.selectedTaskId),
     taskListCollapsed: state?.taskListCollapsed === true
   };
-}
-
-function legacySelectedAgentTargetId(
-  state: Partial<IssueManagerNodeState> | null | undefined
-): string | null {
-  const legacyProvider = (
-    state as { selectedAgentProvider?: string | null } | null | undefined
-  )?.selectedAgentProvider?.trim();
-  return legacyProvider ? `local:${legacyProvider}` : null;
 }
 
 function normalizeNullableString(

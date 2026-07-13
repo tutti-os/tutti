@@ -69,31 +69,6 @@ describe("workspaceFileDrop", () => {
     );
   });
 
-  it("reads legacy path-only payloads as unknown-kind entries when requested", () => {
-    const dataTransfer = createDataTransferStub();
-
-    writeWorkspaceFileDropData(dataTransfer, [
-      "/workspace/src/App.tsx",
-      "/workspace/src/README.md"
-    ]);
-
-    expect(readWorkspaceFileDropEntries(dataTransfer)).toEqual([
-      {
-        path: "/workspace/src/App.tsx",
-        name: "App.tsx",
-        kind: "unknown"
-      },
-      {
-        path: "/workspace/src/README.md",
-        name: "README.md",
-        kind: "unknown"
-      }
-    ]);
-    expect(
-      readWorkspaceFileDropEntries(dataTransfer, { includeLegacyPaths: false })
-    ).toEqual([]);
-  });
-
   it("shell-quotes paths for terminal insertion", () => {
     expect(quoteWorkspacePathForTerminal("/workspace/it's here.txt")).toBe(
       "'/workspace/it'\"'\"'s here.txt'"

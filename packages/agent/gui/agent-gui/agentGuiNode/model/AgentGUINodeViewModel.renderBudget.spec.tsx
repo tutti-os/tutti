@@ -74,10 +74,10 @@ function createViewModel(): AgentGUINodeViewModel {
       data: {} as AgentGUINodeViewModel["shell"]["data"]
     },
     rail: {
-      selectedProviderTarget:
-        {} as AgentGUINodeViewModel["rail"]["selectedProviderTarget"],
-      providerTargets: [],
-      providerTargetsLoading: false,
+      selectedAgentTarget:
+        {} as AgentGUINodeViewModel["rail"]["selectedAgentTarget"],
+      agentTargets: [],
+      agentTargetsLoading: false,
       providerRailMode: "catalog",
       comingSoonProviders: [],
       conversationFilter: { kind: "all" },
@@ -100,7 +100,7 @@ function createViewModel(): AgentGUINodeViewModel {
       conversationDetail: null
     },
     composer: {
-      handoffProviderTargets: [],
+      handoffAgentTargets: [],
       availableCommands: [],
       availableSkills: [],
       draftPrompt: "",

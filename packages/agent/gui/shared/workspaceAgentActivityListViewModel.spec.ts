@@ -7,7 +7,6 @@ import {
   type AgentActivityMessage,
   type AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import type { RoomShareMemberView } from "./roomShare";
 import {
   buildWorkspaceAgentActivityListViewModel as buildCanonicalWorkspaceAgentActivityListViewModel,
   collectWorkspaceAgentGeneratedFiles,
@@ -2214,57 +2213,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
-  it("uses room share members as fallback user data without inferring provider from messages", () => {
-    const snapshot = {
-      presences: [],
-      sessions: [
-        {
-          id: 30,
-          agentSessionId: "session-30",
-          presenceId: 404,
-          providerSessionId: "provider-30",
-          cwd: "/repo",
-          status: "working",
-          title: "Investigate activity stream"
-        }
-      ]
-    };
-    const fallbackMembers: RoomShareMemberView[] = [
-      {
-        userId: "owner-1",
-        label: "Ricky",
-        role: "owner",
-        initial: "R",
-        avatarUrl: "https://cdn.example.com/ricky.png"
-      }
-    ];
-
-    const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
-      fallbackMembers,
-      sessionMessagesById: {
-        "session-30": [
-          callItem({
-            id: 1,
-            agentSessionId: "session-30",
-            eventId: "openclaw:tool-call-1",
-            name: "agent.responding",
-            content: "正在分析 activity stream",
-            status: "running"
-          })
-        ]
-      }
-    });
-
-    expect(view.activities[0]).toMatchObject({
-      userId: "owner-1",
-      userName: "Ricky",
-      userAvatarUrl: "https://cdn.example.com/ricky.png",
-      agentProvider: "unknown",
-      agentName: "Unknown"
-    });
-  });
-
-  it("uses session user data before room owner fallback when presence is missing", () => {
+  it("uses session user data when presence is missing", () => {
     const snapshot = {
       presences: [],
       sessions: [
@@ -2281,15 +2230,6 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         }
       ]
     };
-    const fallbackMembers: RoomShareMemberView[] = [
-      {
-        userId: "owner-1",
-        label: "Ricky",
-        role: "owner",
-        initial: "R",
-        avatarUrl: "https://cdn.example.com/ricky.png"
-      }
-    ];
     const userProfilesById: Record<string, AgentHostUserInfo> = {
       "member-2": {
         userId: "member-2",
@@ -2299,7 +2239,6 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     };
 
     const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
-      fallbackMembers,
       userProfilesById
     });
 

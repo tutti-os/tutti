@@ -6,7 +6,6 @@ import type { AgentGUIProvider } from "../../../types";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
-import { normalizeConversationProjectPath } from "../agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "../model/agentGuiConversationModel";
 
 export const AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER: AgentGUIProvider =
@@ -168,9 +167,10 @@ export function updateConversationSectionsFromSummaries(
     if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
       continue;
     }
-    const sectionId = conversation.project
-      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
-      : "conversations";
+    if (conversation.project) {
+      continue;
+    }
+    const sectionId = "conversations";
     const items = summarySectionItemsById.get(sectionId) ?? [];
     items.push(conversation);
     summarySectionItemsById.set(sectionId, items);
@@ -231,7 +231,6 @@ export function updateConversationSectionsFromSummaries(
       };
     }
     const summaryItems = summarySectionItemsById.get(section.id) ?? [];
-    const summaryIdsForSection = new Set(summaryItems.map((item) => item.id));
     const items = section.items
       .map((item) => {
         seenIds.add(item.id);
@@ -239,26 +238,31 @@ export function updateConversationSectionsFromSummaries(
         if (!summary) {
           return item;
         }
+        if ((summary.pinnedAtUnixMs ?? 0) > 0) {
+          sectionChanged = true;
+          return null;
+        }
         const nextItem = section.project
           ? {
               ...summary,
               project: section.project
             }
-          : summary;
+          : {
+              ...summary,
+              project: null
+            };
         if (conversationSummariesRenderEqual(item, nextItem)) {
           return item;
         }
         sectionChanged = true;
         return nextItem;
       })
-      .filter((item) => {
-        const summary = summariesById.get(item.id);
-        if (!summary || summaryIdsForSection.has(item.id)) {
-          return true;
-        }
-        sectionChanged = true;
-        return false;
-      });
+      .filter(
+        (
+          item
+        ): item is AgentGUINodeViewModel["rail"]["conversations"][number] =>
+          item !== null
+      );
     const nextSection = sectionChanged
       ? {
           ...section,
@@ -333,9 +337,7 @@ export function updateConversationSectionsFromSummaries(
     });
   }
   for (const conversation of newConversations) {
-    const targetSectionId = conversation.project
-      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
-      : "conversations";
+    const targetSectionId = "conversations";
     const targetIndex = sectionsWithInsertions.findIndex(
       (section) => section.id === targetSectionId
     );
@@ -350,9 +352,9 @@ export function updateConversationSectionsFromSummaries(
     }
     sectionsWithInsertions.push({
       id: targetSectionId,
-      kind: conversation.project ? "project" : "conversations",
-      label: conversation.project?.label ?? options.sectionConversationsLabel,
-      project: conversation.project ?? null,
+      kind: "conversations",
+      label: options.sectionConversationsLabel,
+      project: null,
       items: [conversation]
     });
   }
@@ -385,7 +387,7 @@ export function projectRuntimeSectionsToConversationSections(input: {
         conversationFilter: input.conversationFilter,
         provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
         snapshot: {
-          composerOptionsByProvider: {},
+          composerOptionsByTargetKey: {},
           presences: [],
           sessionMessagesById: {},
           sessions: input.pinned.sessions,
@@ -410,7 +412,7 @@ export function projectRuntimeSectionsToConversationSections(input: {
       conversationFilter: input.conversationFilter,
       provider: AGENT_GUI_CONVERSATION_RAIL_PROJECTION_PROVIDER,
       snapshot: {
-        composerOptionsByProvider: {},
+        composerOptionsByTargetKey: {},
         presences: [],
         sessionMessagesById: {},
         sessions: section.sessions,

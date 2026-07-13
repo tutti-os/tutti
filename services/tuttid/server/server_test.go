@@ -82,6 +82,33 @@ func TestAuthorizeWorkspaceAppServerTokenIsLimitedToAppServerRoutes(t *testing.T
 		t.Fatal("expected app token to authorize upload content PUT")
 	}
 
+	allowedAgentPreferences, _ := http.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/workspace-1/apps/app-1/preferences/agent",
+		nil,
+	)
+	if !authorizeWorkspaceAppServerToken(allowedAgentPreferences, appToken, accessToken) {
+		t.Fatal("expected app token to authorize workspace app agent preferences")
+	}
+
+	allowedAgentStatuses, _ := http.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/workspace-1/apps/app-1/agent-providers/status",
+		nil,
+	)
+	if !authorizeWorkspaceAppServerToken(allowedAgentStatuses, appToken, accessToken) {
+		t.Fatal("expected app token to authorize workspace app agent provider statuses")
+	}
+
+	allowedComposerOptions, _ := http.NewRequest(
+		http.MethodPost,
+		"/v1/workspaces/workspace-1/apps/app-1/agent-providers/cursor/composer-options",
+		nil,
+	)
+	if !authorizeWorkspaceAppServerToken(allowedComposerOptions, appToken, accessToken) {
+		t.Fatal("expected app token to authorize workspace app composer options")
+	}
+
 	createGrant, _ := http.NewRequest(
 		http.MethodPost,
 		"/v1/workspaces/workspace-1/apps/app-1/managed-model-grants",
@@ -98,6 +125,33 @@ func TestAuthorizeWorkspaceAppServerTokenIsLimitedToAppServerRoutes(t *testing.T
 	)
 	if authorizeWorkspaceAppServerToken(providerConfig, appToken, accessToken) {
 		t.Fatal("expected app token to reject provider configuration")
+	}
+
+	globalAgentStatuses, _ := http.NewRequest(
+		http.MethodGet,
+		"/v1/agent-providers/status",
+		nil,
+	)
+	if authorizeWorkspaceAppServerToken(globalAgentStatuses, appToken, accessToken) {
+		t.Fatal("expected app token to reject global agent provider statuses")
+	}
+
+	globalDesktopPreferences, _ := http.NewRequest(
+		http.MethodGet,
+		"/v1/preferences/desktop",
+		nil,
+	)
+	if authorizeWorkspaceAppServerToken(globalDesktopPreferences, appToken, accessToken) {
+		t.Fatal("expected app token to reject global desktop preferences")
+	}
+
+	agentTargetMutation, _ := http.NewRequest(
+		http.MethodPatch,
+		"/v1/agent-targets/local:tutti-agent/enabled",
+		nil,
+	)
+	if authorizeWorkspaceAppServerToken(agentTargetMutation, appToken, accessToken) {
+		t.Fatal("expected app token to reject system agent target mutation")
 	}
 
 	providerModels, _ := http.NewRequest(

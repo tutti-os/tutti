@@ -318,6 +318,50 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
+  it("renders a user prompt image directly from its remote HTTPS URL", () => {
+    const readPromptAsset = vi.fn();
+    Object.defineProperty(window, "agentActivityRuntime", {
+      configurable: true,
+      value: {
+        readPromptAsset
+      } as Partial<AgentActivityRuntime>
+    });
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-url-1",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "remote-image-1",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              url: "https://objects.example.test/signed/screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+      "src",
+      "https://objects.example.test/signed/screen.png"
+    );
+    expect(readPromptAsset).not.toHaveBeenCalled();
+
+    delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
+  });
+
   it("shows a loading spinner while a user prompt image is being read", async () => {
     const readController: {
       resolve: (value: {

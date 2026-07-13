@@ -95,21 +95,31 @@
   },
   "reasoning": {
     "high": {
+      "description": "为复杂问题提供更深入的推理",
       "label": "高"
     },
     "low": {
+      "description": "推理较少，响应更快",
       "label": "低"
     },
     "max": {
+      "description": "为最困难的问题提供最高强度推理",
       "label": "最高"
     },
     "medium": {
+      "description": "兼顾日常任务的响应速度和推理深度",
       "label": "中"
     },
     "minimal": {
+      "description": "使用最少推理，以获得最快响应",
       "label": "最低"
     },
+    "ultra": {
+      "description": "最高强度推理，并自动委派任务",
+      "label": "极致"
+    },
     "xhigh": {
+      "description": "为复杂问题提供超高强度推理",
       "label": "超高"
     }
   },

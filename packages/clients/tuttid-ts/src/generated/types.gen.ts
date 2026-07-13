@@ -43,8 +43,8 @@ export type AccountMembershipSummary = {
 };
 
 export type AccountCreditsSummary = {
-  available_credits: number | null;
-  expiring_credits_within_24h?: number | null;
+  available_credits: string | null;
+  expiring_credits_within_24h?: string | null;
   next_expire_at?: string | null;
   refreshed_at?: string | null;
 };
@@ -378,7 +378,11 @@ export type DesktopAgentComposerDefaults = {
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
 
-export type DesktopDefaultAgentProvider = "claude-code" | "codex";
+export type DesktopDefaultAgentProvider =
+  | "claude-code"
+  | "codex"
+  | "cursor"
+  | "opencode";
 
 export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
@@ -425,6 +429,12 @@ export type DesktopPreferencesStateResponse = {
   preferences: DesktopPreferences;
 };
 
+export type WorkspaceAppAgentPreferencesResponse = {
+  defaultAgentProvider: DesktopDefaultAgentProvider;
+  enableCursorAgent: boolean;
+  enableOpenCodeAgent: boolean;
+};
+
 export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
@@ -461,6 +471,10 @@ export type AgentTarget = {
 
 export type ListAgentTargetsResponse = {
   targets: Array<AgentTarget>;
+};
+
+export type SetSystemAgentTargetEnabledRequest = {
+  enabled: boolean;
 };
 
 export type ListWorkspacesResponse = {
@@ -988,6 +1002,10 @@ export type AgentProviderComposerConfig = {
 };
 
 export type GetAgentProviderComposerOptionsRequest = {
+  /**
+   * Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
+   */
+  agentTargetId?: string;
   cwd?: string;
   /**
    * Workspace used for Claude Code live model discovery.
@@ -1182,7 +1200,7 @@ export type AgentProviderCliStatus = {
   binaryPath?: string | null;
   version?: string | null;
   /**
-   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+   * The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
    */
   minVersion?: string | null;
 };
@@ -1196,7 +1214,7 @@ export type AgentProviderAdapterStatus = {
    */
   version?: string | null;
   /**
-   * The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+   * The minimum adapter package version this provider accepts. With version, lets the UI show "current X, requires >= Y" for an adapter version mismatch and makes the drift visible in telemetry.
    */
   requiredVersion?: string | null;
 };
@@ -1666,6 +1684,22 @@ export type DeleteWorkspaceAgentSessionResponse = {
   removed: boolean;
 };
 
+export type WorkspaceAgentSessionSectionCountResponse = {
+  workspaceId: string;
+  sectionKey: string;
+  agentTargetId?: string;
+  count: number;
+};
+
+export type DeleteWorkspaceAgentSessionSectionResponse = {
+  workspaceId: string;
+  sectionKey: string;
+  agentTargetId?: string;
+  removedMessages: number;
+  removedSessions: number;
+  removedSessionIds: Array<string>;
+};
+
 export type ClearWorkspaceAgentSessionsResponse = {
   removedMessages: number;
   removedSessions: number;
@@ -1748,7 +1782,14 @@ export type AgentPromptContentBlock = {
   type: "text" | "image" | "skill" | "mention";
   text?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
+  /**
+   * Base64-encoded image bytes. Mutually exclusive with url.
+   */
   data?: string;
+  /**
+   * HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
+   */
+  url?: string;
   attachmentId?: string;
   name?: string;
   path?: string;
@@ -3286,6 +3327,51 @@ export type ListAgentTargetsResponses = {
 export type ListAgentTargetsResponse2 =
   ListAgentTargetsResponses[keyof ListAgentTargetsResponses];
 
+export type SetSystemAgentTargetEnabledData = {
+  body: SetSystemAgentTargetEnabledRequest;
+  path: {
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/agent-targets/{agentTargetID}/enabled";
+};
+
+export type SetSystemAgentTargetEnabledErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SetSystemAgentTargetEnabledError =
+  SetSystemAgentTargetEnabledErrors[keyof SetSystemAgentTargetEnabledErrors];
+
+export type SetSystemAgentTargetEnabledResponses = {
+  /**
+   * Updated system Agent Target
+   */
+  200: AgentTarget;
+};
+
+export type SetSystemAgentTargetEnabledResponse =
+  SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
+
 export type ListWorkspacesData = {
   body?: never;
   path?: never;
@@ -4040,6 +4126,160 @@ export type ReloadLocalWorkspaceAppResponses = {
 
 export type ReloadLocalWorkspaceAppResponse =
   ReloadLocalWorkspaceAppResponses[keyof ReloadLocalWorkspaceAppResponses];
+
+export type GetWorkspaceAppAgentPreferencesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent";
+};
+
+export type GetWorkspaceAppAgentPreferencesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentPreferencesError =
+  GetWorkspaceAppAgentPreferencesErrors[keyof GetWorkspaceAppAgentPreferencesErrors];
+
+export type GetWorkspaceAppAgentPreferencesResponses = {
+  /**
+   * Workspace app agent preferences
+   */
+  200: WorkspaceAppAgentPreferencesResponse;
+};
+
+export type GetWorkspaceAppAgentPreferencesResponse =
+  GetWorkspaceAppAgentPreferencesResponses[keyof GetWorkspaceAppAgentPreferencesResponses];
+
+export type GetWorkspaceAppAgentProviderStatusesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: {
+    providers?: Array<WorkspaceAgentProvider>;
+    includeNetwork?: boolean;
+  };
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status";
+};
+
+export type GetWorkspaceAppAgentProviderStatusesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentProviderStatusesError =
+  GetWorkspaceAppAgentProviderStatusesErrors[keyof GetWorkspaceAppAgentProviderStatusesErrors];
+
+export type GetWorkspaceAppAgentProviderStatusesResponses = {
+  /**
+   * Agent provider status snapshot
+   */
+  200: AgentProviderStatusListResponse;
+};
+
+export type GetWorkspaceAppAgentProviderStatusesResponse =
+  GetWorkspaceAppAgentProviderStatusesResponses[keyof GetWorkspaceAppAgentProviderStatusesResponses];
+
+export type GetWorkspaceAppAgentProviderComposerOptionsData = {
+  body?: GetAgentProviderComposerOptionsRequest;
+  path: {
+    workspaceID: string;
+    appID: string;
+    provider: WorkspaceAgentProvider;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options";
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsError =
+  GetWorkspaceAppAgentProviderComposerOptionsErrors[keyof GetWorkspaceAppAgentProviderComposerOptionsErrors];
+
+export type GetWorkspaceAppAgentProviderComposerOptionsResponses = {
+  /**
+   * Agent provider composer options
+   */
+  200: AgentProviderComposerOptionsResponse;
+};
+
+export type GetWorkspaceAppAgentProviderComposerOptionsResponse =
+  GetWorkspaceAppAgentProviderComposerOptionsResponses[keyof GetWorkspaceAppAgentProviderComposerOptionsResponses];
 
 export type ListWorkspaceAppReferencesData = {
   body: AppReferenceListRequest;
@@ -5342,6 +5582,61 @@ export type CreateWorkspaceAgentSessionResponses = {
 export type CreateWorkspaceAgentSessionResponse =
   CreateWorkspaceAgentSessionResponses[keyof CreateWorkspaceAgentSessionResponses];
 
+export type DeleteWorkspaceAgentSessionSectionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sectionKey: string;
+    /**
+     * Optional agent target filter applied before deletion.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections";
+};
+
+export type DeleteWorkspaceAgentSessionSectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceAgentSessionSectionError =
+  DeleteWorkspaceAgentSessionSectionErrors[keyof DeleteWorkspaceAgentSessionSectionErrors];
+
+export type DeleteWorkspaceAgentSessionSectionResponses = {
+  /**
+   * Workspace agent session section deleted
+   */
+  200: DeleteWorkspaceAgentSessionSectionResponse;
+};
+
+export type DeleteWorkspaceAgentSessionSectionResponse2 =
+  DeleteWorkspaceAgentSessionSectionResponses[keyof DeleteWorkspaceAgentSessionSectionResponses];
+
 export type ListWorkspaceAgentSessionSectionsData = {
   body?: never;
   path: {
@@ -5456,6 +5751,61 @@ export type ListWorkspaceAgentSessionSectionPageResponses = {
 
 export type ListWorkspaceAgentSessionSectionPageResponse =
   ListWorkspaceAgentSessionSectionPageResponses[keyof ListWorkspaceAgentSessionSectionPageResponses];
+
+export type CountWorkspaceAgentSessionSectionData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sectionKey: string;
+    /**
+     * Optional agent target filter applied before counting.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections/count";
+};
+
+export type CountWorkspaceAgentSessionSectionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CountWorkspaceAgentSessionSectionError =
+  CountWorkspaceAgentSessionSectionErrors[keyof CountWorkspaceAgentSessionSectionErrors];
+
+export type CountWorkspaceAgentSessionSectionResponses = {
+  /**
+   * Workspace agent session section count
+   */
+  200: WorkspaceAgentSessionSectionCountResponse;
+};
+
+export type CountWorkspaceAgentSessionSectionResponse =
+  CountWorkspaceAgentSessionSectionResponses[keyof CountWorkspaceAgentSessionSectionResponses];
 
 export type ScanWorkspaceExternalAgentSessionImportsData = {
   body?: ExternalAgentImportScanRequest;

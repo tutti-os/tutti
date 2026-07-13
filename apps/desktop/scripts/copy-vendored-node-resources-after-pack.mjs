@@ -9,6 +9,11 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { smokeClaudeSDKSidecar } from "./smoke-claude-sdk-sidecar.mjs";
+import {
+  pruneDarwinClaudeNativePackages,
+  resolveDarwinClaudeNativePackagesForPackContext,
+  verifyDarwinClaudeNativePackages
+} from "./claude-sdk-sidecar-packaging.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = join(__dirname, "..");
@@ -42,6 +47,7 @@ function copyNodeModules(resourcesDir, bundleName) {
   rmSync(join(destination, ".bin"), { recursive: true, force: true });
   removeSymlinks(destination);
   log(`copied ${bundleName} node_modules to ${destination}`);
+  return destination;
 }
 
 function removeSymlinks(root) {
@@ -61,7 +67,21 @@ function removeSymlinks(root) {
 export default async function copyVendoredNodeResourcesAfterPack(context) {
   const resourcesDir = resourcesDirForContext(context);
   copyNodeModules(resourcesDir, "browser-mcp");
-  copyNodeModules(resourcesDir, "claude-sdk-sidecar");
+  const claudeNodeModulesDir = copyNodeModules(
+    resourcesDir,
+    "claude-sdk-sidecar"
+  );
+  if (context.electronPlatformName === "darwin") {
+    const nativePackages =
+      resolveDarwinClaudeNativePackagesForPackContext(context);
+    pruneDarwinClaudeNativePackages(claudeNodeModulesDir, nativePackages);
+    verifyDarwinClaudeNativePackages(claudeNodeModulesDir, nativePackages);
+    log(
+      `kept Claude native packages for arch=${context.arch}: ${nativePackages
+        .map(({ name }) => name)
+        .join(", ")}`
+    );
+  }
   const packagedSidecarDir = join(resourcesDir, "bin", "claude-sdk-sidecar");
   await smokeClaudeSDKSidecar({ bundleDir: packagedSidecarDir });
   log(`smoke-tested claude-sdk-sidecar at ${packagedSidecarDir}`);

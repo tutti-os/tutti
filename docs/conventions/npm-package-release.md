@@ -16,6 +16,8 @@ automation are updated together.
 The current fixed release group is:
 
 ```text
+@tutti-os/agent-activity-core
+@tutti-os/agent-gui
 @tutti-os/browser-node
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-file-preview
@@ -210,6 +212,15 @@ following:
 The stable package entrypoints are:
 
 ```text
+@tutti-os/agent-activity-core
+@tutti-os/agent-gui
+@tutti-os/agent-gui/agent-conversation
+@tutti-os/agent-gui/agent-env
+@tutti-os/agent-gui/agent-message-center
+@tutti-os/agent-gui/context-mention-palette
+@tutti-os/agent-gui/i18n
+@tutti-os/agent-gui/styles.css
+@tutti-os/agent-gui/workbench
 @tutti-os/browser-node
 @tutti-os/browser-node/assets/workspace-dock-website.png
 @tutti-os/browser-node/bridge

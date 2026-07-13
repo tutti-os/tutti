@@ -13,6 +13,8 @@ import (
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	builtinapps "github.com/tutti-os/tutti/services/tuttid/builtin-apps"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
+	"golang.org/x/mod/semver"
 )
 
 func remoteBuiltinWorkspaceApp(builtin builtinapps.App) (workspacebiz.WorkspaceApp, error) {
@@ -51,17 +53,37 @@ func (s *AppCenterService) artifactFetcher() AppArtifactFetcher {
 func shouldUseRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
 	return appPackage.Source == workspacebiz.AppPackageSourceBuiltin &&
 		builtin.Distribution.Kind == builtinapps.DistributionRemote &&
-		strings.TrimSpace(appPackage.Version) != strings.TrimSpace(builtin.Manifest.Version)
+		compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0
 }
 
 func shouldMaterializeRemoteBuiltin(appPackage workspacebiz.AppPackage, builtin builtinapps.App) bool {
 	if appPackage.Source != workspacebiz.AppPackageSourceBuiltin || builtin.Distribution.Kind != builtinapps.DistributionRemote {
 		return false
 	}
-	if strings.TrimSpace(appPackage.Version) != strings.TrimSpace(builtin.Manifest.Version) {
+	if compareWorkspaceAppVersions(builtin.Manifest.Version, appPackage.Version) > 0 {
 		return true
 	}
 	return validateExtractedAppPackage(appPackage.PackageDir, appPackage.Manifest) != nil
+}
+
+func compareWorkspaceAppVersions(left string, right string) int {
+	leftVersion, leftOK := tuttitypes.NormalizeSemver(left)
+	rightVersion, rightOK := tuttitypes.NormalizeSemver(right)
+	if !leftOK || !rightOK {
+		if strings.TrimSpace(left) == strings.TrimSpace(right) {
+			return 0
+		}
+		// Legacy non-SemVer packages have no safe ordering. Preserve the remote
+		// catalog's former authoritative-on-change behavior for those versions.
+		return 1
+	}
+	comparison := semver.Compare(leftVersion, rightVersion)
+	if comparison == 0 && strings.TrimSpace(left) != strings.TrimSpace(right) {
+		// Staging releases may differ only by SemVer build metadata. The remote
+		// catalog is authoritative for that equal-precedence build.
+		return 1
+	}
+	return comparison
 }
 
 func (s *AppCenterService) materializeEmbeddedArchiveBuiltinPackage(ctx context.Context, builtin builtinapps.App) (workspacebiz.AppPackage, error) {
@@ -235,9 +257,9 @@ func (s *AppCenterService) builtinCatalog(ctx context.Context) ([]builtinapps.Ap
 		return s.BuiltinCatalog()
 	}
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		return builtinapps.Catalog()
+		return builtinapps.CatalogForTuttiVersion(s.HostTuttiVersion)
 	}
-	snapshot, err := builtinapps.SnapshotForRemoteURL(s.appCatalogRemoteURL(ctx))
+	snapshot, err := builtinapps.SnapshotForRemoteURLAndTuttiVersion(s.appCatalogRemoteURL(ctx), s.HostTuttiVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -246,13 +268,13 @@ func (s *AppCenterService) builtinCatalog(ctx context.Context) ([]builtinapps.Ap
 
 func (s *AppCenterService) refreshBuiltinCatalogAndWait(ctx context.Context) (builtinapps.CatalogSnapshot, error) {
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		return builtinapps.RefreshRemoteCatalogAndWait(ctx)
+		return builtinapps.RefreshRemoteCatalogAndWaitForTuttiVersion(ctx, s.HostTuttiVersion)
 	}
 	catalogURL := s.appCatalogRemoteURL(ctx)
 	if s.RemoteCatalogRefresher != nil {
 		return s.RemoteCatalogRefresher(ctx, catalogURL)
 	}
-	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURL(ctx, catalogURL)
+	return builtinapps.RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx, catalogURL, s.HostTuttiVersion)
 }
 
 func (s *AppCenterService) appCatalogRemoteURL(ctx context.Context) string {
@@ -282,9 +304,9 @@ func (s *AppCenterService) CatalogLoadState() workspacebiz.AppCatalogLoadState {
 		err      error
 	)
 	if builtinapps.RemoteCatalogEnvOverrideActive() {
-		snapshot, err = builtinapps.Snapshot()
+		snapshot, err = builtinapps.SnapshotForTuttiVersion(s.HostTuttiVersion)
 	} else {
-		snapshot, err = builtinapps.SnapshotForRemoteURL(s.appCatalogRemoteURL(context.Background()))
+		snapshot, err = builtinapps.SnapshotForRemoteURLAndTuttiVersion(s.appCatalogRemoteURL(context.Background()), s.HostTuttiVersion)
 	}
 	if err != nil {
 		lastError := err.Error()

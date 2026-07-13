@@ -66,6 +66,26 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("AI Canvas");
   });
 
+  it("renders local file mention links whose paths contain spaces", () => {
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "继续 [@user](/Users/Sun/Documents/tutti/emoji 你好/user/) 和 [@auth_api.py](/Users/Sun/Documents/tutti/emoji 你好/auth_api.py)"
+        }
+        inline
+      />
+    );
+
+    const mentions = container.querySelectorAll(
+      '[data-agent-file-mention="true"]'
+    );
+    expect(mentions).toHaveLength(2);
+    expect(mentions[0]).toHaveAttribute("data-agent-mention-kind", "file");
+    expect(mentions[0]).toHaveTextContent("user");
+    expect(mentions[1]).toHaveTextContent("auth_api.py");
+    expect(screen.queryByText(/\]\(\/Users\/Sun\/Documents/)).toBeNull();
+  });
+
   it("renders markdown links, inline code, and lists", () => {
     render(
       <AgentMessageMarkdown
@@ -712,6 +732,23 @@ describe("AgentMessageMarkdown", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
+        name: /Zoom out image|common\.zoomOutImage/
+      })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1");
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("100%");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Zoom in image|common\.zoomInImage/ })
+    );
+    await waitFor(() => {
+      expect(modalImage).toHaveAttribute("data-tsh-image-zoom", "1.25");
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
         name: /Reset image zoom|common\.resetImageZoom/
       })
     );
@@ -895,6 +932,85 @@ describe("AgentMessageMarkdown", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
+  });
+
+  it("closes the zoom preview when the zoomed image is clicked", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+
+    fireEvent.click(modalImage as HTMLElement);
+    fireEvent.transitionEnd(modalImage as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
+  it("keeps the zoom preview open when reopened during the close animation", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const modalImage = dialog.querySelector("[data-rmiz-modal-img]");
+    expect(modalImage).toBeInstanceOf(HTMLElement);
+
+    fireEvent.click(modalImage as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: /Zoom image/ }));
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not add a zoom trigger when the markdown image is already inside a link", async () => {

@@ -489,6 +489,43 @@ paths:
           $ref: "#/components/responses/PreferencesOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-targets/{agentTargetID}/enabled:
+    patch:
+      operationId: setSystemAgentTargetEnabled
+      tags:
+        - agent-target
+      summary: Enable or disable one daemon-owned system Agent Target
+      description: Desktop control-plane operation that changes only the enabled field of an existing system Agent Target. It is not exposed as a Workspace App CLI capability.
+      parameters:
+        - name: agentTargetID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSystemAgentTargetEnabledRequest"
+      responses:
+        "200":
+          description: Updated system Agent Target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTarget"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces:
     get:
       operationId: listWorkspaces
@@ -925,6 +962,144 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAppResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    get:
+      operationId: getWorkspaceAppAgentPreferences
+      deprecated: true
+      tags:
+        - app-center
+      summary: Get workspace-app agent preference projection
+      description: >
+        Read-only subset of desktop agent preferences for one workspace app
+        runtime. Intended for workspace app server tokens; exposes default
+        provider selection and developer-gated provider visibility only. Deprecated
+        for Agent integrations: use `tutti --json agent providers` through
+        `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
+        telemetry and release criteria in
+        `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+      responses:
+        "200":
+          description: Workspace app agent preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppAgentPreferencesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    get:
+      operationId: getWorkspaceAppAgentProviderStatuses
+      deprecated: true
+      tags:
+        - app-center
+      summary: Get agent provider availability for one workspace app
+      description: >
+        Workspace-app scoped alias of `GET /v1/agent-providers/status` for app
+        server tokens. When `providers` is omitted, returns provider statuses
+        for enabled daemon-owned Agent Targets visible to Agent GUI. When
+        `providers` is supplied, it narrows that Agent Target set and cannot
+        expose providers outside it. Deprecated for Agent integrations: use
+        `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`.
+        Removal is gated by the production-usage telemetry and release criteria
+        in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+      parameters:
+        - name: providers
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/WorkspaceAgentProvider"
+        - name: includeNetwork
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Agent provider status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderStatusListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+      - name: provider
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/WorkspaceAgentProvider"
+    post:
+      operationId: getWorkspaceAppAgentProviderComposerOptions
+      deprecated: true
+      tags:
+        - app-center
+      summary: Get agent provider composer options for one workspace app
+      description: >
+        Workspace-app scoped alias of
+        `POST /v1/agent-providers/{provider}/composer-options` for app server
+        tokens. Deprecated for Agent integrations: use
+        `tutti --json agent composer-options --provider <providerId>` through
+        `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
+        telemetry and release criteria in
+        `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetAgentProviderComposerOptionsRequest"
+      responses:
+        "200":
+          description: Agent provider composer options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderComposerOptionsResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -1810,6 +1985,44 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: deleteWorkspaceAgentSessionSection
+      tags:
+        - agent-session
+      summary: Delete all agent sessions in one rail section for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before deletion.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionSectionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections/page:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1853,6 +2066,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionSectionPageResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-sections/count:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: countWorkspaceAgentSessionSection
+      tags:
+        - agent-session
+      summary: Count agent sessions in one rail section for one workspace
+      parameters:
+        - name: sectionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before counting.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Workspace agent session section count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionCountResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -3860,12 +4114,10 @@ components:
         - available_credits
       properties:
         available_credits:
-          type: integer
-          format: int64
+          type: string
           nullable: true
         expiring_credits_within_24h:
-          type: integer
-          format: int64
+          type: string
           nullable: true
         next_expire_at:
           type: string
@@ -4576,6 +4828,8 @@ components:
       enum:
         - claude-code
         - codex
+        - cursor
+        - opencode
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4653,6 +4907,20 @@ components:
           type: boolean
         preferences:
           $ref: "#/components/schemas/DesktopPreferences"
+    WorkspaceAppAgentPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - defaultAgentProvider
+        - enableCursorAgent
+        - enableOpenCodeAgent
+      properties:
+        defaultAgentProvider:
+          $ref: "#/components/schemas/DesktopDefaultAgentProvider"
+        enableCursorAgent:
+          type: boolean
+        enableOpenCodeAgent:
+          type: boolean
     PutDesktopPreferencesRequest:
       type: object
       additionalProperties: false
@@ -4737,6 +5005,15 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTarget"
+    SetSystemAgentTargetEnabledRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          x-go-type: "*bool"
     ListWorkspacesResponse:
       type: object
       additionalProperties: false
@@ -6060,6 +6337,12 @@ components:
       type: object
       additionalProperties: false
       properties:
+        agentTargetId:
+          type: string
+          description:
+            Agent target whose provider and runtime context the composer options
+            resolve against. Optional; when omitted the provider path parameter
+            is used directly.
         cwd:
           type: string
         workspaceId:
@@ -6501,7 +6784,7 @@ components:
           nullable: true
           description: >-
             The lowest CLI version this provider supports, when it enforces a
-            floor (currently codex). Lets the UI show "current X, requires Y"
+            floor (currently codex). Lets the UI show "current X, requires >= Y"
             without duplicating the backend's version gate.
     AgentProviderAdapterStatus:
       type: object
@@ -6529,9 +6812,9 @@ components:
           type: string
           nullable: true
           description: >-
-            The adapter package version this provider requires. With version,
-            lets the UI show "current X, requires Y" for an adapter version
-            mismatch and makes the drift visible in telemetry.
+            The minimum adapter package version this provider accepts. With
+            version, lets the UI show "current X, requires >= Y" for an adapter
+            version mismatch and makes the drift visible in telemetry.
     AgentProviderAuthInfo:
       type: object
       additionalProperties: false
@@ -7667,6 +7950,56 @@ components:
       properties:
         removed:
           type: boolean
+    WorkspaceAgentSessionSectionCountResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sectionKey
+        - count
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        count:
+          type: integer
+          minimum: 0
+    DeleteWorkspaceAgentSessionSectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sectionKey
+        - removedMessages
+        - removedSessions
+        - removedSessionIds
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sectionKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+          minLength: 1
+        removedMessages:
+          type: integer
+          minimum: 0
+        removedSessions:
+          type: integer
+          minimum: 0
+        removedSessionIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
     ClearWorkspaceAgentSessionsResponse:
       type: object
       additionalProperties: false
@@ -7862,6 +8195,12 @@ components:
             - image/webp
         data:
           type: string
+          description: Base64-encoded image bytes. Mutually exclusive with url.
+        url:
+          type: string
+          format: uri
+          pattern: '^https://[^@/?#\s]+([/?#]|$)'
+          description: HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
         attachmentId:
           type: string
         name:

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 )
 
 type SkillBundleInput struct {
@@ -14,10 +14,10 @@ type SkillBundleInput struct {
 	ComputerUse    bool
 }
 
-type SkillBundle = agentsidecarservice.SkillBundle
-type SkillMaterializationFile = agentsidecarservice.SkillMaterializationFile
-type SkillMaterializationRecord = agentsidecarservice.SkillMaterializationRecord
-type RecommendedSystemPrompt = agentsidecarservice.RecommendedSystemPrompt
+type SkillBundle = runtimeprep.SkillBundle
+type SkillMaterializationFile = runtimeprep.SkillMaterializationFile
+type SkillMaterializationRecord = runtimeprep.SkillMaterializationRecord
+type RecommendedSystemPrompt = runtimeprep.RecommendedSystemPrompt
 
 func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input SkillBundleInput) (SkillBundle, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -25,11 +25,11 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 	if workspaceID == "" || provider == "" {
 		return SkillBundle{}, ErrInvalidArgument
 	}
-	renderer, ok := s.RuntimePreparer.(agentsidecarservice.SkillBundleRenderer)
+	renderer, ok := s.RuntimePreparer.(runtimeprep.SkillBundleRenderer)
 	if s.RuntimePreparer == nil || !ok {
 		return SkillBundle{}, ErrSkillBundleUnavailable
 	}
-	return renderer.RenderSkillBundle(ctx, agentsidecarservice.PrepareInput{
+	return renderer.RenderSkillBundle(ctx, runtimeprep.PrepareInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
 		Provider:       provider,

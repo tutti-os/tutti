@@ -1,7 +1,39 @@
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceAgentGuiContribution } from "../workspaceAgentGuiContribution.ts";
 
-export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type AgentGuiWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "agentProviderStatusService"
+  | "agents"
+  | "agentsLoading"
+  | "appCenterService"
+  | "appI18n"
+  | "comingSoonAgentProviders"
+  | "computerUseApi"
+  | "defaultAgentProvider"
+  | "defaultAgentTargetId"
+  | "dockIcons"
+  | "dockPreviewCache"
+  | "hostFilesApi"
+  | "hostWindowApi"
+  | "i18n"
+  | "onCapabilitySettingsRequest"
+  | "platformApi"
+  | "renderAgentsEmpty"
+  | "reporterService"
+  | "richTextAtService"
+  | "runtimeApi"
+  | "tuttidClient"
+  | "workspaceAgentActivityService"
+  | "workspaceFileManagerService"
+  | "workspaceId"
+  | "workspaceUserProjectService"
+>;
+
+export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<AgentGuiWorkbenchContributionContext> =
   {
     id: "workspace-agent-gui",
     order: 25,
@@ -15,15 +47,14 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         unifiedDockIconUrl: context.dockIcons.agentUnified,
         dockPreviewCache: context.dockPreviewCache,
         defaultAgentProvider: context.defaultAgentProvider,
-        defaultProviderTargetId: context.defaultProviderTargetId,
+        defaultAgentTargetId: context.defaultAgentTargetId,
         hostFilesApi: context.hostFilesApi,
         hostWindowApi: context.hostWindowApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
-        providerTargets: context.providerTargets,
-        providerTargetsLoading: context.providerTargetsLoading,
-        providerRailMode: context.providerRailMode,
-        renderProviderRailEmpty: context.renderProviderRailEmpty,
+        agents: context.agents,
+        agentsLoading: context.agentsLoading,
+        renderAgentsEmpty: context.renderAgentsEmpty,
         comingSoonAgentProviders: context.comingSoonAgentProviders,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,

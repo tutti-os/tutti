@@ -1,7 +1,7 @@
 import type {
   AgentGUIProvider,
-  AgentGUIProviderReadinessGate,
-  AgentGUIProviderReadinessGateAction
+  AgentGUIAgentAvailabilityAction,
+  AgentGUIProviderReadinessGate
 } from "@tutti-os/agent-gui";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import type { AgentProviderStatusSnapshot } from "../agentProviderStatusService.interface";
@@ -12,12 +12,12 @@ import {
 
 export type DesktopAgentProviderReadinessGateActionHandler = (
   provider: AgentGUIProvider,
-  action: AgentGUIProviderReadinessGateAction
+  action: AgentGUIAgentAvailabilityAction
 ) => void;
 
 export function projectDesktopAgentProviderReadinessGates(input: {
-  snapshot: AgentProviderStatusSnapshot;
   onAction?: DesktopAgentProviderReadinessGateActionHandler;
+  snapshot: AgentProviderStatusSnapshot;
 }): Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>> {
   const statusByProvider = new Map(
     input.snapshot.statuses
@@ -30,15 +30,25 @@ export function projectDesktopAgentProviderReadinessGates(input: {
 
   for (const provider of desktopManagedAgentProviders) {
     const agentGuiProvider = provider as AgentGUIProvider;
-    gates[agentGuiProvider] = projectDesktopAgentProviderReadinessGate({
+    const gate = projectDesktopAgentProviderReadinessGate({
       captured: Boolean(input.snapshot.capturedAt),
       hasError: Boolean(input.snapshot.error),
       isLoading: input.snapshot.isLoading,
-      onAction: input.onAction,
       pendingActions: input.snapshot.pendingActions,
       provider,
       status: statusByProvider.get(provider) ?? null
     });
+    gates[agentGuiProvider] = gate
+      ? {
+          ...gate,
+          ...(input.onAction
+            ? {
+                onAction: (_provider, action) =>
+                  input.onAction?.(agentGuiProvider, action)
+              }
+            : {})
+        }
+      : null;
   }
 
   return gates;
@@ -48,7 +58,6 @@ function projectDesktopAgentProviderReadinessGate(input: {
   captured: boolean;
   hasError: boolean;
   isLoading: boolean;
-  onAction?: DesktopAgentProviderReadinessGateActionHandler;
   pendingActions: AgentProviderStatusSnapshot["pendingActions"];
   provider: WorkspaceAgentProvider;
   status: AgentProviderStatusSnapshot["statuses"][number] | null;
@@ -62,8 +71,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
       pendingAction: pendingActionForProvider(
         input.pendingActions,
         input.provider
-      ),
-      onAction: input.onAction
+      )
     };
   }
 
@@ -76,8 +84,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
         pendingAction: pendingActionForProvider(
           input.pendingActions,
           input.provider
-        ),
-        onAction: input.onAction
+        )
       };
     case "auth_required":
       return {
@@ -85,8 +92,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
         pendingAction: pendingActionForProvider(
           input.pendingActions,
           input.provider
-        ),
-        onAction: input.onAction
+        )
       };
     case "unsupported":
     case "unknown":
@@ -95,8 +101,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
         pendingAction: pendingActionForProvider(
           input.pendingActions,
           input.provider
-        ),
-        onAction: input.onAction
+        )
       };
   }
 }
@@ -104,7 +109,7 @@ function projectDesktopAgentProviderReadinessGate(input: {
 function pendingActionForProvider(
   pendingActions: AgentProviderStatusSnapshot["pendingActions"],
   provider: WorkspaceAgentProvider
-): AgentGUIProviderReadinessGateAction | null {
+): AgentGUIAgentAvailabilityAction | null {
   const pendingAction = pendingActions.find(
     (action) => action.provider === provider
   )?.actionId;

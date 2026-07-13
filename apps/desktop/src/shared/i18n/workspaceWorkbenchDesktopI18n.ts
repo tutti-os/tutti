@@ -75,6 +75,8 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     installFailed: "agentProviders.installFailed",
     installFailedDescription: "agentProviders.installFailedDescription",
     installFailedMissingRuntime: "agentProviders.installFailedMissingRuntime",
+    installFailedOutdatedLocalAgent:
+      "agentProviders.installFailedOutdatedLocalAgent",
     installFailedTimedOut: "agentProviders.installFailedTimedOut",
     installUnavailableInRegion: "agentProviders.installUnavailableInRegion",
     installRequired: "agentProviders.installRequired",
@@ -131,7 +133,8 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     layoutShortcutDefault: "missionControl.layoutShortcutDefault",
     layoutShortcutMac: "missionControl.layoutShortcutMac",
     layoutTrigger: "missionControl.layoutTrigger",
-    unavailableTrigger: "missionControl.unavailableTrigger"
+    unavailableTrigger: "missionControl.unavailableTrigger",
+    unlockLayoutTrigger: "missionControl.unlockLayoutTrigger"
   }
 } as const satisfies Record<string, unknown>;
 

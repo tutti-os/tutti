@@ -743,6 +743,8 @@ func (e DesktopBrowserUseConnectionMode) Valid() bool {
 const (
 	DesktopDefaultAgentProviderClaudeCode DesktopDefaultAgentProvider = "claude-code"
 	DesktopDefaultAgentProviderCodex      DesktopDefaultAgentProvider = "codex"
+	DesktopDefaultAgentProviderCursor     DesktopDefaultAgentProvider = "cursor"
+	DesktopDefaultAgentProviderOpencode   DesktopDefaultAgentProvider = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the DesktopDefaultAgentProvider enum.
@@ -751,6 +753,10 @@ func (e DesktopDefaultAgentProvider) Valid() bool {
 	case DesktopDefaultAgentProviderClaudeCode:
 		return true
 	case DesktopDefaultAgentProviderCodex:
+		return true
+	case DesktopDefaultAgentProviderCursor:
+		return true
+	case DesktopDefaultAgentProviderOpencode:
 		return true
 	default:
 		return false
@@ -2037,8 +2043,8 @@ func (e ListWorkspaceAgentSessionMessagesParamsOrder) Valid() bool {
 
 // AccountCreditsSummary defines model for AccountCreditsSummary.
 type AccountCreditsSummary struct {
-	AvailableCredits         *int64  `json:"available_credits"`
-	ExpiringCreditsWithin24h *int64  `json:"expiring_credits_within_24h,omitempty"`
+	AvailableCredits         *string `json:"available_credits"`
+	ExpiringCreditsWithin24h *string `json:"expiring_credits_within_24h,omitempty"`
 	NextExpireAt             *string `json:"next_expire_at,omitempty"`
 	RefreshedAt              *string `json:"refreshed_at,omitempty"`
 }
@@ -2144,13 +2150,18 @@ type AgentActivityMessageSemantics struct {
 
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
 type AgentPromptContentBlock struct {
-	AttachmentId *string                          `json:"attachmentId,omitempty"`
-	Data         *string                          `json:"data,omitempty"`
-	MimeType     *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
-	Name         *string                          `json:"name,omitempty"`
-	Path         *string                          `json:"path,omitempty"`
-	Text         *string                          `json:"text,omitempty"`
-	Type         AgentPromptContentBlockType      `json:"type"`
+	AttachmentId *string `json:"attachmentId,omitempty"`
+
+	// Data Base64-encoded image bytes. Mutually exclusive with url.
+	Data     *string                          `json:"data,omitempty"`
+	MimeType *AgentPromptContentBlockMimeType `json:"mimeType,omitempty"`
+	Name     *string                          `json:"name,omitempty"`
+	Path     *string                          `json:"path,omitempty"`
+	Text     *string                          `json:"text,omitempty"`
+	Type     AgentPromptContentBlockType      `json:"type"`
+
+	// Url HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
+	Url *string `json:"url,omitempty"`
 }
 
 // AgentPromptContentBlockMimeType defines model for AgentPromptContentBlock.MimeType.
@@ -2225,7 +2236,7 @@ type AgentProviderAdapterStatus struct {
 	Command    []string `json:"command"`
 	Installed  bool     `json:"installed"`
 
-	// RequiredVersion The adapter package version this provider requires. With version, lets the UI show "current X, requires Y" for an adapter version mismatch and makes the drift visible in telemetry.
+	// RequiredVersion The minimum adapter package version this provider accepts. With version, lets the UI show "current X, requires >= Y" for an adapter version mismatch and makes the drift visible in telemetry.
 	RequiredVersion *string `json:"requiredVersion,omitempty"`
 
 	// Version The installed ACP adapter package version, when resolvable. Lets the UI and telemetry show the actual adapter version (not just a path).
@@ -2285,7 +2296,7 @@ type AgentProviderCliStatus struct {
 	BinaryPath *string `json:"binaryPath,omitempty"`
 	Installed  bool    `json:"installed"`
 
-	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires Y" without duplicating the backend's version gate.
+	// MinVersion The lowest CLI version this provider supports, when it enforces a floor (currently codex). Lets the UI show "current X, requires >= Y" without duplicating the backend's version gate.
 	MinVersion *string `json:"minVersion,omitempty"`
 	Version    *string `json:"version,omitempty"`
 }
@@ -2879,6 +2890,16 @@ type DeleteWorkspaceAgentSessionResponse struct {
 	Removed bool `json:"removed"`
 }
 
+// DeleteWorkspaceAgentSessionSectionResponse defines model for DeleteWorkspaceAgentSessionSectionResponse.
+type DeleteWorkspaceAgentSessionSectionResponse struct {
+	AgentTargetId     *string  `json:"agentTargetId,omitempty"`
+	RemovedMessages   int      `json:"removedMessages"`
+	RemovedSessionIds []string `json:"removedSessionIds"`
+	RemovedSessions   int      `json:"removedSessions"`
+	SectionKey        string   `json:"sectionKey"`
+	WorkspaceId       string   `json:"workspaceId"`
+}
+
 // DeleteWorkspaceAppResponse defines model for DeleteWorkspaceAppResponse.
 type DeleteWorkspaceAppResponse struct {
 	AppId       string `json:"appId"`
@@ -3137,9 +3158,11 @@ type FixWorkspaceAppFactoryJobRequest struct {
 
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
-	Cwd      *string                       `json:"cwd,omitempty"`
-	Locale   *DesktopLocale                `json:"locale,omitempty"`
-	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
+	AgentTargetId *string                       `json:"agentTargetId,omitempty"`
+	Cwd           *string                       `json:"cwd,omitempty"`
+	Locale        *DesktopLocale                `json:"locale,omitempty"`
+	Settings      *AgentSessionComposerSettings `json:"settings,omitempty"`
 
 	// WorkspaceId Workspace used for Claude Code live model discovery.
 	WorkspaceId *string `json:"workspaceId,omitempty"`
@@ -3571,6 +3594,11 @@ type SendWorkspaceAgentSessionInputResponse struct {
 	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
 	Turn   *WorkspaceAgentTurn `json:"turn,omitempty"`
 	TurnId string              `json:"turnId"`
+}
+
+// SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
+type SetSystemAgentTargetEnabledRequest struct {
+	Enabled *bool `json:"enabled"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
@@ -4039,6 +4067,14 @@ type WorkspaceAgentSessionSection struct {
 	UserProject *UserProject            `json:"userProject,omitempty"`
 }
 
+// WorkspaceAgentSessionSectionCountResponse defines model for WorkspaceAgentSessionSectionCountResponse.
+type WorkspaceAgentSessionSectionCountResponse struct {
+	AgentTargetId *string `json:"agentTargetId,omitempty"`
+	Count         int     `json:"count"`
+	SectionKey    string  `json:"sectionKey"`
+	WorkspaceId   string  `json:"workspaceId"`
+}
+
 // WorkspaceAgentSessionSectionKind defines model for WorkspaceAgentSessionSectionKind.
 type WorkspaceAgentSessionSectionKind string
 
@@ -4157,6 +4193,13 @@ type WorkspaceApp struct {
 	Version          string                       `json:"version"`
 	WindowMinHeight  *int                         `json:"windowMinHeight"`
 	WindowMinWidth   *int                         `json:"windowMinWidth"`
+}
+
+// WorkspaceAppAgentPreferencesResponse defines model for WorkspaceAppAgentPreferencesResponse.
+type WorkspaceAppAgentPreferencesResponse struct {
+	DefaultAgentProvider DesktopDefaultAgentProvider `json:"defaultAgentProvider"`
+	EnableCursorAgent    bool                        `json:"enableCursorAgent"`
+	EnableOpenCodeAgent  bool                        `json:"enableOpenCodeAgent"`
 }
 
 // WorkspaceAppAuthor defines model for WorkspaceAppAuthor.
@@ -4735,11 +4778,27 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// DeleteWorkspaceAgentSessionSectionParams defines parameters for DeleteWorkspaceAgentSessionSection.
+type DeleteWorkspaceAgentSessionSectionParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// AgentTargetId Optional agent target filter applied before deletion.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
 // ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.
 type ListWorkspaceAgentSessionSectionsParams struct {
 	LimitPerSection *int `form:"limitPerSection,omitempty" json:"limitPerSection,omitempty"`
 
 	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// CountWorkspaceAgentSessionSectionParams defines parameters for CountWorkspaceAgentSessionSection.
+type CountWorkspaceAgentSessionSectionParams struct {
+	SectionKey string `form:"sectionKey" json:"sectionKey"`
+
+	// AgentTargetId Optional agent target filter applied before counting.
 	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
 }
 
@@ -4781,6 +4840,12 @@ type ListWorkspaceAgentSessionMessagesParams struct {
 
 // ListWorkspaceAgentSessionMessagesParamsOrder defines parameters for ListWorkspaceAgentSessionMessages.
 type ListWorkspaceAgentSessionMessagesParamsOrder string
+
+// GetWorkspaceAppAgentProviderStatusesParams defines parameters for GetWorkspaceAppAgentProviderStatuses.
+type GetWorkspaceAppAgentProviderStatusesParams struct {
+	Providers      *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
+	IncludeNetwork *bool                     `form:"includeNetwork,omitempty" json:"includeNetwork,omitempty"`
+}
 
 // ListWorkspaceFileDirectoryParams defines parameters for ListWorkspaceFileDirectory.
 type ListWorkspaceFileDirectoryParams struct {
@@ -4861,6 +4926,9 @@ type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegi
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
 
+// SetSystemAgentTargetEnabledJSONRequestBody defines body for SetSystemAgentTargetEnabled for application/json ContentType.
+type SetSystemAgentTargetEnabledJSONRequestBody = SetSystemAgentTargetEnabledRequest
+
 // InvokeCliCommandJSONRequestBody defines body for InvokeCliCommand for application/json ContentType.
 type InvokeCliCommandJSONRequestBody = CliInvokeRequest
 
@@ -4932,6 +5000,9 @@ type ImportWorkspaceAppJSONRequestBody = ImportWorkspaceAppRequest
 
 // LoadLocalWorkspaceAppJSONRequestBody defines body for LoadLocalWorkspaceApp for application/json ContentType.
 type LoadLocalWorkspaceAppJSONRequestBody = LoadLocalWorkspaceAppRequest
+
+// GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody defines body for GetWorkspaceAppAgentProviderComposerOptions for application/json ContentType.
+type GetWorkspaceAppAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
 
 // ExportWorkspaceAppJSONRequestBody defines body for ExportWorkspaceApp for application/json ContentType.
 type ExportWorkspaceAppJSONRequestBody = ExportWorkspaceAppRequest

@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
+import {
+  DARWIN_CLAUDE_NATIVE_PACKAGES,
+  resolveDarwinClaudeNativePackageSpecs,
+  resolveDarwinClaudeNativePackagesForPackContext
+} from "../../apps/desktop/scripts/claude-sdk-sidecar-packaging.mjs";
 
 const desktopPackagePath = new URL(
   "../../apps/desktop/package.json",
@@ -13,6 +18,10 @@ const workflowPath = new URL(
 );
 const buildScriptPath = new URL(
   "../../tools/scripts/build-desktop-package.sh",
+  import.meta.url
+);
+const claudeSidecarVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-claude-sdk-sidecar.mjs",
   import.meta.url
 );
 const electronViteConfigPath = new URL(
@@ -85,10 +94,10 @@ test("desktop release workflow publishes rc tags as prereleases and keeps stable
   assert.match(workflow, /patch_beta_release\)\s*\n\s*strategy=patch_beta/);
 });
 
-test("desktop release workflow gates manual stable modes by release branch", async () => {
+test("desktop release workflow gates manual rc and stable modes by release branch", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /name:\s+Validate stable release branch/);
+  assert.match(workflow, /name:\s+Validate release dispatch branch/);
   assert.match(
     workflow,
     /RELEASE_EVENT_NAME:\s+\${{\s*github\.event_name\s*}}/
@@ -98,6 +107,10 @@ test("desktop release workflow gates manual stable modes by release branch", asy
   assert.match(
     workflow,
     /if \[\[ "\$\{RELEASE_EVENT_NAME\}" != "workflow_dispatch" \]\]; then/
+  );
+  assert.match(
+    workflow,
+    /patch_rc_release\|patch_release\|minor_release\|major_release\)/
   );
   assert.match(workflow, /patch_release\|minor_release\|major_release\)/);
   assert.match(workflow, /main\|release\/\*/);
@@ -307,9 +320,13 @@ test("desktop release workflow keeps GitHub release draft until assets are ready
     "name: Update release notes with direct downloads"
   );
   const publishIndex = publishJob.indexOf("name: Publish GitHub release");
+  const stableAliasIndex = publishJob.indexOf(
+    "name: Refresh stable release alias"
+  );
 
   assert.notEqual(stageIndex, -1, "release assets should be staged");
   assert.notEqual(publishIndex, -1, "release should be published explicitly");
+  assert.notEqual(stableAliasIndex, -1, "stable release alias should refresh");
   assert.match(publishJob, /draft:\s*true/);
   assert.match(
     publishJob,
@@ -318,6 +335,96 @@ test("desktop release workflow keeps GitHub release draft until assets are ready
   assert.ok(stageIndex < s3Index);
   assert.ok(s3Index < notesIndex);
   assert.ok(notesIndex < publishIndex);
+  assert.ok(publishIndex < stableAliasIndex);
+});
+
+test("desktop release workflow refreshes the stable alias without taking Latest", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJobMatch = workflow.match(
+    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(publishJobMatch, "publish job should exist");
+  const publishJob = publishJobMatch[0];
+  const stableAliasStep = publishJob.match(
+    /- name: Refresh stable release alias[\s\S]*?(?=\n\s{6}- name:|\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+
+  assert.ok(stableAliasStep, "stable alias step should exist");
+  assert.match(stableAliasStep, /TUTTI_DESKTOP_RELEASE_CHANNEL/);
+  assert.match(stableAliasStep, /gh release list/);
+  assert.match(stableAliasStep, /--exclude-drafts/);
+  assert.match(stableAliasStep, /--exclude-pre-releases/);
+  assert.match(stableAliasStep, /\.tagName != "stable"/);
+  assert.match(
+    stableAliasStep,
+    /select\(\.tagName != "stable" and \(\.tagName \| test\("\^v\[0-9\]\+\\\\\.\[0-9\]\+\\\\\.\[0-9\]\+\$"\)\)\)\]/
+  );
+  assert.match(
+    stableAliasStep,
+    /apps\/desktop\/scripts\/build-stable-release-alias-body\.mjs/
+  );
+  assert.match(
+    stableAliasStep,
+    /stable_tree="\$\(git rev-parse "\$\{stable_sha\}\^\{tree\}"\)"/
+  );
+  assert.match(stableAliasStep, /GIT_AUTHOR_NAME="github-actions\[bot\]"/);
+  assert.match(
+    stableAliasStep,
+    /GIT_AUTHOR_EMAIL="41898282\+github-actions\[bot\]@users\.noreply\.github\.com"/
+  );
+  assert.match(stableAliasStep, /GIT_AUTHOR_DATE="\$\{stable_alias_time\}"/);
+  assert.match(stableAliasStep, /GIT_COMMITTER_NAME="github-actions\[bot\]"/);
+  assert.match(
+    stableAliasStep,
+    /GIT_COMMITTER_EMAIL="41898282\+github-actions\[bot\]@users\.noreply\.github\.com"/
+  );
+  assert.match(
+    stableAliasStep,
+    /Signed-off-by: github-actions\[bot\] <41898282\+github-actions\[bot\]@users\.noreply\.github\.com>/
+  );
+  assert.match(
+    stableAliasStep,
+    /git commit-tree "\$\{stable_tree\}" -p "\$\{stable_sha\}"/
+  );
+  assert.match(
+    stableAliasStep,
+    /stable_alias_tree="\$\(git rev-parse "\$\{stable_alias_sha\}\^\{tree\}"\)"/
+  );
+  assert.match(
+    stableAliasStep,
+    /stable_alias_parent="\$\(git rev-parse "\$\{stable_alias_sha\}\^"\)"/
+  );
+  assert.match(stableAliasStep, /Stable alias tree mismatch:/);
+  assert.match(stableAliasStep, /Stable alias parent mismatch:/);
+  assert.match(stableAliasStep, /git tag -f stable "\$\{stable_alias_sha\}"/);
+  assert.doesNotMatch(stableAliasStep, /git tag -f stable "\$\{stable_sha\}"/);
+  assert.match(stableAliasStep, /git push origin refs\/tags\/stable --force/);
+  assert.match(stableAliasStep, /gh release delete stable --yes/);
+  assert.doesNotMatch(stableAliasStep, /--cleanup-tag/);
+  assert.doesNotMatch(stableAliasStep, /git push origin :refs\/tags\/stable/);
+  assert.doesNotMatch(stableAliasStep, /git tag -a/);
+  assert.match(stableAliasStep, /gh release create stable/);
+  assert.match(stableAliasStep, /--verify-tag/);
+  assert.match(stableAliasStep, /--title "Stable \(Recommended\)"/);
+  assert.doesNotMatch(stableAliasStep, /--target "\$\{stable_sha\}"/);
+  assert.match(stableAliasStep, /--latest=false/);
+  assert.match(stableAliasStep, /gh release edit "\$\{stable_tag\}" --latest/);
+
+  const aliasCommitIndex = stableAliasStep.indexOf("git commit-tree");
+  const tagPushIndex = stableAliasStep.indexOf(
+    "git push origin refs/tags/stable --force"
+  );
+  const releaseDeleteIndex = stableAliasStep.indexOf(
+    "gh release delete stable --yes"
+  );
+  const releaseCreateIndex = stableAliasStep.indexOf(
+    "gh release create stable"
+  );
+
+  assert.ok(aliasCommitIndex < tagPushIndex);
+  assert.ok(tagPushIndex < releaseDeleteIndex);
+  assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
 test("desktop release workflow publishes only macOS release assets for now", async () => {
@@ -377,6 +484,10 @@ test("desktop release workflow materializes macOS signing certificate before pac
 
 test("desktop macOS packaging builds architecture-specific and universal artifacts", async () => {
   const buildScript = await readFile(buildScriptPath, "utf8");
+  const claudeSidecarVendorScript = await readFile(
+    claudeSidecarVendorScriptPath,
+    "utf8"
+  );
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
 
   assert.match(packageJson.build.artifactName, /\$\{arch\}/);
@@ -388,10 +499,61 @@ test("desktop macOS packaging builds architecture-specific and universal artifac
     /lipo\s+"\$\{output_path\}"\s+-verify_arch\s+arm64\s+x86_64\s+\|\|\s+\{/
   );
   assert.match(buildScript, /electron-builder --mac --x64 --arm64 --universal/);
+  assert.match(buildScript, /--include-darwin-native-packages/);
+  assert.match(claudeSidecarVendorScript, /"npm",\s*\n\s*\["pack"/);
+  assert.match(
+    claudeSidecarVendorScript,
+    /verifyDarwinClaudeNativePackages\(join\(outDir, "node_modules"\)\)/
+  );
+  assert.deepEqual(
+    DARWIN_CLAUDE_NATIVE_PACKAGES.map(({ name, lipoArch }) => [name, lipoArch]),
+    [
+      ["@anthropic-ai/claude-agent-sdk-darwin-arm64", "arm64"],
+      ["@anthropic-ai/claude-agent-sdk-darwin-x64", "x86_64"]
+    ]
+  );
+  assert.deepEqual(
+    resolveDarwinClaudeNativePackageSpecs({
+      optionalDependencies: {
+        "@anthropic-ai/claude-agent-sdk-darwin-arm64": "1.2.3",
+        "@anthropic-ai/claude-agent-sdk-darwin-x64": "1.2.3"
+      }
+    }),
+    [
+      "@anthropic-ai/claude-agent-sdk-darwin-arm64@1.2.3",
+      "@anthropic-ai/claude-agent-sdk-darwin-x64@1.2.3"
+    ]
+  );
+  assert.deepEqual(
+    resolveDarwinClaudeNativePackagesForPackContext({
+      appOutDir: "/tmp/dist/mac",
+      arch: 1
+    }).map(({ name }) => name),
+    ["@anthropic-ai/claude-agent-sdk-darwin-x64"]
+  );
+  assert.deepEqual(
+    resolveDarwinClaudeNativePackagesForPackContext({
+      appOutDir: "/tmp/dist/mac-arm64",
+      arch: 3
+    }).map(({ name }) => name),
+    ["@anthropic-ai/claude-agent-sdk-darwin-arm64"]
+  );
+  for (const context of [
+    { appOutDir: "/tmp/dist/mac-universal-x64-temp", arch: 1 },
+    { appOutDir: "/tmp/dist/mac-universal-arm64-temp", arch: 3 },
+    { appOutDir: "/tmp/dist/mac-universal", arch: 4 }
+  ]) {
+    assert.deepEqual(
+      resolveDarwinClaudeNativePackagesForPackContext(context).map(
+        ({ name }) => name
+      ),
+      DARWIN_CLAUDE_NATIVE_PACKAGES.map(({ name }) => name)
+    );
+  }
   assert.equal(
     packageJson.build.mac.x64ArchFiles,
     "Contents/Resources/bin/claude-sdk-sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude",
-    "Claude SDK sidecar arch-specific binary must be covered for electron-builder universal merges"
+    "Claude SDK sidecar native binaries must be covered for electron-builder universal merges"
   );
 });
 

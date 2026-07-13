@@ -118,7 +118,7 @@ func (a *CodexAppServerAdapter) execReviewSlashCommand(
 	}
 	initialTurn := appServerTurnFromResult(result)
 	if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-		a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
+		a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID)
 	}
 	finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
 	if finishErr != nil {
@@ -138,7 +138,7 @@ func (a *CodexAppServerAdapter) execReviewSlashCommand(
 		}
 		return true, nil
 	}
-	normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
+	normalizer.ApplyAssistantTurnFinalText(appServerTurnFinalAssistantText(finalTurn))
 	emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
 	return true, nil
 }

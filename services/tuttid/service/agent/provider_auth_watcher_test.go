@@ -66,7 +66,8 @@ func TestProviderAuthWatcherReportsFileRewrites(t *testing.T) {
 		Entries: []ProviderAuthWatchEntry{
 			{Provider: agentprovider.Codex, Paths: []string{authPath}},
 		},
-		Interval: 5 * time.Millisecond,
+		Interval:      5 * time.Millisecond,
+		CoalesceDelay: -1,
 		OnChange: func(providers []string) {
 			changes <- providers
 		},
@@ -205,7 +206,8 @@ func TestProviderAuthWatcherIgnoresNonAuthClaudeStateChurn(t *testing.T) {
 				ContentFingerprint: claudeProviderAuthContentFingerprint(statePath),
 			},
 		},
-		Interval: 5 * time.Millisecond,
+		Interval:      5 * time.Millisecond,
+		CoalesceDelay: -1,
 		OnChange: func(providers []string) {
 			changes <- providers
 		},
@@ -250,7 +252,8 @@ func TestProviderAuthWatcherReportsOpenCodeConfigRewrites(t *testing.T) {
 				ContentFingerprint: hashProviderAuthFileContent,
 			},
 		},
-		Interval: 5 * time.Millisecond,
+		Interval:      5 * time.Millisecond,
+		CoalesceDelay: -1,
 		OnChange: func(providers []string) {
 			changes <- providers
 		},
@@ -293,6 +296,58 @@ func TestProviderAuthFileChangedPrefersContentKey(t *testing.T) {
 	next.contentKey = ""
 	if !providerAuthFileChanged(previous, next) {
 		t.Fatal("stat change without content keys must report")
+	}
+}
+
+func TestProviderAuthWatcherCoalescesProviderChanges(t *testing.T) {
+	dir := t.TempDir()
+	codexAuthPath := filepath.Join(dir, "codex-auth.json")
+	claudeAuthPath := filepath.Join(dir, "claude-auth.json")
+	if err := os.WriteFile(codexAuthPath, []byte(`{"mode":"chatgpt"}`), 0o600); err != nil {
+		t.Fatalf("write baseline codex auth file: %v", err)
+	}
+	if err := os.WriteFile(claudeAuthPath, []byte(`{"mode":"claude"}`), 0o600); err != nil {
+		t.Fatalf("write baseline claude auth file: %v", err)
+	}
+
+	changes := make(chan []string, 8)
+	watcher := &ProviderAuthWatcher{
+		Entries: []ProviderAuthWatchEntry{
+			{Provider: agentprovider.Codex, Paths: []string{codexAuthPath}},
+			{Provider: agentprovider.ClaudeCode, Paths: []string{claudeAuthPath}},
+		},
+		Interval:      5 * time.Millisecond,
+		CoalesceDelay: 50 * time.Millisecond,
+		OnChange: func(providers []string) {
+			changes <- providers
+		},
+	}
+	watcher.Start()
+	defer watcher.Close()
+
+	time.Sleep(20 * time.Millisecond)
+	if err := os.WriteFile(codexAuthPath, []byte(`{"mode":"api-key"}`), 0o600); err != nil {
+		t.Fatalf("rewrite codex auth file: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(claudeAuthPath, []byte(`{"mode":"oauth"}`), 0o600); err != nil {
+		t.Fatalf("rewrite claude auth file: %v", err)
+	}
+
+	select {
+	case providers := <-changes:
+		if len(providers) != 2 ||
+			providers[0] != agentprovider.Codex ||
+			providers[1] != agentprovider.ClaudeCode {
+			t.Fatalf("OnChange providers = %v, want [codex claude-code]", providers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not report the coalesced provider changes")
+	}
+	select {
+	case providers := <-changes:
+		t.Fatalf("watcher reported a second coalesced callback: %v", providers)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -42,11 +43,28 @@ type DesktopPreferencesReader interface {
 	Get(context.Context) (preferencesbiz.DesktopPreferences, error)
 }
 
+type AgentTargetLister interface {
+	List(context.Context) ([]agenttargetbiz.Target, error)
+}
+
 type Provider struct {
 	workspaces      cliservice.WorkspaceCatalog
 	sessions        AgentSessions
 	launchPublisher AgentGUILaunchPublisher
 	preferences     DesktopPreferencesReader
+	agentTargets    AgentTargetLister
+}
+
+func NewProviderWithAgentTargets(
+	workspaces cliservice.WorkspaceCatalog,
+	sessions AgentSessions,
+	launchPublisher AgentGUILaunchPublisher,
+	agentTargets AgentTargetLister,
+	preferences ...DesktopPreferencesReader,
+) Provider {
+	provider := NewProviderWithLaunchPublisher(workspaces, sessions, launchPublisher, preferences...)
+	provider.agentTargets = agentTargets
+	return provider
 }
 
 func NewProviderWithLaunchPublisher(
@@ -149,6 +167,17 @@ func (p Provider) availableProviders(ctx context.Context) map[string]bool {
 	if p.sessions == nil {
 		return available
 	}
+	var enabled map[string]bool
+	if p.agentTargets != nil {
+		targets, err := p.enabledAgentTargets(ctx)
+		if err != nil {
+			return available
+		}
+		enabled = make(map[string]bool, len(targets))
+		for _, target := range targets {
+			enabled[target.Provider] = true
+		}
+	}
 	items, err := p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{})
 	if err != nil {
 		return available
@@ -158,7 +187,7 @@ func (p Provider) availableProviders(ctx context.Context) map[string]bool {
 			continue
 		}
 		provider := agentproviderbiz.Normalize(item.Provider)
-		if provider != "" {
+		if provider != "" && (enabled == nil || enabled[provider]) {
 			available[provider] = true
 		}
 	}
@@ -170,4 +199,35 @@ func (p Provider) requireSessions() error {
 		return agentservice.ErrInvalidArgument
 	}
 	return nil
+}
+
+func (p Provider) enabledAgentTargets(ctx context.Context) ([]agenttargetbiz.Target, error) {
+	if p.agentTargets == nil {
+		return nil, agentservice.ErrInvalidArgument
+	}
+	targets, err := p.agentTargets.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return agenttargetbiz.EnabledTargetsByProvider(targets), nil
+}
+
+func (p Provider) resolveEnabledAgentTarget(ctx context.Context, provider string) (agenttargetbiz.Target, error) {
+	canonicalProvider := agentproviderbiz.Normalize(provider)
+	if canonicalProvider == "" {
+		return agenttargetbiz.Target{}, agentservice.ErrInvalidArgument
+	}
+	targets, err := p.enabledAgentTargets(ctx)
+	if err != nil {
+		return agenttargetbiz.Target{}, err
+	}
+	target, ok := agenttargetbiz.EnabledTargetForProvider(targets, canonicalProvider)
+	if !ok {
+		return agenttargetbiz.Target{}, &agentservice.ProviderUnavailableError{
+			Provider:   canonicalProvider,
+			ReasonCode: "agent_provider_not_enabled",
+			Message:    "agent provider is not enabled",
+		}
+	}
+	return target, nil
 }

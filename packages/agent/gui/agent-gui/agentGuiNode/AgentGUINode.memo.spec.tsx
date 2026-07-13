@@ -12,7 +12,7 @@ import {
   type FlatAgentGUINodeViewModelFixture
 } from "./model/AgentGUINodeViewModel.fixture";
 import { AgentGUINode } from "./AgentGUINode";
-import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
+import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -244,9 +244,9 @@ function createViewModel(
     userProjects: [],
     conversation: null,
     conversationDetail: null,
-    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
-    providerTargetsLoading: false,
+    selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+    agentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    agentTargetsLoading: false,
     conversationFilter: { kind: "all" },
     draftPrompt: "",
     draftContent,

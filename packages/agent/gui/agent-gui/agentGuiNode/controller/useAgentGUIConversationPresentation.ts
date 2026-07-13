@@ -4,10 +4,10 @@ import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSet
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import { translate } from "../../../i18n/index";
 import {
-  agentGUIProviderTargetRefsEqual,
-  resolveAgentGUIProviderTarget
-} from "../../../providerTargets";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+  agentGUIAgentTargetRefsEqual,
+  resolveAgentGUIAgentTarget
+} from "../../../agentTargets";
+import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import {
   applyAgentGUIConversationProjects,
@@ -34,19 +34,19 @@ interface UseAgentGUIConversationPresentationInput {
   currentUserId: string | null | undefined;
   data: AgentGUINodeData;
   dataRef: CurrentValue<AgentGUINodeData>;
-  defaultProviderTargetId: string | null;
+  defaultAgentTargetId: string | null;
   draftBySessionId: Record<string, AgentComposerDraft>;
   hasUnconfirmedSubmit: boolean;
   isCreatingConversation: boolean;
   isNoProjectPath?: (input: { path: string }) => boolean;
   isSubmitting: boolean;
-  normalizedExplicitProviderTargets: readonly AgentGUIProviderTarget[];
-  normalizedProviderTargets: readonly AgentGUIProviderTarget[];
+  normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   onDataChangeRef: CurrentValue<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
   previewMode: boolean;
-  providerTargetsLoading: boolean;
+  agentTargetsLoading: boolean;
   shouldUseStaticProviderTargets: boolean;
   transientConversation: AgentGUIConversationSummary | null;
   userProjects: readonly AgentHostUserProject[];
@@ -141,7 +141,7 @@ export function useAgentGUIConversationPresentation(
   useEffect(() => {
     if (
       input.previewMode ||
-      input.providerTargetsLoading ||
+      input.agentTargetsLoading ||
       !input.activeConversationId
     ) {
       return;
@@ -160,11 +160,11 @@ export function useAgentGUIConversationPresentation(
       normalizeOptionalText(input.dataRef.current.agentTargetId) !==
         summaryAgentTargetId;
     if (!providerMismatch && !agentTargetMismatch) return;
-    const sessionTarget = resolveAgentGUIProviderTarget({
+    const sessionTarget = resolveAgentGUIAgentTarget({
       agentTargetId: summaryAgentTargetId,
-      defaultProviderTargetId: input.defaultProviderTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
       provider: summary.provider,
-      providerTargets: input.normalizedProviderTargets,
+      agentTargets: input.normalizedProviderTargets,
       useStaticCatalog: input.shouldUseStaticProviderTargets
     });
     if (!sessionTarget || sessionTarget.provider !== summary.provider) return;
@@ -180,7 +180,7 @@ export function useAgentGUIConversationPresentation(
         (target) =>
           target.provider === sessionTarget.provider &&
           target.targetId === sessionTarget.targetId &&
-          agentGUIProviderTargetRefsEqual(target.ref, sessionTarget.ref)
+          agentGUIAgentTargetRefsEqual(target.ref, sessionTarget.ref)
       );
     input.onDataChangeRef.current((current) => {
       const targetData = composerTargetDataFromProviderTarget({
@@ -202,12 +202,12 @@ export function useAgentGUIConversationPresentation(
     input.activeConversationId,
     input.conversations,
     input.dataRef,
-    input.defaultProviderTargetId,
+    input.defaultAgentTargetId,
     input.normalizedExplicitProviderTargets,
     input.normalizedProviderTargets,
     input.onDataChangeRef,
     input.previewMode,
-    input.providerTargetsLoading,
+    input.agentTargetsLoading,
     input.shouldUseStaticProviderTargets,
     input.transientConversation
   ]);

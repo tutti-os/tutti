@@ -5,12 +5,12 @@ import (
 	"strings"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
 
@@ -341,7 +341,7 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest(ReasonInvalidEntryKind, WithCause(err))
 	case errors.Is(err, workspacefiles.ErrInvalidPath):
 		return InvalidRequest(ReasonInvalidPath, WithCause(err))
-	case errors.Is(err, agentsidecarservice.ErrCwdNotDirectory):
+	case errors.Is(err, runtimeprep.ErrCwdNotDirectory):
 		return InvalidRequest(ReasonInvalidPath, WithCause(err))
 	case errors.Is(err, workspacefiles.ErrInvalidUploadSource):
 		return InvalidRequest(ReasonInvalidUploadSource, WithCause(err))

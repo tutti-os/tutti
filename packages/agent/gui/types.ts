@@ -71,26 +71,68 @@ export type AgentGUIProvider = Extract<
   | "opencode"
 >;
 
-export interface AgentGUIProviderTargetRef {
+export type AgentGUIAgentAvailabilityStatus =
+  | "ready"
+  | "checking"
+  | "coming_soon"
+  | "not_installed"
+  | "auth_required"
+  | "unavailable";
+
+export type AgentGUIAgentAvailabilityAction = "install" | "login" | "refresh";
+
+export interface AgentGUIAgentAvailability {
+  status: AgentGUIAgentAvailabilityStatus;
+  reason?: string | null;
+  pendingAction?: AgentGUIAgentAvailabilityAction | null;
+}
+
+export interface AgentGUIAgentOwner {
+  name?: string | null;
+  avatarUrl?: string | null;
+}
+
+/**
+ * Host-projected entry from the workspace `/agents` directory.
+ *
+ * `agentTargetId` is the only UI and launch identity. `provider` remains
+ * execution metadata for provider-native composer/runtime policy and must not
+ * be used to group, deduplicate, name, or select entries.
+ */
+export interface AgentGUIAgent {
+  agentTargetId: string;
+  name: string;
+  iconUrl: string;
+  description?: string | null;
+  owner?: AgentGUIAgentOwner | null;
+  availability: AgentGUIAgentAvailability;
+  provider: AgentGUIProvider;
+}
+
+export interface AgentGUIAllAgentsPresentation {
+  iconUrl?: string | null;
+}
+
+export interface AgentGUIAgentTargetRef {
   kind: string;
   provider: AgentGUIProvider;
   [key: string]: unknown;
 }
 
-export interface AgentGUIProviderTargetBadge {
+export interface AgentGUIAgentTargetBadge {
   iconUrl: string;
   label?: string;
 }
 
-export interface AgentGUIProviderTarget {
+export interface AgentGUIAgentTarget {
   targetId: string;
   agentTargetId?: string | null;
   provider: AgentGUIProvider;
-  ref: AgentGUIProviderTargetRef;
+  ref: AgentGUIAgentTargetRef;
   label: string;
   description?: string;
   iconUrl?: string | null;
-  badge?: AgentGUIProviderTargetBadge | null;
+  badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;

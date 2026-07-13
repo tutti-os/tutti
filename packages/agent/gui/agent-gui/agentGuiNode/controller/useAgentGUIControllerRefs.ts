@@ -3,7 +3,7 @@ import { useRef } from "react";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -17,8 +17,8 @@ interface UseAgentGUIControllerRefsInput {
   data: AgentGUINodeData;
   draftBySessionId: Record<string, AgentComposerDraft>;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
-  effectiveSelectedProviderTarget: AgentGUIProviderTarget;
-  homeComposerTargetOverride: AgentGUIProviderTarget | null;
+  effectiveSelectedProviderTarget: AgentGUIAgentTarget;
+  homeComposerTargetOverride: AgentGUIAgentTarget | null;
   isComposerHome: boolean;
   isCreatingConversation: boolean;
   isNoProjectPath: ((input: { path: string }) => boolean) | undefined;
@@ -31,10 +31,10 @@ interface UseAgentGUIControllerRefsInput {
   onShowMessage:
     | ((message: string, tone?: "info" | "warning" | "error") => void)
     | undefined;
-  providerTargetsProvided: boolean;
+  agentTargetsProvided: boolean;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
-  selectedProviderTargetIsExplicit: boolean;
+  selectedAgentTargetIsExplicit: boolean;
   userProjects: AgentHostUserProject[];
 }
 
@@ -51,15 +51,13 @@ export function useAgentGUIControllerRefs(
   const isMountedRef = useRef(true);
   const agentActivitySnapshotRef = useRef(input.agentActivitySnapshot);
   const dataRef = useRef(input.data);
-  const selectedProviderTargetRef = useRef(
-    input.effectiveSelectedProviderTarget
-  );
-  const selectedProviderTargetIsExplicitRef = useRef(
+  const selectedAgentTargetRef = useRef(input.effectiveSelectedProviderTarget);
+  const selectedAgentTargetIsExplicitRef = useRef(
     input.homeComposerTargetOverride
       ? true
-      : input.selectedProviderTargetIsExplicit
+      : input.selectedAgentTargetIsExplicit
   );
-  const providerTargetsProvidedRef = useRef(input.providerTargetsProvided);
+  const agentTargetsProvidedRef = useRef(input.agentTargetsProvided);
   const selectedComposerTargetDataRef = useRef(
     input.selectedComposerTargetData
   );
@@ -111,11 +109,11 @@ export function useAgentGUIControllerRefs(
   conversationsRef.current = input.conversations;
   agentActivitySnapshotRef.current = input.agentActivitySnapshot;
   dataRef.current = input.data;
-  selectedProviderTargetRef.current = input.effectiveSelectedProviderTarget;
-  selectedProviderTargetIsExplicitRef.current = input.homeComposerTargetOverride
+  selectedAgentTargetRef.current = input.effectiveSelectedProviderTarget;
+  selectedAgentTargetIsExplicitRef.current = input.homeComposerTargetOverride
     ? true
-    : input.selectedProviderTargetIsExplicit;
-  providerTargetsProvidedRef.current = input.providerTargetsProvided;
+    : input.selectedAgentTargetIsExplicit;
+  agentTargetsProvidedRef.current = input.agentTargetsProvided;
   selectedComposerTargetDataRef.current = input.selectedComposerTargetData;
   draftBySessionIdRef.current = input.draftBySessionId;
   draftSettingsBySessionIdRef.current = input.draftSettingsBySessionId;
@@ -152,12 +150,12 @@ export function useAgentGUIControllerRefs(
     onRememberComposerDefaultsRef,
     onShowMessageRef,
     pendingOpenSessionRequestRef,
-    providerTargetsProvidedRef,
+    agentTargetsProvidedRef,
     reloadSelectedConversationRef,
     selectedComposerTargetDataRef,
     selectedProjectPathRef,
-    selectedProviderTargetIsExplicitRef,
-    selectedProviderTargetRef,
+    selectedAgentTargetIsExplicitRef,
+    selectedAgentTargetRef,
     submitPromptRef,
     syncConversationListProjectionRef,
     userProjectsLoadSeqRef,

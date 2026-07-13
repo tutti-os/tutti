@@ -14,8 +14,8 @@ snapshot.
 
 - defines sessions, messages, presences, snapshots, and event envelopes
 - loads session lists and paged session messages through an adapter
-- retains live session event streams with reference-counted subscription
-  lifecycle
+- can retain live session event streams with reference-counted subscription
+  lifecycle when a host adapter exposes that optional capability
 - merges persisted and live messages with version-aware conflict handling
 - exposes selectors such as `selectNeedsAttentionCount`
 
@@ -79,10 +79,17 @@ export const adapter: AgentActivityAdapter = {
     };
   },
 
-  async listSessionMessages({ workspaceId, agentSessionId, afterVersion }) {
-    return fetchMessages({ workspaceId, agentSessionId, afterVersion });
+  async listSessionMessages(input) {
+    return fetchMessages(input);
   },
 
+  async loadComposerOptions(input) {
+    return fetchComposerOptions(input);
+  },
+
+  // Optional: implement only when this host wants the core controller to manage
+  // per-session live event streams. Hosts with a service/runtime event bus can
+  // omit this method and push events into the controller themselves.
   async subscribeSessionEvents(input) {
     const stream = openSessionEventStream({
       workspaceId: input.workspaceId,
@@ -98,9 +105,10 @@ export const adapter: AgentActivityAdapter = {
 
   createSession: createAgentSession,
   sendInput: sendAgentInput,
-  cancelTurn: cancelAgentTurn,
-  respondPermission: respondToAgentPermission,
-  deleteSession: deleteAgentSession
+  goalControl: controlAgentGoal,
+  submitInteractive: submitAgentInteractiveResponse,
+  deleteSession: deleteAgentSession,
+  renameSession: renameAgentSession
 };
 ```
 
@@ -131,6 +139,35 @@ cannot mutate controller state by accident.
 
 When loaded or upserted session data is unchanged, the controller preserves the
 current snapshot reference and does not notify subscribers.
+
+## Composer Options Cache
+
+`loadComposerOptions({ targetKey, provider, ... })` caches results in a single
+key space, `composerOptionsByTargetKey`. `targetKey` is an **opaque** cache key:
+the controller round-trips it verbatim to the adapter (as `agentTargetId`) and
+uses it as the snapshot key — it never parses, derives meaning from, or rewrites
+it. Callers pass the already-resolved directory target id; two distinct targets
+that share a `provider` therefore keep isolated caches (no provider-dimension
+fallback).
+
+`invalidateComposerOptions({ providers })` drops freshness markers so the next
+non-forced load refetches, while the last known options stay renderable. It
+filters by the `provider` stored inside each cached value, never by inspecting
+the opaque `targetKey`.
+
+## Submit Availability
+
+Hosts should return `submitAvailability` as the authoritative wire state when a
+session knows whether normal input is allowed. Consumers that need an effective
+decision should call `resolveSubmitAvailability()`: explicit wire
+`state: "available"` stays available, unknown wire blocked reasons stay
+blocked, and locally derived `active_turn`, `waiting`, or `background_agent`
+blocks fill missing or stale derived states.
+
+`turnLifecycle.activeTurnId` should be cleared when a turn settles. The selector
+still treats terminal lifecycle phases such as `settled` as authoritative so an
+older runtime that leaves a stale active turn id does not permanently block the
+composer.
 
 ## Event Shape
 

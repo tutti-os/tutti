@@ -58,7 +58,7 @@ Supported manual modes:
 - `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
-Manual stable release modes (`patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
+Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 
 - the workflow dispatch branch must be `main` or `release/*`
 - if any remote `release/*` branch exists, stable releases must be dispatched from a `release/*` branch instead of `main`
@@ -99,7 +99,7 @@ apps/desktop/build/tuttid/
 
 For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
 
-Vendored Node runtimes that bring their own Mach-O binaries, such as `claude-sdk-sidecar`, must be compatible with Electron's universal merge. If the same packaged binary is copied into both the x64 and arm64 app bundles, cover that path with `build.mac.x64ArchFiles` so `@electron/universal` can skip `lipo` for the duplicate resource.
+Vendored Node runtimes that bring their own Mach-O binaries, such as `claude-sdk-sidecar`, must not inherit the build runner architecture through npm optional dependency selection. macOS packaging must vendor and verify both Claude native packages before `electron-builder` runs. Keep only the matching package in x64 and arm64 artifacts, keep both in universal merge inputs and artifacts, and cover their paths with `build.mac.x64ArchFiles` so `@electron/universal` can skip merging duplicate resources.
 
 `electron-builder` then packages that daemon into the desktop app as:
 
@@ -189,6 +189,12 @@ The card links to available macOS, Windows, Linux, GitHub Release, and workflow 
 When `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is configured, the download buttons prefer the mirrored release asset base URL instead of GitHub asset URLs. If the explicit base URL is absent but S3 mirroring is configured, the workflow falls back to the S3 accelerate base URL.
 
 After a successful mirrored upload, the workflow also upserts a managed `Direct Downloads` section into the GitHub Release body so the release description matches the Feishu direct links.
+
+After every published desktop release, including RC and beta releases, the workflow refreshes a floating GitHub Release named `stable`. This release is a navigation alias for the current concrete stable version, such as `v1.12.20`, so GitHub's Releases page opens with the stable entry before newer prereleases. The alias must be recreated with `--latest=false`, and the concrete stable version release must remain the GitHub `Latest` release.
+
+GitHub orders releases by the timestamp of the commit captured in the release's `createdAt`, not by the time a floating tag was moved. To keep `stable` ahead of a newly published prerelease, create a new alias commit after each desktop release with the exact tree of the concrete stable commit and that concrete commit as its parent. Verify both the tree and parent before moving the lightweight `stable` tag to the alias commit. The alias commit is tag-only and must not be added to a branch; its purpose is release navigation, while the concrete semver tag remains the canonical stable identity. Unless commit signing is added to the release runner, GitHub may display this bot-created alias commit without a `Verified` badge.
+
+Move the lightweight `stable` tag to the validated alias commit before deleting and recreating the floating GitHub Release. Recreating the release is required because moving an existing tag does not update the release's captured `createdAt`. Do not create an annotated `stable` tag, use `gh release delete --cleanup-tag`, or delete `refs/tags/stable`; those paths require extra Git identity or can leave the alias tag missing when recreation fails.
 
 Stable mirrored desktop releases also write mutable `latest.json` metadata at the release asset prefix root. That file lists the current stable desktop release tag, version, channel, preferred downloads, and CloudFront/static URLs for every uploaded asset:
 

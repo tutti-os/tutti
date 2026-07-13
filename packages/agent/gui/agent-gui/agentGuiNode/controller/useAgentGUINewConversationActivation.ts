@@ -36,11 +36,11 @@ export function useAgentGUINewConversationActivation(
 ) {
   const {
     getCachedComposerOptions,
-    selectedProviderTargetRef,
+    selectedAgentTargetRef,
     selectedComposerTargetDataRef,
     latestPendingNewActivation,
-    providerTargetsProvidedRef,
-    selectedProviderTargetIsExplicitRef,
+    agentTargetsProvidedRef,
+    selectedAgentTargetIsExplicitRef,
     setDetailError,
     isCreatingConversationRef,
     onDataChangeRef,
@@ -68,7 +68,7 @@ export function useAgentGUINewConversationActivation(
   } = input;
   const startConversation = useCallback(
     (initialContentInput?: unknown, displayPrompt?: string) => {
-      const target = selectedProviderTargetRef.current;
+      const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
       if (latestPendingNewActivation !== null || target.disabled === true) {
         return;
@@ -76,8 +76,8 @@ export function useAgentGUINewConversationActivation(
       const agentTargetId = targetData.agentTargetId ?? "";
       if (
         !agentTargetId ||
-        (providerTargetsProvidedRef.current &&
-          !selectedProviderTargetIsExplicitRef.current)
+        (agentTargetsProvidedRef.current &&
+          !selectedAgentTargetIsExplicitRef.current)
       ) {
         setDetailError(translate("agentHost.agentGui.agentTargetRequired"));
         return;

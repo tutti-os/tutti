@@ -15,7 +15,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
@@ -89,6 +89,7 @@ export interface AgentGUIViewLabels {
   reasoningOptionHigh: string;
   reasoningOptionXHigh: string;
   reasoningOptionMax: string;
+  reasoningOptionUltra: string;
   speedLabel: string;
   speedSelectionLabel: string;
   speedOptionStandard: string;
@@ -347,7 +348,7 @@ export interface AgentGUINodeViewProps {
   viewModel: AgentGUINodeViewModel;
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  renderProviderRailEmpty?: AgentGUIAgentsEmptyRenderer;
   /**
    * Renders the main-pane state for a selected host-disabled provider target.
    * Other readiness gates keep the built-in AgentGUI flows.
@@ -393,7 +394,7 @@ export interface AgentGUINodeViewProps {
     ) => void;
     selectConversationFilterTarget: (input: {
       provider: AgentGUIProvider;
-      providerTargetId?: string | null;
+      agentTargetId?: string | null;
     }) => void;
     createConversation: (options?: {
       projectPath?: string | null;
@@ -433,7 +434,7 @@ export interface AgentGUINodeViewProps {
     }) => void;
     selectHomeComposerAgentTarget: (input: {
       provider: AgentGUIProvider;
-      providerTargetId?: string | null;
+      agentTargetId?: string | null;
     }) => void;
     sendQueuedPromptNext: (queuedPromptId: string) => void;
     removeQueuedPrompt: (queuedPromptId: string) => void;
@@ -497,12 +498,12 @@ export type AgentGUISidebarFooterRenderer = (
  * the empty state (e.g. a "no shared agents" message or a create-agent prompt)
  * instead of the library falling back to the static local catalog.
  */
-export type AgentGUIProviderRailEmptyRenderer = () => ReactNode;
+export type AgentGUIAgentsEmptyRenderer = () => ReactNode;
 
 export interface AgentGUIProviderUnavailableStateContext {
   provider: AgentGUIProvider;
   providerLabel: string;
-  target: AgentGUIProviderTarget;
+  target: AgentGUIAgentTarget;
   iconUrl: string;
   unavailableReason: string | null;
 }

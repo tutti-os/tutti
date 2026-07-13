@@ -7,7 +7,7 @@ import type { WorkspaceFileOpenWithApplication } from "@tutti-os/workspace-file-
 /**
  * Reference Source Services 契约。
  *
- * 设计见 docs/architecture/agent-reference-source-services.md。
+ * 当前架构见 docs/architecture/agent-reference-sources.md。
  * 把「+」文件引用弹窗从单一数据源升级为可插拔的多源服务层:
  * 本地文件 / 应用内产物 / 任务中心产物,每个一个 ReferenceSourceService。
  */

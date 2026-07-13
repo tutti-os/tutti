@@ -20,7 +20,7 @@ import type {
  * 统一的「引用列表协议」—— 与 app references 同一套 group/reference/parentGroupId/cursor 形状。
  * 各源(应用 / issue / 任务…)各自实现一个 ReferenceListBackend 把自家数据映射成此协议;
  * createReferenceListSource 把协议 item 映射成 ReferenceNode,各源前端逻辑完全复用。
- * 设计见 docs/architecture/agent-reference-source-services.md。
+ * 当前架构见 docs/architecture/agent-reference-sources.md。
  */
 
 export interface ReferenceListGroup {

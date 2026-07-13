@@ -57,6 +57,7 @@ import {
   linkBareLocalAbsolutePaths,
   markdownUrlTransform,
   normalizeMentionMarkdownLinks,
+  normalizeLocalPathMarkdownLinks,
   normalizePlainIssueMentionTitleContent,
   normalizePlainSessionMentionTitle,
   parseMentionLink,
@@ -203,12 +204,14 @@ export function AgentMessageMarkdown({
   const normalizedContent = useMemo(
     () =>
       linkBareLocalAbsolutePaths(
-        normalizeMentionMarkdownLinks(
-          normalizePlainIssueMentionTitle
-            ? normalizePlainIssueMentionTitleContent(
-                normalizePlainSessionMentionTitle(stabilizedContent)
-              )
-            : normalizePlainSessionMentionTitle(stabilizedContent)
+        normalizeLocalPathMarkdownLinks(
+          normalizeMentionMarkdownLinks(
+            normalizePlainIssueMentionTitle
+              ? normalizePlainIssueMentionTitleContent(
+                  normalizePlainSessionMentionTitle(stabilizedContent)
+                )
+              : normalizePlainSessionMentionTitle(stabilizedContent)
+          )
         )
       ),
     [normalizePlainIssueMentionTitle, stabilizedContent]

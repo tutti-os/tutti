@@ -1,8 +1,5 @@
 import { createElement } from "react";
-import {
-  agentGuiDockIconUrls,
-  type AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls, type AgentGUIAgent } from "@tutti-os/agent-gui";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentProviderStatus,
@@ -65,7 +62,7 @@ export function createWorkspaceIssueManagerContribution(input: {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  agents?: readonly AgentGUIAgent[];
   richTextAtService: IDesktopRichTextAtService;
   runtimeApi: DesktopRuntimeApi;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -79,7 +76,7 @@ export function createWorkspaceIssueManagerContribution(input: {
       getOptions: () =>
         resolveIssueManagerReadyAgentTargetOptions(
           input.agentProviderStatusService.getSnapshot().statuses,
-          input.providerTargets,
+          input.agents,
           input.defaultAgentProvider
         ),
       subscribe: (listener) =>
@@ -236,7 +233,7 @@ export function createWorkspaceIssueManagerContribution(input: {
 
 function resolveIssueManagerReadyAgentTargetOptions(
   statuses: readonly AgentProviderStatus[],
-  providerTargets: readonly AgentGUIProviderTarget[] | undefined,
+  agents: readonly AgentGUIAgent[] | undefined,
   defaultAgentProvider?: string | null
 ) {
   const readyProviders = new Set<WorkspaceAgentProvider>(
@@ -245,19 +242,18 @@ function resolveIssueManagerReadyAgentTargetOptions(
       .map((status) => status.provider)
   );
 
-  const options = (providerTargets ?? [])
+  const options = (agents ?? [])
     .filter(
-      (target) =>
-        target.disabled !== true &&
-        Boolean(target.agentTargetId?.trim()) &&
-        readyProviders.has(target.provider)
+      (agent) =>
+        agent.availability.status === "ready" &&
+        Boolean(agent.agentTargetId.trim()) &&
+        readyProviders.has(agent.provider)
     )
-    .map((target) => ({
-      agentTargetId: target.agentTargetId?.trim() ?? "",
-      iconUrl: target.iconUrl ?? agentGuiDockIconUrls[target.provider],
-      label:
-        target.label.trim() || resolveWorkspaceAgentGuiLabel(target.provider),
-      provider: target.provider
+    .map((agent) => ({
+      agentTargetId: agent.agentTargetId.trim(),
+      iconUrl: agent.iconUrl || agentGuiDockIconUrls[agent.provider],
+      label: agent.name.trim() || resolveWorkspaceAgentGuiLabel(agent.provider),
+      provider: agent.provider
     }));
   const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
     options,

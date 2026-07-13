@@ -22,6 +22,7 @@ import {
   agentGuiWorkbenchProviderFromInstanceId,
   agentGuiWorkbenchProviderFromInstanceIdOrNull,
   createAgentGuiWorkbenchNodeStateSource,
+  migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState
 } from "./state.ts";
@@ -30,7 +31,7 @@ import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "./types.ts";
-import type { AgentGUIProviderTarget } from "../types.ts";
+import type { AgentGUIAgent } from "../types.ts";
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -85,14 +86,14 @@ export interface AgentGuiWorkbenchRenderBodyHelpers {
 export interface CreateAgentGuiWorkbenchContributionInput {
   copy?: AgentGuiWorkbenchContributionCopyOverrides;
   defaultProvider?: AgentGuiWorkbenchProvider | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   dockSectionId?: string;
   frame?: WorkbenchFrame;
   id?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  providerTargets?: readonly AgentGUIProviderTarget[] | null;
-  providerTargetsLoading?: boolean;
+  agents?: readonly AgentGUIAgent[] | null;
+  agentsLoading?: boolean;
   renderBody(
     context: WorkbenchHostNodeBodyContext<
       AgentGuiWorkbenchState | null,
@@ -128,7 +129,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   onOpenDetachedWindow?: (input: {
     agentSessionId?: string | null;
     agentTargetId?: string | null;
-    providerTargets?: readonly AgentGUIProviderTarget[];
+    agents?: readonly AgentGUIAgent[];
     provider: AgentGuiWorkbenchProvider;
     workspaceId: string;
   }) => void | Promise<void>;
@@ -147,16 +148,16 @@ export function createAgentGuiWorkbenchContribution(
   return {
     dockEntries: buildAgentGuiDockEntries({
       defaultProvider: input.defaultProvider,
-      defaultProviderTargetId: input.defaultProviderTargetId,
+      defaultAgentTargetId: input.defaultAgentTargetId,
       dockIconUrls: input.dockIconUrls,
       label: copy.nodeTitle,
       providerAvailability: input.providerAvailability,
-      providerTargetsLoading: input.providerTargetsLoading,
+      agentsLoading: input.agentsLoading,
       renderPreview: input.renderPreview,
       resolveDockPopupIdentity: input.resolveDockPopupIdentity,
       resolveDockPopupTitle: input.resolveDockPopupTitle,
       sectionId: input.dockSectionId ?? "agents",
-      targets: input.providerTargets,
+      agents: input.agents,
       unifiedDockIconUrl: input.unifiedDockIconUrl
     }),
     externalStateSource: nodeStateSource.externalStateSource,
@@ -209,10 +210,13 @@ export function createAgentGuiWorkbenchContribution(
             | Partial<AgentGuiWorkbenchNodeState>
             | null
             | undefined;
-          const workbenchState =
-            normalizeAgentGuiWorkbenchState(rawWorkbenchState);
+          const migratedWorkbenchState =
+            migrateLegacyAgentGuiWorkbenchState(rawWorkbenchState);
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migratedWorkbenchState
+          );
           const nodeState = normalizeAgentGuiWorkbenchNodeState(
-            rawWorkbenchState,
+            migratedWorkbenchState,
             provider
           );
           const isConversationRailAutoCollapsed =
@@ -308,7 +312,7 @@ export function createAgentGuiWorkbenchContribution(
                   void input.onOpenDetachedWindow?.({
                     agentSessionId: workbenchState.lastActiveAgentSessionId,
                     agentTargetId: nodeState.agentTargetId,
-                    providerTargets: input.providerTargets ?? undefined,
+                    agents: input.agents ?? undefined,
                     provider,
                     workspaceId: input.workspaceId
                   });
@@ -377,6 +381,15 @@ export function createAgentGuiWorkbenchContribution(
       const launchPayload = resolveAgentGuiWorkbenchLaunchPayload(request, {
         resolveDockLaunchPayload: input.resolveDockLaunchPayload
       });
+      if (
+        input.agents != null &&
+        !providerTargetLaunchPayloadFromRequest(
+          launchPayload,
+          providerFromState(launchPayload) ?? "codex"
+        ).agentTargetId
+      ) {
+        return null;
+      }
       if (
         !providerFromState(launchPayload) &&
         !agentGuiWorkbenchProviderFromIdentifier(request.dockEntryId)

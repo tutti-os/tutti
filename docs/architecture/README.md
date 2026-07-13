@@ -1,30 +1,44 @@
 # Architecture
 
-Use this directory for living architecture notes, subsystem maps, and cross-cutting technical decisions.
+These documents describe the current implemented structure, ownership, and
+data flow of the repository. They are the first stop for understanding how a
+subsystem works now.
 
-These documents should describe the current intended architecture of the repository.
-Once a direction is implemented and stable, the enduring parts should be promoted here or into `docs/conventions/`.
+Proposals and implementation plans live in [Specs and Plans](../specs/README.md).
+Stable change rules live in [Conventions](../conventions/README.md).
 
-Current documents:
+## Repository And Platform
 
-- [Analytics Tracking](./analytics-tracking.md)
-- [Agent Activity Packages](./agent-activity-packages.md)
-- [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
-- [AgentGUI Registration Credits Toast Plan](./agent-gui-registration-credits-toast-plan.md)
-- [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
-- [Tutti Agent Integration Plan](./tutti-agent-integration-plan.md)
+- [Project Structure](./project-structure.md)
 - [Business Event Stream](./business-event-stream.md)
+- [Analytics Tracking](./analytics-tracking.md)
 - [Browser Node Package](./browser-node-package.md)
-- [Codex App Server Fast Submit Plan](./codex-appserver-fast-submit-plan.md)
-- [Claude Code SDK Runtime](./claude-code-sdk-runtime.md)
-- [Claude Code SDK Refactor Fidelity Requirements](./claude-code-sdk-requirements.md)
+
+## Agent System
+
+- [Agent Account And Commerce](./agent-account-and-commerce.md)
+- [Agent Activity Packages](./agent-activity-packages.md)
+- [Agent Reference Sources](./agent-reference-sources.md)
+- [Agent Runtime Preparation](./agent-runtime-preparation.md)
+- [AgentGuiNode Architecture and Troubleshooting](./agent-gui-node.md)
+- [Agent Reference Mention Resolution](./agent-reference-mention-resolution.md)
+- [Tutti Agent Readiness Bootstrap](./tutti-agent-readiness-bootstrap.md)
+
+## Desktop And Transport
+
 - [Desktop Backend Access](./desktop-backend-access.md)
 - [Desktop Transport](./desktop-transport.md)
 - [Desktop Windows](./desktop-windows.md)
-- [Project Structure](./project-structure.md)
+
+## Workbench And Workspace
+
 - [Workbench Contributions](./workbench-contributions.md)
 - [Workbench Dock Model](./workbench-dock-model.md)
 - [Workbench Node Lifecycle](./workbench-node-lifecycle.md)
 - [Workspace App Factory](./workspace-app-factory.md)
 - [Workspace Issue Manager](./workspace-issue-manager.md)
 - [Workspace Terminal](./workspace-terminal.md)
+
+Keep this directory limited to current ownership, contracts, and data flow.
+Move unfinished work to specs, and remove completed rollout history after its
+durable decisions are represented here.

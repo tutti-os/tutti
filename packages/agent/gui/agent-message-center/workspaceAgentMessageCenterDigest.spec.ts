@@ -383,6 +383,38 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
       }).primary.summary
     ).toBe("Fallback title");
   });
+
+  it("refreshes a cached agent summary when the message payload identity changes", () => {
+    const item = message({
+      payload: { text: "First summary" }
+    });
+
+    expect(
+      resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(item)
+    ).toBe("First summary");
+
+    item.payload = { text: "Second summary" };
+
+    expect(
+      resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(item)
+    ).toBe("Second summary");
+  });
+
+  it("refreshes a cached agent summary when the message version changes", () => {
+    const payload = { text: "First summary" };
+    const item = message({ payload });
+
+    expect(
+      resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(item)
+    ).toBe("First summary");
+
+    payload.text = "Second summary";
+    item.version += 1;
+
+    expect(
+      resolveWorkspaceAgentMessageCenterDigestAgentMessageSummary(item)
+    ).toBe("Second summary");
+  });
 });
 
 type DigestSpecInput = Omit<

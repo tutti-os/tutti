@@ -243,10 +243,6 @@ export type WorkbenchHostDockPopupPreviewProvider = (
 ) => WorkbenchDockPreviewContent | null;
 
 export interface WorkbenchHostDockPopupItemDescriptor {
-  /**
-   * @deprecated Use preview with kind: "image".
-   */
-  previewImageUrl?: string | null;
   preview?: WorkbenchDockPreviewContent | null;
   revision?: string | null;
   subtitle?: string | null;
@@ -276,6 +272,14 @@ export interface WorkbenchHostDockEntry {
   instanceMode?: WorkbenchHostNodeInstanceStrategy["mode"];
   launchBehavior?: WorkbenchHostDockEntryLaunchBehavior;
   launchPayload?: unknown;
+  /**
+   * Payload used by the dock popup's explicit "New window" action instead of
+   * `launchPayload`. Supply this when a normal dock launch reuses/focuses an
+   * existing node (e.g. a single logical instance per provider/target) but the
+   * "New window" command must always open a fresh node. Falls back to
+   * `launchPayload` when omitted.
+   */
+  newWindowLaunchPayload?: unknown;
   matchNode?: (node: WorkbenchNode<WorkbenchHostNodeData>) => boolean;
   order?: number;
   popupCardLabelMode?: WorkbenchHostDockPopupCardLabelMode;

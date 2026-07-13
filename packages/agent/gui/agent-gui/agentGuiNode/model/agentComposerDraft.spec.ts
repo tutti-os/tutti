@@ -8,10 +8,49 @@ import {
   agentPromptContentToComposerDraft,
   emptyAgentComposerDraft,
   extractPastedTextArchivePaths,
-  linkifyPastedTextReferences
+  linkifyPastedTextReferences,
+  normalizeAgentPromptContentBlocks
 } from "./agentComposerDraft";
 
 describe("agentComposerDraft", () => {
+  it("preserves safe URL-only image blocks and rejects unsafe or ambiguous sources", () => {
+    const signedUrl = "https://bucket.example/image.png?token=secret";
+    expect(
+      normalizeAgentPromptContentBlocks([
+        {
+          type: "image",
+          mimeType: "image/png",
+          url: ` ${signedUrl} `,
+          attachmentId: " attachment-1 ",
+          name: " screenshot.png "
+        }
+      ])
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        url: signedUrl,
+        attachmentId: "attachment-1",
+        name: "screenshot.png"
+      }
+    ]);
+    expect(
+      normalizeAgentPromptContentBlocks([
+        {
+          type: "image",
+          mimeType: "image/png",
+          url: "http://example.com/a.png"
+        },
+        {
+          type: "image",
+          mimeType: "image/png",
+          url: signedUrl,
+          data: "aW1hZ2U="
+        }
+      ])
+    ).toEqual([]);
+  });
+
   it("normalizes empty drafts", () => {
     const draft = emptyAgentComposerDraft();
 
@@ -264,6 +303,112 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
+  it("round-trips HTTPS URL image drafts without hydration", () => {
+    const url = "https://bucket.example/screen.webp?X-Amz-Signature=secret";
+    const draft = agentPromptContentToComposerDraft(
+      [
+        {
+          type: "image",
+          mimeType: "image/webp",
+          url,
+          attachmentId: "attachment-remote",
+          name: "screen.webp"
+        }
+      ],
+      "remote"
+    );
+
+    expect(draft.images).toEqual([
+      {
+        id: "remote:image:0",
+        name: "screen.webp",
+        mimeType: "image/webp",
+        attachmentId: "attachment-remote",
+        url,
+        previewUrl: url
+      }
+    ]);
+    expect(
+      agentComposerDraftToPromptContent({
+        draft,
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/webp",
+        attachmentId: "attachment-remote",
+        url,
+        name: "screen.webp"
+      }
+    ]);
+  });
+
+  it("round-trips URL-only image drafts when editing queued content", () => {
+    const url = "https://bucket.example/queued.png?X-Amz-Signature=secret";
+    const draft = agentPromptContentToComposerDraft(
+      [
+        {
+          type: "image",
+          mimeType: "image/png",
+          url,
+          name: "queued.png"
+        }
+      ],
+      "queued"
+    );
+
+    expect(draft.images).toEqual([
+      {
+        id: "queued:image:0",
+        name: "queued.png",
+        mimeType: "image/png",
+        url,
+        previewUrl: url
+      }
+    ]);
+    expect(
+      agentComposerDraftToPromptContent({
+        draft,
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        name: "queued.png"
+      }
+    ]);
+  });
+
+  it("converts attachment-backed image-only drafts into prompt content", () => {
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: {
+          prompt: "",
+          images: [
+            {
+              id: "image-1",
+              name: "screen.png",
+              mimeType: "image/png",
+              attachmentId: "attachment-1",
+              previewUrl: "data:image/png;base64,aW1hZ2U="
+            }
+          ]
+        },
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        attachmentId: "attachment-1",
+        name: "screen.png"
+      }
+    ]);
+  });
+
   it("converts staged image drafts into path prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
@@ -372,6 +517,34 @@ describe("agentComposerDraft", () => {
           mimeType: "image/png",
           path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
           previewUrl: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png"
+        }
+      ]
+    });
+  });
+
+  it("restores attachment-backed image content into stable draft ids", () => {
+    const draft = agentPromptContentToComposerDraft(
+      [
+        {
+          type: "image",
+          mimeType: "image/png",
+          attachmentId: "attachment-1",
+          name: "panel.png"
+        }
+      ],
+      "restore-queued-1"
+    );
+
+    expect(draft).toEqual({
+      prompt: "",
+      files: [],
+      images: [
+        {
+          id: "restore-queued-1:image:0",
+          name: "panel.png",
+          mimeType: "image/png",
+          attachmentId: "attachment-1",
+          previewUrl: ""
         }
       ]
     });

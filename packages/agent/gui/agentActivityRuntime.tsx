@@ -155,7 +155,7 @@ export interface AgentActivityRuntimeTrackSettingsProjectChangeInput {
 }
 
 export interface AgentActivityRuntimeGetComposerOptionsInput {
-  agentTargetId?: string | null;
+  agentTargetId: string;
   cwd?: string | null;
   force?: boolean;
   provider?: string;
@@ -255,6 +255,29 @@ export interface AgentActivityRuntimeUploadPromptContentResult {
   content: AgentActivityRuntimePromptContentBlock[];
 }
 
+export interface AgentActivityRuntimeSessionSectionScopeInput {
+  agentTargetId?: string | null;
+  sectionKey: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeSessionSectionCount {
+  agentTargetId?: string | null;
+  count: number;
+  sectionKey: string;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeDeleteSessionSectionResult {
+  agentTargetId?: string | null;
+  removedMessages: number;
+  removedSessionIds: string[];
+  removedSessions: number;
+  sectionKey: string;
+  workspaceId: string;
+}
+
 export interface AgentActivityRuntimeSessionAttachment {
   attachmentId: string;
   mimeType: string;
@@ -296,6 +319,8 @@ export interface AgentActivityRuntime {
     file?: boolean;
     image?: boolean;
   };
+  /** Set false to suppress AgentGUI diagnostics in development consoles. */
+  devDiagnosticConsoleSink?: boolean;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
@@ -335,6 +360,12 @@ export interface AgentActivityRuntime {
   listSessionSectionPage?(
     input: AgentActivityRuntimeListSessionSectionPageInput
   ): Promise<AgentActivityRuntimeSessionSection>;
+  countSessionSection?(
+    input: AgentActivityRuntimeSessionSectionScopeInput
+  ): Promise<AgentActivityRuntimeSessionSectionCount>;
+  deleteSessionSection?(
+    input: AgentActivityRuntimeSessionSectionScopeInput
+  ): Promise<AgentActivityRuntimeDeleteSessionSectionResult>;
   listPinnedSessionsPage?(
     input: AgentActivityRuntimeListPinnedSessionsPageInput
   ): Promise<AgentActivityRuntimeSessionPage>;

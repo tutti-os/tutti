@@ -12,12 +12,12 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -1519,9 +1519,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
@@ -1571,7 +1571,7 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 			},
 		},
 	}
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1607,7 +1607,7 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 		{Value: "default", Label: "Default"},
 		{Value: "sonnet", Label: "Sonnet"},
 	})
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1649,7 +1649,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 			},
 		},
 	}
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 	}
@@ -1728,9 +1728,9 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 
@@ -1753,7 +1753,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	prepareInput := (*agentsidecarservice.PrepareInput)(nil)
+	prepareInput := (*runtimeprep.PrepareInput)(nil)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: prepareInput,
 	}
@@ -1779,10 +1779,10 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -1971,9 +1971,9 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 	runtime := newFakeRuntime()
 	runtime.execErr = execErr
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 
@@ -2261,11 +2261,11 @@ func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
 
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -2296,11 +2296,11 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 
 func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 		},
 	}
@@ -2337,16 +2337,16 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 
 func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
 	runtime := newFakeRuntime()
-	var renderInput agentsidecarservice.PrepareInput
+	var renderInput runtimeprep.PrepareInput
 	service := newIsolatedAgentService(runtime)
 	service.RuntimePreparer = fakeSkillBundleRenderer{
 		input: &renderInput,
-		bundle: agentsidecarservice.SkillBundle{
+		bundle: runtimeprep.SkillBundle{
 			SchemaVersion:  1,
 			Provider:       "codex",
 			AgentSessionID: "run-1",
 			CLICommand:     "tutti-dev",
-			Skills: []agentsidecarservice.SkillMaterializationRecord{
+			Skills: []runtimeprep.SkillMaterializationRecord{
 				{SkillID: "tutti/tutti-cli", Slug: "tutti-cli", DeliveryMode: "materialized-files"},
 			},
 		},
@@ -2392,9 +2392,9 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
-	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
+	cleanupCalls := make([]runtimeprep.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
-		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
+		result:       runtimeprep.PreparedRuntime{Cwd: "/prepared/workdir"},
 		cleanupCalls: &cleanupCalls,
 	}
 	cwd := "/user/workdir"
@@ -4411,8 +4411,8 @@ func TestServiceSendInputReportsNodeResults(t *testing.T) {
 	}
 
 	assertAgentNodeSequence(t, reporter.events, []string{
-		"runtime_session_ready",
 		"content_normalized",
+		"runtime_session_ready",
 		"prompt_validated",
 		"prompt_prepared",
 		"runtime_exec",
@@ -4753,11 +4753,11 @@ func TestServiceGetDoesNotReconcileLiveRuntimeBackgroundAgent(t *testing.T) {
 
 func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	var prepareInput agentsidecarservice.PrepareInput
+	var prepareInput runtimeprep.PrepareInput
 	service := newIsolatedAgentService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
-		result: agentsidecarservice.PreparedRuntime{
+		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
@@ -4913,20 +4913,20 @@ func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agen
 }
 
 type fakeRuntimePreparer struct {
-	result       agentsidecarservice.PreparedRuntime
+	result       runtimeprep.PreparedRuntime
 	err          error
-	input        *agentsidecarservice.PrepareInput
-	cleanupCalls *[]agentsidecarservice.CleanupInput
+	input        *runtimeprep.PrepareInput
+	cleanupCalls *[]runtimeprep.CleanupInput
 }
 
-func (f fakeRuntimePreparer) Prepare(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.PreparedRuntime, error) {
+func (f fakeRuntimePreparer) Prepare(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.PreparedRuntime, error) {
 	if f.input != nil {
 		*f.input = input
 	}
 	return f.result, f.err
 }
 
-func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservice.CleanupInput) error {
+func (f fakeRuntimePreparer) Cleanup(_ context.Context, input runtimeprep.CleanupInput) error {
 	if f.cleanupCalls != nil {
 		*f.cleanupCalls = append(*f.cleanupCalls, input)
 	}
@@ -4935,12 +4935,12 @@ func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservic
 
 type fakeSkillBundleRenderer struct {
 	fakeRuntimePreparer
-	bundle agentsidecarservice.SkillBundle
+	bundle runtimeprep.SkillBundle
 	err    error
-	input  *agentsidecarservice.PrepareInput
+	input  *runtimeprep.PrepareInput
 }
 
-func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.SkillBundle, error) {
+func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.SkillBundle, error) {
 	if f.input != nil {
 		*f.input = input
 	}
@@ -5392,6 +5392,14 @@ func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agen
 
 func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
 	return agentactivitybiz.SessionSectionPage{}, false, nil
+}
+
+func (*activityProjectionRepoStub) CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool, error) {
+	return agentactivitybiz.SessionSectionCount{}, false, nil
+}
+
+func (*activityProjectionRepoStub) DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool, error) {
+	return agentactivitybiz.DeleteSessionSectionResult{}, false, nil
 }
 
 func (r *activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

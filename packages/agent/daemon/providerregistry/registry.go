@@ -388,7 +388,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		if descriptor.ComposerProfile.Skills.Invocation != "" {
 			return fmt.Errorf("provider %q skill invocation requires a skill kind", providerID)
 		}
-	case SkillKindCodex, SkillKindClaudeCode, SkillKindCursor:
+	case SkillKindCodex, SkillKindClaudeCode, SkillKindCursor, SkillKindOpenCode:
 		switch descriptor.ComposerProfile.Skills.Invocation {
 		case SkillInvocationPromptItem, SkillInvocationTextTrigger:
 		default:

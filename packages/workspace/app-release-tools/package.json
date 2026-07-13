@@ -6,11 +6,19 @@
   "bin": {
     "build-tutti-app-release": "./bin/build-tutti-app-release.mjs",
     "build-tutti-app-catalog": "./bin/build-tutti-app-catalog.mjs",
+    "build-tutti-app-versions": "./bin/build-tutti-app-versions.mjs",
+    "merge-tutti-app-latest": "./bin/merge-tutti-app-latest.mjs",
+    "publish-tutti-app-catalog": "./bin/publish-tutti-app-catalog.mjs",
+    "publish-tutti-app-metadata": "./bin/publish-tutti-app-metadata.mjs",
     "verify-tutti-app-release-artifacts": "./bin/verify-tutti-app-release-artifacts.mjs"
   },
   "exports": {
     "./build-tutti-app-release": "./bin/build-tutti-app-release.mjs",
     "./build-tutti-app-catalog": "./bin/build-tutti-app-catalog.mjs",
+    "./build-tutti-app-versions": "./bin/build-tutti-app-versions.mjs",
+    "./merge-tutti-app-latest": "./bin/merge-tutti-app-latest.mjs",
+    "./publish-tutti-app-catalog": "./bin/publish-tutti-app-catalog.mjs",
+    "./publish-tutti-app-metadata": "./bin/publish-tutti-app-metadata.mjs",
     "./verify-tutti-app-release-artifacts": "./bin/verify-tutti-app-release-artifacts.mjs"
   },
   "files": [
@@ -23,10 +31,12 @@
     "directory": "packages/workspace/app-release-tools"
   },
   "scripts": {
-    "build": "node -e \"\"",
-    "test": "node --test ../../../tools/scripts/build-tutti-app-release.test.mjs"
+    "build": "node -e \"\""
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "semver": "7.8.0"
   }
 }

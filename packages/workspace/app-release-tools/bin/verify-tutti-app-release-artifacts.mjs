@@ -5,100 +5,76 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  validateCatalog,
+  validateCatalogApp
+} from "./build-tutti-app-catalog.mjs";
 import { validateRelease } from "./build-tutti-app-release.mjs";
-
-const catalogSchemaVersion = "tutti.app.catalog.v1";
+import { validateVersionsDocument } from "./build-tutti-app-versions.mjs";
 
 export async function verifyTuttiAppReleaseArtifacts(options) {
   const releaseFiles = normalizeFiles(options.releaseFiles);
+  const versionsFiles = normalizeFiles(options.versionsFiles);
   const catalogFile = options.catalogFile
     ? path.resolve(String(options.catalogFile))
     : null;
   const verifyArtifacts = options.verifyArtifacts !== false;
 
-  if (releaseFiles.length === 0 && !catalogFile) {
+  if (releaseFiles.length === 0 && versionsFiles.length === 0 && !catalogFile) {
     throw new Error(
-      "at least one --release-file or --catalog-file is required"
+      "at least one --release-file, --versions-file, or --catalog-file is required"
     );
   }
 
-  const releases = [];
-  const releasesByAppID = new Map();
+  const releasesByKey = new Map();
+  for (const versionsFile of versionsFiles) {
+    const document = JSON.parse(await readFile(versionsFile, "utf8"));
+    validateVersionsDocument(document);
+    for (const record of document.versions) {
+      const key = releaseKey(record.release.appId, record.release.version);
+      if (releasesByKey.has(key)) {
+        throw new Error(`duplicate versions release ${key}`);
+      }
+      releasesByKey.set(key, record.release);
+    }
+  }
+
+  const checks = new Map();
   for (const releaseFile of releaseFiles) {
     const release = JSON.parse(await readFile(releaseFile, "utf8"));
     validateRelease(release);
-    if (releasesByAppID.has(release.appId)) {
-      throw new Error(`duplicate release appId ${release.appId}`);
+    const key = releaseKey(release.appId, release.version);
+    const existing = releasesByKey.get(key);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(release)) {
+      throw new Error(`release ${key} does not match versions metadata`);
     }
-    releases.push(release);
-    releasesByAppID.set(release.appId, release);
-  }
-
-  const checks = [];
-  for (const release of releases) {
-    checks.push({
-      appId: release.appId,
-      artifactUrl: release.artifactUrl,
-      artifactSha256: release.artifactSha256,
-      artifactSizeBytes: release.artifactSizeBytes,
-      source: `release ${release.appId}`
-    });
+    releasesByKey.set(key, release);
+    addArtifactCheck(checks, release, `release ${key}`);
   }
 
   if (catalogFile) {
     const catalog = JSON.parse(await readFile(catalogFile, "utf8"));
     validateCatalog(catalog);
-    const seenCatalogAppIDs = new Set();
     for (const app of catalog.apps) {
-      const appId = app.manifest.appId;
-      if (seenCatalogAppIDs.has(appId)) {
-        throw new Error(`duplicate catalog appId ${appId}`);
-      }
-      seenCatalogAppIDs.add(appId);
-      const distribution = app.distribution;
-      if (!distribution || distribution.kind !== "remote") {
-        throw new Error(
-          `catalog app ${appId} distribution.kind must be remote`
+      addCatalogAppCheck(checks, releasesByKey, app, "catalog legacy app");
+    }
+    for (const [appId, entries] of Object.entries(
+      catalog.compatibility?.apps ?? {}
+    )) {
+      for (const entry of entries) {
+        addCatalogAppCheck(
+          checks,
+          releasesByKey,
+          entry.app,
+          `catalog compatibility app ${appId}`
         );
       }
-      for (const key of ["artifactUrl", "artifactSha256", "iconUrl"]) {
-        if (
-          typeof distribution[key] !== "string" ||
-          distribution[key].trim() === ""
-        ) {
-          throw new Error(
-            `catalog app ${appId} distribution.${key} is required`
-          );
-        }
-      }
-      requireSHA256Hex(
-        distribution.artifactSha256,
-        `catalog app ${appId} distribution.artifactSha256`
-      );
-
-      const release = releasesByAppID.get(appId);
-      if (release) {
-        assertCatalogMatchesRelease(app, release);
-      }
-
-      checks.push({
-        appId,
-        artifactUrl: distribution.artifactUrl,
-        artifactSha256: distribution.artifactSha256,
-        artifactSizeBytes: release?.artifactSizeBytes,
-        source: `catalog ${appId}`
-      });
     }
   }
 
   if (verifyArtifacts) {
-    const artifactDigests = new Map();
-    for (const check of checks) {
-      let digest = artifactDigests.get(check.artifactUrl);
-      if (!digest) {
-        digest = await digestArtifact(check.artifactUrl);
-        artifactDigests.set(check.artifactUrl, digest);
-      }
+    for (const check of checks.values()) {
+      const digest = await digestArtifact(check.artifactUrl);
       if (digest.sha256 !== check.artifactSha256.toLowerCase()) {
         throw new Error(
           `${check.source} artifact sha256 mismatch: want ${check.artifactSha256} got ${digest.sha256}`
@@ -118,10 +94,47 @@ export async function verifyTuttiAppReleaseArtifacts(options) {
   return {
     catalogFile,
     releaseFiles,
-    checkedArtifactCount: verifyArtifacts
-      ? new Set(checks.map((check) => check.artifactUrl)).size
-      : 0
+    versionsFiles,
+    checkedArtifactCount: verifyArtifacts ? checks.size : 0
   };
+}
+
+function addCatalogAppCheck(checks, releasesByKey, app, source) {
+  const appId = validateCatalogApp(app, source);
+  const version = app.manifest.version;
+  const release = releasesByKey.get(releaseKey(appId, version));
+  if (release) assertCatalogMatchesRelease(app, release);
+  addArtifactCheck(
+    checks,
+    {
+      appId,
+      version,
+      artifactUrl: app.distribution.artifactUrl,
+      artifactSha256: app.distribution.artifactSha256,
+      artifactSizeBytes: release?.artifactSizeBytes
+    },
+    `${source} ${appId}@${version}`
+  );
+}
+
+function addArtifactCheck(checks, release, source) {
+  const existing = checks.get(release.artifactUrl);
+  const check = {
+    artifactUrl: release.artifactUrl,
+    artifactSha256: release.artifactSha256,
+    artifactSizeBytes: release.artifactSizeBytes,
+    source
+  };
+  if (
+    existing &&
+    (existing.artifactSha256 !== check.artifactSha256 ||
+      (Number.isSafeInteger(existing.artifactSizeBytes) &&
+        Number.isSafeInteger(check.artifactSizeBytes) &&
+        existing.artifactSizeBytes !== check.artifactSizeBytes))
+  ) {
+    throw new Error(`artifact metadata conflicts for ${release.artifactUrl}`);
+  }
+  checks.set(release.artifactUrl, existing ?? check);
 }
 
 function assertCatalogMatchesRelease(app, release) {
@@ -157,31 +170,6 @@ function assertCatalogMatchesRelease(app, release) {
   }
 }
 
-function validateCatalog(catalog) {
-  if (!catalog || typeof catalog !== "object") {
-    throw new Error("catalog must be an object");
-  }
-  if (catalog.schemaVersion !== catalogSchemaVersion) {
-    throw new Error(`catalog schemaVersion must be ${catalogSchemaVersion}`);
-  }
-  if (!Array.isArray(catalog.apps)) {
-    throw new Error("catalog apps must be an array");
-  }
-  for (const [index, app] of catalog.apps.entries()) {
-    if (!app || typeof app !== "object") {
-      throw new Error(`catalog apps[${index}] must be an object`);
-    }
-    if (
-      !app.manifest ||
-      typeof app.manifest !== "object" ||
-      typeof app.manifest.appId !== "string" ||
-      app.manifest.appId.trim() === ""
-    ) {
-      throw new Error(`catalog apps[${index}].manifest.appId is required`);
-    }
-  }
-}
-
 async function digestArtifact(artifactUrl) {
   const url = String(artifactUrl).trim();
   if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -200,9 +188,7 @@ async function digestHTTPArtifact(url) {
       return await digestHTTPArtifactOnce(url);
     } catch (error) {
       lastError = error;
-      if (attempt < 3) {
-        await delay(1000 * attempt);
-      }
+      if (attempt < 3) await delay(1000 * attempt);
     }
   }
   throw lastError;
@@ -222,10 +208,7 @@ async function digestHTTPArtifactOnce(url) {
     hash.update(buffer);
     size += buffer.length;
   }
-  return {
-    sha256: hash.digest("hex"),
-    size
-  };
+  return { sha256: hash.digest("hex"), size };
 }
 
 function delay(ms) {
@@ -244,55 +227,44 @@ async function digestFileArtifact(filePath) {
     stream.on("error", reject);
     stream.on("end", resolve);
   });
-  return {
-    sha256: hash.digest("hex"),
-    size
-  };
+  return { sha256: hash.digest("hex"), size };
 }
 
 function normalizeFiles(value) {
   const files = Array.isArray(value)
     ? value
     : String(value ?? "")
-        .split(/[\n,]/)
+        .split(/[\n,]/u)
         .map((file) => file.trim())
         .filter(Boolean);
   return files.map((file) => path.resolve(file));
 }
 
-function requireSHA256Hex(value, label) {
-  if (!/^[a-f0-9]{64}$/i.test(String(value ?? ""))) {
-    throw new Error(`${label} must be a sha256 hex digest`);
-  }
+function releaseKey(appId, version) {
+  return `${appId}@${version}`;
 }
 
 function parseArgs(argv) {
   const result = {
     releaseFiles: [],
+    versionsFiles: [],
     verifyArtifacts: true
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--release-file") {
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error("missing value for --release-file");
-      }
-      result.releaseFiles.push(value);
-      index += 1;
-      continue;
-    }
-    if (arg === "--catalog-file") {
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error("missing value for --catalog-file");
-      }
-      result.catalogFile = value;
-      index += 1;
-      continue;
-    }
     if (arg === "--skip-artifact-download") {
       result.verifyArtifacts = false;
+      continue;
+    }
+    const value = argv[index + 1];
+    if (["--release-file", "--versions-file", "--catalog-file"].includes(arg)) {
+      if (!value || value.startsWith("--")) {
+        throw new Error(`missing value for ${arg}`);
+      }
+      if (arg === "--release-file") result.releaseFiles.push(value);
+      if (arg === "--versions-file") result.versionsFiles.push(value);
+      if (arg === "--catalog-file") result.catalogFile = value;
+      index += 1;
       continue;
     }
     throw new Error(`unexpected argument: ${arg}`);

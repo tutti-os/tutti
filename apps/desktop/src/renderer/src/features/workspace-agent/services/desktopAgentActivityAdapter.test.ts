@@ -405,6 +405,49 @@ test("desktop agent activity adapter marks empty-cwd creates as no-project", asy
   assert.deepEqual((createBody as { noProject?: boolean }).noProject, true);
 });
 
+test("desktop agent activity adapter forwards HTTPS image URLs structurally", async () => {
+  let createBody: unknown = null;
+  const url = "https://bucket.example/image.png?X-Amz-Signature=secret";
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, body) {
+        createBody = body;
+        return createSession({ id: body.agentSessionId, status: "created" });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await adapter.createSession({
+    agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-remote-image",
+    initialContent: [
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        attachmentId: "remote-image",
+        name: "image.png"
+      }
+    ],
+    workspaceId
+  });
+
+  assert.deepEqual(
+    (createBody as { initialContent?: unknown }).initialContent,
+    [
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        attachmentId: "remote-image",
+        name: "image.png"
+      }
+    ]
+  );
+});
+
 test("desktop agent activity adapter localizes adapter mismatch create failures", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
@@ -457,33 +500,15 @@ test("desktop agent activity adapter passes through unrelated create failures", 
   );
 });
 
-test("desktop agent activity adapter requires an injected session event subscription", async () => {
+test("desktop agent activity adapter leaves session event subscription to the service runtime", () => {
   const diagnostics: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient(),
     runtimeApi: createRuntimeApi(diagnostics)
   });
 
-  await assert.rejects(
-    adapter.subscribeSessionEvents({
-      agentSessionId: "agent-session-1",
-      onEvent: () => {},
-      signal: new AbortController().signal,
-      workspaceId
-    }),
-    /subscription is unavailable/
-  );
-
-  assert.deepEqual(diagnostics, [
-    {
-      details: {
-        error: "workspace agent session event subscription is unavailable"
-      },
-      event: "agent.gui.session_event.subscribe.unavailable",
-      level: "warn",
-      workspaceId
-    }
-  ]);
+  assert.equal(adapter.subscribeSessionEvents, undefined);
+  assert.deepEqual(diagnostics, []);
 });
 
 test("desktop agent activity adapter submits interactive responses through tuttid", async () => {
@@ -852,7 +877,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
           },
           reasoningConfig: {
             configurable: true,
-            options: []
+            options: [
+              { id: "low", value: "low", label: "Low" },
+              { id: "ultra", value: "ultra", label: "Ultra" }
+            ]
           },
           runtimeContext: {
             configOptions: [
@@ -864,7 +892,10 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
               {
                 id: "reasoning_effort",
                 currentValue: "high",
-                options: [{ value: "medium", name: "中" }]
+                options: [
+                  { value: "medium", name: "中" },
+                  { value: "ultra", name: "ultra" }
+                ]
               }
             ]
           },
@@ -894,7 +925,56 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
   assert.deepEqual(options.reasoningEfforts, [
     { value: "medium", label: "中" },
+    { value: "ultra", label: "Ultra" },
     { value: "high", label: "high" }
+  ]);
+});
+
+test("desktop agent activity adapter preserves ACP labels over synthesized config labels", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: { configurable: true, options: [] },
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: {
+            configurable: true,
+            currentValue: "ultra",
+            options: []
+          },
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "reasoning_effort",
+                currentValue: "ultra",
+                options: [{ value: "ultra", name: "ACP Ultra" }]
+              }
+            ]
+          },
+          skills: [],
+          behavior: {
+            collapseModelOptionsToLatest: false,
+            modelOptionsAuthoritative: false,
+            refreshModelOptionsAfterSettings: false,
+            prewarmDraftSession: false,
+            planModeExclusiveWithPermissionMode: false
+          },
+          capabilityCatalog: []
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "codex"
+  });
+
+  assert.deepEqual(options.reasoningEfforts, [
+    { value: "ultra", label: "ACP Ultra" }
   ]);
 });
 

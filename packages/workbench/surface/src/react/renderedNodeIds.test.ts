@@ -48,6 +48,7 @@ function createState(nodes: WorkbenchNode[]): WorkbenchState {
       safeArea: { bottom: 88, left: 0, right: 0, top: 52 },
       surfacePadding: 0
     },
+    lockedLayout: null,
     nodes,
     nodeStack: nodes.map((node) => node.id),
     surfaceSize: { height: 720, width: 1024 }

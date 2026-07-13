@@ -291,6 +291,10 @@ export function createDesktopAgentActivityRuntime(
       workspaceAgentActivityService.listSessionSections(input),
     listSessionSectionPage: (input) =>
       workspaceAgentActivityService.listSessionSectionPage(input),
+    countSessionSection: (input) =>
+      workspaceAgentActivityService.countSessionSection(input),
+    deleteSessionSection: (input) =>
+      workspaceAgentActivityService.deleteSessionSection(input),
     listPinnedSessionsPage: (input) =>
       workspaceAgentActivityService.listPinnedSessionsPage(input),
     async load(workspaceId, signal) {
@@ -482,6 +486,16 @@ export function createDesktopAgentActivityRuntime(
       const previousSettings = normalizeComposerSettings(
         previousState.settings ?? {}
       );
+      logAgentComposerSettingsDiagnostic({
+        agentSessionId: input.agentSessionId,
+        event: "agent.gui.composer_settings.update_requested",
+        nextSettings: input.settings,
+        previousSettings,
+        provider: previousState.provider,
+        runtimeApi: options.runtimeApi,
+        source: "session",
+        workspaceId: input.workspaceId
+      });
       let result: Awaited<
         ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]>
       >;
@@ -502,25 +516,29 @@ export function createDesktopAgentActivityRuntime(
         });
         throw error;
       }
+      const normalizedResult = {
+        ...result,
+        settings: normalizeComposerSettings(result.settings)
+      };
       await reportAgentSessionSettingsChanges({
-        agentSessionId: result.agentSessionId,
-        nextSettings: result.settings,
+        agentSessionId: normalizedResult.agentSessionId,
+        nextSettings: normalizedResult.settings,
         previousSettings,
         provider: previousState.provider,
         reporterNow: options.reporterNow,
         reporterService: options.reporterService
       });
       logAgentComposerSettingsDiagnostic({
-        agentSessionId: result.agentSessionId,
+        agentSessionId: normalizedResult.agentSessionId,
         event: "agent.gui.composer_settings.changed",
-        nextSettings: result.settings,
+        nextSettings: normalizedResult.settings,
         previousSettings,
         provider: previousState.provider,
         runtimeApi: options.runtimeApi,
         source: "session",
         workspaceId: input.workspaceId
       });
-      return result;
+      return normalizedResult;
     },
     async trackSettingsProjectChange(input) {
       await new AgentSettingsProjectChangedReporter(

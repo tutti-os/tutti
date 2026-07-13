@@ -37,6 +37,7 @@ export interface AgentMessageImageVM {
   mimeType: string;
   name?: string | null;
   data?: string | null;
+  url?: string | null;
   path?: string | null;
 }
 

@@ -183,7 +183,9 @@ func serviceSessionWithPersistedFreshness(session ProviderRuntimeSession, persis
 	if strings.TrimSpace(service.ProviderSessionID) == "" {
 		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	}
-	if service.Settings == nil {
+	if liveSettings := normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings); liveSettings != nil {
+		service.Settings = liveSettings
+	} else if service.Settings == nil {
 		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
 	}
 	service.PermissionConfig = composerPermissionConfig(service.Provider, permissionModeIDFromSettings(service.Settings), preferencesbiz.DefaultDesktopLocale)

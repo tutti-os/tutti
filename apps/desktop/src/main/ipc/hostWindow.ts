@@ -170,17 +170,10 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
         return;
       }
 
-      if (ownerWindow.isFullScreen()) {
-        ownerWindow.setFullScreen(false);
-        return;
-      }
-
-      if (ownerWindow.isMaximized()) {
-        ownerWindow.unmaximize();
-        return;
-      }
-
-      ownerWindow.maximize();
+      // The standalone agent window's green control is a real (native)
+      // fullscreen toggle. Native maximize/zoom is disabled for this window
+      // (maximizable: false), so fullscreen is the only fill state to track.
+      ownerWindow.setFullScreen(!ownerWindow.isFullScreen());
     }
   );
 }
@@ -194,7 +187,7 @@ function normalizeAgentWindowInput(input: DesktopHostOpenAgentWindowInput) {
     agentSessionID: input.agentSessionId?.trim() || null,
     agentTargetID: input.agentTargetId?.trim() || null,
     providerStatusSnapshot: input.providerStatusSnapshot ?? null,
-    providerTargets: input.providerTargets,
+    agents: input.agents,
     provider: input.provider?.trim() || null,
     workspaceID
   };

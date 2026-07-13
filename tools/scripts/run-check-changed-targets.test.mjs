@@ -5,9 +5,21 @@ import {
   buildGoTestLane,
   buildPackageTestCommand,
   isBuiltinGenerateRequired,
+  isToolTestRelevant,
   resolveGoModuleRoot,
   resolveGoValidationTargets
 } from "./run-check-changed-targets.mjs";
+
+describe("isToolTestRelevant", () => {
+  it("keeps app release package changes covered by tool-owned tests", () => {
+    assert.equal(
+      isToolTestRelevant("packages/workspace/app-release-tools/bin/build.mjs"),
+      true
+    );
+    assert.equal(isToolTestRelevant("tools/scripts/build.test.mjs"), true);
+    assert.equal(isToolTestRelevant("packages/workspace/files/file.go"), false);
+  });
+});
 
 describe("resolveGoModuleRoot", () => {
   it("maps changed files to their Go module root", () => {
@@ -20,6 +32,26 @@ describe("resolveGoModuleRoot", () => {
     assert.equal(
       resolveGoModuleRoot("apps/cli/internal/app/foo.go"),
       "apps/cli"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
+      "packages/agent/runtimeprep"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/agent/store-sqlite/store.go"),
+      "packages/agent/store-sqlite"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/auth/bridge-go/bridge.go"),
+      "packages/auth/bridge-go"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/events/stream-go/stream.go"),
+      "packages/events/stream-go"
+    );
+    assert.equal(
+      resolveGoModuleRoot("packages/workspace/issues/service.go"),
+      "packages/workspace/issues"
     );
   });
 });

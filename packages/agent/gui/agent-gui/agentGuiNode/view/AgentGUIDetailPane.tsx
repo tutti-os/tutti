@@ -241,7 +241,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     inlineNoticeChrome,
     interactivePromptLabels,
     isComposerSending,
-    selectedProviderTargetComingSoon,
+    selectedAgentTargetComingSoon,
     sessionChrome,
     showProviderSetupNotice,
     showStopButton,
@@ -377,18 +377,17 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const canSwitchComposerProvider = true;
-  const composerProviderTargets = viewModel.rail.providerTargets;
-  const composerHandoffProviderTargets =
-    viewModel.composer.handoffProviderTargets;
+  const composerProviderTargets = viewModel.rail.agentTargets;
+  const composerHandoffProviderTargets = viewModel.composer.handoffAgentTargets;
   const composerProvider =
     viewModel.rail.activeConversationId === null
-      ? (viewModel.rail.selectedProviderTarget?.provider ??
+      ? (viewModel.rail.selectedAgentTarget?.provider ??
         viewModel.shell.data.provider)
       : viewModel.shell.data.provider;
   const composerSelectedProviderTarget =
     viewModel.rail.activeConversationId === null
-      ? viewModel.rail.selectedProviderTarget
-      : (viewModel.rail.providerTargets.find((target) => {
+      ? viewModel.rail.selectedAgentTarget
+      : (viewModel.rail.agentTargets.find((target) => {
           if (target.provider !== viewModel.shell.data.provider) {
             return false;
           }
@@ -398,7 +397,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             target.targetId === agentTargetId ||
             target.agentTargetId === agentTargetId
           );
-        }) ?? viewModel.rail.selectedProviderTarget);
+        }) ?? viewModel.rail.selectedAgentTarget);
   const bottomDockComposerProps = useMemo<AgentComposerProps>(
     () => ({
       workspaceId: viewModel.shell.workspaceId,
@@ -412,9 +411,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
       compactSupported: viewModel.composer.compactSupported,
       availableSkills: viewModel.composer.availableSkills,
-      selectedProviderTarget: composerSelectedProviderTarget,
-      providerTargets: composerProviderTargets,
-      handoffProviderTargets: composerHandoffProviderTargets,
+      selectedAgentTarget: composerSelectedProviderTarget,
+      agentTargets: composerProviderTargets,
+      handoffAgentTargets: composerHandoffProviderTargets,
       providerSelectReadonly:
         !canSwitchComposerProvider ||
         viewModel.rail.activeConversationId !== null,
@@ -478,7 +477,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   activeConversation: viewModel.rail.activeConversation,
                   currentUserId: viewModel.shell.currentUserId,
                   labels,
-                  selectedProviderTarget: composerSelectedProviderTarget,
+                  selectedAgentTarget: composerSelectedProviderTarget,
                   uiLanguage,
                   workspaceId: viewModel.shell.workspaceId
                 }),
@@ -576,7 +575,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [bottomDockComposerProps]
   );
   const emptyHeroProvider =
-    viewModel.rail.selectedProviderTarget?.provider ??
+    viewModel.rail.selectedAgentTarget?.provider ??
     viewModel.shell.data.provider;
   const emptyHeroProviderLabel =
     labels.emptyProviderForProvider?.(emptyHeroProvider) ??
@@ -591,8 +590,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         : [agentGUIProviderIconPresentation(emptyHeroProvider)],
     [emptyHeroProvider, viewModel.rail.conversationFilter]
   );
-  const disabledProviderTarget = selectedProviderTargetComingSoon
-    ? (viewModel.rail.selectedProviderTarget ?? null)
+  const disabledProviderTarget = selectedAgentTargetComingSoon
+    ? (viewModel.rail.selectedAgentTarget ?? null)
     : null;
   const shouldRenderProviderUnavailableState =
     !hasActiveConversation &&
@@ -738,8 +737,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                   ? selectHomeComposerAgentTargetAndFocus
                   : undefined
               }
-              providerTargets={composerProviderTargets}
-              selectedProviderTarget={viewModel.rail.selectedProviderTarget}
+              agentTargets={composerProviderTargets}
+              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
               chromeLabels={chromeLabels}
               composerProps={emptyHeroComposerProps}
               providerSelectLabel={labels.providerSwitchLabel}

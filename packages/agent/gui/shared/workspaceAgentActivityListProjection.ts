@@ -4,7 +4,6 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import { selectCanonicalAgentActivitySessions } from "@tutti-os/agent-activity-core";
-import type { RoomShareMemberView } from "./roomShare";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "./workspaceAgentSessionSortTime";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import {
@@ -184,17 +183,6 @@ function resolveActivityUser(
     return resolveUserFromId(sessionUserId, options);
   }
 
-  const fallbackMember = selectFallbackMember(options.fallbackMembers ?? []);
-  if (fallbackMember) {
-    return {
-      userId: fallbackMember.userId,
-      userName: fallbackMember.label || "Unknown member",
-      ...(fallbackMember.avatarUrl
-        ? { userAvatarUrl: fallbackMember.avatarUrl }
-        : {})
-    };
-  }
-
   return {
     userId: null,
     userName: "Unknown member"
@@ -216,14 +204,6 @@ function resolveUserFromId(
     userName: stripTrailingParentheticalEmailFromLabel(rawName) || rawName,
     ...(profileAvatar ? { userAvatarUrl: profileAvatar } : {})
   };
-}
-
-function selectFallbackMember(
-  members: RoomShareMemberView[]
-): RoomShareMemberView | null {
-  return (
-    members.find((member) => member.role === "owner") ?? members[0] ?? null
-  );
 }
 
 function resolveProvider(

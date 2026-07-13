@@ -26,7 +26,7 @@ export function AgentUserImageGrid({
       }}
     >
       {images.map((image) => {
-        const src = sources.get(image.id) ?? imageDataUrl(image);
+        const src = sources.get(image.id) ?? imageSourceUrl(image);
         const loading = !src && loadingIds.has(image.id);
         return (
           <div key={image.id} className={styles.userImageThumbnail}>
@@ -70,7 +70,7 @@ function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
     () =>
       images.filter(
         (image) =>
-          !imageDataUrl(image) &&
+          !imageSourceUrl(image) &&
           !sources.has(image.id) &&
           image.workspaceId &&
           image.agentSessionId &&
@@ -138,4 +138,9 @@ function imageDataUrl(image: AgentMessageImageVM): string | null {
   const mimeType = image.mimeType.trim();
   if (!data || !mimeType) return null;
   return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
+}
+
+function imageSourceUrl(image: AgentMessageImageVM): string | null {
+  const url = image.url?.trim() ?? "";
+  return url || imageDataUrl(image);
 }

@@ -27,8 +27,7 @@ export function createEmptyAgentActivitySnapshot(
     sessions: [],
     presences: [],
     sessionMessagesById: {},
-    composerOptionsByProvider: {},
-    composerOptionsByAgentTargetId: {}
+    composerOptionsByTargetKey: {}
   };
 }
 
@@ -39,16 +38,8 @@ export function cloneAgentActivitySnapshot(
     workspaceId: snapshot.workspaceId,
     sessions: snapshot.sessions.map(cloneAgentActivitySession),
     presences: snapshot.presences.map((presence) => ({ ...presence })),
-    composerOptionsByAgentTargetId: Object.fromEntries(
-      Object.entries(snapshot.composerOptionsByAgentTargetId ?? {}).map(
-        ([agentTargetId, options]) => [
-          agentTargetId,
-          cloneAgentActivityComposerOptions(options)
-        ]
-      )
-    ),
-    composerOptionsByProvider: Object.fromEntries(
-      Object.entries(snapshot.composerOptionsByProvider ?? {}).map(
+    composerOptionsByTargetKey: Object.fromEntries(
+      Object.entries(snapshot.composerOptionsByTargetKey ?? {}).map(
         ([provider, options]) => [
           provider,
           cloneAgentActivityComposerOptions(options)
@@ -76,6 +67,19 @@ export function cloneAgentActivityComposerOptions(
     provider: options.provider,
     models: options.models.map((option) => ({ ...option })),
     reasoningEfforts: options.reasoningEfforts.map((option) => ({ ...option })),
+    reasoningOptionsByModel: options.reasoningOptionsByModel
+      ? Object.fromEntries(
+          Object.entries(options.reasoningOptionsByModel).map(
+            ([model, profile]) => [
+              model,
+              {
+                ...profile,
+                options: profile.options.map((option) => ({ ...option }))
+              }
+            ]
+          )
+        )
+      : undefined,
     speeds: (options.speeds ?? []).map((option) => ({ ...option })),
     modelConfigurable: options.modelConfigurable ?? false,
     reasoningConfigurable: options.reasoningConfigurable ?? false,

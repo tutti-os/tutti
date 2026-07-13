@@ -259,7 +259,7 @@ function delay(ms: number): Promise<void> {
 
 // TEMP(debug): 依 localStorage 覆寫積分 summary，僅供 UI 驗證，正式上線前移除。
 function applyDebugCreditsState(summary: {
-  credits?: { available_credits?: number | null } | null;
+  credits?: { available_credits?: string | number | null } | null;
 }): void {
   let state: string | null = null;
   try {
@@ -275,7 +275,7 @@ function applyDebugCreditsState(summary: {
   }
   const credits = summary.credits ?? {};
   if (state === "zero") {
-    summary.credits = { ...credits, available_credits: 0 };
+    summary.credits = { ...credits, available_credits: "0" };
   } else if (state === "unavailable") {
     summary.credits = { ...credits, available_credits: null };
   }

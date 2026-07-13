@@ -13,6 +13,79 @@ import (
 	"time"
 )
 
+func writeCodexModelCatalogConfig(t *testing.T, contents string) {
+	t.Helper()
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	if err := os.WriteFile(filepath.Join(codexHome, codexConfigFileName), []byte(contents), 0o600); err != nil {
+		t.Fatalf("write codex config.toml: %v", err)
+	}
+}
+
+// A custom model_provider cannot serve the official Codex model/list ids. The
+// composer must expose only the model configured for that provider.
+func TestAgentModelCatalogCustomModelProviderExposesOnlyConfiguredModel(t *testing.T) {
+	writeCodexModelCatalogConfig(t,
+		"model_provider = \"openrouter\"\n"+
+			"model = \"minimax/minimax-m2.5\"\n\n"+
+			"[model_providers.openrouter]\n"+
+			"base_url = \"https://openrouter.ai/api/v1\"\n")
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{
+			{ID: "gpt-5.5", DisplayName: "GPT-5.5", IsDefault: true},
+			{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
+			{ID: "gpt-5.2", DisplayName: "GPT-5.2"},
+		},
+	}
+	catalog := &CachedAgentModelCatalog{
+		Codex: lister,
+		Now: func() time.Time {
+			return time.UnixMilli(1000)
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 1 {
+		t.Fatalf("models = %#v, want only the configured custom-provider model", result.Models)
+	}
+	if result.Models[0].ID != "minimax/minimax-m2.5" || !result.Models[0].IsDefault {
+		t.Fatalf("model = %#v, want configured minimax/minimax-m2.5 as default", result.Models[0])
+	}
+	if result.Source != "codex-configured-model" {
+		t.Fatalf("source = %q, want codex-configured-model", result.Source)
+	}
+}
+
+func TestAgentModelCatalogDefaultProviderKeepsOfficialListWithConfiguredDefault(t *testing.T) {
+	writeCodexModelCatalogConfig(t, "model = \"gpt-5.5\"\n")
+	lister := &fakeAgentModelLister{
+		models: []AgentModelOption{
+			{ID: "gpt-5.5", DisplayName: "GPT-5.5"},
+			{ID: "gpt-5.4", DisplayName: "GPT-5.4"},
+		},
+	}
+	catalog := &CachedAgentModelCatalog{
+		Codex: lister,
+		Now: func() time.Time {
+			return time.UnixMilli(1000)
+		},
+	}
+
+	result, err := catalog.ListModels(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(result.Models) != 2 {
+		t.Fatalf("models = %#v, want official catalog untouched", result.Models)
+	}
+	if !result.Models[0].IsDefault || result.Models[0].ID != "gpt-5.5" {
+		t.Fatalf("models = %#v, want configured gpt-5.5 marked default", result.Models)
+	}
+}
+
 func TestAgentModelCatalogDoesNotReturnClaudeStaticModels(t *testing.T) {
 	catalog := &CachedAgentModelCatalog{
 		Now: func() time.Time {
@@ -158,7 +231,16 @@ func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.
 	if err := os.MkdirAll(userAgentHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(`{"tutti_llm":{"access_token":"access","refresh_token":"refresh"}}`), 0o600); err != nil {
+	accessExpiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	authJSON := `{"tutti_llm":{"access_token":"access","access_token_expires_at":` + strconv.Quote(accessExpiresAt) + `,"refresh_token":"refresh"}}`
+	if err := os.WriteFile(filepath.Join(userAgentHome, "auth.json"), []byte(authJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	accountAuthDir := filepath.Join(stateDir, "account")
+	if err := os.MkdirAll(accountAuthDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(accountAuthDir, "auth.json"), []byte(`{"cookie":"session_id=session_test"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	userConfig := strings.Join([]string{

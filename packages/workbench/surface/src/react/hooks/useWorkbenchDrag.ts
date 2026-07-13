@@ -26,6 +26,12 @@ export function useWorkbenchDrag<TData>(
 
       const origin = { x: event.clientX, y: event.clientY };
       const initialFrame = node.frame;
+      // Dragging a locked-layout node swaps slots within the fixed grid
+      // instead of free-moving, so edge snapping does not apply.
+      const isLockedLayoutDrag = () => {
+        const lockedLayout = controller.getSnapshot().lockedLayout;
+        return lockedLayout !== null && lockedLayout.nodeIDs.includes(node.id);
+      };
 
       const onPointerMove = (moveEvent: PointerEvent) => {
         const nextFrame = {
@@ -33,10 +39,12 @@ export function useWorkbenchDrag<TData>(
           x: initialFrame.x + moveEvent.clientX - origin.x,
           y: initialFrame.y + moveEvent.clientY - origin.y
         };
-        updateSnap(
-          { x: moveEvent.clientX, y: moveEvent.clientY },
-          { edgeSnapEnabled }
-        );
+        if (!isLockedLayoutDrag()) {
+          updateSnap(
+            { x: moveEvent.clientX, y: moveEvent.clientY },
+            { edgeSnapEnabled }
+          );
+        }
         controller.commands.dragNode(node.id, nextFrame);
       };
 
@@ -49,7 +57,9 @@ export function useWorkbenchDrag<TData>(
       };
 
       const finishDrag = (upEvent: PointerEvent) => {
-        if (
+        if (isLockedLayoutDrag()) {
+          controller.commands.settleLockedDrag(node.id);
+        } else if (
           updateSnap(
             { x: upEvent.clientX, y: upEvent.clientY },
             { edgeSnapEnabled }
@@ -61,6 +71,10 @@ export function useWorkbenchDrag<TData>(
       };
 
       const cancelDrag = () => {
+        if (isLockedLayoutDrag()) {
+          // Snap the node back into its slot instead of leaving it mid-air.
+          controller.commands.settleLockedDrag(node.id);
+        }
         clearListeners();
       };
 

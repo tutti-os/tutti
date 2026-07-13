@@ -1,6 +1,5 @@
 import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import type { AgentHostUserInfo } from "./contracts/dto";
-import type { RoomShareMemberView } from "./roomShare";
 import type { WorkspaceAgentToolCallDisplay } from "./workspaceAgentToolCallDisplay";
 import type {
   WorkspaceAgentConversationPreviewLine,
@@ -41,7 +40,6 @@ export interface WorkspaceAgentActivityListViewModel {
 export interface BuildWorkspaceAgentActivityListOptions {
   sessionMessagesById?: Record<string, AgentActivityMessage[]>;
   userProfilesById?: Record<string, AgentHostUserInfo>;
-  fallbackMembers?: RoomShareMemberView[];
 }
 
 export interface CollectWorkspaceAgentGeneratedFilesOptions {

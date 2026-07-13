@@ -306,7 +306,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			// so goal progress never depends on this Exec staying alive.
 			initialTurn := appServerTurnFromResult(result)
 			if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+				if a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID) {
 					a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 				}
 			}
@@ -443,7 +443,7 @@ func (a *CodexAppServerAdapter) adoptServerInitiatedTurn(session Session, provid
 		// A registered turn won the race; leave tracking to it.
 		return
 	}
-	a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
+	a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID)
 	// The adopted id comes from the turn/started notification itself.
 	a.confirmSessionActiveTurnStarted(session.AgentSessionID, providerTurnID)
 	slog.Info("agent session app-server goal turn adopted",

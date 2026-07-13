@@ -5,6 +5,7 @@ import {
   areAgentGuiWorkbenchStatesEqual,
   createAgentGuiWorkbenchNodeStateSource,
   createDefaultAgentGuiWorkbenchNodeState,
+  migrateLegacyAgentGuiWorkbenchState,
   normalizeAgentGuiWorkbenchNodeState,
   normalizeAgentGuiWorkbenchState,
   projectAgentGuiWorkbenchState
@@ -79,25 +80,29 @@ describe("agent gui workbench state", () => {
     };
 
     expect(
-      normalizeAgentGuiWorkbenchNodeState({
-        provider: "codex",
-        providerTargetId: "shared-agent:agent-1",
-        providerTargetRef
-      })
+      normalizeAgentGuiWorkbenchNodeState(
+        migrateLegacyAgentGuiWorkbenchState({
+          provider: "codex",
+          providerTargetId: "shared-agent:agent-1",
+          providerTargetRef
+        })
+      )
     ).toMatchObject({
       agentTargetId: "shared-agent:agent-1",
       provider: "codex"
     });
 
     expect(
-      normalizeAgentGuiWorkbenchNodeState({
-        provider: "codex",
-        providerTargetId: "shared-agent:agent-1",
-        providerTargetRef: {
-          ...providerTargetRef,
-          provider: "claude-code"
-        }
-      })
+      normalizeAgentGuiWorkbenchNodeState(
+        migrateLegacyAgentGuiWorkbenchState({
+          provider: "codex",
+          providerTargetId: "shared-agent:agent-1",
+          providerTargetRef: {
+            ...providerTargetRef,
+            provider: "claude-code"
+          }
+        })
+      )
     ).toMatchObject({
       provider: "codex",
       agentTargetId: "shared-agent:agent-1"
@@ -126,10 +131,12 @@ describe("agent gui workbench state", () => {
     ).toBe(true);
     expect(
       areAgentGuiWorkbenchStatesEqual(
-        normalizeAgentGuiWorkbenchState({
-          lastActiveAgentSessionId: "session-1",
-          providerTargetId: "legacy-target"
-        }),
+        normalizeAgentGuiWorkbenchState(
+          migrateLegacyAgentGuiWorkbenchState({
+            lastActiveAgentSessionId: "session-1",
+            providerTargetId: "legacy-target"
+          })
+        ),
         normalizeAgentGuiWorkbenchState({
           lastActiveAgentSessionId: "session-1",
           agentTargetId: "legacy-target"

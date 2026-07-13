@@ -230,7 +230,7 @@ export const zhCN = {
       stageProblemInstallOutdated: "{{provider}} CLI 版本不受支持",
       stageProblemInstallPlatformIncomplete: "{{provider}} 平台二进制包缺失",
       stageInstallVersionRequirement: "当前 {{current}} · 需要 ≥ {{required}}",
-      stageAdapterVersionRequirement: "当前 {{current}} · 需要 {{required}}",
+      stageAdapterVersionRequirement: "当前 {{current}} · 需要 ≥ {{required}}",
       stageProblemAdapterMissing: "未安装适配器",
       stageProblemAdapterMismatch: "适配器版本不受支持",
       stageProblemLoginMissing: "未登录",
@@ -774,6 +774,7 @@ export const zhCN = {
         showAppDeveloperSourcesSaveFailed: "暂时无法更新应用中心来源展示设置。",
         tuttiAgentSwitchDescription: "显示账号与 Agent 开发控制项。",
         tuttiAgentSwitchLabel: "Tutti Agent Switch",
+        tuttiAgentSwitchSaveFailed: "暂时无法更新 Tutti Agent 可用状态。",
         visibilityDescription:
           "在设置中隐藏此面板。在「关于」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"
@@ -843,6 +844,7 @@ export const zhCN = {
         installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
         installFailedMissingRuntime:
           "找不到本地 Agent 可执行文件，请检查是否已正确安装",
+        installFailedOutdatedLocalAgent: "检测到旧版本本地 Agent，自动升级失败",
         installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
@@ -866,7 +868,7 @@ export const zhCN = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderOpenCode: "OpenCode",
+        manageProviderOpenCode: "Open Code",
         manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",
@@ -899,7 +901,8 @@ export const zhCN = {
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "快速布局",
-        unavailableTrigger: "仅存在多个窗口时可使用"
+        unavailableTrigger: "仅存在多个窗口时可使用",
+        unlockLayoutTrigger: "解除固定布局"
       }
     }
   },

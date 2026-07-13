@@ -190,7 +190,12 @@ export const desktopAgentProviders = [
 
 export type DesktopAgentProvider = (typeof desktopAgentProviders)[number];
 
-export const desktopDefaultAgentProviders = ["claude-code", "codex"] as const;
+export const desktopDefaultAgentProviders = [
+  "claude-code",
+  "codex",
+  "cursor",
+  "opencode"
+] as const;
 
 export type DesktopDefaultAgentProvider =
   (typeof desktopDefaultAgentProviders)[number];

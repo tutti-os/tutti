@@ -3,7 +3,9 @@ import {
   cancelWorkspaceAgentTurn,
   clearWorkspaceAgentSessions,
   createWorkspaceAgentSession,
+  countWorkspaceAgentSessionSection,
   deleteWorkspaceAgentSession,
+  deleteWorkspaceAgentSessionSection,
   getWorkspaceAgentSession,
   goalControlWorkspaceAgentSession,
   importWorkspaceExternalAgentSessions,
@@ -36,7 +38,9 @@ type WorkspaceAgentClient = Pick<
   | "cancelWorkspaceAgentTurn"
   | "clearWorkspaceAgentSessions"
   | "createWorkspaceAgentSession"
+  | "countWorkspaceAgentSessionSection"
   | "deleteWorkspaceAgentSession"
+  | "deleteWorkspaceAgentSessionSection"
   | "getWorkspaceAgentSession"
   | "goalControlWorkspaceAgentSession"
   | "importWorkspaceExternalAgentSessions"
@@ -83,6 +87,21 @@ export function createWorkspaceAgentClient(
           path: { agentSessionID, workspaceID }
         }),
         "Delete workspace agent session request failed."
+      );
+    },
+    async deleteWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await deleteWorkspaceAgentSessionSection({
+          client,
+          path: { workspaceID },
+          query: request,
+          ...requestOptions
+        }),
+        "Delete workspace agent session section request failed."
       );
     },
     async clearWorkspaceAgentSessions(workspaceID) {
@@ -139,6 +158,21 @@ export function createWorkspaceAgentClient(
           ...requestOptions
         }),
         "Workspace agent session section page request failed."
+      );
+    },
+    async countWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return unwrapData(
+        await countWorkspaceAgentSessionSection({
+          client,
+          path: { workspaceID },
+          query: request,
+          ...requestOptions
+        }),
+        "Workspace agent session section count request failed."
       );
     },
     async listWorkspaceAgentPinnedSessionPage(

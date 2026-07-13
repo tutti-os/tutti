@@ -11,6 +11,7 @@ export interface AgentGUIConversationProjectSummary {
   id: string;
   path: string;
   label: string;
+  sectionKey?: string;
   createdAtUnixMs?: number;
   updatedAtUnixMs?: number;
   lastUsedAtUnixMs?: number;
@@ -21,6 +22,7 @@ export type AgentGUIConversationUserProject = Pick<
   | "id"
   | "path"
   | "label"
+  | "sectionKey"
   | "createdAtUnixMs"
   | "updatedAtUnixMs"
   | "lastUsedAtUnixMs"
@@ -129,6 +131,9 @@ function agentGUIConversationProjectSummaryFromProject(
     path: matchedProject.path,
     label: resolveWorkspaceUserProjectDisplayLabel(matchedProject)
   };
+  if (matchedProject.sectionKey !== undefined) {
+    summary.sectionKey = matchedProject.sectionKey;
+  }
   if (matchedProject.createdAtUnixMs !== undefined) {
     summary.createdAtUnixMs = matchedProject.createdAtUnixMs;
   }

@@ -30,6 +30,111 @@ export function composerSettingOptionsFromActivity(
   return options.map((option) => ({ ...option }));
 }
 
+function reasoningOptionsFromRuntimeConfig(
+  runtimeContext: Record<string, unknown> | null | undefined
+): {
+  currentValue: string | null;
+  options: AgentGUIComposerSettingOption[];
+} | null {
+  const configOptions = runtimeContext?.configOptions;
+  if (!Array.isArray(configOptions)) {
+    return null;
+  }
+  for (const rawOption of configOptions) {
+    const option = recordValue(rawOption);
+    const id = normalizeConfigOptionValue(option?.id);
+    if (
+      !option ||
+      !id ||
+      !["reasoning_effort", "model_reasoning_effort", "effort"].includes(id)
+    ) {
+      continue;
+    }
+    const rawEntries = option.options;
+    if (!Array.isArray(rawEntries)) {
+      return null;
+    }
+    const options: AgentGUIComposerSettingOption[] = [];
+    for (const rawEntry of rawEntries) {
+      const entry = recordValue(rawEntry);
+      const value = normalizeConfigOptionValue(entry?.value);
+      if (
+        !entry ||
+        !value ||
+        options.some((candidate) => candidate.value === value)
+      ) {
+        continue;
+      }
+      const label =
+        normalizeConfigOptionValue(entry.name) ??
+        normalizeConfigOptionValue(entry.label) ??
+        value;
+      const description = normalizeConfigOptionValue(entry.description);
+      options.push({
+        value,
+        label,
+        ...(description ? { description } : {})
+      });
+    }
+    return {
+      currentValue: normalizeConfigOptionValue(
+        option.currentValue ?? option.current_value
+      ),
+      options
+    };
+  }
+  return null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function reasoningProfileForModel(
+  options: AgentActivityComposerOptions | null,
+  model: string | null
+): {
+  defaultValue: string | null;
+  options: AgentGUIComposerSettingOption[];
+} | null {
+  if (!options || !model) {
+    return null;
+  }
+  const profile = options.reasoningOptionsByModel?.[model];
+  if (!profile || !Array.isArray(profile.options)) {
+    return null;
+  }
+  return {
+    defaultValue: normalizeConfigOptionValue(profile.defaultValue),
+    options: profile.options.map((option) => ({ ...option }))
+  };
+}
+
+export function reasoningSelectionForModelFromComposerOptions(
+  options: AgentActivityComposerOptions | null,
+  currentValue: AgentSessionReasoningEffort | null,
+  selectedModel: string | null
+): ACPConfigOptionSelection | null {
+  const modelProfile = reasoningProfileForModel(options, selectedModel);
+  if (!modelProfile) {
+    return null;
+  }
+  const supportedValues = new Set(
+    modelProfile.options.map((option) => option.value)
+  );
+  return {
+    options: modelProfile.options,
+    currentValue: ((currentValue && supportedValues.has(currentValue)
+      ? currentValue
+      : null) ??
+      modelProfile.defaultValue ??
+      modelProfile.options[0]?.value ??
+      null) as AgentSessionReasoningEffort | null
+  };
+}
+
 // liveModelOptionValuesFromRuntimeContext extracts the model option values a
 // live ACP session advertises through its runtime-context config options
 // (configOptions[id="model"].options[].value). Providers such as Cursor only
@@ -60,14 +165,42 @@ export function modelSelectionFromComposerOptions(
 
 export function reasoningSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
-  currentValue: AgentSessionReasoningEffort | null
+  currentValue: AgentSessionReasoningEffort | null,
+  selectedModel: string | null = null,
+  sessionRuntimeContext: Record<string, unknown> | null = null
 ): ACPConfigOptionSelection | null {
-  if (!options) {
+  const liveConfig = reasoningOptionsFromRuntimeConfig(sessionRuntimeContext);
+  const modelSelection = reasoningSelectionForModelFromComposerOptions(
+    options,
+    currentValue,
+    selectedModel
+  );
+  const sourceOptions = liveConfig
+    ? liveConfig.options
+    : modelSelection
+      ? modelSelection.options
+      : options
+        ? composerSettingOptionsFromActivity(options.reasoningEfforts)
+        : [];
+  if (!options && !liveConfig && !modelSelection) {
     return null;
   }
+  const supportedValues = new Set(sourceOptions.map((option) => option.value));
+  const supportedValue = (
+    value: AgentSessionReasoningEffort | string | null | undefined
+  ): AgentSessionReasoningEffort | null =>
+    value && supportedValues.has(value)
+      ? (value as AgentSessionReasoningEffort)
+      : null;
+  const resolvedCurrentValue =
+    supportedValue(currentValue) ??
+    supportedValue(liveConfig?.currentValue) ??
+    supportedValue(modelSelection?.currentValue) ??
+    (sourceOptions[0]?.value as AgentSessionReasoningEffort | undefined) ??
+    null;
   return {
-    options: composerSettingOptionsFromActivity(options.reasoningEfforts),
-    currentValue
+    options: sourceOptions,
+    currentValue: resolvedCurrentValue as AgentSessionReasoningEffort | null
   };
 }
 

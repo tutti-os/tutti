@@ -1,9 +1,26 @@
 import { createElement } from "react";
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceTerminalContribution } from "../workspaceTerminalContribution.ts";
 import { WorkspaceWorkbenchTrafficLights } from "../../../ui/WorkspaceWorkbenchTrafficLights.ts";
 
-export const terminalWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type TerminalWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "appI18n"
+  | "confirmCloseGuard"
+  | "dockIcons"
+  | "hostFilesApi"
+  | "i18n"
+  | "platformApi"
+  | "reporterService"
+  | "runtimeApi"
+  | "tuttidClient"
+  | "workspaceId"
+>;
+
+export const terminalWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<TerminalWorkbenchContributionContext> =
   {
     id: "workspace-terminal",
     order: 40,

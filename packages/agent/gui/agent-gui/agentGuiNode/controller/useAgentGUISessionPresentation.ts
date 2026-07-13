@@ -77,7 +77,7 @@ interface UseAgentGUISessionPresentationInput {
   latestPendingNewActivation: { agentSessionId: string } | null;
   pendingApproval: AgentApprovalItemVM | null;
   planImplementationTurnIdRef: CurrentValue<string | null>;
-  providerTargetsLoading: boolean;
+  agentTargetsLoading: boolean;
   serverInteractivePrompt: AgentGUIInteractivePrompt | null;
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
@@ -232,7 +232,7 @@ export function useAgentGUISessionPresentation(
     input.pendingApproval
   ]);
   const canSubmit =
-    !input.providerTargetsLoading &&
+    !input.agentTargetsLoading &&
     input.activeLiveState !== "activating" &&
     input.activeLiveState !== "failed" &&
     !activeConversationResumeUnavailable &&

@@ -14,7 +14,11 @@ export interface WorkbenchMissionControlSnapshot<TData = unknown> {
 }
 
 export interface WorkbenchMissionControlAdapter<TData = unknown> {
-  applyLayoutPreset(nodeIds: string[], preset: WorkbenchLayoutPreset): void;
+  applyLayoutPreset(
+    nodeIds: string[],
+    preset: WorkbenchLayoutPreset,
+    lock?: boolean
+  ): void;
   focusNode(nodeId: string): void;
   getSnapshot(): WorkbenchMissionControlSnapshot<TData>;
   subscribe(listener: () => void): () => void;

@@ -72,6 +72,7 @@ export function logAgentComposerSettingsDiagnostic(input: {
   error?: unknown;
   event:
     | "agent.gui.composer_settings.changed"
+    | "agent.gui.composer_settings.update_requested"
     | "agent.gui.composer_settings.update_failed";
   nextSettings: AgentHostAgentSessionComposerSettings;
   previousSettings: AgentHostAgentSessionComposerSettings | undefined;

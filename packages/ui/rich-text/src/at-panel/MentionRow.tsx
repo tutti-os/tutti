@@ -249,6 +249,12 @@ export function renderMentionRow(
             </span>
           ) : null}
         </span>
+        {item.statusTag ? (
+          <MentionStatusBadge
+            statusTag={item.statusTag}
+            dataAttributeMode={dataAttributeMode}
+          />
+        ) : null}
         {referencesButton}
       </span>
     );

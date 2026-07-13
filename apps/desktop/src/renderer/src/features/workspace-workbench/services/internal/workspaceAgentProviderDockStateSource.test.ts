@@ -494,17 +494,13 @@ test("agent provider dock state source hides Tutti Agent disabled targets", () =
   const source = createWorkspaceAgentProviderDockStateSource({
     agentProviderStatusService: service,
     i18n: createI18n(),
-    providerTargets: [
+    agents: [
       {
         agentTargetId: "local:tutti-agent",
-        disabled: true,
-        label: "Tutti Agent",
-        provider: "tutti-agent",
-        ref: {
-          kind: "local",
-          provider: "tutti-agent"
-        },
-        targetId: "local:tutti-agent"
+        availability: { status: "unavailable" },
+        iconUrl: "app://icons/tutti-agent.png",
+        name: "Tutti Agent",
+        provider: "tutti-agent"
       }
     ]
   });
@@ -529,16 +525,13 @@ test("agent provider dock state source keeps Tutti Agent enabled targets", () =>
   const source = createWorkspaceAgentProviderDockStateSource({
     agentProviderStatusService: service,
     i18n: createI18n(),
-    providerTargets: [
+    agents: [
       {
         agentTargetId: "local:tutti-agent",
-        label: "Tutti Agent",
-        provider: "tutti-agent",
-        ref: {
-          kind: "local",
-          provider: "tutti-agent"
-        },
-        targetId: "local:tutti-agent"
+        availability: { status: "ready" },
+        iconUrl: "app://icons/tutti-agent.png",
+        name: "Tutti Agent",
+        provider: "tutti-agent"
       }
     ]
   });

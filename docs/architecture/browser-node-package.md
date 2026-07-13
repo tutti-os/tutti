@@ -1,7 +1,7 @@
 # Browser Node Package
 
-This document records the package direction for sharing the Browser Node
-capability between the open-source desktop and TSH.
+This document records the current package boundary for sharing the Browser Node
+capability across desktop hosts.
 
 The intent is to align both products on one reusable browser runtime while
 keeping product-specific business capabilities in thin host adapters.
@@ -26,7 +26,7 @@ surface, not every possible browser integration.
 
 ## Design Decisions
 
-The initial package direction uses these decisions:
+The current package uses these decisions:
 
 - Package name: `@tutti-os/browser-node`.
 - Repository path: `packages/browser/workbench-node`.
@@ -53,8 +53,8 @@ only provides product adapters.
 
 ## Package Entry Points
 
-The package should use multiple exports from one package rather than several
-small packages:
+The package uses multiple exports from one package rather than several small
+packages:
 
 ```text
 @tutti-os/browser-node
@@ -66,7 +66,7 @@ small packages:
 @tutti-os/browser-node/i18n
 ```
 
-Recommended internal shape:
+Internal shape:
 
 ```text
 packages/browser/workbench-node/
@@ -187,52 +187,13 @@ installBrowserNodeGuestBridge({
 });
 ```
 
-## TSH Migration Mapping
+## Host Integration
 
-TSH currently has the Browser Node behavior spread across renderer, preload,
-main, and shared contracts.
-
-Move into package:
-
-- `WebsiteNode` body and generic header behavior
-- `useWebsiteNodeWebview`
-- website runtime store
-- website URL helpers
-- website session partition helpers
-- generic website window DTOs
-- generic bridge result and API tree builders
-- host allowlist matching helpers
-- webview security enforcement
-- guest `webContents` state listeners
-- `WebsiteGuestManager` after renaming and dependency injection
-- runtime preview proxy mechanics after decoupling service discovery
-- generic bridge debug and link interception utilities
-
-Keep in TSH host adapter:
-
-- `__tsh` namespace selection
-- agent/game/share bridge methods
-- `DesktopShellService` dependencies
-- room ID lookup
-- TSH runtime service discovery implementation
-- TSH event emission
-- TSH-specific diagnostics messages when not generic
-- any product copy that is not generic browser behavior
-
-## Tutti Initial Integration
-
-Tutti should first consume the package as a workbench node type:
-
-1. Add a Browser Node definition to the workspace workbench host service.
-2. Keep workbench node layout and persistence in the existing workbench
-   snapshot path.
-3. Add a narrow desktop host API for Browser Node commands through preload.
-4. Register Electron main handlers as host capabilities, not business flows.
-5. Keep direct `tuttid` backend tokens out of guest pages.
-6. Add package i18n resources to the renderer app-level i18n runtime.
-
-The first slice can support ordinary HTTP and HTTPS navigation before enabling
-runtime preview routes.
+Hosts consume Browser Node through workbench, Electron main/preload, bridge,
+and i18n entrypoints. Each host supplies adapters for its bridge namespace,
+search policy, preview routing, external-open behavior, logging, and product
+capabilities. Product-specific bridge methods, service discovery, room or
+workspace lookup, and user-visible copy remain in the host.
 
 ## Security Invariants
 
@@ -258,24 +219,3 @@ browser lifecycle fixes while keeping host integration explicit.
 
 The package is deep when callers can register a browser workbench node, main
 handlers, and guest bridge with a small amount of product adapter code.
-
-## Phased Plan
-
-1. Extract pure contracts and helpers: DTOs, URL parsing, session partitioning,
-   bridge result types, and host allowlist helpers.
-2. Extract renderer state and React surface behind an injected
-   `BrowserNodeHostApi`.
-3. Add workbench definition helpers for multi-instance browser nodes.
-4. Extract Electron main guest manager, loopback preview proxy, and webview
-   security policy behind injected logger, loopback preview routing policy,
-   external-open, and IPC adapters.
-5. Extract generic guest preload bridge with configurable namespace and method
-   registry.
-6. Rewire TSH to consume the package through a TSH adapter.
-7. Add Tutti desktop integration with a minimal browser node.
-8. Enable optional runtime preview routing after token and route policy review.
-
-## Resolved Questions
-
-The initial open questions are resolved by the design decisions above. Revisit
-them only if the first extraction reveals a concrete integration issue.

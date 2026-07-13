@@ -11,11 +11,19 @@ import { createWorkspaceWorkbenchHostInputWithDockEntries } from "./workspaceWor
 
 test("createWorkspaceWorkbenchHostInputWithDockEntries updates dock entries without replacing host config references", () => {
   const contributions = [{ id: "workspace-app-center" }];
+  const externalStateSource = {} as NonNullable<
+    WorkspaceWorkbenchHostInput["externalStateSource"]
+  >;
+  const onLaunchRequest = async () => null;
+  const onNodeCloseRequest = async () => undefined;
   const prepareHostClose = async () => true;
   const snapshotRepository =
     {} as WorkspaceWorkbenchHostInput["snapshotRepository"];
   const baseHostInput: WorkspaceWorkbenchHostInput = {
     contributions,
+    externalStateSource,
+    onLaunchRequest,
+    onNodeCloseRequest,
     prepareHostClose,
     snapshotRepository,
     workspaceId: "workspace-1"
@@ -35,6 +43,12 @@ test("createWorkspaceWorkbenchHostInputWithDockEntries updates dock entries with
   assert.notEqual(firstHostInput, secondHostInput);
   assert.equal(firstHostInput.contributions, contributions);
   assert.equal(secondHostInput.contributions, contributions);
+  assert.equal(firstHostInput.externalStateSource, externalStateSource);
+  assert.equal(secondHostInput.externalStateSource, externalStateSource);
+  assert.equal(firstHostInput.onLaunchRequest, onLaunchRequest);
+  assert.equal(secondHostInput.onLaunchRequest, onLaunchRequest);
+  assert.equal(firstHostInput.onNodeCloseRequest, onNodeCloseRequest);
+  assert.equal(secondHostInput.onNodeCloseRequest, onNodeCloseRequest);
   assert.equal(firstHostInput.prepareHostClose, prepareHostClose);
   assert.equal(secondHostInput.prepareHostClose, prepareHostClose);
   assert.equal(firstHostInput.snapshotRepository, snapshotRepository);

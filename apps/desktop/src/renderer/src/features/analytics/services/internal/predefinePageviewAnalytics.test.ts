@@ -36,6 +36,7 @@ test("predefine pageview analytics reports app opens before focus", () => {
     runtime
   });
   runtime.emitFocus();
+  runtime.flushFocusReports();
 
   assert.deepEqual(reporterCalls, [
     [
@@ -64,6 +65,7 @@ test("predefine pageview analytics reports every explicit focus", () => {
   });
   runtime.emitFocus();
   runtime.emitFocus();
+  runtime.flushFocusReports();
 
   assert.deepEqual(
     reporterCalls.map((call) => call[0]?.name),
@@ -81,12 +83,33 @@ test("predefine pageview analytics reports focus after time changes", () => {
     runtime
   });
   runtime.emitFocus();
+  runtime.flushFocusReports();
   runtime.advanceTo(new Date(2026, 5, 10, 10, 0, 0).getTime());
   runtime.emitFocus();
+  runtime.flushFocusReports();
 
   assert.deepEqual(
     reporterCalls.map((call) => call[0]?.name),
     ["app.pageview", "app.pageview", "app.pageview"]
+  );
+});
+
+test("predefine pageview analytics cancels pending focus reports on dispose", () => {
+  const reporterCalls: ReporterEventInput[][] = [];
+  const runtime = createRuntimeHarness();
+
+  const controller = startPredefinePageviewAnalytics({
+    reporterService: createReporterService(reporterCalls),
+    reporterNow: () => runtime.now(),
+    runtime
+  });
+  runtime.emitFocus();
+  controller.dispose();
+  runtime.flushFocusReports();
+
+  assert.deepEqual(
+    reporterCalls.map((call) => call[0]?.name),
+    ["app.pageview"]
   );
 });
 
@@ -101,9 +124,11 @@ function createReporterService(calls: ReporterEventInput[][] = []) {
 function createRuntimeHarness(input: { now?: number } = {}) {
   let now = input.now ?? new Date(2026, 5, 9, 10, 0, 0).getTime();
   const focusListeners = new Set<() => void>();
+  const focusReports = new Set<() => void>();
   const runtime: PredefinePageviewAnalyticsRuntime & {
     advanceTo(nextNow: number): void;
     emitFocus(): void;
+    flushFocusReports(): void;
     now(): number;
   } = {
     addFocusListener(listener) {
@@ -120,8 +145,21 @@ function createRuntimeHarness(input: { now?: number } = {}) {
         listener();
       }
     },
+    flushFocusReports() {
+      const reports = [...focusReports];
+      focusReports.clear();
+      for (const report of reports) {
+        report();
+      }
+    },
     now() {
       return now;
+    },
+    scheduleFocusReport(listener) {
+      focusReports.add(listener);
+      return () => {
+        focusReports.delete(listener);
+      };
     }
   };
   return runtime;

@@ -83,18 +83,13 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         pendingActions: [],
         statuses: []
       },
-      providerTargets: [
+      agents: [
         {
           agentTargetId: "target-1",
-          disabled: false,
+          availability: { status: "ready" },
           iconUrl: "tutti-asset://agent/codex.png",
-          label: "Codex",
-          provider: "codex",
-          ref: {
-            kind: "local",
-            provider: "codex"
-          },
-          targetId: "target-1"
+          name: "Codex",
+          provider: "codex"
         }
       ],
       workspaceID: "workspace-1"
@@ -102,7 +97,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
   );
 
   const params = new URLSearchParams(search);
-  assert.ok(params.get("agentProviderTargets"));
+  assert.ok(params.get("agents"));
   assert.ok(params.get("agentProviderStatusSnapshot"));
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: "session-1",
@@ -117,20 +112,35 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
       pendingActions: [],
       statuses: []
     },
-    providerTargets: [
+    agents: [
       {
         agentTargetId: "target-1",
-        disabled: false,
+        availability: { status: "ready" },
         iconUrl: "tutti-asset://agent/codex.png",
-        label: "Codex",
-        provider: "codex",
-        ref: {
-          kind: "local",
-          provider: "codex"
-        },
-        targetId: "target-1"
+        name: "Codex",
+        provider: "codex"
       }
     ],
+    workspaceID: "workspace-1"
+  });
+});
+
+test("encodeDesktopWindowIntent preserves an explicitly loaded empty agent directory", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      agents: [],
+      provider: "codex",
+      workspaceID: "workspace-1"
+    })
+  );
+
+  assert.equal(new URLSearchParams(search).get("agents"), "[]");
+  assert.deepEqual(resolveDesktopWindowIntent(search), {
+    agentSessionID: null,
+    agentTargetID: null,
+    agents: [],
+    kind: "agent",
+    provider: "codex",
     workspaceID: "workspace-1"
   });
 });

@@ -49,6 +49,9 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
+  CountWorkspaceAgentSessionSectionData,
+  CountWorkspaceAgentSessionSectionErrors,
+  CountWorkspaceAgentSessionSectionResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -91,6 +94,9 @@ import type {
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
+  DeleteWorkspaceAgentSessionSectionData,
+  DeleteWorkspaceAgentSessionSectionErrors,
+  DeleteWorkspaceAgentSessionSectionResponses,
   DeleteWorkspaceAppData,
   DeleteWorkspaceAppErrors,
   DeleteWorkspaceAppFactoryJobData,
@@ -148,6 +154,15 @@ import type {
   GetWorkspaceAgentSessionData,
   GetWorkspaceAgentSessionErrors,
   GetWorkspaceAgentSessionResponses,
+  GetWorkspaceAppAgentPreferencesData,
+  GetWorkspaceAppAgentPreferencesErrors,
+  GetWorkspaceAppAgentPreferencesResponses,
+  GetWorkspaceAppAgentProviderComposerOptionsData,
+  GetWorkspaceAppAgentProviderComposerOptionsErrors,
+  GetWorkspaceAppAgentProviderComposerOptionsResponses,
+  GetWorkspaceAppAgentProviderStatusesData,
+  GetWorkspaceAppAgentProviderStatusesErrors,
+  GetWorkspaceAppAgentProviderStatusesResponses,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsData,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors,
   GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses,
@@ -364,6 +379,9 @@ import type {
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
+  SetSystemAgentTargetEnabledData,
+  SetSystemAgentTargetEnabledErrors,
+  SetSystemAgentTargetEnabledResponses,
   StartAccountLoginData,
   StartAccountLoginErrors,
   StartAccountLoginResponses,
@@ -793,6 +811,30 @@ export const listAgentTargets = <ThrowOnError extends boolean = false>(
   });
 
 /**
+ * Enable or disable one daemon-owned system Agent Target
+ *
+ * Desktop control-plane operation that changes only the enabled field of an existing system Agent Target. It is not exposed as a Workspace App CLI capability.
+ */
+export const setSystemAgentTargetEnabled = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<SetSystemAgentTargetEnabledData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    SetSystemAgentTargetEnabledResponses,
+    SetSystemAgentTargetEnabledErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/agent-targets/{agentTargetID}/enabled",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
  * List registered workspaces
  */
 export const listWorkspaces = <ThrowOnError extends boolean = false>(
@@ -1071,6 +1113,82 @@ export const reloadLocalWorkspaceApp = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/apps/{appID}/reload-local",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Get workspace-app agent preference projection
+ *
+ * Read-only subset of desktop agent preferences for one workspace app runtime. Intended for workspace app server tokens; exposes default provider selection and developer-gated provider visibility only. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ *
+ *
+ * @deprecated
+ */
+export const getWorkspaceAppAgentPreferences = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAppAgentPreferencesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAppAgentPreferencesResponses,
+    GetWorkspaceAppAgentPreferencesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent",
+    ...options
+  });
+
+/**
+ * Get agent provider availability for one workspace app
+ *
+ * Workspace-app scoped alias of `GET /v1/agent-providers/status` for app server tokens. When `providers` is omitted, returns provider statuses for enabled daemon-owned Agent Targets visible to Agent GUI. When `providers` is supplied, it narrows that Agent Target set and cannot expose providers outside it. Deprecated for Agent integrations: use `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ *
+ *
+ * @deprecated
+ */
+export const getWorkspaceAppAgentProviderStatuses = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetWorkspaceAppAgentProviderStatusesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetWorkspaceAppAgentProviderStatusesResponses,
+    GetWorkspaceAppAgentProviderStatusesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status",
+    ...options
+  });
+
+/**
+ * Get agent provider composer options for one workspace app
+ *
+ * Workspace-app scoped alias of `POST /v1/agent-providers/{provider}/composer-options` for app server tokens. Deprecated for Agent integrations: use `tutti --json agent composer-options --provider <providerId>` through `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage telemetry and release criteria in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
+ *
+ *
+ * @deprecated
+ */
+export const getWorkspaceAppAgentProviderComposerOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    GetWorkspaceAppAgentProviderComposerOptionsData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).post<
+    GetWorkspaceAppAgentProviderComposerOptionsResponses,
+    GetWorkspaceAppAgentProviderComposerOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -1588,6 +1706,24 @@ export const createWorkspaceAgentSession = <
   });
 
 /**
+ * Delete all agent sessions in one rail section for one workspace
+ */
+export const deleteWorkspaceAgentSessionSection = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DeleteWorkspaceAgentSessionSectionData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceAgentSessionSectionResponses,
+    DeleteWorkspaceAgentSessionSectionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
+    ...options
+  });
+
+/**
  * List agent session rail sections for one workspace
  */
 export const listWorkspaceAgentSessionSections = <
@@ -1620,6 +1756,24 @@ export const listWorkspaceAgentSessionSectionPage = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-session-sections/page",
+    ...options
+  });
+
+/**
+ * Count agent sessions in one rail section for one workspace
+ */
+export const countWorkspaceAgentSessionSection = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CountWorkspaceAgentSessionSectionData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    CountWorkspaceAgentSessionSectionResponses,
+    CountWorkspaceAgentSessionSectionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/count",
     ...options
   });
 

@@ -29,6 +29,23 @@ describe("normalizeIssueManagerNodeState", () => {
     );
   });
 
+  it("defaults selected agent target id when current state omits it", () => {
+    assert.equal(
+      normalizeIssueManagerNodeState({}).selectedAgentTargetId,
+      "local:codex"
+    );
+
+    assert.equal(
+      normalizeIssueManagerNodeState({
+        selectedAgentTargetId: " ",
+        selectedAgentProvider: "openclaw"
+      } as Parameters<typeof normalizeIssueManagerNodeState>[0] & {
+        selectedAgentProvider: string;
+      }).selectedAgentTargetId,
+      "local:codex"
+    );
+  });
+
   it("normalizes collapsed state to a boolean", () => {
     assert.equal(
       normalizeIssueManagerNodeState({

@@ -111,6 +111,10 @@ func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivit
 	return s.agentStore().ListSessionSection(ctx, input)
 }
 
+func (s *SQLiteStore) CountSessionSection(ctx context.Context, input agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool, error) {
+	return s.agentStore().CountSessionSection(ctx, input)
+}
+
 func (s *SQLiteStore) ListSessionMessages(ctx context.Context, input agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {
 	return s.agentStore().ListSessionMessages(ctx, input)
 }
@@ -121,6 +125,10 @@ func (s *SQLiteStore) ListWorkspaceGeneratedFiles(ctx context.Context, input age
 
 func (s *SQLiteStore) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	return s.agentStore().DeleteSession(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) DeleteSessionSection(ctx context.Context, input agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool, error) {
+	return s.agentStore().DeleteSessionSection(ctx, input)
 }
 
 func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (agentactivitybiz.ClearSessionsResult, error) {
@@ -265,6 +273,21 @@ func (s *SQLiteStore) PutAgentTarget(ctx context.Context, target agenttargetbiz.
 
 func (s *SQLiteStore) DeleteAgentTarget(ctx context.Context, id string) error {
 	return s.agentStore().DeleteAgentTarget(ctx, id)
+}
+
+// ResolveAgentTargetAlias reverse-looks-up which registered agent target
+// claims the given id as an alias, returning that target's primary id.
+//
+// Contract: cross-domain id translation is owned by the host projection layer
+// (tsh/tutti-os rewrites a shared session's owner-domain agentTargetId to the
+// caller-local `shared-agent:{sharedAgentId}` id at its sync boundary), so
+// owner-domain ids are never expected to reach this store and no alias column
+// is planned. This hook exists purely as defense in depth for the ingestion
+// boundary in services/tuttid/service/agent: a hit means an upstream missed
+// its translation. The store-backed implementation therefore resolves
+// nothing.
+func (*SQLiteStore) ResolveAgentTargetAlias(context.Context, string) (string, bool) {
+	return "", false
 }
 
 func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {

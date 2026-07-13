@@ -19,6 +19,8 @@ import type {
   AgentComposerProps
 } from "./AgentComposer.types";
 import { SendFilledIcon } from "./AgentComposerDraftPreview";
+import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
+import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
 interface Input {
   draftContent: AgentComposerDraft;
@@ -48,6 +50,8 @@ interface Input {
   rotatingPromptTips: readonly AgentComposerPromptTip[];
   fileDropOverlayHost: HTMLElement | null;
   fileDropOverlayActive: boolean;
+  canUploadAttachment: boolean;
+  promptImagesSupported: boolean;
 }
 
 export function useComposerPresentation(input: Input) {
@@ -78,8 +82,11 @@ export function useComposerPresentation(input: Input) {
     promptTipStyle,
     rotatingPromptTips,
     fileDropOverlayHost,
-    fileDropOverlayActive
+    fileDropOverlayActive,
+    canUploadAttachment,
+    promptImagesSupported
   } = input;
+  const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
   const draftLargeTexts = draftContent.largeTexts ?? [];
@@ -106,6 +113,67 @@ export function useComposerPresentation(input: Input) {
         ? "loading"
         : "send";
   const sendButtonBusy = isSendingTurn && !isQueueMode;
+  const sendDisabledReasons = [
+    isSelectedProjectMissing ? "project_missing" : null,
+    submitDisabled ? "submit_disabled" : null,
+    !hasDraftContent ? "draft_empty" : null,
+    hasUploadingDraftImages ? "image_uploading" : null,
+    hasFailedDraftImages ? "image_upload_failed" : null,
+    hasUploadingDraftFiles ? "file_uploading" : null,
+    hasFailedDraftFiles ? "file_upload_failed" : null,
+    hasUploadingDraftLargeTexts ? "large_text_uploading" : null,
+    hasFailedDraftLargeTexts ? "large_text_upload_failed" : null,
+    sendButtonBusy ? "send_busy" : null
+  ].filter((reason): reason is string => reason !== null);
+  const sendDisabledReasonKey = sendDisabledReasons.join(",");
+  useEffect(() => {
+    reportAgentComposerDiagnostic(agentActivityRuntime, {
+      details: {
+        canUploadAttachment,
+        draftFileCount: draftFiles.length,
+        draftImageCount: draftImages.length,
+        draftLargeTextCount: draftLargeTexts.length,
+        hasDraftContent,
+        hasFailedDraftFiles,
+        hasFailedDraftImages,
+        hasFailedDraftLargeTexts,
+        hasUploadingDraftFiles,
+        hasUploadingDraftImages,
+        hasUploadingDraftLargeTexts,
+        isSelectedProjectMissing,
+        promptImagesSupported,
+        sendButtonBusy,
+        sendDisabledReason: sendDisabledReasonKey || null,
+        submitDisabled,
+        uploadFunctionAvailable: Boolean(
+          agentActivityRuntime?.uploadPromptContent
+        )
+      },
+      event: "agent.gui.composer.submit_state_changed",
+      level: "info",
+      source: "agent-gui",
+      workspaceId
+    });
+  }, [
+    agentActivityRuntime,
+    canUploadAttachment,
+    draftFiles.length,
+    draftImages.length,
+    draftLargeTexts.length,
+    hasDraftContent,
+    hasFailedDraftFiles,
+    hasFailedDraftImages,
+    hasFailedDraftLargeTexts,
+    hasUploadingDraftFiles,
+    hasUploadingDraftImages,
+    hasUploadingDraftLargeTexts,
+    isSelectedProjectMissing,
+    promptImagesSupported,
+    sendButtonBusy,
+    sendDisabledReasonKey,
+    submitDisabled,
+    workspaceId
+  ]);
   const activePromptRequestId = activePrompt?.requestId ?? null;
   const [dismissedPromptRequestId, setDismissedPromptRequestId] = useState<
     string | null
@@ -179,6 +247,7 @@ export function useComposerPresentation(input: Input) {
       type="submit"
       className={styles.composerSendButton}
       data-state={sendButtonState}
+      data-disabled-reason={sendDisabledReasonKey || undefined}
       disabled={
         isSelectedProjectMissing ||
         submitDisabled ||

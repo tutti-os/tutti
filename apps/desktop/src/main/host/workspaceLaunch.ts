@@ -1,5 +1,5 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
 
 export interface WorkspaceLaunchOwnerWindow {
@@ -17,7 +17,7 @@ export interface WorkspaceLaunchAgentWindowInput {
   agentSessionID?: string | null;
   agentTargetID?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  agents?: readonly AgentGUIAgent[];
   provider?: string | null;
   workspaceID: string;
 }

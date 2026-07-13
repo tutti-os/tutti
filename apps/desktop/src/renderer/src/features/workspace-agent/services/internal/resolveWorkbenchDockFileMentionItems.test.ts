@@ -44,6 +44,7 @@ function createHost(input: {
     activeDragNodeId: null,
     activeResizeNodeId: null,
     activeSnapTarget: null,
+    lockedLayout: null,
     surfaceSize: { width: 1024, height: 720 },
     layoutConstraints: {
       minWidth: 280,

@@ -208,6 +208,13 @@ export interface AgentActivityComposerOptions {
   provider: string;
   models: AgentActivityComposerSettingOption[];
   reasoningEfforts: AgentActivityComposerSettingOption[];
+  reasoningOptionsByModel?: Record<
+    string,
+    {
+      defaultValue?: string | null;
+      options: AgentActivityComposerSettingOption[];
+    }
+  >;
   /** Orthogonal speed tiers (e.g. standard/fast); empty when unsupported. */
   speeds: AgentActivityComposerSettingOption[];
   /** Mirrors tuttid modelConfig.configurable; false when absent. */
@@ -229,6 +236,13 @@ export interface AgentActivityComposerOptions {
 }
 
 export interface AgentActivityLoadComposerOptionsInput {
+  /**
+   * Agent target id — the daemon-facing identity of the composer target.
+   * activity-core treats it as an opaque targetKey (see the controller's
+   * loadComposerOptions); this field name reflects that to the daemon it is an
+   * agent target id. Optional at the adapter boundary to mirror the daemon's
+   * optional request field; the controller always supplies a non-empty value.
+   */
   agentTargetId?: string | null;
   workspaceId: string;
   provider: string;
@@ -242,8 +256,12 @@ export interface AgentActivitySnapshot {
   sessions: AgentActivitySession[];
   presences: AgentActivityPresence[];
   sessionMessagesById: Record<string, AgentActivityMessage[]>;
-  composerOptionsByAgentTargetId?: Record<string, AgentActivityComposerOptions>;
-  composerOptionsByProvider?: Record<string, AgentActivityComposerOptions>;
+  /**
+   * Composer options cache, keyed by the opaque targetKey passed to
+   * loadComposerOptions. Single key space: the key is round-tripped verbatim and
+   * never parsed or rewritten.
+   */
+  composerOptionsByTargetKey?: Record<string, AgentActivityComposerOptions>;
 }
 
 export type AgentActivityUpdatedEvent = Extract<

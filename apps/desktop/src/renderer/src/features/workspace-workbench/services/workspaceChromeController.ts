@@ -6,6 +6,7 @@ import type {
 export interface WorkspaceChromeControllerSnapshot {
   hasFullscreenWorkbenchWindow: boolean;
   hasNativeCompactTitlebar: boolean;
+  lockedWorkbenchLayoutPreset: "balanced" | "row" | "column" | null;
   missionControlDisabled: boolean;
   useCompactTitlebar: boolean;
   visibleWorkbenchWindowCount: number;
@@ -98,7 +99,10 @@ function createSnapshot(
   input: WorkspaceChromeControllerInput
 ): WorkspaceChromeControllerSnapshot {
   const isDarwin = input.platform === "darwin";
-  const nodes = input.workbenchController?.getSnapshot().nodes ?? [];
+  const workbenchSnapshot = input.workbenchController?.getSnapshot();
+  const nodes = workbenchSnapshot?.nodes ?? [];
+  const lockedWorkbenchLayoutPreset =
+    workbenchSnapshot?.lockedLayout?.preset.kind ?? null;
   const visibleWorkbenchWindowCount = nodes.filter(
     (node) => !node.isMinimized
   ).length;
@@ -113,6 +117,7 @@ function createSnapshot(
   return {
     hasFullscreenWorkbenchWindow,
     hasNativeCompactTitlebar,
+    lockedWorkbenchLayoutPreset,
     missionControlDisabled: visibleWorkbenchWindowCount <= 1,
     useCompactTitlebar,
     visibleWorkbenchWindowCount
@@ -150,6 +155,7 @@ function isEqualSnapshot(
   return (
     left.hasFullscreenWorkbenchWindow === right.hasFullscreenWorkbenchWindow &&
     left.hasNativeCompactTitlebar === right.hasNativeCompactTitlebar &&
+    left.lockedWorkbenchLayoutPreset === right.lockedWorkbenchLayoutPreset &&
     left.missionControlDisabled === right.missionControlDisabled &&
     left.useCompactTitlebar === right.useCompactTitlebar &&
     left.visibleWorkbenchWindowCount === right.visibleWorkbenchWindowCount

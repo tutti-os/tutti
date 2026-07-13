@@ -25,6 +25,18 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 **[tutti.sh →](https://tutti.sh/?tc=25q)**
 
+## Quick Start
+
+[Download Tutti · Local for macOS](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
+
+Windows support is coming soon.
+
+<!-- TODO: waitlist link for Tutti · VM -->
+
+Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
+
 ## What is Tutti?
 
 Claude Code is powerful. So is Codex. So is Canvas. So is Claude Design.
@@ -230,30 +242,12 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 ## Star History
 
 <a href="https://www.star-history.com/?repos=tutti-os%2Ftutti&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=tutti-os/tutti&type=date&legend=top-left" />
- </picture>
+ <img alt="Star History Chart" src="docs/assets/star-history.png" />
 </a>
 
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=tutti-os/tutti)](https://github.com/tutti-os/tutti/graphs/contributors)
-
-## Getting Started
-
-### Download
-
-<!-- TODO: download link for Tutti · Local -->
-
-[Download Tutti · Local](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
-
-<!-- TODO: waitlist link for Tutti · VM -->
-
-Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
 ## Community & Contributing
 

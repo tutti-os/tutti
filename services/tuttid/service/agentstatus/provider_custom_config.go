@@ -45,7 +45,7 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 	if status, ok := migratedProviderStatus(provider); ok {
 		switch status.Kind {
 		case providerregistry.StatusKindCodexCLI:
-			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key")
+			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key") || s.codexAuthJSONHasAPIKey()
 		case providerregistry.StatusKindClaudeCLI:
 			return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
 		}
@@ -68,12 +68,34 @@ func (s Service) providerHasAPICredential(provider string) bool {
 	if status, ok := migratedProviderStatus(provider); ok {
 		switch status.Kind {
 		case providerregistry.StatusKindCodexCLI:
-			return s.codexConfigDeclares("api_key")
+			return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
 		case providerregistry.StatusKindClaudeCLI:
 			return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
 		}
 	}
 	return false
+}
+
+func (s Service) codexAuthJSONHasAPIKey() bool {
+	codexHome := strings.TrimSpace(s.lookupEnv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	content, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	if err != nil {
+		return false
+	}
+	var parsed struct {
+		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return false
+	}
+	return strings.TrimSpace(parsed.OpenAIAPIKey) != ""
 }
 
 // providerCustomConfigEnvVars lists env vars that signal a user-provided API

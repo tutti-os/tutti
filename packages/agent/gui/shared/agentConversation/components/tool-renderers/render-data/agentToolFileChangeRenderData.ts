@@ -255,7 +255,12 @@ function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
     if (!path) {
       return [];
     }
-    const diff = firstString(stringValue(file?.diff), stringValue(file?.patch));
+    const unifiedDiff = firstString(
+      stringValue(file?.diff),
+      stringValue(file?.patch),
+      stringValue(file?.unifiedDiff),
+      stringValue(file?.unified_diff)
+    );
     const oldString = firstString(
       stringValue(file?.oldString),
       stringValue(file?.old_string)
@@ -268,11 +273,11 @@ function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
     const changeType = firstKnownChangeType(
       normalizeChangeType(stringValue(file?.change)),
       normalizeChangeType(stringValue(file?.kind)),
-      inferFileChangeType(null, diff, content, oldString, newString)
+      inferFileChangeType(null, unifiedDiff, content, oldString, newString)
     );
     const stats = fileChangeStats(
       changeType,
-      diff,
+      unifiedDiff,
       content,
       oldString,
       newString
@@ -285,7 +290,7 @@ function fileChangesFiles(value: unknown): AgentFileChangeRenderData[] {
         content,
         oldString,
         newString,
-        unifiedDiff: diff,
+        unifiedDiff,
         added: stats.added,
         removed: stats.removed
       }

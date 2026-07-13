@@ -7,7 +7,7 @@ import type {
   AgentGUIProvider,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import type {
   AgentGUIApprovalRequest,
@@ -87,6 +87,7 @@ export interface AgentComposerDraftImage {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   attachmentId?: string;
   data?: string;
+  url?: string;
   path?: string;
   previewUrl: string;
   uploading?: boolean;
@@ -262,9 +263,9 @@ export interface AgentGUIShellViewModel {
 }
 
 export interface AgentGUIRailViewModel {
-  selectedProviderTarget: AgentGUIProviderTarget;
-  providerTargets: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading: boolean;
+  selectedAgentTarget: AgentGUIAgentTarget;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading: boolean;
   /** How the rail composes its list — "exact" renders targets verbatim with no static injection. */
   providerRailMode: AgentGUIProviderRailMode;
   /** Providers gated by the host (feature-gated) — rail renders coming-soon placeholders. */
@@ -291,7 +292,7 @@ export interface AgentGUIDetailViewModel {
 }
 
 export interface AgentGUIComposerViewModel {
-  handoffProviderTargets: readonly AgentGUIProviderTarget[];
+  handoffAgentTargets: readonly AgentGUIAgentTarget[];
   availableCommands: AgentSessionCommand[];
   availableSkills: AgentGUIProviderSkillOption[];
   draftPrompt: string;

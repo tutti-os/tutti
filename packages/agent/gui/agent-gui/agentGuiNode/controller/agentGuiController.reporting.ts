@@ -146,7 +146,7 @@ export function showAgentGUIControllerErrorToast(
 
 export function reportAgentGUIConversationFilterTargetUnresolved(input: {
   provider: string;
-  providerTargetId: string | null;
+  agentTargetId: string | null;
   providerTargetCount: number;
   reason: "disabled" | "unresolved";
   runtime: AgentActivityRuntime;
@@ -162,7 +162,7 @@ export function reportAgentGUIConversationFilterTargetUnresolved(input: {
         details: {
           provider: input.provider,
           providerTargetCount: input.providerTargetCount,
-          providerTargetId: input.providerTargetId,
+          agentTargetId: input.agentTargetId,
           reason: input.reason
         },
         event: "agent.gui.conversation_filter.target_unresolved",

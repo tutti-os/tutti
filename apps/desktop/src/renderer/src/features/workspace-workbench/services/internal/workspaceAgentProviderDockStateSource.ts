@@ -1,5 +1,5 @@
 import type { WorkbenchHostDockEntryStateSource } from "@tutti-os/workbench-surface";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -31,7 +31,7 @@ const agentProviderDockBaseOrder = new Map<WorkspaceAgentGuiProvider, number>(
 export function createWorkspaceAgentProviderDockStateSource(input: {
   agentProviderStatusService: AgentProviderStatusService;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  agents?: readonly AgentGUIAgent[];
   /** Feature gate: providers reported hidden never render a dock entry. */
   isAgentProviderHidden?: (provider: WorkspaceAgentGuiProvider) => boolean;
   subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
@@ -47,7 +47,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       if (!provider) {
         return null;
       }
-      if (isAgentProviderHiddenByTargets(provider, input.providerTargets)) {
+      if (isAgentProviderHiddenByTargets(provider, input.agents)) {
         return {
           visibility: "never"
         };
@@ -177,7 +177,7 @@ function shouldShowAgentProviderInDock(
 
 function isAgentProviderHiddenByTargets(
   provider: WorkspaceAgentGuiProvider,
-  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
+  agents: readonly AgentGUIAgent[] | null | undefined
 ): boolean {
   if (
     resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.visibilityGate !==
@@ -185,8 +185,9 @@ function isAgentProviderHiddenByTargets(
   ) {
     return false;
   }
-  return !providerTargets?.some(
-    (target) => target.provider === provider && target.disabled !== true
+  return !agents?.some(
+    (agent) =>
+      agent.provider === provider && agent.availability.status === "ready"
   );
 }
 

@@ -237,7 +237,9 @@ function parsePnpmVersion(packageManager) {
   if (!match) {
     throw new Error(`unsupported packageManager value: ${packageManager}`);
   }
-  return match[1];
+  // corepack may pin an integrity suffix (pnpm@x.y.z+sha512....) that
+  // `pnpm --version` never reports, so compare on the bare version only.
+  return match[1].split("+")[0];
 }
 
 function parseGoVersionPrefix(goMod) {

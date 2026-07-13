@@ -23,7 +23,7 @@ import type { AgentContextMentionProvider } from "../agentContextMentionProvider
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import { formatSlashStatusTokenCount } from "../AgentSlashStatusPanel";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import { normalizeManagedAgentProvider } from "../../../shared/managedAgentProviders";
 import {
   MANAGED_AGENT_ICON_FALLBACK_URL,
@@ -329,7 +329,7 @@ export function resolveComposerProviderIconUrl(
 }
 
 export function resolveComposerProviderTargetIconUrl(
-  target: AgentGUIProviderTarget
+  target: AgentGUIAgentTarget
 ): string {
   const identity = resolveAgentGUIProviderCatalogIdentity(target.provider);
   return (

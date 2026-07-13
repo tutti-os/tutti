@@ -1,5 +1,5 @@
 import { BrowserWindow, app, screen, session, shell } from "electron";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
 import {
   installBrowserWebviewSecurity,
@@ -72,6 +72,11 @@ export function createWorkspaceWindow(
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
     frame: windowKind === "agent" ? false : undefined,
+    // The agent window's green control is a native fullscreen toggle, and its
+    // frameless chrome draws custom traffic lights. Disabling native zoom stops
+    // macOS double-click-title-bar from zooming into an ambiguous "maximized"
+    // state that the custom restore icon can't reliably track.
+    ...(windowKind === "agent" ? { maximizable: false } : {}),
     width: agentWindowBounds?.width ?? 1280,
     height: agentWindowBounds?.height ?? 840,
     minWidth: windowKind === "agent" ? agentWindowMinWidthPx : 960,
@@ -175,7 +180,9 @@ export function createWorkspaceWindow(
       }
 
       workspaceWindow.webContents.send(desktopIpcChannels.host.window.layout, {
-        compactTitlebar: workspaceWindow.isFullScreen()
+        compactTitlebar: workspaceWindow.isFullScreen(),
+        maximized:
+          workspaceWindow.isMaximized() || workspaceWindow.isFullScreen()
       });
     };
     const scheduleHostWindowLayout = () => {
@@ -239,7 +246,7 @@ export function loadAgentWindowContent(
     agentTargetID?: string | null;
     dockPlacement: DesktopDockPlacement;
     providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-    providerTargets?: readonly AgentGUIProviderTarget[];
+    agents?: readonly AgentGUIAgent[];
     provider?: string | null;
     theme: DesktopThemeState;
   }
@@ -254,7 +261,7 @@ export function loadAgentWindowContent(
     agentSessionID: options.agentSessionID,
     agentTargetID: options.agentTargetID,
     providerStatusSnapshot: options.providerStatusSnapshot,
-    providerTargets: options.providerTargets,
+    agents: options.agents,
     provider: options.provider,
     workspaceID: options.workspaceID
   });

@@ -6,15 +6,23 @@ import {
 } from "./controllerSnapshot.ts";
 import type {
   AgentActivityComposerOptions,
-  AgentActivityLoadComposerOptionsInput,
+  AgentActivityComposerSettings,
   AgentActivitySnapshot
 } from "./types.ts";
 
+export interface AgentActivityLoadComposerOptionsControllerInput {
+  /** Opaque directory target identity; activity-core never parses it. */
+  targetKey: string;
+  provider: string;
+  cwd?: string | null;
+  settings?: AgentActivityComposerSettings | null;
+  signal?: AbortSignal;
+  force?: boolean;
+}
+
 export interface AgentActivityComposerOptionsController {
   load(
-    input: Omit<AgentActivityLoadComposerOptionsInput, "workspaceId"> & {
-      force?: boolean;
-    }
+    input: AgentActivityLoadComposerOptionsControllerInput
   ): Promise<AgentActivityComposerOptions>;
   invalidate(input?: { providers?: readonly string[] }): void;
 }
@@ -28,24 +36,25 @@ export function createAgentActivityComposerOptionsController(input: {
   workspaceId: string;
 }): AgentActivityComposerOptionsController {
   const cache = createComposerOptionsCacheCoordinator();
+  const providerByCacheKey = new Map<string, string>();
 
   async function load(
-    request: Omit<AgentActivityLoadComposerOptionsInput, "workspaceId"> & {
-      force?: boolean;
-    }
+    request: AgentActivityLoadComposerOptionsControllerInput
   ): Promise<AgentActivityComposerOptions> {
     const provider = request.provider.trim();
     if (!provider) {
       throw new Error("Agent composer options provider is required.");
     }
-    const agentTargetId = request.agentTargetId?.trim() || null;
-    const primaryCacheKey = cache.cacheKey(provider, agentTargetId);
+    const targetKey = request.targetKey.trim();
+    if (!targetKey) {
+      throw new Error("Agent composer options targetKey is required.");
+    }
+    const primaryCacheKey = cache.cacheKey(targetKey);
+    providerByCacheKey.set(primaryCacheKey, provider);
     const requestSignature = cache.requestSignature(request);
     if (!request.force) {
       const snapshot = input.getSnapshot();
-      const cached = agentTargetId
-        ? snapshot.composerOptionsByAgentTargetId?.[agentTargetId]
-        : snapshot.composerOptionsByProvider?.[provider];
+      const cached = snapshot.composerOptionsByTargetKey?.[targetKey];
       if (cached && cache.settledMatches(primaryCacheKey, requestSignature)) {
         return cloneAgentActivityComposerOptions(cached);
       }
@@ -59,7 +68,7 @@ export function createAgentActivityComposerOptionsController(input: {
     const loadVersion = cache.nextLoadVersion(primaryCacheKey);
     const pending = input.adapter
       .loadComposerOptions({
-        agentTargetId,
+        agentTargetId: targetKey,
         workspaceId: input.workspaceId,
         provider,
         cwd: request.cwd,
@@ -77,30 +86,21 @@ export function createAgentActivityComposerOptionsController(input: {
         }
         cache.markSettled(primaryCacheKey, requestSignature);
         input.updateSnapshot((current) => {
-          const currentOptions = agentTargetId
-            ? current.composerOptionsByAgentTargetId?.[agentTargetId]
-            : current.composerOptionsByProvider?.[provider];
+          const currentOptions =
+            current.composerOptionsByTargetKey?.[targetKey];
           if (
             currentOptions &&
             areComposerOptionsEqual(currentOptions, normalized)
           ) {
             return current;
           }
-          return agentTargetId
-            ? {
-                ...current,
-                composerOptionsByAgentTargetId: {
-                  ...current.composerOptionsByAgentTargetId,
-                  [agentTargetId]: normalized
-                }
-              }
-            : {
-                ...current,
-                composerOptionsByProvider: {
-                  ...current.composerOptionsByProvider,
-                  [provider]: normalized
-                }
-              };
+          return {
+            ...current,
+            composerOptionsByTargetKey: {
+              ...current.composerOptionsByTargetKey,
+              [targetKey]: normalized
+            }
+          };
         });
         return cloneAgentActivityComposerOptions(normalized);
       })
@@ -117,27 +117,16 @@ export function createAgentActivityComposerOptionsController(input: {
       providers === null || (!!provider && providers.has(provider));
     const staleKeys = new Set<string>();
     const snapshot = input.getSnapshot();
-    for (const provider of Object.keys(
-      snapshot.composerOptionsByProvider ?? {}
-    )) {
-      if (matches(provider)) staleKeys.add(cache.cacheKey(provider, null));
-    }
-    for (const [agentTargetId, options] of Object.entries(
-      snapshot.composerOptionsByAgentTargetId ?? {}
+    for (const [targetKey, options] of Object.entries(
+      snapshot.composerOptionsByTargetKey ?? {}
     )) {
       if (matches(options?.provider)) {
-        staleKeys.add(cache.cacheKey("", agentTargetId));
+        staleKeys.add(cache.cacheKey(targetKey));
       }
     }
     for (const cacheKey of cache.settledCacheKeys()) {
-      if (providers === null) {
+      if (matches(providerByCacheKey.get(cacheKey))) {
         staleKeys.add(cacheKey);
-      } else {
-        for (const provider of providers) {
-          if (cacheKey === cache.cacheKey(provider, null)) {
-            staleKeys.add(cacheKey);
-          }
-        }
       }
     }
     for (const cacheKey of staleKeys) cache.invalidate(cacheKey);

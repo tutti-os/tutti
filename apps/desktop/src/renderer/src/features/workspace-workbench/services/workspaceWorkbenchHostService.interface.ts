@@ -1,8 +1,5 @@
 import type { ReactNode } from "react";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import { createDecorator } from "@tutti-os/infra/di";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
@@ -111,34 +108,48 @@ export interface WorkspaceWorkbenchHostInput {
   readonly workspaceId: string;
 }
 
+export interface WorkspaceWorkbenchHostSessionUpdate {
+  appI18n: I18nRuntime<string>;
+  appLocale: DesktopLocale;
+  appCenterRevision?: number;
+  confirmCloseGuard: (
+    request: WorkbenchHostCloseDialogRequest
+  ) => Promise<boolean> | boolean;
+  defaultAgentProvider?: string | null;
+  defaultAgentTargetId?: string | null;
+  dockIconStyle: DesktopDockIconStyle;
+  i18n: WorkspaceWorkbenchDesktopI18nRuntime;
+  onCapabilitySettingsRequest?: (
+    target: WorkspaceWorkbenchCapabilitySettingsTarget
+  ) => void;
+  agents?: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
+  renderFilesNodeBody: (
+    context: WorkspaceWorkbenchBodyRendererContext
+  ) => ReactNode;
+  themeAppearance: DesktopThemeAppearance;
+  workspaceId: string;
+}
+
+export interface WorkspaceWorkbenchHostSessionBinding {
+  readonly bindingId: number;
+  readonly isActive: boolean;
+  readonly workspaceId: string;
+  attachSurface(handle: WorkbenchHostHandle | null): void;
+  createHostInput(
+    input: WorkspaceWorkbenchHostSessionUpdate
+  ): WorkspaceWorkbenchHostInput;
+  release(): void;
+  subscribe(listener: () => void): () => void;
+}
+
 export interface IWorkspaceWorkbenchHostService {
   readonly _serviceBrand: undefined;
 
   approveWindowClose(): Promise<void>;
-  createHostInput(input: {
-    appI18n: I18nRuntime<string>;
-    appLocale: DesktopLocale;
-    appCenterRevision?: number;
-    confirmCloseGuard: (
-      request: WorkbenchHostCloseDialogRequest
-    ) => Promise<boolean> | boolean;
-    defaultAgentProvider?: string | null;
-    defaultProviderTargetId?: string | null;
-    dockIconStyle: DesktopDockIconStyle;
-    i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-    onCapabilitySettingsRequest?: (
-      target: WorkspaceWorkbenchCapabilitySettingsTarget
-    ) => void;
-    providerTargets?: readonly AgentGUIProviderTarget[];
-    providerTargetsLoading?: boolean;
-    comingSoonAgentProviders?: readonly AgentGUIProvider[];
-    renderFilesNodeBody: (
-      context: WorkspaceWorkbenchBodyRendererContext
-    ) => ReactNode;
-    themeAppearance: DesktopThemeAppearance;
-    workspaceId: string;
-  }): WorkspaceWorkbenchHostInput;
-  loadAgentGuiProviderTargets(): Promise<readonly AgentGUIProviderTarget[]>;
+  openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
+  loadAgentGuiAgents(): Promise<readonly AgentGUIAgent[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;

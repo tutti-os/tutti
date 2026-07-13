@@ -17,7 +17,7 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget,
+  AgentGUIAgentTarget,
   NodeFrame,
   Point
 } from "../../types";
@@ -34,7 +34,7 @@ import type {
 } from "./controller/useAgentGUINodeController";
 import type {
   AgentGUISidebarFooterContext,
-  AgentGUIProviderRailEmptyRenderer,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUIProviderUnavailableStateRenderer,
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
@@ -99,15 +99,15 @@ export interface AgentGUINodeRuntimeRequests {
 export interface AgentGUINodeHostCapabilities {
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   accountMenuState?: AgentGUIAccountMenuState | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading?: boolean;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   providerRailMode?: AgentGUIProviderRailMode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
@@ -145,7 +145,7 @@ export interface AgentGUINodeHostActions {
 }
 
 export interface AgentGUINodeRenderSlots {
-  providerRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   providerUnavailableState?: AgentGUIProviderUnavailableStateRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
 }
@@ -299,14 +299,14 @@ export function areAgentGUINodePropsEqual(
     pr.onProbeRefreshRequest === nr.onProbeRefreshRequest &&
     pc.capabilityMenuState === nc.capabilityMenuState &&
     pc.accountMenuState === nc.accountMenuState &&
-    pc.providerTargets === nc.providerTargets &&
-    pc.providerTargetsLoading === nc.providerTargetsLoading &&
+    pc.agentTargets === nc.agentTargets &&
+    pc.agentTargetsLoading === nc.agentTargetsLoading &&
     pc.providerRailAllPresentation?.iconUrl ===
       nc.providerRailAllPresentation?.iconUrl &&
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
-    pc.defaultProviderTargetId === nc.defaultProviderTargetId &&
+    pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
     pc.managedAgentsState === nc.managedAgentsState &&
     pc.contextMentionProviders === nc.contextMentionProviders &&

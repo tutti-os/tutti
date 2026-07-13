@@ -2,8 +2,7 @@
 
 - Date: 2026-07-02
 - Status: Accepted (grilling session)
-- Context: Step 1 of the app-server layer refactor (see
-  `docs/specs/2026-07-01-codex-appserver-refactor-design.md`).
+- Context: protocol generation for the Codex app-server layer refactor.
 
 ## Decision
 

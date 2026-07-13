@@ -15,7 +15,7 @@ import {
 import { DesktopRichTextAtService } from "./desktopRichTextAtService.ts";
 import {
   mapAgentTargetsToPresentations,
-  mapAgentTargetPresentationsToProviderTargets
+  mapAgentTargetPresentationsToAgents
 } from "../../../workspace-agent/services/internal/desktopAgentsService.ts";
 import type {
   AgentsSnapshot,
@@ -645,11 +645,11 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
     mention: {
       entityId: "local:codex",
       label: "Codex",
+      // description/subtitle are blanked when identical to the label (avoids
+      // rendering "Codex Codex"), so the compact presentation omits them.
       presentation: {
         agentProviderId: "codex",
-        description: "Codex",
-        iconUrl: tuttiAgentAssetUrls.codex,
-        subtitle: "Codex"
+        iconUrl: tuttiAgentAssetUrls.codex
       },
       scope: {
         workspaceId: "workspace-1"
@@ -960,7 +960,7 @@ function createAgentsService(
   const snapshot: AgentsSnapshot = {
     agentTargets,
     capturedAtUnixMs: 1780272000000,
-    providerTargets: mapAgentTargetPresentationsToProviderTargets(agentTargets)
+    agents: mapAgentTargetPresentationsToAgents(agentTargets)
   };
   return {
     async load() {

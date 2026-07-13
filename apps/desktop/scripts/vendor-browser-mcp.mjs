@@ -6,7 +6,7 @@
 // daemon at the entry script below.
 //
 // Keep BROWSER_MCP_VERSION in sync with browserMCPPinnedVersion in
-// services/tuttid/service/agentsidecar/browseruse.go.
+// packages/agent/runtimeprep/browseruse.go.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

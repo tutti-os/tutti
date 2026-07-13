@@ -36,7 +36,10 @@ const inactiveMissionControlSnapshotSource: ExternalStoreSnapshotSource<null> =
   };
 
 export interface WorkbenchMissionControlState {
-  applyPreset(preset: WorkbenchLayoutPreset): void;
+  applyPreset(
+    preset: WorkbenchLayoutPreset,
+    options?: { lock?: boolean }
+  ): void;
   canApplyPreset(preset: WorkbenchLayoutPreset): boolean;
   canUsePreset(preset: WorkbenchLayoutPreset): boolean;
   mode: WorkbenchMissionControlMode;
@@ -182,13 +185,13 @@ export function useWorkbenchMissionControlState<TData>({
     [adapter, onRequestClose]
   );
   const applyLayoutAndClose = useCallback(
-    (nodeIds: string[], nextPreset: WorkbenchLayoutPreset) => {
+    (nodeIds: string[], nextPreset: WorkbenchLayoutPreset, lock: boolean) => {
       if (!adapter || nodeIds.length < 2) {
         return;
       }
       onRequestClose();
       window.requestAnimationFrame(() => {
-        adapter.applyLayoutPreset(nodeIds, nextPreset);
+        adapter.applyLayoutPreset(nodeIds, nextPreset, lock);
       });
     },
     [adapter, onRequestClose]
@@ -216,11 +219,15 @@ export function useWorkbenchMissionControlState<TData>({
     [selectedNodeIds]
   );
   const applyPreset = useCallback(
-    (nextPreset: WorkbenchLayoutPreset) => {
+    (nextPreset: WorkbenchLayoutPreset, options?: { lock?: boolean }) => {
       if (!canApplyPreset(nextPreset)) {
         return;
       }
-      applyLayoutAndClose(orderedSelectedNodeIds, nextPreset);
+      applyLayoutAndClose(
+        orderedSelectedNodeIds,
+        nextPreset,
+        options?.lock ?? false
+      );
     },
     [applyLayoutAndClose, canApplyPreset, orderedSelectedNodeIds]
   );
@@ -270,16 +277,25 @@ export function useWorkbenchMissionControlState<TData>({
     };
   }, [mode, onRequestClose]);
 
-  if (mode === null || presentation === null) {
-    return null;
-  }
-
-  return {
-    applyPreset,
-    canApplyPreset,
-    canUsePreset,
-    mode,
-    presentation,
-    selectedCount: orderedSelectedNodeIds.length
-  };
+  return useMemo<WorkbenchMissionControlState | null>(
+    () =>
+      mode === null || presentation === null
+        ? null
+        : {
+            applyPreset,
+            canApplyPreset,
+            canUsePreset,
+            mode,
+            presentation,
+            selectedCount: orderedSelectedNodeIds.length
+          },
+    [
+      applyPreset,
+      canApplyPreset,
+      canUsePreset,
+      mode,
+      orderedSelectedNodeIds.length,
+      presentation
+    ]
+  );
 }

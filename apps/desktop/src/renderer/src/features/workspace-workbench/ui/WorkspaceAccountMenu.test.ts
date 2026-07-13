@@ -23,3 +23,9 @@ test("workspace account menu keeps credits inside the dropdown", () => {
   assert.match(source, /creditsBalance/);
   assert.match(source, /accountMenuState\.links\.usageUrl/);
 });
+
+test("workspace account menu uses the user icon for account settings", () => {
+  assert.match(source, /UserLinedIcon/);
+  assert.doesNotMatch(source, /SettingsIcon/);
+  assert.match(source, /accountMenuState\.links\.settingsUrl/);
+});

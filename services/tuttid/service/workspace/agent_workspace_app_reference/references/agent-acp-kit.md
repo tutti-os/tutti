@@ -1,78 +1,94 @@
 # Agent ACP Kit Integration
 
-Use this reference only when the app needs local Codex/Claude execution or a local agent runtime.
+Use this reference whenever a workspace app owns local Agent execution.
 
 ## Rule
 
-If the app involves local agents, depend on `@tutti-os/agent-acp-kit`. Do not hand-roll provider detection, ACP stream parsing, or local-agent adapters unless the kit lacks a required capability and the gap is documented.
+Depend on a released exact version of `@tutti-os/agent-acp-kit`. The kit owns provider plugins, detection, canonical provider aliases, managed header handling, ACP lifecycle/event parsing, permission responses, MCP normalization, Tutti CLI execution, timeout/cancellation, and schema validation.
 
-For apps that must work in both local Tutti and cloud/managed Tutti, use an `@tutti-os/agent-acp-kit` version that provides managed-agent header context helpers. The app server should derive managed context from request headers and pass it directly to the kit runtime. The browser, request body, app state, and logs must not carry managed credentials.
+The app owns product orchestration, its backend endpoint, prompt policy, app tools, persistence, and UI. It must not patch kit build output or copy platform protocol code.
 
-## Runtime Shape
+Daemon-owned Agent Session apps are a different execution model: they may use Tutti CLI start/get/cancel commands and must not instantiate an app-owned local runtime merely for consistency.
 
-Keep app domain logic independent from providers:
+## Runtime shape
 
 ```text
-Application use-case
-  -> Agent run service/orchestrator
-    -> Runtime provider interface
-      -> local-agent provider using @tutti-os/agent-acp-kit
-        -> run-scoped MCP/tool gateway
+App use case
+  -> app Agent service
+    -> @tutti-os/agent-acp-kit/tutti catalog/composer/skill facade
+    -> app-owned @tutti-os/agent-acp-kit runtime execution
+      -> run-scoped app MCP/tool gateway
 ```
 
-Use provider IDs from the kit or an explicit allowlist such as `codex` and `claude`. Detect providers before showing them as available. The app's primary agent flow must support both Claude Code and Codex as provider choices when available, hide or disable unavailable providers, and choose a usable default from the detected providers.
+Create the full default runtime once:
 
-## Provider Detection
+```ts
+import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
 
-Create a small discovery wrapper. Server detect/model endpoints should derive a context from request headers:
+export const localAgentRuntime = createDefaultLocalAgentRuntime();
+```
+
+Provider IDs are canonical opaque strings. First-party local providers are `codex`, `claude-code`, and `tutti-agent`. The runtime accepts legacy `claude` input internally. `nexight` is historical activity compatibility only: apps must not register it as a new provider or map it to/from `tutti-agent`.
+
+Read `references/dynamic-agent-providers.md` for catalog, composer, persistence, UI, and standalone behavior.
+
+## Platform context
+
+The `@tutti-os/agent-acp-kit/tutti` subpath exposes three auto-detecting server-side functions:
 
 ```ts
 import {
-  createManagedAgentDetectContextFromHeaders,
-  createDefaultLocalAgentProviderPlugins,
-  createLocalAgentRuntime
-} from "@tutti-os/agent-acp-kit";
-
-const localAgentRuntime = createLocalAgentRuntime({
-  providers: createDefaultLocalAgentProviderPlugins()
-});
-
-export async function detectLocalAgents(
-  headers: Headers | Record<string, string | string[] | undefined>
-) {
-  const context = createManagedAgentDetectContextFromHeaders(headers);
-  return localAgentRuntime.detect(context);
-}
+  loadTuttiAgentComposerOptions,
+  loadTuttiAgentProviderCatalog,
+  loadTuttiAgentSkillContext
+} from "@tutti-os/agent-acp-kit/tutti";
 ```
 
-Map detected provider models to app model IDs with a provider prefix, such as `codex:gpt-5.1` or `claude:sonnet`.
+Do not pass a mode. When `TUTTI_CLI` is absent, catalog/composer use standalone runtime discovery and skill context is empty with `source: "standalone"`. When `TUTTI_CLI` exists, the kit uses it. A configured CLI failure is a typed error and never silently falls back.
 
-Do not call a browser JSB API to fetch credentials for detection. Do not accept a credential field in the request body. If no managed credential header is present, the helper returns a local-compatible context and detection continues through the normal local path.
+In a Tutti-hosted process, daemon Agent Targets own provider visibility. A disabled target is omitted by the CLI catalog, and the kit must not add that provider back from local runtime detection. Composer and Skill requests for a disabled provider fail before discovery or materialization. Standalone detection is used only when Tutti CLI is genuinely absent.
 
-## Runtime Execution
+The app does not use daemon URL, server credential, workspace identity, or app identity for Agent catalog/composer queries. Those values may still be required for unrelated app-scoped resources.
 
-For each agent run:
+## Runtime execution
 
-1. Generate a stable app run ID.
-2. Derive managed run context on the server from request headers with `createManagedAgentRunContextFromHeaders(...)`.
-3. Materialize app or workspace skills only when the app needs them, using paths under the returned `runContext.cwd` or app-owned runtime/data paths. Do not invent a separate managed cwd policy.
-4. Build a prompt envelope with conversation identity, current user turn, attachments, current app state, collaboration rules, and tool gateway guidance.
-5. Load Tutti dynamic skill context through `@tutti-os/agent-acp-kit/tutti` when the app runs inside Tutti and needs platform CLI skills.
-6. Create a run-scoped tool gateway session and MCP config.
-7. Call `localAgentRuntime.run(...)` with the returned managed invocation context.
-8. Normalize ACP events into app stream events.
-9. Persist provider session/resume metadata when the kit returns it, but never persist managed credentials.
-10. Always revoke the gateway token and clean up app-owned temporary files in `finally`.
+For each run:
 
-Tutti dynamic CLI skills should use the kit helper, not per-app subprocess and JSON parsing code:
+1. Generate a stable run ID and use the canonical provider ID returned by the facade.
+2. Await `createManagedAgentRunContextFromHeaders(...)` directly. It reads and validates the managed credential, canonicalizes supported legacy input internally, creates a safe managed cwd, and rejects unsupported managed providers. The app must not pre-read the credential or perform a separate provider-support precheck.
+3. When no managed header exists, use an app-owned local cwd.
+4. Load Tutti skill context when platform skills are useful. Omit browser/computer capability flags unless the app actually wires those tools and trusted server-side policy enables them.
+5. Create a run-scoped MCP/tool gateway and prompt envelope.
+6. Call the local runtime with the same canonical provider ID. Always omit
+   `permission`: Workspace Apps do not expose a permission selector. The SDK
+   owns the `full-access` default and provider-specific bypass mapping.
+7. Adapt events to the app stream and persist only session/resume metadata.
+8. Revoke gateway tokens and clean app-owned temporary files in `finally`.
+
+Workspace apps do not present, persist, or pass a permission selection. Omit `permission` from every run input; the kit applies the Workspace App default of full access. Permission choices such as `auto` remain part of Tutti AgentGUI and interactive CLI, not the Workspace App integration surface. Never add a permission picker to an app to mirror daemon composer options.
+
+Skeleton:
 
 ```ts
+import {
+  createDefaultLocalAgentRuntime,
+  createManagedAgentRunContextFromHeaders
+} from "@tutti-os/agent-acp-kit";
 import { loadTuttiAgentSkillContext } from "@tutti-os/agent-acp-kit/tutti";
 
+const localAgentRuntime = createDefaultLocalAgentRuntime();
+
+const runContext = await createManagedAgentRunContextFromHeaders(req.headers, {
+  providerId,
+  runId
+});
+const cwd = runContext?.cwd ?? appLocalRunCwd;
+
 const tuttiContext = await loadTuttiAgentSkillContext({
-  provider,
+  provider: providerId,
   agentSessionId: runId,
-  cwd: workspaceCwd
+  cwd,
+  signal
 });
 
 const systemPrompt = [
@@ -82,77 +98,86 @@ const systemPrompt = [
   .filter(Boolean)
   .join("\n\n");
 
-const skillManifest = [...appSkillManifest, ...tuttiContext.skillManifest];
-```
-
-The app still owns policy. `tuttiContext.recommendedSystemPrompt?.content` is raw advisory prompt content: merge it, edit it, place it elsewhere, or ignore it according to the app's prompt strategy. Do not silently append the recommended prompt, and do not hand-roll `$TUTTI_CLI agent tutti-cli-skill-bundle --json` parsing unless the installed `@tutti-os/agent-acp-kit` version lacks the helper.
-
-Skeleton:
-
-```ts
-import { createManagedAgentRunContextFromHeaders } from "@tutti-os/agent-acp-kit";
-
-const runContext = createManagedAgentRunContextFromHeaders(req.headers, {
-  providerId: provider,
-  runId
-});
-
 for await (const event of localAgentRuntime.run({
   runId,
-  provider,
-  cwd: runContext.cwd,
+  provider: providerId,
+  runtimeProvider: providerId,
+  runtimeKind: "local-agent",
+  cwd,
   prompt,
   systemPrompt,
   model,
-  runtimeKind: "local-agent",
-  runtimeProvider: provider,
+  reasoning,
   mcpServers,
   resume,
   signal,
-  skillManifest,
+  skillManifest: [...appSkills, ...tuttiContext.skillManifest],
   timeoutMs,
-  managedAgentInvocation: runContext.managedAgentInvocation
+  managedAgentInvocation: runContext?.managedAgentInvocation
 })) {
   yield adaptLocalAgentEvent(event);
 }
 ```
 
-Do not claim a file write, canvas edit, image generation, or other side effect happened unless the corresponding tool event succeeded.
+`recommendedSystemPrompt` is advisory content. The app decides whether and where to merge it. Do not append it invisibly in a generic transport layer.
 
-Do not add these managed-agent anti-patterns:
+Derive `appLocalRunCwd` from trusted server-side app policy. Never accept a browser-provided cwd for a managed run. Never put a credential or managed cwd in request bodies, browser state, DTOs, logs, persistence, or error text.
 
-- Browser-side JSB credential fallback.
-- Request body fields such as `credential` or `managedAgentCredential`.
-- Persisted credential state.
-- Frontend events, logs, status APIs, or stored run metadata that expose managed credentials or managed cwd.
-- Business-layer hard-coding of `/workspace`, `.agent-runs`, or `CODEX_HOME` strategy. The kit owns managed run context and Codex home behavior.
+The runtime call intentionally omits `permission`. Workspace Apps default to
+SDK-owned `full-access`: Claude receives `bypassPermissions`, Codex receives its
+unrestricted mode, and ACP permission requests are approved. Do not reproduce
+those mappings or inject a default mode in app code. If an App exposes a
+permission selector, remove it. Provider permission modes belong to Tutti's
+host-owned Agent GUI and manual CLI flows, not the Workspace App integration
+contract.
 
-If the app sends agent instructions over WebSocket instead of HTTP POST, verify the Tutti/TSH host injects the managed credential header into that WebSocket route. The app should still read the credential from headers; it should not create a parallel credential transport.
+### Optional browser and computer capabilities
 
-## Event Mapping
+Most apps should use the minimal skill-context call above. If an app really
+provides browser or computer-use tools, it may declare those capabilities to
+the Skill bundle loader:
+
+```ts
+const tuttiContext = await loadTuttiAgentSkillContext({
+  provider: providerId,
+  agentSessionId: runId,
+  cwd,
+  browserUse: browserToolsAreWiredAndAllowed,
+  computerUse: computerToolsAreWiredAndAllowed,
+  signal
+});
+```
+
+Only pass `true` from trusted server-side capability policy. These booleans
+filter the Skill guidance returned by Tutti; they do **not** install a tool,
+grant an OS permission, launch a browser, or bypass the app's authorization.
+Omit the fields when the capability is unavailable. Do not add placeholder
+policy variables merely to satisfy this example.
+
+## Event mapping
 
 Normalize at least:
 
-- text deltas and final assistant text
-- thinking/reasoning text
-- tool calls and tool results
-- status/progress updates
-- file writes
-- stderr/log events
-- done, canceled, and error terminal events
-- provider session ID or resume token
+- text deltas and final assistant text;
+- thinking/reasoning text;
+- tool calls and tool results;
+- status/progress and usage;
+- file writes;
+- stderr/log events;
+- completed, canceled, and failed terminal events;
+- provider session ID or resume token.
 
-If a provider emits raw events differently, add a provider-specific compatibility adapter near provider setup, not in UI code.
+General ACP lifecycle, Cursor update parsing, permission result shape, config-option/model fallback, prompt content blocks, and MCP env conversion belong in the kit. An app may retain only explicit product-specific presentation or orchestration adapters.
 
-## Tool Gateway
+## Tool gateway
 
 Expose app abilities through a run-scoped gateway:
 
-- Mint one token per run.
-- Pass the token only to the MCP server process or command bridge.
-- Validate token, run, participant/session, tool name, and schema on every call.
-- Revoke the token when the run completes, fails, or is canceled.
-- Keep tools app-level: read context, inspect state, mutate app artifacts, start app jobs, persist outputs, read app-owned files.
+- mint one token per run;
+- pass it only to the MCP server process or command bridge;
+- validate token, run/session identity, tool name, and schema on every call;
+- revoke it when the run completes, fails, or is canceled;
+- keep tools app-level: read app context, inspect state, mutate app artifacts, start app jobs, persist outputs, or read app-owned files.
 
 MCP config pattern:
 
@@ -177,22 +202,22 @@ export function createAppToolsMcpServerConfig(input: {
 }
 ```
 
-Package builders should bundle the MCP entrypoint and expose its path through an app-specific env var such as `AIMC_TOOLS_MCP_PATH`. Development runners may use a project-owned dev command such as `pnpm exec tsx ...` outside the packaged runtime, but package runtime MCP configs must not depend on bare `pnpm`, `node`, or source-tree TypeScript paths.
+Package builders must bundle the MCP entrypoint. Production MCP configs must not depend on bare `pnpm`, system `node`, source-tree TypeScript paths, or runtime dependency installation.
 
 ## Verification
 
 Add tests for:
 
-- provider filtering and model mapping
-- SSR/server provider detection using `createManagedAgentDetectContextFromHeaders(...)`
-- model-list detection using request-header managed context
-- run creation using `createManagedAgentRunContextFromHeaders(...)`
-- local no-header fallback behavior
-- credential non-leakage in response DTOs, logs, frontend events, and persisted run state
-- event normalization
-- MCP config env and packaged path
-- tool gateway token validation and revocation
-- run cancellation cleanup
-- resume metadata persistence
+- auto CLI-backed and standalone catalog/composer/skill behavior without a mode input;
+- configured-but-failing CLI returning a typed error without standalone fallback;
+- disabled Agent Targets staying absent without SDK detection adding them back;
+- full dynamic provider projection and lazy composer loading;
+- canonical IDs and one-time `claude -> claude-code` state migration;
+- direct awaited managed run context creation, with no app credential precheck;
+- no managed secret/cwd leakage;
+- event normalization, cancellation, and resume metadata;
+- MCP env/path packaging and gateway token revocation;
+- absence of raw Agent catalog clients, provider alias helpers, and dependency patch scripts.
+- absence of app permission selectors, permission persistence, and run-level permission arguments.
 
-For real-agent smoke tests, start with detection, then run a narrow prompt with no irreversible side effects.
+For a real smoke test inside Tutti, load the catalog, one provider's composer options, and skill context before running a narrow cancellable prompt with no irreversible side effects.

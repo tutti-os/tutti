@@ -105,11 +105,13 @@ export function createDesktopAgentActivityAdapter({
     },
     async loadComposerOptions(input) {
       const cwd = input.cwd?.trim();
+      const agentTargetId = input.agentTargetId?.trim();
       const result = await withAbortableRequestTimeout(
         (signal) =>
           tuttidClient.getAgentProviderComposerOptions(
             workspaceAgentProvider(input.provider),
             {
+              ...(agentTargetId ? { agentTargetId } : {}),
               ...(cwd ? { cwd } : {}),
               workspaceId: input.workspaceId,
               settings: input.settings ?? {}
@@ -125,19 +127,6 @@ export function createDesktopAgentActivityAdapter({
       return agentActivityComposerOptionsFromTuttidResult(
         input.provider,
         result
-      );
-    },
-    subscribeSessionEvents(input) {
-      void runtimeApi.logTerminalDiagnostic({
-        details: {
-          error: "workspace agent session event subscription is unavailable"
-        },
-        event: "agent.gui.session_event.subscribe.unavailable",
-        level: "warn",
-        workspaceId: input.workspaceId
-      });
-      return Promise.reject(
-        new Error("Workspace agent session event subscription is unavailable.")
       );
     },
     async createSession(input) {
@@ -446,6 +435,9 @@ function toTuttidPromptContentBlocks(
     }
     if (block.data !== undefined) {
       nextBlock.data = block.data;
+    }
+    if (block.url !== undefined) {
+      nextBlock.url = block.url;
     }
     if (block.mimeType !== undefined) {
       nextBlock.mimeType =

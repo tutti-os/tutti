@@ -18,6 +18,97 @@ const workspaceWorkbenchHostServiceSource = readFileSync(
   new URL("./workspaceWorkbenchHostService.ts", import.meta.url),
   "utf8"
 );
+const workspaceWorkbenchRegistrationSource = readFileSync(
+  new URL("../registerWorkspaceWorkbenchServices.ts", import.meta.url),
+  "utf8"
+);
+const workspaceWorkbenchShellHookSource = readFileSync(
+  new URL("../../ui/useWorkspaceWorkbenchShellRuntime.tsx", import.meta.url),
+  "utf8"
+);
+const workspaceWorkbenchSource = readFileSync(
+  new URL("../../ui/WorkspaceWorkbench.tsx", import.meta.url),
+  "utf8"
+);
+
+test("workspace workbench host keeps deterministic composition and close preparation wiring", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /resolveWorkbenchCapabilityRegistry\(\s+createTuttiWorkbenchProductProfile\(\{[\s\S]*?workspaceId: input\.workspaceId\s+\}\)\s+\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /contributions: contributionRegistry\.contributions/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /prepareHostClose: resolveWorkbenchHostPrepareClose\(\s+contributionRegistry\.contributions\s+\)/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /snapshotRepository: this\.dependencies\.repository/
+  );
+});
+
+test("workspace workbench host delegates workspace lifecycle to the DI coordinator", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /this\.hostSessionConfiguration = createWorkbenchHostSessionConfiguration\(\{[\s\S]*?new WorkbenchHostSession<[\s\S]*?>\(\{[\s\S]*?partition,/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /openHostSession\([\s\S]*?configuration: this\.hostSessionConfiguration,[\s\S]*?return createWorkspaceWorkbenchHostSessionBinding\(\{[\s\S]*?bindingId: this\.hostSessionBindingSequence,[\s\S]*?lease,[\s\S]*?workspaceId/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /diagnostics: createDesktopWorkbenchDiagnosticsPort\(\{[\s\S]*?workspaceId: partition\.scope\.id/
+  );
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cachedHostInputs/);
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /hostSessionLeases/);
+  assert.match(
+    workspaceWorkbenchRegistrationSource,
+    /IWorkbenchHostCoordinator,\s+new SyncDescriptor\(WorkbenchHostCoordinator\)/
+  );
+  assert.match(
+    workspaceWorkbenchShellHookSource,
+    /createHostInput: hostSession\.createHostInput/
+  );
+  assert.match(
+    workspaceWorkbenchShellHookSource,
+    /hostSession\.attachSurface\(host\)/
+  );
+  assert.match(
+    workspaceWorkbenchSource,
+    /useLayoutEffect\(\(\) => \{\s+const binding = workbenchHostService\.openHostSession\(workspaceId\);[\s\S]*?binding\.release\(\)/
+  );
+  assert.match(workspaceWorkbenchSource, /key=\{hostSession\.bindingId\}/);
+});
+
+test("workspace workbench host releases owned wallpaper URLs on disposal", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /dispose\(\): void \{\s+this\.wallpaperListeners\.clear\(\);\s+this\.clearCustomWallpaperUrls\(\);\s+\}/
+  );
+});
+
+test("workspace workbench host session resolution keeps stable refs and isolates dynamic dock updates", () => {
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /const cached = current\?\.state/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.renderFilesNodeBodyRef\.current = input\.renderFilesNodeBody;[\s\S]*?hostInput: this\.createHostInputWithDynamicDockEntries\(/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /const dockSignature = createWorkspaceDynamicDockSignature\(\{[\s\S]*?cached\.dynamicDockSignature === dockSignature[\s\S]*?return cached\.dynamicHostInput/
+  );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.dynamicHostInput = dynamicHostInput;\s+return dynamicHostInput/
+  );
+});
 
 test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {
   assert.equal(

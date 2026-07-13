@@ -2550,6 +2550,37 @@ func TestAppCenterServiceListsRemoteBuiltinWhenOlderLocalPackageExists(t *testin
 	}
 }
 
+func TestShouldUseRemoteBuiltinNeverDowngradesInstalledPackage(t *testing.T) {
+	appPackage := workspacebiz.AppPackage{
+		AppID:   "design-app",
+		Version: "2.0.0",
+		Source:  workspacebiz.AppPackageSourceBuiltin,
+	}
+	builtin := builtinapps.App{
+		Manifest: workspacebiz.AppManifest{AppID: "design-app", Version: "1.0.0"},
+		Distribution: builtinapps.Distribution{
+			Kind: builtinapps.DistributionRemote,
+		},
+	}
+
+	if shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("older remote builtin must not replace installed package")
+	}
+	builtin.Manifest.Version = "3.0.0"
+	if !shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("newer remote builtin should replace installed package")
+	}
+	appPackage.Version = "legacy-a"
+	builtin.Manifest.Version = "legacy-b"
+	if !shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("changed non-semver remote builtin should replace installed package")
+	}
+	builtin.Manifest.Version = "legacy-a"
+	if shouldUseRemoteBuiltin(appPackage, builtin) {
+		t.Fatal("equal non-semver remote builtin must not replace installed package")
+	}
+}
+
 func TestAppCenterServiceKeepsUserPackageWhenRemoteBuiltinSharesAppID(t *testing.T) {
 	t.Parallel()
 

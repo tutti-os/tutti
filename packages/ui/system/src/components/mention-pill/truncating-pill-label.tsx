@@ -40,6 +40,7 @@ export interface TruncatingPillLabelProps {
   tooltip: string;
   className?: string;
   children: React.ReactNode;
+  withTooltipProvider?: boolean;
 }
 
 /**
@@ -51,7 +52,8 @@ export interface TruncatingPillLabelProps {
 export function TruncatingPillLabel({
   tooltip,
   className,
-  children
+  children,
+  withTooltipProvider = true
 }: TruncatingPillLabelProps): React.JSX.Element {
   const { ref: labelRef, overflowing } =
     useTextOverflow<HTMLSpanElement>(tooltip);
@@ -72,18 +74,19 @@ export function TruncatingPillLabel({
     return label;
   }
 
-  // 自带 TooltipProvider:使本组件不依赖上层 Provider,可在任意 MentionPill 使用处工作
-  // (嵌套 Provider 在 Radix 中安全,就近配置生效)。
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>{label}</TooltipTrigger>
-        {overflowing ? (
-          <TooltipContent className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]">
-            {tooltip}
-          </TooltipContent>
-        ) : null}
-      </Tooltip>
-    </TooltipProvider>
+  const tooltipElement = (
+    <Tooltip>
+      <TooltipTrigger asChild>{label}</TooltipTrigger>
+      {overflowing ? (
+        <TooltipContent className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]">
+          {tooltip}
+        </TooltipContent>
+      ) : null}
+    </Tooltip>
+  );
+  return withTooltipProvider ? (
+    <TooltipProvider delayDuration={200}>{tooltipElement}</TooltipProvider>
+  ) : (
+    tooltipElement
   );
 }

@@ -24,9 +24,9 @@ export function useAgentGUIViewModel(
       candidate.rail.isLoadingConversations,
       candidate.rail.listError,
       candidate.rail.providerRailMode,
-      candidate.rail.providerTargets,
-      candidate.rail.providerTargetsLoading,
-      candidate.rail.selectedProviderTarget,
+      candidate.rail.agentTargets,
+      candidate.rail.agentTargetsLoading,
+      candidate.rail.selectedAgentTarget,
       candidate.rail.userProjects
     ]
   );
@@ -57,7 +57,7 @@ export function useAgentGUIViewModel(
       candidate.composer.draftPrompt,
       candidate.composer.drainingQueuedPromptId,
       candidate.composer.goalPauseSupported,
-      candidate.composer.handoffProviderTargets,
+      candidate.composer.handoffAgentTargets,
       candidate.composer.isCancelPending,
       candidate.composer.isCreatingConversation,
       candidate.composer.isInterrupting,

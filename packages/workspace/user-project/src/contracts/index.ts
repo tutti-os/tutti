@@ -4,6 +4,7 @@ export interface WorkspaceUserProject {
   label: string;
   lastUsedAtUnixMs?: number | null;
   path: string;
+  sectionKey?: string;
   updatedAtUnixMs?: number;
 }
 

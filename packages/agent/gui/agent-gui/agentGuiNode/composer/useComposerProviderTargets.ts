@@ -1,21 +1,21 @@
 import { useMemo } from "react";
 import { cn } from "../../../app/renderer/lib/utils";
 import styles from "../AgentGUINode.styles";
-import type { AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIAgentTarget } from "../../../types";
 
 interface Input {
   layoutMode: "dock" | "hero";
   previewMode: boolean;
   provider: string;
-  providerTargets: readonly AgentGUIProviderTarget[];
-  handoffProviderTargets?: readonly AgentGUIProviderTarget[];
-  selectedProviderTarget: AgentGUIProviderTarget | null;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
+  selectedAgentTarget: AgentGUIAgentTarget | null;
   providerSelectReadonly: boolean;
   composerControlsHardDisabled: boolean;
   isSelectedProjectMissing: boolean;
   disabled: boolean;
   canQueueWhileBusy: boolean;
-  onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
+  onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   handoffLabel?: string;
   handoffMenuLabel?: string;
   defaultHandoffLabel: string;
@@ -27,9 +27,9 @@ export function useComposerProviderTargets(input: Input) {
     layoutMode,
     previewMode,
     provider,
-    providerTargets,
-    handoffProviderTargets,
-    selectedProviderTarget,
+    agentTargets,
+    handoffAgentTargets,
+    selectedAgentTarget,
     providerSelectReadonly,
     composerControlsHardDisabled,
     isSelectedProjectMissing,
@@ -48,21 +48,21 @@ export function useComposerProviderTargets(input: Input) {
     ? styles.composerHero
     : styles.composer;
   const providerSwitchTargets = useMemo(
-    () => providerTargets.filter(Boolean),
-    [providerTargets]
+    () => agentTargets.filter(Boolean),
+    [agentTargets]
   );
   const enabledProviderSwitchTargets = useMemo(
     () => providerSwitchTargets.filter((target) => target.disabled !== true),
     [providerSwitchTargets]
   );
-  const selectedProviderTargetId =
-    selectedProviderTarget?.targetId ?? `local:${provider}`;
+  const selectedAgentTargetId =
+    selectedAgentTarget?.targetId ?? `local:${provider}`;
   const selectedProviderSwitchTarget =
     providerSwitchTargets.find(
-      (target) => target.targetId === selectedProviderTargetId
+      (target) => target.targetId === selectedAgentTargetId
     ) ??
     providerSwitchTargets.find((target) => target.provider === provider) ??
-    selectedProviderTarget;
+    selectedAgentTarget;
   const providerMenuTargets =
     selectedProviderSwitchTarget &&
     !enabledProviderSwitchTargets.some(
@@ -72,10 +72,10 @@ export function useComposerProviderTargets(input: Input) {
       : enabledProviderSwitchTargets;
   const enabledHandoffProviderTargets = useMemo(
     () =>
-      (handoffProviderTargets ?? providerMenuTargets).filter(
+      (handoffAgentTargets ?? providerMenuTargets).filter(
         (target) => target.disabled !== true
       ),
-    [handoffProviderTargets, providerMenuTargets]
+    [handoffAgentTargets, providerMenuTargets]
   );
   const handoffMenuTargets = selectedProviderSwitchTarget
     ? enabledHandoffProviderTargets.filter((target) => {
@@ -91,7 +91,7 @@ export function useComposerProviderTargets(input: Input) {
     : enabledHandoffProviderTargets;
   const selectedProviderLabel =
     selectedProviderSwitchTarget?.label ??
-    selectedProviderTarget?.label ??
+    selectedAgentTarget?.label ??
     provider;
   const effectiveHandoffLabel = handoffLabel || labels.handoffConversation;
   const effectiveHandoffMenuLabel =

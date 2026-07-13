@@ -12,9 +12,9 @@ import { emptyAgentComposerDraft } from "../model/agentComposerDraft";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
-import { resolveAgentGUIProviderTarget } from "../../../providerTargets";
+import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
 import {
   nodeDefaultDraftKey,
   normalizeProjectDraftPath
@@ -37,20 +37,20 @@ export interface UseAgentGUIConversationHomeInput {
   composerTargetDataFromProviderTarget: (input: {
     current: AgentGUINodeData;
     isExplicit: boolean;
-    target: AgentGUIProviderTarget;
+    target: AgentGUIAgentTarget;
   }) => AgentGUIComposerTargetData;
   conversationFilterRef: RefObject<AgentGUIConversationFilter>;
   dataRef: RefObject<AgentGUINodeData>;
-  defaultProviderTargetId: string | null;
+  defaultAgentTargetId: string | null;
   handledPrefillPromptSequenceRef: RefObject<number | null>;
   isComposerHomeRef: RefObject<boolean>;
-  isExplicitAgentGUIProviderTarget: (
-    target: AgentGUIProviderTarget,
-    explicitTargets: readonly AgentGUIProviderTarget[]
+  isExplicitAgentGUIAgentTarget: (
+    target: AgentGUIAgentTarget,
+    explicitTargets: readonly AgentGUIAgentTarget[]
   ) => boolean;
   loadDraftComposerOptions: () => void;
-  normalizedExplicitProviderTargets: readonly AgentGUIProviderTarget[];
-  normalizedProviderTargets: readonly AgentGUIProviderTarget[];
+  normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
@@ -74,7 +74,7 @@ export interface UseAgentGUIConversationHomeInput {
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
   setHomeComposerTargetOverride: Dispatch<
-    SetStateAction<AgentGUIProviderTarget | null>
+    SetStateAction<AgentGUIAgentTarget | null>
   >;
   setIntent: (intent: { tag: "home" }) => void;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
@@ -93,10 +93,10 @@ export function useAgentGUIConversationHome({
   conversationFilterRef,
   currentProvider,
   dataRef,
-  defaultProviderTargetId,
+  defaultAgentTargetId,
   handledPrefillPromptSequenceRef,
   isComposerHomeRef,
-  isExplicitAgentGUIProviderTarget,
+  isExplicitAgentGUIAgentTarget,
   loadDraftComposerOptions,
   normalizedExplicitProviderTargets,
   normalizedProviderTargets,
@@ -178,11 +178,11 @@ export function useAgentGUIConversationHome({
       persistActiveConversation(null);
       const filter = conversationFilterRef.current;
       if (filter.kind === "agentTarget") {
-        const target = resolveAgentGUIProviderTarget({
+        const target = resolveAgentGUIAgentTarget({
           agentTargetId: filter.agentTargetId,
-          defaultProviderTargetId,
+          defaultAgentTargetId,
           provider: currentProvider,
-          providerTargets: normalizedProviderTargets,
+          agentTargets: normalizedProviderTargets,
           useStaticCatalog: false
         });
         if (
@@ -199,7 +199,7 @@ export function useAgentGUIConversationHome({
       currentProvider,
       conversationFilterRef,
       dataRef,
-      defaultProviderTargetId,
+      defaultAgentTargetId,
       enterHome,
       isComposerHomeRef,
       loadDraftComposerOptions,
@@ -234,19 +234,19 @@ export function useAgentGUIConversationHome({
     const selectedTargetData = selectedComposerTargetDataRef.current;
     const target =
       prefillPromptRequest.provider || prefillPromptRequest.agentTargetId
-        ? resolveAgentGUIProviderTarget({
+        ? resolveAgentGUIAgentTarget({
             agentTargetId: prefillPromptRequest.agentTargetId,
-            defaultProviderTargetId,
+            defaultAgentTargetId,
             provider:
               prefillPromptRequest.provider ?? selectedTargetData.provider,
-            providerTargets: normalizedProviderTargets,
+            agentTargets: normalizedProviderTargets,
             useStaticCatalog: shouldUseStaticProviderTargets
           })
         : null;
     const targetData = target
       ? composerTargetDataFromProviderTarget({
           current: dataRef.current,
-          isExplicit: isExplicitAgentGUIProviderTarget(
+          isExplicit: isExplicitAgentGUIAgentTarget(
             target,
             normalizedExplicitProviderTargets
           ),
@@ -263,7 +263,7 @@ export function useAgentGUIConversationHome({
       onDataChangeRef.current((current) => {
         const nextTargetData = composerTargetDataFromProviderTarget({
           current,
-          isExplicit: isExplicitAgentGUIProviderTarget(
+          isExplicit: isExplicitAgentGUIAgentTarget(
             target,
             normalizedExplicitProviderTargets
           ),
@@ -291,7 +291,7 @@ export function useAgentGUIConversationHome({
     loadDraftComposerOptions();
   }, [
     dataRef,
-    defaultProviderTargetId,
+    defaultAgentTargetId,
     enterHome,
     handledPrefillPromptSequenceRef,
     loadDraftComposerOptions,

@@ -16,6 +16,7 @@ import (
 )
 
 const defaultProviderAuthWatchInterval = 2 * time.Second
+const defaultProviderAuthChangeCoalesceDelay = 1 * time.Second
 
 // providerAuthFileMaxContentBytes caps how much of a watched file the watcher
 // is willing to read per change when computing a content fingerprint. Files
@@ -210,8 +211,9 @@ func jsonSubsetFingerprint(data []byte, keys []string) (string, bool) {
 // cost is a handful of stat calls (file contents are only re-read when
 // mtime/size moved).
 type ProviderAuthWatcher struct {
-	Entries  []ProviderAuthWatchEntry
-	Interval time.Duration
+	Entries       []ProviderAuthWatchEntry
+	Interval      time.Duration
+	CoalesceDelay time.Duration
 	// OnChange receives the normalized provider ids whose marker files changed.
 	// Called from the watcher goroutine; implementations must not block for
 	// long.
@@ -266,24 +268,117 @@ func (w *ProviderAuthWatcher) interval() time.Duration {
 	return defaultProviderAuthWatchInterval
 }
 
+func (w *ProviderAuthWatcher) coalesceDelay() time.Duration {
+	if w.CoalesceDelay < 0 {
+		return 0
+	}
+	if w.CoalesceDelay > 0 {
+		return w.CoalesceDelay
+	}
+	return defaultProviderAuthChangeCoalesceDelay
+}
+
 func (w *ProviderAuthWatcher) run() {
 	defer close(w.done)
 	fingerprints := w.collectFingerprints(nil)
 	ticker := time.NewTicker(w.interval())
 	defer ticker.Stop()
+	pendingProviders := make(map[string]struct{})
+	var coalesceTimer *time.Timer
+	var coalesceTimerC <-chan time.Time
+	stopCoalesceTimer := func() {
+		if coalesceTimer == nil {
+			return
+		}
+		if !coalesceTimer.Stop() {
+			select {
+			case <-coalesceTimer.C:
+			default:
+			}
+		}
+		coalesceTimer = nil
+		coalesceTimerC = nil
+	}
+	flushPendingProviders := func() {
+		if len(pendingProviders) == 0 {
+			return
+		}
+		providers := providerAuthPendingProviders(w.Entries, pendingProviders)
+		pendingProviders = make(map[string]struct{})
+		if len(providers) > 0 {
+			w.OnChange(providers)
+		}
+	}
+	scheduleProviderChanges := func(changed []string) {
+		for _, provider := range changed {
+			if normalized := agentprovider.Normalize(provider); normalized != "" {
+				pendingProviders[normalized] = struct{}{}
+			}
+		}
+		if len(pendingProviders) == 0 {
+			return
+		}
+		delay := w.coalesceDelay()
+		if delay <= 0 {
+			flushPendingProviders()
+			return
+		}
+		if coalesceTimer == nil {
+			coalesceTimer = time.NewTimer(delay)
+			coalesceTimerC = coalesceTimer.C
+		}
+	}
 	for {
 		select {
 		case <-w.stop:
+			stopCoalesceTimer()
 			return
 		case <-ticker.C:
 			next := w.collectFingerprints(fingerprints)
 			changed := changedProviders(w.Entries, fingerprints, next)
 			fingerprints = next
 			if len(changed) > 0 {
-				w.OnChange(changed)
+				scheduleProviderChanges(changed)
 			}
+		case <-coalesceTimerC:
+			coalesceTimer = nil
+			coalesceTimerC = nil
+			flushPendingProviders()
 		}
 	}
+}
+
+func providerAuthPendingProviders(
+	entries []ProviderAuthWatchEntry,
+	pending map[string]struct{},
+) []string {
+	if len(pending) == 0 {
+		return nil
+	}
+	providers := make([]string, 0, len(pending))
+	seen := make(map[string]struct{}, len(pending))
+	for _, entry := range entries {
+		provider := agentprovider.Normalize(entry.Provider)
+		if provider == "" {
+			continue
+		}
+		if _, ok := pending[provider]; !ok {
+			continue
+		}
+		if _, ok := seen[provider]; ok {
+			continue
+		}
+		seen[provider] = struct{}{}
+		providers = append(providers, provider)
+	}
+	for provider := range pending {
+		if _, ok := seen[provider]; ok {
+			continue
+		}
+		providers = append(providers, provider)
+	}
+	sort.Strings(providers[len(seen):])
+	return providers
 }
 
 func (w *ProviderAuthWatcher) collectFingerprints(

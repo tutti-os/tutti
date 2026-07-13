@@ -89,6 +89,7 @@ const minimizedDockPreviewViewport = {
   height: 34.2,
   width: 46.8
 };
+const dockPopupNewWindowLaunchSource = "dock-popup-new-window";
 
 function stripDockDescriptionTerminalPunctuation(value: string): string {
   const trimmed = value.trim();
@@ -2235,17 +2236,10 @@ export function WorkbenchHostDock({
               };
               const descriptor =
                 popupEntry.entry.resolvePopupItem?.(item) ?? {};
-              const descriptorPreviewImageUrl =
-                descriptor.previewImageUrl ?? null;
               const descriptorPreview =
                 descriptor.preview ??
-                (descriptorPreviewImageUrl
-                  ? ({
-                      kind: "image",
-                      revision: descriptor.revision ?? null,
-                      src: descriptorPreviewImageUrl
-                    } as const)
-                  : (popupEntry.entry.providePopupItemPreview?.(item) ?? null));
+                popupEntry.entry.providePopupItemPreview?.(item) ??
+                null;
               return {
                 ...item,
                 preview: descriptorPreview,
@@ -2305,7 +2299,10 @@ export function WorkbenchHostDock({
               () =>
                 host.launchNode({
                   dockEntryId: popupEntry.entry.id,
-                  payload: popupEntry.entry.launchPayload,
+                  launchSource: dockPopupNewWindowLaunchSource,
+                  payload:
+                    popupEntry.entry.newWindowLaunchPayload ??
+                    popupEntry.entry.launchPayload,
                   reason: "dock",
                   typeId: popupEntry.entry.typeId
                 })

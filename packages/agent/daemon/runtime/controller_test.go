@@ -4,6 +4,7 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,8 +16,9 @@ import (
 )
 
 type recordingReporter struct {
-	mu    sync.Mutex
-	calls []reportCall
+	mu      sync.Mutex
+	calls   []reportCall
+	updates chan struct{}
 }
 
 type reportCall struct {
@@ -35,6 +37,12 @@ func (r *recordingReporter) Report(_ context.Context, report agentsessionstore.R
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, reportCall{report: report})
+	if r.updates != nil {
+		select {
+		case r.updates <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }
 
@@ -46,16 +54,36 @@ func (r *recordingReporter) snapshot() []reportCall {
 
 func (r *recordingReporter) waitForCalls(t *testing.T, count int) []reportCall {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	return r.waitForReports(t, fmt.Sprintf("at least %d report calls", count), func(calls []reportCall) bool {
+		return len(calls) >= count
+	})
+}
+
+func (r *recordingReporter) waitForReports(
+	t *testing.T,
+	description string,
+	matches func([]reportCall) bool,
+) []reportCall {
+	t.Helper()
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
 	for {
-		calls := r.snapshot()
-		if len(calls) >= count {
+		r.mu.Lock()
+		calls := append([]reportCall(nil), r.calls...)
+		if matches(calls) {
+			r.mu.Unlock()
 			return calls
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("report calls = %d, want at least %d", len(calls), count)
+		if r.updates == nil {
+			r.updates = make(chan struct{}, 1)
 		}
-		time.Sleep(10 * time.Millisecond)
+		updates := r.updates
+		r.mu.Unlock()
+		select {
+		case <-updates:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s; report calls = %d", description, len(calls))
+		}
 	}
 }
 
@@ -843,11 +871,11 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 	if cancelResult.Canceled {
 		t.Fatalf("Cancel result = %#v, want no active turn cancel", cancelResult)
 	}
-	reporter.waitForCalls(t, 2)
-	waitForCondition(t, func() bool {
-		return len(reportsWithTimelineItem(reportInputs(reporter.snapshot()), "message.assistant")) > 0
+	reportCalls := reporter.waitForReports(t, "assistant and turn completion reports", func(calls []reportCall) bool {
+		reports := reportInputs(calls)
+		return len(reportsWithTimelineItem(reports, "message.assistant")) > 0 &&
+			hasTurnCompletionPatchInReports(reports, execResult.TurnID)
 	})
-	reportCalls := reporter.snapshot()
 	if len(reportCalls[0].report.StatePatches) == 0 ||
 		reportCalls[0].report.StatePatches[0].LifecycleStatus != string(activityshared.SessionLifecycleStatusActive) {
 		t.Fatalf("first report = %#v, want session started state patch", reportCalls[0].report)
@@ -2694,10 +2722,11 @@ func (a *lifecycleSnapshotAsyncExecAdapter) ExecAsync(_ context.Context, session
 			"phase": string(activityshared.TurnPhaseIdle),
 		})
 		activityshared.StampTurnLifecycleSnapshot(&event, activityshared.TurnLifecycleSnapshot{
-			Origin:  activityshared.TurnLifecycleOriginAdapter,
-			Seq:     1,
-			Phase:   string(activityshared.TurnPhaseSettled),
-			Outcome: string(activityshared.TurnOutcomeCompleted),
+			Origin:       activityshared.TurnLifecycleOriginAdapter,
+			Seq:          1,
+			ActiveTurnID: turnID,
+			Phase:        string(activityshared.TurnPhaseSettled),
+			Outcome:      string(activityshared.TurnOutcomeCompleted),
 		})
 		emit([]activityshared.Event{event})
 	}
@@ -2706,6 +2735,66 @@ func (a *lifecycleSnapshotAsyncExecAdapter) ExecAsync(_ context.Context, session
 }
 
 func (*lifecycleSnapshotAsyncExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+type terminalBeforeCallCompleteAsyncAdapter struct {
+	callStarted      chan struct{}
+	terminalReturned chan struct{}
+	releaseCall      chan struct{}
+}
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Provider() string { return ProviderCodex }
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Close(context.Context, Session) error { return nil }
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *terminalBeforeCallCompleteAsyncAdapter) ExecAsync(_ context.Context, session Session, _ []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) error {
+	if emit != nil {
+		emit([]activityshared.Event{
+			newTurnActivityEventWithID(session, "call-1-start", EventCallStarted, turnID, messageStreamStateStreaming, "", "Run command", map[string]any{
+				"callId": "call-1",
+			}),
+		})
+	}
+	a.callStarted <- struct{}{}
+	if emit != nil {
+		event := newTurnActivityEventWithID(session, "turn-1-settled", EventTurnUpdated, turnID, SessionStatusReady, "", "", map[string]any{
+			"phase": string(activityshared.TurnPhaseIdle),
+		})
+		activityshared.StampTurnLifecycleSnapshot(&event, activityshared.TurnLifecycleSnapshot{
+			Origin:       activityshared.TurnLifecycleOriginAdapter,
+			Seq:          1,
+			ActiveTurnID: turnID,
+			Phase:        string(activityshared.TurnPhaseSettled),
+			Outcome:      string(activityshared.TurnOutcomeCompleted),
+		})
+		emit([]activityshared.Event{event})
+	}
+	a.terminalReturned <- struct{}{}
+	go func() {
+		<-a.releaseCall
+		if emit != nil {
+			emit([]activityshared.Event{
+				newTurnActivityEventWithID(session, "call-1-complete", EventCallCompleted, turnID, messageStreamStateCompleted, "", "Run command", map[string]any{
+					"callId": "call-1",
+				}),
+			})
+		}
+	}()
+	return nil
+}
+
+func (*terminalBeforeCallCompleteAsyncAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
@@ -3304,6 +3393,67 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	session := waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 	if controller.HasActiveTurn("room-1", started.Session.AgentSessionID) {
 		t.Fatal("HasActiveTurn = true after async terminal event")
+	}
+	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "settled" {
+		t.Fatalf("turn lifecycle = %#v, want settled", session.TurnLifecycle)
+	}
+}
+
+func TestControllerExecDefersAsyncTerminalEventUntilOpenCallCompletes(t *testing.T) {
+	t.Parallel()
+
+	adapter := &terminalBeforeCallCompleteAsyncAdapter{
+		callStarted:      make(chan struct{}, 1),
+		terminalReturned: make(chan struct{}, 1),
+		releaseCall:      make(chan struct{}),
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("run"),
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	select {
+	case <-adapter.callStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for call start")
+	}
+	select {
+	case <-adapter.terminalReturned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for terminal event")
+	}
+	session, ok := controller.get("room-1", started.Session.AgentSessionID)
+	if !ok {
+		t.Fatal("session missing")
+	}
+	if session.Status != SessionStatusWorking {
+		t.Fatalf("session status = %q, want working while call is open", session.Status)
+	}
+	if session.SubmitAvailability == nil ||
+		session.SubmitAvailability.State != "blocked" ||
+		session.SubmitAvailability.Reason != "active_turn" {
+		t.Fatalf("submit availability = %#v, want blocked active_turn", session.SubmitAvailability)
+	}
+	if !controller.HasActiveTurn("room-1", started.Session.AgentSessionID) {
+		t.Fatal("HasActiveTurn = false before open call completes")
+	}
+
+	close(adapter.releaseCall)
+	session = waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+	if controller.HasActiveTurn("room-1", started.Session.AgentSessionID) {
+		t.Fatal("HasActiveTurn = true after open call completes")
 	}
 	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "settled" {
 		t.Fatalf("turn lifecycle = %#v, want settled", session.TurnLifecycle)

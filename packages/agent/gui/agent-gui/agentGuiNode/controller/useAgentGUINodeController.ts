@@ -14,7 +14,7 @@ import type {
   AgentGUIProvider,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
@@ -39,7 +39,7 @@ import {
 import {
   EMPTY_AGENT_GUI_MESSAGES,
   composerTargetDataFromProviderTarget,
-  isExplicitAgentGUIProviderTarget,
+  isExplicitAgentGUIAgentTarget,
   type AgentGUIRememberComposerDefaultsInput
 } from "./agentGuiController.providerHelpers";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
@@ -110,14 +110,14 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  agentTargetsLoading?: boolean;
   providerRailMode?: AgentGUIProviderRailMode;
   comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
@@ -142,12 +142,12 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
-  providerTargets,
-  providerTargetsLoading = false,
+  agentTargets,
+  agentTargetsLoading = false,
   providerRailMode = "catalog",
   comingSoonProviders,
   providerReadinessGates = null,
-  defaultProviderTargetId = null,
+  defaultAgentTargetId = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
   previewMode = false,
@@ -176,11 +176,11 @@ export function useAgentGUINodeController({
   const providerCatalogSelection = useAgentGUIProviderCatalogSelection({
     comingSoonProviders,
     data,
-    defaultProviderTargetId,
+    defaultAgentTargetId,
     providerRailMode,
     providerReadinessGates,
-    providerTargets,
-    providerTargetsLoading
+    agentTargets,
+    agentTargetsLoading
   });
   const {
     effectiveSelectedProviderTarget,
@@ -189,7 +189,7 @@ export function useAgentGUINodeController({
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
     selectedComposerTargetData,
-    selectedProviderTargetIsExplicit,
+    selectedAgentTargetIsExplicit,
     setHomeComposerTargetOverride
   } = providerCatalogSelection;
   const agentActivityDisplayStatuses = useEngineSelector(
@@ -305,10 +305,10 @@ export function useAgentGUINodeController({
     onDataChange,
     onRememberComposerDefaults,
     onShowMessage,
-    providerTargetsProvided: providerTargets !== undefined,
+    agentTargetsProvided: agentTargets !== undefined,
     selectedComposerTargetData,
     selectedProjectPath,
-    selectedProviderTargetIsExplicit,
+    selectedAgentTargetIsExplicit,
     userProjects
   });
   const {
@@ -638,8 +638,8 @@ export function useAgentGUINodeController({
     currentProvider: data.provider,
     currentUserId,
     data,
-    defaultProviderTargetId,
-    isExplicitAgentGUIProviderTarget,
+    defaultAgentTargetId,
+    isExplicitAgentGUIAgentTarget,
     latestPendingNewActivation,
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
@@ -688,7 +688,7 @@ export function useAgentGUINodeController({
     composerTargetProvider: composerTargetData.provider,
     conversationListInitialized: conversationListState?.initialized === true,
     data,
-    defaultProviderTargetId,
+    defaultAgentTargetId,
     errorFor: activation.errorFor,
     isCreatingConversation,
     isLoadingConversations,
@@ -701,7 +701,7 @@ export function useAgentGUINodeController({
     previewMode,
     providerRailMode,
     providerReadinessGates,
-    providerTargetsLoading,
+    agentTargetsLoading,
     selectedComposerTargetData,
     sessionEngine,
     transientConversation,

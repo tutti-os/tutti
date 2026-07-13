@@ -3,13 +3,9 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore
 } from "react";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type {
   WorkspaceAgentProvider,
@@ -32,6 +28,7 @@ import {
   workspaceAppWebviewTypeID
 } from "@renderer/features/workspace-app-center";
 import { IReporterService } from "@renderer/features/analytics";
+import { IAgentsService } from "@renderer/features/workspace-agent";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/ui/useWorkspaceFileManagerService";
 import { useTranslation } from "@renderer/i18n";
@@ -56,7 +53,10 @@ import {
   createWorkspaceWorkbenchShellRuntimeController,
   type WorkspaceWorkbenchShellRuntimeController
 } from "../services/workspaceWorkbenchShellRuntimeController";
-import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
+import type {
+  WorkspaceWorkbenchCapabilitySettingsTarget,
+  WorkspaceWorkbenchHostSessionBinding
+} from "../services/workspaceWorkbenchHostService.interface";
 import type {
   WorkspaceMissionControlOpenRequest,
   WorkspaceMissionControlTrigger
@@ -65,7 +65,6 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
-import { filterWorkspaceAgentGuiProviderTargets } from "./workspaceAgentGuiProviderTargetFilter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -124,9 +123,11 @@ export interface WorkspaceWorkbenchShellRuntime {
 
 export function useWorkspaceWorkbenchShellRuntime({
   enableWindowCloseGuard,
+  hostSession,
   state
 }: {
   enableWindowCloseGuard: boolean;
+  hostSession: WorkspaceWorkbenchHostSessionBinding;
   state: {
     platform: NodeJS.Platform;
     workspace: WorkspaceSummary;
@@ -136,29 +137,18 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const { service: workspaceSettingsService, state: workspaceSettingsState } =
-    useWorkspaceSettingsService();
+  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const agentsService = useService(IAgentsService);
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
-    readonly AgentGUIProviderTarget[] | undefined
-  >(undefined);
-  const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
-  // An empty daemon /agents target list means "no service-backed targets are
-  // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
-  const resolvedAgentGuiProviderTargets = useMemo(() => {
-    const targets =
-      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
-        ? agentGuiProviderTargets
-        : undefined;
-    if (!targets) {
-      return undefined;
-    }
-    return filterWorkspaceAgentGuiProviderTargets(targets, {
-      tuttiAgentSwitchEnabled:
-        workspaceSettingsState.tuttiAgentSwitchEnabled === true
-    });
-  }, [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]);
+  const agentsSnapshot = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
+  );
+  const agentGuiAgentsLoading = agentsSnapshot.capturedAtUnixMs === null;
+  // The daemon /agents directory is the complete new-entry source of truth.
+  const resolvedAgentGuiAgents = agentsSnapshot.agents;
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
     () => [
       ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
@@ -175,12 +165,9 @@ export function useWorkspaceWorkbenchShellRuntime({
     () =>
       resolveDefaultAgentTargetId({
         defaultProvider: desktopPreferencesState.defaultAgentProvider,
-        targets: resolvedAgentGuiProviderTargets
+        agents: resolvedAgentGuiAgents
       }),
-    [
-      desktopPreferencesState.defaultAgentProvider,
-      resolvedAgentGuiProviderTargets
-    ]
+    [desktopPreferencesState.defaultAgentProvider, resolvedAgentGuiAgents]
   );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
@@ -214,12 +201,11 @@ export function useWorkspaceWorkbenchShellRuntime({
           appI18n,
           appLocale: locale,
           appCenterRevision: appCenterState.revision,
-          createHostInput: (hostInput) =>
-            workbenchHostService.createHostInput(hostInput),
+          createHostInput: hostSession.createHostInput,
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-          defaultProviderTargetId: defaultAgentTargetId,
-          providerTargets: resolvedAgentGuiProviderTargets,
-          providerTargetsLoading: agentGuiProviderTargetsLoading,
+          defaultAgentTargetId: defaultAgentTargetId,
+          agents: resolvedAgentGuiAgents,
+          agentsLoading: agentGuiAgentsLoading,
           comingSoonAgentProviders,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
@@ -290,20 +276,17 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
-    let disposed = false;
-    setAgentGuiProviderTargets(undefined);
-    void workbenchHostService.loadAgentGuiProviderTargets().then((targets) => {
-      if (!disposed) {
-        setAgentGuiProviderTargets(targets);
-      }
-    });
-    return () => {
-      disposed = true;
+    const loadAgents = () => {
+      void agentsService.load().catch(() => undefined);
     };
-    // comingSoonAgentProviders: the provider gate disables gated targets in
-    // the daemon target list, so a gate flip must reload it (the host service
-    // cache is invalidated by the same preference change).
-  }, [comingSoonAgentProviders, state.workspace.id, workbenchHostService]);
+    loadAgents();
+    window.addEventListener("focus", loadAgents);
+    return () => {
+      window.removeEventListener("focus", loadAgents);
+    };
+    // The Desktop projection applies provider gates while loading the daemon
+    // target list, so a gate flip must reload the snapshot.
+  }, [agentsService, comingSoonAgentProviders, state.workspace.id]);
 
   useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {
@@ -352,12 +335,11 @@ export function useWorkspaceWorkbenchShellRuntime({
       appI18n,
       appLocale: locale,
       appCenterRevision: appCenterState.revision,
-      createHostInput: (hostInput) =>
-        workbenchHostService.createHostInput(hostInput),
+      createHostInput: hostSession.createHostInput,
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-      defaultProviderTargetId: defaultAgentTargetId,
-      providerTargets: resolvedAgentGuiProviderTargets,
-      providerTargetsLoading: agentGuiProviderTargetsLoading,
+      defaultAgentTargetId: defaultAgentTargetId,
+      agents: resolvedAgentGuiAgents,
+      agentsLoading: agentGuiAgentsLoading,
       comingSoonAgentProviders,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
@@ -371,14 +353,15 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
-    agentGuiProviderTargetsLoading,
+    agentGuiAgentsLoading,
     comingSoonAgentProviders,
     defaultAgentTargetId,
-    resolvedAgentGuiProviderTargets,
+    resolvedAgentGuiAgents,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,
     handleCapabilitySettingsRequest,
+    hostSession,
     locale,
     shellRuntimeController,
     state.workspace.id,
@@ -440,6 +423,7 @@ export function useWorkspaceWorkbenchShellRuntime({
   const handleWorkbenchHostReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
       workbenchHostRef.current = host;
+      hostSession.attachSurface(host);
       shellRuntimeController.setWorkbenchHost(host);
       syncWorkspaceAppWebviewNodes({
         apps: appCenterState.apps,
@@ -496,6 +480,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterState.apps,
       appCenterState.loadStatus,
       appCenterState.workspaceId,
+      hostSession,
       locale,
       shellRuntimeController,
       state.workspace.id,
@@ -551,19 +536,20 @@ export function useWorkspaceWorkbenchShellRuntime({
 }
 
 function resolveDefaultAgentTargetId(input: {
+  agents?: readonly AgentGUIAgent[];
   defaultProvider?: string | null;
-  targets?: readonly AgentGUIProviderTarget[];
 }): string | null {
   const defaultProvider = input.defaultProvider?.trim() ?? "";
-  const targets = input.targets ?? [];
+  const agents = input.agents ?? [];
   return (
-    targets.find(
-      (target) =>
+    agents.find(
+      (agent) =>
         defaultProvider !== "" &&
-        target.provider === defaultProvider &&
-        target.disabled !== true
-    )?.targetId ??
-    targets.find((target) => target.disabled !== true)?.targetId ??
+        agent.provider === defaultProvider &&
+        agent.availability.status === "ready"
+    )?.agentTargetId ??
+    agents.find((agent) => agent.availability.status === "ready")
+      ?.agentTargetId ??
     null
   );
 }

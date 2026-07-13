@@ -38,7 +38,7 @@ export interface AgentActivityAdapter {
     input: AgentActivityLoadComposerOptionsInput
   ): Promise<AgentActivityComposerOptions>;
 
-  subscribeSessionEvents(input: {
+  subscribeSessionEvents?(input: {
     workspaceId: string;
     agentSessionId: string;
     afterVersion?: number;

@@ -7,14 +7,14 @@ import {
 } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import {
-  agentGUIProviderTargetRefsEqual,
-  resolveAgentGUIProviderTarget
-} from "../../../providerTargets";
+  agentGUIAgentTargetRefsEqual,
+  resolveAgentGUIAgentTarget
+} from "../../../agentTargets";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import {
@@ -56,19 +56,19 @@ interface UseAgentGUIProviderHomeInput {
   conversationsRef: CurrentValue<readonly AgentGUIConversationSummary[]>;
   data: AgentGUINodeData;
   dataRef: CurrentValue<AgentGUINodeData>;
-  defaultProviderTargetId: string | null;
+  defaultAgentTargetId: string | null;
   draftBySessionIdRef: CurrentValue<Record<string, AgentComposerDraft>>;
-  effectiveSelectedProviderTarget: AgentGUIProviderTarget;
-  firstReadyHomeComposerProviderTarget: AgentGUIProviderTarget | null;
-  homeComposerTargetOverride: AgentGUIProviderTarget | null;
+  effectiveSelectedProviderTarget: AgentGUIAgentTarget;
+  firstReadyHomeComposerProviderTarget: AgentGUIAgentTarget | null;
+  homeComposerTargetOverride: AgentGUIAgentTarget | null;
   isComposerHomeRef: CurrentValue<boolean>;
   isLoadingConversations: boolean;
   loadComposerOptionsForTarget(
     targetData: AgentGUIComposerTargetData,
     options?: { force?: boolean }
   ): void;
-  normalizedExplicitProviderTargets: readonly AgentGUIProviderTarget[];
-  normalizedProviderTargets: readonly AgentGUIProviderTarget[];
+  normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   onDataChangeRef: CurrentValue<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
@@ -77,7 +77,7 @@ interface UseAgentGUIProviderHomeInput {
   providerReadinessGates: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
-  providerTargetsLoading: boolean;
+  agentTargetsLoading: boolean;
   selectedComposerTargetDataRef: CurrentValue<AgentGUIComposerTargetData>;
   selectConversation(
     agentSessionId: string,
@@ -90,7 +90,7 @@ interface UseAgentGUIProviderHomeInput {
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
   setHomeComposerTargetOverride: Dispatch<
-    SetStateAction<AgentGUIProviderTarget | null>
+    SetStateAction<AgentGUIAgentTarget | null>
   >;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
@@ -106,7 +106,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   inputRef.current = input;
   const resolveDefaultHomeComposerTarget = useCallback(() => {
     const current = inputRef.current;
-    const defaultTargetId = current.defaultProviderTargetId?.trim() ?? "";
+    const defaultTargetId = current.defaultAgentTargetId?.trim() ?? "";
     const explicitDefaultTarget = defaultTargetId
       ? (current.normalizedProviderTargets.find(
           (target) =>
@@ -134,7 +134,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
         (target) =>
           target.provider === nextTarget.provider &&
           target.targetId === nextTarget.targetId &&
-          agentGUIProviderTargetRefsEqual(target.ref, nextTarget.ref)
+          agentGUIAgentTargetRefsEqual(target.ref, nextTarget.ref)
       );
     const nextTargetData = composerTargetDataFromProviderTarget({
       current: currentInput.dataRef.current,
@@ -187,15 +187,15 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   const selectHomeComposerAgentTarget = useCallback(
     (selection: {
       provider: AgentGUIProvider;
-      providerTargetId?: string | null;
+      agentTargetId?: string | null;
     }) => {
       const currentInput = inputRef.current;
       if (currentInput.previewMode) return;
-      const nextTarget = resolveAgentGUIProviderTarget({
-        defaultProviderTargetId: currentInput.defaultProviderTargetId,
+      const nextTarget = resolveAgentGUIAgentTarget({
+        agentTargetId: selection.agentTargetId,
+        defaultAgentTargetId: currentInput.defaultAgentTargetId,
         provider: selection.provider,
-        providerTargetId: selection.providerTargetId,
-        providerTargets: currentInput.normalizedProviderTargets,
+        agentTargets: currentInput.normalizedProviderTargets,
         useStaticCatalog: currentInput.shouldUseStaticProviderTargets
       });
       if (!nextTarget) return;
@@ -204,7 +204,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
           (target) =>
             target.provider === nextTarget.provider &&
             target.targetId === nextTarget.targetId &&
-            agentGUIProviderTargetRefsEqual(target.ref, nextTarget.ref)
+            agentGUIAgentTargetRefsEqual(target.ref, nextTarget.ref)
         );
       const nextTargetData = composerTargetDataFromProviderTarget({
         current: currentInput.dataRef.current,
@@ -320,7 +320,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     if (
       readyTarget.provider === input.effectiveSelectedProviderTarget.provider &&
       readyTarget.targetId === input.effectiveSelectedProviderTarget.targetId &&
-      agentGUIProviderTargetRefsEqual(
+      agentGUIAgentTargetRefsEqual(
         readyTarget.ref,
         input.effectiveSelectedProviderTarget.ref
       )
@@ -340,7 +340,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     }
     selectHomeComposerAgentTarget({
       provider: readyTarget.provider,
-      providerTargetId: readyTarget.targetId
+      agentTargetId: readyTarget.targetId
     });
   }, [
     input.activeConversationId,
@@ -357,20 +357,20 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   const selectConversationFilterTarget = useCallback(
     (selection: {
       provider: AgentGUIProvider;
-      providerTargetId?: string | null;
+      agentTargetId?: string | null;
     }) => {
       const current = inputRef.current;
-      const nextTarget = resolveAgentGUIProviderTarget({
-        defaultProviderTargetId: current.defaultProviderTargetId,
+      const nextTarget = resolveAgentGUIAgentTarget({
+        agentTargetId: selection.agentTargetId,
+        defaultAgentTargetId: current.defaultAgentTargetId,
         provider: selection.provider,
-        providerTargetId: selection.providerTargetId,
-        providerTargets: current.normalizedProviderTargets,
+        agentTargets: current.normalizedProviderTargets,
         useStaticCatalog: current.shouldUseStaticProviderTargets
       });
       if (!nextTarget) {
         reportAgentGUIConversationFilterTargetUnresolved({
           provider: selection.provider,
-          providerTargetId: selection.providerTargetId ?? null,
+          agentTargetId: selection.agentTargetId ?? null,
           providerTargetCount: current.normalizedProviderTargets.length,
           reason: "unresolved",
           runtime: current.agentActivityRuntime,
@@ -428,7 +428,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   useEffect(() => {
     if (
       input.previewMode ||
-      input.providerTargetsLoading ||
+      input.agentTargetsLoading ||
       input.activeConversationId === null ||
       input.conversationFilter.kind !== "agentTarget" ||
       input.isLoadingConversations ||
@@ -454,7 +454,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     if (!target) return;
     selectHomeComposerAgentTarget({
       provider: target.provider,
-      providerTargetId: target.targetId
+      agentTargetId: target.targetId
     });
   }, [
     input.activeConversationId,
@@ -464,7 +464,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     input.isLoadingConversations,
     input.normalizedProviderTargets,
     input.previewMode,
-    input.providerTargetsLoading,
+    input.agentTargetsLoading,
     selectHomeComposerAgentTarget
   ]);
 

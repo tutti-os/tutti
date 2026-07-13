@@ -31,9 +31,9 @@ export function groupAgentGUINodeViewModelFixture(
       data: flat.data
     },
     rail: {
-      selectedProviderTarget: flat.selectedProviderTarget,
-      providerTargets: flat.providerTargets,
-      providerTargetsLoading: flat.providerTargetsLoading,
+      selectedAgentTarget: flat.selectedAgentTarget,
+      agentTargets: flat.agentTargets,
+      agentTargetsLoading: flat.agentTargetsLoading,
       providerRailMode: flat.providerRailMode,
       comingSoonProviders: flat.comingSoonProviders,
       conversationFilter: flat.conversationFilter,
@@ -56,7 +56,7 @@ export function groupAgentGUINodeViewModelFixture(
       conversationDetail: flat.conversationDetail
     },
     composer: {
-      handoffProviderTargets: flat.handoffProviderTargets,
+      handoffAgentTargets: flat.handoffAgentTargets,
       availableCommands: flat.availableCommands,
       availableSkills: flat.availableSkills,
       draftPrompt: flat.draftPrompt,

@@ -97,13 +97,13 @@ export const AgentGUINode = memo(function AgentGUINode({
   const {
     capabilityMenuState,
     accountMenuState = null,
-    providerTargets,
-    providerTargetsLoading = false,
+    agentTargets,
+    agentTargetsLoading = false,
     providerRailAllPresentation = null,
     providerRailMode = "catalog",
     comingSoonProviders,
     providerReadinessGates = null,
-    defaultProviderTargetId = null,
+    defaultAgentTargetId = null,
     providerAuthAccountLabels,
     managedAgentsState,
     contextMentionProviders,
@@ -274,12 +274,12 @@ export const AgentGUINode = memo(function AgentGUINode({
     data: state,
     openSessionRequest,
     prefillPromptRequest,
-    providerTargets,
-    providerTargetsLoading,
+    agentTargets,
+    agentTargetsLoading,
     providerRailMode,
     comingSoonProviders,
     providerReadinessGates,
-    defaultProviderTargetId,
+    defaultAgentTargetId,
     previewMode,
     onDataChange: handleDataChange,
     onRememberComposerDefaults,
@@ -315,13 +315,13 @@ export const AgentGUINode = memo(function AgentGUINode({
   const activeReadinessProvider =
     viewModel.rail.activeConversationId !== null
       ? activeProvider
-      : viewModel.rail.selectedProviderTarget.provider;
-  const selectedProviderTargetLabel =
-    viewModel.rail.selectedProviderTarget?.label ??
+      : viewModel.rail.selectedAgentTarget.provider;
+  const selectedAgentTargetLabel =
+    viewModel.rail.selectedAgentTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
   const displayProviderLabel = viewModel.rail.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
-    : selectedProviderTargetLabel;
+    : selectedAgentTargetLabel;
   const labels = useAgentGUIViewLabels({
     displayProviderLabel,
     fallbackAgentTitle,
@@ -336,9 +336,9 @@ export const AgentGUINode = memo(function AgentGUINode({
     () =>
       resolveAgentGUIRailStatusProvider({
         conversationFilter: viewModel.rail.conversationFilter,
-        providerTargets: viewModel.rail.providerTargets
+        agentTargets: viewModel.rail.agentTargets
       }),
-    [viewModel.rail.conversationFilter, viewModel.rail.providerTargets]
+    [viewModel.rail.conversationFilter, viewModel.rail.agentTargets]
   );
   const activeAgentProbe = useMemo(
     () =>

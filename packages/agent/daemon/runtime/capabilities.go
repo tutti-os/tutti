@@ -24,6 +24,7 @@ const (
 	CapabilityPlanImplementation             = providerregistry.CapabilityPlanImplementation
 	CapabilityPermissionModeChangeDuringTurn = providerregistry.CapabilityPermissionModeChangeDuringTurn
 	CapabilityPermissionModeChangeDeferred   = providerregistry.CapabilityPermissionModeChangeDeferred
+	CapabilityReview                         = providerregistry.CapabilityReview
 	// CapabilityGoalPause marks providers whose goal is a controllable
 	// entity with a real paused state (codex thread goals). Providers
 	// without it (Claude Code: /goal command in, goal_status attachments
@@ -50,10 +51,13 @@ func standardACPCapabilities(provider string, promptImage bool, state acpLiveSta
 	if promptImage && standardACP.DeriveImageInputFromPrompt && !slices.Contains(capabilities, CapabilityImageInput) {
 		capabilities = append(capabilities, CapabilityImageInput)
 	}
-	if standardACP.DeriveCompactFromCommands && !slices.Contains(capabilities, CapabilityCompact) {
+	for _, capability := range standardACP.DeriveCapabilitiesFromCommands {
+		if slices.Contains(capabilities, capability) {
+			continue
+		}
 		for _, command := range state.availableCommands {
-			if strings.EqualFold(strings.TrimSpace(command.Name), "compact") {
-				capabilities = append(capabilities, CapabilityCompact)
+			if strings.EqualFold(strings.TrimSpace(command.Name), capability) {
+				capabilities = append(capabilities, capability)
 				break
 			}
 		}

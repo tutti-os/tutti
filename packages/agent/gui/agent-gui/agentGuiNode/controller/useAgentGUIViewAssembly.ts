@@ -118,9 +118,9 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       data: viewData
     },
     rail: {
-      selectedProviderTarget: input.effectiveSelectedProviderTarget,
-      providerTargets: input.normalizedProviderTargets,
-      providerTargetsLoading: input.providerTargetsLoading,
+      selectedAgentTarget: input.effectiveSelectedProviderTarget,
+      agentTargets: input.normalizedProviderTargets,
+      agentTargetsLoading: input.agentTargetsLoading,
       providerRailMode: input.providerRailMode ?? "catalog",
       comingSoonProviders: input.normalizedComingSoonProviders,
       conversationFilter: input.conversationFilter,
@@ -144,7 +144,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       conversationDetail: detail.conversationDetail
     },
     composer: {
-      handoffProviderTargets: input.handoffProviderTargets,
+      handoffAgentTargets: input.handoffAgentTargets,
       availableCommands: detail.availableCommands,
       availableSkills: detail.availableSkills,
       draftPrompt: detail.draftPrompt,

@@ -1,21 +1,56 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
+import {
+  defaultIssueManagerNodeFrame,
+  defaultIssueManagerWorkbenchTypeId
+} from "@tutti-os/workspace-issue-manager/workbench/constants";
+import {
+  workspaceImageFileNodeTypeID,
+  workspaceTextFileNodeTypeID
+} from "../workspaceFilePreviewLaunch.ts";
+import { defaultWorkspaceTerminalWorkbenchTypeId } from "./workspaceTerminalWorkbenchConstants.ts";
 import {
   createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest,
   createWorkspaceAgentGuiLaunchDescriptor,
   createWorkspaceAgentGuiInstanceId,
   createWorkspaceFilesDockEntry,
   toWorkspaceFilesActivation,
   workspaceAgentGuiDockEntryId,
   workspaceAgentGuiInstanceId,
+  workspaceAgentGuiNodeID,
   workspaceAgentGuiNodeFrame,
   workspaceAgentGuiProviderFromIdentifier,
   workspaceAgentGuiProviderFromLaunchRequest,
+  workspaceBrowserNodeID,
   workspaceFilePreviewNodeFrame,
   workspaceFilesNodeFrame,
   workspaceFilesNodeID
 } from "./workspaceWorkbenchComposition.ts";
+
+test("desktop workbench keeps its current stable node type identities", () => {
+  assert.deepEqual(
+    {
+      agentGui: workspaceAgentGuiNodeID,
+      browser: workspaceBrowserNodeID,
+      files: workspaceFilesNodeID,
+      imagePreview: workspaceImageFileNodeTypeID,
+      issueManager: defaultIssueManagerWorkbenchTypeId,
+      terminal: defaultWorkspaceTerminalWorkbenchTypeId,
+      textPreview: workspaceTextFileNodeTypeID
+    },
+    {
+      agentGui: "agent-gui",
+      browser: "browser",
+      files: "workspace-files",
+      imagePreview: "workspace-image-file",
+      issueManager: "issue-manager",
+      terminal: "workspace-terminal",
+      textPreview: "workspace-text-file"
+    }
+  );
+});
 
 test("createWorkspaceFilesDockEntry configures the files dock entry", () => {
   const entry = createWorkspaceFilesDockEntry({
@@ -169,6 +204,32 @@ test("workspace agent GUI draft launches prefill prompts without binding session
     },
     type: "agent-gui:prefill-prompt"
   });
+});
+
+test("workspace agent GUI unified launch requests keep All-launched nodes on the unified dock entry", () => {
+  const sessionRequest = createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+    agentSessionId: "session-2",
+    provider: "claude-code"
+  });
+  const draftRequest = createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+    draftPrompt: "Review this issue",
+    provider: "codex"
+  });
+
+  assert.equal(sessionRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(draftRequest.dockEntryId, "agent-gui:unified");
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(draftRequest).dockEntryId,
+    "agent-gui:unified"
+  );
+  assert.equal(
+    createWorkspaceAgentGuiLaunchDescriptor(sessionRequest).provider,
+    "claude-code"
+  );
 });
 
 test("toWorkspaceFilesActivation accepts reveal-file payloads and rejects others", () => {

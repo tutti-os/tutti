@@ -51,7 +51,6 @@ test("projectDesktopAgentProviderReadinessGates gates missing provider statuses 
 });
 
 test("projectDesktopAgentProviderReadinessGates lets users retry missing statuses after a failed first check", () => {
-  const actions: Array<[string, string]> = [];
   const gates = projectDesktopAgentProviderReadinessGates({
     snapshot: {
       capturedAt: null,
@@ -60,15 +59,11 @@ test("projectDesktopAgentProviderReadinessGates lets users retry missing statuse
       isLoading: false,
       pendingActions: [],
       statuses: []
-    },
-    onAction(provider, action) {
-      actions.push([provider, action]);
     }
   });
 
   assert.equal(gates.codex?.status, "unavailable");
-  gates.codex?.onAction?.("codex", "refresh");
-  assert.deepEqual(actions, [["codex", "refresh"]]);
+  assert.equal(gates.codex?.pendingAction, null);
 });
 
 function providerStatus(

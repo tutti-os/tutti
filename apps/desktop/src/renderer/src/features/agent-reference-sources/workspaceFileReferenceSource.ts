@@ -59,7 +59,7 @@ const LOCAL_SIDEBAR_GROUPS: ReadonlyArray<{
 /**
  * 本地文件源:1:1 包装现有 WorkspaceFileReferenceAdapter。
  * nodeId === path。回归防护:取数/打开/预览/插入产物与现状逐字段一致。
- * 设计见 docs/architecture/agent-reference-source-services.md §2.3 / §4。
+ * 当前架构见 docs/architecture/agent-reference-sources.md。
  */
 export function createWorkspaceFileReferenceSource(input: {
   adapter: WorkspaceFileReferenceAdapter;

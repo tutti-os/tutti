@@ -4,11 +4,7 @@ import type {
   DesktopThemeAppearance,
   DesktopThemeSource
 } from "../theme/index.ts";
-import type {
-  AgentGUIProvider,
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetRef
-} from "@tutti-os/agent-gui";
+import type { AgentGUIProvider, AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { DesktopAgentProviderStatusSnapshot } from "./ipc.ts";
 
 export type DesktopWindowIntent =
@@ -20,7 +16,7 @@ export type DesktopWindowIntent =
       agentSessionID?: string | null;
       agentTargetID?: string | null;
       providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot;
-      providerTargets?: readonly AgentGUIProviderTarget[];
+      agents?: readonly AgentGUIAgent[];
       kind: "agent";
       provider?: string | null;
       workspaceID: string;
@@ -49,13 +45,11 @@ export function createAgentWindowIntent(input: {
   agentSessionID?: string | null;
   agentTargetID?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  agents?: readonly AgentGUIAgent[];
   provider?: string | null;
   workspaceID: string;
 }): DesktopWindowIntent {
-  const providerTargets = normalizeAgentWindowProviderTargets(
-    input.providerTargets
-  );
+  const agents = normalizeAgentWindowAgents(input.agents);
   const providerStatusSnapshot = normalizeAgentProviderStatusSnapshot(
     input.providerStatusSnapshot
   );
@@ -63,7 +57,7 @@ export function createAgentWindowIntent(input: {
     agentSessionID: input.agentSessionID?.trim() || null,
     agentTargetID: input.agentTargetID?.trim() || null,
     ...(providerStatusSnapshot ? { providerStatusSnapshot } : {}),
-    ...(providerTargets ? { providerTargets } : {}),
+    ...(agents !== undefined ? { agents } : {}),
     kind: "agent",
     provider: input.provider?.trim() || null,
     workspaceID: input.workspaceID
@@ -101,11 +95,8 @@ export function encodeDesktopWindowIntent(
     if (intent.provider) {
       params.set("provider", intent.provider);
     }
-    if (intent.providerTargets && intent.providerTargets.length > 0) {
-      params.set(
-        "agentProviderTargets",
-        JSON.stringify(intent.providerTargets)
-      );
+    if (intent.agents !== undefined) {
+      params.set("agents", JSON.stringify(intent.agents));
     }
     if (intent.providerStatusSnapshot) {
       params.set(
@@ -159,9 +150,7 @@ export function resolveDesktopWindowIntent(
       providerStatusSnapshot: parseAgentProviderStatusSnapshot(
         params.get("agentProviderStatusSnapshot")
       ),
-      providerTargets: parseAgentWindowProviderTargets(
-        params.get("agentProviderTargets")
-      ),
+      agents: parseAgentWindowAgents(params.get("agents")),
       provider: params.get("provider"),
       workspaceID
     });
@@ -170,78 +159,91 @@ export function resolveDesktopWindowIntent(
   return createWorkspaceWindowIntent(workspaceID);
 }
 
-function normalizeAgentWindowProviderTargets(
-  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
-): AgentGUIProviderTarget[] | undefined {
-  const normalized =
-    providerTargets?.flatMap((target) =>
-      normalizeAgentWindowProviderTarget(target)
-    ) ?? [];
-  return normalized.length > 0 ? normalized : undefined;
+function normalizeAgentWindowAgents(
+  agents: readonly AgentGUIAgent[] | null | undefined
+): AgentGUIAgent[] | undefined {
+  if (agents === null || agents === undefined) {
+    return undefined;
+  }
+  return agents.flatMap((agent) => normalizeAgentWindowAgent(agent));
 }
 
-function normalizeAgentWindowProviderTarget(
-  value: unknown
-): AgentGUIProviderTarget[] {
+function normalizeAgentWindowAgent(value: unknown): AgentGUIAgent[] {
   if (!value || typeof value !== "object") {
     return [];
   }
-  const target = value as Partial<AgentGUIProviderTarget>;
-  if (!target.ref || typeof target.ref !== "object") {
-    return [];
-  }
-  const ref = target.ref as Partial<AgentGUIProviderTargetRef>;
-  const targetId = readTrimmedString(target.targetId);
-  const agentTargetId = readTrimmedString(target.agentTargetId);
-  const description = readTrimmedString(target.description);
-  const iconUrl = readTrimmedString(target.iconUrl);
-  const label = readTrimmedString(target.label);
-  const ownerLabel = readTrimmedString(target.ownerLabel);
-  const provider = readTrimmedString(
-    target.provider
-  ) as AgentGUIProvider | null;
-  const refKind = readTrimmedString(ref.kind);
-  const refProvider = readTrimmedString(ref.provider);
-  const unavailableReason = readTrimmedString(target.unavailableReason);
-  if (
-    !targetId ||
-    !label ||
-    !provider ||
-    !refKind ||
-    refProvider !== provider
-  ) {
+  const agent = value as Partial<AgentGUIAgent>;
+  const agentTargetId = readTrimmedString(agent.agentTargetId);
+  const name = readTrimmedString(agent.name);
+  const description = readTrimmedString(agent.description);
+  const iconUrl = readTrimmedString(agent.iconUrl);
+  const provider = readTrimmedString(agent.provider) as AgentGUIProvider | null;
+  const availability = normalizeAgentWindowAvailability(agent.availability);
+  if (!agentTargetId || !name || !iconUrl || !provider || !availability) {
     return [];
   }
 
+  const ownerName = readTrimmedString(agent.owner?.name);
+  const ownerAvatarUrl = readTrimmedString(agent.owner?.avatarUrl);
+
   return [
     {
-      targetId,
-      ...(agentTargetId ? { agentTargetId } : {}),
+      agentTargetId,
+      name,
+      iconUrl,
       provider,
-      ref: {
-        ...ref,
-        kind: refKind,
-        provider
-      } as AgentGUIProviderTargetRef,
-      label,
+      availability,
       ...(description ? { description } : {}),
-      ...(iconUrl ? { iconUrl } : {}),
-      ...(ownerLabel ? { ownerLabel } : {}),
-      ...(unavailableReason ? { unavailableReason } : {}),
-      ...(typeof target.disabled === "boolean"
-        ? { disabled: target.disabled }
+      ...(ownerName || ownerAvatarUrl
+        ? {
+            owner: {
+              ...(ownerName ? { name: ownerName } : {}),
+              ...(ownerAvatarUrl ? { avatarUrl: ownerAvatarUrl } : {})
+            }
+          }
         : {})
     }
   ];
+}
+
+function normalizeAgentWindowAvailability(
+  value: unknown
+): AgentGUIAgent["availability"] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const availability = value as Partial<AgentGUIAgent["availability"]>;
+  const status = availability.status;
+  if (
+    status !== "ready" &&
+    status !== "checking" &&
+    status !== "coming_soon" &&
+    status !== "not_installed" &&
+    status !== "auth_required" &&
+    status !== "unavailable"
+  ) {
+    return null;
+  }
+  const reason = readTrimmedString(availability.reason);
+  const pendingAction = availability.pendingAction;
+  return {
+    status,
+    ...(reason ? { reason } : {}),
+    ...(pendingAction === "install" ||
+    pendingAction === "login" ||
+    pendingAction === "refresh"
+      ? { pendingAction }
+      : {})
+  };
 }
 
 function readTrimmedString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function parseAgentWindowProviderTargets(
+function parseAgentWindowAgents(
   value: string | null
-): AgentGUIProviderTarget[] | undefined {
+): AgentGUIAgent[] | undefined {
   if (!value) {
     return undefined;
   }
@@ -250,9 +252,7 @@ function parseAgentWindowProviderTargets(
     if (!Array.isArray(parsed)) {
       return undefined;
     }
-    return normalizeAgentWindowProviderTargets(
-      parsed as readonly AgentGUIProviderTarget[]
-    );
+    return normalizeAgentWindowAgents(parsed as readonly AgentGUIAgent[]);
   } catch {
     return undefined;
   }

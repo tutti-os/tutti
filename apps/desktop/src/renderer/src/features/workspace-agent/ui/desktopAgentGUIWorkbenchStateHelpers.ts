@@ -8,9 +8,9 @@ import {
 
 export function resolveDesktopAgentGUIProviderForAgentTarget(
   agentTargetId: string | null,
-  providerTargets:
+  agents:
     | readonly {
-        agentTargetId?: string | null;
+        agentTargetId: string;
         provider: DesktopAgentGUIProvider;
       }[]
     | undefined,
@@ -19,7 +19,7 @@ export function resolveDesktopAgentGUIProviderForAgentTarget(
   if (!agentTargetId) {
     return fallbackProvider;
   }
-  const target = providerTargets?.find(
+  const target = agents?.find(
     (candidate) => candidate.agentTargetId === agentTargetId
   );
   if (target) {

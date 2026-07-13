@@ -19,6 +19,8 @@ type AgentSessionService interface {
 	ListFiltered(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	ListSessionSections(context.Context, string, agentservice.ListSessionSectionsInput) (agentservice.SessionSectionsPage, error)
 	ListSessionSectionPage(context.Context, string, agentservice.ListSessionSectionPageInput) (agentservice.SessionSection, error)
+	CountSessionSection(context.Context, string, agentservice.CountSessionSectionInput) (agentservice.SessionSectionCount, error)
+	DeleteSessionSection(context.Context, string, agentservice.DeleteSessionSectionInput) (agentservice.DeleteSessionSectionResult, error)
 	ListPinnedSessionPage(context.Context, string, agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	ListGeneratedFiles(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error)
@@ -71,6 +73,7 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		Provider: string(request.Provider),
 	}
 	if request.Body != nil {
+		input.AgentTargetID = optionalStringValue(request.Body.AgentTargetId)
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
 	}
@@ -627,6 +630,9 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 		}
 		if block.Data != nil {
 			item.Data = *block.Data
+		}
+		if block.Url != nil {
+			item.URL = *block.Url
 		}
 		if block.AttachmentId != nil {
 			item.AttachmentID = *block.AttachmentId

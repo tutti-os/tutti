@@ -11,6 +11,8 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
@@ -66,7 +68,7 @@ type sendInput struct {
 type sessionActionResult struct {
 	Session          agentservice.Session
 	LaunchRequested  bool
-	WaitAfterVersion uint64
+	WaitAfterVersion *uint64
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
@@ -74,14 +76,18 @@ func (p Provider) newStartCommand() cliservice.Command {
 		ID:          appID + ".agent.start",
 		Path:        []string{"agent", "start"},
 		Summary:     "Start an agent session with a provider shortcut",
-		Description: "Generic provider start is target-aware and no longer creates sessions directly. Use `tutti codex start` or `tutti claude start`.",
+		Description: "Start an agent session by canonical provider id. Tutti resolves the provider through the enabled Agent Target catalog.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			return p.runStart(ctx, invoke, input.Provider, "", startFields{
+			target, err := p.resolveGenericStartTarget(ctx, input.Provider)
+			if err != nil {
+				return nil, err
+			}
+			return p.runStart(ctx, invoke, target.Provider, target.ID, startFields{
 				Cwd:             input.Cwd,
 				DisplayPrompt:   input.DisplayPrompt,
 				Hidden:          input.Hidden,
@@ -96,6 +102,14 @@ func (p Provider) newStartCommand() cliservice.Command {
 			})
 		},
 	})
+}
+
+func (p Provider) resolveGenericStartTarget(ctx context.Context, provider string) (agenttargetbiz.Target, error) {
+	canonicalProvider := agentproviderbiz.Normalize(provider)
+	if canonicalProvider == "" {
+		return agenttargetbiz.Target{}, fmt.Errorf("%w: unsupported agent provider %q", cliservice.ErrInvalidInput, provider)
+	}
+	return p.resolveEnabledAgentTarget(ctx, canonicalProvider)
 }
 
 type providerStartCommandSpec struct {
@@ -127,7 +141,17 @@ func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliserv
 			CLIDescription: spec.Description,
 		},
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input providerStartInput) (any, error) {
-			return p.runStart(ctx, invoke, spec.Provider, spec.AgentTargetID, startFields(input))
+			targetID := spec.AgentTargetID
+			provider := spec.Provider
+			if p.agentTargets != nil {
+				target, err := p.resolveEnabledAgentTarget(ctx, spec.Provider)
+				if err != nil {
+					return nil, err
+				}
+				targetID = target.ID
+				provider = target.Provider
+			}
+			return p.runStart(ctx, invoke, provider, targetID, startFields(input))
 		},
 	})
 }
@@ -152,7 +176,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	}
 	agentTargetID = strings.TrimSpace(agentTargetID)
 	if agentTargetID == "" {
-		return nil, fmt.Errorf("%w: generic agent start cannot create a provider-only session; use `tutti codex start --prompt ...` or `tutti claude start --prompt ...` instead, or run `tutti agent start --help` to inspect the legacy command shape", cliservice.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: agent target id is required", cliservice.ErrInvalidInput)
 	}
 	cwd, err := p.resolveStartCwd(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
 	if err != nil {
@@ -315,14 +339,18 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	waitAfterVersion, err := p.currentLatestVersion(ctx, invoke.WorkspaceID, input.SessionID)
-	if err != nil {
-		return nil, err
-	}
 	content, err := promptContentFromCLIInput(input.Prompt, input.Images)
 	if err != nil {
 		return nil, err
 	}
+	messagePage, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
+		Limit: 1,
+		Order: agentactivitybiz.MessageOrderDesc,
+	})
+	if err != nil {
+		return nil, err
+	}
+	waitAfterVersion := messagePage.LatestVersion
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
 		Content:  content,
 		Guidance: input.Guidance,
@@ -331,18 +359,7 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	session := result.Session
-	return sessionActionResult{Session: session, WaitAfterVersion: waitAfterVersion}, nil
-}
-
-func (p Provider) currentLatestVersion(ctx context.Context, workspaceID string, sessionID string) (uint64, error) {
-	page, err := p.sessions.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
-		Limit: 1,
-		Order: agentactivitybiz.MessageOrderDesc,
-	})
-	if err != nil {
-		return 0, err
-	}
-	return page.LatestVersion, nil
+	return sessionActionResult{Session: session, WaitAfterVersion: &waitAfterVersion}, nil
 }
 
 func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {
@@ -452,8 +469,8 @@ func sessionActionOutputSpec() framework.OutputSpec {
 					"launchRequested": action.LaunchRequested,
 					"session":         sessionActionValue(action.Session),
 				}
-				if action.WaitAfterVersion > 0 {
-					value["waitAfterVersion"] = action.WaitAfterVersion
+				if action.WaitAfterVersion != nil {
+					value["waitAfterVersion"] = *action.WaitAfterVersion
 				}
 				return value
 			},

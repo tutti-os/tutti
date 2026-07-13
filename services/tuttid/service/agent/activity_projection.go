@@ -18,6 +18,7 @@ type ActivityProjection struct {
 	publisher              ActivityUpdatePublisher
 	sessionMessageObserver SessionMessageObserver
 	sessionStateObserver   SessionStateObserver
+	agentTargetResolver    AgentTargetResolver
 }
 
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
@@ -117,6 +118,11 @@ func (p *ActivityProjection) ReportSessionState(
 	}
 	input.SessionOrigin = sessionOrigin
 	input.Source = source
+	canonicalTargetID, runtimeContext := p.canonicalizeAgentTargetID(
+		ctx,
+		firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID),
+		input.State.RuntimeContext,
+	)
 	stateReport := agentactivitybiz.SessionStateReport{
 		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
@@ -124,12 +130,12 @@ func (p *ActivityProjection) ReportSessionState(
 		// Tutti local workspaces intentionally leave Source.UserID empty. Cloud
 		// collaboration hosts may provide real account user ids on this wire.
 		UserID:            strings.TrimSpace(input.Source.UserID),
-		AgentTargetID:     strings.TrimSpace(firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID)),
+		AgentTargetID:     canonicalTargetID,
 		Provider:          strings.TrimSpace(firstNonEmptyString(input.State.Provider, input.Source.Provider)),
 		ProviderSessionID: strings.TrimSpace(firstNonEmptyString(input.State.ProviderSessionID, input.Source.ProviderSessionID)),
 		Model:             strings.TrimSpace(input.State.Model),
 		Settings:          clonePayload(input.State.Settings),
-		RuntimeContext:    clonePayload(input.State.RuntimeContext),
+		RuntimeContext:    clonePayload(runtimeContext),
 		Cwd:               strings.TrimSpace(input.State.CWD),
 		Title:             strings.TrimSpace(sessionStateTitle(input.State)),
 		Status:            strings.TrimSpace(input.State.LifecycleStatus),
@@ -170,7 +176,7 @@ func (p *ActivityProjection) ReportSessionState(
 				input.WorkspaceID,
 				input.AgentSessionID,
 				result.LastEventUnixMS,
-				firstNonEmptyString(input.State.AgentTargetID, input.Source.AgentTargetID),
+				canonicalTargetID,
 			),
 		)
 		if result.StateApplied {
@@ -332,7 +338,7 @@ func (p *ActivityProjection) GetSession(workspaceID string, agentSessionID strin
 	if !ok {
 		return PersistedSession{}, false
 	}
-	return persistedSessionFromActivity(session), true
+	return p.projectPersistedSession(context.Background(), persistedSessionFromActivity(session)), true
 }
 
 func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSession, bool) {
@@ -352,8 +358,9 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 		return nil, false
 	}
 	out := make([]PersistedSession, 0, len(sessions))
+	ctx := context.Background()
 	for _, session := range sessions {
-		out = append(out, persistedSessionFromActivity(session))
+		out = append(out, p.projectPersistedSession(ctx, persistedSessionFromActivity(session)))
 	}
 	return out, true
 }
@@ -395,6 +402,56 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
 	}
 	return removed, nil
+}
+
+func (p *ActivityProjection) CountSessionSection(
+	ctx context.Context,
+	input agentactivitybiz.CountSessionSectionInput,
+) (agentactivitybiz.SessionSectionCount, bool) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.SessionSectionCount{}, false
+	}
+	count, ok, err := p.repo.CountSessionSection(ctx, input)
+	if err != nil {
+		slog.Warn("count workspace agent session section failed",
+			"event", "workspace.agent_session.section.count_failed",
+			"workspace_id", input.WorkspaceID,
+			"section_key", input.SectionKey,
+			"error", err,
+		)
+		return agentactivitybiz.SessionSectionCount{}, false
+	}
+	return count, ok
+}
+
+func (p *ActivityProjection) DeleteSessionSection(
+	ctx context.Context,
+	input agentactivitybiz.DeleteSessionSectionInput,
+) (agentactivitybiz.DeleteSessionSectionResult, bool) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.DeleteSessionSectionResult{}, false
+	}
+	result, ok, err := p.repo.DeleteSessionSection(ctx, input)
+	if err != nil {
+		slog.Warn("delete workspace agent session section failed",
+			"event", "workspace.agent_session.section.delete_failed",
+			"workspace_id", input.WorkspaceID,
+			"section_key", input.SectionKey,
+			"error", err,
+		)
+		return agentactivitybiz.DeleteSessionSectionResult{}, false
+	}
+	if !ok {
+		return agentactivitybiz.DeleteSessionSectionResult{}, false
+	}
+	for _, agentSessionID := range result.RemovedSessionIDs {
+		agentSessionID = strings.TrimSpace(agentSessionID)
+		if agentSessionID == "" {
+			continue
+		}
+		p.publishActivityUpdated(ctx, input.WorkspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(input.WorkspaceID, agentSessionID))
+	}
+	return result, true
 }
 
 func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {

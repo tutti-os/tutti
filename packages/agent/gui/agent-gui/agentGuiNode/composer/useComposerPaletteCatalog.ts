@@ -39,6 +39,7 @@ import type { AgentSlashPaletteEntry } from "../AgentSlashCommandPalette";
 interface UseComposerPaletteCatalogInput {
   provider: string;
   isGoalModeActive: boolean;
+  goalSupported: boolean;
   paletteDraftPrompt: string;
   availableCommands: readonly AgentSessionCommand[];
   availableSkills: readonly AgentGUIProviderSkillOption[];
@@ -60,6 +61,7 @@ function isSlashCommandCapability(
 export function useComposerPaletteCatalog({
   provider,
   isGoalModeActive,
+  goalSupported,
   paletteDraftPrompt,
   availableCommands,
   availableSkills,
@@ -90,7 +92,10 @@ export function useComposerPaletteCatalog({
         planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
         computerSupported: Boolean(composerSettings.supportsComputerUse)
-      }),
+      }).filter(
+        (command) =>
+          goalSupported || command.name.trim().toLowerCase() !== "goal"
+      ),
     [
       availableCommands,
       compactSupported,
@@ -98,6 +103,7 @@ export function useComposerPaletteCatalog({
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
       hasCompactableContext,
+      goalSupported,
       provider,
       slashCommandPolicy
     ]

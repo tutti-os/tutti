@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 var (
@@ -45,8 +46,10 @@ type sessionLifecycleLock struct {
 }
 
 type activeTurn struct {
-	turnID string
-	cancel context.CancelFunc
+	turnID                string
+	cancel                context.CancelFunc
+	openCallIDs           map[string]struct{}
+	pendingTerminalEvents []activityshared.Event
 }
 
 type reportRequest struct {

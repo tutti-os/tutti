@@ -266,6 +266,39 @@ test("desktop agent activity runtime reads archived prompt assets", async () => 
   });
 });
 
+test("desktop agent activity runtime delegates canonical session synchronization only", () => {
+  const calls: unknown[] = [];
+  const runtime = createDesktopAgentActivityRuntime({
+    ...createWorkspaceAgentActivityService(),
+    ensureSessionSynchronized(input) {
+      calls.push(input);
+      return () => {
+        calls.push("dispose");
+      };
+    }
+  });
+
+  const dispose = runtime.ensureSessionSynchronized?.({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    afterVersion: 42
+  });
+  dispose?.();
+
+  assert.deepEqual(calls, [
+    {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      afterVersion: 42
+    },
+    "dispose"
+  ]);
+  assert.equal(
+    (runtime as { retainSessionEvents?: unknown }).retainSessionEvents,
+    undefined
+  );
+});
+
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
@@ -320,6 +353,18 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       sectionKey: input.sectionKey,
       sessions: [],
       hasMore: false
+    }),
+    countSessionSection: async (input) => ({
+      count: 0,
+      sectionKey: input.sectionKey,
+      workspaceId: input.workspaceId
+    }),
+    deleteSessionSection: async (input) => ({
+      removedMessages: 0,
+      removedSessionIds: [],
+      removedSessions: 0,
+      sectionKey: input.sectionKey,
+      workspaceId: input.workspaceId
     }),
     listPinnedSessionsPage: async () => ({
       hasMore: false,

@@ -248,7 +248,7 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: ["claude-code", "codex"]
+      enum: ["claude-code", "codex", "cursor", "opencode"]
     },
     dockIconStyle: {
       type: "string",
@@ -1467,7 +1467,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: ["claude-code", "codex"]
+          enum: ["claude-code", "codex", "cursor", "opencode"]
         },
         dockIconStyle: {
           type: "string",
@@ -1834,7 +1834,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: ["claude-code", "codex"]
+          enum: ["claude-code", "codex", "cursor", "opencode"]
         },
         dockIconStyle: {
           type: "string",

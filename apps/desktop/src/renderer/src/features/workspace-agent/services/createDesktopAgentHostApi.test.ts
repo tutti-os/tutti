@@ -49,6 +49,7 @@ test("desktop agent host api forwards model catalog invalidation as a host event
 
   // The stream subscription starts with the first workspace controller.
   await activityService.getComposerOptions({
+    agentTargetId: "local:codex",
     provider: "codex",
     workspaceId
   });

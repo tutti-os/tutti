@@ -4,9 +4,14 @@ import { dirname, join, relative } from "node:path";
 const GO_MODULE_ROOTS = [
   "apps/cli",
   "packages/agent/daemon",
+  "packages/agent/runtimeprep",
+  "packages/agent/store-sqlite",
   "packages/appcli/core",
+  "packages/auth/bridge-go",
+  "packages/events/stream-go",
   "packages/workbench/service",
   "packages/workspace/files",
+  "packages/workspace/issues",
   "services/tuttid"
 ].sort((left, right) => right.length - left.length);
 
@@ -34,6 +39,14 @@ export function isBuiltinGenerateRequired(changedFiles) {
       !normalized.startsWith("services/tuttid/builtin-apps/generated/")
     );
   });
+}
+
+export function isToolTestRelevant(file) {
+  const normalized = file.replaceAll("\\", "/");
+  return (
+    normalized.startsWith("tools/scripts/") ||
+    normalized.startsWith("packages/workspace/app-release-tools/")
+  );
 }
 
 export function resolveGoValidationTargets(

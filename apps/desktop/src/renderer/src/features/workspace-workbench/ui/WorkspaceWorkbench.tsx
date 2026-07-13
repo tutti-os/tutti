@@ -1,5 +1,12 @@
 import type * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -50,8 +57,8 @@ import { translate } from "@renderer/i18n/appRuntime";
 import { cn } from "@renderer/lib/format";
 import { Toast } from "@renderer/lib/toast";
 import {
-  createWorkspaceAgentGuiDraftLaunchRequest,
-  createWorkspaceAgentGuiSessionLaunchRequest
+  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
+  createWorkspaceAgentGuiUnifiedSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
 import {
   resolveWorkspaceAgentChatProvider,
@@ -103,6 +110,8 @@ import {
   type StandaloneAgentWindowProps
 } from "./StandaloneAgentWindow.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
+import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService.ts";
+import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
 import type { DesktopWorkspaceAppExternalHostApi } from "@preload/types";
@@ -189,12 +198,7 @@ export function WorkspaceWorkbench({
   );
 }
 
-function ReadyWorkspaceWorkbench({
-  enableWindowCloseGuard,
-  headerSlot,
-  state,
-  workspaceAppExternalApi
-}: {
+interface ReadyWorkspaceWorkbenchProps {
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
   state: {
@@ -202,11 +206,53 @@ function ReadyWorkspaceWorkbench({
     workspace: WorkspaceSummary;
   };
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
+}
+
+function ReadyWorkspaceWorkbench(props: ReadyWorkspaceWorkbenchProps) {
+  const workbenchHostService = useWorkspaceWorkbenchHostService();
+  const workspaceId = props.state.workspace.id;
+  const [hostSession, setHostSession] =
+    useState<WorkspaceWorkbenchHostSessionBinding | null>(null);
+
+  useLayoutEffect(() => {
+    const binding = workbenchHostService.openHostSession(workspaceId);
+    setHostSession(binding);
+    return () => {
+      binding.release();
+    };
+  }, [workbenchHostService, workspaceId]);
+
+  if (
+    !hostSession ||
+    !hostSession.isActive ||
+    hostSession.workspaceId !== workspaceId
+  ) {
+    return <main className="h-screen min-h-0 bg-background" />;
+  }
+
+  return (
+    <ReadyWorkspaceWorkbenchWithSession
+      {...props}
+      key={hostSession.bindingId}
+      hostSession={hostSession}
+    />
+  );
+}
+
+function ReadyWorkspaceWorkbenchWithSession({
+  enableWindowCloseGuard,
+  headerSlot,
+  hostSession,
+  state,
+  workspaceAppExternalApi
+}: ReadyWorkspaceWorkbenchProps & {
+  hostSession: WorkspaceWorkbenchHostSessionBinding;
 }) {
   const { service: appCenterService } = useWorkspaceAppCenterService();
   const agentProviderStatusService = useService(IAgentProviderStatusService);
   const runtime = useWorkspaceWorkbenchShellRuntime({
     enableWindowCloseGuard,
+    hostSession,
     state
   });
   const hostInput = runtime.hostInput;
@@ -362,7 +408,7 @@ function ReadyWorkspaceWorkbench({
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
               normalizedDraftPrompt
-                ? createWorkspaceAgentGuiDraftLaunchRequest({
+                ? createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
@@ -370,7 +416,7 @@ function ReadyWorkspaceWorkbench({
                     provider,
                     userProjectPath
                   })
-                : createWorkspaceAgentGuiSessionLaunchRequest({
+                : createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
                     agentTargetId,
                     agentSessionId,
                     openInNewWindow,

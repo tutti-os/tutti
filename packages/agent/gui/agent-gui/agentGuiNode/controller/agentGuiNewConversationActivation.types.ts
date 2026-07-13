@@ -9,7 +9,7 @@ import type {
   AgentSessionComposerSettings,
   AgentSessionState
 } from "../../../shared/agentSessionTypes";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { type AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
@@ -18,11 +18,11 @@ export interface UseAgentGUINewConversationActivationInput {
   getCachedComposerOptions: () =>
     | import("@tutti-os/agent-activity-core").AgentActivityComposerOptions
     | null;
-  selectedProviderTargetRef: RefObject<AgentGUIProviderTarget>;
+  selectedAgentTargetRef: RefObject<AgentGUIAgentTarget>;
   selectedComposerTargetDataRef: RefObject<AgentGUIComposerTargetData>;
   latestPendingNewActivation: PendingActivationIntentRecord | null;
-  providerTargetsProvidedRef: RefObject<boolean>;
-  selectedProviderTargetIsExplicitRef: RefObject<boolean>;
+  agentTargetsProvidedRef: RefObject<boolean>;
+  selectedAgentTargetIsExplicitRef: RefObject<boolean>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
   isCreatingConversationRef: RefObject<boolean>;
   onDataChangeRef: RefObject<

@@ -8,7 +8,7 @@ export interface ComposerOptionsCacheCoordinator {
     cacheKey: string,
     requestSignature: string
   ): Promise<AgentActivityComposerOptions> | null;
-  cacheKey(provider: string, agentTargetId: string | null): string;
+  cacheKey(targetKey: string): string;
   finishActive(
     cacheKey: string,
     load: Promise<AgentActivityComposerOptions>
@@ -23,6 +23,7 @@ export interface ComposerOptionsCacheCoordinator {
   markSettled(cacheKey: string, requestSignature: string): void;
   nextLoadVersion(cacheKey: string): number;
   requestSignature(input: {
+    provider?: string;
     cwd?: string | null;
     settings?: AgentActivityComposerSettings | null;
   }): string;
@@ -40,15 +41,19 @@ export function createComposerOptionsCacheCoordinator(): ComposerOptionsCacheCoo
       activeSignatures.get(cacheKey) === signature
         ? (activeLoads.get(cacheKey) ?? null)
         : null,
-    cacheKey: (provider, agentTargetId) =>
-      agentTargetId ? `target:${agentTargetId}` : `provider:${provider}`,
+    cacheKey: (targetKey) => `target:${targetKey}`,
     finishActive: (cacheKey, load) => {
       if (activeLoads.get(cacheKey) === load) {
         activeLoads.delete(cacheKey);
         activeSignatures.delete(cacheKey);
       }
     },
-    invalidate: (cacheKey) => settledSignatures.delete(cacheKey),
+    invalidate: (cacheKey) => {
+      settledSignatures.delete(cacheKey);
+      activeLoads.delete(cacheKey);
+      activeSignatures.delete(cacheKey);
+      loadVersions.set(cacheKey, (loadVersions.get(cacheKey) ?? 0) + 1);
+    },
     isLatest: (cacheKey, version) => loadVersions.get(cacheKey) === version,
     markActive: (cacheKey, signature, load) => {
       activeLoads.set(cacheKey, load);
@@ -69,6 +74,7 @@ export function createComposerOptionsCacheCoordinator(): ComposerOptionsCacheCoo
 }
 
 function composerOptionsRequestSignature(input: {
+  provider?: string;
   cwd?: string | null;
   settings?: AgentActivityComposerSettings | null;
 }): string {
@@ -76,6 +82,7 @@ function composerOptionsRequestSignature(input: {
   const normalizedText = (value: string | null | undefined): string | null =>
     value?.trim() || null;
   return JSON.stringify({
+    provider: input.provider?.trim() ?? "",
     cwd: input.cwd?.trim() ?? "",
     settings: {
       model: normalizedText(settings?.model),

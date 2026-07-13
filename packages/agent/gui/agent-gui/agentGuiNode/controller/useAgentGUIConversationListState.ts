@@ -10,7 +10,7 @@ import {
   type AgentGUIConversationListQuery
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import {
   createAgentGUIConversationFilterState,
   type AgentGUIConversationFilter
@@ -23,7 +23,7 @@ interface UseAgentGUIConversationListStateInput {
   agentActivitySnapshot: AgentActivitySnapshot;
   currentUserId?: string | null;
   data: AgentGUINodeData;
-  normalizedProviderTargets: readonly AgentGUIProviderTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   sessionEngine: AgentSessionEngine;
   workspaceId: string;
 }

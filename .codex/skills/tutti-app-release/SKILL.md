@@ -1,6 +1,6 @@
 ---
 name: tutti-app-release
-description: "Set up, review, run, or debug external repositories that publish a Tutti workspace app through the reusable Tutti App Release GitHub Actions workflow. Use for caller workflows, tutti.app.json manifests, @tutti-os/app-release-tools, S3/CloudFront release hosting, latest.json, catalog.json, catalog-only repairs, and App Center visibility issues."
+description: "Set up, review, run, or debug external repositories that publish a Tutti workspace app through the reusable Tutti App Release GitHub Actions workflow. Use for caller workflows, tutti.app.json manifests, @tutti-os/app-release-tools, S3/CloudFront release hosting, latest.json, versions.json, catalog.json, catalog-only repairs, and App Center visibility issues."
 ---
 
 # Tutti App Release
@@ -13,7 +13,7 @@ The external repository calls the reusable workflow from the Tutti/Tutti reposit
 uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
 ```
 
-That workflow builds one app package, runs `@tutti-os/app-release-tools`, uploads immutable release files plus mutable `latest.json`, and can optionally merge that app into the shared `catalog.json`.
+That workflow builds one app package, runs `@tutti-os/app-release-tools`, uploads immutable release files plus mutable `latest.json` and `versions.json`, and can optionally merge that app into the shared `catalog.json`.
 
 ## Operating Rules
 
@@ -25,7 +25,7 @@ Inspect before acting:
 For catalog publication:
 
 - There are three valid modes. Explain them explicitly when helping a user choose.
-- Release only: `publish_catalog: false`. This uploads a new app version and updates `apps/<appId>/latest.json`; App Center will see it the next time `catalog.json` is published.
+- Release only: `publish_catalog: false`. This uploads a new app version and updates `apps/<appId>/latest.json` and `versions.json`; App Center will see it the next time `catalog.json` is published.
 - Release and catalog: `publish_catalog: true`. This uploads the app release, then immediately merges that release into `catalog.json`.
 - Catalog only: `catalog_only: true`. Use this after a release already succeeded when the user forgot to publish catalog, wants to validate first, or wants to refresh catalog without bumping or uploading a new version.
 - Do not rerun a full app release just to repair catalog state.
@@ -41,6 +41,7 @@ For reusable workflow changes:
 
 - Keep long-lived release behavior in the Tutti reusable workflows and app release tools.
 - Keep caller workflows small and stable: app id, package command/dir, runner/tool versions when needed, and environment-specific AWS/CDN values.
+- Require callers to declare `min_tutti_version` explicitly. Use `0.0.0` only for releases that are safe for every legacy Tutti client.
 - Avoid requiring app repositories to change for catalog repair behavior. Use an existing catalog-only path for that.
 
 ## Release Contract
@@ -68,6 +69,7 @@ The workflow writes release objects under:
 ```text
 apps/<appId>/<version>/
 apps/<appId>/latest.json
+apps/<appId>/versions.json
 ```
 
 For production, the workflow derives the next release version by fetching
@@ -119,6 +121,7 @@ jobs:
     uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
     with:
       app_id: your-app-id
+      min_tutti_version: "REQUIRED_MIN_TUTTI_VERSION"
       package_command: pnpm package:tutti
       package_dir: build/tutti-app/package
       icon_path: build/tutti-app/package/icon.png
@@ -150,6 +153,7 @@ the same reusable workflow inputs:
 
 ```yaml
 app_id: ${{ matrix.target.app_id }}
+min_tutti_version: ${{ matrix.target.min_tutti_version }}
 package_command: ${{ matrix.target.package_command }}
 package_dir: ${{ matrix.target.package_dir }}
 icon_path: ${{ matrix.target.icon_path }}
@@ -163,6 +167,7 @@ create_release_tag: ${{ !inputs.catalog_only }}
 Required release inputs:
 
 - `app_id`: app id, matching the source and package `tutti.app.json`.
+- `min_tutti_version`: minimum compatible Tutti SemVer for a normal release. It has no permissive default; catalog-only repairs read the stored rule from `versions.json`.
 - `aws_region`: AWS region for the release bucket.
 - `aws_role_arn`: IAM role assumed through GitHub OIDC.
 - `s3_bucket`: bucket receiving release files.
@@ -183,7 +188,7 @@ Optional release/version inputs:
 Optional catalog inputs:
 
 - `publish_catalog`: after uploading the app release, merge that release into `catalog.json`. Default: `false`.
-- `catalog_only`: skip package build, release metadata generation, and app release upload; merge existing `apps/<appId>/latest.json` into `catalog.json`. Default: `false`.
+- `catalog_only`: skip package build, release metadata generation, and app release upload; rebuild the app from `apps/<appId>/versions.json` into `catalog.json`. Default: `false`.
 - `catalog_cloudfront_distribution_id`: CloudFront distribution id for invalidating `/<s3_prefix>/catalog.json` after catalog upload. Default: empty. Caller workflows normally read this from `TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID` or `TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID`; prefer storing the shared value as an organization variable with selected repository access, and use repository variables only for overrides or when organization variables are unavailable. If neither variable is configured, invalidation is skipped and readers rely on the catalog cache TTL.
 
 Optional runtime/tooling inputs:
@@ -195,20 +200,22 @@ Optional runtime/tooling inputs:
 
 ## Catalog Publication
 
-An app release writes `apps/<appId>/latest.json`. App Center sees it only after the shared catalog includes that app.
+An app release writes `apps/<appId>/latest.json` and updates `apps/<appId>/versions.json`. App Center sees it only after the shared catalog includes that app.
 
 Publishing modes:
 
-- Release only: run the app release workflow with `publish_catalog: false` and `catalog_only: false`. This updates `apps/<appId>/latest.json`; catalog changes wait until a later catalog publish.
+- Release only: run the app release workflow with `publish_catalog: false` and `catalog_only: false`. This updates `apps/<appId>/latest.json` and `versions.json`; catalog changes wait until a later catalog publish.
 - Release and catalog: run the app release workflow with `publish_catalog: true`. This publishes the app and then updates `catalog.json` in the same run.
-- Catalog only: run with `catalog_only: true` after a release already exists. This reads the existing `apps/<appId>/latest.json` and updates `catalog.json` without rebuilding, uploading, or bumping a new app version.
+- Catalog only: run with `catalog_only: true` after a release already exists. This reads the existing `apps/<appId>/versions.json` and updates `catalog.json` without rebuilding, uploading, or bumping a new app version.
 
 Catalog merge semantics:
 
-- App repository release workflows are scoped to their current `app_id`. `publish_catalog: true` and `catalog_only: true` merge only that app's `apps/<appId>/latest.json` into `catalog.json`.
+- App repository release workflows are scoped to their current `app_id`. `publish_catalog: true` and `catalog_only: true` merge only that app's `apps/<appId>/versions.json` into `catalog.json`.
 - A release-only app that is not already in `catalog.json` will not be picked up by another app's later `publish_catalog: true` run.
 - The Tutti catalog workflows can merge one or more explicitly selected app ids through `app_ids`. Use that path when refreshing multiple apps, or run each app's catalog-only dispatch separately.
-- Neither path scans S3 for every published `apps/*/latest.json`. Every app that should be added or refreshed must be the current caller app id or be explicitly listed in `app_ids`.
+- Neither path scans S3 for every published app index. Every app that should be added or refreshed must be the current caller app id or be explicitly listed in `app_ids`.
+
+`catalog.json` keeps schema `tutti.app.catalog.v1`. Its `apps[]` array contains the highest active `minTuttiVersion: 0.0.0` release for old clients. New clients read the additive compact `compatibility.apps` frontier. Mutable metadata writes use S3 ETag preconditions because GitHub concurrency groups do not serialize workflows across different repositories.
 
 Catalog-only can be exposed by the app repository caller workflow, or run from the Tutti catalog workflows:
 
@@ -238,6 +245,7 @@ The caller repository needs a GitHub OIDC role that can write release files:
 ```text
 s3://<s3_bucket>/<s3_prefix>/apps/<appId>/<version>/*
 s3://<s3_bucket>/<s3_prefix>/apps/<appId>/latest.json
+s3://<s3_bucket>/<s3_prefix>/apps/<appId>/versions.json
 ```
 
 When `publish_catalog` or `catalog_only` is used in the app release workflow, that role also needs catalog read/write access:
@@ -267,6 +275,8 @@ Expected output:
 - `/tmp/tutti-app-release/apps/<appId>/<version>/<appId>-<version>.zip`
 - `/tmp/tutti-app-release/apps/<appId>/<version>/release.json`
 - `/tmp/tutti-app-release/apps/<appId>/latest.json`
+
+Normal publishing also creates or updates the remote `apps/<appId>/versions.json` compatibility index.
 
 ## Completion Checklist
 

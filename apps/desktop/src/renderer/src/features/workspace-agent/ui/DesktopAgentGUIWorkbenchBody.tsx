@@ -79,13 +79,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onStateChange,
   previewMode = false,
   providerStatusBootstrapSnapshot = null,
-  providerTargets,
-  providerTargetsLoading = false,
-  providerRailAllPresentation = null,
-  providerRailMode = "catalog",
-  renderProviderRailEmpty,
+  agents,
+  agentsLoading = false,
+  allAgentsPresentation = null,
+  renderAgentsEmpty,
   comingSoonAgentProviders,
-  defaultProviderTargetId = null,
+  defaultAgentTargetId = null,
   contextMentionProviders,
   runtimeApi,
   trackAgentProviderChatReady,
@@ -154,10 +153,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     () =>
       resolveDesktopAgentGUIProviderForAgentTarget(
         workbenchAgentTargetId,
-        providerTargets,
+        agents,
         provider
       ),
-    [provider, providerTargets, workbenchAgentTargetId]
+    [agents, provider, workbenchAgentTargetId]
   );
   // Remembered defaults are keyed by agent target id; the daemon overlays
   // legacy provider-keyed entries onto local target ids at read time.
@@ -390,7 +389,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       resolveAgentTargetProvider: (agentTargetId) =>
         resolveDesktopAgentGUIProviderForAgentTarget(
           agentTargetId,
-          providerTargets,
+          agents,
           provider
         ),
       workspaceId,
@@ -404,7 +403,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     handleOpenSessionActivationError,
     handleUpdateNode,
     provider,
-    providerTargets,
+    agents,
     workspaceId
   ]);
 
@@ -677,6 +676,10 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   return (
     <>
       <AgentGUI
+        agents={agents}
+        agentsLoading={agentsLoading}
+        allAgentsPresentation={allAgentsPresentation}
+        renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApiWithToast}
         i18n={i18n}
@@ -740,13 +743,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         hostCapabilities={{
           capabilityMenuState,
           accountMenuState: null,
-          providerTargets: providerTargetsLoading ? [] : providerTargets,
-          providerTargetsLoading,
-          providerRailAllPresentation,
-          providerRailMode,
           comingSoonProviders: comingSoonAgentProviders,
           providerReadinessGates,
-          defaultProviderTargetId,
+          defaultAgentTargetId,
           providerAuthAccountLabels,
           managedAgentsState: effectiveManagedAgentsState,
           contextMentionProviders: previewMode
@@ -785,9 +784,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
               ? undefined
               : handleOpenConversationWindow
         }}
-        renderSlots={{
-          providerRailEmpty: renderProviderRailEmpty
-        }}
+        renderSlots={{}}
       />
     </>
   );

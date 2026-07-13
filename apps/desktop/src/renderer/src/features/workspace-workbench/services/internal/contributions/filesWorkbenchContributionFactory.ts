@@ -1,10 +1,23 @@
 import { createElement } from "react";
 import { workspaceWorkbenchDesktopI18nKeys } from "@shared/i18n";
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceFilesContribution } from "../workspaceFilesContribution.ts";
 import { WorkspaceWorkbenchTrafficLights } from "../../../ui/WorkspaceWorkbenchTrafficLights.ts";
 
-export const filesWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type FilesWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "dockIcons"
+  | "i18n"
+  | "renderFilesNodeBody"
+  | "reporterService"
+  | "workspaceFileManagerService"
+  | "workspaceId"
+>;
+
+export const filesWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<FilesWorkbenchContributionContext> =
   {
     id: "workspace-files",
     order: 10,

@@ -74,6 +74,37 @@ test("sdkContentFromPromptBlocks embeds Claude image prompt blocks", () => {
   );
 });
 
+test("sdkContentFromPromptBlocks maps HTTPS URL image sources", () => {
+  const url = "https://bucket.example/image.webp?token=secret";
+  assert.deepEqual(
+    sdkContentFromPromptBlocks(
+      [{ type: "image", mimeType: "image/webp", url }],
+      "fallback"
+    ),
+    [{ type: "image", source: { type: "url", url } }]
+  );
+  assert.deepEqual(
+    sdkContentFromPromptBlocks(
+      [
+        {
+          type: "image",
+          mimeType: "image/webp",
+          url: "http://example.com/image.webp"
+        }
+      ],
+      "fallback"
+    ),
+    [{ type: "text", text: "fallback" }]
+  );
+  assert.deepEqual(
+    sdkContentFromPromptBlocks(
+      [{ type: "image", mimeType: "image/webp", url, data: "ambiguous" }],
+      "fallback"
+    ),
+    [{ type: "text", text: "fallback" }]
+  );
+});
+
 test("sdkContentFromPromptBlocks falls back to legacy prompt text", () => {
   assert.deepEqual(sdkContentFromPromptBlocks(undefined, "hello"), [
     { type: "text", text: "hello" }

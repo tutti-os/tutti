@@ -43,10 +43,10 @@ export function useAgentGUIDetailModel(input: Input) {
     avoidGroupingEdits: viewModel.detail.avoidGroupingEdits
   });
   const hasActiveConversation = viewModel.rail.activeConversationId !== null;
-  const selectedProviderTargetComingSoon =
-    viewModel.rail.selectedProviderTarget?.disabled === true;
+  const selectedAgentTargetComingSoon =
+    viewModel.rail.selectedAgentTarget?.disabled === true;
   const emptyProviderReadinessGate = !hasActiveConversation
-    ? selectedProviderTargetComingSoon
+    ? selectedAgentTargetComingSoon
       ? ({ status: "coming_soon" } satisfies AgentGUIProviderReadinessGate)
       : viewModel.readiness.providerReadinessGate
     : null;
@@ -352,6 +352,7 @@ export function useAgentGUIDetailModel(input: Input) {
       reasoningOptionHigh: labels.reasoningOptionHigh,
       reasoningOptionXHigh: labels.reasoningOptionXHigh,
       reasoningOptionMax: labels.reasoningOptionMax,
+      reasoningOptionUltra: labels.reasoningOptionUltra,
       speedLabel: labels.speedLabel,
       speedSelectionLabel: labels.speedSelectionLabel,
       speedOptionStandard: labels.speedOptionStandard,
@@ -509,6 +510,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.reasoningOptionHigh,
       labels.reasoningOptionLow,
       labels.reasoningOptionMax,
+      labels.reasoningOptionUltra,
       labels.reasoningOptionMedium,
       labels.reasoningOptionMinimal,
       labels.reasoningOptionXHigh,
@@ -600,7 +602,7 @@ export function useAgentGUIDetailModel(input: Input) {
     interactivePromptLabels,
     isCollaboratorConversation,
     isComposerSending,
-    selectedProviderTargetComingSoon,
+    selectedAgentTargetComingSoon,
     sessionChrome,
     showProviderSetupNotice,
     showStopButton,

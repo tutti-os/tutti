@@ -17,7 +17,7 @@ import { agentColorfulUrl } from "../../../managedAgentIconAssets";
 import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import { AgentSessionChrome } from "../AgentSessionChrome";
 import { AgentComposer, type AgentComposerProps } from "../AgentComposer";
@@ -111,8 +111,8 @@ interface AgentGUIEmptyHeroPaneProps {
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
-  providerTargets: readonly AgentGUIProviderTarget[];
-  selectedProviderTarget: AgentGUIProviderTarget | null;
+  agentTargets: readonly AgentGUIAgentTarget[];
+  selectedAgentTarget: AgentGUIAgentTarget | null;
   chromeLabels: ChromeLabels;
   composerProps: AgentComposerProps;
   providerSelectLabel: string;
@@ -134,8 +134,8 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   onRetryActivation,
   onContinueInNewConversation,
   onProviderSelect,
-  providerTargets,
-  selectedProviderTarget,
+  agentTargets,
+  selectedAgentTarget,
   chromeLabels,
   composerProps,
   providerSelectLabel,
@@ -162,7 +162,7 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             <AgentGUIAllProviderGridIcon
               key={heroIconAnimationKey}
               activeProvider={provider}
-              className={styles.emptyHeroLaunchpadIcon}
+              className={styles.agentAvatar}
               icons={heroIconPresentations}
             />
           ) : (
@@ -179,8 +179,8 @@ export const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
             label={emptyLabel}
             providerLabel={emptyProvider}
             providerSelectLabel={providerSelectLabel}
-            providerTargets={providerTargets}
-            selectedProviderTarget={selectedProviderTarget}
+            agentTargets={agentTargets}
+            selectedAgentTarget={selectedAgentTarget}
             onProviderSelect={onProviderSelect}
           />
         </h2>
@@ -274,7 +274,7 @@ export const AgentGUIProviderReadinessGatePane = memo(
         >
           {showAllProvidersChecking ? (
             <AgentGUIAllProviderGridIcon
-              className={styles.emptyHeroLaunchpadIcon}
+              className={styles.agentAvatar}
               icons={launchpadIconPresentations}
             />
           ) : (
@@ -447,12 +447,12 @@ function AgentGUILaunchpadIconGrid({
     ? normalizeManagedAgentProvider(activeProvider)
     : null;
   return (
-    <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
+    <span aria-hidden="true" className={styles.agentAvatar}>
       {icons.map((icon) => {
         return (
           <span
             key={`${icon.provider}:${icon.iconUrl}`}
-            className={styles.providerRailLaunchpadItem}
+            className={styles.agentAvatar}
             data-provider-active={
               normalizedActiveProvider === null
                 ? undefined
@@ -492,15 +492,15 @@ function EmptyHeroTitle({
   label,
   providerLabel,
   providerSelectLabel,
-  providerTargets = [],
-  selectedProviderTarget = null,
+  agentTargets = [],
+  selectedAgentTarget = null,
   onProviderSelect
 }: {
   label: string;
   providerLabel: string;
   providerSelectLabel: string;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  selectedProviderTarget?: AgentGUIProviderTarget | null;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  selectedAgentTarget?: AgentGUIAgentTarget | null;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
 }): React.JSX.Element {
   const providerStart = providerLabel ? label.indexOf(providerLabel) : -1;
@@ -510,15 +510,15 @@ function EmptyHeroTitle({
   }
 
   const providerEnd = providerStart + providerLabel.length;
-  const selectedProviderTargetId =
-    selectedProviderTarget?.targetId ??
-    `local:${selectedProviderTarget?.provider ?? ""}`;
-  const enabledProviderTargets = providerTargets.filter(
+  const selectedAgentTargetId =
+    selectedAgentTarget?.targetId ??
+    `local:${selectedAgentTarget?.provider ?? ""}`;
+  const enabledProviderTargets = agentTargets.filter(
     (target) => target.disabled !== true
   );
   const canSwitchProvider =
     enabledProviderTargets.length > 1 &&
-    selectedProviderTarget &&
+    selectedAgentTarget &&
     onProviderSelect;
   const providerName = label.slice(providerStart, providerEnd);
 
@@ -527,7 +527,7 @@ function EmptyHeroTitle({
       {label.slice(0, providerStart)}
       {canSwitchProvider ? (
         <Select
-          value={selectedProviderTargetId}
+          value={selectedAgentTargetId}
           onValueChange={(nextTargetId) => {
             const target = enabledProviderTargets.find(
               (candidate) => candidate.targetId === nextTargetId
@@ -537,7 +537,7 @@ function EmptyHeroTitle({
             }
             onProviderSelect({
               provider: target.provider,
-              providerTargetId: target.targetId
+              agentTargetId: target.targetId
             });
           }}
         >

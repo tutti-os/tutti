@@ -4,7 +4,7 @@ import type {
   AgentTargetProvider,
   AgentTargetSource
 } from "@tutti-os/client-tuttid-ts";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 
 export interface AgentTargetPresentation {
   agentTargetId: string;
@@ -21,9 +21,9 @@ export interface AgentTargetPresentation {
 }
 
 export interface AgentsSnapshot {
+  agents: readonly AgentGUIAgent[];
   agentTargets: readonly AgentTargetPresentation[];
   capturedAtUnixMs: number | null;
-  providerTargets: readonly AgentGUIProviderTarget[];
 }
 
 export interface IAgentsService {

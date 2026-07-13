@@ -29,7 +29,6 @@ import {
   createWorkspaceAgentOutcomeNotificationController,
   registerWorkspaceWorkbenchServices
 } from "@renderer/features/workspace-workbench";
-import { readTuttiAgentSwitchEnabled } from "@renderer/features/workspace-workbench/services/tuttiAgentSwitchPreference.ts";
 import {
   managedAgentRoundedIconUrl,
   userAvatarPlaceholderUrl,
@@ -149,12 +148,32 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   };
   const subscribeAgentProviderVisibility = (
     listener: () => void
-  ): (() => void) => subscribe(desktopPreferencesService.store, listener);
+  ): (() => void) => {
+    let enableCursorAgent = desktopPreferencesService.store.enableCursorAgent;
+    let enableOpenCodeAgent =
+      desktopPreferencesService.store.enableOpenCodeAgent;
+    return subscribe(desktopPreferencesService.store, () => {
+      const nextEnableCursorAgent =
+        desktopPreferencesService.store.enableCursorAgent;
+      const nextEnableOpenCodeAgent =
+        desktopPreferencesService.store.enableOpenCodeAgent;
+      if (
+        nextEnableCursorAgent === enableCursorAgent &&
+        nextEnableOpenCodeAgent === enableOpenCodeAgent
+      ) {
+        return;
+      }
+      enableCursorAgent = nextEnableCursorAgent;
+      enableOpenCodeAgent = nextEnableOpenCodeAgent;
+      listener();
+    });
+  };
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
     reporterService
   });
   let disposeAgentOutcomeNotificationController: (() => void) | null = null;
+  let disposeAgentProviderVisibilityRefresh: (() => void) | null = null;
   let releasedWindowAnalytics = false;
   const releaseWindowAnalytics = () => {
     if (releasedWindowAnalytics) {
@@ -164,6 +183,8 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     window.removeEventListener("beforeunload", releaseWindowAnalytics);
     disposeAgentOutcomeNotificationController?.();
     disposeAgentOutcomeNotificationController = null;
+    disposeAgentProviderVisibilityRefresh?.();
+    disposeAgentProviderVisibilityRefresh = null;
     predefinePageviewAnalytics.dispose();
     daemonConnectionAnalytics.release();
   };
@@ -222,6 +243,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     ),
     workspaceUserProjectService
   });
+  disposeAgentProviderVisibilityRefresh = subscribeAgentProviderVisibility(
+    () => {
+      void workspaceAgentServices.agentsService.refresh().catch(() => {});
+    }
+  );
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
@@ -248,8 +274,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       const snapshot =
         workspaceAgentServices.agentProviderStatusService.getSnapshot();
       return snapshot.capturedAt === null ? undefined : snapshot.statuses;
-    },
-    isTuttiAgentSwitchEnabled: () => readTuttiAgentSwitchEnabled()
+    }
   });
   registerWorkspaceWorkbenchServices(registry, {
     browserApi: desktopApi.browser,
@@ -267,7 +292,10 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     platformApi: desktopApi.platform,
     reporterService,
     runtimeApi: desktopApi.runtime,
-    wallpaperApi: desktopApi.wallpaper
+    wallpaperApi: desktopApi.wallpaper,
+    onAgentTargetsChanged: async () => {
+      await workspaceAgentServices.agentsService.refresh();
+    }
   });
   return {
     agentProviderStatusService:

@@ -16,7 +16,6 @@ import {
 } from "./controllerSnapshot.ts";
 import type {
   AgentActivityComposerOptions,
-  AgentActivityLoadComposerOptionsInput,
   AgentActivityMessageOrder,
   AgentActivityMessagePage,
   AgentActivitySnapshot,
@@ -45,9 +44,7 @@ export interface AgentActivityController {
   subscribe(listener: AgentActivitySnapshotListener): () => void;
   load(signal?: AbortSignal): Promise<AgentActivitySnapshot>;
   loadComposerOptions(
-    input: Omit<AgentActivityLoadComposerOptionsInput, "workspaceId"> & {
-      force?: boolean;
-    }
+    input: import("./controllerComposerOptions.ts").AgentActivityLoadComposerOptionsControllerInput
   ): Promise<AgentActivityComposerOptions>;
   invalidateComposerOptions(input?: { providers?: readonly string[] }): void;
   listSessionMessages(input: {

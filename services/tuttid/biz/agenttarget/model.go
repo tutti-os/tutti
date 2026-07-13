@@ -84,6 +84,42 @@ func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDesc
 	}
 }
 
+// EnabledTargetsByProvider returns the first valid enabled target for each
+// canonical provider while preserving the target catalog order. Provider
+// visibility is owned by Agent Targets; callers must not rebuild this policy
+// from runtime availability or app-local allowlists.
+func EnabledTargetsByProvider(targets []Target) []Target {
+	result := make([]Target, 0, len(targets))
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		normalized, err := NormalizeTarget(target)
+		if err != nil || !normalized.Enabled {
+			continue
+		}
+		if _, ok := seen[normalized.Provider]; ok {
+			continue
+		}
+		seen[normalized.Provider] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// EnabledTargetForProvider resolves legacy provider input at the ingress but
+// only returns a target carrying the canonical provider id.
+func EnabledTargetForProvider(targets []Target, provider string) (Target, bool) {
+	canonicalProvider := agentproviderbiz.Normalize(provider)
+	if canonicalProvider == "" {
+		return Target{}, false
+	}
+	for _, target := range EnabledTargetsByProvider(targets) {
+		if target.Provider == canonicalProvider {
+			return target, true
+		}
+	}
+	return Target{}, false
+}
+
 func MustLocalCLILaunchRefJSON(provider string) string {
 	raw, err := CanonicalLaunchRefJSON(provider, LaunchRef{
 		Type:     LaunchRefTypeLocalCLI,

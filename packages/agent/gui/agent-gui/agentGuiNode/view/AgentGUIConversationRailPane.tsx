@@ -76,8 +76,8 @@ export interface AgentGUIConversationRailPaneProps {
   previewMode: boolean;
   createConversationDisabled: boolean;
   isCollapsed: boolean;
-  providerTargets: AgentGUINodeViewModel["rail"]["providerTargets"];
-  providerTargetsLoading: AgentGUINodeViewModel["rail"]["providerTargetsLoading"];
+  agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
+  agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
   sectionAgentTargetFallbackId: string | null;
   onUpdateConversationFilter: (

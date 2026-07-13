@@ -342,10 +342,44 @@ func (c *scriptedACPConnection) Send(data []byte) error {
 						"stopReason": "end_turn",
 					},
 				})
+				continue
+			}
+			if strings.TrimSpace(message.Method) != "" && len(message.ID) > 0 {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error": map[string]any{
+						"code":    -32601,
+						"message": "method not found: " + message.Method,
+					},
+				})
 			}
 		}
 	}
 	return nil
+}
+
+func TestScriptedACPConnectionRejectsUnknownRequests(t *testing.T) {
+	t.Parallel()
+
+	conn := newScriptedACPTransport().conn
+	if err := conn.Send([]byte("{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"future/capability\"}\n")); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	frame, err := conn.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	var response struct {
+		ID    int       `json:"id"`
+		Error *acpError `json:"error"`
+	}
+	if err := json.Unmarshal(frame.Stdout, &response); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if response.ID != 99 || response.Error == nil || response.Error.Code != -32601 {
+		t.Fatalf("response = %#v, want method-not-found for id 99", response)
+	}
 }
 
 // handleAppServerMessage lets the shared scripted connection answer the codex
@@ -367,6 +401,9 @@ func (c *scriptedACPConnection) handleAppServerMessage(line string, id json.RawM
 		c.sendJSON(map[string]any{"id": id, "result": result})
 		return true
 	case appServerMethodModelList:
+		c.sendJSON(map[string]any{"id": id, "result": map[string]any{"data": []any{}}})
+		return true
+	case appServerMethodCollaborationModeList:
 		c.sendJSON(map[string]any{"id": id, "result": map[string]any{"data": []any{}}})
 		return true
 	case appServerMethodRateLimitsRead:

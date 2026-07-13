@@ -15,7 +15,7 @@ export function AgentProcessingRow({
       data-row-id={row.id}
       className="workspace-agents-status-panel__detail-processing inline-flex items-center gap-1.5"
     >
-      <span className="inline-flex min-w-0 items-center gap-inherit font-semibold">
+      <span className="inline-flex min-w-0 items-center gap-1 font-semibold">
         <span>{processingLabel(row, label)}</span>
         <LoadingEllipsis />
       </span>

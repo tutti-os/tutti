@@ -14,7 +14,7 @@ import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import {
   agentComposerDraftSubmittedText,
@@ -443,9 +443,9 @@ export function isCompletedOutcomeToken(
 export const emptyComingSoonProviders: readonly AgentGUIProvider[] = [];
 
 export function applyComingSoonProviderTargets(
-  targets: AgentGUIProviderTarget[],
+  targets: AgentGUIAgentTarget[],
   comingSoonProviders: readonly AgentGUIProvider[]
-): AgentGUIProviderTarget[] {
+): AgentGUIAgentTarget[] {
   if (comingSoonProviders.length === 0) {
     return targets;
   }

@@ -10,8 +10,8 @@ import type {
   AgentSessionComposerSettings
 } from "../../../shared/agentSessionTypes";
 import type { AgentProviderId } from "../../../shared/contracts/dto";
-import type { AgentGUINodeData, AgentGUIProviderTarget } from "../../../types";
-import { agentGUIProviderTargetRefsEqual } from "../../../providerTargets";
+import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
+import { agentGUIAgentTargetRefsEqual } from "../../../agentTargets";
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 
@@ -91,7 +91,7 @@ export function composerDefaultsPatchFromSettings(
 export function composerTargetDataFromProviderTarget(input: {
   current: AgentGUINodeData;
   isExplicit: boolean;
-  target: AgentGUIProviderTarget;
+  target: AgentGUIAgentTarget;
 }): AgentGUIComposerTargetData {
   const agentTargetId =
     normalizeOptionalText(input.target.agentTargetId) ?? input.target.targetId;
@@ -131,15 +131,15 @@ export function composerTargetDataFromProviderTarget(input: {
   };
 }
 
-export function isExplicitAgentGUIProviderTarget(
-  target: AgentGUIProviderTarget,
-  explicitTargets: readonly AgentGUIProviderTarget[]
+export function isExplicitAgentGUIAgentTarget(
+  target: AgentGUIAgentTarget,
+  explicitTargets: readonly AgentGUIAgentTarget[]
 ): boolean {
   return explicitTargets.some(
     (candidate) =>
       candidate.provider === target.provider &&
       candidate.targetId === target.targetId &&
-      agentGUIProviderTargetRefsEqual(candidate.ref, target.ref)
+      agentGUIAgentTargetRefsEqual(candidate.ref, target.ref)
   );
 }
 
@@ -153,26 +153,20 @@ export function composerOptionsForTarget(input: {
   snapshot: AgentActivitySnapshot;
   target: AgentGUIComposerTargetData;
 }): AgentActivityComposerOptions | null {
-  if (input.target.agentTargetId) {
-    return (
-      input.snapshot.composerOptionsByAgentTargetId?.[
-        input.target.agentTargetId
-      ] ?? null
-    );
-  }
-  return (
-    input.snapshot.composerOptionsByProvider?.[input.target.provider] ?? null
-  );
+  const targetKey = input.target.agentTargetId?.trim() ?? "";
+  return targetKey
+    ? (input.snapshot.composerOptionsByTargetKey?.[targetKey] ?? null)
+    : null;
 }
 
 export function agentGUIProviderTargetsEqual(
-  left: AgentGUIProviderTarget,
-  right: AgentGUIProviderTarget
+  left: AgentGUIAgentTarget,
+  right: AgentGUIAgentTarget
 ): boolean {
   return (
     left.provider === right.provider &&
     left.targetId === right.targetId &&
     (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
-    agentGUIProviderTargetRefsEqual(left.ref, right.ref)
+    agentGUIAgentTargetRefsEqual(left.ref, right.ref)
   );
 }

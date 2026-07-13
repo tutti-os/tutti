@@ -17,11 +17,6 @@ import type {
   AgentGuiWorkbenchWorkspaceState
 } from "./types.ts";
 
-interface LegacyAgentGuiWorkbenchPersistedState {
-  agentTargetId?: unknown;
-  providerTargetId?: unknown;
-}
-
 type AgentGuiWorkbenchStateLookupRequest = Pick<
   WorkbenchHostExternalStateLookupInput,
   "instanceId" | "typeId"
@@ -50,10 +45,7 @@ export function normalizeAgentGuiWorkbenchState(
   if (!isRecord(state)) {
     return createDefaultAgentGuiWorkbenchState();
   }
-  const legacyState = state as LegacyAgentGuiWorkbenchPersistedState;
-  const agentTargetId =
-    normalizeOptionalNonEmptyString(legacyState.agentTargetId) ??
-    normalizeOptionalNonEmptyString(legacyState.providerTargetId);
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   return {
     ...(agentTargetId ? { agentTargetId } : {}),
     conversationRailCollapsed: state.conversationRailCollapsed === true,
@@ -65,6 +57,26 @@ export function normalizeAgentGuiWorkbenchState(
         ? state.lastActiveAgentSessionId
         : null
   };
+}
+
+/**
+ * One-time persisted-state reader for snapshots written before agentTargetId
+ * became the canonical AgentGUI selection key. Current-state normalizers stay
+ * strict so live callers cannot continue using the removed alias.
+ */
+export function migrateLegacyAgentGuiWorkbenchState(state: unknown): unknown {
+  if (
+    !isRecord(state) ||
+    normalizeOptionalNonEmptyString(state.agentTargetId)
+  ) {
+    return state;
+  }
+  const legacyAgentTargetId = normalizeOptionalNonEmptyString(
+    state.providerTargetId
+  );
+  return legacyAgentTargetId
+    ? { ...state, agentTargetId: legacyAgentTargetId }
+    : state;
 }
 
 export function projectAgentGuiWorkbenchState(
@@ -104,9 +116,9 @@ export function normalizeAgentGuiWorkbenchNodeState(
   );
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
-    agentTargetId:
-      normalizeOptionalNonEmptyString(persistedState.agentTargetId) ??
-      normalizeOptionalNonEmptyString(persistedState.providerTargetId),
+    agentTargetId: normalizeOptionalNonEmptyString(
+      persistedState.agentTargetId
+    ),
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       persistedState.composerOverrides
     ),
@@ -153,7 +165,8 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-    left.provider === right.provider
+    left.provider === right.provider &&
+    (left.agentTargetId ?? null) === (right.agentTargetId ?? null)
   );
 }
 

@@ -44,7 +44,7 @@ test("AccountService opens login URL and refreshes user after completion", async
             display_name: "Pro"
           },
           credits: {
-            available_credits: 2450
+            available_credits: "2450.52"
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
@@ -140,7 +140,7 @@ test("AccountService refreshes product summary with single-flight and preserves 
             user: null,
             membership: null,
             credits: {
-              available_credits: 100
+              available_credits: "100.25"
             },
             links: {
               plan_url: "https://tutti.sh/profile/plan",
@@ -161,11 +161,17 @@ test("AccountService refreshes product summary with single-flight and preserves 
   assert.equal(calls, 1);
   resolveFirst();
   await Promise.all([refreshA, refreshB]);
-  assert.equal(service.store.productSummary?.credits?.available_credits, 100);
+  assert.equal(
+    service.store.productSummary?.credits?.available_credits,
+    "100.25"
+  );
 
   await service.refreshProductSummary({ force: true });
   assert.equal(calls, 2);
-  assert.equal(service.store.productSummary?.credits?.available_credits, 100);
+  assert.equal(
+    service.store.productSummary?.credits?.available_credits,
+    "100.25"
+  );
   assert.equal(service.store.productSummaryError, "summary unavailable");
 });
 
@@ -190,7 +196,7 @@ test("AccountService dismisses the current registration credits reward", async (
           user: null,
           membership: null,
           credits: {
-            available_credits: 500
+            available_credits: "500"
           },
           registration_credits_reward: {
             id: "registrationCreditsToastShown:user-1:grant-1",
@@ -246,7 +252,7 @@ test("AccountService logout clears product summary", async () => {
           user: null,
           membership: null,
           credits: {
-            available_credits: 100
+            available_credits: "100"
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",
@@ -261,7 +267,7 @@ test("AccountService logout clears product summary", async () => {
   });
 
   await service.refreshProductSummary({ force: true });
-  assert.equal(service.store.productSummary?.credits?.available_credits, 100);
+  assert.equal(service.store.productSummary?.credits?.available_credits, "100");
 
   await service.logout();
 
@@ -295,7 +301,7 @@ test("AccountService ignores product summary responses after logout", async () =
           user: null,
           membership: null,
           credits: {
-            available_credits: 100
+            available_credits: "100"
           },
           links: {
             plan_url: "https://tutti.sh/profile/plan",

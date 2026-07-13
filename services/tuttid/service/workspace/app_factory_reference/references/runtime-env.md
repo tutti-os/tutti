@@ -8,6 +8,7 @@ Use these environment variables:
 - `TUTTI_APP_PORT`: port to bind.
 - `TUTTI_APP_BASE_URL`: local base URL.
 - `TUTTI_APP_ID`: current workspace app id from `tutti.app.json`.
+- `TUTTI_APP_INSTALLATION_ID`: current `<workspace-id>:<app-id>` installation id.
 - `TUTTI_APP_PACKAGE_DIR`: package files, read-only at runtime.
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
 - `TUTTI_APP_DATA_DIR`: durable app data.
@@ -16,10 +17,16 @@ Use these environment variables:
 - `TUTTI_APP_NODE`: managed Node.js executable path for generated apps.
 - `TUTTI_APP_NPM`: managed npm executable path for generated apps.
 - `TUTTI_APP_PYTHON`: managed Python interpreter path for existing Python apps or explicitly Python-based requests.
+- `TUTTI_API_BASE_URL`: base URL for server-side calls to the Tutti daemon API.
+- `TUTTI_APP_SERVER_TOKEN`: bearer token for this app server's scoped Tutti API calls.
 - `TUTTI_CLI`: explicit command path for invoking local Tutti CLI capabilities. This is the stable app-runtime entrypoint across development and packaged production.
+- `TUTTI_WORKSPACE_ID`: current workspace id.
+- `TUTTI_WORKSPACE_NAME`: current workspace display name.
 - `TUTTI_WORKSPACE_ROOT`: workspace path, read-only unless the user explicitly asked the app to write workspace files.
 
 `PATH` includes the managed runtime bin directories, but generated apps must still use the explicit `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and, when applicable, `TUTTI_APP_PYTHON` variables. Do not rely on system `node`, `npm`, `python`, or `python3` commands.
+
+Read `TUTTI_APP_SERVER_TOKEN` only in the app server process. Never send it to browser code, persist it, or write it to logs. It remains available for non-Agent app-scoped daemon resources. Agent provider catalog and composer discovery must not use this token, daemon URL, workspace ID, or app ID; call the `@tutti-os/agent-acp-kit/tutti` facade, which owns `TUTTI_CLI` execution.
 
 For local Tutti capabilities, use `TUTTI_CLI`.
 
@@ -56,7 +63,7 @@ function subscribeHostLocale(listener) {
 }
 ```
 
-`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint backed by `@tutti-os/agent-acp-kit` detection for those choices; use `TUTTI_CLI` only for non-agent Tutti platform or app-to-app capabilities. The context is optional so generated apps continue to run in a normal browser during development.
+`subscribe` replays the latest context after registration, so apps do not need host-injected DOM events for initial locale delivery. Provider lists, default provider, and Agent composer options are not part of browser external context. Agent-enabled apps should expose an app-owned backend endpoint whose implementation calls `@tutti-os/agent-acp-kit/tutti`; the kit automatically uses `TUTTI_CLI` inside Tutti and standalone runtime discovery outside it. App code must not spawn or parse the Agent CLI itself. Follow `$tutti-agent-workspace-app` and its `references/dynamic-agent-providers.md`. The browser context remains optional so generated apps continue to run in a normal browser during development.
 
 For theme, use CSS media queries and `matchMedia`:
 

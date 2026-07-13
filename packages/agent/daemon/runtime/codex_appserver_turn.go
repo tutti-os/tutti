@@ -349,7 +349,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 	// arrives with the turn/completed notification.
 	initialTurn := appServerTurnFromResult(result)
 	if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-		if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+		if a.setSessionActiveTurnID(session.AgentSessionID, appTurn, providerTurnID) {
 			a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 		}
 	}

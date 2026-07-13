@@ -36,6 +36,7 @@ import {
 import { ToolActivityProjector } from "./toolActivity.ts";
 import { SidecarTestDriver } from "./testDriver.ts";
 import { SessionConfiguration } from "./sessionConfiguration.ts";
+import { claudeSettingsEnv } from "./settingsEnv.ts";
 import { CompactionTracker } from "./compaction.ts";
 import { MessageProjection } from "./messageProjection.ts";
 import { SDKMessageRouter } from "./messageRouter.ts";
@@ -482,6 +483,7 @@ export class SessionRuntime {
       cwd: this.cwd || process.cwd(),
       env: {
         ...process.env,
+        ...claudeSettingsEnv(this.cwd || process.cwd()),
         ...this.env,
         CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1"
       },

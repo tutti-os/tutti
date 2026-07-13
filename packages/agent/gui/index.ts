@@ -15,25 +15,35 @@ export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
 export {
+  agentGUIAgentIsReady,
+  normalizeAgentGUIAgents,
+  resolveAgentGUISelectedDirectoryAgent
+} from "./agents";
+export {
   agentGUIDefaultTargetProviders,
-  createLocalAgentGUIProviderTarget,
-  createLocalAgentGUIProviderTargets,
-  createSharedAgentGUIProviderTarget,
+  createLocalAgentGUIAgentTarget,
+  createLocalAgentGUIAgentTargets,
+  createSharedAgentGUIAgentTarget,
   localAgentGUIAgentTargetId,
-  localAgentGUIProviderTargetId,
-  normalizeAgentGUIProviderTargets,
-  resolveAgentGUIProviderTarget
-} from "./providerTargets";
+  normalizeAgentGUIAgentTargets,
+  resolveAgentGUIAgentTarget
+} from "./agentTargets";
 export type {
+  AgentGUIAgent,
+  AgentGUIAgentAvailability,
+  AgentGUIAgentAvailabilityAction,
+  AgentGUIAgentAvailabilityStatus,
+  AgentGUIAgentOwner,
+  AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
   AgentGUIProviderReadinessGateAction,
   AgentGUIProviderReadinessGateStatus,
-  AgentGUIProviderTarget,
-  AgentGUIProviderTargetBadge,
-  AgentGUIProviderTargetRef
+  AgentGUIAgentTarget,
+  AgentGUIAgentTargetBadge,
+  AgentGUIAgentTargetRef
 } from "./types";
 export {
   AgentGuiI18nProvider,
@@ -47,7 +57,7 @@ export {
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
 export type {
-  AgentGUIProviderRailEmptyRenderer,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
@@ -81,6 +91,9 @@ export type {
   AgentActivityRuntimeListSessionMessagesInput,
   AgentActivityRuntimeProviderProps,
   AgentActivityRuntimePromptContentBlock,
+  AgentActivityRuntimeDeleteSessionSectionResult,
+  AgentActivityRuntimeSessionSectionCount,
+  AgentActivityRuntimeSessionSectionScopeInput,
   AgentActivityRuntimeSetSessionPinnedInput,
   AgentActivityRuntimeUploadPromptContentInput,
   AgentActivityRuntimeUploadPromptContentResult,

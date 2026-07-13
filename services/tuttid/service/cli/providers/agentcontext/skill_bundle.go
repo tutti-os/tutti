@@ -44,11 +44,15 @@ func (p Provider) runSkillBundle(ctx context.Context, invoke framework.InvokeCon
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
+	target, err := p.resolveEnabledAgentTarget(ctx, input.Provider)
+	if err != nil {
+		return nil, err
+	}
 	return p.sessions.GetSkillBundle(ctx, invoke.WorkspaceID, agentservice.SkillBundleInput{
 		AgentSessionID: input.AgentSessionID,
 		BrowserUse:     input.BrowserUse,
 		ComputerUse:    input.ComputerUse,
-		Provider:       input.Provider,
+		Provider:       target.Provider,
 	})
 }
 

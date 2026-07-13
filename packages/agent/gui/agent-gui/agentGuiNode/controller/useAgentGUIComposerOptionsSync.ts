@@ -56,7 +56,7 @@ export function useAgentGUIComposerOptionsSync(input: {
 }) {
   const loadComposerOptionsForTarget = useCallback(
     (targetData: AgentGUIComposerTargetData, options?: { force?: boolean }) => {
-      if (input.isCreatingConversation) return;
+      if (input.isCreatingConversation || !targetData.agentTargetId) return;
       const settings = readNodeDefaultDraftSettings({
         data: targetData.data,
         defaultReasoningEffort: input.defaultReasoningEffort,

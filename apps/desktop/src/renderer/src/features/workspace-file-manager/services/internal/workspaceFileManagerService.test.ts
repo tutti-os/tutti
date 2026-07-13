@@ -785,6 +785,7 @@ function createDependenciesStub(): {
     },
     tuttidClient: {
       listAgentTargets: fail,
+      setSystemAgentTargetEnabled: fail,
       startAccountLogin: fail,
       getAccountLoginStatus: fail,
       getAccountUserInfo: fail,
@@ -822,6 +823,7 @@ function createDependenciesStub(): {
       createWorkspaceTerminal: fail,
       deleteWorkspace: fail,
       deleteWorkspaceAgentSession: fail,
+      deleteWorkspaceAgentSessionSection: fail,
       updateWorkspaceAgentSessionTitle: fail,
       clearWorkspaceAgentSessions: fail,
       deleteWorkspaceApp: fail,
@@ -867,6 +869,7 @@ function createDependenciesStub(): {
       listWorkspaceAgentSessions: fail,
       listWorkspaceAgentSessionSections: fail,
       listWorkspaceAgentSessionSectionPage: fail,
+      countWorkspaceAgentSessionSection: fail,
       listWorkspaceAgentPinnedSessionPage: fail,
       listWorkspaceApps: fail,
       listWorkspaceAppReferences: fail,

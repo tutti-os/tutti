@@ -14,7 +14,7 @@ import type {
 import type {
   AgentProviderProbeListInput,
   AgentProviderProbeListResult,
-  AgentGUIProviderTarget
+  AgentGUIAgent
 } from "@tutti-os/agent-gui";
 import type {
   AgentProviderStatus,
@@ -215,6 +215,7 @@ export const desktopIpcChannels = {
 
 export interface DesktopHostWindowLayoutPayload {
   compactTitlebar: boolean;
+  maximized: boolean;
 }
 
 export interface DesktopHostWindowMinimizeStatePayload {
@@ -241,7 +242,7 @@ export interface DesktopHostOpenAgentWindowInput {
   agentSessionId?: string | null;
   agentTargetId?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
+  agents?: readonly AgentGUIAgent[];
   provider?: string | null;
   workspaceId: string;
 }

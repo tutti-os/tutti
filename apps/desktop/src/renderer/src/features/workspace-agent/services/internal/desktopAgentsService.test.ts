@@ -3,10 +3,10 @@ import test from "node:test";
 import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import {
   mapAgentTargetsToPresentations,
-  mapAgentTargetPresentationsToProviderTargets
+  mapAgentTargetPresentationsToAgents
 } from "./desktopAgentsService.ts";
 
-test("desktop agents service maps agent targets into renderer presentations and AgentGUI provider targets", () => {
+test("desktop agents service maps enabled daemon targets into the AgentGUI agents directory", () => {
   const presentations = mapAgentTargetsToPresentations(
     [
       createAgentTarget({
@@ -53,37 +53,15 @@ test("desktop agents service maps agent targets into renderer presentations and 
     ]
   );
 
-  assert.deepEqual(
-    mapAgentTargetPresentationsToProviderTargets(presentations),
-    [
-      {
-        agentTargetId: "local:codex",
-        disabled: false,
-        iconUrl: "tutti-asset://agent/codex-descriptor.png",
-        label: "Codex",
-        provider: "codex",
-        ref: {
-          kind: "local_cli",
-          provider: "codex",
-          targetId: "local:codex"
-        },
-        targetId: "local:codex"
-      },
-      {
-        agentTargetId: "local:claude-code",
-        disabled: true,
-        iconUrl: "tutti-asset://agent/claude-code.png",
-        label: "Claude Code",
-        provider: "claude-code",
-        ref: {
-          kind: "local_cli",
-          provider: "claude-code",
-          targetId: "local:claude-code"
-        },
-        targetId: "local:claude-code"
-      }
-    ]
-  );
+  assert.deepEqual(mapAgentTargetPresentationsToAgents(presentations), [
+    {
+      agentTargetId: "local:codex",
+      availability: { status: "ready" },
+      iconUrl: "tutti-asset://agent/codex-descriptor.png",
+      name: "Codex",
+      provider: "codex"
+    }
+  ]);
 });
 
 function createAgentTarget(input: {

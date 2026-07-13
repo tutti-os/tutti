@@ -23,11 +23,13 @@ test("composer options deduplicate identical inflight requests", async () => {
   const first = controller.loadComposerOptions({
     cwd: "/workspace",
     provider: "codex",
+    targetKey: "local:codex",
     settings: { model: "model-1" }
   });
   const second = controller.loadComposerOptions({
     cwd: "/workspace",
     provider: "codex",
+    targetKey: "local:codex",
     settings: { model: "model-1" }
   });
   pending.resolve(testComposerOptions("codex", 1));
@@ -36,7 +38,7 @@ test("composer options deduplicate identical inflight requests", async () => {
   assert.equal(loadCount, 1);
 });
 
-test("composer cache separates provider targets and request signatures", async () => {
+test("composer cache separates agent targets and request signatures", async () => {
   const requests: Array<{
     agentTargetId?: string | null;
     cwd?: string | null;
@@ -61,41 +63,44 @@ test("composer cache separates provider targets and request signatures", async (
   await controller.loadComposerOptions({
     cwd: "/one",
     provider: "codex",
+    targetKey: "local:codex",
     settings: { model: "model-1" }
   });
   await controller.loadComposerOptions({
     cwd: "/one",
     provider: "codex",
+    targetKey: "local:codex",
     settings: { model: "model-1" }
   });
   await controller.loadComposerOptions({
     cwd: "/two",
     provider: "codex",
+    targetKey: "local:codex",
     settings: { model: "model-1" }
   });
   await controller.loadComposerOptions({
-    agentTargetId: "target-1",
     cwd: "/two",
     provider: "codex",
-    settings: { model: "model-1" }
+    settings: { model: "model-1" },
+    targetKey: "target-1"
   });
   await controller.loadComposerOptions({
-    agentTargetId: "target-2",
     cwd: "/two",
     provider: "codex",
-    settings: { model: "model-1" }
+    settings: { model: "model-1" },
+    targetKey: "target-2"
   });
   await controller.loadComposerOptions({
-    agentTargetId: "target-1",
     cwd: "/two",
     provider: "codex",
-    settings: { model: "model-2" }
+    settings: { model: "model-2" },
+    targetKey: "target-1"
   });
 
   assert.equal(requests.length, 5);
   assert.deepEqual(
     requests.map((request) => request.agentTargetId ?? "provider"),
-    ["provider", "provider", "target-1", "target-2", "target-1"]
+    ["local:codex", "local:codex", "target-1", "target-2", "target-1"]
   );
 });
 
@@ -110,7 +115,7 @@ test("composer force and invalidation bypass settled cache entries", async () =>
     }),
     workspaceId: "workspace-1"
   });
-  const request = { provider: "codex" } as const;
+  const request = { provider: "codex", targetKey: "local:codex" } as const;
 
   await controller.loadComposerOptions(request);
   await controller.loadComposerOptions(request);

@@ -89,6 +89,8 @@ export function createAgentActivitySessionMessageController(input: {
   ): () => void {
     const agentSessionId = request.agentSessionId.trim();
     if (!agentSessionId) return () => {};
+    const subscribeSessionEvents = input.adapter.subscribeSessionEvents;
+    if (!subscribeSessionEvents) return () => {};
     const existing = retainedStreams.get(agentSessionId);
     if (existing) {
       existing.refCount += 1;
@@ -105,21 +107,20 @@ export function createAgentActivitySessionMessageController(input: {
       input.getSnapshot().sessionMessagesById[agentSessionId] ?? [];
     const afterVersion =
       request.afterVersion ?? latestAgentActivityMessageVersion(cached);
-    void input.adapter
-      .subscribeSessionEvents({
-        workspaceId: input.workspaceId,
-        agentSessionId,
-        afterVersion,
-        signal: abortController.signal,
-        onEvent(event) {
-          if (!abortController.signal.aborted) {
-            input.updateSnapshot((current) =>
-              applySessionMessageEvent(current, event)
-            );
-          }
-        },
-        onError: request.onError
-      })
+    void subscribeSessionEvents({
+      workspaceId: input.workspaceId,
+      agentSessionId,
+      afterVersion,
+      signal: abortController.signal,
+      onEvent(event) {
+        if (!abortController.signal.aborted) {
+          input.updateSnapshot((current) =>
+            applySessionMessageEvent(current, event)
+          );
+        }
+      },
+      onError: request.onError
+    })
       .then((unsubscribe) => {
         const retained = retainedStreams.get(agentSessionId);
         if (!retained || retained.abortController.signal.aborted) {

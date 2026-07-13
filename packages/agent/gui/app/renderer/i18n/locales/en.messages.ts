@@ -3,6 +3,8 @@ export const enMessages = {
   agentResumeFailed: "Agent resume failed: {{message}}",
   agentProviderSessionNotFound:
     "This session history is still available, but the underlying provider session can no longer be restored.",
+  agentTargetRemoved:
+    "This agent no longer exists or has been removed. Its conversation history stays available to read.",
   agentResumeSessionNotLocal:
     "This session cannot be resumed on this device. Start a new session and @this session to keep going.",
   agentSessionReconnecting: "Reconnecting to the live agent session…",

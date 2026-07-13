@@ -5,6 +5,7 @@ import {
   createDesktopAgentGUINodeStateSource,
   createDefaultDesktopAgentGUINodeState,
   desktopAgentGUIProviderFromInstanceId,
+  migrateLegacyDesktopAgentGUIWorkbenchState,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIWorkbenchState,
   projectDesktopAgentGUIWorkbenchState,
@@ -99,10 +100,12 @@ test("desktop agent gui workbench state equality includes rail state", () => {
   );
   assert.equal(
     areDesktopAgentGUIWorkbenchStatesEqual(
-      normalizeDesktopAgentGUIWorkbenchState({
-        lastActiveAgentSessionId: "session-1",
-        providerTargetId: "legacy-target"
-      }),
+      normalizeDesktopAgentGUIWorkbenchState(
+        migrateLegacyDesktopAgentGUIWorkbenchState({
+          lastActiveAgentSessionId: "session-1",
+          providerTargetId: "legacy-target"
+        })
+      ),
       normalizeDesktopAgentGUIWorkbenchState({
         lastActiveAgentSessionId: "session-1",
         agentTargetId: "legacy-target"

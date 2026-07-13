@@ -1,7 +1,20 @@
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceFilePreviewContribution } from "../workspaceFilePreviewContribution.ts";
 
-export const filePreviewWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type FilePreviewWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "appI18n"
+  | "hostFilesApi"
+  | "i18n"
+  | "reporterService"
+  | "tuttidClient"
+  | "workspaceId"
+>;
+
+export const filePreviewWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<FilePreviewWorkbenchContributionContext> =
   {
     id: "workspace-file-preview",
     order: 15,

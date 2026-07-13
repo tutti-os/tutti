@@ -290,6 +290,74 @@ export function linkBareLocalAbsolutePaths(content: string): string {
   return out;
 }
 
+export function normalizeLocalPathMarkdownLinks(content: string): string {
+  let out = "";
+  for (let index = 0; index < content.length; ) {
+    const codeSpanEnd = codeSpanEndIndex(content, index);
+    if (codeSpanEnd > index) {
+      out += content.slice(index, codeSpanEnd);
+      index = codeSpanEnd;
+      continue;
+    }
+    const normalized = normalizeLocalPathMarkdownLinkAt(content, index);
+    if (normalized) {
+      out += normalized.markdown;
+      index = normalized.end;
+      continue;
+    }
+    out += content[index];
+    index += 1;
+  }
+  return out;
+}
+
+function normalizeLocalPathMarkdownLinkAt(
+  content: string,
+  index: number
+): { markdown: string; end: number } | null {
+  if (content[index] !== "[") return null;
+  const labelEnd = content.indexOf("]", index + 1);
+  if (labelEnd < 0 || content[labelEnd + 1] !== "(") return null;
+  const hrefStart = labelEnd + 2;
+  if (content[hrefStart] === "<") return null;
+  let hrefEnd = hrefStart;
+  while (hrefEnd < content.length) {
+    const current = content[hrefEnd];
+    if (current === "\\" && hrefEnd + 1 < content.length) {
+      hrefEnd += 2;
+      continue;
+    }
+    if (current === "\n" || current === "\r") return null;
+    if (current === ")") break;
+    hrefEnd += 1;
+  }
+  if (content[hrefEnd] !== ")") return null;
+  const target = content.slice(hrefStart, hrefEnd).trim();
+  if (
+    !target ||
+    !/\s/.test(target) ||
+    /[<>]/.test(target) ||
+    !isPotentialLocalMarkdownPathHref(target)
+  ) {
+    return null;
+  }
+  return {
+    markdown: `${content.slice(index, hrefStart)}<${target}>)`,
+    end: hrefEnd + 1
+  };
+}
+
+function isPotentialLocalMarkdownPathHref(href: string): boolean {
+  const target = href.trim();
+  if (!target || target.includes("://")) return false;
+  return (
+    (target.startsWith("/") && !target.startsWith("//")) ||
+    target.startsWith("~/") ||
+    target.startsWith("~\\") ||
+    /^[A-Za-z]:[\\/]/.test(target)
+  );
+}
+
 export function normalizePlainIssueMentionTitleContent(
   content: string
 ): string {

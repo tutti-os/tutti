@@ -315,18 +315,14 @@ test("WorkspaceAgentActivityService composer options cache is agent target keyed
 
   assert.equal(composerOptionCalls.length, 2);
   assert.equal(
-    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["local:codex"]
+    service.getSnapshot("ws-1").composerOptionsByTargetKey?.["local:codex"]
       ?.models[0]?.value,
     "model-1"
   );
   assert.equal(
-    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["shared-codex"]
+    service.getSnapshot("ws-1").composerOptionsByTargetKey?.["shared-codex"]
       ?.models[0]?.value,
     "model-2"
-  );
-  assert.equal(
-    service.getSnapshot("ws-1").composerOptionsByProvider?.codex,
-    undefined
   );
   assert.equal(
     (first as { models?: Array<{ value: string }> }).models?.[0]?.value,
@@ -374,8 +370,16 @@ test("WorkspaceAgentActivityService model catalog invalidation drops composer ca
     }
   });
 
-  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
-  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
+  await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+  await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
   assert.equal(composerOptionCalls, 1);
 
   const invalidationHandler = topicHandlers.get(
@@ -396,7 +400,11 @@ test("WorkspaceAgentActivityService model catalog invalidation drops composer ca
   assert.deepEqual(received, [
     { providers: ["codex"], occurredAtUnixMs: 1000 }
   ]);
-  await service.getComposerOptions({ provider: "codex", workspaceId: "ws-1" });
+  await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
   assert.equal(composerOptionCalls, 2);
 });
 

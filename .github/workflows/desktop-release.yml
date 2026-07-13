@@ -70,7 +70,7 @@ jobs:
           ref: ${{ steps.target.outputs.release_target }}
           fetch-depth: 0
 
-      - name: Validate stable release branch
+      - name: Validate release dispatch branch
         shell: bash
         env:
           RELEASE_EVENT_NAME: ${{ github.event_name }}
@@ -83,7 +83,7 @@ jobs:
           fi
 
           case "${RELEASE_MODE:-}" in
-            patch_release|minor_release|major_release)
+            patch_rc_release|patch_release|minor_release|major_release)
               ;;
             *)
               exit 0
@@ -91,7 +91,7 @@ jobs:
           esac
 
           if [[ "${RELEASE_REF_TYPE}" != "branch" ]]; then
-            echo "Stable desktop release modes must be run from main or a release/* branch." >&2
+            echo "Manual desktop release mode ${RELEASE_MODE} must be run from main or a release/* branch." >&2
             exit 1
           fi
 
@@ -99,8 +99,16 @@ jobs:
             main|release/*)
               ;;
             *)
-              echo "Stable desktop release modes must be run from main or a release/* branch, not ${RELEASE_REF_NAME}." >&2
+              echo "Manual desktop release mode ${RELEASE_MODE} must be run from main or a release/* branch, not ${RELEASE_REF_NAME}." >&2
               exit 1
+              ;;
+          esac
+
+          case "${RELEASE_MODE:-}" in
+            patch_release|minor_release|major_release)
+              ;;
+            *)
+              exit 0
               ;;
           esac
 
@@ -607,6 +615,76 @@ jobs:
             args+=(--latest)
           fi
           "${args[@]}"
+
+      - name: Refresh stable release alias
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+        run: |
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            stable_tag="${TUTTI_DESKTOP_RELEASE_TAG}"
+          else
+            stable_tag="$(gh release list \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --limit 200 \
+              --json tagName,isLatest,publishedAt \
+              --jq '[.[] | select(.tagName != "stable" and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))] | (map(select(.isLatest)) | first) // first | .tagName // ""')"
+          fi
+
+          if [[ -z "${stable_tag}" ]]; then
+            echo "Could not resolve the current stable desktop release tag for the stable alias." >&2
+            exit 1
+          fi
+
+          git fetch --force origin "refs/tags/${stable_tag}:refs/tags/${stable_tag}"
+          stable_sha="$(git rev-list -n 1 "${stable_tag}")"
+          stable_tree="$(git rev-parse "${stable_sha}^{tree}")"
+          gh release view "${stable_tag}" --json body,name,tagName,url > stable-release.json
+          node apps/desktop/scripts/build-stable-release-alias-body.mjs \
+            stable-release.json \
+            stable-release-body.md
+
+          stable_alias_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          stable_alias_sha="$(
+            printf '%s\n' \
+              "chore(release): refresh stable alias for ${stable_tag}" \
+              "" \
+              "Canonical stable release: ${stable_tag}" \
+              "" \
+              "Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" |
+              GIT_AUTHOR_NAME="github-actions[bot]" \
+              GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_AUTHOR_DATE="${stable_alias_time}" \
+              GIT_COMMITTER_NAME="github-actions[bot]" \
+              GIT_COMMITTER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com" \
+              GIT_COMMITTER_DATE="${stable_alias_time}" \
+              git commit-tree "${stable_tree}" -p "${stable_sha}"
+          )"
+          stable_alias_tree="$(git rev-parse "${stable_alias_sha}^{tree}")"
+          stable_alias_parent="$(git rev-parse "${stable_alias_sha}^")"
+          if [[ "${stable_alias_tree}" != "${stable_tree}" ]]; then
+            echo "Stable alias tree mismatch: expected ${stable_tree}, got ${stable_alias_tree}." >&2
+            exit 1
+          fi
+          if [[ "${stable_alias_parent}" != "${stable_sha}" ]]; then
+            echo "Stable alias parent mismatch: expected ${stable_sha}, got ${stable_alias_parent}." >&2
+            exit 1
+          fi
+
+          git tag -f stable "${stable_alias_sha}"
+          git push origin refs/tags/stable --force
+
+          if gh release view stable >/dev/null 2>&1; then
+            gh release delete stable --yes
+          fi
+
+          gh release create stable \
+            --verify-tag \
+            --title "Stable (Recommended)" \
+            --notes-file stable-release-body.md \
+            --latest=false
+          gh release edit "${stable_tag}" --latest
 
   notify-feishu:
     name: Notify Feishu

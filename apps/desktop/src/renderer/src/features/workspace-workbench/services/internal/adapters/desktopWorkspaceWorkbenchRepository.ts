@@ -5,8 +5,9 @@ import {
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { preserveWorkspaceWallpaperSnapshotMetadata } from "../../workspaceWallpaper.ts";
 import { preserveWorkspaceOnboardingSnapshotMetadata } from "../../workspaceOnboarding.ts";
+import type { WorkbenchSnapshotRepositoryPort } from "../workbenchHostPorts.ts";
 
-export interface DesktopWorkspaceWorkbenchRepository {
+export interface DesktopWorkspaceWorkbenchRepository extends WorkbenchSnapshotRepositoryPort {
   hasLoaded(workspaceID: string): boolean;
   load(workspaceID: string): Promise<WorkbenchSnapshot>;
   readCached(workspaceID: string): WorkbenchSnapshot | null;

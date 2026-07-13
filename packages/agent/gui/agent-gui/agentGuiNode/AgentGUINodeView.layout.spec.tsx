@@ -27,9 +27,9 @@ import {
   type AgentGUIViewLabels
 } from "./AgentGUINodeView";
 import {
-  createLocalAgentGUIProviderTarget,
-  createLocalAgentGUIProviderTargets
-} from "../../providerTargets";
+  createLocalAgentGUIAgentTarget,
+  createLocalAgentGUIAgentTargets
+} from "../../agentTargets";
 import { agentGUIProviderRailOrderStorageKey } from "./model/agentGuiProviderRailOrder";
 import {
   AgentActivityRuntimeProvider,
@@ -398,12 +398,12 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("always renders the provider filter rail", () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
-      createLocalAgentGUIProviderTarget("claude-code")
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
+      createLocalAgentGUIAgentTarget("claude-code")
     ];
     const { container, rerender } = renderAgentGUINodeView({
-      viewModel: createViewModel({ providerTargets })
+      viewModel: createViewModel({ agentTargets })
     });
 
     const providerRailPanel = container.querySelector(
@@ -432,7 +432,7 @@ describe("AgentGUINodeView layout persistence", () => {
       buildAgentGUINodeViewElement({
         conversationRailCollapsed: true,
         viewModel: createViewModel({
-          providerTargets
+          agentTargets
         })
       })
     );
@@ -835,15 +835,12 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("switches the conversation filter from the avatar rail tile", () => {
     const actions = createActions();
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          claudeTarget
-        ]
+        agentTargets: [createLocalAgentGUIAgentTarget("codex"), claudeTarget]
       }
     });
 
@@ -851,7 +848,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "claude-code",
-      providerTargetId: claudeTarget.targetId
+      agentTargetId: claudeTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -859,15 +856,12 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("requests composer focus after switching the provider rail target", async () => {
     const actions = createActions();
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          claudeTarget
-        ]
+        agentTargets: [createLocalAgentGUIAgentTarget("codex"), claudeTarget]
       }
     });
 
@@ -882,7 +876,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("requests composer focus after switching the provider rail to All", async () => {
     const actions = createActions();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
     renderAgentGUINodeView({
       actions,
       viewModel: {
@@ -891,10 +885,10 @@ describe("AgentGUINodeView layout persistence", () => {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: codexTarget,
-        providerTargets: [
+        selectedAgentTarget: codexTarget,
+        agentTargets: [
           codexTarget,
-          createLocalAgentGUIProviderTarget("claude-code")
+          createLocalAgentGUIAgentTarget("claude-code")
         ]
       }
     });
@@ -914,24 +908,24 @@ describe("AgentGUINodeView layout persistence", () => {
   it("keeps unavailable provider rail targets visually disabled but selectable", () => {
     const actions = createActions();
     const tuttiTarget = {
-      ...createLocalAgentGUIProviderTarget("nexight"),
+      ...createLocalAgentGUIAgentTarget("nexight"),
       disabled: true
     };
     const hermesTarget = {
-      ...createLocalAgentGUIProviderTarget("hermes"),
+      ...createLocalAgentGUIAgentTarget("hermes"),
       disabled: true
     };
     const openclawTarget = {
-      ...createLocalAgentGUIProviderTarget("openclaw"),
+      ...createLocalAgentGUIAgentTarget("openclaw"),
       disabled: true
     };
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          createLocalAgentGUIProviderTarget("claude-code"),
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("codex"),
+          createLocalAgentGUIAgentTarget("claude-code"),
           tuttiTarget,
           hermesTarget,
           openclawTarget
@@ -957,15 +951,15 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledTimes(3);
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(1, {
       provider: "nexight",
-      providerTargetId: tuttiTarget.targetId
+      agentTargetId: tuttiTarget.targetId
     });
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(2, {
       provider: "hermes",
-      providerTargetId: hermesTarget.targetId
+      agentTargetId: hermesTarget.targetId
     });
     expect(actions.selectConversationFilterTarget).toHaveBeenNthCalledWith(3, {
       provider: "openclaw",
-      providerTargetId: openclawTarget.targetId
+      agentTargetId: openclawTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -975,10 +969,10 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("tutti-agent"),
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("tutti-agent"),
           {
-            ...createLocalAgentGUIProviderTarget("nexight"),
+            ...createLocalAgentGUIAgentTarget("nexight"),
             disabled: true
           }
         ]
@@ -996,17 +990,17 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
+        agentTargets: [
           {
-            ...createLocalAgentGUIProviderTarget("nexight"),
+            ...createLocalAgentGUIAgentTarget("nexight"),
             disabled: true
           },
-          createLocalAgentGUIProviderTarget("claude-code"),
+          createLocalAgentGUIAgentTarget("claude-code"),
           {
-            ...createLocalAgentGUIProviderTarget("hermes"),
+            ...createLocalAgentGUIAgentTarget("hermes"),
             disabled: true
           },
-          createLocalAgentGUIProviderTarget("codex")
+          createLocalAgentGUIAgentTarget("codex")
         ]
       }
     });
@@ -1064,15 +1058,15 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("persists provider rail tile order after drag sorting", async () => {
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
-    const cursorTarget = createLocalAgentGUIProviderTarget("cursor");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+    const cursorTarget = createLocalAgentGUIAgentTarget("cursor");
     const dataTransfer = createDataTransferStub();
 
     const { rerender } = renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [codexTarget, claudeTarget, cursorTarget]
+        agentTargets: [codexTarget, claudeTarget, cursorTarget]
       }
     });
 
@@ -1145,7 +1139,7 @@ describe("AgentGUINodeView layout persistence", () => {
       buildAgentGUINodeViewElement({
         viewModel: {
           ...createViewModel(),
-          providerTargets: [codexTarget, claudeTarget, cursorTarget]
+          agentTargets: [codexTarget, claudeTarget, cursorTarget]
         }
       })
     );
@@ -1169,9 +1163,9 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
+        agentTargets: [
           {
-            ...createLocalAgentGUIProviderTarget("cursor"),
+            ...createLocalAgentGUIAgentTarget("cursor"),
             iconUrl: "app://old-cursor-target-icon.png"
           }
         ]
@@ -1205,9 +1199,9 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          createLocalAgentGUIProviderTarget("claude-code")
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("codex"),
+          createLocalAgentGUIAgentTarget("claude-code")
         ]
       }
     });
@@ -1224,8 +1218,8 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("switches Codex into an agent-target conversation filter", () => {
     const actions = createActions();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       actions,
       viewModel: {
@@ -1234,8 +1228,8 @@ describe("AgentGUINodeView layout persistence", () => {
           kind: "agentTarget",
           agentTargetId: claudeTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: claudeTarget,
-        providerTargets: [codexTarget, claudeTarget]
+        selectedAgentTarget: claudeTarget,
+        agentTargets: [codexTarget, claudeTarget]
       }
     });
 
@@ -1243,23 +1237,20 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "codex",
-      providerTargetId: codexTarget.targetId
+      agentTargetId: codexTarget.targetId
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
   it("highlights All from the conversation filter without constraining target", () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedProviderTarget: claudeTarget,
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          claudeTarget
-        ]
+        selectedAgentTarget: claudeTarget,
+        agentTargets: [createLocalAgentGUIAgentTarget("codex"), claudeTarget]
       }
     });
 
@@ -1274,7 +1265,7 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("highlights Codex instead of All for an agent-target filter", () => {
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1282,10 +1273,10 @@ describe("AgentGUINodeView layout persistence", () => {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: codexTarget,
-        providerTargets: [
+        selectedAgentTarget: codexTarget,
+        agentTargets: [
           codexTarget,
-          createLocalAgentGUIProviderTarget("claude-code")
+          createLocalAgentGUIAgentTarget("claude-code")
         ]
       }
     });
@@ -1305,10 +1296,10 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          createLocalAgentGUIProviderTarget("claude-code")
+        selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("codex"),
+          createLocalAgentGUIAgentTarget("claude-code")
         ]
       }
     });
@@ -1328,9 +1319,9 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("claude-code"),
-          createLocalAgentGUIProviderTarget("codex")
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("claude-code"),
+          createLocalAgentGUIAgentTarget("codex")
         ]
       }
     });
@@ -1348,9 +1339,9 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("claude-code"),
-          createLocalAgentGUIProviderTarget("codex")
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("claude-code"),
+          createLocalAgentGUIAgentTarget("codex")
         ]
       }
     });
@@ -1369,24 +1360,22 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("claude-code"),
-          createLocalAgentGUIProviderTarget("codex")
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("claude-code"),
+          createLocalAgentGUIAgentTarget("codex")
         ]
       }
     });
 
     const heroIconGrid = container.querySelector(
-      ".agent-gui-node__empty-hero-launchpad-icon .agent-gui-node__provider-rail-launchpad-icon"
+      ".agent-gui-node__empty-hero-icon-slot > .agent-gui-node__agent-avatar > .agent-gui-node__agent-avatar"
     );
     expect(heroIconGrid).not.toBeNull();
     expect(heroIconGrid?.children).toHaveLength(4);
     expect(
-      Array.from(
-        heroIconGrid?.querySelectorAll(
-          ".agent-gui-node__provider-rail-launchpad-item"
-        ) ?? []
-      ).map((item) => item.querySelector("img")?.getAttribute("src"))
+      Array.from(heroIconGrid?.children ?? []).map((item) =>
+        item.querySelector("img")?.getAttribute("src")
+      )
     ).toEqual([
       MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex,
       MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS["claude-code"],
@@ -1394,17 +1383,15 @@ describe("AgentGUINodeView layout persistence", () => {
       MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.tutti
     ]);
     expect(
-      Array.from(
-        heroIconGrid?.querySelectorAll(
-          ".agent-gui-node__provider-rail-launchpad-item"
-        ) ?? []
-      ).map((item) => item.getAttribute("data-provider-active"))
+      Array.from(heroIconGrid?.children ?? []).map((item) =>
+        item.getAttribute("data-provider-active")
+      )
     ).toEqual(["true", "false", "false", "false"]);
   });
 
   it("remounts the empty hero icon when switching provider targets", () => {
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     const { container, rerender } = renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1412,8 +1399,8 @@ describe("AgentGUINodeView layout persistence", () => {
           kind: "agentTarget",
           agentTargetId: codexTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: codexTarget,
-        providerTargets: [codexTarget, claudeTarget]
+        selectedAgentTarget: codexTarget,
+        agentTargets: [codexTarget, claudeTarget]
       }
     });
 
@@ -1432,8 +1419,8 @@ describe("AgentGUINodeView layout persistence", () => {
             kind: "agentTarget",
             agentTargetId: claudeTarget.agentTargetId ?? ""
           },
-          selectedProviderTarget: claudeTarget,
-          providerTargets: [codexTarget, claudeTarget]
+          selectedAgentTarget: claudeTarget,
+          agentTargets: [codexTarget, claudeTarget]
         })
       })
     );
@@ -1451,21 +1438,21 @@ describe("AgentGUINodeView layout persistence", () => {
   it("omits disabled provider options in the empty hero provider select", async () => {
     const actions = createActions();
     const disabledTuttiTarget = {
-      ...createLocalAgentGUIProviderTarget("nexight"),
+      ...createLocalAgentGUIAgentTarget("nexight"),
       disabled: true
     };
     const disabledHermesTarget = {
-      ...createLocalAgentGUIProviderTarget("hermes"),
+      ...createLocalAgentGUIAgentTarget("hermes"),
       disabled: true
     };
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          createLocalAgentGUIProviderTarget("claude-code"),
+        selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("codex"),
+          createLocalAgentGUIAgentTarget("claude-code"),
           disabledTuttiTarget,
           disabledHermesTarget
         ]
@@ -1502,14 +1489,14 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("requests composer focus after switching the empty hero provider select", async () => {
     const actions = createActions();
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        selectedProviderTarget: codexTarget,
-        providerTargets: [codexTarget, claudeTarget]
+        selectedAgentTarget: codexTarget,
+        agentTargets: [codexTarget, claudeTarget]
       },
       labels: {
         ...createLabels(),
@@ -1529,7 +1516,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
       provider: "claude-code",
-      providerTargetId: claudeTarget.targetId
+      agentTargetId: claudeTarget.targetId
     });
     await waitFor(() => {
       expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
@@ -1538,7 +1525,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("selects the All tile for daemon local Codex targets", () => {
     const daemonCodexTarget = {
-      ...createLocalAgentGUIProviderTarget("codex"),
+      ...createLocalAgentGUIAgentTarget("codex"),
       targetId: "local-codex"
     };
 
@@ -1546,11 +1533,11 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedProviderTarget: daemonCodexTarget,
-        providerTargets: [
+        selectedAgentTarget: daemonCodexTarget,
+        agentTargets: [
           daemonCodexTarget,
           {
-            ...createLocalAgentGUIProviderTarget("claude-code"),
+            ...createLocalAgentGUIAgentTarget("claude-code"),
             targetId: "local-claude-code"
           }
         ]
@@ -1571,8 +1558,8 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [],
-        providerTargetsLoading: true
+        agentTargets: [],
+        agentTargetsLoading: true
       }
     });
 
@@ -1587,8 +1574,8 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: [],
-        providerTargetsLoading: false
+        agentTargets: [],
+        agentTargetsLoading: false
       }
     });
 
@@ -1632,7 +1619,7 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         providerRailMode: "exact",
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:alice-codex",
             provider: "codex",
@@ -1654,7 +1641,7 @@ describe("AgentGUINodeView layout persistence", () => {
             label: "Bob's Claude"
           }
         ],
-        providerTargetsLoading: false
+        agentTargetsLoading: false
       }
     });
 
@@ -1671,7 +1658,7 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         providerRailMode: "exact",
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:alice-codex",
             provider: "codex",
@@ -1687,7 +1674,7 @@ describe("AgentGUINodeView layout persistence", () => {
             }
           }
         ],
-        providerTargetsLoading: false
+        agentTargetsLoading: false
       }
     });
 
@@ -1695,12 +1682,12 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByRole("tab", { name: "Alice's Codex, Alice avatar" })
     ).toBeInTheDocument();
     expect(
-      container.querySelector(".agent-gui-node__provider-rail-badge")
+      container.querySelector(".agent-gui-node__agent-avatar-badge")
     ).not.toBeNull();
     expect(
       container
         .querySelector<HTMLImageElement>(
-          ".agent-gui-node__provider-rail-badge-image"
+          ".agent-gui-node__agent-avatar-badge-image"
         )
         ?.getAttribute("src")
     ).toBe("app://alice-avatar.png");
@@ -1713,7 +1700,7 @@ describe("AgentGUINodeView layout persistence", () => {
         providerRailMode: "exact",
         // claude-code first, then codex — the built-in provider order would flip
         // these; exact mode must keep the caller's order.
-        providerTargets: [
+        agentTargets: [
           {
             targetId: "shared-agent:bob-claude",
             provider: "claude-code",
@@ -1735,7 +1722,7 @@ describe("AgentGUINodeView layout persistence", () => {
             label: "Alice's Codex"
           }
         ],
-        providerTargetsLoading: false
+        agentTargetsLoading: false
       }
     });
 
@@ -1749,8 +1736,8 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         providerRailMode: "exact",
-        providerTargets: [],
-        providerTargetsLoading: false
+        agentTargets: [],
+        agentTargetsLoading: false
       },
       renderProviderRailEmpty: () => (
         <div data-testid="exact-rail-empty">No shared agents</div>
@@ -1768,8 +1755,8 @@ describe("AgentGUINodeView layout persistence", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
-        providerTargets: createLocalAgentGUIProviderTargets(),
-        providerTargetsLoading: false
+        agentTargets: createLocalAgentGUIAgentTargets(),
+        agentTargetsLoading: false
       }
     });
 
@@ -1791,11 +1778,11 @@ describe("AgentGUINodeView layout persistence", () => {
   it("falls back to All for avatar rail targets without an agent target id", () => {
     const actions = createActions();
     const localHermesTarget = {
-      ...createLocalAgentGUIProviderTarget("hermes"),
+      ...createLocalAgentGUIAgentTarget("hermes"),
       label: "Local Hermes"
     };
     const sharedHermesTarget = {
-      ...createLocalAgentGUIProviderTarget("hermes"),
+      ...createLocalAgentGUIAgentTarget("hermes"),
       targetId: "shared-agent:hermes-1",
       label: "Shared Hermes"
     };
@@ -1804,9 +1791,9 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "all" },
-        selectedProviderTarget: sharedHermesTarget,
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
+        selectedAgentTarget: sharedHermesTarget,
+        agentTargets: [
+          createLocalAgentGUIAgentTarget("codex"),
           localHermesTarget,
           sharedHermesTarget
         ]
@@ -1820,7 +1807,7 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(actions.selectConversationFilterTarget).toHaveBeenCalledWith({
       provider: "hermes",
-      providerTargetId: "shared-agent:hermes-1"
+      agentTargetId: "shared-agent:hermes-1"
     });
     expect(actions.updateConversationFilter).not.toHaveBeenCalled();
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
@@ -1828,9 +1815,9 @@ describe("AgentGUINodeView layout persistence", () => {
 
   it("passes provider switching options into the multi-provider composer", () => {
     const actions = createActions();
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
-      createLocalAgentGUIProviderTarget("claude-code")
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
+      createLocalAgentGUIAgentTarget("claude-code")
     ];
     renderAgentGUINodeView({
       actions,
@@ -1841,7 +1828,7 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        providerTargets
+        agentTargets
       }
     });
 
@@ -1852,9 +1839,9 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("renders provider switching options in the localized title", () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
-      createLocalAgentGUIProviderTarget("claude-code")
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
+      createLocalAgentGUIAgentTarget("claude-code")
     ];
     renderAgentGUINodeView({
       labels: {
@@ -1868,7 +1855,7 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        providerTargets
+        agentTargets
       }
     });
 
@@ -1879,10 +1866,10 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("uses Cursor colorful artwork in the empty hero provider select", async () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
       {
-        ...createLocalAgentGUIProviderTarget("cursor"),
+        ...createLocalAgentGUIAgentTarget("cursor"),
         iconUrl: "app://old-cursor-target-icon.png"
       }
     ];
@@ -1900,10 +1887,10 @@ describe("AgentGUINodeView layout persistence", () => {
         ...createViewModel(),
         conversationFilter: {
           kind: "agentTarget",
-          agentTargetId: providerTargets[1]!.agentTargetId ?? ""
+          agentTargetId: agentTargets[1]!.agentTargetId ?? ""
         },
-        selectedProviderTarget: providerTargets[1]!,
-        providerTargets
+        selectedAgentTarget: agentTargets[1]!,
+        agentTargets
       }
     });
 
@@ -1920,10 +1907,10 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("uses Cursor colorful artwork in the empty hero icon", () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
       {
-        ...createLocalAgentGUIProviderTarget("cursor"),
+        ...createLocalAgentGUIAgentTarget("cursor"),
         iconUrl: "app://old-cursor-target-icon.png"
       }
     ];
@@ -1941,10 +1928,10 @@ describe("AgentGUINodeView layout persistence", () => {
         ...createViewModel(),
         conversationFilter: {
           kind: "agentTarget",
-          agentTargetId: providerTargets[1]!.agentTargetId ?? ""
+          agentTargetId: agentTargets[1]!.agentTargetId ?? ""
         },
-        selectedProviderTarget: providerTargets[1]!,
-        providerTargets
+        selectedAgentTarget: agentTargets[1]!,
+        agentTargets
       }
     });
 
@@ -1954,12 +1941,11 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("renders the composer from the selected provider target", () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
-      createLocalAgentGUIProviderTarget("claude-code")
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
+      createLocalAgentGUIAgentTarget("claude-code")
     ];
-    const selectedProviderTarget =
-      createLocalAgentGUIProviderTarget("claude-code");
+    const selectedAgentTarget = createLocalAgentGUIAgentTarget("claude-code");
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -1969,8 +1955,8 @@ describe("AgentGUINodeView layout persistence", () => {
           lastActiveAgentSessionId: null,
           conversationRailWidthPx: null
         },
-        providerTargets,
-        selectedProviderTarget
+        agentTargets,
+        selectedAgentTarget
       }
     });
 
@@ -1980,9 +1966,9 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("hides provider switching in the title for an active session", () => {
-    const providerTargets = [
-      createLocalAgentGUIProviderTarget("codex"),
-      createLocalAgentGUIProviderTarget("claude-code")
+    const agentTargets = [
+      createLocalAgentGUIAgentTarget("codex"),
+      createLocalAgentGUIAgentTarget("claude-code")
     ];
     const conversation = createConversationSummary("session-1");
     renderAgentGUINodeView({
@@ -1996,7 +1982,7 @@ describe("AgentGUINodeView layout persistence", () => {
         activeConversation: conversation,
         activeConversationId: conversation.id,
         conversations: [conversation],
-        providerTargets
+        agentTargets
       }
     });
 
@@ -2160,15 +2146,15 @@ describe("AgentGUINodeView layout persistence", () => {
   it("disables the toolbar new conversation action for unavailable provider targets", () => {
     const actions = createActions();
     const unavailableTarget = {
-      ...createLocalAgentGUIProviderTarget("nexight"),
+      ...createLocalAgentGUIAgentTarget("nexight"),
       disabled: true
     };
     const { container } = renderAgentGUINodeView({
       actions,
       viewModel: {
         ...createViewModel(),
-        selectedProviderTarget: unavailableTarget,
-        providerTargets: [unavailableTarget]
+        selectedAgentTarget: unavailableTarget,
+        agentTargets: [unavailableTarget]
       }
     });
 
@@ -2539,7 +2525,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("applies selected conversation overlays when runtime rail sections finish loading", async () => {
+  it("keeps runtime project sections server-owned when local summaries resolve projects", async () => {
     const project = {
       id: "project-home",
       path: "/Users/ryan",
@@ -2594,15 +2580,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("agent-gui-conversation-item-session-5")
+        screen.getByTestId("agent-gui-conversation-item-session-20")
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByTestId("agent-gui-conversation-item-session-20")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("agent-gui-conversation-item-session-16")
+      screen.queryByTestId("agent-gui-conversation-item-session-5")
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-16")
+    ).toBeInTheDocument();
   });
 
   it("renders pinned conversations from the runtime pinned page", async () => {
@@ -3108,7 +3094,7 @@ describe("AgentGUINodeView layout persistence", () => {
         ...baseViewModel.shell.data,
         provider: "claude-code" as const
       },
-      selectedProviderTarget: createLocalAgentGUIProviderTarget("claude-code"),
+      selectedAgentTarget: createLocalAgentGUIAgentTarget("claude-code"),
       conversations: [initialConversation]
     });
     const labels = createLabels();
@@ -3164,7 +3150,7 @@ describe("AgentGUINodeView layout persistence", () => {
             ...viewModel.shell.data,
             provider: "codex" as const
           },
-          selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+          selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
           activeConversation: updatedConversation,
           activeConversationId: updatedConversation.id,
           conversations: [updatedConversation]
@@ -3181,8 +3167,8 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("keeps the project rail header mounted before slow provider-filtered reloads show a skeleton", async () => {
-    const codexTarget = createLocalAgentGUIProviderTarget("codex");
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const codexTarget = createLocalAgentGUIAgentTarget("codex");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     const claudeAgentTargetId = claudeTarget.agentTargetId ?? "";
     const project = {
       id: "project-app",
@@ -3240,8 +3226,8 @@ describe("AgentGUINodeView layout persistence", () => {
     const labels = createLabels();
     const baseViewModel = {
       ...createViewModel(),
-      selectedProviderTarget: codexTarget,
-      providerTargets: [codexTarget, claudeTarget],
+      selectedAgentTarget: codexTarget,
+      agentTargets: [codexTarget, claudeTarget],
       userProjects: [project],
       conversations: []
     };
@@ -3275,7 +3261,7 @@ describe("AgentGUINodeView layout persistence", () => {
             kind: "agentTarget",
             agentTargetId: claudeAgentTargetId
           },
-          selectedProviderTarget: claudeTarget
+          selectedAgentTarget: claudeTarget
         }
       })
     );
@@ -3312,7 +3298,7 @@ describe("AgentGUINodeView layout persistence", () => {
   });
 
   it("passes the active agent target filter to runtime rail section requests", async () => {
-    const claudeTarget = createLocalAgentGUIProviderTarget("claude-code");
+    const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
     const agentTargetId = claudeTarget.agentTargetId ?? "";
     const project = {
       id: "project-app",
@@ -3376,11 +3362,8 @@ describe("AgentGUINodeView layout persistence", () => {
       viewModel: {
         ...createViewModel(),
         conversationFilter: { kind: "agentTarget", agentTargetId },
-        selectedProviderTarget: claudeTarget,
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          claudeTarget
-        ],
+        selectedAgentTarget: claudeTarget,
+        agentTargets: [createLocalAgentGUIAgentTarget("codex"), claudeTarget],
         userProjects: [project],
         conversations: []
       }
@@ -4203,7 +4186,7 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
-  it("keeps the selected transient conversation ahead of the latest runtime rail page", () => {
+  it("patches existing project items without inserting local project summaries", () => {
     const project = { id: "ryan", label: "ryan", path: "/Users/ryan" };
     const existingSection = {
       id: "project:/Users/ryan",
@@ -4231,10 +4214,6 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(updated?.[0]?.items.map((item) => item.id)).toEqual([
       "session-5",
-      "session-20",
-      "session-19",
-      "session-18",
-      "session-17",
       "session-4",
       "session-3",
       "session-2",
@@ -4760,7 +4739,7 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
   it("renders a disabled action for placeholder provider targets", () => {
     const tuttiTarget = {
-      ...createLocalAgentGUIProviderTarget("nexight"),
+      ...createLocalAgentGUIAgentTarget("nexight"),
       disabled: true
     };
     renderAgentGUINodeView({
@@ -4775,11 +4754,8 @@ describe("AgentGUINodeView provider readiness gate", () => {
           kind: "agentTarget",
           agentTargetId: tuttiTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: tuttiTarget,
-        providerTargets: [
-          createLocalAgentGUIProviderTarget("codex"),
-          tuttiTarget
-        ]
+        selectedAgentTarget: tuttiTarget,
+        agentTargets: [createLocalAgentGUIAgentTarget("codex"), tuttiTarget]
       })
     });
 
@@ -4796,7 +4772,7 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
   it("lets the host render disabled provider target unavailable state", () => {
     const disabledTarget = {
-      ...createLocalAgentGUIProviderTarget("codex"),
+      ...createLocalAgentGUIAgentTarget("codex"),
       disabled: true,
       label: "Shared Codex",
       unavailableReason: "disabled by workspace policy"
@@ -4820,8 +4796,8 @@ describe("AgentGUINodeView provider readiness gate", () => {
           kind: "agentTarget",
           agentTargetId: disabledTarget.agentTargetId ?? ""
         },
-        selectedProviderTarget: disabledTarget,
-        providerTargets: [disabledTarget]
+        selectedAgentTarget: disabledTarget,
+        agentTargets: [disabledTarget]
       })
     });
 
@@ -4878,9 +4854,7 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
     expect(gate).toHaveTextContent("providerGateCheckingTitle");
     expect(gate).toHaveTextContent("providerGateCheckingAgentsDescription");
-    expect(
-      gate.querySelector(".agent-gui-node__empty-hero-launchpad-icon")
-    ).not.toBeNull();
+    expect(gate.querySelector(".agent-gui-node__agent-avatar")).not.toBeNull();
     expect(
       gate.querySelector("img.agent-gui-node__empty-hero-icon-effect")
     ).toBeNull();
@@ -5327,10 +5301,10 @@ function createViewModel(
       lastActiveAgentSessionId: null,
       conversationRailWidthPx: null
     },
-    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
-    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
-    handoffProviderTargets: [createLocalAgentGUIProviderTarget("codex")],
-    providerTargetsLoading: false,
+    selectedAgentTarget: createLocalAgentGUIAgentTarget("codex"),
+    agentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    handoffAgentTargets: [createLocalAgentGUIAgentTarget("codex")],
+    agentTargetsLoading: false,
     providerRailMode: "catalog",
     comingSoonProviders: [],
     conversationFilter: { kind: "all" },
@@ -5565,6 +5539,7 @@ function createLabels(): AgentGUIViewLabels {
     reasoningOptionHigh: "reasoningOptionHigh",
     reasoningOptionXHigh: "reasoningOptionXHigh",
     reasoningOptionMax: "reasoningOptionMax",
+    reasoningOptionUltra: "reasoningOptionUltra",
     speedLabel: "Speed",
     speedSelectionLabel: "Speed",
     speedOptionStandard: "Standard",

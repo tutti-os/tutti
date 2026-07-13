@@ -1,7 +1,32 @@
-import type { DesktopWorkbenchContributionFactory } from "../workspaceWorkbenchContributionFactory";
+import type {
+  DesktopWorkbenchContributionContext,
+  DesktopWorkbenchContributionFactory
+} from "../workspaceWorkbenchContributionFactory";
 import { createWorkspaceIssueManagerContribution } from "../workspaceIssueManagerContribution.ts";
 
-export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContributionFactory =
+type IssueManagerWorkbenchContributionContext = Pick<
+  DesktopWorkbenchContributionContext,
+  | "agentProviderStatusService"
+  | "agents"
+  | "appCenterService"
+  | "appI18n"
+  | "appLocale"
+  | "defaultAgentProvider"
+  | "dockIcons"
+  | "eventStreamClient"
+  | "hostFilesApi"
+  | "platformApi"
+  | "reporterService"
+  | "richTextAtService"
+  | "runtimeApi"
+  | "tuttidClient"
+  | "workspaceAgentActivityService"
+  | "workspaceAgentPromptSessionService"
+  | "workspaceId"
+  | "workspaceUserProjectService"
+>;
+
+export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContributionFactory<IssueManagerWorkbenchContributionContext> =
   {
     id: "workspace-issue-manager",
     order: 0,
@@ -17,7 +42,7 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
         eventStreamClient: context.eventStreamClient,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
-        providerTargets: context.providerTargets,
+        agents: context.agents,
         reporterService: context.reporterService,
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,

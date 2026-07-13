@@ -132,7 +132,7 @@ export function groupConversations(
     normalizeConversationProjectPathCached(path, normalizedProjectPathByPath);
   userProjects.forEach((project, projectOrder) => {
     const normalizedPath = normalizeProjectPath(project.path);
-    const sectionId = `project:${normalizedPath}`;
+    const sectionId = conversationProjectSectionId(project, normalizedPath);
     if (projectGroups.has(sectionId)) {
       return;
     }
@@ -183,7 +183,10 @@ export function groupConversations(
     }
 
     const normalizedPath = normalizeProjectPath(conversation.project.path);
-    const sectionId = `project:${normalizedPath}`;
+    const sectionId = conversationProjectSectionId(
+      conversation.project,
+      normalizedPath
+    );
     const existing = projectGroups.get(sectionId);
     if (existing) {
       existing.items.push(conversation);
@@ -224,6 +227,23 @@ export function groupConversations(
   return groups;
 }
 
+export function filterConversationSectionsBySearchMatches(
+  sections: readonly ConversationSection[],
+  matchingConversations: AgentGUINodeViewModel["rail"]["conversations"]
+): ConversationSection[] {
+  const matchingConversationIds = new Set(
+    matchingConversations.map((conversation) => conversation.id)
+  );
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) =>
+        matchingConversationIds.has(item.id)
+      )
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
 type ConversationSectionWithSort = ConversationSection & {
   projectOrder: number;
   sectionOrder: number;
@@ -259,6 +279,13 @@ function normalizeConversationProjectPathCached(
   const normalized = normalizeConversationProjectPath(path);
   normalizedPathByPath.set(path, normalized);
   return normalized;
+}
+
+function conversationProjectSectionId(
+  project: NonNullable<ConversationSection["project"]>,
+  normalizedPath: string
+): string {
+  return project.sectionKey?.trim() || `project:${normalizedPath}`;
 }
 
 function conversationMetaKind(

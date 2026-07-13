@@ -28,6 +28,7 @@ function project(
     id: path,
     path,
     label,
+    sectionKey: `project:${path}`,
     ...overrides
   };
 }
@@ -81,7 +82,7 @@ describe("updateConversationSectionsFromSummaries", () => {
     expect(result?.[0]?.items.map((item) => item.id)).toEqual(["first-convo"]);
   });
 
-  it("inserts a brand-new project conversation into its matching project section", () => {
+  it("does not insert a brand-new project conversation from local project resolution", () => {
     const appProject = project("/workspace/app", "App");
     const previous: ConversationSection[] = [
       {
@@ -102,9 +103,7 @@ describe("updateConversationSectionsFromSummaries", () => {
       { sectionConversationsLabel }
     );
 
-    expect(result?.[0]?.items.map((item) => item.id)).toEqual([
-      "new-project-convo"
-    ]);
+    expect(result).toBe(previous);
   });
 
   it("still patches fields of conversations that already exist in a section", () => {
@@ -150,7 +149,7 @@ describe("updateConversationSectionsFromSummaries", () => {
     expect(result?.[0]?.items).toHaveLength(1);
   });
 
-  it("moves a summary to its resolved section instead of leaving a stale copy behind", () => {
+  it("keeps an existing item in its persisted section when local project resolution changes", () => {
     const appProject = project("/workspace/app", "App");
     const staleConversation = conversation("moving-convo", 1000);
     const resolvedConversation = conversation("moving-convo", 2000, {
@@ -179,8 +178,13 @@ describe("updateConversationSectionsFromSummaries", () => {
       { sectionConversationsLabel }
     );
 
-    expect(result?.[0]?.items.map((item) => item.id)).toEqual(["moving-convo"]);
-    expect(result?.[1]?.items).toEqual([]);
+    expect(result?.[0]?.items).toEqual([]);
+    expect(result?.[1]?.items).toEqual([
+      {
+        ...resolvedConversation,
+        project: null
+      }
+    ]);
   });
 
   it("returns the same reference when there is nothing new and nothing changed", () => {

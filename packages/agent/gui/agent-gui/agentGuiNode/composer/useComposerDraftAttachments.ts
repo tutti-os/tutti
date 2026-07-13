@@ -34,6 +34,7 @@ import {
   buildGoalModePrompt,
   goalDraftObjectiveFromPrompt
 } from "./composerDraftUtils";
+import { reportAgentComposerDiagnostic } from "./agentComposerDiagnostics";
 
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
@@ -166,6 +167,20 @@ export function useComposerDraftAttachments({
         (agentActivityRuntime.promptContentUploadSupport?.image ?? true)
           ? agentActivityRuntime.uploadPromptContent
           : undefined;
+      reportAgentComposerDiagnostic(agentActivityRuntime, {
+        details: {
+          imageCount: Math.min(images.length, remainingSlots),
+          promptImagesSupported,
+          runtimeAvailable: Boolean(agentActivityRuntime),
+          uploadFunctionAvailable: Boolean(uploadPromptContent),
+          uploadSupportDeclared:
+            agentActivityRuntime?.promptContentUploadSupport?.image ?? null
+        },
+        event: "agent.gui.composer.image_upload.requested",
+        level: "info",
+        source: "agent-gui",
+        workspaceId
+      });
       const nextImages = images.slice(0, remainingSlots).map((image) => ({
         id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
         name: image.name,
@@ -201,9 +216,25 @@ export function useComposerDraftAttachments({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
+            const uploadedUrl = uploadedImage?.url?.trim();
+            reportAgentComposerDiagnostic(agentActivityRuntime, {
+              details: {
+                foundImageBlock: Boolean(uploadedImage),
+                hasAttachmentId: Boolean(uploadedImage?.attachmentId?.trim()),
+                hasData: Boolean(uploadedImage?.data?.trim()),
+                hasPath: Boolean(uploadedImage?.path?.trim()),
+                hasUrl: Boolean(uploadedUrl),
+                imageId: draftImage.id
+              },
+              event: "agent.gui.composer.image_upload.resolved",
+              level: "info",
+              source: "agent-gui",
+              workspaceId
+            });
             if (
               !uploadedImage ||
-              (!uploadedImage.attachmentId &&
+              (!uploadedUrl &&
+                !uploadedImage.attachmentId &&
                 !uploadedImage.path &&
                 !uploadedImage.data)
             ) {
@@ -220,7 +251,11 @@ export function useComposerDraftAttachments({
                     ...(uploadedImage.attachmentId
                       ? { attachmentId: uploadedImage.attachmentId }
                       : {}),
-                    ...(uploadedImage.data ? { data: uploadedImage.data } : {}),
+                    ...(uploadedUrl
+                      ? { url: uploadedUrl }
+                      : uploadedImage.data
+                        ? { data: uploadedImage.data }
+                        : {}),
                     ...(uploadedImage.path ? { path: uploadedImage.path } : {}),
                     previewUrl: image.previewUrl,
                     uploading: false
@@ -238,6 +273,16 @@ export function useComposerDraftAttachments({
           .catch((error: unknown) => {
             const message =
               error instanceof Error ? error.message : String(error);
+            reportAgentComposerDiagnostic(agentActivityRuntime, {
+              details: {
+                error: message.slice(0, 500),
+                imageId: draftImage.id
+              },
+              event: "agent.gui.composer.image_upload.failed",
+              level: "warn",
+              source: "agent-gui",
+              workspaceId
+            });
             const failedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
                 ? {
@@ -353,14 +398,9 @@ export function useComposerDraftAttachments({
       if (!normalizedText.trim()) {
         return;
       }
-      // Capability is resolved at paste time (not render time): the editor
-      // always routes large pastes here, so a runtime that becomes ready a tick
-      // after mount still lands the very first paste as a chip.
-      const uploadPromptContent =
-        agentActivityRuntime?.uploadPromptContent &&
-        (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
-          ? agentActivityRuntime.uploadPromptContent
-          : undefined;
+      const uploadPromptContent = promptFileUploadSupported
+        ? agentActivityRuntime?.uploadPromptContent
+        : undefined;
       if (!uploadPromptContent) {
         // Landing is unsupported by this runtime (e.g. web). The editor already
         // swallowed the native paste, so re-insert the text inline via the
@@ -457,7 +497,12 @@ export function useComposerDraftAttachments({
           });
         });
     },
-    [agentActivityRuntime, onDraftContentChange, workspaceId]
+    [
+      agentActivityRuntime,
+      onDraftContentChange,
+      promptFileUploadSupported,
+      workspaceId
+    ]
   );
 
   const applyReferencePickResult = useCallback(

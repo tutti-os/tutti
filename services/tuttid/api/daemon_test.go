@@ -22,6 +22,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
 )
@@ -89,6 +90,8 @@ type stubAgentSessionService struct {
 	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	deleteFn                        func(context.Context, string, string) (bool, error)
+	countSessionSectionFn           func(context.Context, string, agentservice.CountSessionSectionInput) (agentservice.SessionSectionCount, error)
+	deleteSessionSectionFn          func(context.Context, string, agentservice.DeleteSessionSectionInput) (agentservice.DeleteSessionSectionResult, error)
 	importExternalFn                func(context.Context, string, agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error)
 	validImportPathsFn              func(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	listFn                          func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
@@ -247,6 +250,20 @@ func (s stubAgentSessionService) ListSessionSectionPage(ctx context.Context, wor
 		return agentservice.SessionSection{}, nil
 	}
 	return s.listSessionSectionPageFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) CountSessionSection(ctx context.Context, workspaceID string, input agentservice.CountSessionSectionInput) (agentservice.SessionSectionCount, error) {
+	if s.countSessionSectionFn == nil {
+		return agentservice.SessionSectionCount{}, nil
+	}
+	return s.countSessionSectionFn(ctx, workspaceID, input)
+}
+
+func (s stubAgentSessionService) DeleteSessionSection(ctx context.Context, workspaceID string, input agentservice.DeleteSessionSectionInput) (agentservice.DeleteSessionSectionResult, error) {
+	if s.deleteSessionSectionFn == nil {
+		return agentservice.DeleteSessionSectionResult{}, nil
+	}
+	return s.deleteSessionSectionFn(ctx, workspaceID, input)
 }
 
 func (s stubAgentSessionService) ListPinnedSessionPage(ctx context.Context, workspaceID string, input agentservice.ListPinnedSessionPageInput) (agentservice.SessionPage, error) {
@@ -627,7 +644,8 @@ func (s stubPreferencesService) Put(ctx context.Context, input preferencesservic
 }
 
 type stubAgentTargetService struct {
-	listFn func(context.Context) ([]agenttargetbiz.Target, error)
+	listFn       func(context.Context) ([]agenttargetbiz.Target, error)
+	setEnabledFn func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error)
 }
 
 func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
@@ -635,6 +653,19 @@ func (s stubAgentTargetService) List(ctx context.Context) ([]agenttargetbiz.Targ
 		return agenttargetbiz.DefaultSystemTargets(1), nil
 	}
 	return s.listFn(ctx)
+}
+
+func (s stubAgentTargetService) SetEnabled(ctx context.Context, input agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+	if s.setEnabledFn != nil {
+		return s.setEnabledFn(ctx, input)
+	}
+	for _, target := range agenttargetbiz.DefaultSystemTargets(1) {
+		if target.ID == input.ID {
+			target.Enabled = input.Enabled
+			return target, nil
+		}
+	}
+	return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
 }
 
 func TestDaemonAPIGeneratedRoutesWorkspaceTerminalsReturnServiceUnavailable(t *testing.T) {
@@ -853,6 +884,88 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionPageForwardsCursor(t *te
 	)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesCountAgentSessionSectionForwardsScope(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			countSessionSectionFn: func(_ context.Context, workspaceID string, input agentservice.CountSessionSectionInput) (agentservice.SessionSectionCount, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.SectionKey != "project:/workspace/project" || input.AgentTargetID != "claude-target" {
+					t.Fatalf("count input = %#v, want sectionKey agentTargetID", input)
+				}
+				return agentservice.SessionSectionCount{
+					WorkspaceID:   workspaceID,
+					SectionKey:    input.SectionKey,
+					AgentTargetID: input.AgentTargetID,
+					Count:         12,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-session-sections/count?sectionKey=project:%2Fworkspace%2Fproject&agentTargetId=claude-target",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.WorkspaceAgentSessionSectionCountResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response error = %v", err)
+	}
+	if response.Count != 12 || response.AgentTargetId == nil || *response.AgentTargetId != "claude-target" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesDeleteAgentSessionSectionForwardsScope(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			deleteSessionSectionFn: func(_ context.Context, workspaceID string, input agentservice.DeleteSessionSectionInput) (agentservice.DeleteSessionSectionResult, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if input.SectionKey != "project:/workspace/project" || input.AgentTargetID != "claude-target" {
+					t.Fatalf("delete input = %#v, want sectionKey agentTargetID", input)
+				}
+				return agentservice.DeleteSessionSectionResult{
+					WorkspaceID:       workspaceID,
+					SectionKey:        input.SectionKey,
+					AgentTargetID:     input.AgentTargetID,
+					RemovedMessages:   5,
+					RemovedSessions:   2,
+					RemovedSessionIDs: []string{"session-1", "session-2"},
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodDelete,
+		"/v1/workspaces/ws-1/agent-session-sections?sectionKey=project:%2Fworkspace%2Fproject&agentTargetId=claude-target",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.DeleteWorkspaceAgentSessionSectionResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response error = %v", err)
+	}
+	if response.RemovedSessions != 2 || !slices.Equal(response.RemovedSessionIds, []string{"session-1", "session-2"}) {
+		t.Fatalf("response = %#v", response)
 	}
 }
 
@@ -1508,6 +1621,30 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsPassesAgentTargetID(t *testing.T) {
+	var gotAgentTargetID string
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			composerOptionsFn: func(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
+				gotAgentTargetID = input.AgentTargetID
+				return agentservice.ComposerOptions{Provider: input.Provider}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-providers/codex/composer-options", map[string]any{
+		"agentTargetId": "shared-agent:abc",
+		"workspaceId":   "ws-1",
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if gotAgentTargetID != "shared-agent:abc" {
+		t.Fatalf("agentTargetID = %q, want shared-agent:abc", gotAgentTargetID)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsUsesPreferencesDefaults(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
@@ -2010,6 +2147,106 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		if target.Id != wantIDs[index] || target.LaunchRef.Type != tuttigenerated.LocalCli {
 			t.Fatalf("target[%d] = %#v, want id %q local_cli", index, target, wantIDs[index])
 		}
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabled(t *testing.T) {
+	mux := http.NewServeMux()
+	var captured agenttargetservice.SetEnabledInput
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{
+			setEnabledFn: func(_ context.Context, input agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+				captured = input
+				var target agenttargetbiz.Target
+				for _, candidate := range agenttargetbiz.DefaultSystemTargets(1) {
+					if candidate.ID == agenttargetbiz.IDLocalTuttiAgent {
+						target = candidate
+						break
+					}
+				}
+				target.Enabled = input.Enabled
+				target.UpdatedAtUnixMS = 2
+				return target, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPatch,
+		"/v1/agent-targets/local:tutti-agent/enabled",
+		map[string]any{"enabled": false},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if captured.ID != agenttargetbiz.IDLocalTuttiAgent || captured.Enabled {
+		t.Fatalf("captured input = %#v", captured)
+	}
+	var response tuttigenerated.AgentTarget
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Id != agenttargetbiz.IDLocalTuttiAgent || response.Enabled {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRejectsUserTarget(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentTargetService: stubAgentTargetService{
+			setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+				return agenttargetbiz.Target{}, agenttargetservice.ErrSystemTargetImmutable
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPatch,
+		"/v1/agent-targets/custom-codex/enabled",
+		map[string]any{"enabled": false},
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesSetSystemAgentTargetEnabledRequiresEnabled(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		body any
+	}{
+		{name: "empty object", body: map[string]any{}},
+		{name: "null", body: json.RawMessage("null")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux := http.NewServeMux()
+			RegisterRoutes(mux, NewRoutes(DaemonAPI{
+				AgentTargetService: stubAgentTargetService{
+					setEnabledFn: func(context.Context, agenttargetservice.SetEnabledInput) (agenttargetbiz.Target, error) {
+						t.Fatal("SetEnabled should not be called when enabled is missing")
+						return agenttargetbiz.Target{}, nil
+					},
+				},
+			}))
+
+			recorder := performGeneratedRouteRequest(
+				t,
+				mux,
+				http.MethodPatch,
+				"/v1/agent-targets/local:tutti-agent/enabled",
+				test.body,
+			)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+			}
+		})
 	}
 }
 

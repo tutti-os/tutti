@@ -1,10 +1,9 @@
 import type {
   AgentActivityRuntime,
+  AgentGUIAgent,
+  AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
-  AgentGUIProviderRailAllPresentation,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderTarget,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
@@ -54,15 +53,12 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
-  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   contextMentionProviders: NonNullable<
     AgentGUIProps["hostCapabilities"]["contextMentionProviders"]
   >;
@@ -141,14 +137,13 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&
-    previous.providerTargets === next.providerTargets &&
-    previous.providerTargetsLoading === next.providerTargetsLoading &&
-    previous.providerRailAllPresentation?.iconUrl ===
-      next.providerRailAllPresentation?.iconUrl &&
-    previous.providerRailMode === next.providerRailMode &&
-    previous.renderProviderRailEmpty === next.renderProviderRailEmpty &&
+    previous.agents === next.agents &&
+    previous.agentsLoading === next.agentsLoading &&
+    previous.allAgentsPresentation?.iconUrl ===
+      next.allAgentsPresentation?.iconUrl &&
+    previous.renderAgentsEmpty === next.renderAgentsEmpty &&
     previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
-    previous.defaultProviderTargetId === next.defaultProviderTargetId &&
+    previous.defaultAgentTargetId === next.defaultAgentTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
     previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&

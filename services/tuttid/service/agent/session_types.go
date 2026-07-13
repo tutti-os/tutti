@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
@@ -34,7 +34,8 @@ type Service struct {
 	RuntimeOperationOwner          string
 	SessionDirectoryAllocator      SessionDirectoryAllocator
 	PromptAttachmentStore          PromptAttachmentStore
-	RuntimePreparer                agentsidecarservice.Preparer
+	RuntimePreparer                runtimeprep.Preparer
+	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
@@ -141,6 +142,32 @@ type ListSessionSectionPageInput struct {
 	AgentTargetID string
 }
 
+type CountSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type SessionSectionCount struct {
+	WorkspaceID   string
+	SectionKey    string
+	AgentTargetID string
+	Count         int
+}
+
+type DeleteSessionSectionInput struct {
+	SectionKey    string
+	AgentTargetID string
+}
+
+type DeleteSessionSectionResult struct {
+	WorkspaceID       string
+	SectionKey        string
+	AgentTargetID     string
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
 type ListPinnedSessionPageInput struct {
 	Cursor        string
 	Limit         int
@@ -214,6 +241,14 @@ type SessionReader interface {
 
 type SessionSectionReader interface {
 	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+}
+
+type SessionSectionCounter interface {
+	CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool)
+}
+
+type SessionSectionDeleter interface {
+	DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool)
 }
 
 type UserProjectReader interface {
@@ -487,6 +522,7 @@ type PromptContentBlock struct {
 	Text         string `json:"text,omitempty"`
 	MimeType     string `json:"mimeType,omitempty"`
 	Data         string `json:"data,omitempty"`
+	URL          string `json:"url,omitempty"`
 	AttachmentID string `json:"attachmentId,omitempty"`
 	Name         string `json:"name,omitempty"`
 	Path         string `json:"path,omitempty"`

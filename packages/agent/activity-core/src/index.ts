@@ -19,6 +19,7 @@ export {
   type AgentActivitySnapshotListener,
   type CreateAgentActivityControllerInput
 } from "./controller.ts";
+export type { AgentActivityLoadComposerOptionsControllerInput } from "./controllerComposerOptions.ts";
 export {
   cloneAgentActivityMessage,
   compareAgentActivityMessages,

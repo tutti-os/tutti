@@ -41,6 +41,12 @@ ipcRenderer.on(
       delete document.documentElement.dataset.tuttiCompactTitlebar;
     }
 
+    if (payload.maximized) {
+      document.documentElement.dataset.tuttiWindowMaximized = "true";
+    } else {
+      delete document.documentElement.dataset.tuttiWindowMaximized;
+    }
+
     window.dispatchEvent(
       new CustomEvent<DesktopHostWindowLayoutPayload>(
         "tutti-host-window-layout",

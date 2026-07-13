@@ -1,4 +1,3 @@
-@import "react-medium-image-zoom/dist/styles.css";
 @source "../..";
 
 /* Restored agent activity renderer styles from the TSH desktop source during the GUI migration. */
@@ -79,12 +78,52 @@
   );
 }
 
-.tsh-zoom-dialog[data-rmiz-modal] {
-  z-index: 100300;
+.tsh-zoomable-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.tsh-zoomable-image--block {
+  display: block;
+}
+
+.tsh-zoomable-image__trigger {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  cursor: zoom-in;
   -webkit-app-region: no-drag;
 }
 
+.tsh-zoom-dialog[data-rmiz-modal] {
+  position: fixed;
+  inset: 0;
+  z-index: 100300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  -webkit-app-region: no-drag;
+}
+
+.tsh-zoom-dialog [data-rmiz-modal-overlay] {
+  position: absolute;
+  inset: 0;
+}
+
 .tsh-zoom-dialog [data-rmiz-modal-content] {
+  position: relative;
+  z-index: 100300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
   -webkit-app-region: no-drag;
 }
 
@@ -98,9 +137,20 @@
 }
 
 .tsh-zoom-dialog [data-rmiz-btn-unzoom] {
+  position: fixed;
   top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
   right: 20px;
   inset-inline-end: 20px;
+  z-index: 100301;
+}
+
+.tsh-zoom-dialog__image {
+  display: block;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+  object-fit: contain;
+  transform-origin: center center;
+  cursor: zoom-out;
 }
 
 .tsh-zoom-dialog__image-actions {
@@ -1857,6 +1907,37 @@ aside.workspace-agents-status-panel
   white-space: nowrap;
 }
 
+/* Compact tool-call rows when nested inside a details block (e.g. task STEPS) */
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-title,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-status,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-diff-stats,
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-summary {
+  font-size: 11px;
+}
+
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-row-icon
+  svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Looser vertical rhythm for the nested step rows so they don't feel cramped */
+.workspace-agents-status-panel__detail-tool-body
+  .workspace-agents-status-panel__detail-tool-stack {
+  gap: 12px;
+}
+
 .workspace-agents-status-panel__detail-tool-row-head
   .workspace-agents-status-panel__detail-tool-row-chevron {
   flex: 0 0 auto;
@@ -1915,7 +1996,7 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-tool-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -5885,20 +5966,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   justify-content: flex-end;
   min-width: 28px;
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-meta[data-kind="loading"],
 .agent-gui-node__conversation-meta[data-kind="waiting"],
-.agent-gui-node__conversation-meta[data-kind="failed"] {
+.agent-gui-node__conversation-meta[data-kind="failed"],
+.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
   width: 28px;
   min-width: 28px;
-  justify-content: center;
-}
-
-.agent-gui-node__conversation-meta[data-kind="unread-complete"] {
-  width: 10px;
-  min-width: 10px;
   justify-content: center;
 }
 
@@ -5922,7 +5997,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);
-  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-delete-button,
@@ -5943,6 +6017,10 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-actions,
 .agent-gui-node__conversation-actions:focus-within {
   opacity: 1;
+  /* Only in the visible state: fading in on hover stays smooth while
+     leaving the row swaps back to the meta icon instantly, with no
+     lingering cross-fade overlapping the two. */
+  transition: opacity 140ms ease;
 }
 
 .agent-gui-node__conversation-item[data-pinned="true"]
@@ -6318,12 +6396,8 @@ button.agent-gui-node__conversation-section-toggle:hover
   left: 50%;
   width: 1px;
   height: 8px;
-  transform: translateX(-50%);
-  background: color-mix(
-    in srgb,
-    var(--line-2, var(--tutti-line-2)) 82%,
-    transparent
-  );
+  transform: translate(-50%, -50%);
+  background: var(--line-1, var(--nexight-line-1));
 }
 
 .agent-gui-message-locator__tick {
@@ -6494,7 +6568,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  padding-bottom: 24px;
+  padding-bottom: 16px;
   will-change: transform;
 }
 
@@ -6504,7 +6578,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-transcript-virtual-item
   > [data-testid="agent-transcript-turn-divider"]
   + .agent-gui-transcript-row {
-  margin-top: 24px;
+  margin-top: 16px;
 }
 
 .agent-gui-transcript-row[data-agent-transcript-row-enter="true"] {
@@ -6570,7 +6644,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__timeline-centered {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
 }
 
@@ -8778,6 +8852,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__provider-rail-avatar {
+  --agent-gui-avatar-badge-offset: -4px;
+  --agent-gui-avatar-badge-size: 16px;
+
   position: relative;
   box-sizing: border-box;
   display: grid;
@@ -8819,29 +8896,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--brand-primary, var(--tutti-purple));
 }
 
-.agent-gui-node__provider-rail-avatar:has(
-  > .agent-gui-node__provider-rail-launchpad-icon
-),
-.agent-gui-node__provider-rail-tile:hover:not(:disabled)
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ) {
-  border-color: transparent;
-  background: transparent;
-}
-
-.agent-gui-node__provider-rail-tile[data-selected="true"]
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ),
-.agent-gui-node__provider-rail-tile[data-selected="true"]:hover:not(:disabled)
-  .agent-gui-node__provider-rail-avatar:has(
-    > .agent-gui-node__provider-rail-launchpad-icon
-  ) {
-  border-color: var(--tutti-purple);
-  background: var(--transparency-block);
-}
-
 .agent-gui-node__provider-rail-avatar-icon {
   width: 18px;
   height: 18px;
@@ -8854,87 +8908,37 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   object-fit: contain;
 }
 
-.agent-gui-node__provider-rail-badge {
+.agent-gui-node__agent-avatar {
+  position: relative;
+}
+
+.agent-gui-node__agent-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-gui-node__agent-avatar-badge {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
+  right: var(--agent-gui-avatar-badge-offset, -4px);
+  bottom: var(--agent-gui-avatar-badge-offset, -4px);
   box-sizing: border-box;
   display: grid;
-  width: 16px;
-  height: 16px;
+  width: var(--agent-gui-avatar-badge-size, 16px);
+  height: var(--agent-gui-avatar-badge-size, 16px);
   place-items: center;
   overflow: hidden;
-  border: 1px solid #fff;
+  border: 1px solid var(--background-fronted);
   border-radius: 999px;
-  background: #fff;
+  background: var(--background-fronted);
   pointer-events: none;
 }
 
-.agent-gui-node__provider-rail-badge-image {
+.agent-gui-node__agent-avatar-badge-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.agent-gui-node__provider-rail-launchpad-icon {
-  box-sizing: border-box;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
-  padding: 1px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-}
-
-.agent-gui-node__provider-rail-launchpad-item {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  place-items: center;
-  overflow: hidden;
-  background: var(--background-fronted);
-  border-radius: 4px;
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--line-2) 70%, transparent);
-  transition: opacity 140ms ease;
-}
-
-.agent-gui-node__provider-rail-launchpad-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon {
-  width: 54px;
-  height: 54px;
-  border-color: var(--tutti-purple);
-  border-radius: 8px;
-  background: var(--transparency-block);
-  color: var(--tutti-purple);
-  animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
-    both;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-icon {
-  width: 48px;
-  height: 48px;
-  gap: 3px;
-  padding: 1px;
-  border-radius: 8px;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-item {
-  border-radius: 6px;
-}
-
-.agent-gui-node__empty-hero-launchpad-icon
-  .agent-gui-node__provider-rail-launchpad-item[data-provider-active="false"] {
-  opacity: 0.5;
 }
 
 .agent-gui-node__provider-rail-tile[data-loading="true"]
@@ -8963,7 +8967,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: flex;
   width: 100%;
   min-height: 100%;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 24px clamp(32px, 4vw, 48px) 40px;
 }
@@ -8984,7 +8988,48 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   place-items: center;
 }
 
+/* The coverflow carousel needs a wider, taller stage than the single-icon
+   slot; keep it centered in the hero column. */
+.agent-gui-node__empty-hero-icon-slot:has(
+  > .agent-gui-node__empty-hero-carousel
+),
+.agent-gui-node__empty-hero-icon-slot[data-carousel-placeholder="true"] {
+  width: min(400px, 100%);
+  height: 112px;
+}
+
+.agent-gui-node__empty-hero-carousel-stage {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+}
+
+.agent-gui-node__empty-hero-carousel-layer {
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  left: 50%;
+  width: min(400px, calc(100% - 64px));
+  transform: translateX(-50%);
+}
+
+.agent-gui-node__empty-hero-carousel-placeholder {
+  width: min(400px, 100%);
+  height: 112px;
+  flex: 0 0 auto;
+}
+
+/* Keep the overlayed carousel interactive while the ready/gated body below it
+   changes independently. */
+.agent-gui-node__empty-hero-carousel-layer
+  > .agent-gui-node__empty-hero-carousel {
+  pointer-events: auto;
+}
+
 .agent-gui-node__empty-hero-icon-effect {
+  --agent-gui-avatar-badge-offset: -5px;
+  --agent-gui-avatar-badge-size: 18px;
+
   display: block;
   width: 48px;
   height: 48px;
@@ -9050,6 +9095,60 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   object-fit: contain;
 }
 
+/* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent
+   records (see agentGuiHeroCarouselScene.ts). Records farther around the ring
+   genuinely shrink and fade with perspective; visuals live on the canvas,
+   while visually-hidden buttons keep the switcher reachable by keyboard,
+   screen readers, and DOM tests. */
+.agent-gui-node__empty-hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 112px;
+  outline: none;
+  touch-action: pan-y;
+  animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
+    both;
+}
+
+.agent-gui-node__empty-hero-carousel:has(:focus-visible) {
+  border-radius: 12px;
+  box-shadow: 0 0 0 1.5px var(--tutti-purple);
+}
+
+.agent-gui-node__empty-hero-carousel-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+
+  /* Fade-out mask: a horizontal band dissolves tiles toward the stage sides
+     (the fully-transparent stops sit where the outermost tiles ride, not at
+     the canvas edges), intersected with a vertical band so tiles sinking
+     down the wheel melt away instead of being cut by the canvas bottom. */
+  mask-image:
+    linear-gradient(90deg, transparent 4%, #000 30%, #000 70%, transparent 96%),
+    linear-gradient(180deg, #000 0%, #000 70%, transparent 96%);
+  mask-composite: intersect;
+}
+
+.agent-gui-node__empty-hero-carousel[data-icons-ready="true"]
+  > .agent-gui-node__empty-hero-carousel-canvas {
+  opacity: 1;
+}
+
+.agent-gui-node__empty-hero-carousel-item {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .agent-gui-node__empty-hero-title {
   margin: 0;
   text-align: center;
@@ -9072,12 +9171,18 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   gap: 8px;
 }
 
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect {
-  margin-bottom: 10px;
+/* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-icon-effect,
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel,
+.agent-gui-node__empty-provider-gate
+  > .agent-gui-node__empty-hero-carousel-placeholder {
+  margin-bottom: 16px;
 }
 
-.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-title {
-  font-size: 24px;
+/* Keep the gate's carousel the same width as the ready hero's so the ring
+   doesn't jump when selection lands on an unavailable agent. */
+.agent-gui-node__empty-provider-gate > .agent-gui-node__empty-hero-carousel {
+  max-width: min(400px, 100%);
 }
 
 .agent-gui-node__empty-provider-gate-description {
@@ -9101,6 +9206,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-provider-gate-action {
+  /* Container gap is 8px; add 16px so the description-to-button spacing is 24px. */
+  margin-top: 16px;
   animation: agent-gui-empty-hero-enter 300ms cubic-bezier(0.16, 1, 0.3, 1)
     190ms both;
 }

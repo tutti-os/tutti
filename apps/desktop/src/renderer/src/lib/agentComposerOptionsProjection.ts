@@ -59,6 +59,9 @@ export function agentActivityComposerOptionsFromTuttidResult(
       reasoningEffortsFromConfig.length > 0
         ? reasoningEffortsFromConfig
         : reasoningEffortsFromLiveConfig,
+    reasoningOptionsByModel: reasoningOptionsByModelFromValue(
+      runtimeContext.modelReasoningOptionsByModel
+    ),
     speeds:
       speedsFromConfig.length > 0 ? speedsFromConfig : speedsFromLiveConfig,
     modelConfigurable:
@@ -85,6 +88,32 @@ export function agentActivityComposerOptionsFromTuttidResult(
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
   };
+}
+
+function reasoningOptionsByModelFromValue(
+  value: unknown
+): AgentActivityComposerOptions["reasoningOptionsByModel"] {
+  const profiles = recordValue(value);
+  const entries = Object.entries(profiles).flatMap(([model, rawProfile]) => {
+    const profile = recordValue(rawProfile);
+    const options = settingOptionsFromRawOptions(profile.options, {
+      labelKeys: ["name", "label", "displayName"],
+      valueKeys: ["value", "id"]
+    });
+    if (!model.trim() || options.length === 0) {
+      return [];
+    }
+    return [
+      [
+        model.trim(),
+        {
+          defaultValue: normalizeText(profile.defaultValue),
+          options
+        }
+      ] as const
+    ];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function composerBehaviorFromValue(

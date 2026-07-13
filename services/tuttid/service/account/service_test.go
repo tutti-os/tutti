@@ -139,13 +139,13 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 				"vip_billing_period": "month",
 				"vip_renew_at": "2026-08-01T00:00:00Z",
 				"vip_cancel_at_period_end": false,
-				"available_credits": 1200
+				"available_credits": "1200"
 			}`))
 		case "/v1/credits/overview":
 			creditsOverviewCookie = r.Header.Get("Cookie")
 			_, _ = w.Write([]byte(`{
-				"available_credits": 2450,
-				"expiring_credits_within_24h": 100,
+				"available_credits": "2450.52",
+				"expiring_credits_within_24h": "100.25",
 				"next_expire_at": "2026-07-07T00:00:00Z"
 			}`))
 		default:
@@ -176,8 +176,11 @@ func TestGetProductSummaryFetchesCommerceWithSessionCookie(t *testing.T) {
 	if summary.Membership == nil || summary.Membership.TierKey != "basic" || summary.Membership.DisplayName != "Basic" {
 		t.Fatalf("summary membership = %#v", summary.Membership)
 	}
-	if summary.Credits == nil || summary.Credits.AvailableCredits == nil || *summary.Credits.AvailableCredits != 2450 {
+	if summary.Credits == nil || summary.Credits.AvailableCredits == nil || *summary.Credits.AvailableCredits != "2450.52" {
 		t.Fatalf("summary credits = %#v", summary.Credits)
+	}
+	if summary.Credits.ExpiringCreditsWithin24h == nil || *summary.Credits.ExpiringCreditsWithin24h != "100.25" {
+		t.Fatalf("summary expiring credits = %#v", summary.Credits)
 	}
 	if commerceUserInfoCookie != "session_id=session-1" || creditsOverviewCookie != "session_id=session-1" {
 		t.Fatalf("commerce cookies = (%q, %q), want session cookie", commerceUserInfoCookie, creditsOverviewCookie)

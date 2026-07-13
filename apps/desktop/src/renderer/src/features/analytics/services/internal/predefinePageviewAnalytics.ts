@@ -9,6 +9,7 @@ export interface PredefinePageviewAnalyticsController {
 
 export interface PredefinePageviewAnalyticsRuntime {
   addFocusListener(listener: () => void): () => void;
+  scheduleFocusReport?(listener: () => void): () => void;
 }
 
 export function startPredefinePageviewAnalytics(input: {
@@ -19,6 +20,7 @@ export function startPredefinePageviewAnalytics(input: {
   const runtime = input.runtime ?? createDocumentPredefinePageviewRuntime();
   const now = input.reporterNow ?? Date.now;
   let disposed = false;
+  const pendingFocusReports = new Set<() => void>();
 
   const reportPageview = () => {
     if (disposed) {
@@ -38,7 +40,15 @@ export function startPredefinePageviewAnalytics(input: {
     if (disposed) {
       return;
     }
-    reportPageview();
+    let cancelFocusReport = () => {};
+    const runFocusReport = () => {
+      pendingFocusReports.delete(cancelFocusReport);
+      reportPageview();
+    };
+    cancelFocusReport =
+      runtime.scheduleFocusReport?.(runFocusReport) ??
+      createTimeoutFocusReport(runFocusReport);
+    pendingFocusReports.add(cancelFocusReport);
   };
 
   const unsubscribeFocus = runtime.addFocusListener(reportFocus);
@@ -51,10 +61,21 @@ export function startPredefinePageviewAnalytics(input: {
         return;
       }
       disposed = true;
+      for (const cancelFocusReport of pendingFocusReports) {
+        cancelFocusReport();
+      }
+      pendingFocusReports.clear();
       unsubscribeFocus();
     },
     reportAppOpen,
     reportFocus
+  };
+}
+
+function createTimeoutFocusReport(listener: () => void): () => void {
+  const timeoutId = window.setTimeout(listener, 0);
+  return () => {
+    window.clearTimeout(timeoutId);
   };
 }
 
@@ -65,6 +86,9 @@ function createDocumentPredefinePageviewRuntime(): PredefinePageviewAnalyticsRun
       return () => {
         window.removeEventListener("focus", listener);
       };
+    },
+    scheduleFocusReport(listener) {
+      return createTimeoutFocusReport(listener);
     }
   };
 }

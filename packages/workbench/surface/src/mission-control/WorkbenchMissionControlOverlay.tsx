@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -8,6 +9,10 @@ import {
 import {
   AppWindowIcon,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   GridHorizontalLinedIcon,
   GridVerticalLinedIcon,
   type IconProps
@@ -66,6 +71,40 @@ export function WorkbenchMissionControlOverlay({
 }: WorkbenchMissionControlOverlayProps) {
   const layoutDockContentRef = useRef<HTMLDivElement | null>(null);
   const [layoutDockWidth, setLayoutDockWidth] = useState<number | null>(null);
+  // Only one preset menu may be open at a time; hovering another button
+  // replaces the previous one instead of stacking popovers.
+  const [openLayoutKey, setOpenLayoutKey] = useState<
+    "balanced" | "row" | "column" | null
+  >(null);
+  const hoverOpenTimeoutRef = useRef<number | null>(null);
+
+  const clearHoverOpenTimeout = () => {
+    if (hoverOpenTimeoutRef.current !== null) {
+      window.clearTimeout(hoverOpenTimeoutRef.current);
+      hoverOpenTimeoutRef.current = null;
+    }
+  };
+
+  const requestHoverOpen = (key: "balanced" | "row" | "column") => {
+    clearHoverOpenTimeout();
+    // A menu is already open: switch to the hovered button immediately.
+    if (openLayoutKey !== null) {
+      setOpenLayoutKey(key);
+      return;
+    }
+    hoverOpenTimeoutRef.current = window.setTimeout(() => {
+      hoverOpenTimeoutRef.current = null;
+      setOpenLayoutKey(key);
+    }, layoutPresetMenuHoverOpenDelayMs);
+  };
+
+  const closeLayoutMenu = (key: "balanced" | "row" | "column") => {
+    clearHoverOpenTimeout();
+    setOpenLayoutKey((current) => (current === key ? null : current));
+  };
+
+  useEffect(() => clearHoverOpenTimeout, []);
+
   const layoutPresets: Array<{
     icon: ComponentType<IconProps>;
     key: "balanced" | "row" | "column";
@@ -156,30 +195,25 @@ export function WorkbenchMissionControlOverlay({
                 </span>
               ) : (
                 <div className="flex items-end gap-2">
-                  {layoutPresets.map((option) => {
-                    const canApply = state.canApplyPreset(option.preset);
-                    const LayoutIcon = option.icon;
-
-                    return (
-                      <Button
-                        key={option.key}
-                        aria-label={option.label}
-                        className="workbench-mission-control__layout-dock-button"
-                        data-layout-key={option.key}
-                        disabled={!canApply}
-                        size="icon"
-                        title={option.label}
-                        type="button"
-                        variant="ghost"
-                        onClick={() => state.applyPreset(option.preset)}
-                      >
-                        <LayoutIcon
-                          aria-hidden
-                          className="workbench-mission-control__layout-glyph"
-                        />
-                      </Button>
-                    );
-                  })}
+                  {layoutPresets.map((option) => (
+                    <WorkbenchMissionControlLayoutPresetButton
+                      key={option.key}
+                      arrangeOnceLabel={i18n.t("presetActions.arrangeOnce")}
+                      canApply={state.canApplyPreset(option.preset)}
+                      icon={option.icon}
+                      layoutKey={option.key}
+                      lockLayoutLabel={i18n.t("presetActions.lockLayout")}
+                      open={openLayoutKey === option.key}
+                      onApply={(lock) => {
+                        closeLayoutMenu(option.key);
+                        state.applyPreset(option.preset, { lock });
+                      }}
+                      onHoverOpen={() => requestHoverOpen(option.key)}
+                      onHoverCancel={clearHoverOpenTimeout}
+                      onRequestClose={() => closeLayoutMenu(option.key)}
+                      presetLabel={option.label}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -187,5 +221,100 @@ export function WorkbenchMissionControlOverlay({
         </div>
       ) : null}
     </div>
+  );
+}
+
+const layoutPresetMenuHoverOpenDelayMs = 200;
+
+interface WorkbenchMissionControlLayoutPresetButtonProps {
+  arrangeOnceLabel: string;
+  canApply: boolean;
+  icon: ComponentType<IconProps>;
+  layoutKey: "balanced" | "row" | "column";
+  lockLayoutLabel: string;
+  onApply: (lock: boolean) => void;
+  onHoverCancel: () => void;
+  onHoverOpen: () => void;
+  onRequestClose: () => void;
+  open: boolean;
+  presetLabel: string;
+}
+
+function WorkbenchMissionControlLayoutPresetButton({
+  arrangeOnceLabel,
+  canApply,
+  icon: LayoutIcon,
+  layoutKey,
+  lockLayoutLabel,
+  onApply,
+  onHoverCancel,
+  onHoverOpen,
+  onRequestClose,
+  open,
+  presetLabel
+}: WorkbenchMissionControlLayoutPresetButtonProps) {
+  return (
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onRequestClose();
+          return;
+        }
+        if (canApply) {
+          onHoverOpen();
+        }
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={presetLabel}
+          className="workbench-mission-control__layout-dock-button"
+          data-layout-key={layoutKey}
+          data-menu-open={open ? "true" : undefined}
+          disabled={!canApply}
+          size="icon"
+          title={presetLabel}
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            // Clicking the icon directly applies the locked layout; the
+            // dropdown stays a hover affordance for choosing "arrange once".
+            if (canApply) {
+              onApply(true);
+            }
+          }}
+          onPointerDown={(event) => {
+            // Keep Radix from toggling the menu on pointer down so the click
+            // applies the layout instead.
+            event.preventDefault();
+          }}
+          onPointerEnter={() => {
+            if (canApply) {
+              onHoverOpen();
+            }
+          }}
+          onPointerLeave={onHoverCancel}
+        >
+          <LayoutIcon
+            aria-hidden
+            className="workbench-mission-control__layout-glyph"
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="center"
+        className="w-auto min-w-40"
+        sideOffset={10}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <DropdownMenuItem onSelect={() => onApply(false)}>
+          {arrangeOnceLabel}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onApply(true)}>
+          {lockLayoutLabel}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

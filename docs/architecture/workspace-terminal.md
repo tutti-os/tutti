@@ -649,9 +649,9 @@ Host responsibilities:
 
 ## Tutti Local Terminal Path
 
-Tutti's first implementation should target local host pty terminals.
+Tutti uses local host pty terminals.
 
-`services/tuttid` should own:
+`services/tuttid` owns:
 
 - local pty process lifecycle
 - session ids and state transitions
@@ -667,7 +667,7 @@ The exact HTTP contract must be added to
 `services/tuttid/api/openapi/tuttid.v1.yaml` before generated clients or
 daemon handlers are changed.
 
-Expected route family:
+Current route family:
 
 ```text
 GET    /v1/workspaces/{workspaceID}/terminals
@@ -679,8 +679,8 @@ GET    /v1/workspaces/{workspaceID}/terminals/{terminalID}/snapshot
 GET    /v1/workspaces/{workspaceID}/terminals/{terminalID}/ws
 ```
 
-Tutti should not import TSH VM or routing code. It should treat terminal
-execution as a local desktop capability mediated by tuttid.
+Tutti does not import TSH VM or routing code. Terminal execution is a local
+desktop capability mediated by tuttid.
 
 ## TSH VM Terminal Path
 
@@ -700,372 +700,6 @@ TSH should keep:
 A future TSH adapter should translate desktopd's existing terminal API and
 WebSocket frames into the shared `TerminalTransport` contract. That would let
 TSH share the terminal node experience without changing its execution authority.
-
-## Port-Then-Refactor Strategy
-
-The migration prioritized not losing TSH terminal behavior while the shared
-package was extracted. For the current Tutti landing, the temporary quarantine
-has served its purpose: host-agnostic behavior needed by Tutti was promoted,
-and TSH app replacement remains a separate future plan. The preferred rhythm was:
-
-1. Port the relevant TSH terminal code into a quarantined package-internal area.
-2. Keep a ledger that assigns every ported file or behavior to its final home.
-3. Replace product dependencies with package contracts.
-4. Promote shared behavior into the official package modules.
-5. Delete the quarantined port once every ledger item is either promoted,
-   dropped, or assigned to a future host adapter/wrapper.
-
-Do not copy TSH code directly into the package public surface. If future TSH
-work needs an adapter, keep it outside the shared package modules unless the
-behavior is deliberately promoted through a host-agnostic contract.
-
-## Porting Ledger
-
-The temporary porting ledger has been folded back into this document. Future TSH
-adoption work should document durable package-boundary changes here when they
-affect the shared terminal contract.
-
-Use these destinations:
-
-| Destination        | Meaning                                                              |
-| ------------------ | -------------------------------------------------------------------- |
-| `shared-contract`  | Public TypeScript contract under `src/contracts`.                    |
-| `shared-core`      | Host-agnostic runtime behavior under `src/core`.                     |
-| `shared-react`     | Host-agnostic React UI or hooks under `src/react`.                   |
-| `shared-workbench` | Workbench definition helper under `src/workbench`.                   |
-| `shared-i18n`      | Package-owned default copy under `src/i18n`.                         |
-| `host-adapter`     | Tutti or TSH adapter code outside the package.                       |
-| `agent-wrapper`    | Future agent-specialization wrapper or TSH-local wrapper.            |
-| `drop`             | Dead, dormant, or product-specific behavior that should not migrate. |
-
-Initial ledger groups:
-
-| TSH area                                         | Initial destination                            | Notes                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| terminal transport DTOs                          | `shared-contract`                              | Keep event semantics, sequence fields, snapshot shape, and metadata events.             |
-| `terminalTransport.ts` concrete desktopd adapter | `host-adapter`                                 | Use as a reference for TSH adapter only; do not move desktopd calls into the package.   |
-| terminal runtime store                           | `shared-core`                                  | Remove `WorkspaceNodeKind` and agent provider coupling.                                 |
-| attachment controller                            | `shared-core`                                  | Depend on `TerminalTransport` and package diagnostics only.                             |
-| hydration pipeline/router/finalization           | `shared-core`                                  | Keep base snapshot hydration; move agent placeholder behavior to wrapper/host.          |
-| xterm session creation                           | `shared-core` and `shared-react`               | Keep lifecycle, addons, fit, links, search, serialize. Drop dormant WebGL path from V1. |
-| output scheduler                                 | `shared-core`                                  | Keep bounded scheduling behavior and host-configurable limits.                          |
-| scrollback helpers                               | `shared-core`                                  | Keep renderer buffer; persistence stays host-owned.                                     |
-| committed screen state/cache                     | `shared-core`                                  | Keep stable node/session cache behavior with explicit invalidation.                     |
-| input bridge and queue                           | `shared-core`                                  | Keep hydration gate; remove agent/provider-specific restored input delays from core.    |
-| terminal find UI/hooks                           | `shared-react`                                 | Keep if product copy is moved to package i18n.                                          |
-| link providers                                   | `shared-core`                                  | Emit URL/file targets; opening and path translation stay host-owned.                    |
-| close guard dialog                               | `shared-react` and `shared-i18n`               | Shared UI flow, host-provided guard and terminate calls.                                |
-| diagnostics helpers                              | `shared-contract` and `shared-core`            | Replace TSH event names with package-owned event names.                                 |
-| output sanitizers                                | `host-adapter` hook                            | Provide hook in package; TSH-specific filters stay adapter-owned.                       |
-| drop-to-terminal helpers                         | `shared-react` hook plus `host-adapter` policy | Package routes drop and inserts returned input; host maps payloads.                     |
-| opencode theme bridge                            | `agent-wrapper` or `drop`                      | Not terminal core. Revisit only for agent terminal wrapper.                             |
-| agent placeholder/resume/history protection      | `agent-wrapper`                                | Not terminal core.                                                                      |
-| room/collaboration/status behavior               | `host-adapter` or `agent-wrapper`              | Not terminal core.                                                                      |
-| WebGL renderer selection/pixel snapping          | `drop` for V1                                  | Dormant in TSH workspace terminal; reserve a narrow future option only.                 |
-| Windows ConPTY tuning                            | later shared option                            | Keep contract space through runtime metadata; no V1 implementation unless needed.       |
-
-## Refactor Phases
-
-Phase status for the current branch:
-
-| Phase                                       | Status                        | Current meaning                                                                                                                                                                                       |
-| ------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 0: Inventory                          | Complete                      | TSH terminal source was inventoried during extraction; the temporary quarantine has since been deleted.                                                                                               |
-| Phase 1: Package Skeleton And Contracts     | Complete for initial package  | Public package shape and contracts compile; API may still evolve only when runtime verification exposes a real integration mismatch.                                                                  |
-| Phase 2: Quarantined TSH Port               | Removed after initial port    | The copied source snapshot and ledger were deleted after promoted behavior landed in the shared package.                                                                                              |
-| Phase 3: Promote Shared Core                | In progress                   | Pure helpers plus first xterm mount/hydrate/attach/input/resize, file-path links, bounded output scheduling, and screen restoration path are promoted; runtime hardening remains.                     |
-| Phase 4: Shared React And Workbench Surface | Runtime verified for Tutti V1 | Workbench helper, xterm body, find bar with case-sensitive and regex controls, drop hook, URL/file link activation, shared close flow, screen remount cache, and Tutti host link/drop policies exist. |
-| Phase 5: Tutti Vertical Integration         | Runtime verified for Tutti V1 | HTTP daemon APIs, live WebSocket stream, desktop adapter, and workbench registration exist. Continued hardening remains.                                                                              |
-| Phase 6: Future TSH Adoption                | Not part of this landing      | Migrate TSH only under a later dedicated plan through host adapters or wrappers, without restoring copied renderer source.                                                                            |
-
-### Phase 0: Inventory
-
-- generate the TSH terminal source list
-- group files by the ledger above
-- identify imports that mention `legacy TSH preload globals`, desktopd DTOs, room state,
-  agent providers, React Flow, or product i18n
-- decide whether each file is copied to quarantine, referenced only, or dropped
-
-Exit criteria:
-
-- every TSH terminal file considered for migration has a ledger row
-- no package public API has been created from unreviewed TSH code
-
-### Phase 1: Package Skeleton And Contracts
-
-- create `packages/workspace/terminal`
-- add package entrypoints, build config, and package-local i18n structure
-- implement public contracts first: transport, launch, close guard, diagnostics,
-  links, drop input, output transform, session state, and limits
-- implement the workbench node-definition helper and launch-request handler
-- add type-level tests or focused unit tests for pure contracts where useful
-
-Exit criteria:
-
-- the package builds with contracts only
-- no xterm, React UI, or host adapter code is required yet
-
-### Phase 2: Quarantined TSH Port
-
-This temporary phase is closed. The copied source snapshot and local ledger were
-deleted after the promoted shared behavior landed in `src/core`, `src/react`,
-and `src/workbench`.
-
-Exit criteria:
-
-- no copied TSH renderer source remains in the package
-- durable product-dependency decisions are recorded in this document
-
-### Phase 3: Promote Shared Core
-
-Promoted behavior followed this order:
-
-1. pure helpers: limits, scrollback, output scheduling, input classification that
-   is not product-specific
-2. transport-independent state machines: attachment, hydration, replay gap
-   handling, screen cache
-3. xterm lifecycle: mount, addons, fit, resize, search binding, serialize, links
-4. input bridge: write queue, binary/utf8 writes, hydration gate
-5. close flow and diagnostics interfaces
-
-Each promotion should remove product dependencies or turn them into explicit
-host inputs.
-
-Exit criteria:
-
-- promoted modules compile without legacy TSH preload globals, desktopd clients, room
-  state, agent provider types, React Flow DOM assumptions, or product i18n
-- corresponding tests are either ported or replaced with package-local tests
-
-### Phase 4: Shared React And Workbench Surface
-
-- implement `TerminalNode`, `TerminalNodeHeader`, find UI, close guard dialog,
-  and drop hook integration
-- implement `createTerminalWorkbenchNodeDefinition` and
-  `createTerminalWorkbenchLaunchHandler`
-- make workbench close call the shared close flow, not transport detach
-- keep optional extension slots generic rather than agent-specific
-
-Exit criteria:
-
-- a host can register a terminal node definition with `WorkbenchHost`
-- terminal UI can launch, attach, hydrate, write, resize, find, close, and
-  minimize using only package contracts
-
-### Phase 5: Tutti Vertical Integration
-
-- add tuttid OpenAPI terminal contracts before daemon/client changes
-- implement local pty sessions, ring buffer, snapshot, sequence replay, resize,
-  WebSocket attach, close guard, and terminate in `services/tuttid`
-- implement the desktop renderer host adapter that satisfies the package
-  contracts
-- register the terminal node in `apps/desktop`
-
-Exit criteria:
-
-- open terminal
-- input reaches the local pty
-- resize updates the pty
-- snapshot hydration and `afterSeq` replay work after renderer remount
-- close terminates the session, confirms only when the host reports foreground
-  work, and closes idle shells directly
-- minimize keeps the session alive
-
-### Phase 6: Future TSH Adoption
-
-This phase is intentionally excluded from the current branch. If TSH adopts the
-package later, that separate plan would need to cover:
-
-- a TSH adapter around existing desktopd terminal APIs
-- replacement of TSH renderer terminal internals with the shared package
-  surface
-- preservation of VM, guest-agent, room, agent, provider, routing, and
-  collaboration logic outside terminal core
-- an agent-terminal wrapper only if needed after the plain terminal path is
-  stable
-
-Future TSH exit criteria:
-
-- TSH keeps current terminal behavior through the shared package
-- remaining TSH-only behavior is explicitly adapter-owned or wrapper-owned
-- no copied TSH renderer source is restored inside `packages/workspace/terminal`
-
-## Migration Rules
-
-- Public package modules must be narrow, reviewed, and host-agnostic.
-- Do not keep compatibility shims for TSH globals in shared code.
-- Do not introduce agent/provider branches into terminal core.
-- Prefer deleting dormant code over preserving it because it existed in TSH.
-- When behavior is intentionally left behind, record whether it is `drop`,
-  `host-adapter`, or `agent-wrapper`.
-
-## Feature Review List
-
-The shared terminal package should be assembled from reviewed capabilities, not
-by bulk-moving the full TSH terminal node. Use this list as the initial
-extraction decision table:
-
-| Capability                                        | Placement                                        | Decision                                                                                                                                                                                                                    |
-| ------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| xterm mount, dispose, fit, resize                 | V1 shared terminal core                          | Own the xterm lifecycle, addon disposal, DOM mount, fit, and resize observer flow. Host renderer policy must be injected as options.                                                                                        |
-| xterm renderer strategy                           | reserved option; no V1 implementation            | Use xterm's stable default renderer. Do not carry unused TSH renderer-selection code into the first package extraction; keep only a narrow future option such as `rendererMode`.                                            |
-| Windows ConPTY tuning                             | later shared option                              | Keep runtime metadata available, but defer Windows-specific behavior until Tutti needs local Windows terminal support.                                                                                                      |
-| terminal link provider                            | V1 shared core with host callback                | Detect URL and file-like links, including optional line/column. Host resolves cwd, VM/local path translation, and open policy.                                                                                              |
-| terminal search addon binding                     | V1 shared UI                                     | Include find bar and xterm search addon binding when the package owns terminal body/header UI. Keep it host-configurable.                                                                                                   |
-| light diagnostics hook                            | V1 shared interface                              | Provide host-injected diagnostics with package-owned, product-neutral event names. Default to no-op and avoid raw user input, env values, tokens, and product-specific logging dependencies.                                |
-| WebGL pixel snapping                              | omit from V1                                     | TSH does not currently enable WebGL, and its dormant snapping code depends on product DOM/platform details. Reintroduce only with an active host requirement to enable WebGL.                                               |
-| transport attach, detach, write, resize, snapshot | V1 shared contract plus host adapter             | The package defines typed transport contracts. Concrete HTTP, WebSocket, IPC, desktopd, or tuttid wiring stays in host adapters. `detach` means detach the renderer stream, not close or kill the terminal session.         |
-| output sequencing and `afterSeq` replay           | V1 shared semantics; daemon-owned implementation | Use monotonic output sequence numbers, snapshot `fromSeq`/`toSeq`, attach `afterSeq`, and explicit replay gap/truncation signaling. Ring-buffer storage remains daemon-owned.                                               |
-| snapshot hydration                                | V1 shared terminal core                          | Hydrate xterm from `TerminalTransport.snapshot`, attach with `afterSeq`, and surface truncation/gap state. Agent placeholder and advanced restored-history behavior stay out of V1 core.                                    |
-| output scheduler and scrollback buffer            | V1 shared terminal core                          | Schedule xterm writes and keep bounded renderer scrollback for UI/persistence. Daemon replay remains authoritative; limits and persistence callbacks are host-configured.                                                   |
-| input queue and hydration input gate              | V1 shared terminal core                          | Buffer user input until transport attach and initial hydration are ready, then flush in order. Agent-specific restored-input protection stays outside terminal core.                                                        |
-| terminal find                                     | V1 shared terminal UI                            | Provide find bar, next/previous, case-sensitive and regex controls, backed by xterm search addon. Hosts may disable it.                                                                                                     |
-| file path links                                   | V1 shared terminal core with host callback       | Emit file path plus optional line/column; host owns resolution and opening.                                                                                                                                                 |
-| close guard                                       | V1 shared UI plus host checks                    | Closing a terminal means terminating the terminal session. If a command/process is still running, the shared UI asks for confirmation through a host-provided guard result; minimize is the background-running affordance.  |
-| committed screen state / screen cache             | V1 shared terminal core                          | Preserve flicker-free remount for TUI/full-screen terminal states. Cache by stable node/session identity, invalidate on pending writes or session loss, and keep hydration ordering explicit.                               |
-| diagnostics event coverage                        | V1 shared interfaces only                        | Expose package-owned terminal lifecycle, hydration, attach, resize, write, and close events for host logging without coupling to product loggers.                                                                           |
-| output sanitizers                                 | V1 host-provided hook                            | Provide an optional output transform before writing to xterm. Do not bake in TSH agent/query filters or product-specific cleanup rules.                                                                                     |
-| terminal drop input hook                          | V1 shared hook with host-owned policy            | The shared surface may route drag/drop events to a host hook and insert returned terminal input. Host owns accepted payloads, path mapping, shell quoting, and product UI.                                                  |
-| agent/provider resume behavior                    | wrapper or host-owned, not terminal core         | Model agent terminals as a specialization wrapper around the shared terminal package. The wrapper owns launch, resume, provider status, history placeholders, and product chrome through generic terminal extension points. |
-
-## First Implementation Milestones
-
-The first milestones should prove both goals: preserve TSH behavior during the
-port, and make Tutti consume a clean shared package.
-
-1. **Inventory and quarantine**
-   - create the TSH terminal source inventory
-   - create `packages/workspace/terminal`
-   - use temporary quarantine only during extraction
-   - delete copied source once promoted behavior lands
-
-2. **Contracts-first package shape**
-   - add package entrypoints and build config
-   - implement `TerminalTransport`, launch, close guard, diagnostics, link,
-     drop, output transform, state, and limit contracts
-   - keep all host calls out of the package
-
-3. **Promote shared terminal runtime**
-   - promote xterm lifecycle, scheduler, hydration, input queue, screen cache,
-     find, links, close flow, diagnostics, and hooks into
-     `src/core` and `src/react`
-   - remove or invert `legacy TSH preload globals`, desktopd, room, agent-provider, and
-     product-i18n dependencies as each module is promoted
-
-4. **Tutti local terminal vertical**
-   - add the terminal API contract to tuttid OpenAPI before daemon/client
-     changes
-   - implement local pty sessions, ring buffer, snapshot, sequence replay,
-     resize, WebSocket attach, close guard, and terminate in `services/tuttid`
-   - implement a desktop renderer adapter for the package contracts
-   - register the terminal node from the desktop workbench host service
-
-5. **Future TSH adoption**
-   - out of scope for this Tutti landing
-   - keep the TSH quarantine ledger available as reference material
-   - migrate TSH only under a later dedicated plan if that product adopts the
-     shared package
-
-The Tutti vertical does not wait for TSH adapter migration. The shared package
-is informed by the quarantined TSH port, but this plan is complete when the
-Tutti local-terminal path is implemented, verified, and no longer failing its
-checks.
-
-## Tutti V1 Completion Checklist
-
-The Tutti vertical is complete only when all required outcomes are implemented
-and the runtime checks have been exercised in a running desktop workspace.
-
-| Check                    | Required outcome                                                                                                                                                           | Current status                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Daemon session lifecycle | `tuttid` can create, list, inspect, resize, close-guard, terminate, snapshot, and stream local pty sessions.                                                               | Implemented and covered by focused Go tests.                                                                                                                                                                                                                                                                                                                                 |
-| Live stream              | A renderer can attach to a session, receive replay after `afterSeq`, receive live output, write input, resize, detach, and observe exit.                                   | Implemented and runtime verified in Electron through xterm input, tuttid WebSocket write, daemon snapshot, and close exit.                                                                                                                                                                                                                                                   |
-| Shared xterm surface     | The package owns xterm mount/dispose, fit, search, serialize, link detection, input queue, hydration, output scheduling, and screen cache behavior.                        | Implemented with package tests for pure helpers and runtime verified for mount, output, find UI, minimize, and remount.                                                                                                                                                                                                                                                      |
-| Close flow               | Workbench close calls shared close flow, host close guard, and host terminate; detach never kills the process.                                                             | Implemented and runtime verified. tuttid now uses Unix pty foreground process group inspection so idle local shells close directly, foreground commands require confirmation, and unknown platforms remain conservative. Close confirmation currently enters through the workbench close callback; direct terminal-header dialog remains available for hosts that render it. |
-| Minimize flow            | Minimize only changes workbench visibility and leaves the daemon session running.                                                                                          | Runtime verified: minimizing the terminal node kept the daemon session status `running`.                                                                                                                                                                                                                                                                                     |
-| Desktop adapter          | `apps/desktop` maps tuttid HTTP/WebSocket APIs into `TerminalLaunchService`, `TerminalTransport`, close guard, diagnostics, link, and drop hooks.                          | Implemented and runtime verified against a real desktop window.                                                                                                                                                                                                                                                                                                              |
-| Workbench registration   | `WorkspaceWorkbenchHostService` registers the terminal node definition and composes the terminal launch handler with existing launch behavior.                             | Implemented.                                                                                                                                                                                                                                                                                                                                                                 |
-| Recovery                 | Restored workbench nodes bind to existing daemon sessions by `sessionId`; missing sessions project exited/lost state rather than silently creating a new process.          | Runtime verified: renderer reload reattached the same live `sessionId`; daemon-missing sessions now project `failed` after snapshot failure and do not create a replacement process.                                                                                                                                                                                         |
-| Validation               | Package typecheck/test/build, desktop typecheck/test/build, i18n, generated API check, renderer-boundary check, TS lint, UI boundary check, and tuttid Go test/build pass. | Passed after the latest close-guard and adapter hardening.                                                                                                                                                                                                                                                                                                                   |
-
-Do not call the migration complete merely because static checks pass. The V1
-completion bar is a running desktop workspace where a local terminal can be
-opened, used, resized, minimized, remounted, and closed with the expected
-semantics.
-
-## Runtime Verification Plan
-
-Use this order when validating the current branch in `apps/desktop`:
-
-1. Start the desktop app with the local daemon in development mode.
-2. Open a workspace and launch a terminal from the workbench dock or launch
-   intent.
-3. Confirm a local pty starts in the expected requested cwd, or the daemon
-   default cwd when no request is supplied, and renders an
-   initial prompt.
-4. Type input and verify it reaches the process through the WebSocket `input`
-   path.
-5. Resize the workbench panel/window and confirm the pty dimensions update
-   without output corruption.
-6. Run enough output to exercise scheduled writes, scrollback, find, URL links,
-   and file-path links.
-7. Minimize or hide the terminal node and confirm the session remains alive.
-8. Remount or reopen the workbench node and confirm screen cache, snapshot
-   hydration, and `afterSeq` replay reconcile without duplicated or missing
-   visible output.
-9. Close the terminal node. If the host reports foreground work, confirm the
-   user is asked before `terminate`; otherwise close should terminate directly.
-10. Stop the app and rerun package, desktop, client, generated API, and tuttid
-    validation if any runtime fixes were made.
-
-Record any runtime mismatch back in this document before changing package
-contracts. If the mismatch is host-specific, prefer adapting the desktop or TSH
-adapter rather than expanding terminal core.
-
-### Runtime Verification Checkpoint
-
-The first Electron runtime pass was completed against a local workspace window
-using `pnpm --filter @tutti-os/desktop dev -- --remote-debugging-port=9223`.
-Verified behavior:
-
-- dock launch created a tuttid local pty session and rendered an xterm prompt
-- created sessions used the requested cwd, or the daemon default home-directory
-  cwd when none was supplied
-- xterm input reached the shell through the WebSocket `input` path
-- shell output appeared in the daemon snapshot and returned to the renderer
-- find UI opened with search, case-sensitive, regex, previous, and next controls
-- minimize hid the terminal node while the daemon session stayed `running`
-- renderer reload restored the same terminal node by `sessionId` and reattached
-  to the live daemon session
-- the first Electron pass verified the workbench close path, confirmation
-  cancellation, and terminal termination
-- when the workbench snapshot referenced a terminal session that no longer
-  existed in the in-memory daemon, the node projected `failed` after snapshot
-  failure and did not silently create a replacement process
-
-A second Electron runtime pass was completed after the close-guard precision
-hardening:
-
-- dock popup launch created a fresh tuttid local terminal session in the
-  requested cwd
-- xterm input reached the shell and daemon snapshot output included the
-  `TUTTI_RUNTIME_VERIFY_1` marker
-- closing an idle shell from the workbench window close button did not call
-  `window.confirm` and the daemon session moved to `exited`
-- running `sleep 30` made tuttid close guard return `foreground-process` with
-  `requiresConfirmation: true` and a process label
-- rejecting the foreground close confirmation kept the daemon session `running`
-- accepting the foreground close confirmation terminated the daemon session and
-  moved it to `exited`
-
-Runtime mismatch found and fixed:
-
-- after renderer reload, the desktop adapter lost in-memory session metadata and
-  restored live terminals with the fallback title `Terminal`; `attach(...)` now
-  reloads the session descriptor through tuttid before opening the WebSocket
-- after daemon restart, stale terminal nodes stayed in the `created` projection
-  when snapshot failed; `snapshot(...)` now records the failed projection in the
-  desktop adapter before surfacing the error
 
 ## Current V1 Boundaries
 
@@ -1089,98 +723,29 @@ These are deliberate boundaries for the current implementation:
 If runtime verification proves one of these boundaries is wrong, update this
 document first with the reason, then adjust package contracts.
 
-## Current Implementation Checkpoint
+## Current Implementation
 
-As of the current Tutti vertical checkpoint:
+The current Tutti vertical is complete and runtime verified:
 
-- `packages/workspace/terminal` exists as public package
-  `@tutti-os/workspace-terminal`
-- the package exposes `contracts`, `i18n`, `react`, `workbench`, and
-  `styles.css` entrypoints
-- shared contracts exist for transport, launch, close guard, diagnostics, link
-  handling, drop input, output transform, session state, limits, and themes
-- the feature factory normalizes host capabilities without constructing daemon
-  clients, launching sessions, or reading product globals
-- the workbench entrypoint provides both `createTerminalWorkbenchNodeDefinition`
-  and `createTerminalWorkbenchLaunchHandler`, matching the current
-  `WorkbenchHost` launch model
-- the temporary TSH inventory ledger and copied renderer source snapshot have
-  been deleted after promoted behavior landed
-- the first promoted shared-core helpers cover scrollback truncation/merge,
-  suffix-prefix overlap detection, initial terminal dimensions, session status
-  projection, and committed screen-state cache semantics
-- the shared React `TerminalNode` now mounts xterm using fit/search/serialize
-  addons, hydrates from `TerminalTransport.snapshot(...)`, attaches with
-  `afterSeq`, forwards terminal input to `TerminalTransport.write(...)`, sends
-  resize events, and detaches the renderer stream on unmount
-- the shared React surface now includes a first find bar, URL link activation
-  through xterm's web-links addon, drag/drop routing through the host
-  `dropInput` hook, and a shared close guard dialog for direct terminal-header
-  closes
-- file-path link detection is now promoted into shared core and connected to
-  xterm's link provider API; it emits generic path, line, and column targets
-  while host adapters still own path resolution and opening policy
-- committed screen-state cache is now used by the React surface on remount:
-  xterm serialized state is shown first for matching node/session identity and
-  then reconciled against the daemon snapshot so daemon output remains
-  authoritative
-- terminal output writes are now scheduled in bounded batches using
-  `TerminalNodeLimits.maxWriteBatchBytes`, preventing large output bursts from
-  being pushed into xterm as one unbounded write
-- the shared find UI now exposes case-sensitive and regex search options backed
-  by xterm's search addon
-- the package exposes `closeTerminalSession(...)` so workbench-level close
-  paths can share the same close-guard and terminate semantics instead of
-  treating close as transport detach
-- the desktop renderer consumes the package i18n resources and stylesheet
-  contract, registers the shared terminal node definition, composes the terminal
-  launch handler with the existing files/browser launch handler, and provides a
-  first tuttid-backed terminal adapter
-- the desktop adapter reloads session descriptors during transport attach so
-  renderer reloads can recover title, cwd, runtime kind, and status for live
-  daemon sessions
-- the desktop adapter projects snapshot failures into terminal external state so
-  stale workbench nodes from missing daemon sessions render as failed instead of
-  staying in a created-looking state
-- the desktop adapter has focused unit coverage for attach-time session metadata
-  recovery, snapshot-failure projection, WebSocket output/state/exit/write/detach
-  routing, and host-owned link/drop policies
-- `apps/desktop` wires WorkbenchHost terminal close requests through
-  `closeTerminalSession(...)`, so the default window close button also
-  terminates the daemon terminal session after close guard confirmation
-- `apps/desktop` now provides terminal host policies for URL/file link handling
-  and drag/drop input: dropped files are resolved through the desktop platform
-  API and inserted as shell-quoted local paths, while file targets route through
-  the host files API
-- browser WebSocket clients cannot set `Authorization` headers, so tuttid
-  bearer auth now accepts an `access_token` query parameter only for WebSocket
-  upgrade requests; ordinary HTTP requests still require the bearer header
-- the tuttid OpenAPI contract now defines terminal list/create/get/terminate,
-  close-guard, resize, snapshot, and WebSocket attach routes; generated Go and
-  TypeScript clients have been updated
-- tuttid now has an in-memory local pty terminal service for list, create,
-  get, terminate, resize, write, snapshot, close-guard, and attach-stream
-  behavior
-- tuttid close guard now inspects the Unix pty foreground process group: idle
-  shells return `not-running` without confirmation, foreground commands return
-  `foreground-process` with confirmation, and platforms where this cannot be
-  inspected remain conservative
-- the WebSocket attach route now uses a custom route handler for the real
-  upgrade; the generated strict `AttachWorkspaceTerminal` method remains a
-  service-unavailable fallback because oapi-codegen strict operation methods do
-  not receive `http.ResponseWriter` or `*http.Request`
-- the current WebSocket protocol supports client `input`, `resize`, `detach`,
-  and `ping` frames plus server `output`, `state`, `gap`, `exit`, and `error`
-  frames
-- `@tutti-os/workspace-terminal` is included in the durable npm package release
-  roster
-- focused package validation has passed after the latest close-guard and adapter
-  hardening for workspace-terminal typecheck/test/build, desktop
-  typecheck/test/build, desktop renderer-boundary check, UI boundary check,
-  i18n check, TS lint, tuttid Go test/build, client typecheck/test, and
-  generated API checks
+- `@tutti-os/workspace-terminal` owns host-neutral contracts, core recovery,
+  xterm React surfaces, workbench helpers, package i18n, and styles.
+- `services/tuttid` owns local pty lifecycle, snapshots, close guards, and the
+  terminal HTTP/WebSocket API.
+- Desktop owns the concrete tuttid adapter, host link/drop policies, workbench
+  registration, and close confirmation wiring.
+- Snapshot and sequence replay remain authoritative after renderer remount or
+  daemon reconnect; screen cache is presentation acceleration only.
+- Browser WebSocket attach may use the terminal-only `access_token` query
+  parameter because browser clients cannot set `Authorization` headers.
+- The temporary TSH source quarantine and migration ledger have been removed.
+  Future TSH adoption requires a separate host adapter and must not restore
+  copied product source inside the shared package.
 
-The package xterm surface and first Tutti desktop adapter have passed Electron
-runtime verification. Further changes in this area should be treated as
-post-landing hardening unless they uncover a concrete mismatch with the
-contracts above.
+## Validation
+
+For shared package changes, run package typecheck, tests, and build. Desktop
+adapter or workbench changes also require desktop typecheck/tests and renderer/UI
+boundary checks. Daemon contract or pty changes require generated API checks and
+focused `services/tuttid` Go tests/build. Runtime-sensitive changes should be
+verified in Electron against create, attach, replay, resize, close guard, and
+renderer-reload recovery.

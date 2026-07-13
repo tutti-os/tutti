@@ -29,11 +29,36 @@ export type WorkbenchAction<TData = unknown> =
       type: "applyLayoutPreset";
       nodeIDs: string[];
       preset: WorkbenchLayoutPreset;
+      /**
+       * When true, remember this preset + node set so it is re-applied on every
+       * surface resize (proportional scaling) until the user manually moves a
+       * node. Defaults to a one-off arrangement.
+       */
+      lock?: boolean;
     }
   | {
       type: "applyVisibleLayoutPreset";
       preset: WorkbenchLayoutPreset;
     }
+  | {
+      /**
+       * Ends a drag of a node that belongs to the locked layout: if the node
+       * was dropped over another locked node's slot the two swap slots,
+       * otherwise the node snaps back to its own slot.
+       */
+      type: "settleLockedDrag";
+      nodeID: string;
+    }
+  | {
+      /**
+       * Swaps a locked node with its nearest neighbor slot in the given
+       * direction (window snapping shortcuts while a layout is locked).
+       */
+      type: "moveLockedNode";
+      nodeID: string;
+      direction: "left" | "right" | "up" | "down";
+    }
+  | { type: "releaseLockedLayout" }
   | { type: "applyActiveSnapTarget"; nodeID: string }
   | {
       type: "applySnapTarget";

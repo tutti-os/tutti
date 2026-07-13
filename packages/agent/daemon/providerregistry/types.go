@@ -140,7 +140,7 @@ type StandardACPRuntimeDescriptor struct {
 	ProjectCurrentMode             bool
 	StartupDiagnostics             bool
 	DeriveImageInputFromPrompt     bool
-	DeriveCompactFromCommands      bool
+	DeriveCapabilitiesFromCommands []string
 }
 
 type InstallerDescriptor struct {
@@ -274,6 +274,7 @@ const (
 	SkillKindCodex      SkillKind = "codex"
 	SkillKindClaudeCode SkillKind = "claude-code"
 	SkillKindCursor     SkillKind = "cursor"
+	SkillKindOpenCode   SkillKind = "opencode"
 )
 
 type SkillInvocation string

@@ -88,6 +88,30 @@ func registerWorkspaceAppRoutes(mux *http.ServeMux, wrapper *tuttigenerated.Serv
 		wrapper.ReloadLocalWorkspaceApp(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/preferences/agent", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceAppAgentPreferences(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceAppAgentProviderStatuses(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/agent-providers/{provider}/composer-options", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetWorkspaceAppAgentProviderComposerOptions(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/references/list", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

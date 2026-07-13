@@ -95,21 +95,31 @@
   },
   "reasoning": {
     "high": {
+      "description": "Greater reasoning depth for complex problems",
       "label": "High"
     },
     "low": {
+      "description": "Fast responses with lighter reasoning",
       "label": "Low"
     },
     "max": {
+      "description": "Maximum reasoning depth for the hardest problems",
       "label": "Max"
     },
     "medium": {
+      "description": "Balances speed and reasoning depth for everyday tasks",
       "label": "Medium"
     },
     "minimal": {
+      "description": "Uses the least reasoning for the fastest responses",
       "label": "Minimal"
     },
+    "ultra": {
+      "description": "Maximum reasoning with automatic task delegation",
+      "label": "Ultra"
+    },
     "xhigh": {
+      "description": "Extra-high reasoning depth for complex problems",
       "label": "X-High"
     }
   },

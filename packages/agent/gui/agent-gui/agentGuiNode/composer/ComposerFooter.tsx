@@ -19,7 +19,7 @@ import {
   AgentPermissionModeDropdown
 } from "../AgentComposerSettingsMenus";
 import { textPromptContent } from "../model/agentComposerDraft";
-import type { AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIAgentTarget } from "../../../types";
 import type {
   AgentComposerProps,
   AgentComposerUsage
@@ -56,14 +56,14 @@ interface Props {
   effectiveHandoffMenuLabel: string;
   isHandoffIconPlaying: boolean;
   setIsHandoffIconPlaying: Dispatch<SetStateAction<boolean>>;
-  handoffMenuTargets: readonly AgentGUIProviderTarget[];
-  onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
+  handoffMenuTargets: readonly AgentGUIAgentTarget[];
+  onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   showProviderSelect: boolean;
-  selectedProviderSwitchTarget: AgentGUIProviderTarget | null;
+  selectedProviderSwitchTarget: AgentGUIAgentTarget | null;
   providerSelectDisabled: boolean;
   providerSelectLabel: string;
   selectedProviderLabel: string;
-  providerMenuTargets: readonly AgentGUIProviderTarget[];
+  providerMenuTargets: readonly AgentGUIAgentTarget[];
   onProviderSelect: AgentComposerProps["onProviderSelect"];
   onRequestWorkspaceReferences: AgentComposerProps["onRequestWorkspaceReferences"];
   onWorkspaceReferencePicker: () => void;
@@ -322,7 +322,7 @@ export function ComposerFooter({
                 }
                 onProviderSelect?.({
                   provider: target.provider,
-                  providerTargetId: target.targetId
+                  agentTargetId: target.targetId
                 });
               }}
             >
@@ -509,6 +509,7 @@ export function ComposerFooter({
                 reasoningOptionHigh: labels.reasoningOptionHigh,
                 reasoningOptionXHigh: labels.reasoningOptionXHigh,
                 reasoningOptionMax: labels.reasoningOptionMax,
+                reasoningOptionUltra: labels.reasoningOptionUltra,
                 speedLabel: labels.speedLabel,
                 speedSelectionLabel: labels.speedSelectionLabel,
                 speedOptionStandard: labels.speedOptionStandard,

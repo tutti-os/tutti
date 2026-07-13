@@ -7,7 +7,7 @@ The package owns host-agnostic terminal semantics. Hosts own concrete process
 launching, daemon clients, VM routing, Electron bridges, product copy, and
 durable terminal storage.
 
-See `docs/architecture/workspace-terminal.md` for the migration plan and
+See `docs/architecture/workspace-terminal.md` for the current architecture and
 package boundary.
 
 ## Internal Layering

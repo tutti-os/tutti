@@ -47,7 +47,7 @@ import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 
 export type {
   AgentGUINodeViewProps,
-  AgentGUIProviderRailEmptyRenderer,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUIProviderUnavailableStateContext,
   AgentGUIProviderUnavailableStateRenderer,
   AgentGUISidebarFooterContext,
@@ -167,7 +167,7 @@ export function AgentGUINodeView({
   });
   const createConversationDisabled =
     viewModel.composer.isCreatingConversation ||
-    viewModel.rail.selectedProviderTarget.disabled === true;
+    viewModel.rail.selectedAgentTarget.disabled === true;
   const createConversationAction = useStableEventCallback(
     actions.createConversation
   );
@@ -413,7 +413,7 @@ export function AgentGUINodeView({
     railSlashStatusLimits ?? slashStatusLimits;
   const shouldShowProviderRailConfigButton =
     viewModel.rail.conversationFilter.kind === "all" ||
-    viewModel.rail.selectedProviderTarget?.disabled !== true;
+    viewModel.rail.selectedAgentTarget?.disabled !== true;
   const shouldShowProviderRailConfigMenu =
     shouldShowProviderRailConfigButton &&
     viewModel.rail.conversationFilter.kind !== "all";
@@ -431,15 +431,15 @@ export function AgentGUINodeView({
     providerAuthAccountLabels,
     viewModel.shell.data.provider
   ]);
-  const enabledProviderTargets = viewModel.rail.providerTargets.filter(
+  const enabledProviderTargets = viewModel.rail.agentTargets.filter(
     (target) =>
       target.disabled !== true &&
       ((target.agentTargetId?.trim() ?? "") || (target.targetId?.trim() ?? ""))
   );
   const sectionAgentTargetFallbackId =
     enabledProviderTargets.length <= 1
-      ? viewModel.rail.selectedProviderTarget.agentTargetId?.trim() ||
-        viewModel.rail.selectedProviderTarget.targetId?.trim() ||
+      ? viewModel.rail.selectedAgentTarget.agentTargetId?.trim() ||
+        viewModel.rail.selectedAgentTarget.targetId?.trim() ||
         null
       : null;
   const openAgentEnvSetup = useCallback(() => {
@@ -486,8 +486,8 @@ export function AgentGUINodeView({
       previewMode,
       createConversationDisabled,
       isCollapsed: conversationRailCollapsed,
-      providerTargets: viewModel.rail.providerTargets,
-      providerTargetsLoading: viewModel.rail.providerTargetsLoading,
+      agentTargets: viewModel.rail.agentTargets,
+      agentTargetsLoading: viewModel.rail.agentTargetsLoading,
       conversationFilter: viewModel.rail.conversationFilter,
       sectionAgentTargetFallbackId,
       onCreateConversation: requestCreateConversation,
@@ -527,8 +527,8 @@ export function AgentGUINodeView({
       selectConversation,
       selectProjectDirectory,
       sectionAgentTargetFallbackId,
-      viewModel.rail.providerTargets,
-      viewModel.rail.providerTargetsLoading,
+      viewModel.rail.agentTargets,
+      viewModel.rail.agentTargetsLoading,
       toggleConversationPinned,
       uiLanguage,
       viewModel.rail.conversationFilter,
@@ -544,7 +544,7 @@ export function AgentGUINodeView({
     readonly AgentMessageMarkdownAgentTarget[]
   >(
     () =>
-      viewModel.rail.providerTargets.flatMap((target) =>
+      viewModel.rail.agentTargets.flatMap((target) =>
         target.agentTargetId
           ? [
               {
@@ -557,7 +557,7 @@ export function AgentGUINodeView({
             ]
           : []
       ),
-    [viewModel.rail.providerTargets, viewModel.shell.workspaceId]
+    [viewModel.rail.agentTargets, viewModel.shell.workspaceId]
   );
 
   const content = (
@@ -582,9 +582,9 @@ export function AgentGUINodeView({
               labels={labels}
               previewMode={previewMode}
               workspaceId={viewModel.shell.workspaceId}
-              selectedProviderTarget={viewModel.rail.selectedProviderTarget}
-              providerTargets={viewModel.rail.providerTargets}
-              providerTargetsLoading={viewModel.rail.providerTargetsLoading}
+              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
+              agentTargets={viewModel.rail.agentTargets}
+              agentTargetsLoading={viewModel.rail.agentTargetsLoading}
               providerRailMode={viewModel.rail.providerRailMode}
               renderProviderRailEmpty={renderProviderRailEmpty}
               providerRailAllPresentation={providerRailAllPresentation}

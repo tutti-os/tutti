@@ -69,6 +69,104 @@ func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
 	}
 }
 
+func TestApplyAssistantFinalTextIgnoresIdenticalReplayAfterCompletedSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	finalText := "你好！有什么我可以帮你的吗？"
+
+	normalizer.ApplyAssistantFinalText(finalText)
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	if got := len(activityMessagesWithRole(first, activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("item/completed assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantFinalText(finalText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	if duplicates := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant); len(duplicates) != 0 {
+		t.Fatalf("turn/completed assistant messages = %#v, want none", duplicates)
+	}
+}
+
+func TestApplyAssistantFinalTextKeepsDistinctFollowUpSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+
+	normalizer.ApplyAssistantFinalText("First answer.")
+	if got := len(activityMessagesWithRole(normalizer.Finish(session, "turn-1", messageStreamStateCompleted), activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("first segment assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantFinalText("Second answer.")
+	messages := activityMessagesWithRole(normalizer.FinishCompleted(session, "turn-1"), activityshared.MessageRoleAssistant)
+	if len(messages) != 1 || messages[0].Payload.Content != "Second answer." {
+		t.Fatalf("follow-up assistant messages = %#v, want exactly one second answer", messages)
+	}
+}
+
+func TestApplyAssistantFinalTextUpdatesWhitespacePolishInPlace(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	streamed := "哈囉！看起來你有點困惑😂需要幫忙什麼嗎？可以在這邊問我問題、討論程式碼，或請我幫忙。"
+	polished := "哈囉！看起來你有點困惑😂 \n\n需要幫忙什麼嗎？可以在這邊問我問題、討論程式碼，或請我幫忙。"
+
+	if events := normalizer.AppendAssistantChunk(session, "turn-1", streamed); len(events) != 1 {
+		t.Fatalf("stream events = %d, want 1", len(events))
+	}
+	first := activityMessagesWithRole(normalizer.Finish(session, "turn-1", messageStreamStateCompleted), activityshared.MessageRoleAssistant)
+	if len(first) != 1 {
+		t.Fatalf("early finish assistant messages = %d, want 1", len(first))
+	}
+
+	normalizer.ApplyAssistantFinalText(polished)
+	messages := activityMessagesWithRole(normalizer.Finish(session, "turn-1", messageStreamStateCompleted), activityshared.MessageRoleAssistant)
+	if len(messages) != 1 {
+		t.Fatalf("polished assistant messages = %#v, want one updated snapshot", messages)
+	}
+	if messages[0].EventID != first[0].EventID {
+		t.Fatalf("message id = %q, want reused %q", messages[0].EventID, first[0].EventID)
+	}
+	if messages[0].Payload.Content != polished {
+		t.Fatalf("content = %q, want polished snapshot", messages[0].Payload.Content)
+	}
+}
+
+func TestApplyAssistantTurnFinalTextIgnoresReplayAfterCompletedSegment(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+
+	normalizer.ApplyAssistantFinalText("你好！我是 Codex助手。")
+	first := normalizer.Finish(session, "turn-1", messageStreamStateCompleted)
+	if got := len(activityMessagesWithRole(first, activityshared.MessageRoleAssistant)); got != 1 {
+		t.Fatalf("item/completed assistant messages = %d, want 1", got)
+	}
+
+	normalizer.ApplyAssistantTurnFinalText("你好！我是 Codex 助手。")
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	if duplicates := activityMessagesWithRole(completed, activityshared.MessageRoleAssistant); len(duplicates) != 0 {
+		t.Fatalf("turn/completed assistant messages = %#v, want none", duplicates)
+	}
+}
+
+func TestApplyAssistantTurnFinalTextFillsMissingAnswer(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	normalizer.ApplyAssistantTurnFinalText("I'll check the repo.")
+	messages := activityMessagesWithRole(normalizer.FinishCompleted(session, "turn-1"), activityshared.MessageRoleAssistant)
+	if len(messages) != 1 || messages[0].Payload.Content != "I'll check the repo." {
+		t.Fatalf("assistant messages = %#v, want one final answer", messages)
+	}
+}
+
 func TestApplyAssistantFinalTextReplacesEditedSnapshot(t *testing.T) {
 	t.Parallel()
 

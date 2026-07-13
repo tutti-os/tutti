@@ -28,8 +28,11 @@ import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "./types.ts";
-import { normalizeAgentGUIProviderTargets } from "../providerTargets.ts";
-import type { AgentGUIProviderTarget } from "../types.ts";
+import {
+  normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToInternalTargets
+} from "../agents.ts";
+import type { AgentGUIAgent, AgentGUIAgentTarget } from "../types.ts";
 import type {
   AgentGuiWorkbenchContributionCopy,
   AgentGuiWorkbenchContributionCopyOverrides,
@@ -84,16 +87,16 @@ export type AgentGuiWorkbenchProviderAvailability = Partial<
 
 export interface BuildAgentGuiDockEntriesInput {
   defaultProvider?: AgentGuiWorkbenchProvider | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
   label?: string;
   providerAvailability?: AgentGuiWorkbenchProviderAvailability;
-  providerTargetsLoading?: boolean;
+  agentsLoading?: boolean;
   renderPreview?: CreateAgentGuiWorkbenchContributionInput["renderPreview"];
   resolveDockPopupIdentity?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupIdentity"];
   resolveDockPopupTitle?: CreateAgentGuiWorkbenchContributionInput["resolveDockPopupTitle"];
   sectionId?: string;
-  targets?: readonly AgentGUIProviderTarget[] | null;
+  agents?: readonly AgentGUIAgent[] | null;
   unifiedDockIconUrl?: string;
 }
 
@@ -101,17 +104,6 @@ export function buildAgentGuiDockEntries(
   input: BuildAgentGuiDockEntriesInput
 ): WorkbenchHostDockEntry[] {
   const sectionId = input.sectionId ?? "agents";
-  const target = resolveUnifiedAgentGuiDockTarget(input);
-  const hasAvailableDefaultProvider =
-    input.defaultProvider != null &&
-    isUnifiedAgentGuiDockProvider(input.defaultProvider) &&
-    isAgentGuiProviderAvailable(
-      input.defaultProvider,
-      input.providerAvailability
-    );
-  if (!target && !hasAvailableDefaultProvider) {
-    return [];
-  }
   const launchPayload = resolveAgentGuiUnifiedDockLaunchPayload(input);
   const provider = launchPayload.provider;
   const unifiedTileIconUrls = resolveAgentGuiUnifiedDockTileIconUrls(
@@ -144,10 +136,10 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
     | "defaultProvider"
-    | "defaultProviderTargetId"
+    | "defaultAgentTargetId"
     | "providerAvailability"
-    | "providerTargetsLoading"
-    | "targets"
+    | "agentsLoading"
+    | "agents"
   >
 ): {
   provider: AgentGuiWorkbenchProvider;
@@ -228,6 +220,10 @@ function createAgentGuiWorkbenchDockEntry(input: {
     label: input.label,
     launchBehavior: "enabled",
     launchPayload: input.launchPayload ?? { provider: input.provider },
+    newWindowLaunchPayload: {
+      ...(input.launchPayload ?? { provider: input.provider }),
+      openInNewWindow: true
+    },
     matchNode: (node) => {
       if (node.data.typeId !== agentGuiWorkbenchTypeId) {
         return false;
@@ -386,13 +382,28 @@ export function resolveAgentGuiWorkbenchLaunchPayload(
   ) {
     return request.payload;
   }
-  return (
+  const resolved =
     input.resolveDockLaunchPayload?.({
       dockEntryId: request.dockEntryId,
       payload: request.payload,
       reason: request.reason
-    }) ?? request.payload
-  );
+    }) ?? request.payload;
+  if (
+    isOpenInNewWindowLaunchPayload(request.payload) &&
+    resolved &&
+    typeof resolved === "object" &&
+    !Array.isArray(resolved)
+  ) {
+    return { ...(resolved as Record<string, unknown>), openInNewWindow: true };
+  }
+  return resolved;
+}
+
+function isOpenInNewWindowLaunchPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
 }
 
 function isEmptyAgentGuiWorkbenchDockLaunchPayload(payload: unknown): boolean {
@@ -410,19 +421,18 @@ function resolveUnifiedAgentGuiDockTarget(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
     | "defaultProvider"
-    | "defaultProviderTargetId"
+    | "defaultAgentTargetId"
     | "providerAvailability"
-    | "providerTargetsLoading"
-    | "targets"
+    | "agentsLoading"
+    | "agents"
   >
-): AgentGUIProviderTarget | null {
-  const targets = normalizeAgentGUIProviderTargets(input.targets, {
-    useStaticCatalog:
-      input.providerTargetsLoading !== true && input.targets == null
-  }).filter(
+): AgentGUIAgentTarget | null {
+  const targets = projectAgentGUIAgentsToInternalTargets(
+    normalizeAgentGUIAgents(input.agents)
+  ).filter(
     (
       target
-    ): target is AgentGUIProviderTarget & {
+    ): target is AgentGUIAgentTarget & {
       provider: (typeof agentGuiWorkbenchDefaultDockProviders)[number];
     } =>
       isAgentGuiWorkbenchProvider(target.provider) &&
@@ -430,10 +440,10 @@ function resolveUnifiedAgentGuiDockTarget(
       target.disabled !== true &&
       isAgentGuiProviderAvailable(target.provider, input.providerAvailability)
   );
-  const defaultProviderTargetId = input.defaultProviderTargetId?.trim();
-  if (defaultProviderTargetId) {
+  const defaultAgentTargetId = input.defaultAgentTargetId?.trim();
+  if (defaultAgentTargetId) {
     const explicitTarget = targets.find(
-      (target) => target.targetId === defaultProviderTargetId
+      (target) => target.targetId === defaultAgentTargetId
     );
     if (explicitTarget) {
       return explicitTarget;
@@ -463,7 +473,7 @@ function resolveUnifiedAgentGuiDockTarget(
 function resolveUnifiedAgentGuiDockProvider(
   input: Pick<
     BuildAgentGuiDockEntriesInput,
-    "defaultProvider" | "providerAvailability" | "targets"
+    "defaultProvider" | "providerAvailability" | "agents"
   >
 ): AgentGuiWorkbenchProvider {
   if (
@@ -480,7 +490,11 @@ function resolveUnifiedAgentGuiDockProvider(
   if (target) {
     return target.provider;
   }
-  throw new Error("agent_gui_workbench.default_provider_required");
+  return (
+    agentGuiWorkbenchDefaultDockProviders.find((provider) =>
+      isAgentGuiProviderAvailable(provider, input.providerAvailability)
+    ) ?? "codex"
+  );
 }
 
 function isUnifiedAgentGuiDockProvider(
@@ -492,13 +506,11 @@ function isUnifiedAgentGuiDockProvider(
 }
 
 function preferredAgentGuiDockTargetForProvider(
-  targets: readonly AgentGUIProviderTarget[],
+  targets: readonly AgentGUIAgentTarget[],
   provider: AgentGuiWorkbenchProvider
-): AgentGUIProviderTarget | null {
-  const providerTargets = targets.filter(
-    (target) => target.provider === provider
-  );
-  return providerTargets[0] ?? null;
+): AgentGUIAgentTarget | null {
+  const agentTargets = targets.filter((target) => target.provider === provider);
+  return agentTargets[0] ?? null;
 }
 
 function isAgentGuiProviderAvailable(

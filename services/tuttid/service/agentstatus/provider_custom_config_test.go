@@ -164,6 +164,29 @@ func TestProviderHasAPICredentialSettingsApiKeyHelper(t *testing.T) {
 	}
 }
 
+// The claude-sdk-sidecar resolves settings.json under $CLAUDE_CONFIG_DIR when
+// set; the status probe must look at the same file or the wizard and the
+// runtime would disagree about whether credentials exist.
+func TestProviderHasAPICredentialRespectsClaudeConfigDir(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, "custom-claude-config")
+	writeFile(t, filepath.Join(configDir, "settings.json"),
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test"}}`)
+	svc := customConfigService(home)
+	svc.Environ = func() []string { return []string{"CLAUDE_CONFIG_DIR=" + configDir} }
+	if !svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected CLAUDE_CONFIG_DIR settings.json credential to be detected")
+	}
+	// The default ~/.claude location must not be consulted when the override
+	// is set.
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-ignored"}}`)
+	svc.Environ = func() []string { return []string{"CLAUDE_CONFIG_DIR=" + filepath.Join(home, "empty-dir")} }
+	if svc.providerHasAPICredential(agentprovider.ClaudeCode) {
+		t.Fatal("expected empty CLAUDE_CONFIG_DIR to hide the default settings.json")
+	}
+}
+
 // A bare custom endpoint without any API credential must NOT be reported as an
 // API credential: the user may still be on an OAuth/subscription session against
 // that endpoint, so labeling them "API Usage Billing" would be wrong.
@@ -196,6 +219,24 @@ func TestProviderHasAPICredentialCodexConfigTomlInlineKey(t *testing.T) {
 	svc := customConfigService(home)
 	if !svc.providerHasAPICredential(agentprovider.Codex) {
 		t.Fatal("expected codex config.toml api_key to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialCodexAuthJSONAPIKey(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "auth.json"), `{"OPENAI_API_KEY":"sk-test"}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("expected codex auth.json OPENAI_API_KEY to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialCodexAuthJSONEmptyKeyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".codex", "auth.json"), `{"OPENAI_API_KEY":"","tokens":{"access_token":"x"}}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.Codex) {
+		t.Fatal("empty OPENAI_API_KEY in auth.json must not count as an API credential")
 	}
 }
 

@@ -40,8 +40,8 @@ func TestAccountLoginStatusMapsServiceStatus(t *testing.T) {
 }
 
 func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
-	availableCredits := int64(2450)
-	expiringCredits := int64(100)
+	availableCredits := "2450.52"
+	expiringCredits := "100.25"
 	cancelAtPeriodEnd := false
 	api := DaemonAPI{
 		AccountService: accountServiceStub{
@@ -88,7 +88,7 @@ func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
 	if got.User == nil || got.User.UserId != "user-1" || got.Membership == nil || got.Membership.DisplayName != "Basic" {
 		t.Fatalf("response = %#v", got)
 	}
-	if got.Credits == nil || got.Credits.AvailableCredits == nil || *got.Credits.AvailableCredits != 2450 {
+	if got.Credits == nil || got.Credits.AvailableCredits == nil || *got.Credits.AvailableCredits != "2450.52" {
 		t.Fatalf("credits = %#v", got.Credits)
 	}
 	if got.RegistrationCreditsReward == nil || got.RegistrationCreditsReward.Id != "registrationCreditsToastShown:user-1:grant-1" || got.RegistrationCreditsReward.Credits != 500 {
@@ -100,7 +100,7 @@ func TestAccountProductSummaryMapsServiceSummary(t *testing.T) {
 }
 
 func TestAccountProductSummaryRouteIsRegistered(t *testing.T) {
-	availableCredits := int64(2450)
+	availableCredits := "2450.52"
 	mux := http.NewServeMux()
 	RegisterRoutes(
 		mux,
@@ -133,7 +133,7 @@ func TestAccountProductSummaryRouteIsRegistered(t *testing.T) {
 	if body.User == nil || body.User.UserId != "user-1" {
 		t.Fatalf("user = %#v", body.User)
 	}
-	if body.Credits == nil || body.Credits.AvailableCredits == nil || *body.Credits.AvailableCredits != 2450 {
+	if body.Credits == nil || body.Credits.AvailableCredits == nil || *body.Credits.AvailableCredits != "2450.52" {
 		t.Fatalf("credits = %#v", body.Credits)
 	}
 }

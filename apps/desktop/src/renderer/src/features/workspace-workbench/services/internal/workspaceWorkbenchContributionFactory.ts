@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import type {
   AgentGUIProvider,
-  AgentGUIProviderRailMode,
-  AgentGUIProviderRailEmptyRenderer,
-  AgentGUIProviderTarget
+  AgentGUIAgentsEmptyRenderer,
+  AgentGUIAgent
 } from "@tutti-os/agent-gui";
 import type {
   TuttidClient,
@@ -42,6 +41,7 @@ import type {
   WorkspaceWorkbenchCapabilitySettingsTarget
 } from "../workspaceWorkbenchHostService.interface";
 import type { WorkspaceBrowserService } from "./workspaceBrowserService.ts";
+import type { WorkbenchCapabilityFactoryDescriptor } from "./workbenchProductProfile.ts";
 
 export interface DesktopWorkbenchContributionContext {
   appI18n: I18nRuntime<string>;
@@ -55,7 +55,7 @@ export interface DesktopWorkbenchContributionContext {
   ) => Promise<boolean> | boolean;
   dockPreviewCache: WorkbenchDockPreviewCache;
   defaultAgentProvider?: string | null;
-  defaultProviderTargetId?: string | null;
+  defaultAgentTargetId?: string | null;
   dockIcons: {
     agentUnified: string;
     agents: Record<string, string>;
@@ -71,12 +71,9 @@ export interface DesktopWorkbenchContributionContext {
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerTargetsLoading?: boolean;
-  /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
-  providerRailMode?: AgentGUIProviderRailMode;
-  /** Host-owned empty state for the provider rail in "exact" mode. */
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;
   workspaceFileManagerService: IWorkspaceFileManagerService;
@@ -98,10 +95,19 @@ export interface DesktopWorkbenchContributionContext {
   workspaceId: string;
 }
 
-export interface DesktopWorkbenchContributionFactory {
-  create(
-    context: DesktopWorkbenchContributionContext
-  ): WorkbenchContribution | null;
+export interface DesktopWorkbenchContributionFactory<TContext> {
+  create(context: TContext): WorkbenchContribution | null;
   id: string;
   order: number;
+}
+
+export function bindDesktopWorkbenchContributionFactory<TContext>(
+  factory: DesktopWorkbenchContributionFactory<TContext>,
+  context: TContext
+): WorkbenchCapabilityFactoryDescriptor {
+  return {
+    create: () => factory.create(context),
+    id: factory.id,
+    order: factory.order
+  };
 }

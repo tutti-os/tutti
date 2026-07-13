@@ -18,6 +18,7 @@ use ./packages/auth/bridge-go
 
 use (
 	./packages/agent/daemon
+	./packages/agent/runtimeprep
 	./packages/agent/store-sqlite
 	./packages/appcli/core
 )

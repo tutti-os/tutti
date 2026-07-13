@@ -424,6 +424,63 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
   });
 
+  it("drops Codex model metadata fallback runtime warning notices", () => {
+    const metadataWarning =
+      "Model metadata for `minimax/minimax-m2.5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "你好" },
+            userMessages: [{ id: "user-1", body: "你好" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: metadataWarning,
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    source: "runtime",
+                    title: metadataWarning,
+                    detail: metadataWarning,
+                    retryable: null
+                  }
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "你好！有什么我可以帮你的吗？"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages[0]?.id).toBe("assistant-1");
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
+  });
+
   it("groups bridge thinking inside completed tool disclosures", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
@@ -1186,6 +1243,7 @@ describe("projectAgentConversationVM", () => {
                           type: "image",
                           mimeType: "image/png",
                           attachmentId: "attachment-1",
+                          url: "https://objects.example.test/signed/screen.png",
                           name: "screen.png"
                         }
                       ]
@@ -1222,6 +1280,7 @@ describe("projectAgentConversationVM", () => {
       workspaceId: "room-1",
       agentSessionId: "session-1",
       attachmentId: "attachment-1",
+      url: "https://objects.example.test/signed/screen.png",
       mimeType: "image/png",
       name: "screen.png"
     });

@@ -71,6 +71,25 @@ func isWorkspaceAppServerTokenRoute(method string, segments []string) bool {
 		segments[7] == "content" {
 		return true
 	}
+	if len(segments) == 7 &&
+		method == http.MethodGet &&
+		segments[5] == "preferences" &&
+		segments[6] == "agent" {
+		return true
+	}
+	if len(segments) == 7 &&
+		method == http.MethodGet &&
+		segments[5] == "agent-providers" &&
+		segments[6] == "status" {
+		return true
+	}
+	if len(segments) == 8 &&
+		method == http.MethodPost &&
+		segments[5] == "agent-providers" &&
+		strings.TrimSpace(segments[6]) != "" &&
+		segments[7] == "composer-options" {
+		return true
+	}
 	if (len(segments) != 7 && len(segments) != 8) ||
 		segments[5] != "managed-model-grants" {
 		return false

@@ -43,6 +43,12 @@ export function createDesktopTuttidClient(
     async listAgentTargets() {
       return (await resolveClient()).listAgentTargets();
     },
+    async setSystemAgentTargetEnabled(agentTargetID, enabled) {
+      return (await resolveClient()).setSystemAgentTargetEnabled(
+        agentTargetID,
+        enabled
+      );
+    },
     async startAccountLogin() {
       return (await resolveClient()).startAccountLogin();
     },
@@ -330,6 +336,17 @@ export function createDesktopTuttidClient(
         agentSessionID
       );
     },
+    async deleteWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return (await resolveClient()).deleteWorkspaceAgentSessionSection(
+        workspaceID,
+        request,
+        requestOptions
+      );
+    },
     async updateWorkspaceAgentSessionTitle(
       workspaceID,
       agentSessionID,
@@ -559,6 +576,17 @@ export function createDesktopTuttidClient(
       requestOptions
     ) {
       return (await resolveClient()).listWorkspaceAgentSessionSectionPage(
+        workspaceID,
+        request,
+        requestOptions
+      );
+    },
+    async countWorkspaceAgentSessionSection(
+      workspaceID,
+      request,
+      requestOptions
+    ) {
+      return (await resolveClient()).countWorkspaceAgentSessionSection(
         workspaceID,
         request,
         requestOptions

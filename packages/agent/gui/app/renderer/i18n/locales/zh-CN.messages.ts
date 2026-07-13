@@ -3,6 +3,7 @@ export const zhCNMessages = {
   agentResumeFailed: "Agent 继续失败：{{message}}",
   agentProviderSessionNotFound:
     "这条会话历史仍可查看，但底层 Provider 会话已经无法恢复。",
+  agentTargetRemoved: "该 agent 不存在或已被移除，历史会话记录仍可查看。",
   agentResumeSessionNotLocal:
     "这个会话没法在当前设备里直接恢复，你可以在新会话里 @这段对话，接着继续聊。",
   agentSessionReconnecting: "正在重新连接 Agent 会话…",

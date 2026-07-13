@@ -1,60 +1,56 @@
 package agent
 
 import (
-	"path/filepath"
 	"slices"
 	"testing"
 )
 
 func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	t.Parallel()
-	claude := composerProviderCapabilities("claude-code")
+	claude := composerProviderCapabilities("claude-code", true)
 	for _, want := range []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"} {
 		if !slices.Contains(claude, want) {
 			t.Fatalf("claude defaults = %v, missing %q", claude, want)
 		}
 	}
-	codex := composerProviderCapabilities("codex")
+	codex := composerProviderCapabilities("codex", true)
 	if !slices.Contains(codex, "planMode") {
 		t.Fatalf("codex defaults must include planMode (re-negotiated at session start): %v", codex)
 	}
 	if !slices.Contains(codex, "compact") || !slices.Contains(codex, "skills") {
 		t.Fatalf("codex defaults = %v", codex)
 	}
-	tuttiAgent := composerProviderCapabilities("tutti-agent")
+	tuttiAgent := composerProviderCapabilities("tutti-agent", true)
 	if !slices.Contains(tuttiAgent, "planMode") || !slices.Contains(tuttiAgent, "compact") || !slices.Contains(tuttiAgent, "skills") {
 		t.Fatalf("tutti-agent defaults = %v", tuttiAgent)
 	}
 	// Browser use is delivered as a default MCP server to every provider, so it
 	// is advertised by default alongside the per-provider capabilities.
 	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider); !slices.Contains(got, "browserUse") {
+		if got := composerProviderCapabilities(provider, true); !slices.Contains(got, "browserUse") {
 			t.Fatalf("%s defaults = %v, missing browserUse", provider, got)
 		}
 	}
-	if got := composerProviderCapabilities("openclaw"); !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("openclaw", true); !slices.Contains(got, "interrupt") {
 		t.Fatalf("openclaw defaults = %v, missing interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
 		t.Fatalf("opencode defaults = %v, missing imageInput or interrupt", got)
 	}
-	if got := composerProviderCapabilities("opencode"); !slices.Contains(got, "planMode") {
+	if got := composerProviderCapabilities("opencode", true); !slices.Contains(got, "planMode") {
 		t.Fatalf("opencode defaults = %v, missing planMode", got)
 	}
-	if got := composerProviderCapabilities("cursor"); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
+	if got := composerProviderCapabilities("cursor", true); !slices.Contains(got, "imageInput") || !slices.Contains(got, "interrupt") {
 		t.Fatalf("cursor defaults = %v, missing imageInput or interrupt", got)
 	}
-	if got := composerProviderCapabilities("unknown"); got != nil {
+	if got := composerProviderCapabilities("unknown", true); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
 	}
 }
 
 func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
-	t.Setenv("TUTTI_COMPUTER_USE", "")
-	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
-
 	for _, provider := range []string{"claude-code", "codex", "tutti-agent", "openclaw"} {
-		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
+		if got := composerProviderCapabilities(provider, false); slices.Contains(got, "computerUse") {
 			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
 		}
 	}
@@ -205,5 +201,48 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		if permission.Configurable != tc.permission {
 			t.Fatalf("%s permissionConfig.configurable = %v, want %v", tc.provider, permission.Configurable, tc.permission)
 		}
+	}
+}
+
+func TestComposerModelReasoningOptionsRuntimeContextPreservesCatalogOptions(t *testing.T) {
+	t.Parallel()
+	for _, provider := range []string{"codex", "tutti-agent"} {
+		t.Run(provider, func(t *testing.T) {
+			runtimeContext := composerModelReasoningOptionsRuntimeContext(
+				provider,
+				"en",
+				map[string]composerModelReasoningProfile{
+					"model-1": {
+						DefaultReasoningEffort: "ultra",
+						ReasoningEfforts: []AgentModelReasoningEffortOption{
+							{Value: "high"},
+							{Value: "ultra"},
+						},
+					},
+				},
+			)
+			modelOptions, ok := runtimeContext["model-1"].(map[string]any)
+			if !ok || modelOptions["defaultValue"] != "ultra" {
+				t.Fatalf("model options = %#v", runtimeContext["model-1"])
+			}
+			options, ok := modelOptions["options"].([]map[string]string)
+			if !ok || len(options) != 2 {
+				t.Fatalf("reasoning options = %#v", modelOptions["options"])
+			}
+			if options[1]["value"] != "ultra" {
+				t.Fatalf("reasoning options = %#v, want runtime-advertised ultra preserved", options)
+			}
+		})
+	}
+}
+
+func TestResolveAdvertisedReasoningEffortPreservesAuthoritativeMinimalDefault(t *testing.T) {
+	advertised := []AgentModelReasoningEffortOption{{Value: "minimal"}}
+	if got := resolveAdvertisedReasoningEffort("codex", "", "minimal", advertised); got != "minimal" {
+		t.Fatalf("resolveAdvertisedReasoningEffort = %q, want minimal", got)
+	}
+	options := composerAdvertisedReasoningOptionValues("codex", "minimal", "en", advertised)
+	if len(options) != 1 || options[0].Value != "minimal" {
+		t.Fatalf("composer advertised options = %#v, want only minimal", options)
 	}
 }

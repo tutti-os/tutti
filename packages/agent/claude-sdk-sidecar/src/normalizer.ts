@@ -66,7 +66,22 @@ export function sdkContentFromPromptBlocks(
       if (record.type === "image") {
         const mimeType = stringValue(record.mimeType);
         const data = stringValue(record.data);
-        if (isSupportedClaudeImageMimeType(mimeType) && data) {
+        const url = stringValue(record.url);
+        if (
+          !data &&
+          isSupportedClaudeImageMimeType(mimeType) &&
+          isSafeImageUrl(url)
+        ) {
+          content.push({
+            type: "image",
+            source: {
+              type: "url",
+              url
+            }
+          });
+          continue;
+        }
+        if (isSupportedClaudeImageMimeType(mimeType) && data && !url) {
           content.push({
             type: "image",
             source: {
@@ -86,6 +101,20 @@ export function sdkContentFromPromptBlocks(
     }
   }
   return content;
+}
+
+function isSafeImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function parseJSONObject(

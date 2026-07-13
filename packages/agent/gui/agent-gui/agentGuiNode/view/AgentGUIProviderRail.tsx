@@ -9,9 +9,9 @@ import {
 } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@tutti-os/ui-system";
 import {
-  createDisabledPlaceholderAgentGUIProviderTarget,
-  createLocalAgentGUIProviderTarget
-} from "../../../providerTargets";
+  createDisabledPlaceholderAgentGUIAgentTarget,
+  createLocalAgentGUIAgentTarget
+} from "../../../agentTargets";
 import {
   migratedAgentGUIProviderIdentityCatalog,
   resolveAgentGUIProviderCatalogIdentity
@@ -29,7 +29,7 @@ import {
 } from "../model/agentGuiProviderRailOrder";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type {
-  AgentGUIProviderRailEmptyRenderer,
+  AgentGUIAgentsEmptyRenderer,
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
@@ -86,7 +86,7 @@ function agentGUIProviderRailAriaLabel(
 }
 
 function agentGUIProviderTargetMatchesConversationFilter(
-  target: AgentGUINodeViewModel["rail"]["providerTargets"][number],
+  target: AgentGUINodeViewModel["rail"]["agentTargets"][number],
   filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
 ): boolean {
   const agentTargetId = target.agentTargetId?.trim() ?? "";
@@ -98,24 +98,24 @@ function agentGUIProviderTargetMatchesConversationFilter(
 }
 
 function agentGUIProviderRailTargets(
-  providerTargets: AgentGUINodeViewModel["rail"]["providerTargets"],
-  providerTargetsLoading: boolean,
+  agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"],
+  agentTargetsLoading: boolean,
   comingSoonProviders: AgentGUINodeViewModel["rail"]["comingSoonProviders"],
   providerRailMode: AgentGUINodeViewModel["rail"]["providerRailMode"]
-): AgentGUINodeViewModel["rail"]["providerTargets"] {
-  if (providerTargetsLoading) {
+): AgentGUINodeViewModel["rail"]["agentTargets"] {
+  if (agentTargetsLoading) {
     return [];
   }
   // Exact mode renders precisely the provided targets — no backfilling to the
   // default provider catalog, no local/placeholder padding.
   if (providerRailMode === "exact") {
-    return providerTargets;
+    return agentTargets;
   }
   const comingSoon = new Set(comingSoonProviders);
   const source =
-    providerTargets.length > 0 &&
-    !agentGUIProviderRailTargetsAreFullLocalFallback(providerTargets)
-      ? providerTargets
+    agentTargets.length > 0 &&
+    !agentGUIProviderRailTargetsAreFullLocalFallback(agentTargets)
+      ? agentTargets
       : [];
   const seenProviders = new Set(source.map((target) => target.provider));
   const missingDefaultProviders = agentGUIProviderRailDefaultProviders.filter(
@@ -129,20 +129,20 @@ function agentGUIProviderRailTargets(
     ...missingDefaultProviders.map((provider) =>
       agentGUIProviderRailDisabledProviders.has(provider) ||
       comingSoon.has(provider)
-        ? createDisabledPlaceholderAgentGUIProviderTarget(provider)
-        : createLocalAgentGUIProviderTarget(provider)
+        ? createDisabledPlaceholderAgentGUIAgentTarget(provider)
+        : createLocalAgentGUIAgentTarget(provider)
     )
   ];
 }
 
 function agentGUIProviderRailTargetsAreFullLocalFallback(
-  providerTargets: AgentGUINodeViewModel["rail"]["providerTargets"]
+  agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"]
 ): boolean {
-  if (providerTargets.length !== agentGUIProviderRailOrder.length) {
+  if (agentTargets.length !== agentGUIProviderRailOrder.length) {
     return false;
   }
   const fallbackProviders = new Set(agentGUIProviderRailOrder);
-  return providerTargets.every(
+  return agentTargets.every(
     (target) =>
       fallbackProviders.has(target.provider) &&
       target.ref.kind === "local" &&
@@ -156,11 +156,11 @@ interface AgentGUIProviderRailProps {
   labels: AgentGUIViewLabels;
   previewMode: boolean;
   workspaceId: string;
-  selectedProviderTarget: AgentGUINodeViewModel["rail"]["selectedProviderTarget"];
-  providerTargets: AgentGUINodeViewModel["rail"]["providerTargets"];
-  providerTargetsLoading: AgentGUINodeViewModel["rail"]["providerTargetsLoading"];
+  selectedAgentTarget: AgentGUINodeViewModel["rail"]["selectedAgentTarget"];
+  agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
+  agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
   providerRailMode: AgentGUINodeViewModel["rail"]["providerRailMode"];
-  renderProviderRailEmpty?: AgentGUIProviderRailEmptyRenderer;
+  renderProviderRailEmpty?: AgentGUIAgentsEmptyRenderer;
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   comingSoonProviders: AgentGUINodeViewModel["rail"]["comingSoonProviders"];
   onRequestComposerFocus: () => void;
@@ -183,9 +183,9 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   labels,
   previewMode,
   workspaceId,
-  selectedProviderTarget,
-  providerTargets,
-  providerTargetsLoading,
+  selectedAgentTarget,
+  agentTargets,
+  agentTargetsLoading,
   providerRailMode,
   renderProviderRailEmpty,
   providerRailAllPresentation,
@@ -238,17 +238,12 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   const railProviderTargets = useMemo(
     () =>
       agentGUIProviderRailTargets(
-        providerTargets,
-        providerTargetsLoading,
+        agentTargets,
+        agentTargetsLoading,
         comingSoonProviders,
         providerRailMode
       ),
-    [
-      comingSoonProviders,
-      providerRailMode,
-      providerTargets,
-      providerTargetsLoading
-    ]
+    [comingSoonProviders, providerRailMode, agentTargets, agentTargetsLoading]
   );
   const providerTiles = useMemo(() => {
     const targets = [...railProviderTargets];
@@ -283,21 +278,20 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     return applyAgentGUIProviderRailOrder(orderedTargets, providerRailOrder);
   }, [providerRailMode, providerRailOrder, railProviderTargets]);
   const visibleProviderTiles = providerTiles;
-  const selectedProviderTargetIsPlaceholder =
-    selectedProviderTarget?.disabled === true &&
-    selectedProviderTarget.targetId ===
-      `local:${selectedProviderTarget.provider}`;
+  const selectedAgentTargetIsPlaceholder =
+    selectedAgentTarget?.disabled === true &&
+    selectedAgentTarget.targetId === `local:${selectedAgentTarget.provider}`;
   const allTileSelected =
-    conversationFilter.kind === "all" && !selectedProviderTargetIsPlaceholder;
+    conversationFilter.kind === "all" && !selectedAgentTargetIsPlaceholder;
   const selectAllProviders = useCallback(() => {
     onUpdateConversationFilter({ kind: "all" });
-    if (selectedProviderTargetIsPlaceholder) {
+    if (selectedAgentTargetIsPlaceholder) {
       const fallbackTarget =
         railProviderTargets.find((target) => target.disabled !== true) ?? null;
       if (fallbackTarget) {
         onSelectConversationFilterTarget({
           provider: fallbackTarget.provider,
-          providerTargetId: fallbackTarget.targetId
+          agentTargetId: fallbackTarget.targetId
         });
       }
     }
@@ -307,13 +301,13 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     onRequestComposerFocus,
     onUpdateConversationFilter,
     railProviderTargets,
-    selectedProviderTargetIsPlaceholder
+    selectedAgentTargetIsPlaceholder
   ]);
   const selectAgentTargetTile = useCallback(
-    (target: AgentGUINodeViewModel["rail"]["providerTargets"][number]) => {
+    (target: AgentGUINodeViewModel["rail"]["agentTargets"][number]) => {
       onSelectConversationFilterTarget({
         provider: target.provider,
-        providerTargetId: target.targetId
+        agentTargetId: target.targetId
       });
       onRequestComposerFocus();
     },
@@ -325,9 +319,9 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   const handleProviderRailDragStart = useCallback(
     (
       event: DragEvent<HTMLButtonElement>,
-      target: AgentGUINodeViewModel["rail"]["providerTargets"][number]
+      target: AgentGUINodeViewModel["rail"]["agentTargets"][number]
     ) => {
-      if (previewMode || providerTargetsLoading) {
+      if (previewMode || agentTargetsLoading) {
         event.preventDefault();
         return;
       }
@@ -339,14 +333,14 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position: null
       });
     },
-    [previewMode, providerTargetsLoading, setProviderRailDragState]
+    [previewMode, agentTargetsLoading, setProviderRailDragState]
   );
   const handleProviderRailDragOver = useCallback(
     (
       event: DragEvent<HTMLButtonElement>,
-      target: AgentGUINodeViewModel["rail"]["providerTargets"][number]
+      target: AgentGUINodeViewModel["rail"]["agentTargets"][number]
     ) => {
-      if (previewMode || providerTargetsLoading || !dragState) {
+      if (previewMode || agentTargetsLoading || !dragState) {
         return;
       }
       event.preventDefault();
@@ -382,7 +376,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position
       });
     },
-    [dragState, previewMode, providerTargetsLoading, setProviderRailDragState]
+    [dragState, previewMode, agentTargetsLoading, setProviderRailDragState]
   );
   const commitProviderRailDragDrop = useCallback(
     (event: DragEvent<HTMLElement>) => {
@@ -399,7 +393,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               position: null
             }
           : null);
-      if (previewMode || providerTargetsLoading || !activeDragState) {
+      if (previewMode || agentTargetsLoading || !activeDragState) {
         clearProviderRailDragState();
         return;
       }
@@ -412,7 +406,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           )
         )
           .map((element) => {
-            const targetId = element.dataset.providerTargetId?.trim() ?? "";
+            const targetId = element.dataset.agentTargetId?.trim() ?? "";
             if (!targetId || targetId === activeDragState.draggedTargetId) {
               return null;
             }
@@ -471,14 +465,14 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       dragState,
       persistProviderRailOrder,
       previewMode,
-      providerTargetsLoading,
+      agentTargetsLoading,
       visibleProviderTiles
     ]
   );
   const handleProviderRailContainerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       const activeDragState = dragStateRef.current ?? dragState;
-      if (!activeDragState || previewMode || providerTargetsLoading) {
+      if (!activeDragState || previewMode || agentTargetsLoading) {
         return;
       }
       event.preventDefault();
@@ -490,7 +484,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       );
       const dropTargets = tileElements
         .map((element) => {
-          const targetId = element.dataset.providerTargetId?.trim() ?? "";
+          const targetId = element.dataset.agentTargetId?.trim() ?? "";
           if (!targetId || targetId === activeDragState.draggedTargetId) {
             return null;
           }
@@ -527,14 +521,14 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         position
       });
     },
-    [dragState, previewMode, providerTargetsLoading, setProviderRailDragState]
+    [dragState, previewMode, agentTargetsLoading, setProviderRailDragState]
   );
 
   // Exact mode with no targets (and not loading): hand the rail body to the
   // host-provided empty renderer instead of the static local catalog fallback.
   if (
     providerRailMode === "exact" &&
-    !providerTargetsLoading &&
+    !agentTargetsLoading &&
     visibleProviderTiles.length === 0 &&
     renderProviderRailEmpty
   ) {
@@ -543,7 +537,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         className={styles.providerRail}
         role="tablist"
         aria-label={labels.providerSwitchLabel}
-        aria-busy={providerTargetsLoading}
+        aria-busy={agentTargetsLoading}
         data-empty="true"
       >
         {renderProviderRailEmpty()}
@@ -557,7 +551,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         className="flex min-h-0 w-full flex-col items-center"
         role="tablist"
         aria-label={labels.providerSwitchLabel}
-        aria-busy={providerTargetsLoading}
+        aria-busy={agentTargetsLoading}
         onDragOver={handleProviderRailContainerDragOver}
         onDrop={commitProviderRailDragDrop}
       >
@@ -579,7 +573,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           </span>
         </button>
         <span aria-hidden="true" className={styles.providerRailSeparator} />
-        {providerTargetsLoading
+        {agentTargetsLoading
           ? [0, 1, 2].map((index) => (
               <button
                 key={`provider-target-loading-${index}`}
@@ -601,9 +595,9 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         {visibleProviderTiles.map((target) => {
           const providerSelected =
             target.disabled === true
-              ? selectedProviderTargetIsPlaceholder &&
-                selectedProviderTarget?.provider === target.provider &&
-                selectedProviderTarget?.targetId === target.targetId
+              ? selectedAgentTargetIsPlaceholder &&
+                selectedAgentTarget?.provider === target.provider &&
+                selectedAgentTarget?.targetId === target.targetId
               : agentGUIProviderTargetMatchesConversationFilter(
                   target,
                   conversationFilter
@@ -639,7 +633,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               data-provider-target-id={target.targetId}
               data-selected={providerSelected ? "true" : "false"}
               disabled={previewMode}
-              draggable={!previewMode && !providerTargetsLoading}
+              draggable={!previewMode && !agentTargetsLoading}
               onClick={() => selectAgentTargetTile(target)}
               onDragEnd={clearProviderRailDragState}
               onDragOver={(event) => handleProviderRailDragOver(event, target)}
@@ -657,10 +651,10 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                   )}
                 />
                 {target.badge?.iconUrl ? (
-                  <span aria-hidden="true" className={styles.providerRailBadge}>
+                  <span aria-hidden="true" className={styles.agentAvatarBadge}>
                     <img
                       alt=""
-                      className={styles.providerRailBadgeImage}
+                      className={styles.agentAvatarBadgeImage}
                       draggable={false}
                       src={target.badge.iconUrl}
                     />

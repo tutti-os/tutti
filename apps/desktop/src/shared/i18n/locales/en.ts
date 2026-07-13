@@ -235,7 +235,7 @@ export const en = {
       stageProblemInstallPlatformIncomplete:
         "{{provider}} platform package missing",
       stageInstallVersionRequirement: "{{current}} · requires ≥ {{required}}",
-      stageAdapterVersionRequirement: "{{current}} · requires {{required}}",
+      stageAdapterVersionRequirement: "{{current}} · requires ≥ {{required}}",
       stageProblemAdapterMissing: "Adapter not installed",
       stageProblemAdapterMismatch: "Adapter version unsupported",
       stageProblemLoginMissing: "Not signed in",
@@ -814,6 +814,8 @@ export const en = {
         tuttiAgentSwitchDescription:
           "Shows account and agent development controls.",
         tuttiAgentSwitchLabel: "Tutti Agent Switch",
+        tuttiAgentSwitchSaveFailed:
+          "We couldn't update Tutti Agent availability.",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"
@@ -888,6 +890,8 @@ export const en = {
           "Unable to connect the local agent right now. Try again in a moment.",
         installFailedMissingRuntime:
           "The local agent executable could not be found. Check that it is installed correctly.",
+        installFailedOutdatedLocalAgent:
+          "An older local Agent was detected, but automatic upgrade failed.",
         installFailedTimedOut: "Connection timed out. Try again in a moment.",
         installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
@@ -912,7 +916,7 @@ export const en = {
         manageProviderHermes: "Hermes",
         manageProviderNexight: "Tutti Agent",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderOpenCode: "OpenCode",
+        manageProviderOpenCode: "Open Code",
         manageProviderTutti: "Tutti",
         manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "Sign-in required",
@@ -946,7 +950,8 @@ export const en = {
         layoutShortcutDefault: "Ctrl + 2",
         layoutShortcutMac: "Cmd + 2",
         layoutTrigger: "Quick layout",
-        unavailableTrigger: "Available when multiple windows exist"
+        unavailableTrigger: "Available when multiple windows exist",
+        unlockLayoutTrigger: "Unlock layout"
       }
     }
   },

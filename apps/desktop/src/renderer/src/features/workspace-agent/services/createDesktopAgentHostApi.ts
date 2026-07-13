@@ -41,6 +41,7 @@ interface AgentHostUserProjectCompat {
   label: string;
   lastUsedAtUnixMs?: number;
   path: string;
+  sectionKey?: string;
   updatedAtUnixMs?: number;
 }
 

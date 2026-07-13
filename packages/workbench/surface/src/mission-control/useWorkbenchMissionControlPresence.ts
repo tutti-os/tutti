@@ -27,6 +27,9 @@ export function useWorkbenchMissionControlPresence(
   const enterFrameRef = useRef<number | null>(null);
   const setPresencePhase = useCallback(
     (nextPhase: WorkbenchMissionControlPhase) => {
+      if (phaseRef.current === nextPhase) {
+        return;
+      }
       phaseRef.current = nextPhase;
       setPhase(nextPhase);
     },

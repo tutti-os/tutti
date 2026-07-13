@@ -381,7 +381,7 @@ function snapshotWithSessionMessages(
     sessions,
     presences: [],
     sessionMessagesById,
-    composerOptionsByProvider: {}
+    composerOptionsByTargetKey: {}
   };
 }
 

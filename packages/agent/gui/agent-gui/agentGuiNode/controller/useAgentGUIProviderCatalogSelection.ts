@@ -1,16 +1,16 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  agentGUIProviderTargetRefsEqual,
-  normalizeAgentGUIProviderTargets,
-  resolveAgentGUIProviderTarget
-} from "../../../providerTargets";
+  agentGUIAgentTargetRefsEqual,
+  normalizeAgentGUIAgentTargets,
+  resolveAgentGUIAgentTarget
+} from "../../../agentTargets";
 import type {
   AgentGUINodeData,
   AgentGUIProvider,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
-  AgentGUIProviderTarget
+  AgentGUIAgentTarget
 } from "../../../types";
 import {
   composerTargetDataFromNodeData,
@@ -30,43 +30,43 @@ import {
 interface UseAgentGUIProviderCatalogSelectionInput {
   comingSoonProviders: readonly AgentGUIProvider[] | undefined;
   data: AgentGUINodeData;
-  defaultProviderTargetId: string | null | undefined;
+  defaultAgentTargetId: string | null | undefined;
   providerRailMode: AgentGUIProviderRailMode | undefined;
   providerReadinessGates:
     | Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>>
     | null
     | undefined;
-  providerTargets: readonly AgentGUIProviderTarget[] | undefined;
-  providerTargetsLoading: boolean | undefined;
+  agentTargets: readonly AgentGUIAgentTarget[] | undefined;
+  agentTargetsLoading: boolean | undefined;
 }
 
 export function useAgentGUIProviderCatalogSelection(
   input: UseAgentGUIProviderCatalogSelectionInput
 ): {
-  effectiveSelectedProviderTarget: AgentGUIProviderTarget;
-  firstReadyHomeComposerProviderTarget: AgentGUIProviderTarget | null;
-  handoffProviderTargets: readonly AgentGUIProviderTarget[];
-  homeComposerTargetOverride: AgentGUIProviderTarget | null;
+  effectiveSelectedProviderTarget: AgentGUIAgentTarget;
+  firstReadyHomeComposerProviderTarget: AgentGUIAgentTarget | null;
+  handoffAgentTargets: readonly AgentGUIAgentTarget[];
+  homeComposerTargetOverride: AgentGUIAgentTarget | null;
   homeComposerTargetOverrideIsExplicit: boolean;
   normalizedComingSoonProviders: readonly AgentGUIProvider[];
-  normalizedExplicitProviderTargets: readonly AgentGUIProviderTarget[];
-  normalizedProviderTargets: readonly AgentGUIProviderTarget[];
+  normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
   selectedComposerTargetData: AgentGUIComposerTargetData;
-  selectedProviderTarget: AgentGUIProviderTarget;
-  selectedProviderTargetIsExplicit: boolean;
+  selectedAgentTarget: AgentGUIAgentTarget;
+  selectedAgentTargetIsExplicit: boolean;
   setHomeComposerTargetOverride: Dispatch<
-    SetStateAction<AgentGUIProviderTarget | null>
+    SetStateAction<AgentGUIAgentTarget | null>
   >;
   shouldUseStaticProviderTargets: boolean;
 } {
   const {
     comingSoonProviders,
     data,
-    defaultProviderTargetId,
+    defaultAgentTargetId,
     providerRailMode,
     providerReadinessGates,
-    providerTargets,
-    providerTargetsLoading
+    agentTargets,
+    agentTargetsLoading
   } = input;
   const normalizedComingSoonProviders = useMemo(
     () =>
@@ -77,7 +77,7 @@ export function useAgentGUIProviderCatalogSelection(
   );
   const isExactProviderRailMode = providerRailMode === "exact";
   const normalizedExplicitProviderTargets = useMemo(() => {
-    const normalized = normalizeAgentGUIProviderTargets(providerTargets, {
+    const normalized = normalizeAgentGUIAgentTargets(agentTargets, {
       includeDisabledPlaceholders: !isExactProviderRailMode,
       useStaticCatalog: false
     });
@@ -87,16 +87,16 @@ export function useAgentGUIProviderCatalogSelection(
           normalized,
           normalizedComingSoonProviders
         );
-  }, [isExactProviderRailMode, normalizedComingSoonProviders, providerTargets]);
+  }, [isExactProviderRailMode, normalizedComingSoonProviders, agentTargets]);
   const normalizedProviderTargets = useMemo(() => {
-    if (providerTargetsLoading) return [];
+    if (agentTargetsLoading) return [];
     if (
       !isExactProviderRailMode &&
-      (providerTargets === undefined ||
+      (agentTargets === undefined ||
         normalizedExplicitProviderTargets.length === 0)
     ) {
       return applyComingSoonProviderTargets(
-        normalizeAgentGUIProviderTargets(null, {
+        normalizeAgentGUIAgentTargets(null, {
           includeDisabledPlaceholders: true
         }),
         normalizedComingSoonProviders
@@ -107,30 +107,30 @@ export function useAgentGUIProviderCatalogSelection(
     isExactProviderRailMode,
     normalizedComingSoonProviders,
     normalizedExplicitProviderTargets,
-    providerTargets,
-    providerTargetsLoading
+    agentTargets,
+    agentTargetsLoading
   ]);
   const shouldUseStaticProviderTargets =
     !isExactProviderRailMode &&
-    !providerTargetsLoading &&
-    (providerTargets === undefined ||
+    !agentTargetsLoading &&
+    (agentTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
-  const handoffProviderTargets = useMemo(
+  const handoffAgentTargets = useMemo(
     () =>
-      providerTargetsLoading
+      agentTargetsLoading
         ? []
         : normalizedExplicitProviderTargets.filter(
             (target) => target.disabled !== true
           ),
-    [normalizedExplicitProviderTargets, providerTargetsLoading]
+    [normalizedExplicitProviderTargets, agentTargetsLoading]
   );
-  const selectedProviderTarget = useMemo(
+  const selectedAgentTarget = useMemo(
     () =>
-      resolveAgentGUIProviderTarget({
+      resolveAgentGUIAgentTarget({
         agentTargetId: data.agentTargetId,
-        defaultProviderTargetId,
+        defaultAgentTargetId,
         provider: data.provider,
-        providerTargets: normalizedProviderTargets,
+        agentTargets: normalizedProviderTargets,
         useStaticCatalog: shouldUseStaticProviderTargets
       }) ?? {
         targetId: data.agentTargetId ?? "__loading__",
@@ -142,26 +142,23 @@ export function useAgentGUIProviderCatalogSelection(
     [
       data.agentTargetId,
       data.provider,
-      defaultProviderTargetId,
+      defaultAgentTargetId,
       normalizedProviderTargets,
       shouldUseStaticProviderTargets
     ]
   );
-  const selectedProviderTargetIsExplicit = useMemo(
+  const selectedAgentTargetIsExplicit = useMemo(
     () =>
       normalizedExplicitProviderTargets.some(
         (target) =>
-          target.provider === selectedProviderTarget.provider &&
-          target.targetId === selectedProviderTarget.targetId &&
-          agentGUIProviderTargetRefsEqual(
-            target.ref,
-            selectedProviderTarget.ref
-          )
+          target.provider === selectedAgentTarget.provider &&
+          target.targetId === selectedAgentTarget.targetId &&
+          agentGUIAgentTargetRefsEqual(target.ref, selectedAgentTarget.ref)
       ),
-    [normalizedExplicitProviderTargets, selectedProviderTarget]
+    [normalizedExplicitProviderTargets, selectedAgentTarget]
   );
   const [homeComposerTargetOverride, setHomeComposerTargetOverride] =
-    useState<AgentGUIProviderTarget | null>(null);
+    useState<AgentGUIAgentTarget | null>(null);
   const homeComposerTargetOverrideIsExplicit = useMemo(
     () =>
       homeComposerTargetOverride
@@ -169,7 +166,7 @@ export function useAgentGUIProviderCatalogSelection(
             (target) =>
               target.provider === homeComposerTargetOverride.provider &&
               target.targetId === homeComposerTargetOverride.targetId &&
-              agentGUIProviderTargetRefsEqual(
+              agentGUIAgentTargetRefsEqual(
                 target.ref,
                 homeComposerTargetOverride.ref
               )
@@ -178,7 +175,7 @@ export function useAgentGUIProviderCatalogSelection(
     [homeComposerTargetOverride, normalizedExplicitProviderTargets]
   );
   const effectiveSelectedProviderTarget =
-    homeComposerTargetOverride ?? selectedProviderTarget;
+    homeComposerTargetOverride ?? selectedAgentTarget;
   const firstReadyHomeComposerProviderTarget = useMemo(
     () =>
       providerReadinessGates
@@ -193,7 +190,7 @@ export function useAgentGUIProviderCatalogSelection(
   const nodeComposerTargetResolvedByProviderTarget =
     agentGUINodeDataHasComposerTarget(data) &&
     normalizeOptionalText(data.agentTargetId) !== null &&
-    selectedProviderTarget.agentTargetId ===
+    selectedAgentTarget.agentTargetId ===
       normalizeOptionalText(data.agentTargetId);
   const selectedComposerTargetData = useMemo(
     () =>
@@ -206,23 +203,23 @@ export function useAgentGUIProviderCatalogSelection(
         : nodeComposerTargetResolvedByProviderTarget
           ? composerTargetDataFromProviderTarget({
               current: data,
-              isExplicit: selectedProviderTargetIsExplicit,
-              target: selectedProviderTarget
+              isExplicit: selectedAgentTargetIsExplicit,
+              target: selectedAgentTarget
             })
           : agentGUINodeDataHasComposerTarget(data)
             ? composerTargetDataFromNodeData(data)
             : composerTargetDataFromProviderTarget({
                 current: data,
-                isExplicit: selectedProviderTargetIsExplicit,
-                target: selectedProviderTarget
+                isExplicit: selectedAgentTargetIsExplicit,
+                target: selectedAgentTarget
               }),
     [
       data,
       homeComposerTargetOverride,
       homeComposerTargetOverrideIsExplicit,
       nodeComposerTargetResolvedByProviderTarget,
-      selectedProviderTarget,
-      selectedProviderTargetIsExplicit
+      selectedAgentTarget,
+      selectedAgentTargetIsExplicit
     ]
   );
 
@@ -231,25 +228,25 @@ export function useAgentGUIProviderCatalogSelection(
       homeComposerTargetOverride &&
       agentGUIProviderTargetsEqual(
         homeComposerTargetOverride,
-        selectedProviderTarget
+        selectedAgentTarget
       )
     ) {
       setHomeComposerTargetOverride(null);
     }
-  }, [homeComposerTargetOverride, selectedProviderTarget]);
+  }, [homeComposerTargetOverride, selectedAgentTarget]);
 
   return {
     effectiveSelectedProviderTarget,
     firstReadyHomeComposerProviderTarget,
-    handoffProviderTargets,
+    handoffAgentTargets,
     homeComposerTargetOverride,
     homeComposerTargetOverrideIsExplicit,
     normalizedComingSoonProviders,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
     selectedComposerTargetData,
-    selectedProviderTarget,
-    selectedProviderTargetIsExplicit,
+    selectedAgentTarget,
+    selectedAgentTargetIsExplicit,
     setHomeComposerTargetOverride,
     shouldUseStaticProviderTargets
   };

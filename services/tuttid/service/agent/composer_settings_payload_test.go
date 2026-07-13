@@ -61,6 +61,13 @@ func TestComposerSettingsFromPayloadBrowserUseTriState(t *testing.T) {
 	}
 }
 
+func TestComposerSettingsStatePayloadPreservesPlanModeFalse(t *testing.T) {
+	payload := composerSettingsToStatePayload(ComposerSettings{PlanMode: false})
+	if payload["planMode"] != false {
+		t.Fatalf("payload planMode = %#v, want explicit false", payload["planMode"])
+	}
+}
+
 func TestCreateSessionInputFromPersistedPreservesBrowserUse(t *testing.T) {
 	falseValue := false
 	input := createSessionInputFromPersisted(PersistedSession{

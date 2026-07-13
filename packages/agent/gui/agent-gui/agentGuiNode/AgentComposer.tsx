@@ -97,9 +97,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     submitDisabled,
     placeholder,
     composerSettings,
-    selectedProviderTarget = null,
-    providerTargets = [],
-    handoffProviderTargets,
+    selectedAgentTarget = null,
+    agentTargets = [],
+    handoffAgentTargets,
     providerSelectReadonly = false,
     onHandoffConversation,
     canQueueWhileBusy,
@@ -114,6 +114,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     previewMode = false,
     workspaceReferencePickerOpen = false,
     promptImagesSupported = true,
+    canGoalControl = true,
+    canUploadAttachment = true,
     composerFocusRequestSequence = null,
     layoutMode = "dock",
     handoffLabel,
@@ -135,7 +137,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     contextMentionProviders = EMPTY_CONTEXT_MENTION_PROVIDERS
   } = props;
   const draftPrompt = draftContent.prompt;
-  const goalDraftObjective = goalDraftObjectiveFromPrompt(draftPrompt);
+  const goalDraftObjective = canGoalControl
+    ? goalDraftObjectiveFromPrompt(draftPrompt)
+    : null;
   const isGoalModeActive = goalDraftObjective !== null;
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
@@ -144,6 +148,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
   const promptFileUploadSupported = Boolean(
+    canUploadAttachment &&
     agentActivityRuntime?.uploadPromptContent &&
     (agentActivityRuntime.promptContentUploadSupport?.file ?? true)
   );
@@ -220,6 +225,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const paletteCatalog = useComposerPaletteCatalog({
     provider,
     isGoalModeActive,
+    goalSupported: canGoalControl,
     paletteDraftPrompt,
     availableCommands,
     availableSkills,
@@ -362,7 +368,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton,
-    promptImagesSupported,
+    promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
     onDraftContentChange,
@@ -441,7 +447,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftContent,
     goalDraftObjective,
     isGoalModeActive,
-    promptImagesSupported,
+    promptImagesSupported: canUploadAttachment && promptImagesSupported,
     promptFileUploadSupported,
     promptFilesSupported,
     editorHandleRef,
@@ -464,9 +470,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     layoutMode,
     previewMode,
     provider,
-    providerTargets,
-    handoffProviderTargets,
-    selectedProviderTarget,
+    agentTargets,
+    handoffAgentTargets,
+    selectedAgentTarget,
     providerSelectReadonly,
     composerControlsHardDisabled,
     isSelectedProjectMissing,
@@ -489,7 +495,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     isActive,
     composerFocusRequestSequence,
     promptFilesSupported,
-    promptImagesSupported,
+    promptImagesSupported: canUploadAttachment && promptImagesSupported,
     addDraftImages,
     applyDroppedFileReferences,
     onPromptImagesUnsupported
@@ -550,7 +556,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptTipStyle,
     rotatingPromptTips,
     fileDropOverlayHost,
-    fileDropOverlayActive
+    fileDropOverlayActive,
+    canUploadAttachment,
+    promptImagesSupported
   });
   return (
     <AgentComposerView

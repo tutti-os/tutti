@@ -31,6 +31,7 @@ func openCodeDescriptor() ProviderDescriptor {
 						{Setting: RuntimeSettingFieldModel, JSONKey: "model"},
 					},
 				},
+				DeriveCapabilitiesFromCommands: []string{CapabilityCompact, CapabilityReview},
 			},
 		},
 		Status: StatusDescriptor{
@@ -93,6 +94,7 @@ func openCodeDescriptor() ProviderDescriptor {
 				Model:     "model",
 				Reasoning: "effort",
 			},
+			Skills: SkillDescriptor{Kind: SkillKindOpenCode, Invocation: SkillInvocationTextTrigger},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
 				FallbackCommands: []string{"compact", "goal", "review"},
 				CommandEffects: []SlashCommandEffectDescriptor{

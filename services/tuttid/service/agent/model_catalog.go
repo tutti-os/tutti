@@ -10,7 +10,7 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -22,11 +22,19 @@ const (
 )
 
 type AgentModelOption struct {
-	ID                 string
-	DisplayName        string
-	Description        string
-	IsDefault          bool
-	SupportsImageInput *bool
+	ID                         string
+	DisplayName                string
+	Description                string
+	DefaultReasoningEffort     string
+	IsDefault                  bool
+	ReasoningEffortsAdvertised bool
+	SupportedReasoningEfforts  []AgentModelReasoningEffortOption
+	SupportsImageInput         *bool
+}
+
+type AgentModelReasoningEffortOption struct {
+	Description string
+	Value       string
 }
 
 type AgentModelCatalogResult struct {
@@ -194,15 +202,22 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 		return cached.result, cached.err
 	}
 	listResult, err := spec.lister(c).ListModels(ctx)
-	models := applyConfiguredDefaultModel(
-		listResult.Models,
-		spec.configuredDefaultModel(),
-		spec.missingDefaultDescription,
-	)
+	configuredDefaultModel := spec.configuredDefaultModel()
+	models := applyConfiguredDefaultModel(listResult.Models, configuredDefaultModel, spec.missingDefaultDescription)
+	source := spec.source
+	if provider == agentprovider.Codex && configuredDefaultModel != "" && codexUsesCustomModelProvider() {
+		models = []AgentModelOption{{
+			ID:          configuredDefaultModel,
+			DisplayName: configuredDefaultModel,
+			Description: spec.missingDefaultDescription,
+			IsDefault:   true,
+		}}
+		source = "codex-configured-model"
+	}
 	models = enrichAgentModelOptions(ctx, provider, models, c.ModelCapabilities)
 	result := AgentModelCatalogResult{
 		Provider:  provider,
-		Source:    spec.source,
+		Source:    source,
 		FetchedAt: now,
 		Models:    models,
 	}
@@ -222,8 +237,8 @@ func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
 	env = append([]string(nil), env...)
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
-	agentsidecarservice.BootstrapTuttiAgentUserAuth(context.Background())
-	if err := agentsidecarservice.PrepareTuttiAgentHome(tuttiAgentHome, agentsidecarservice.PrepareInput{}); err != nil {
+	tuttiagentservice.BootstrapTuttiAgentUserAuth(context.Background())
+	if err := tuttiagentservice.PrepareHome(tuttiAgentHome); err != nil {
 		return nil, err
 	}
 	env = append(env, "TUTTI_AGENT_HOME="+tuttiAgentHome)
@@ -334,6 +349,12 @@ func cloneAgentModelOptions(models []AgentModelOption) []AgentModelOption {
 	}
 	result := make([]AgentModelOption, len(models))
 	copy(result, models)
+	for index := range result {
+		result[index].SupportedReasoningEfforts = append(
+			[]AgentModelReasoningEffortOption(nil),
+			models[index].SupportedReasoningEfforts...,
+		)
+	}
 	return result
 }
 

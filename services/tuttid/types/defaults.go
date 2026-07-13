@@ -138,6 +138,10 @@ func ResolveAnalyticsConfig() AnalyticsConfig {
 	}
 }
 
+func ResolveAppVersion() string {
+	return resolveStringOverride("TUTTI_APP_VERSION", generatedDefaults.Analytics.AppVersion)
+}
+
 func resolveTuttiEnv() string {
 	value := strings.ToLower(resolveStringOverride("TUTTI_ENV", ""))
 	switch value {
@@ -278,7 +282,7 @@ func resolveAnalyticsAppVersion() string {
 	if override != "" {
 		return override
 	}
-	return resolveStringOverride("TUTTI_APP_VERSION", generatedDefaults.Analytics.AppVersion)
+	return ResolveAppVersion()
 }
 
 func resolveStringOverride(name string, fallback string) string {

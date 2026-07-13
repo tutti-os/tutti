@@ -114,7 +114,7 @@ export interface PreferencesDesktopPreferencesV1 {
   agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
-  defaultAgentProvider: "claude-code" | "codex";
+  defaultAgentProvider: "claude-code" | "codex" | "cursor" | "opencode";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
   fileDefaultOpenersByExtension: Record<

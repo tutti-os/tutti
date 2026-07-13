@@ -3,7 +3,6 @@ package builtinapps
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -79,26 +78,12 @@ type CatalogSnapshot struct {
 	RemoteCatalog RemoteCatalogLoadState
 }
 
-type remoteCatalogDocument struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	Apps          []remoteCatalogApp `json:"apps"`
-}
-
-type remoteCatalogApp struct {
-	Localizations []workspacebiz.AppManifestLocalization `json:"localizations,omitempty"`
-	Manifest      workspacebiz.AppManifest               `json:"manifest"`
-	Distribution  remoteDistribution                     `json:"distribution"`
-}
-
-type remoteDistribution struct {
-	Kind           string `json:"kind"`
-	ArtifactURL    string `json:"artifactUrl"`
-	ArtifactSHA256 string `json:"artifactSha256"`
-	IconURL        string `json:"iconUrl"`
-}
-
 func Catalog() ([]App, error) {
-	snapshot, err := Snapshot()
+	return CatalogForTuttiVersion("")
+}
+
+func CatalogForTuttiVersion(tuttiVersion string) ([]App, error) {
+	snapshot, err := snapshot(false, tuttiVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -106,19 +91,35 @@ func Catalog() ([]App, error) {
 }
 
 func Snapshot() (CatalogSnapshot, error) {
-	return snapshot(false)
+	return SnapshotForTuttiVersion("")
+}
+
+func SnapshotForTuttiVersion(tuttiVersion string) (CatalogSnapshot, error) {
+	return snapshot(false, tuttiVersion)
 }
 
 func SnapshotForRemoteURL(catalogURL string) (CatalogSnapshot, error) {
-	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL), false)
+	return SnapshotForRemoteURLAndTuttiVersion(catalogURL, "")
+}
+
+func SnapshotForRemoteURLAndTuttiVersion(catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
+	return snapshotWithSource(remoteCatalogSourceForURL(catalogURL, tuttiVersion), false)
 }
 
 func RefreshRemoteCatalogAndWait(ctx context.Context) (CatalogSnapshot, error) {
-	return snapshotAndWait(ctx)
+	return RefreshRemoteCatalogAndWaitForTuttiVersion(ctx, "")
+}
+
+func RefreshRemoteCatalogAndWaitForTuttiVersion(ctx context.Context, tuttiVersion string) (CatalogSnapshot, error) {
+	return snapshotAndWaitWithSource(ctx, currentRemoteCatalogSource(tuttiVersion))
 }
 
 func RefreshRemoteCatalogAndWaitForRemoteURL(ctx context.Context, catalogURL string) (CatalogSnapshot, error) {
-	return snapshotAndWaitWithSource(ctx, remoteCatalogSourceForURL(catalogURL))
+	return RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx, catalogURL, "")
+}
+
+func RefreshRemoteCatalogAndWaitForRemoteURLAndTuttiVersion(ctx context.Context, catalogURL string, tuttiVersion string) (CatalogSnapshot, error) {
+	return snapshotAndWaitWithSource(ctx, remoteCatalogSourceForURL(catalogURL, tuttiVersion))
 }
 
 func RemoteCatalogEnvOverrideActive() bool {
@@ -190,8 +191,8 @@ func embeddedCatalog() []App {
 	}
 }
 
-func snapshot(refreshRemote bool) (CatalogSnapshot, error) {
-	return snapshotWithSource(currentRemoteCatalogSource(), refreshRemote)
+func snapshot(refreshRemote bool, tuttiVersion string) (CatalogSnapshot, error) {
+	return snapshotWithSource(currentRemoteCatalogSource(tuttiVersion), refreshRemote)
 }
 
 func snapshotWithSource(source remoteCatalogSource, refreshRemote bool) (CatalogSnapshot, error) {
@@ -214,10 +215,6 @@ func snapshotWithSource(source remoteCatalogSource, refreshRemote bool) (Catalog
 		return CatalogSnapshot{Apps: apps, RemoteCatalog: failedState}, nil
 	}
 	return CatalogSnapshot{Apps: mergedApps, RemoteCatalog: remote.state}, nil
-}
-
-func snapshotAndWait(ctx context.Context) (CatalogSnapshot, error) {
-	return snapshotAndWaitWithSource(ctx, currentRemoteCatalogSource())
 }
 
 func snapshotAndWaitWithSource(ctx context.Context, source remoteCatalogSource) (CatalogSnapshot, error) {
@@ -345,8 +342,9 @@ const (
 )
 
 type remoteCatalogSource struct {
-	kind  remoteCatalogSourceKind
-	value string
+	kind         remoteCatalogSourceKind
+	value        string
+	tuttiVersion string
 }
 
 type remoteCatalogResult struct {
@@ -358,7 +356,7 @@ var defaultRemoteCatalogLoader asyncRemoteCatalogLoader
 
 type asyncRemoteCatalogLoader struct {
 	mu      sync.Mutex
-	source  string
+	source  remoteCatalogSource
 	loading bool
 	done    chan struct{}
 	apps    []App
@@ -372,7 +370,7 @@ func remoteCatalogSnapshot(source remoteCatalogSource, refresh bool) (remoteCata
 			state: RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusDisabled},
 		}, nil
 	case remoteCatalogSourceFile:
-		apps, err := loadRemoteCatalogFromFile(source.value)
+		apps, err := loadRemoteCatalogFromFile(source.value, source.tuttiVersion)
 		if err != nil {
 			return remoteCatalogResult{}, err
 		}
@@ -382,9 +380,9 @@ func remoteCatalogSnapshot(source remoteCatalogSource, refresh bool) (remoteCata
 		}, nil
 	default:
 		if refresh {
-			return defaultRemoteCatalogLoader.refresh(source.value), nil
+			return defaultRemoteCatalogLoader.refresh(source), nil
 		}
-		return defaultRemoteCatalogLoader.snapshot(source.value), nil
+		return defaultRemoteCatalogLoader.snapshot(source), nil
 	}
 }
 
@@ -395,7 +393,7 @@ func remoteCatalogSnapshotAndWait(ctx context.Context, source remoteCatalogSourc
 			state: RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusDisabled},
 		}, nil
 	case remoteCatalogSourceFile:
-		apps, err := loadRemoteCatalogFromFile(source.value)
+		apps, err := loadRemoteCatalogFromFile(source.value, source.tuttiVersion)
 		if err != nil {
 			return remoteCatalogResult{}, err
 		}
@@ -404,45 +402,45 @@ func remoteCatalogSnapshotAndWait(ctx context.Context, source remoteCatalogSourc
 			state: readyRemoteCatalogLoadState(),
 		}, nil
 	default:
-		return defaultRemoteCatalogLoader.refreshAndWait(ctx, source.value)
+		return defaultRemoteCatalogLoader.refreshAndWait(ctx, source)
 	}
 }
 
-func currentRemoteCatalogSource() remoteCatalogSource {
+func currentRemoteCatalogSource(tuttiVersion string) remoteCatalogSource {
 	filePath := strings.TrimSpace(os.Getenv(remoteCatalogFileEnv))
 	if filePath != "" {
-		return remoteCatalogSource{kind: remoteCatalogSourceFile, value: filePath}
+		return remoteCatalogSource{kind: remoteCatalogSourceFile, value: filePath, tuttiVersion: tuttiVersion}
 	}
 
 	catalogURL := remoteCatalogURL()
 	if catalogURL == "" {
 		return remoteCatalogSource{kind: remoteCatalogSourceNone}
 	}
-	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL}
+	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL, tuttiVersion: tuttiVersion}
 }
 
-func remoteCatalogSourceForURL(catalogURL string) remoteCatalogSource {
+func remoteCatalogSourceForURL(catalogURL string, tuttiVersion string) remoteCatalogSource {
 	catalogURL = strings.TrimSpace(catalogURL)
 	if catalogURL == "" {
 		return remoteCatalogSource{kind: remoteCatalogSourceNone}
 	}
-	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL}
+	return remoteCatalogSource{kind: remoteCatalogSourceURL, value: catalogURL, tuttiVersion: tuttiVersion}
 }
 
-func loadRemoteCatalogFromFile(filePath string) ([]App, error) {
+func loadRemoteCatalogFromFile(filePath string, tuttiVersion string) ([]App, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read app catalog file: %w", err)
 	}
-	return parseRemoteCatalog(data)
+	return parseRemoteCatalogForTuttiVersion(data, tuttiVersion)
 }
 
-func (l *asyncRemoteCatalogLoader) snapshot(catalogURL string) remoteCatalogResult {
+func (l *asyncRemoteCatalogLoader) snapshot(source remoteCatalogSource) remoteCatalogResult {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.source != catalogURL {
-		l.source = catalogURL
+	if l.source != source {
+		l.source = source
 		l.loading = false
 		l.apps = nil
 		l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
@@ -452,7 +450,7 @@ func (l *asyncRemoteCatalogLoader) snapshot(catalogURL string) remoteCatalogResu
 		l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
 	}
 	if l.state.Status == RemoteCatalogLoadStatusLoading && !l.loading {
-		l.startLoadLocked(catalogURL)
+		l.startLoadLocked(source)
 	}
 
 	return remoteCatalogResult{
@@ -461,18 +459,18 @@ func (l *asyncRemoteCatalogLoader) snapshot(catalogURL string) remoteCatalogResu
 	}
 }
 
-func (l *asyncRemoteCatalogLoader) refresh(catalogURL string) remoteCatalogResult {
+func (l *asyncRemoteCatalogLoader) refresh(source remoteCatalogSource) remoteCatalogResult {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.source != catalogURL {
-		l.source = catalogURL
+	if l.source != source {
+		l.source = source
 		l.loading = false
 		l.apps = nil
 	}
 	l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
 	if !l.loading {
-		l.startLoadLocked(catalogURL)
+		l.startLoadLocked(source)
 	}
 
 	return remoteCatalogResult{
@@ -481,20 +479,20 @@ func (l *asyncRemoteCatalogLoader) refresh(catalogURL string) remoteCatalogResul
 	}
 }
 
-func (l *asyncRemoteCatalogLoader) refreshAndWait(ctx context.Context, catalogURL string) (remoteCatalogResult, error) {
+func (l *asyncRemoteCatalogLoader) refreshAndWait(ctx context.Context, source remoteCatalogSource) (remoteCatalogResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	l.mu.Lock()
-	if l.source != catalogURL {
-		l.source = catalogURL
+	if l.source != source {
+		l.source = source
 		l.loading = false
 		l.apps = nil
 	}
 	l.state = RemoteCatalogLoadState{Status: RemoteCatalogLoadStatusLoading}
 	if !l.loading {
-		l.startLoadLocked(catalogURL)
+		l.startLoadLocked(source)
 	}
 	done := l.done
 	for l.loading {
@@ -521,16 +519,16 @@ func (l *asyncRemoteCatalogLoader) refreshAndWait(ctx context.Context, catalogUR
 	return result, nil
 }
 
-func (l *asyncRemoteCatalogLoader) startLoadLocked(catalogURL string) {
+func (l *asyncRemoteCatalogLoader) startLoadLocked(source remoteCatalogSource) {
 	l.loading = true
 	done := make(chan struct{})
 	l.done = done
-	go l.load(catalogURL, done)
+	go l.load(source, done)
 }
 
-func (l *asyncRemoteCatalogLoader) load(catalogURL string, done chan struct{}) {
-	slog.Info("remote app catalog fetch started", "url", catalogURL)
-	apps, err := fetchRemoteCatalogWithRetries(catalogURL)
+func (l *asyncRemoteCatalogLoader) load(source remoteCatalogSource, done chan struct{}) {
+	slog.Info("remote app catalog fetch started", "url", source.value)
+	apps, err := fetchRemoteCatalogWithRetries(source.value, source.tuttiVersion)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -538,24 +536,24 @@ func (l *asyncRemoteCatalogLoader) load(catalogURL string, done chan struct{}) {
 	if l.done == done {
 		l.done = nil
 	}
-	if l.source != catalogURL {
+	if l.source != source {
 		return
 	}
 	l.loading = false
 	if err != nil {
-		slog.Warn("remote app catalog fetch failed", "url", catalogURL, "error", err)
+		slog.Warn("remote app catalog fetch failed", "url", source.value, "error", err)
 		l.state = failedRemoteCatalogLoadState(err)
 		return
 	}
-	slog.Info("remote app catalog fetch completed", "url", catalogURL, "appCount", len(apps))
+	slog.Info("remote app catalog fetch completed", "url", source.value, "appCount", len(apps))
 	l.apps = apps
 	l.state = readyRemoteCatalogLoadState()
 }
 
-func fetchRemoteCatalogWithRetries(catalogURL string) ([]App, error) {
+func fetchRemoteCatalogWithRetries(catalogURL string, tuttiVersion string) ([]App, error) {
 	var lastErr error
 	for attempt := 1; attempt <= remoteCatalogFetchAttempts; attempt++ {
-		apps, err := fetchRemoteCatalog(catalogURL)
+		apps, err := fetchRemoteCatalog(catalogURL, tuttiVersion)
 		if err == nil {
 			return apps, nil
 		}
@@ -575,7 +573,7 @@ func remoteCatalogRetryDelay(attempt int) time.Duration {
 	return 900 * time.Millisecond
 }
 
-func fetchRemoteCatalog(catalogURL string) ([]App, error) {
+func fetchRemoteCatalog(catalogURL string, tuttiVersion string) ([]App, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), remoteCatalogFetchTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, catalogURL, nil)
@@ -594,7 +592,7 @@ func fetchRemoteCatalog(catalogURL string) ([]App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read app catalog response: %w", err)
 	}
-	return parseRemoteCatalog(data)
+	return parseRemoteCatalogForTuttiVersion(data, tuttiVersion)
 }
 
 type remoteCatalogHTTPStatusError struct {
@@ -634,48 +632,6 @@ func remoteCatalogURL() string {
 		return strings.TrimSpace(value)
 	}
 	return defaultRemoteCatalogURL
-}
-
-func parseRemoteCatalog(data []byte) ([]App, error) {
-	var document remoteCatalogDocument
-	if err := json.Unmarshal(data, &document); err != nil {
-		return nil, fmt.Errorf("parse app catalog json: %w", err)
-	}
-	if !isSupportedRemoteCatalogSchemaVersion(strings.TrimSpace(document.SchemaVersion)) {
-		return nil, fmt.Errorf("unsupported app catalog schema version %q", document.SchemaVersion)
-	}
-
-	apps := make([]App, 0, len(document.Apps))
-	seenAppIDs := make(map[string]struct{}, len(document.Apps))
-	for _, entry := range document.Apps {
-		if err := workspacebiz.ValidateAppManifest(entry.Manifest); err != nil {
-			return nil, fmt.Errorf("validate app catalog manifest: %w", err)
-		}
-		appID := strings.TrimSpace(entry.Manifest.AppID)
-		if _, ok := seenAppIDs[appID]; ok {
-			return nil, fmt.Errorf("duplicate app catalog appId %q", appID)
-		}
-		seenAppIDs[appID] = struct{}{}
-
-		distribution, err := parseRemoteDistribution(appID, entry.Manifest, entry.Distribution)
-		if err != nil {
-			return nil, err
-		}
-		localizations, err := parseRemoteCatalogLocalizations(appID, entry.Localizations)
-		if err != nil {
-			return nil, err
-		}
-		apps = append(apps, App{
-			Manifest:      entry.Manifest,
-			Localizations: localizations,
-			Distribution:  distribution,
-		})
-	}
-	return apps, nil
-}
-
-func isSupportedRemoteCatalogSchemaVersion(schemaVersion string) bool {
-	return schemaVersion == remoteCatalogSchemaVersionV1
 }
 
 func parseRemoteDistribution(appID string, manifest workspacebiz.AppManifest, distribution remoteDistribution) (Distribution, error) {

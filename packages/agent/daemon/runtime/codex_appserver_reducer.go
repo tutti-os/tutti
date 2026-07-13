@@ -75,7 +75,7 @@ func (r codexAppServerReducer) ReduceNotification(
 				if recorded := a.sessionActiveTurnID(session.AgentSessionID); recorded != "" && recorded != providerTurnID {
 					return codexAppServerReduction{}
 				}
-				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
+				if a.setSessionActiveTurnID(session.AgentSessionID, activeTurn, providerTurnID) {
 					a.interruptActiveTurnAsync(&codexAppServerSession{
 						client:   client,
 						threadID: firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),

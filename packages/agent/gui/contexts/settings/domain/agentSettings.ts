@@ -87,9 +87,6 @@ export const MAX_TERMINAL_FONT_SIZE = 22;
 export const MIN_UI_FONT_SIZE = 14;
 export const MAX_UI_FONT_SIZE = 24;
 
-const MIN_LEGACY_UI_FONT_SCALE_PERCENT = 85;
-const MAX_LEGACY_UI_FONT_SCALE_PERCENT = 140;
-
 export {
   AGENT_PROVIDER_CAPABILITIES,
   AGENT_PROVIDER_LABEL,
@@ -176,19 +173,14 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     ? value.customModelByProvider
     : {};
 
-  const legacyModelInput = isRecord(value.modelByProvider)
-    ? value.modelByProvider
-    : {};
-
   const customModelEnabledByProvider = AGENT_PROVIDERS.reduce<
     AgentCustomModelEnabledByProvider<AgentProvider>
   >(
     (acc, provider) => {
       const normalizedEnabled = normalizeBoolean(enabledInput[provider]);
-      const legacyModel = normalizeTextValue(legacyModelInput[provider]);
 
       acc[provider] =
-        normalizedEnabled === null ? legacyModel.length > 0 : normalizedEnabled;
+        normalizedEnabled === null ? acc[provider] : normalizedEnabled;
 
       return acc;
     },
@@ -199,8 +191,7 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     AgentCustomModelByProvider<AgentProvider>
   >(
     (acc, provider) => {
-      const current = customModelInput[provider] ?? legacyModelInput[provider];
-      acc[provider] = normalizeTextValue(current);
+      acc[provider] = normalizeTextValue(customModelInput[provider]);
       return acc;
     },
     { ...DEFAULT_AGENT_SETTINGS.customModelByProvider }
@@ -242,7 +233,6 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
   );
   const focusNodeOnClick =
     normalizeBoolean(value.focusNodeOnClick) ??
-    normalizeBoolean(value.normalizeZoomOnTerminalClick) ??
     DEFAULT_AGENT_SETTINGS.focusNodeOnClick;
   const focusNodeTargetZoom = normalizeFocusNodeTargetZoom(
     value.focusNodeTargetZoom,
@@ -302,16 +292,9 @@ export function normalizeAgentSettings(value: unknown): AgentSettings {
     value.terminalFontFamily.trim().length > 0
       ? value.terminalFontFamily.trim()
       : DEFAULT_AGENT_SETTINGS.terminalFontFamily;
-  const legacyUiFontScalePercent = normalizeIntegerInRange(
-    value.uiFontScalePercent,
-    Math.round((DEFAULT_AGENT_SETTINGS.uiFontSize / 16) * 100),
-    MIN_LEGACY_UI_FONT_SCALE_PERCENT,
-    MAX_LEGACY_UI_FONT_SCALE_PERCENT
-  );
-  const fallbackUiFontSize = Math.round((legacyUiFontScalePercent / 100) * 16);
   const uiFontSize = normalizeIntegerInRange(
     value.uiFontSize,
-    fallbackUiFontSize,
+    DEFAULT_AGENT_SETTINGS.uiFontSize,
     MIN_UI_FONT_SIZE,
     MAX_UI_FONT_SIZE
   );

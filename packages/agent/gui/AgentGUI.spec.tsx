@@ -13,6 +13,9 @@ function createAgentGUIProps(locale: AgentGUIProps["locale"]): AgentGUIProps {
 vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
   const { useTranslation } =
     await vi.importActual<typeof import("./i18n/index")>("./i18n/index");
+  const { useOptionalAgentActivityRuntime } = await vi.importActual<
+    typeof import("./agentActivityRuntime")
+  >("./agentActivityRuntime");
   const { Tooltip, TooltipContent, TooltipTrigger } = await vi.importActual<
     typeof import("@tutti-os/ui-system")
   >("@tutti-os/ui-system");
@@ -20,10 +23,14 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
   return {
     AgentGUINode: () => {
       const { t } = useTranslation();
+      const activityRuntime = useOptionalAgentActivityRuntime();
       return (
         <>
           <div data-testid="agent-gui-language-probe">
             {t("agentHost.agentGui.newConversation")}
+          </div>
+          <div data-testid="agent-gui-runtime-probe">
+            {activityRuntime ? "provided" : "missing"}
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -57,6 +64,19 @@ describe("AgentGUI i18n", () => {
 
     expect(screen.getByTestId("agent-gui-language-probe")).toHaveTextContent(
       "新建会话"
+    );
+  });
+
+  it("provides the required activity runtime to the AgentGUI node", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        agentActivityRuntime={{} as AgentGUIProps["agentActivityRuntime"]}
+      />
+    );
+
+    expect(screen.getByTestId("agent-gui-runtime-probe")).toHaveTextContent(
+      "provided"
     );
   });
 });

@@ -4,20 +4,35 @@ This reference is for code inside a generated workspace app at runtime. It is no
 
 Workspace apps may call local Tutti capabilities through the bundled Tutti CLI.
 
-Do not use `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or agent session polling to implement app-owned local agent execution. Apps that need local agent or local LLM execution, Codex, Claude, or app-owned MCP/tooling must load and follow `$tutti-agent-workspace-app`, read its `references/agent-acp-kit.md`, and use `@tutti-os/agent-acp-kit` from a Node server:
+Do not use `$TUTTI_CLI agent ...`, `$TUTTI_CLI codex ...`, or Agent session polling to implement app-owned local Agent execution. Apps that need local Agent execution, Tutti provider catalog/composer options, dynamic Tutti skills, or app-owned MCP tooling must load `$tutti-agent-workspace-app` and use `@tutti-os/agent-acp-kit` from a Node server. The kit may invoke Agent CLI commands internally; app code must not construct argv or parse their JSON:
 
 ```ts
-import {
-  createDefaultLocalAgentProviderPlugins,
-  createLocalAgentRuntime
-} from "@tutti-os/agent-acp-kit";
+import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
+import { loadTuttiAgentProviderCatalog } from "@tutti-os/agent-acp-kit/tutti";
 
-const localAgentRuntime = createLocalAgentRuntime({
-  providers: createDefaultLocalAgentProviderPlugins()
+const localAgentRuntime = createDefaultLocalAgentRuntime();
+const catalog = await loadTuttiAgentProviderCatalog({
+  runtime: localAgentRuntime
 });
-
-const detectedProviders = await localAgentRuntime.detect();
 ```
+
+The facade returns the enabled CLI catalog inside Tutti and automatically returns a standalone runtime catalog when `TUTTI_CLI` is absent. Load composer options lazily for the selected provider:
+
+```ts
+import { createDefaultLocalAgentRuntime } from "@tutti-os/agent-acp-kit";
+import { loadTuttiAgentComposerOptions } from "@tutti-os/agent-acp-kit/tutti";
+
+const localAgentRuntime = createDefaultLocalAgentRuntime();
+
+export async function loadSelectedProviderOptions(providerId: string) {
+  return loadTuttiAgentComposerOptions({
+    providerId,
+    runtime: localAgentRuntime
+  });
+}
+```
+
+Do not pass `mode`, read app ID/token/API environment, or filter either catalog down to Codex/Claude.
 
 For non-agent app-to-app capability calls, always use the command path from `TUTTI_CLI`. `TUTTI_CLI` is the stable app-runtime contract across development and packaged production.
 

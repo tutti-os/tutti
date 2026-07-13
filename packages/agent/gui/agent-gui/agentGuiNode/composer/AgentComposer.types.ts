@@ -16,7 +16,7 @@ import type {
   AgentGUIProviderSkillOption,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../../types";
+import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
 
 export interface AgentComposerSubmitOptions {}
@@ -41,15 +41,15 @@ export interface AgentComposerProps {
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  selectedProviderTarget?: AgentGUIProviderTarget | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  handoffProviderTargets?: readonly AgentGUIProviderTarget[];
+  selectedAgentTarget?: AgentGUIAgentTarget | null;
+  agentTargets?: readonly AgentGUIAgentTarget[];
+  handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   providerSelectReadonly?: boolean;
   onProviderSelect?: (input: {
     provider: AgentGUIProvider;
-    providerTargetId?: string | null;
+    agentTargetId?: string | null;
   }) => void;
-  onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
+  onHandoffConversation?: (target: AgentGUIAgentTarget) => void;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
@@ -64,6 +64,8 @@ export interface AgentComposerProps {
   previewMode?: boolean;
   workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
+  canGoalControl?: boolean;
+  canUploadAttachment?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
   providerSelectLabel?: string;
@@ -88,6 +90,7 @@ export interface AgentComposerProps {
     reasoningOptionHigh: string;
     reasoningOptionXHigh: string;
     reasoningOptionMax: string;
+    reasoningOptionUltra: string;
     speedLabel: string;
     speedSelectionLabel: string;
     speedOptionStandard: string;
