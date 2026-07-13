@@ -4070,10 +4070,84 @@ const AgentGUIEmptyHeroCarouselStage = memo(
   }: AgentGUIEmptyHeroCarouselStageProps): React.JSX.Element {
     "use memo";
 
+    const stageRef = useRef<HTMLDivElement | null>(null);
+    const layerRef = useRef<HTMLDivElement | null>(null);
+    const hasCarousel = items.length > 1;
+
+    // The floating layer must sit exactly on the body's placeholder slot. A
+    // fixed offset from the stage center only matches the slot for one body
+    // height; narrow panes wrap the title and grow the composer, which
+    // re-centers the body and slides the slot upward, so measure the slot's
+    // real offset instead and let the CSS fallback cover the pre-measure
+    // paint. The body resize observer catches height-only changes (wrapping
+    // text, growing composer) that never resize the stage itself, and the
+    // mutation observer re-attaches it when the ready/gated branch swaps the
+    // body subtree.
+    useLayoutEffect(() => {
+      const stage = stageRef.current;
+      const layer = layerRef.current;
+      if (!hasCarousel || !stage || !layer) {
+        return;
+      }
+      let frame: number | null = null;
+      const sync = (): void => {
+        frame = null;
+        // The slot attribute is only rendered when the carousel is mounted
+        // externally, so presence alone identifies the ready-branch slot.
+        const slot = stage.querySelector<HTMLElement>(
+          `[data-carousel-placeholder], .${styles.emptyHeroCarouselPlaceholder}`
+        );
+        if (!slot) {
+          layer.style.removeProperty("--agent-gui-hero-carousel-slot-top");
+          return;
+        }
+        const top =
+          slot.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+        layer.style.setProperty(
+          "--agent-gui-hero-carousel-slot-top",
+          `${top}px`
+        );
+      };
+      const schedule = (): void => {
+        if (frame === null) {
+          frame = requestAnimationFrame(sync);
+        }
+      };
+      const resizeObserver =
+        typeof ResizeObserver === "function"
+          ? new ResizeObserver(schedule)
+          : null;
+      const observeBody = (): void => {
+        resizeObserver?.disconnect();
+        resizeObserver?.observe(stage);
+        const body = stage.querySelector(`.${styles.emptyHeroBody}`);
+        if (body) {
+          resizeObserver?.observe(body);
+        }
+      };
+      const mutationObserver =
+        typeof MutationObserver === "function"
+          ? new MutationObserver(() => {
+              observeBody();
+              schedule();
+            })
+          : null;
+      mutationObserver?.observe(stage, { childList: true, subtree: true });
+      observeBody();
+      sync();
+      return () => {
+        if (frame !== null) {
+          cancelAnimationFrame(frame);
+        }
+        resizeObserver?.disconnect();
+        mutationObserver?.disconnect();
+      };
+    }, [hasCarousel]);
+
     return (
-      <div className={styles.emptyHeroCarouselStage}>
-        {items.length > 1 ? (
-          <div className={styles.emptyHeroCarouselLayer}>
+      <div ref={stageRef} className={styles.emptyHeroCarouselStage}>
+        {hasCarousel ? (
+          <div ref={layerRef} className={styles.emptyHeroCarouselLayer}>
             <AgentGUIHeroAgentCarousel
               activeAgentTargetId={activeAgentTargetId}
               items={items}

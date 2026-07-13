@@ -9095,7 +9095,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__empty-hero-carousel-layer {
   position: absolute;
   z-index: 1;
-  top: calc(50% - 210px);
+
+  /* The stage script measures the body's placeholder slot and pins the layer
+     to it (see AgentGUIEmptyHeroCarouselStage); the calc() is only the
+     pre-measure estimate for the default hero (one-line title), so the first
+     paint lands close before the measurement takes over. */
+  top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
   left: 50%;
   width: round(nearest, min(400px, calc(100% - 64px)), 1px);
   transform: translateX(-50%) scale(0.8);
