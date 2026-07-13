@@ -8,6 +8,7 @@ import {
   type PointerEvent,
   type ReactNode,
   createContext,
+  isValidElement,
   startTransition,
   useCallback,
   useEffect,
@@ -63,6 +64,7 @@ import {
   useAgentTargetPresentations,
   type AgentMessageMarkdownAgentTarget
 } from "./AgentTargetPresentationContext";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 const COLLAPSED_LINE_LIMIT = 8;
 const APPROX_CHARS_PER_LINE = 34;
@@ -270,6 +272,9 @@ export function AgentMessageMarkdown({
       code: (props: MarkdownDomProps<"code">) => (
         <MarkdownCode {...props} onLinkClick={handleLinkClick} />
       ),
+      pre: (props: MarkdownDomProps<"pre">) => (
+        <MarkdownPre {...props} enableMermaid={!streaming} />
+      ),
       img: (props: MarkdownDomProps<"img">) => (
         <MarkdownMedia {...props} enableZoom={enableImageZoom} />
       ),
@@ -278,8 +283,7 @@ export function AgentMessageMarkdown({
       ),
       ul: MarkdownUnorderedList,
       ol: MarkdownOrderedList,
-      li: MarkdownListItem,
-      pre: MarkdownPre
+      li: MarkdownListItem
     }),
     [
       effectiveAgentTargets,
@@ -287,6 +291,7 @@ export function AgentMessageMarkdown({
       handleLinkClick,
       inline,
       previewMode,
+      streaming,
       workspaceAppIcons
     ]
   );
@@ -997,6 +1002,23 @@ function MarkdownCode({
       {children}
     </code>
   );
+}
+
+function resolveMermaidCodeBlockSource(children: ReactNode): string | null {
+  const child =
+    Array.isArray(children) && children.length === 1 ? children[0] : children;
+  if (!isValidElement<{ className?: unknown; children?: ReactNode }>(child)) {
+    return null;
+  }
+  const className =
+    typeof child.props.className === "string" ? child.props.className : "";
+  const isMermaid = className
+    .split(/\s+/)
+    .some((name) => name.toLowerCase() === "language-mermaid");
+  if (!isMermaid) {
+    return null;
+  }
+  return textFromReactNode(child.props.children).replace(/\n$/, "");
 }
 
 type MarkdownMediaKind = "image" | "video";
@@ -2034,12 +2056,18 @@ function textFromReactNode(node: ReactNode): string {
 
 function MarkdownPre({
   children,
+  enableMermaid,
   ...props
-}: MarkdownDomProps<"pre">): JSX.Element {
+}: MarkdownDomProps<"pre"> & {
+  enableMermaid: boolean;
+}): JSX.Element {
   "use memo";
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mermaidSource = enableMermaid
+    ? resolveMermaidCodeBlockSource(children)
+    : null;
 
   const handleCopy = useCallback(() => {
     const text = preRef.current?.textContent?.trim();
@@ -2054,6 +2082,10 @@ function MarkdownPre({
       copyResetRef.current = setTimeout(() => setCopied(false), 1500);
     });
   }, []);
+
+  if (mermaidSource !== null) {
+    return <MermaidDiagram source={mermaidSource} />;
+  }
 
   return (
     <div className="group relative">

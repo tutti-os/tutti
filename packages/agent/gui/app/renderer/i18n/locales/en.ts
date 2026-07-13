@@ -1336,6 +1336,10 @@ export const en = {
       "This workspace is closing. Your connection will end soon.",
     workspaceClosingStatus: "Workspace shutdown in progress",
     workspaceAgentMessageExpand: "Show all",
+    workspaceAgentMermaidRendering: "Rendering diagram…",
+    workspaceAgentMermaidDiagramLabel: "Mermaid diagram",
+    workspaceAgentMermaidRenderFailed:
+      "Unable to render this diagram. Showing the Mermaid source instead.",
     workspaceAgentActivityStatusWorking: "Running",
     workspaceAgentActivityStatusWaiting: "Waiting",
     workspaceAgentActivityStatusIdle: "Completed",

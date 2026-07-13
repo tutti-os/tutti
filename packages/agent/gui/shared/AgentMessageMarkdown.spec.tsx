@@ -17,9 +17,25 @@ import {
   managedAgentRoundedIconUrl
 } from "./managedAgentIcons";
 
+const mermaidMocks = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async () => ({
+    svg: '<svg role="img" aria-label="Rendered Mermaid diagram"><text>Rendered diagram</text></svg>'
+  }))
+}));
+
+vi.mock("mermaid", () => ({
+  default: mermaidMocks
+}));
+
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
     resetCachedMarkdownImagesForTests();
+    mermaidMocks.initialize.mockClear();
+    mermaidMocks.render.mockClear();
+    mermaidMocks.render.mockImplementation(async () => ({
+      svg: '<svg role="img" aria-label="Rendered Mermaid diagram"><text>Rendered diagram</text></svg>'
+    }));
   });
 
   it("renders a workspace-reference mention as one chip without a file-count badge", () => {
@@ -140,6 +156,72 @@ describe("AgentMessageMarkdown", () => {
     expect(
       screen.getByRole("cell", { name: "统一 API 格式适配不同 LLM 提供商" })
     ).toBeInTheDocument();
+  });
+
+  it("renders fenced Mermaid code blocks as diagrams", async () => {
+    const source = [
+      "flowchart TD",
+      '  U1["用户发送文件"] --> U2["客户端计算 SHA-256"]',
+      '  U2 --> U3{"服务端已有 owner + SHA？"}'
+    ].join("\n");
+    const { container } = render(
+      <AgentMessageMarkdown content={`\`\`\`mermaid\n${source}\n\`\`\``} />
+    );
+
+    expect(
+      await screen.findByRole("img", { name: "Rendered Mermaid diagram" })
+    ).toBeInTheDocument();
+    expect(mermaidMocks.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        htmlLabels: false,
+        securityLevel: "strict",
+        startOnLoad: false,
+        suppressErrorRendering: true
+      })
+    );
+    expect(mermaidMocks.render).toHaveBeenCalledWith(
+      expect.stringMatching(/^agent-mermaid-/),
+      source
+    );
+    expect(
+      container.querySelector('[data-agent-mermaid-diagram="true"]')
+    ).toBeInTheDocument();
+    expect(container.querySelector("pre")).toBeNull();
+  });
+
+  it("keeps Mermaid source visible when diagram rendering fails", async () => {
+    mermaidMocks.render.mockRejectedValueOnce(new Error("Invalid diagram"));
+    const source = "flowchart TD\n  A -->";
+    const { container } = render(
+      <AgentMessageMarkdown content={`\`\`\`mermaid\n${source}\n\`\`\``} />
+    );
+
+    expect(
+      await screen.findByText(
+        "Unable to render this diagram. Showing the Mermaid source instead."
+      )
+    ).toBeInTheDocument();
+    expect(container.querySelector("code")?.textContent).toBe(source);
+  });
+
+  it("defers Mermaid rendering until a streaming response is complete", async () => {
+    const source = "flowchart TD\n  A --> B";
+    const content = `\`\`\`mermaid\n${source}\n\`\`\``;
+    const { container, rerender } = render(
+      <AgentMessageMarkdown content={content} streaming />
+    );
+
+    expect(container.querySelector("code")?.textContent?.trimEnd()).toBe(
+      source
+    );
+    expect(mermaidMocks.render).not.toHaveBeenCalled();
+
+    rerender(<AgentMessageMarkdown content={content} streaming={false} />);
+
+    expect(
+      await screen.findByRole("img", { name: "Rendered Mermaid diagram" })
+    ).toBeInTheDocument();
+    expect(mermaidMocks.render).toHaveBeenCalledTimes(1);
   });
   it("keeps links inert for now", () => {
     render(
