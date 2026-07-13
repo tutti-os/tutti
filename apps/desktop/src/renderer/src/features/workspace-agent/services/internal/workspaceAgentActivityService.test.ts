@@ -99,6 +99,30 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
   assert.equal(snapshotSession?.activeTurn, null);
 });
 
+test("WorkspaceAgentActivityService.cancelTurn delegates the exact turn", async () => {
+  const calls: string[][] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      cancelWorkspaceAgentTurn: async (...args: string[]) => {
+        calls.push(args);
+        return { cancel: { canceled: true, reason: "turn_canceled" } };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const result = await service.cancelTurn({
+    agentSessionId: "session-1",
+    turnId: "turn-1",
+    workspaceId: " ws-1 "
+  });
+
+  assert.deepEqual(calls, [["ws-1", "session-1", "turn-1"]]);
+  assert.deepEqual(result, {
+    cancel: { canceled: true, reason: "turn_canceled" }
+  });
+});
+
 test("WorkspaceAgentActivityService drains an engine queue with every GUI panel closed", async () => {
   const sendCalls: unknown[] = [];
   const readySession = workspaceAgentSession({ status: "ready" });

@@ -217,6 +217,28 @@ test("shared tuttid client updates system agent target visibility", async () => 
   assert.equal(target.enabled, false);
 });
 
+test("shared tuttid client cancels one exact workspace agent turn", async () => {
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      assert.equal(request.method, "POST");
+      assert.equal(
+        new URL(request.url).pathname,
+        "/v1/workspaces/ws-1/agent-sessions/session-1/turns/turn-1/cancel"
+      );
+      return Response.json({
+        cancel: { canceled: true, reason: "turn_canceled" }
+      });
+    }
+  });
+
+  assert.deepEqual(
+    await client.cancelWorkspaceAgentTurn("ws-1", "session-1", "turn-1"),
+    { cancel: { canceled: true, reason: "turn_canceled" } }
+  );
+});
+
 test("shared tuttid client forwards bearer auth tokens", async () => {
   let authorizationHeader = "";
 

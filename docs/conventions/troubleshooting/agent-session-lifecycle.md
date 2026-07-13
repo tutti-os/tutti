@@ -4,6 +4,35 @@
 
 Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
 
+### AgentGUI turn actions return plain-text route 404s
+
+- Symptom:
+  A turn-scoped action such as Stop sends the documented OpenAPI URL but gets
+  `404 page not found` with `text/plain`, even though nearby daemon APIs work.
+- Quick checks:
+  Distinguish the default mux response from a domain 404. A route-level miss is
+  plain text; a matched daemon handler returns the structured API error schema.
+  Then compare the operation in the OpenAPI document and generated server with
+  `services/tuttid/api/routes.go`.
+- Root cause:
+  The daemon currently mounts generated handlers through a hand-maintained
+  `RegisterRoutes` table. Adding an operation to OpenAPI and regenerating the
+  server does not automatically add it to that runtime table, so the handler
+  can compile and pass direct tests while remaining unreachable over HTTP.
+- Fix:
+  Register every new generated operation in `RegisterRoutes`, including its
+  exact method and path pattern. For related protocol operations introduced
+  together, audit the whole group rather than only the first reported URL.
+- Validation:
+  Add a mux-level test that calls `RegisterRoutes`, sends the real method/path,
+  asserts path parameters reach the service, and checks the structured
+  response. Rebuild and restart the dev daemon, then verify the live endpoint
+  no longer returns the default plain-text 404.
+- References:
+  [routes.go](../../../services/tuttid/api/routes.go)
+  [daemon_test.go](../../../services/tuttid/api/daemon_test.go)
+  [tuttid.v1.yaml](../../../services/tuttid/api/openapi/tuttid.v1.yaml)
+
 ### AgentGUI rejects a pasted image as unsupported before send
 
 - Symptom:

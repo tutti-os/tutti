@@ -645,7 +645,7 @@ export interface TuttidClient {
     terminalID: string,
     request: ResizeWorkspaceTerminalRequest
   ): Promise<WorkspaceTerminalSession>;
-  cancelWorkspaceAgentTurn?(
+  cancelWorkspaceAgentTurn(
     workspaceID: string,
     agentSessionID: string,
     turnID: string

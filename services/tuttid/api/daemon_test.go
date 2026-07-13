@@ -86,6 +86,7 @@ type stubAppCenterService struct {
 }
 
 type stubAgentSessionService struct {
+	cancelTurnFn                    func(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	clearFn                         func(context.Context, string) (agentservice.ClearSessionsResult, error)
 	composerOptionsFn               func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn                        func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
@@ -378,8 +379,11 @@ func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string,
 	return s.deleteFn(ctx, workspaceID, agentSessionID)
 }
 
-func (stubAgentSessionService) CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error) {
-	return agentservice.CancelTurnResult{}, nil
+func (s stubAgentSessionService) CancelTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentservice.CancelTurnResult, error) {
+	if s.cancelTurnFn == nil {
+		return agentservice.CancelTurnResult{}, nil
+	}
+	return s.cancelTurnFn(ctx, workspaceID, agentSessionID, turnID)
 }
 
 func (stubAgentSessionService) GoalControl(context.Context, string, string, string, string) (agentservice.GoalControlSessionResult, error) {
@@ -720,6 +724,40 @@ func TestDaemonAPIGeneratedRoutesAgentSessionsReturnServiceUnavailable(t *testin
 		apierrors.ReasonWorkspaceAgentSessionUnavailable,
 		"workspace agent session service is unavailable",
 	)
+}
+
+func TestDaemonAPIGeneratedRoutesCancelExactAgentTurn(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			cancelTurnFn: func(_ context.Context, workspaceID string, agentSessionID string, turnID string) (agentservice.CancelTurnResult, error) {
+				if workspaceID != "ws-1" || agentSessionID != "session-1" || turnID != "turn-1" {
+					t.Fatalf("workspace/session/turn = %q/%q/%q", workspaceID, agentSessionID, turnID)
+				}
+				return agentservice.CancelTurnResult{
+					Canceled: true,
+					Reason:   agentservice.CancelTurnReasonTurnCanceled,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/session-1/turns/turn-1/cancel",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentTurnCancelResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if !response.Cancel.Canceled || response.Cancel.Reason != tuttigenerated.TurnCanceled {
+		t.Fatalf("cancel = %#v", response.Cancel)
+	}
 }
 
 func TestDaemonAPIGeneratedRoutesListAgentSessionsForwardsQuery(t *testing.T) {

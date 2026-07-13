@@ -348,6 +348,9 @@ function createTransportClient(
     async resizeWorkspaceTerminal() {
       throw new Error("not used");
     },
+    async cancelWorkspaceAgentTurn() {
+      throw new Error("not used");
+    },
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },

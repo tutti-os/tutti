@@ -2,6 +2,36 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
+
+- Symptom:
+  Renderer `POST` or `PUT` calls to the local daemon fail with
+  `net::ERR_H2_OR_QUIC_REQUIRED`, while nearby `GET` calls still succeed. Agent
+  provider options or model lists may remain loading, and Workbench or tracking
+  writes can fail at the same time.
+- Quick checks:
+  In DevTools, compare a failed body-bearing request with a successful `GET` to
+  the same current daemon origin. Confirm the daemon listener port and bearer
+  token have rotated correctly before treating this as stale endpoint recovery.
+- Root cause:
+  Rebuilding a request with `new Request(rewrittenUrl, originalRequest)` carries
+  the original body forward as a `ReadableStream`. Chromium treats that as a
+  streaming upload and requires HTTP/2 or QUIC, but the managed loopback daemon
+  serves HTTP/1.1.
+- Fix:
+  Materialize the already-serialized request body before rebuilding the request,
+  then explicitly preserve method, headers, cancellation signal, and other
+  request metadata. Continue resolving the current daemon origin and bearer
+  token for every request.
+- Validation:
+  Exercise an actual body-bearing daemon call from Chromium, not only Node's
+  fetch implementation, and confirm it returns a normal HTTP response. Keep
+  unit coverage for JSON and binary bytes, custom headers, query parameters,
+  cancellation, and rotating endpoint/auth configuration.
+- References:
+  [createRestartAwareFetch.ts](../../../apps/desktop/src/renderer/src/platform/tuttid/createRestartAwareFetch.ts)
+  [desktop-transport.md](../../architecture/desktop-transport.md)
+
 ### Renderer tile memory warnings from hidden autoplay animation
 
 - Symptom:

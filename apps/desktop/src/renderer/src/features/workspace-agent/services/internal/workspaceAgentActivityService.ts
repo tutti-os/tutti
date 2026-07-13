@@ -696,11 +696,7 @@ export class WorkspaceAgentActivityService
   }): Promise<
     import("@tutti-os/agent-activity-core").AgentActivityTurnCancelResponse
   > {
-    const cancelTurn = this.dependencies.tuttidClient.cancelWorkspaceAgentTurn;
-    if (!cancelTurn) {
-      throw new Error("Turn-scoped cancellation is unavailable.");
-    }
-    return cancelTurn(
+    return this.dependencies.tuttidClient.cancelWorkspaceAgentTurn(
       normalizeWorkspaceId(input.workspaceId),
       input.agentSessionId,
       input.turnId

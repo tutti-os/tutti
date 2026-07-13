@@ -3,12 +3,43 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
+
+func TestDaemonAPIGeneratedRoutesSubmitWorkspaceAgentPlanDecision(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{planDecisionFn: func(
+			_ context.Context, workspaceID, sessionID, turnID, requestID string, input agentservice.SubmitPlanDecisionInput,
+		) (agentactivitybiz.RuntimeOperation, error) {
+			return agentactivitybiz.RuntimeOperation{
+				OperationID: "operation-1", WorkspaceID: workspaceID, AgentSessionID: sessionID,
+				TurnID: turnID, RequestID: requestID, Status: agentactivitybiz.RuntimeOperationStatusPrepared,
+				Payload: map[string]any{"idempotencyKey": input.IdempotencyKey},
+			}, nil
+		}},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/session-1/turns/turn-1/plan-decisions/request-1",
+		map[string]any{
+			"action":         "implement",
+			"idempotencyKey": "decision-1",
+			"promptKind":     "plan-implementation",
+		},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
 
 func TestSubmitWorkspaceAgentPlanDecisionHandlerReturnsScopedOperationForEveryState(t *testing.T) {
 	for _, status := range []string{

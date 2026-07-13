@@ -3,35 +3,71 @@ import test from "node:test";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { createDesktopTuttidClient } from "./createDesktopTuttidClient.ts";
 
-test("createDesktopTuttidClient forwards workspace agent session query params", async () => {
-  let requestMethod = "";
-  let requestPath = "";
-  let requestQueryEntries: Record<string, string> = {};
-  const capturedRequest: { signal: AbortSignal | null } = { signal: null };
+test("createDesktopTuttidClient uses the latest daemon origin and token for every request", async () => {
+  const requests: Request[] = [];
+  const originalFetch = globalThis.fetch;
+  const configs = [
+    {
+      accessToken: "first-token",
+      baseUrl: "http://127.0.0.1:18080"
+    },
+    {
+      accessToken: "second-token",
+      baseUrl: "http://127.0.0.1:19090"
+    }
+  ];
+  let configIndex = 0;
+
+  globalThis.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    requests.push(request);
+    return Response.json({ service: "tuttid", status: "ok" });
+  };
+
+  try {
+    const client = createDesktopTuttidClient({
+      getBackendConfig: async () => configs[configIndex++]!
+    } as DesktopRuntimeApi);
+
+    await client.getHealth();
+    await client.getHealth();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(
+    requests.map((request) => ({
+      authorization: request.headers.get("authorization"),
+      origin: new URL(request.url).origin,
+      pathname: new URL(request.url).pathname
+    })),
+    [
+      {
+        authorization: "Bearer first-token",
+        origin: "http://127.0.0.1:18080",
+        pathname: "/v1/health"
+      },
+      {
+        authorization: "Bearer second-token",
+        origin: "http://127.0.0.1:19090",
+        pathname: "/v1/health"
+      }
+    ]
+  );
+});
+
+test("createDesktopTuttidClient preserves query params and abort propagation", async () => {
+  const requests: Request[] = [];
   const abortController = new AbortController();
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async (input, init) => {
-    const request = input instanceof Request ? input : new Request(input, init);
-    const url = new URL(request.url);
-    requestMethod = request.method;
-    requestPath = url.pathname;
-    requestQueryEntries = Object.fromEntries(url.searchParams.entries());
-    capturedRequest.signal = request.signal;
-
-    return new Response(
-      JSON.stringify({
-        hasMore: false,
-        sessions: [],
-        workspaceId: "ws-1"
-      }),
-      {
-        headers: {
-          "content-type": "application/json"
-        },
-        status: 200
-      }
-    );
+    requests.push(input instanceof Request ? input : new Request(input, init));
+    return Response.json({
+      hasMore: false,
+      sessions: [],
+      workspaceId: "ws-1"
+    });
   };
 
   try {
@@ -56,64 +92,15 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestMethod, "GET");
-  assert.equal(requestPath, "/v1/workspaces/ws-1/agent-session-sections/page");
-  assert.notEqual(capturedRequest.signal, null);
-  abortController.abort();
-  assert.equal(capturedRequest.signal?.aborted, true);
-  assert.deepEqual(requestQueryEntries, {
+  const request = requests[0];
+  assert.ok(request);
+  assert.equal(request.method, "GET");
+  assert.deepEqual(Object.fromEntries(new URL(request.url).searchParams), {
     agentTargetId: "claude-target",
     cursor: "1000|session-1",
     limit: "30",
     sectionKey: "project:/workspace/project"
   });
-});
-
-test("createDesktopTuttidClient re-resolves the daemon base URL after it changes (e.g. daemon restart)", async () => {
-  const requestedBaseUrls: string[] = [];
-  const originalFetch = globalThis.fetch;
-
-  globalThis.fetch = async (input, init) => {
-    const request = input instanceof Request ? input : new Request(input, init);
-    requestedBaseUrls.push(new URL(request.url).origin);
-
-    return new Response(
-      JSON.stringify({ hasMore: false, sessions: [], workspaceId: "ws-1" }),
-      { headers: { "content-type": "application/json" }, status: 200 }
-    );
-  };
-
-  let currentBaseUrl = "http://127.0.0.1:18080";
-
-  try {
-    const client = createDesktopTuttidClient({
-      getBackendConfig: async () => ({
-        accessToken: "test-token",
-        baseUrl: currentBaseUrl
-      })
-    } as DesktopRuntimeApi);
-
-    await client.listWorkspaceAgentSessionSectionPage(
-      "ws-1",
-      { agentTargetId: "claude-target", limit: 30, sectionKey: "s" },
-      {}
-    );
-
-    // Simulate the managed tuttid daemon dying and being respawned on a new
-    // ephemeral port, as happens on crash/update-relaunch recovery.
-    currentBaseUrl = "http://127.0.0.1:19090";
-
-    await client.listWorkspaceAgentSessionSectionPage(
-      "ws-1",
-      { agentTargetId: "claude-target", limit: 30, sectionKey: "s" },
-      {}
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  assert.deepEqual(requestedBaseUrls, [
-    "http://127.0.0.1:18080",
-    "http://127.0.0.1:19090"
-  ]);
+  abortController.abort();
+  assert.equal(request.signal.aborted, true);
 });

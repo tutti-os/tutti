@@ -934,6 +934,7 @@ function createDependenciesStub(): {
       prepareWorkspaceAppFactoryJobModification: fail,
       publishWorkspaceAppFactoryJob: fail,
       rollbackWorkspaceApp: fail,
+      cancelWorkspaceAgentTurn: fail,
       goalControlWorkspaceAgentSession: fail,
       sendWorkspaceAgentSessionInput: fail,
       submitWorkspaceAgentPlanDecision: fail,
