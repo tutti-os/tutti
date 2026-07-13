@@ -11,6 +11,13 @@ const source = readFileSync(
   ),
   "utf8"
 );
+const defaultProvidersSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "workspaceSettingsDefaultAgentProviders.ts"
+  ),
+  "utf8"
+);
 
 test("workspace settings developer panel exposes analytics debug switch only when available", () => {
   assert.match(source, /useAnalyticsDebugPreferenceService/);
@@ -75,11 +82,12 @@ test("workspace settings general panel lists system controls", () => {
   assert.match(source, /settingsService\.changeWorkspaceUiMode\(mode\)/);
 });
 
-test("workspace settings default provider offers enabled local agent defaults", () => {
+test("workspace settings default providers come from the provider descriptor catalog", () => {
   assert.match(
-    source,
-    /const workspaceSettingsDefaultAgentProviders = \[\s*"codex",\s*"claude-code",\s*"cursor",\s*"opencode"\s*\]/
+    defaultProvidersSource,
+    /migratedAgentGUIProviderIdentityCatalog[\s\S]*entry\.desktop\.defaultProviderEligible[\s\S]*defaultProviderPriority/
   );
+  assert.doesNotMatch(defaultProvidersSource, /\[\s*"codex",\s*"claude-code"/);
   assert.match(
     source,
     /workspaceSettingsDefaultAgentProviders\.map\(\(provider\) => \([\s\S]*<SelectItem key=\{provider\} value=\{provider\}>/

@@ -14,7 +14,7 @@ func TestStoreTracksRoomsAndClonesState(t *testing.T) {
 	svc.TrackRoom(" room-1 ")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
 		Presences: []WorkspaceAgentPresence{{ID: 1, Provider: "codex"}},
-		Sessions:  []WorkspaceAgentSession{{AgentSessionID: "agent-1", EffectiveStatus: "working"}},
+		Sessions:  []ProviderActivitySessionProjection{{AgentSessionID: "agent-1", EffectiveStatus: "working"}},
 	})
 
 	if _, ok := svc.GetAgentState("missing-room"); ok {
@@ -37,7 +37,7 @@ func TestStoreTracksRoomsAndClonesState(t *testing.T) {
 		t.Fatalf("state after external mutation = %#v, ok=%v", state, ok)
 	}
 
-	input := []WorkspaceAgentSession{{AgentSessionID: "agent-2"}}
+	input := []ProviderActivitySessionProjection{{AgentSessionID: "agent-2"}}
 	inputPresences := []WorkspaceAgentPresence{{ID: 2, Provider: "claude"}}
 	svc.updateState("room-1", WorkspaceAgentSnapshot{Presences: inputPresences, Sessions: input})
 	inputPresences[0].Provider = "mutated"
@@ -58,7 +58,7 @@ func TestStoreRefCountRemovesRoomOnlyAfterLastUntrack(t *testing.T) {
 	svc.TrackRoom("room-1")
 	svc.TrackRoom(" room-1 ")
 	svc.TrackRoom(" ")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{AgentSessionID: "agent-1"}}})
+	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{AgentSessionID: "agent-1"}}})
 
 	if got := svc.listRoomIDs(); !reflect.DeepEqual(got, []string{"room-1"}) {
 		t.Fatalf("room ids = %#v", got)
@@ -77,7 +77,7 @@ func TestStoreRefCountRemovesRoomOnlyAfterLastUntrack(t *testing.T) {
 func TestStoreClearsFailedSyncStateAfterLaterSuccess(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 
@@ -111,7 +111,7 @@ func TestStoreClearsFailedSyncStateAfterLaterSuccess(t *testing.T) {
 func TestStoreMarksPendingAfterFailureWhenNextReportStarts(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 
@@ -138,7 +138,7 @@ func TestStoreMarksPendingAfterFailureWhenNextReportStarts(t *testing.T) {
 func TestStoreTracksPendingMessageUpdateCount(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
-	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 
@@ -158,7 +158,7 @@ func TestStoreTracksPendingMessageUpdateCount(t *testing.T) {
 		t.Fatalf("pending message update count after failure = %d, want failed report to remain pending", got)
 	}
 
-	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	svc.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}, {
 		AgentSessionID: "agent-2",
@@ -497,7 +497,7 @@ func TestStoreRemoteSessionEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	remoteEcho := state.Sessions[0]
 	remoteEcho.ID = 99
 	svc.updateStateForOrigin("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{remoteEcho},
+		Sessions: []ProviderActivitySessionProjection{remoteEcho},
 	}, WorkspaceAgentSessionOriginRuntime)
 	if notifyCount != 1 {
 		t.Fatalf("notify count after remote echo = %d, want unchanged", notifyCount)
@@ -506,7 +506,7 @@ func TestStoreRemoteSessionEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	remoteEcho.Title = "Updated title"
 	remoteEcho.UpdatedAtUnixMS = 1200
 	svc.updateStateForOrigin("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{remoteEcho},
+		Sessions: []ProviderActivitySessionProjection{remoteEcho},
 	}, WorkspaceAgentSessionOriginRuntime)
 	if notifyCount != 2 {
 		t.Fatalf("notify count after changed remote state = %d, want 2", notifyCount)
@@ -518,7 +518,7 @@ func TestStoreLoadsStoredSyncState(t *testing.T) {
 
 	first := New(nil, WithSyncStateStore(store))
 	first.TrackRoom("room-1")
-	first.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	first.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 	first.MarkActivitySyncPending("room-1", "agent-1", 1, 0, 0)
@@ -526,7 +526,7 @@ func TestStoreLoadsStoredSyncState(t *testing.T) {
 
 	second := New(nil, WithSyncStateStore(store))
 	second.TrackRoom("room-1")
-	second.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	second.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 
@@ -547,14 +547,14 @@ func TestStoreLoadsPendingSyncStateAsFailed(t *testing.T) {
 
 	first := New(nil, WithSyncStateStore(store))
 	first.TrackRoom("room-1")
-	first.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	first.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 	first.MarkActivitySyncPending("room-1", "agent-1", 1, 0, 0)
 
 	second := New(nil, WithSyncStateStore(store))
 	second.TrackRoom("room-1")
-	second.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []WorkspaceAgentSession{{
+	second.updateState("room-1", WorkspaceAgentSnapshot{Sessions: []ProviderActivitySessionProjection{{
 		AgentSessionID: "agent-1",
 	}}})
 
@@ -575,7 +575,7 @@ func TestStoreHideAgentSessionRemovesStateAndMessages(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{AgentSessionID: "agent-1", EffectiveStatus: "working"},
 			{AgentSessionID: "agent-2", EffectiveStatus: "ready"},
 		},
@@ -608,7 +608,7 @@ func TestStoreHideAgentSessionRemovesStateAndMessages(t *testing.T) {
 		}, activityshared.SessionStatusWorking),
 	})
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{AgentSessionID: "agent-1", EffectiveStatus: "working"},
 			{AgentSessionID: "agent-2", EffectiveStatus: "ready"},
 		},
@@ -654,7 +654,7 @@ func TestStoreReadyStatePatchClearsWorkingSession(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "working",
@@ -718,7 +718,7 @@ func TestStoreWaitingStatePatchAdvancesSessionUpdatedAt(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "working",
@@ -774,7 +774,7 @@ func TestStoreDoesNotClearWorkingStateOnCompletedEntityPatchWithoutPhase(t *test
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "working",
@@ -808,7 +808,7 @@ func TestStoreTreatsCanceledPatchAsTerminalCanceled(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "working",
@@ -842,7 +842,7 @@ func TestStoreDoesNotNormalizeSessionStatusFromTurnPhase(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "idle",
@@ -991,7 +991,7 @@ func TestStoreDoesNotAdvanceUpdatedAtForPassiveSessionUpdateEvent(t *testing.T) 
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-session",
 			Provider:          "claude-code",
 			ProviderSessionID: "provider-session",
@@ -1175,7 +1175,7 @@ func TestStoreKeepsNewerLocalIdleAgainstStaleWorkingSync(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1188,7 +1188,7 @@ func TestStoreKeepsNewerLocalIdleAgainstStaleWorkingSync(t *testing.T) {
 	svc.markSessionIdle("room-1", "agent-1", 1000)
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1393,7 +1393,7 @@ func TestStoreAppliesProviderOnlyMessageUpdateToExistingSession(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "runtime-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -1447,7 +1447,7 @@ func TestStoreMigratesProviderMessageBucketWhenSessionMetadataArrives(t *testing
 		OccurredAtUnixMS: 1000,
 	}})
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "runtime-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -1472,7 +1472,7 @@ func TestStoreAppliesProviderOnlyMessageUpdateToSameOriginSession(t *testing.T) 
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "runtime-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -1511,7 +1511,7 @@ func TestStoreKeepsProviderOnlyMessageUpdateAmbiguousWithoutOrigin(t *testing.T)
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "runtime-1",
 				Provider:          "codex",
@@ -1557,7 +1557,7 @@ func TestStoreKeepsProviderOnlyMessageUpdateForDifferentProvider(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "codex-session-1",
 			Provider:          "codex",
 			ProviderSessionID: "shared-provider-session",
@@ -1597,7 +1597,7 @@ func TestStoreIgnoresSnapshotTimelineDetailsWhenUpdatingState(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-session-1",
 			LifecycleStatus: "active",
 			EffectiveStatus: "working",
@@ -1675,7 +1675,7 @@ func TestStoreKeepsLocalIdleAgainstPassiveSessionUpdateSync(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1688,7 +1688,7 @@ func TestStoreKeepsLocalIdleAgainstPassiveSessionUpdateSync(t *testing.T) {
 	svc.markSessionIdle("room-1", "agent-1", 1000)
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1716,7 +1716,7 @@ func TestStoreAllowsNewerWorkingSyncAfterLocalIdle(t *testing.T) {
 	svc.TrackRoom("room-1")
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1729,7 +1729,7 @@ func TestStoreAllowsNewerWorkingSyncAfterLocalIdle(t *testing.T) {
 	svc.markSessionIdle("room-1", "agent-1", 1000)
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "nexight-1",
@@ -1788,7 +1788,7 @@ func TestStoreKeepsLocalTerminalAgainstStaleActiveSync(t *testing.T) {
 			svc := New(nil)
 			svc.TrackRoom("room-1")
 			svc.updateState("room-1", WorkspaceAgentSnapshot{
-				Sessions: []WorkspaceAgentSession{{
+				Sessions: []ProviderActivitySessionProjection{{
 					AgentSessionID:  "agent-1",
 					LifecycleStatus: "active",
 					TurnPhase:       "working",
@@ -1799,7 +1799,7 @@ func TestStoreKeepsLocalTerminalAgainstStaleActiveSync(t *testing.T) {
 			svc.ApplyActivity("room-1", EventSource{}, nil, []WorkspaceAgentStatePatch{tt.patch}, nil)
 
 			svc.updateState("room-1", WorkspaceAgentSnapshot{
-				Sessions: []WorkspaceAgentSession{{
+				Sessions: []ProviderActivitySessionProjection{{
 					AgentSessionID:  "agent-1",
 					LifecycleStatus: "active",
 					TurnPhase:       "working",
@@ -1828,7 +1828,7 @@ func TestStoreKeepsLocalFailedTurnAgainstStaleWorkingSync(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "claude-code",
 			ProviderSessionID: "provider-session",
@@ -1857,7 +1857,7 @@ func TestStoreKeepsLocalFailedTurnAgainstStaleWorkingSync(t *testing.T) {
 	}}, nil)
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "claude-code",
 			ProviderSessionID: "provider-session",
@@ -1895,7 +1895,7 @@ func TestStoreAllowsNewerSyncAfterLocalTerminal(t *testing.T) {
 	}}, nil)
 
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-1",
 			LifecycleStatus: "active",
 			TurnPhase:       "working",
@@ -1917,7 +1917,7 @@ func TestStoreAppliesProviderOnlyStatePatchToExistingSession(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -1960,7 +1960,7 @@ func TestStoreKeepsProviderOnlyStatePatchForDifferentProvider(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "codex-session-1",
 			Provider:          "codex",
 			ProviderSessionID: "shared-provider-session",
@@ -1990,8 +1990,8 @@ func TestStoreKeepsProviderOnlyStatePatchForDifferentProvider(t *testing.T) {
 		t.Fatalf("state = %#v, ok=%v, want distinct provider sessions", state, ok)
 	}
 
-	var codexSession *WorkspaceAgentSession
-	var claudeSession *WorkspaceAgentSession
+	var codexSession *ProviderActivitySessionProjection
+	var claudeSession *ProviderActivitySessionProjection
 	for i := range state.Sessions {
 		session := &state.Sessions[i]
 		switch session.AgentSessionID {
@@ -2013,7 +2013,7 @@ func TestStoreDoesNotAdvanceUpdatedAtForPassiveIdleStatePatch(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -2060,7 +2060,7 @@ func TestStoreAppliesProviderSessionAliasToRuntimeSession(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "runtime-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -2103,7 +2103,7 @@ func TestStoreKeepsProviderOnlyStatePatchAmbiguousForDuplicateRuntimeSessions(t 
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "runtime-1",
 				Provider:          "codex",
@@ -2144,8 +2144,8 @@ func TestStoreKeepsProviderOnlyStatePatchAmbiguousForDuplicateRuntimeSessions(t 
 		t.Fatalf("state = %#v, ok=%v", state, ok)
 	}
 
-	var runtimeSession *WorkspaceAgentSession
-	var peerSession *WorkspaceAgentSession
+	var runtimeSession *ProviderActivitySessionProjection
+	var peerSession *ProviderActivitySessionProjection
 	for i := range state.Sessions {
 		session := &state.Sessions[i]
 		switch session.AgentSessionID {
@@ -2171,7 +2171,7 @@ func TestStoreInterruptWorkspaceAgentsReportsWorkingSessions(t *testing.T) {
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "agent-working",
 				Provider:          "codex",
@@ -2245,7 +2245,7 @@ func TestStoreInterruptWorkspaceAgentsReportsRuntimeSessionsSeparately(t *testin
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "runtime-1",
 				Provider:          "codex",
@@ -2301,7 +2301,7 @@ func TestStoreInterruptWorkspaceAgentSessionsOnlyReportsTargets(t *testing.T) {
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "agent-local",
 				Provider:          "codex",
@@ -2360,7 +2360,7 @@ func TestStoreInterruptWorkspaceAgentSessionsCompletesTargetAfterLocalClose(t *t
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "agent-local",
 				Provider:          "codex",
@@ -2418,7 +2418,7 @@ func TestStoreInterruptWorkspaceAgentSessionsMatchesTargetProviderSessionID(t *t
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "runtime-session",
 				Provider:          "codex",
@@ -2462,7 +2462,7 @@ func TestStoreInterruptWorkspaceAgentSessionsCompletesSingleFoldedTarget(t *test
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "folded-session",
 				Provider:          "codex",
@@ -2505,7 +2505,7 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetsSeparately(t *
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "peer-session",
 				Provider:          "codex",
@@ -2558,7 +2558,7 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetFromProviderCon
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:    "peer-session",
 				Provider:          "codex",
@@ -2680,5 +2680,16 @@ func TestSubmitAvailabilityForTurnLifecyclePhaseCoversLivePhases(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("phase %q: got %#v, want %#v", tc.phase, got, tc.want)
 		}
+	}
+}
+
+func TestExplicitTurnLifecycleProjectionUsesMigratedProviderPolicy(t *testing.T) {
+	for _, provider := range []string{" CODEX ", "opencode"} {
+		if !providerUsesExplicitTurnLifecycleProjection(provider) {
+			t.Fatalf("migrated provider %q did not enable explicit turn lifecycle projection", provider)
+		}
+	}
+	if providerUsesExplicitTurnLifecycleProjection("unmigrated-provider") {
+		t.Fatal("unmigrated provider unexpectedly enabled explicit turn lifecycle projection")
 	}
 }

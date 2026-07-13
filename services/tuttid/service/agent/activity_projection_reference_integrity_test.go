@@ -129,13 +129,13 @@ func TestActivityProjectionReportSessionStateEnforcesTargetReferenceIntegrity(t 
 
 			if tc.wantStashKey == "" {
 				for _, key := range []string{runtimeContextAliasedAgentTargetIDKey, runtimeContextUnresolvedAgentTargetIDKey} {
-					if _, present := session.RuntimeContext[key]; present {
-						t.Fatalf("unexpected diagnostic stash %q: %#v", key, session.RuntimeContext)
+					if _, present := session.InternalRuntimeContext[key]; present {
+						t.Fatalf("unexpected diagnostic stash %q: %#v", key, session.InternalRuntimeContext)
 					}
 				}
 				return
 			}
-			stashed, _ := session.RuntimeContext[tc.wantStashKey].(string)
+			stashed, _ := session.InternalRuntimeContext[tc.wantStashKey].(string)
 			if stashed != tc.agentTargetID {
 				t.Fatalf("runtimeContext[%q] = %q, want %q", tc.wantStashKey, stashed, tc.agentTargetID)
 			}
@@ -243,8 +243,8 @@ func TestActivityProjectionReportSessionStatePreservesIDsWithoutResolver(t *test
 		t.Fatalf("persisted agentTargetId = %q, want %q (unchanged)", session.AgentTargetID, rawID)
 	}
 	for _, key := range []string{runtimeContextAliasedAgentTargetIDKey, runtimeContextUnresolvedAgentTargetIDKey} {
-		if _, present := session.RuntimeContext[key]; present {
-			t.Fatalf("unexpected diagnostic stash %q without a resolver: %#v", key, session.RuntimeContext)
+		if _, present := session.InternalRuntimeContext[key]; present {
+			t.Fatalf("unexpected diagnostic stash %q without a resolver: %#v", key, session.InternalRuntimeContext)
 		}
 	}
 }

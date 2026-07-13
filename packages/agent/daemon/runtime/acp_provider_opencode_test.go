@@ -2,15 +2,29 @@ package agentruntime
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
+
+func newOpenCodeTestAdapter(transport ProcessTransport) *standardACPAdapter {
+	descriptor, ok := providerregistry.Find(ProviderOpenCode)
+	if !ok {
+		panic("opencode provider descriptor is missing")
+	}
+	return newStandardACPAdapterFromProviderDescriptor(
+		descriptor,
+		transport,
+		LegacyHostMetadata(),
+		nil,
+	)
+}
 
 func TestOpenCodeAdapterUsesOfficialACPCommand(t *testing.T) {
 	t.Parallel()
 
-	adapter := NewOpenCodeAdapter(nil)
+	adapter := newOpenCodeTestAdapter(nil)
 	if adapter.config.provider != ProviderOpenCode {
 		t.Fatalf("provider = %q, want %q", adapter.config.provider, ProviderOpenCode)
 	}
@@ -23,51 +37,39 @@ func TestOpenCodeAdapterUsesOfficialACPCommand(t *testing.T) {
 	if got := adapter.config.permissionModeID(""); got != "build" {
 		t.Fatalf("default mode id = %q, want build", got)
 	}
+	if got := adapter.config.permissionModeID("build"); got != "build" {
+		t.Fatalf("build mode id = %q, want build", got)
+	}
 	if got := adapter.config.permissionModeID("anything"); got != "" {
 		t.Fatalf("unknown mode id = %q, want empty", got)
 	}
 }
 
-func TestOpenCodeACPEnvInjectsConfigContent(t *testing.T) {
+func TestOpenCodeACPEnvInjectsModelConfigContent(t *testing.T) {
 	t.Parallel()
 
 	session := standardTestSession(ProviderOpenCode)
 	session.Settings = &SessionSettings{Model: "anthropic/claude-sonnet-4-5"}
 
-	env := opencodeACPEnv(session, LegacyHostMetadata())
-	var configContent string
+	env := newOpenCodeTestAdapter(nil).config.env(session)
+	found := false
 	for _, item := range env {
 		if strings.HasPrefix(item, "OPENCODE_CONFIG_CONTENT=") {
-			configContent = strings.TrimPrefix(item, "OPENCODE_CONFIG_CONTENT=")
+			found = true
+			if item != `OPENCODE_CONFIG_CONTENT={"model":"anthropic/claude-sonnet-4-5"}` {
+				t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", item)
+			}
 		}
 	}
-	if configContent == "" {
+	if !found {
 		t.Fatalf("env = %#v, want OPENCODE_CONFIG_CONTENT", env)
-	}
-	var config map[string]any
-	if err := json.Unmarshal([]byte(configContent), &config); err != nil {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT invalid JSON: %v", err)
-	}
-	if got, _ := config["model"].(string); got != "anthropic/claude-sonnet-4-5" {
-		t.Fatalf("model = %q, want anthropic/claude-sonnet-4-5", got)
-	}
-	commands, _ := config["command"].(map[string]any)
-	review, _ := commands["review"].(map[string]any)
-	if review == nil {
-		t.Fatalf("command config = %#v, want review command", config["command"])
-	}
-	if got, _ := review["description"].(string); got != "Review code changes" {
-		t.Fatalf("review description = %q, want Review code changes", got)
-	}
-	if template, _ := review["template"].(string); !strings.Contains(template, "$ARGUMENTS") {
-		t.Fatalf("review template = %q, want argument placeholder", template)
 	}
 }
 
 func TestOpenCodeDoesNotRequireNewSessionForModelSettings(t *testing.T) {
 	t.Parallel()
 
-	adapter := NewOpenCodeAdapter(nil)
+	adapter := newOpenCodeTestAdapter(nil)
 	model := "openai/gpt-5"
 	if adapter.RequiresNewSessionForSettings(Session{}, SessionSettingsPatch{Model: &model}) {
 		t.Fatal("model patch required a new session")
@@ -81,7 +83,7 @@ func TestOpenCodeAdapterStartAppliesPlanMode(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("OpenCode", "opencode-session-plan")
-	adapter := NewOpenCodeAdapter(transport)
+	adapter := newOpenCodeTestAdapter(transport)
 	session := standardTestSession(ProviderOpenCode)
 	session.Settings = &SessionSettings{PlanMode: true}
 
@@ -97,7 +99,7 @@ func TestOpenCodeAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("OpenCode", "opencode-session-plan-toggle")
-	adapter := NewOpenCodeAdapter(transport)
+	adapter := newOpenCodeTestAdapter(transport)
 	session := standardTestSession(ProviderOpenCode)
 	if _, err := adapter.Start(context.Background(), session); err != nil {
 		t.Fatalf("Start: %v", err)
@@ -134,7 +136,7 @@ func TestOpenCodeApplySessionSettingsSendsLiveModelAndEffortConfigOptions(t *tes
 	t.Parallel()
 
 	transport := newStandardACPTransport("OpenCode", "opencode-session-1")
-	adapter := NewOpenCodeAdapter(transport)
+	adapter := newOpenCodeTestAdapter(transport)
 	session := standardTestSession(ProviderOpenCode)
 
 	if _, err := adapter.Start(context.Background(), session); err != nil {

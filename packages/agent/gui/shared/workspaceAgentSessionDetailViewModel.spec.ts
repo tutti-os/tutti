@@ -1,15 +1,16 @@
-import type {
-  AgentHostWorkspaceAgentSession,
-  AgentHostWorkspaceAgentTimelineItem
-} from "./contracts/dto";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import { afterEach, describe, expect, it } from "vitest";
 import { setAgentGuiI18nTestLocale } from "../i18n/testUtils";
 import type { WorkspaceAgentActivityCard } from "./workspaceAgentActivityListViewModel";
 import { buildWorkspaceAgentSessionDetailViewModel } from "./workspaceAgentSessionDetailViewModel";
 
 function item(
-  overrides: Partial<AgentHostWorkspaceAgentTimelineItem> & { id: number }
-): AgentHostWorkspaceAgentTimelineItem {
+  overrides: Partial<WorkspaceAgentActivityTimelineItem> & { id: number }
+): WorkspaceAgentActivityTimelineItem {
   const { id, ...rest } = overrides;
   return {
     id,
@@ -32,22 +33,20 @@ const activity: WorkspaceAgentActivityCard = {
   agentProvider: "codex",
   agentName: "Codex",
   title: "帮我根据目前工作区的信息出原型",
-  status: "working",
   latestActivitySummary: "正在整理信息",
+  status: "working",
   changedFiles: [],
   sortTimeUnixMs: 10
 };
 
-const session: AgentHostWorkspaceAgentSession = {
-  id: 1,
+const session: AgentActivitySession = normalizeAgentActivitySession({
+  workspaceId: "workspace-1",
   agentSessionId: "session-1",
-  presenceId: 1,
   provider: "codex",
   providerSessionId: "provider-session-1",
   cwd: "/workspace/app",
-  effectiveStatus: "working",
   title: activity.title
-};
+});
 
 describe("buildWorkspaceAgentSessionDetailViewModel", () => {
   afterEach(async () => {
@@ -727,7 +726,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
   });
 
   it("keeps executable Claude AskUserQuestion prompts in the transcript detail view", () => {
-    const claudeSession: AgentHostWorkspaceAgentSession = {
+    const claudeSession: AgentActivitySession = {
       ...session,
       provider: "claude-code"
     };
@@ -780,19 +779,19 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     });
   });
 
-  it("hides unsupported Claude AskUserQuestion tool calls from the transcript detail view", () => {
-    const claudeSession: AgentHostWorkspaceAgentSession = {
+  it("hides unavailable AskUserQuestion tool calls by event semantics", () => {
+    const providerSession: AgentActivitySession = {
       ...session,
-      provider: "claude-code"
+      provider: "opencode"
     };
 
     const view = buildWorkspaceAgentSessionDetailViewModel({
       activity: {
         ...activity,
-        agentProvider: "claude-code",
-        agentName: "Claude Code"
+        agentProvider: "opencode",
+        agentName: "OpenCode"
       },
-      session: claudeSession,
+      session: providerSession,
       timelineItems: [
         item({
           id: 42,
@@ -1450,9 +1449,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     const view = buildWorkspaceAgentSessionDetailViewModel({
       activity,
       session: {
-        ...session,
-        effectiveStatus: "completed",
-        turnPhase: "completed"
+        ...session
       },
       timelineItems: [
         item({
@@ -1537,9 +1534,7 @@ describe("buildWorkspaceAgentSessionDetailViewModel", () => {
     const view = buildWorkspaceAgentSessionDetailViewModel({
       activity,
       session: {
-        ...session,
-        effectiveStatus: "working",
-        turnPhase: "working"
+        ...session
       },
       timelineItems: [
         item({

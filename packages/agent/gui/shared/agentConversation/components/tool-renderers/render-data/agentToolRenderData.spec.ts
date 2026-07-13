@@ -235,6 +235,32 @@ describe("agentToolRenderData", () => {
     ]);
   });
 
+  it("extracts OpenCode file changes from standard ACP output metadata", () => {
+    const changes = getFileChangeRenderData(
+      makeCall({
+        toolName: "Edit",
+        output: {
+          files: [
+            {
+              filePath: "/Users/local/session-1/index.html",
+              patch:
+                "--- a/index.html\n+++ b/index.html\n@@ -1 +1 @@\n-old\n+new\n"
+            }
+          ]
+        }
+      })
+    );
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        path: "/Users/local/session-1/index.html",
+        changeType: "modified",
+        added: 1,
+        removed: 1
+      })
+    ]);
+  });
+
   it("extracts file changes from payload fileChanges metadata", () => {
     const changes = getFileChangeRenderData(
       makeCall({

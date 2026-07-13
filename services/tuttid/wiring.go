@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -306,6 +307,11 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
+	agentSessionService.TurnStore = agentActivityRepo
+	agentSessionService.RuntimeOperationStore = agentActivityRepo
+	agentSessionService.SubmitClaimStore = agentActivityRepo
+	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
+	agentSessionService.RuntimeOperationOwner = uuid.NewString()
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
 		StateDir: tuttitypes.DefaultStateDir(),
 	}
@@ -314,9 +320,19 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		SourceRootDir: filepath.Join(tuttitypes.DefaultStateDir(), "agent-prompt-assets"),
 	}
 	agentSessionService.RuntimePreparer = agentRuntimePreparer
+	agentSessionService.ComputerUseAvailable = agentRuntimePreparer.ComputerUseAvailable
 	agentSessionService.AvailabilityChecker = agentservice.AgentStatusProviderAvailabilityChecker{
 		Service: &agentStatusService,
 	}
+	// Recover durable runtime intents before generic stale-turn settlement so
+	// an acknowledged cancel keeps its canceled outcome across restart.
+	if err := agentSessionService.RecoverRuntimeOperations(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent runtime operations: %w", err)
+	}
+	if err := agentActivityProjection.SettleStaleTurnsOnStartup(ctx); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("settle stale agent turns on startup: %w", err)
+	}
+	go agentSessionService.RunRuntimeOperationWorker(ctx)
 
 	workspaceService := workspaceservice.CatalogService{
 		Store:            store,

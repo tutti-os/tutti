@@ -356,11 +356,11 @@ func allocateSkillName(root string, baseName string) (string, error) {
 
 func providerSkillRoot(cwd string, provider string) string {
 	switch strings.TrimSpace(provider) {
-	case "openclaw":
+	case "openclaw", "open-claw":
 		return filepath.Join(cwd, ".openclaw", "skills")
-	case "nexight":
+	case "nexight", "tutti":
 		return filepath.Join(cwd, ".nexight", "skills")
-	case "hermes":
+	case "hermes", "hermes-agent":
 		return filepath.Join(cwd, ".agent_context", "skills")
 	default:
 		return ""

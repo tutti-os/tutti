@@ -3,10 +3,14 @@ import { relative, resolve } from "node:path";
 
 const workspaceRoot = resolve(new URL("../..", import.meta.url).pathname);
 const agentGuiRoot = resolve(workspaceRoot, "packages/agent/gui");
+const desktopRendererRoot = resolve(
+  workspaceRoot,
+  "apps/desktop/src/renderer/src/features"
+);
 
 const allowedFiles = new Set([
   "packages/agent/gui/host/agentHostApi.ts",
-  "packages/agent/gui/shared/agentActivitySnapshotProjection.ts"
+  "packages/agent/gui/shared/roomShare.ts"
 ]);
 
 const ignoredPathFragments = [
@@ -51,6 +55,32 @@ const forbiddenPatterns = [
     pattern: /\bAgentHostWorkspaceAgent[A-Za-z0-9_]*/g
   },
   {
+    label: "legacy workspaceAgentActivityTypes aggregate",
+    pattern: /\bworkspaceAgentActivityTypes\b/g
+  },
+  {
+    label: "legacy WorkspaceAgentActivity session mirror",
+    pattern: /\bWorkspaceAgentActivity(?:Session|Snapshot|Presence)\b/g
+  },
+  {
+    label: "module-global AgentActivityRuntime resolver",
+    pattern:
+      /\b(?:getAgentActivityRuntime|getAgentActivityRuntimeByOrigin|getOptionalAgentActivityRuntime)\b/g
+  },
+  {
+    allowedFiles: new Set([
+      "apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityDiagnostics.ts"
+    ]),
+    label: "deprecated session lifecycle decision read",
+    pattern:
+      /\b[A-Za-z_$][\w$]*\s*(?:\?\.)?\s*\.\s*(?:currentPhase|effectiveStatus|lifecycleStatus|pendingInteractive|submitAvailability|turnLifecycle|turnPhase)\b/g
+  },
+  {
+    label: "direct AgentSessionEngine entity storage access",
+    pattern:
+      /\b(?:sessionLifecycle\s*\.\s*(?:sessionsById|turnsById|interactionsById)|pendingIntents\s*\.\s*[A-Za-z_$][\w$]*By[A-Za-z_$][\w$]*|promptQueue\s*\.\s*recordsBySessionId)\b/g
+  },
+  {
     label: "legacy roomId",
     pattern: /\broomId\b/g,
     scope: "agent-gui-production"
@@ -65,30 +95,45 @@ const forbiddenPatterns = [
 
 const violations = [];
 
-for (const filePath of walk(agentGuiRoot)) {
-  const relativePath = relative(workspaceRoot, filePath);
-  if (!isScannedSourceFile(relativePath) || allowedFiles.has(relativePath)) {
-    continue;
-  }
-  const source = readFileSync(filePath, "utf8");
-  for (const rule of forbiddenPatterns) {
-    if (!isRuleInScope(rule, relativePath)) {
+for (const scanRoot of [agentGuiRoot, desktopRendererRoot]) {
+  for (const filePath of walk(scanRoot)) {
+    const relativePath = relative(workspaceRoot, filePath);
+    if (!isScannedSourceFile(relativePath) || allowedFiles.has(relativePath)) {
       continue;
     }
-    for (const match of source.matchAll(rule.pattern)) {
+    const source = readFileSync(filePath, "utf8");
+    if (
+      relativePath.startsWith("apps/desktop/src/renderer/src/features/") &&
+      source.includes("getSessionEngine") &&
+      source.includes("useSyncExternalStore")
+    ) {
+      const index = source.indexOf("useSyncExternalStore");
       violations.push({
-        column: columnNumber(source, match.index ?? 0),
+        column: columnNumber(source, index),
         file: relativePath,
-        label: rule.label,
-        line: lineNumber(source, match.index ?? 0)
+        label: "direct AgentSessionEngine useSyncExternalStore subscription",
+        line: lineNumber(source, index)
       });
+    }
+    for (const rule of forbiddenPatterns) {
+      if (!isRuleInScope(rule, relativePath)) {
+        continue;
+      }
+      for (const match of source.matchAll(rule.pattern)) {
+        violations.push({
+          column: columnNumber(source, match.index ?? 0),
+          file: relativePath,
+          label: rule.label,
+          line: lineNumber(source, match.index ?? 0)
+        });
+      }
     }
   }
 }
 
 if (violations.length > 0) {
   process.stderr.write(
-    "AgentGUI production code must consume AgentActivityRuntime for agent activity data.\n"
+    "Agent consumers must use AgentActivityRuntime and AgentSessionEngine selectors.\n"
   );
   process.stderr.write(
     "Move legacy AgentHostWorkspaceAgent access into host compatibility or projection boundary files.\n\n"
@@ -127,6 +172,9 @@ function isScannedSourceFile(relativePath) {
 }
 
 function isRuleInScope(rule, relativePath) {
+  if (rule.allowedFiles?.has(relativePath)) {
+    return false;
+  }
   if (rule.scope === "agent-gui-production") {
     return relativePath.startsWith("packages/agent/gui/agent-gui/");
   }

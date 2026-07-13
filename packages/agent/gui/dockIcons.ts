@@ -1,23 +1,15 @@
-import {
-  codexRoundedUrl,
-  cursorRoundedUrl,
-  hermesRoundedUrl,
-  manageAgentClaudeCodeUrl,
-  manageAgentTuttiUrl,
-  opencodeRoundedUrl,
-  openclawRoundedUrl,
-  tuttiAgentRoundedUrl
-} from "./managedAgentIconAssets.ts";
+import type { AgentGUIProvider } from "./types.ts";
+import { migratedAgentGUIProviderIdentityCatalog } from "./providerIdentityCatalog.ts";
+import { createProviderIconUrlMap } from "./providerIconAssets.ts";
 
-export const agentGuiDockIconUrl = codexRoundedUrl;
+export const agentGuiDockIconUrls = createDockIconUrls();
 
-export const agentGuiDockIconUrls = {
-  "claude-code": manageAgentClaudeCodeUrl,
-  codex: codexRoundedUrl,
-  cursor: cursorRoundedUrl,
-  hermes: hermesRoundedUrl,
-  nexight: manageAgentTuttiUrl,
-  openclaw: openclawRoundedUrl,
-  opencode: opencodeRoundedUrl,
-  "tutti-agent": tuttiAgentRoundedUrl
-} as const;
+export const agentGuiDockIconUrl = agentGuiDockIconUrls.codex;
+
+function createDockIconUrls(): Record<AgentGUIProvider, string> {
+  return createProviderIconUrlMap(
+    "dock",
+    {},
+    migratedAgentGUIProviderIdentityCatalog
+  ) as Record<AgentGUIProvider, string>;
+}

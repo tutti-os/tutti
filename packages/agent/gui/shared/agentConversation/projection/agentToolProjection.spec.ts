@@ -153,6 +153,41 @@ describe("projectAgentToolCall", () => {
     expect(task.task?.steps).toHaveLength(1);
   });
 
+  it("normalizes persisted standard ACP envelopes for specialized tool renderers", () => {
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      toolName: "Edit",
+      callType: "tool",
+      payload: {
+        input: {
+          kind: "edit",
+          title: "apply_patch",
+          rawInput: { patchText: "*** Begin Patch" }
+        },
+        output: {
+          rawOutput: {
+            metadata: {
+              diff: "Index: /workspace/index.html\n--- /workspace/index.html\n+++ /workspace/index.html",
+              files: [
+                {
+                  filePath: "/workspace/index.html",
+                  patch: "Index: /workspace/index.html"
+                }
+              ]
+            }
+          }
+        }
+      }
+    });
+
+    expect(projected.rendererKind).toBe("edit");
+    expect(projected.input?.patchText).toBe("*** Begin Patch");
+    expect(projected.output?.diff).toContain("/workspace/index.html");
+    expect(projected.output?.files).toEqual([
+      expect.objectContaining({ filePath: "/workspace/index.html" })
+    ]);
+  });
+
   it("prefers canonical payload input/output over tool_state when both exist", () => {
     const projected = projectAgentToolCall({
       ...baseCall(),

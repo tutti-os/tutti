@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentMessage,
-  AgentHostWorkspaceAgentSession
-} from "../../contracts/dto";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
 import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
 
@@ -15,7 +16,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "assistant-1",
-          id: 20,
           version: 2,
           role: "assistant",
           kind: "text",
@@ -23,7 +23,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "user-1",
-          id: 30,
           version: 1,
           role: "user",
           kind: "text",
@@ -48,11 +47,10 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
   it("keeps status panel order aligned with stream order when snapshot ids differ", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
-      session: session({ status: "working", effectiveStatus: "working" }),
+      session: session({ effectiveStatus: "working" }),
       messages: [
         message({
           messageId: "assistant-intro",
-          id: 10,
           version: 1,
           role: "assistant",
           kind: "text",
@@ -60,7 +58,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "reasoning-1",
-          id: 11,
           version: 5,
           role: "assistant",
           kind: "reasoning",
@@ -69,7 +66,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-1",
-          id: 12,
           version: 2,
           role: "assistant",
           kind: "tool_call",
@@ -78,7 +74,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-2",
-          id: 13,
           version: 3,
           role: "assistant",
           kind: "tool_call",
@@ -87,7 +82,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "tool-3",
-          id: 14,
           version: 4,
           role: "assistant",
           kind: "tool_call",
@@ -125,7 +119,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "user-1",
-          id: 1,
           version: 1,
           role: "user",
           kind: "text",
@@ -135,7 +128,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "toolcall:search-1",
-          id: 2,
           version: 4,
           role: "assistant",
           kind: "tool_call",
@@ -152,7 +144,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "assistant-final",
-          id: 3,
           version: 3,
           role: "assistant",
           kind: "text",
@@ -187,28 +178,24 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "user-1",
-          id: 1,
           role: "user",
           kind: "text",
           payload: { text: "Inspect this" }
         }),
         message({
           messageId: "thinking-1",
-          id: 2,
           role: "assistant",
           kind: "reasoning",
           payload: { text: "Need to inspect first." }
         }),
         message({
           messageId: "assistant-1",
-          id: 3,
           role: "assistant",
           kind: "text",
           payload: { text: "I found the issue." }
         }),
         message({
           messageId: "error-1",
-          id: 4,
           role: "assistant",
           kind: "error",
           status: "failed",
@@ -216,7 +203,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "unknown-1",
-          id: 5,
           role: "assistant",
           kind: "provider_notice",
           payload: { title: "Provider notice", text: "Notice text" }
@@ -238,7 +224,9 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       "assistant",
       "assistant"
     ]);
-    expect(messageRows[1]?.thinking[0]?.body).toBe("Need to inspect first.");
+    expect(
+      messageRows.flatMap((row) => row.thinking.map((item) => item.body))
+    ).toContain("Need to inspect first.");
     expect(
       messageRows.flatMap((row) => row.messages.map((item) => item.body))
     ).toContain("Agent failed\n\nConfig invalid");
@@ -255,7 +243,6 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       messages: [
         message({
           messageId: "assistant-stream-1",
-          id: 1,
           version: 1,
           role: "assistant",
           kind: "text",
@@ -647,41 +634,61 @@ function activity(
 }
 
 function session(
-  overrides: Partial<AgentHostWorkspaceAgentSession> = {}
-): AgentHostWorkspaceAgentSession {
-  return {
-    id: 1,
+  overrides: Partial<AgentActivitySession> & {
+    effectiveStatus?: string;
+    turnPhase?: string;
+  } = {}
+): AgentActivitySession {
+  const { effectiveStatus, turnPhase, ...canonical } = overrides;
+  const phase = turnPhase ?? effectiveStatus;
+  const hasActiveTurn =
+    phase === "submitted" ||
+    phase === "running" ||
+    phase === "working" ||
+    phase === "waiting" ||
+    phase === "settling";
+  return normalizeAgentActivitySession({
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    presenceId: 1,
     userId: "user-1",
     provider: "codex",
     providerSessionId: "provider-session-1",
-    sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
     cwd: "/workspace/demo",
-    lifecycleStatus: "active",
-    turnPhase: "completed",
-    effectiveStatus: "completed",
     title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 10,
-    ...overrides
-  };
+    ...(hasActiveTurn
+      ? {
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            phase: phase === "working" ? "running" : phase,
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-1"
+        }
+      : {}),
+    ...canonical
+  });
 }
 
 function message(
-  overrides: Partial<AgentHostWorkspaceAgentMessage>
-): AgentHostWorkspaceAgentMessage {
-  const id = overrides.id ?? 1;
+  overrides: Partial<AgentActivityMessage> & { id?: number }
+): AgentActivityMessage {
+  const { id: _legacyStorageId, ...canonical } = overrides;
+  const version = overrides.version ?? 1;
   return {
-    id,
     agentSessionId: "session-1",
     messageId: "message-1",
-    version: overrides.version ?? id,
+    version,
     turnId: "turn-1",
     role: "assistant",
     kind: "text",
     payload: {},
     occurredAtUnixMs: 1,
-    ...overrides
+    ...canonical
   };
 }

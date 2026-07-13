@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { smokeClaudeSDKSidecar } from "./smoke-claude-sdk-sidecar.mjs";
 import {
   pruneDarwinClaudeNativePackages,
   resolveDarwinClaudeNativePackagesForPackContext,
@@ -81,4 +82,7 @@ export default async function copyVendoredNodeResourcesAfterPack(context) {
         .join(", ")}`
     );
   }
+  const packagedSidecarDir = join(resourcesDir, "bin", "claude-sdk-sidecar");
+  await smokeClaudeSDKSidecar({ bundleDir: packagedSidecarDir });
+  log(`smoke-tested claude-sdk-sidecar at ${packagedSidecarDir}`);
 }

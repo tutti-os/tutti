@@ -21,7 +21,10 @@ import type {
 export interface WorkspaceAgentPromptSessionServiceDependencies {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
-  workspaceAgentActivityService: IWorkspaceAgentActivityService;
+  workspaceAgentActivityService: Pick<
+    IWorkspaceAgentActivityService,
+    "activateSession"
+  >;
   workspaceUserProjectService?: Pick<
     IWorkspaceUserProjectService,
     "isNoProjectPath"
@@ -112,6 +115,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
         await this.dependencies.workspaceAgentActivityService.activateSession({
           agentSessionId,
           agentTargetId,
+          clientSubmitId: createWorkspaceAgentClientSubmitId(),
           ...(cwd ? { cwd } : {}),
           initialContent: textPromptContent(prompt),
           mode: "new",
@@ -131,10 +135,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
       });
       throw error;
     }
-    if (
-      activation.activation.status === "failed" ||
-      activation.session.status === "failed"
-    ) {
+    if (activation.activation.status === "failed") {
       const activationError =
         activation.error?.message ??
         activation.error?.code ??
@@ -190,8 +191,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
 
     return {
       agentSessionId: activation.session.agentSessionId,
-      provider: activation.session.provider,
-      status: activation.session.status ?? null
+      provider: activation.session.provider
     };
   }
 }
@@ -241,4 +241,8 @@ function createWorkspaceAgentSessionId(): string {
     byte.toString(16).padStart(2, "0")
   ).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function createWorkspaceAgentClientSubmitId(): string {
+  return `prompt-session:${createWorkspaceAgentSessionId()}`;
 }

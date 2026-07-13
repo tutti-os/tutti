@@ -4,15 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-)
-
-const (
-	runtimeConfigOptionIDReasoningEffort       = "reasoning_effort"
-	runtimeConfigOptionIDLegacyReasoningEffort = "model_reasoning_effort"
-	runtimeConfigOptionIDEffort                = "effort"
-	runtimeContextAdapterClaudeAgentSDK        = "claude-agent-sdk"
-	runtimeContextCapabilityImageInput         = "imageInput"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func cloneSessionMessages(messages []SessionMessage) []SessionMessage {
@@ -65,10 +57,8 @@ func cloneGeneratedFiles(files []GeneratedFile) []GeneratedFile {
 
 func cloneSession(session Session) Session {
 	cloned := session
+	cloned.Metadata = cloneSessionMetadata(session.Metadata)
 	cloned.Settings = cloneComposerSettingsPointer(session.Settings)
-	cloned.RuntimeContext = clonePayload(session.RuntimeContext)
-	cloned.TurnLifecycle = cloneTurnLifecycle(session.TurnLifecycle)
-	cloned.SubmitAvailability = cloneSubmitAvailability(session.SubmitAvailability)
 	if session.Title != nil {
 		title := *session.Title
 		cloned.Title = &title
@@ -81,54 +71,65 @@ func cloneSession(session Session) Session {
 		endedAt := *session.EndedAt
 		cloned.EndedAt = &endedAt
 	}
-	if session.LastError != nil {
-		lastError := *session.LastError
-		cloned.LastError = &lastError
+	cloned.ActiveTurn = cloneActivityTurn(session.ActiveTurn)
+	cloned.LatestTurn = cloneActivityTurn(session.LatestTurn)
+	cloned.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	cloned.LatestTurnInteractions = cloneActivityInteractions(session.LatestTurnInteractions)
+	cloned.PendingInteractions = cloneActivityInteractions(session.PendingInteractions)
+	return cloned
+}
+
+func cloneSessionMetadata(metadata agentactivitybiz.SessionMetadata) agentactivitybiz.SessionMetadata {
+	cloned := metadata
+	cloned.Capabilities = append([]string(nil), metadata.Capabilities...)
+	if metadata.Usage != nil {
+		value := *metadata.Usage
+		if metadata.Usage.ContextWindow != nil {
+			contextWindow := *metadata.Usage.ContextWindow
+			value.ContextWindow = &contextWindow
+		}
+		value.Quotas = append([]agentactivitybiz.SessionUsageQuota(nil), metadata.Usage.Quotas...)
+		for index := range value.Quotas {
+			if metadata.Usage.Quotas[index].ResetsAtUnixMS != nil {
+				resetsAtUnixMS := *metadata.Usage.Quotas[index].ResetsAtUnixMS
+				value.Quotas[index].ResetsAtUnixMS = &resetsAtUnixMS
+			}
+		}
+		cloned.Usage = &value
+	}
+	if metadata.BackgroundAgents != nil {
+		value := *metadata.BackgroundAgents
+		value.Items = append([]agentactivitybiz.SessionBackgroundAgentItem(nil), metadata.BackgroundAgents.Items...)
+		cloned.BackgroundAgents = &value
+	}
+	if metadata.Goal != nil {
+		value := *metadata.Goal
+		cloned.Goal = &value
 	}
 	return cloned
 }
 
-func cloneSubmitAvailability(value *SubmitAvailability) *SubmitAvailability {
+func cloneActivityTurn(value *agentactivitybiz.Turn) *agentactivitybiz.Turn {
 	if value == nil {
 		return nil
 	}
-	return &SubmitAvailability{
-		State:  strings.TrimSpace(value.State),
-		Reason: strings.TrimSpace(value.Reason),
-	}
+	cloned := *value
+	cloned.FileChanges = clonePayload(value.FileChanges)
+	return &cloned
 }
 
-func cloneCompletedCommand(value *CompletedCommand) *CompletedCommand {
-	if value == nil {
+func cloneActivityInteractions(values []agentactivitybiz.Interaction) []agentactivitybiz.Interaction {
+	if values == nil {
 		return nil
 	}
-	return &CompletedCommand{
-		Kind:   strings.TrimSpace(value.Kind),
-		Status: strings.TrimSpace(value.Status),
+	cloned := make([]agentactivitybiz.Interaction, len(values))
+	for index, value := range values {
+		cloned[index] = value
+		cloned[index].Input = clonePayload(value.Input)
+		cloned[index].Output = clonePayload(value.Output)
+		cloned[index].Metadata = clonePayload(value.Metadata)
 	}
-}
-
-func cloneTurnLifecycle(value *TurnLifecycle) *TurnLifecycle {
-	if value == nil {
-		return nil
-	}
-	var activeTurnID *string
-	if value.ActiveTurnID != nil {
-		active := strings.TrimSpace(*value.ActiveTurnID)
-		activeTurnID = &active
-	}
-	var outcome *string
-	if value.Outcome != nil {
-		next := strings.TrimSpace(*value.Outcome)
-		outcome = &next
-	}
-	return &TurnLifecycle{
-		ActiveTurnID:     activeTurnID,
-		Phase:            strings.TrimSpace(value.Phase),
-		Settling:         value.Settling,
-		Outcome:          outcome,
-		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
-	}
+	return cloned
 }
 
 func clonePayload(payload map[string]any) map[string]any {
@@ -183,199 +184,6 @@ func cloneComposerSettingsPointerValue(settings *ComposerSettings) ComposerSetti
 	return *settings
 }
 
-func normalizeRuntimeContextForProvider(
-	provider string,
-	settings ComposerSettings,
-	runtimeContext map[string]any,
-) map[string]any {
-	if len(runtimeContext) == 0 {
-		return nil
-	}
-	cloned := clonePayload(runtimeContext)
-	normalizedProvider := strings.TrimSpace(provider)
-	normalizedReasoning := normalizeReasoningEffortForProvider(
-		normalizedProvider,
-		settings.ReasoningEffort,
-	)
-	if normalizedReasoning != "" {
-		cloned["reasoningEffort"] = normalizedReasoning
-	}
-	cloned = runtimeContextWithSettingsModel(cloned, settings.Model)
-	normalizeClaudeSDKRuntimeCapabilities(normalizedProvider, cloned)
-	rawConfigOptions, ok := cloned["configOptions"]
-	if !ok {
-		return cloned
-	}
-	normalizedConfigOptions, changed := normalizeRuntimeConfigOptionsForProvider(
-		normalizedProvider,
-		normalizedReasoning,
-		rawConfigOptions,
-	)
-	if changed {
-		cloned["configOptions"] = normalizedConfigOptions
-	}
-	return cloned
-}
-
-func runtimeContextWithSettingsModel(runtimeContext map[string]any, model string) map[string]any {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return runtimeContext
-	}
-	runtimeContext["model"] = model
-	if config, ok := runtimeContext["config"].(map[string]any); ok {
-		nextConfig := clonePayload(config)
-		nextConfig["model"] = model
-		runtimeContext["config"] = nextConfig
-	}
-	switch options := runtimeContext["configOptions"].(type) {
-	case []any:
-		nextOptions := make([]any, 0, len(options))
-		for _, option := range options {
-			record, ok := option.(map[string]any)
-			if !ok {
-				nextOptions = append(nextOptions, option)
-				continue
-			}
-			nextOptions = append(nextOptions, runtimeConfigOptionWithSettingsModel(record, model))
-		}
-		runtimeContext["configOptions"] = nextOptions
-	case []map[string]any:
-		nextOptions := make([]map[string]any, 0, len(options))
-		for _, option := range options {
-			nextOptions = append(nextOptions, runtimeConfigOptionWithSettingsModel(option, model))
-		}
-		runtimeContext["configOptions"] = nextOptions
-	}
-	return runtimeContext
-}
-
-func runtimeConfigOptionWithSettingsModel(record map[string]any, model string) map[string]any {
-	nextRecord := clonePayload(record)
-	if strings.TrimSpace(stringFromAny(nextRecord["id"])) != "model" {
-		return nextRecord
-	}
-	nextRecord["currentValue"] = model
-	if _, ok := nextRecord["current_value"]; ok {
-		nextRecord["current_value"] = model
-	}
-	return nextRecord
-}
-
-func normalizeClaudeSDKRuntimeCapabilities(provider string, runtimeContext map[string]any) {
-	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode ||
-		strings.TrimSpace(runtimeContextString(runtimeContext, "adapter")) != runtimeContextAdapterClaudeAgentSDK {
-		return
-	}
-	runtimeContext["capabilities"] = runtimeContextWithCapability(
-		runtimeContext["capabilities"],
-		runtimeContextCapabilityImageInput,
-	)
-}
-
-func runtimeContextWithCapability(raw any, capability string) any {
-	capability = strings.TrimSpace(capability)
-	if capability == "" {
-		return raw
-	}
-	switch list := raw.(type) {
-	case []string:
-		for _, entry := range list {
-			if strings.TrimSpace(entry) == capability {
-				return list
-			}
-		}
-		return append(append([]string(nil), list...), capability)
-	case []any:
-		for _, entry := range list {
-			if text, ok := entry.(string); ok && strings.TrimSpace(text) == capability {
-				return list
-			}
-		}
-		next := append([]any(nil), list...)
-		next = append(next, capability)
-		return next
-	default:
-		return []string{capability}
-	}
-}
-
-func runtimeContextString(runtimeContext map[string]any, key string) string {
-	value, _ := runtimeContext[key].(string)
-	return strings.TrimSpace(value)
-}
-
-func normalizeRuntimeConfigOptionsForProvider(
-	provider string,
-	reasoningEffort string,
-	rawConfigOptions any,
-) (any, bool) {
-	options, ok := rawConfigOptions.([]any)
-	if !ok {
-		return rawConfigOptions, false
-	}
-	changed := false
-	normalized := make([]any, 0, len(options))
-	for _, rawOption := range options {
-		record, ok := rawOption.(map[string]any)
-		if !ok {
-			normalized = append(normalized, rawOption)
-			continue
-		}
-		id := runtimeConfigOptionString(record, "id")
-		if !isReasoningRuntimeConfigOptionID(id) {
-			normalized = append(normalized, clonePayload(record))
-			continue
-		}
-		nextRecord := clonePayload(record)
-		currentValue := reasoningEffort
-		if currentValue == "" {
-			currentValue = normalizeReasoningEffortForProvider(
-				provider,
-				runtimeConfigOptionString(record, "currentValue", "current_value"),
-			)
-		}
-		// Catalog-backed Codex runtimes advertise reasoning efforts for the
-		// currently selected model. Preserve that authoritative list so values
-		// such as max and ultra are not replaced by a static compatibility list.
-		normalizedProvider := agentprovider.Normalize(provider)
-		if normalizedProvider != agentprovider.Codex && normalizedProvider != agentprovider.TuttiAgent {
-			nextRecord["options"] = reasoningEffortOptions(provider, currentValue)
-		}
-		if currentValue == "" {
-			nextRecord["currentValue"] = nil
-			delete(nextRecord, "current_value")
-		} else {
-			nextRecord["currentValue"] = currentValue
-			nextRecord["current_value"] = currentValue
-		}
-		normalized = append(normalized, nextRecord)
-		changed = true
-	}
-	return normalized, changed
-}
-
-func runtimeConfigOptionString(record map[string]any, keys ...string) string {
-	for _, key := range keys {
-		value, _ := record[key].(string)
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}
-
-func isReasoningRuntimeConfigOptionID(id string) bool {
-	switch strings.TrimSpace(id) {
-	case runtimeConfigOptionIDLegacyReasoningEffort,
-		runtimeConfigOptionIDReasoningEffort,
-		runtimeConfigOptionIDEffort:
-		return true
-	default:
-		return false
-	}
-}
-
 func payloadString(payload map[string]any, key string) string {
 	if len(payload) == 0 {
 		return ""
@@ -428,11 +236,4 @@ func normalizeRuntimeError(err error) error {
 		return ErrSessionNotFound
 	}
 	return err
-}
-
-func isStaleInteractiveRequestError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "no longer live")
 }

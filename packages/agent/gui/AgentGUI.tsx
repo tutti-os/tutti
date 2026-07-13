@@ -3,49 +3,72 @@ import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentActivityRuntime } from "./agentActivityRuntime";
 import type { AgentHostInputApi } from "./host/agentHostApi";
-import type { AgentGUIAgent } from "./types";
+import type { AgentGUIAgent, AgentGUIAllAgentsPresentation } from "./types";
+import type { AgentGUIAgentsEmptyRenderer } from "./agent-gui/agentGuiNode/AgentGUINodeView";
+import {
+  normalizeAgentGUIAgents,
+  projectAgentGUIAgentsToInternalTargets
+} from "./agents";
 import {
   AgentGUINode,
   type AgentGUINodeProps
 } from "./agent-gui/agentGuiNode/AgentGUINode";
 import { AgentActivityHostProvider } from "./agentActivityHost";
-import {
-  AgentQueuedPromptRuntimeProvider,
-  type AgentQueuedPromptRuntime
-} from "./agentQueuedPromptRuntime";
 import { AgentGuiI18nProvider, type AgentGuiI18nLocale } from "./i18n/index";
 
 export interface AgentGUIProps extends Omit<AgentGUINodeProps, "agents"> {
   agents: readonly AgentGUIAgent[];
+  agentsLoading?: boolean;
+  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
+  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
   agentHostApi?: AgentHostInputApi | null;
-  embedded?: boolean;
   i18n?: I18nRuntime<string> | null;
   locale?: AgentGuiI18nLocale;
 }
 
 export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
-  agentQueuedPromptRuntime,
   agentHostApi,
+  agents,
+  agentsLoading = false,
+  allAgentsPresentation = null,
+  renderAgentsEmpty,
   i18n,
   locale,
   ...props
 }: AgentGUIProps): JSX.Element {
+  const normalizedAgents = normalizeAgentGUIAgents(agents);
+  const hostCapabilities = props.hostCapabilities ?? {};
+  const renderSlots = props.renderSlots ?? {};
+  const nodeProps: AgentGUINodeProps = {
+    ...props,
+    hostCapabilities: {
+      ...hostCapabilities,
+      agentTargets: projectAgentGUIAgentsToInternalTargets(normalizedAgents),
+      agentTargetsLoading: agentsLoading,
+      providerRailAllPresentation:
+        allAgentsPresentation ??
+        hostCapabilities.providerRailAllPresentation ??
+        null,
+      providerRailMode: "exact"
+    },
+    renderSlots: {
+      ...renderSlots,
+      providerRailEmpty: renderAgentsEmpty ?? renderSlots.providerRailEmpty
+    }
+  };
   const content = (
     <AgentGuiI18nProvider runtime={i18n} locale={locale}>
       <AgentActivityHostProvider
         agentActivityRuntime={agentActivityRuntime}
         agentHostApi={agentHostApi}
       >
-        <AgentQueuedPromptRuntimeProvider runtime={agentQueuedPromptRuntime}>
-          <AgentGUINode {...props} />
-        </AgentQueuedPromptRuntimeProvider>
+        <AgentGUINode {...nodeProps} />
       </AgentActivityHostProvider>
     </AgentGuiI18nProvider>
   );
-  return props.previewMode ? (
+  return props.frame.previewMode ? (
     content
   ) : (
     <TooltipProvider delayDuration={120} skipDelayDuration={0}>

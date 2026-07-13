@@ -60,10 +60,10 @@ import {
 } from "../../../workspace-agent/services/workspaceAgentPromptSessionService.interface.ts";
 import {
   createWorkspaceAppCenterDockEntries,
-  IWorkspaceAppCenterService,
   reportWorkspaceAppOpenedFromDockEntry
-} from "@renderer/features/workspace-app-center";
-import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent";
+} from "@renderer/features/workspace-app-center/services/workspaceAppCenterContribution.ts";
+import { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
+import { createDesktopAgentGeneratedFileMentionProvider } from "@renderer/features/workspace-agent/services/createDesktopAgentGeneratedFileMentionProvider.ts";
 import { IWorkspaceFileManagerService } from "../../../workspace-file-manager/services/workspaceFileManagerService.interface.ts";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import { IWorkspaceUserProjectService } from "../../../workspace-user-project/services/workspaceUserProjectService.interface.ts";
@@ -808,11 +808,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       cached.appI18n === input.appI18n &&
       cached.appLocale === input.appLocale &&
       cached.defaultAgentProvider === input.defaultAgentProvider &&
-      cached.defaultAgentTargetId === input.defaultAgentTargetId &&
       cached.dockIconStyle === input.dockIconStyle &&
       cached.i18n === input.i18n &&
-      cached.agents === input.agents &&
-      cached.agentsLoading === input.agentsLoading &&
       cached.comingSoonAgentProviders === input.comingSoonAgentProviders &&
       cached.themeAppearance === input.themeAppearance
     ) {
@@ -860,7 +857,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         confirmCloseGuard: (request) => confirmCloseGuardRef.current(request),
         dockPreviewCache,
         defaultAgentProvider: input.defaultAgentProvider,
-        defaultAgentTargetId: input.defaultAgentTargetId,
         dockIcons: {
           agentUnified: dockIcons.agentUnified,
           agents: dockIcons.agents,
@@ -876,8 +872,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         onCapabilitySettingsRequest: (target) => {
           capabilitySettingsRequestRef.current?.(target);
         },
-        agents: input.agents ?? [],
-        agentsLoading: input.agentsLoading,
+        agentsService: this.dependencies.agentsService,
         comingSoonAgentProviders: input.comingSoonAgentProviders,
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
@@ -916,8 +911,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       dockStateSource: createWorkspaceAgentProviderDockStateSource({
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
+        agentsService: this.dependencies.agentsService,
         i18n: input.i18n,
-        agents: input.agents,
         isAgentProviderHidden: this.dependencies.isAgentProviderHidden,
         subscribeAgentProviderVisibility:
           this.dependencies.subscribeAgentProviderVisibility,
@@ -958,12 +953,9 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       capabilitySettingsRequestRef,
       confirmCloseGuardRef,
       defaultAgentProvider: input.defaultAgentProvider,
-      defaultAgentTargetId: input.defaultAgentTargetId,
       dockIconStyle: input.dockIconStyle,
       dockIcons,
       i18n: input.i18n,
-      agents: input.agents,
-      agentsLoading: input.agentsLoading,
       comingSoonAgentProviders: input.comingSoonAgentProviders,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
@@ -1367,15 +1359,12 @@ interface CachedWorkspaceWorkbenchHostInput {
     ) => Promise<boolean> | boolean;
   };
   defaultAgentProvider?: string | null;
-  defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   dockIcons: WorkspaceDockIconSet;
   dynamicAppI18n?: I18nRuntime<string>;
   dynamicDockSignature?: string;
   dynamicHostInput?: WorkspaceWorkbenchHostInput;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  agents?: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBodyRef: {
     current: (context: WorkspaceWorkbenchBodyRendererContext) => ReactNode;

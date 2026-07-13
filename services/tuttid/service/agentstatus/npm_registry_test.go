@@ -153,32 +153,6 @@ func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *test
 	}
 }
 
-func TestResolveExternalRegistryNPMSpecExecEnvUsesRankedRegistry(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-	service.HTTPClient = agentNPMRegistryProbeHTTPClient(map[string]bool{
-		"registry.npmjs.org": true,
-	})
-
-	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
-	if err != nil {
-		t.Fatalf("ResolveProviderCommand() error = %v", err)
-	}
-	if !slices.Contains(result.Command, "exec") || !slices.Contains(result.Command, prefixDir) {
-		t.Fatalf("Command = %#v, want npm exec fallback under %q", result.Command, prefixDir)
-	}
-	if !slices.Contains(result.Env, "npm_config_registry=https://repo.huaweicloud.com/repository/npm/") {
-		t.Fatalf("adapter env = %#v, want ranked mirror registry", result.Env)
-	}
-}
-
 func TestWithAgentNPMCacheReplacesInheritedCacheEnv(t *testing.T) {
 	env := []string{
 		"PATH=/usr/bin",
@@ -208,7 +182,7 @@ func TestRunExternalAgentRegistryNPMInstallerPinsDedicatedCache(t *testing.T) {
 	spec := InstallerSpec{
 		Kind: InstallerKindExternalAgentRegistryNPM,
 		RegistryNPM: &ExternalAgentRegistryNPMInstallerSpec{
-			Package:   "@agentclientprotocol/claude-agent-acp@0.50.0",
+			Package:   "@agentclientprotocol/sample-agent-acp@0.50.0",
 			PrefixDir: prefixDir,
 		},
 	}
@@ -224,27 +198,6 @@ func TestRunExternalAgentRegistryNPMInstallerPinsDedicatedCache(t *testing.T) {
 	want := filepath.Join(prefixDir, agentNPMCacheDirName)
 	if gotCache != want {
 		t.Fatalf("npm_config_cache = %q, want dedicated cache %q (must not depend on global ~/.npm)", gotCache, want)
-	}
-}
-
-func TestResolveExternalRegistryNPMSpecExecEnvPinsDedicatedCache(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-
-	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
-	if err != nil {
-		t.Fatalf("ResolveProviderCommand() error = %v", err)
-	}
-	want := "npm_config_cache=" + filepath.Join(prefixDir, agentNPMCacheDirName)
-	if !slices.Contains(result.Env, want) {
-		t.Fatalf("adapter env = %#v, want dedicated npm cache %q", result.Env, want)
 	}
 }
 
@@ -264,9 +217,9 @@ func TestRunCodexCLILatestInstallerPinsDedicatedCache(t *testing.T) {
 		return InstallCommandResult{ExitCode: 0}, nil
 	}
 
-	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+	if _, err := service.runCodexCLILatestInstaller(context.Background(), "codex", InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, ""); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -369,7 +322,7 @@ func npmInstallerSpec(t *testing.T) InstallerSpec {
 	return InstallerSpec{
 		Kind: InstallerKindExternalAgentRegistryNPM,
 		RegistryNPM: &ExternalAgentRegistryNPMInstallerSpec{
-			Package:   "@agentclientprotocol/claude-agent-acp@0.50.0",
+			Package:   "@agentclientprotocol/sample-agent-acp@0.50.0",
 			PrefixDir: t.TempDir(),
 		},
 	}

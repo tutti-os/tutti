@@ -13,12 +13,15 @@ export function projectAgentToolCall(
   call: WorkspaceAgentSessionDetailToolCall
 ): AgentToolCallVM {
   const toolState = objectValue(call.payload?.tool_state);
-  const input =
-    objectValue(call.payload?.input) ?? objectValue(toolState?.input);
-  const output =
-    objectValue(call.payload?.output) ?? objectValue(toolState?.output);
-  const error =
-    objectValue(call.payload?.error) ?? objectValue(toolState?.error);
+  const input = normalizeStandardACPEnvelope(
+    objectValue(call.payload?.input) ?? objectValue(toolState?.input)
+  );
+  const output = normalizeStandardACPEnvelope(
+    objectValue(call.payload?.output) ?? objectValue(toolState?.output)
+  );
+  const error = normalizeStandardACPEnvelope(
+    objectValue(call.payload?.error) ?? objectValue(toolState?.error)
+  );
   const metadata = objectValue(call.payload?.metadata);
   const content = arrayValue(call.payload?.content);
   const locations = arrayValue(call.payload?.locations);
@@ -83,4 +86,27 @@ function objectValue(value: unknown): Record<string, unknown> | null {
 
 function arrayValue(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
+}
+
+function normalizeStandardACPEnvelope(
+  value: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!value) return null;
+  const raw = objectValue(value.rawInput) ?? objectValue(value.rawOutput);
+  if (!raw) return value;
+  const metadata = objectValue(raw.metadata);
+  return {
+    ...value,
+    ...raw,
+    ...(metadata?.diff !== undefined ? { diff: metadata.diff } : {}),
+    ...(metadata?.files !== undefined ? { files: metadata.files } : {}),
+    ...(metadata?.structuredPatch !== undefined
+      ? { structuredPatch: metadata.structuredPatch }
+      : {}),
+    ...(metadata?.detailedContent !== undefined
+      ? { detailedContent: metadata.detailedContent }
+      : {}),
+    ...(metadata?.changes !== undefined ? { changes: metadata.changes } : {}),
+    ...(metadata?.exit !== undefined ? { exitCode: metadata.exit } : {})
+  };
 }

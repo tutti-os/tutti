@@ -10,7 +10,7 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import {
-  desktopManagedAgentProviders,
+  desktopManagedAgentDefaultProvider,
   isDesktopManagedAgentProvider
 } from "../services/internal/desktopManagedAgentProviders.ts";
 import {
@@ -25,6 +25,7 @@ import {
   type WizardReportState
 } from "../services/internal/agentEnvWizardStore.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
+import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
 
 function useStatusSnapshot(service: IAgentProviderStatusService) {
   return useSyncExternalStore(
@@ -62,10 +63,10 @@ function resolveActiveProvider(
   if (defaultProvider && isDesktopManagedAgentProvider(defaultProvider)) {
     return { provider: defaultProvider, isSupported: true };
   }
-  const fallback = desktopManagedAgentProviders.includes("codex")
-    ? "codex"
-    : desktopManagedAgentProviders[0];
-  return { provider: fallback, isSupported: true };
+  return {
+    provider: desktopManagedAgentDefaultProvider,
+    isSupported: true
+  };
 }
 
 export interface AgentEnvWizardActions {
@@ -110,7 +111,7 @@ export function useAgentEnvWizard(input: {
 
   const runProviderAction = useCallback(
     async (actionId: "install" | "login") => {
-      if (provider === "tutti-agent" && actionId === "login") {
+      if (actionId === "login" && isDesktopAgentAccountLoginAction(status)) {
         await accountService.startLogin();
         return;
       }
@@ -119,7 +120,7 @@ export function useAgentEnvWizard(input: {
         workspaceId
       });
     },
-    [accountService, service, provider, workbenchHost, workspaceId]
+    [accountService, service, provider, status, workbenchHost, workspaceId]
   );
 
   const attachParams = useMemo(

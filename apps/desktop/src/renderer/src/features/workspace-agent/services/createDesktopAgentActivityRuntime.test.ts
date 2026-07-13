@@ -302,10 +302,10 @@ test("desktop agent activity runtime delegates canonical session synchronization
 function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
   return {
     _serviceBrand: undefined,
-    activateSession: async () => {
+    getSessionEngine() {
       throw new Error("not implemented");
     },
-    cancelSession: async () => {
+    activateSession: async () => {
       throw new Error("not implemented");
     },
     goalControl: async () => {
@@ -327,9 +327,6 @@ function createWorkspaceAgentActivityService(): IWorkspaceAgentActivityService {
       throw new Error("not implemented");
     },
     updateSessionSettings: async () => {
-      throw new Error("not implemented");
-    },
-    getSessionControlState: async () => {
       throw new Error("not implemented");
     },
     getSnapshot: () => {

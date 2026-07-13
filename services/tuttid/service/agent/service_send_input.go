@@ -8,6 +8,21 @@ import (
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
+	submitClaim, claimPending, err := s.prepareSubmitClaim(ctx, workspaceID, agentSessionID, input.Metadata)
+	if err != nil {
+		return SendInputResult{}, err
+	}
+	if submitClaim.ClientSubmitID != "" && !claimPending {
+		if submitClaim.Status == "accepted" {
+			return s.acceptedSubmitResult(ctx, workspaceID, agentSessionID, submitClaim)
+		}
+		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
+	defer func() {
+		if claimPending {
+			s.abandonSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID)
+		}
+	}()
 	nodeStartedAt := time.Now()
 	normalizedContent, _, err := normalizePromptContent(input.Content)
 	if err != nil {
@@ -71,6 +86,12 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt, normalizedErr)
 		return SendInputResult{}, normalizedErr
 	}
+	if submitClaim.ClientSubmitID != "" {
+		claimPending = false
+		if err := s.acceptSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID, result.TurnID); err != nil {
+			return SendInputResult{}, err
+		}
+	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "runtime_exec", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.send.exec_resolved", workspaceID, agentSessionID, input.Metadata, map[string]any{
 		"turn_id":        result.TurnID,
@@ -84,12 +105,6 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		return SendInputResult{}, err
 	}
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
-	if strings.TrimSpace(result.SessionStatus) != "" {
-		session.Status = serviceStatus(result.SessionStatus)
-		session.EndedAt = endedAtForStatus(result.SessionStatus, session.UpdatedAt)
-	}
-	session.TurnLifecycle = cloneTurnLifecycle(&result.TurnLifecycle)
-	session.SubmitAvailability = cloneSubmitAvailability(&result.SubmitAvailability)
 	return SendInputResult{
 		Session:            session,
 		TurnID:             strings.TrimSpace(result.TurnID),

@@ -91,9 +91,9 @@ func TestRunCodexCLILatestInstallerRepairsInPlace(t *testing.T) {
 		return InstallCommandResult{ExitCode: 0, Stdout: "repaired"}, nil
 	}
 
-	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+	if _, err := service.runCodexCLILatestInstaller(context.Background(), "codex", InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, existingCLIPath); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -132,9 +132,9 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
 
-	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+	if _, err := service.runCodexCLILatestInstaller(context.Background(), "codex", InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, standalone); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -145,6 +145,7 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 }
 
 func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *testing.T) {
+	const provider = "descriptor-codex"
 	home := t.TempDir()
 	runtimeRoot := fakeManagedRuntimeRoot(t)
 	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
@@ -178,9 +179,12 @@ func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *te
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
 
-	if _, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+	ctx := withActiveActionToken(context.Background(), nextActiveActionToken())
+	claimActiveAction(ctx, provider, ActiveAction{ID: ActionInstall, Status: "running"})
+	defer clearActiveAction(ctx, provider)
+	if _, err := service.runCodexCLILatestInstaller(ctx, provider, InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, ""); err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
@@ -199,6 +203,13 @@ func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *te
 	}
 	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
 		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
+	}
+	action := activeActionForProvider(provider)
+	if action == nil {
+		t.Fatal("custom provider active action missing")
+	}
+	if action.Registry != "https://registry.example.test" || action.NodeTarget != managedNode {
+		t.Fatalf("custom provider active action = %#v", action)
 	}
 }
 

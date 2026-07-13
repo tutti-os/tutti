@@ -65,7 +65,6 @@ Example desktop trace capture:
 ```bash
 TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT=9223 \
 TUTTI_ELECTRON_JS_FLAGS=--max-old-space-size=8192 \
-VITE_TUTTI_WHY_DID_YOU_RENDER=0 \
 make dev-gui
 
 pnpm trace:desktop -- --duration 15

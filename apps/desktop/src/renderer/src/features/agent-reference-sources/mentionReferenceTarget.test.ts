@@ -6,7 +6,7 @@ import { APP_ARTIFACT_SOURCE_ID } from "./appArtifactReferenceSource.ts";
 import { ISSUE_SOURCE_ID } from "./issueReferenceSource.ts";
 
 type MentionItem = Parameters<
-  NonNullable<AgentGUIProps["resolveMentionReferenceTarget"]>
+  NonNullable<AgentGUIProps["workspace"]["resolveMentionReferenceTarget"]>
 >[0];
 
 function referenceItem(

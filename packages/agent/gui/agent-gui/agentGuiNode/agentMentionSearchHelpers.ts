@@ -21,15 +21,15 @@ import type {
   AgentMentionGroupId
 } from "./AgentMentionSearchController";
 import type {
-  WorkspaceAgentActivityMessage,
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivitySessionSummary
-} from "../../shared/workspaceAgentActivityTypes";
+  AgentActivityMessage,
+  AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivitySessionSummary } from "../../shared/workspaceAgentSessionSummaryTypes";
 
 export function buildSessionMentionItem(input: {
   workspaceId: string;
   currentUserId: string;
-  session: WorkspaceAgentActivitySession;
+  session: AgentActivitySession;
   summary: WorkspaceAgentActivitySessionSummary | null;
   userProfiles: Record<string, Pick<AgentHostUserInfo, "name" | "avatar">>;
   fallbackTitle?: string | null;
@@ -110,8 +110,8 @@ function normalizeSessionInitiatorDisplayName(value: string): string {
 }
 
 export function resolveSessionMentionMessageTitle(
-  session: WorkspaceAgentActivitySession,
-  messages: readonly WorkspaceAgentActivityMessage[]
+  session: AgentActivitySession,
+  messages: readonly AgentActivityMessage[]
 ): string {
   return compactText(
     resolveWorkspaceAgentActivityTitle(session, [...messages])
@@ -119,17 +119,16 @@ export function resolveSessionMentionMessageTitle(
 }
 
 function resolveSessionDisplayStatus(
-  session: WorkspaceAgentActivitySession,
+  session: AgentActivitySession,
   summary: WorkspaceAgentActivitySessionSummary | null
 ): string {
   const sessionStatus = resolveWorkspaceAgentActivityStatus(session);
-  if (hasExplicitSessionStatus(session)) {
+  if (sessionStatus !== "idle") {
     return sessionStatus;
   }
   const status = (
     summary?.executionStatus?.currentOrFinalStatus ??
     summary?.currentOrFinalStatus ??
-    session.status ??
     ""
   )
     .trim()
@@ -149,12 +148,6 @@ function resolveSessionDisplayStatus(
   return status
     ? resolveWorkspaceAgentActivityStatusFromSummary(status)
     : sessionStatus;
-}
-
-function hasExplicitSessionStatus(
-  session: WorkspaceAgentActivitySession
-): boolean {
-  return Boolean((session.status ?? "").trim());
 }
 
 function resolveWorkspaceAgentActivityStatusFromSummary(

@@ -45,8 +45,7 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
     agentTargetId: "daemon-hermes",
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
-    lastActiveAgentSessionId: "session-1",
-    lastActiveConversationTitle: "A title"
+    lastActiveAgentSessionId: "session-1"
   });
 });
 
@@ -59,15 +58,13 @@ test("desktop agent gui workbench projection preserves rail state and permission
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360.4,
       agentTargetId: "daemon-hermes",
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title"
+      lastActiveAgentSessionId: "session-1"
     }),
     {
       agentTargetId: "daemon-hermes",
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
-      lastActiveAgentSessionId: "session-1",
-      lastActiveConversationTitle: "A title"
+      lastActiveAgentSessionId: "session-1"
     }
   );
 });
@@ -207,7 +204,7 @@ test("desktop agent gui target state resolves composer defaults from the target 
       [],
       "codex"
     ),
-    "claude-code"
+    "codex"
   );
 });
 
@@ -266,7 +263,10 @@ test("desktop agent gui node state ignores removed legacy composer defaults", ()
 });
 
 test("desktop agent gui provider derives from workbench instance id", () => {
-  assert.equal(desktopAgentGUIProviderFromInstanceId("agent-gui"), "codex");
+  assert.throws(
+    () => desktopAgentGUIProviderFromInstanceId("agent-gui"),
+    /agent_gui_workbench.instance_provider_required/
+  );
   assert.equal(
     desktopAgentGUIProviderFromInstanceId("agent-gui:claude-code"),
     "claude-code"
@@ -275,9 +275,9 @@ test("desktop agent gui provider derives from workbench instance id", () => {
     desktopAgentGUIProviderFromInstanceId("agent-gui:hermes:panel:abc"),
     "hermes"
   );
-  assert.equal(
-    desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
-    "codex"
+  assert.throws(
+    () => desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
+    /agent_gui_workbench.instance_provider_required/
   );
 });
 

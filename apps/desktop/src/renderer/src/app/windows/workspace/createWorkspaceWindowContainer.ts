@@ -8,35 +8,30 @@ import {
   shouldReportPredefinePageview,
   startPredefinePageviewAnalytics
 } from "@renderer/features/analytics";
-import { registerAppUpdateServices } from "@renderer/features/app-update";
-import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences";
+import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
+import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
 import { subscribe } from "valtio";
-import {
-  createDesktopAgentSessionStatusViewResolver,
-  registerRichTextAtServices
-} from "@renderer/features/rich-text-at";
-import {
-  registerWorkspaceAgentServices,
-  type AgentProviderStatusService,
-  type WorkspaceAgentActivityService
-} from "@renderer/features/workspace-agent";
-import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center";
-import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog";
-import { registerWorkspaceFileManagerServices } from "@renderer/features/workspace-file-manager";
-import { registerWorkspaceUserProjectServices } from "@renderer/features/workspace-user-project";
-import {
-  createAgentProviderTerminalCommandRunner,
-  createWorkspaceAgentOutcomeForegroundNotificationPresenter,
-  createWorkspaceAgentOutcomeNotificationController,
-  registerWorkspaceWorkbenchServices
-} from "@renderer/features/workspace-workbench";
+import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
+import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
+import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
+import type { IAgentProviderStatusService as AgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { registerWorkspaceAppCenterServices } from "@renderer/features/workspace-app-center/services/registerWorkspaceAppCenterServices";
+import { registerWorkspaceCatalogServices } from "@renderer/features/workspace-catalog/services/registerWorkspaceCatalogServices";
+import { registerWorkspaceFileManagerServices } from "@renderer/features/workspace-file-manager/services/registerWorkspaceFileManagerServices";
+import { registerWorkspaceUserProjectServices } from "@renderer/features/workspace-user-project/services/registerWorkspaceUserProjectServices.ts";
+import { createAgentProviderTerminalCommandRunner } from "@renderer/features/workspace-workbench/services/createAgentProviderTerminalCommandRunner";
+import { createWorkspaceAgentOutcomeNotificationController } from "@renderer/features/workspace-workbench/services/workspaceAgentOutcomeNotification";
+import { registerWorkspaceWorkbenchServices } from "@renderer/features/workspace-workbench/services/registerWorkspaceWorkbenchServices";
+import { createWorkspaceAgentOutcomeForegroundNotificationPresenter } from "@renderer/features/workspace-workbench/ui/WorkspaceAgentOutcomeNotificationToast";
 import {
   managedAgentRoundedIconUrl,
   userAvatarPlaceholderUrl,
   workspaceAgentActivityStatusLabel
 } from "@tutti-os/agent-gui/agent-message-center";
+import { resolveProviderIconAsset } from "@tutti-os/agent-gui/provider-icons";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import { normalizeAgentActivityDisplayStatus } from "@tutti-os/agent-activity-core";
-import { tuttiAgentAssetUrls } from "../../../../../shared/tuttiAssetProtocol.ts";
 import { translate } from "../../../i18n";
 import { getActiveLocale } from "../../../i18n/runtime";
 import { INotificationService } from "@tutti-os/ui-notifications";
@@ -57,10 +52,10 @@ import type {
   DesktopWorkspaceAppExternalHostApi
 } from "@preload/types";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
-import type { IReporterService } from "@renderer/features/analytics";
-import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
-import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
-import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
+import type { IReporterService } from "@renderer/features/analytics/services/reporterService.interface.ts";
+import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at/services/richTextAtService.interface.ts";
+import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project/services/workspaceUserProjectService.interface.ts";
+import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface.ts";
 
 export interface WorkspaceWindowContainerResult {
   agentProviderStatusService: AgentProviderStatusService;
@@ -136,11 +131,18 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   // Preview agents are feature-gated behind Developer-panel preferences
   // preference: gated providers render as coming-soon placeholders in the
   // AgentGUI rail (like hermes) and stay hidden from dock/mention/manage.
-  const isAgentProviderGated = (provider: string): boolean =>
-    (provider === "cursor" &&
-      !desktopPreferencesService.store.enableCursorAgent) ||
-    (provider === "opencode" &&
-      !desktopPreferencesService.store.enableOpenCodeAgent);
+  const isAgentProviderGated = (provider: string): boolean => {
+    const gate =
+      resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.visibilityGate;
+    switch (gate) {
+      case "cursor_preview":
+        return !desktopPreferencesService.store.enableCursorAgent;
+      case "opencode_preview":
+        return !desktopPreferencesService.store.enableOpenCodeAgent;
+      default:
+        return false;
+    }
+  };
   const subscribeAgentProviderVisibility = (
     listener: () => void
   ): (() => void) => {
@@ -231,7 +233,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     notifications: notificationService,
     reporterService,
     runtimeApi: desktopApi.runtime,
-    resolveAgentIconUrl: resolveWorkspaceRichTextAgentIconUrl,
+    resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
     isAgentTargetProviderGated: isAgentProviderGated,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
@@ -312,31 +314,22 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
 }
 
 function resolveWorkspaceRichTextAgentIconUrl(provider: string | undefined) {
-  switch (normalizeWorkspaceRichTextAgentProvider(provider)) {
-    case "claude-code":
-      return tuttiAgentAssetUrls.claudeCode;
-    case "codex":
-      return tuttiAgentAssetUrls.codex;
-    case "tutti-agent":
-      return tuttiAgentAssetUrls.tuttiAgent;
-    default:
-      return managedAgentRoundedIconUrl(provider);
-  }
+  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+  return (
+    resolveProviderIconAsset(identity?.iconKey, "rounded") ??
+    managedAgentRoundedIconUrl(provider)
+  );
 }
 
-function normalizeWorkspaceRichTextAgentProvider(
-  provider: string | undefined
-): string {
-  const normalized =
-    provider
-      ?.trim()
-      .toLowerCase()
-      .replace(/[_\s]+/gu, "-") ?? "";
-  switch (normalized) {
-    case "claude":
-    case "claude-code":
-      return "claude-code";
-    default:
-      return normalized;
+function resolveWorkspaceAgentTargetIconUrl(identity: {
+  iconKey: string | null;
+  provider: string;
+}): string {
+  if (identity.iconKey) {
+    return (
+      resolveProviderIconAsset(identity.iconKey, "rounded") ??
+      managedAgentRoundedIconUrl(undefined)
+    );
   }
+  return resolveWorkspaceRichTextAgentIconUrl(identity.provider);
 }

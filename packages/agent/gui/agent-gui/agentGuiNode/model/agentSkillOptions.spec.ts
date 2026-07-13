@@ -32,12 +32,12 @@ describe("agentSkillOptions", () => {
   it("normalizes known skill aliases before sending to the provider", () => {
     expect(
       promptForProviderSkills({
-        provider: "codex",
         prompt: "/caveman keep /init",
         skills: [
           {
             name: "caveman",
             trigger: "$caveman",
+            invocation: "promptItem",
             sourceKind: "personal"
           }
         ]
@@ -46,18 +46,33 @@ describe("agentSkillOptions", () => {
 
     expect(
       promptForProviderSkills({
-        provider: "claude-code",
         prompt: "$product-design:frontend-design keep /init",
         skills: [
           {
             name: "frontend-design",
             trigger: "/product-design:frontend-design",
+            invocation: "textTrigger",
             sourceKind: "plugin",
             pluginName: "product-design"
           }
         ]
       })
     ).toBe("/product-design:frontend-design keep /init");
+  });
+
+  it("does not guess an invocation syntax when the descriptor omitted it", () => {
+    expect(
+      promptForProviderSkills({
+        prompt: "$unknown keep /init",
+        skills: [
+          {
+            name: "unknown",
+            trigger: "/unknown",
+            sourceKind: "plugin"
+          }
+        ]
+      })
+    ).toBe("$unknown keep /init");
   });
 
   it("uses the first useful description line", () => {

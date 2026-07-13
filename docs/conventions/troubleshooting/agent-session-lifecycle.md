@@ -181,17 +181,20 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   settle the first goal turn while `thread/goal/set` is still in flight, so
   local goal state can still be empty when the settle path schedules its nudge.
 - Fix:
-  Always create the continuation grace timer for a settled goal-driven turn.
-  After the grace window, re-read both the active turn and goal state; send the
-  nudge only when no turn has continued and the goal is then `active`. Do not
-  gate timer creation on the immediate local goal snapshot.
+  Before sending a goal-setting RPC that can start a turn, record a local
+  `active` goal snapshot with the requested objective. This makes goal
+  activation causally visible to terminal notifications that overtake the RPC
+  response. Restore the previous local goal if the RPC fails; on success,
+  replace the provisional snapshot with the authoritative response. The
+  continuation timer must still re-read both active-turn and goal state after
+  its grace window before sending a nudge.
 - Validation:
   Keep a scripted protocol test that deliberately delivers goal turn
   notifications before the `thread/goal/set` result, then verify the next turn
   is adopted. Cover both a clean first turn and a failed mid-goal turn with
   repeated focused runs; use event channels rather than polling shared slices.
 - References:
-  [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
+  [codex_appserver_goal.go](../../../packages/agent/daemon/runtime/codex_appserver_goal.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
 ### Codex goal reappears after pause, edit, or clear
@@ -619,3 +622,188 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
   [workspaceAgentMessageCenterModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
+
+### AgentGUI submit clears the composer but creates no session or turn
+
+- Symptom:
+  Sending from AgentGUI clears or switches the composer, but the conversation
+  rail and transcript do not change. Renderer diagnostics stop at
+  `renderer_adapter.create.http_requested` or
+  `renderer_adapter.send.http_requested`, and the daemon has no matching
+  `clientSubmitId`.
+- Quick checks:
+  Correlate `clientSubmitId` across the desktop and daemon logs. If the engine
+  records an immediate failed activation while the daemon has no create/send
+  business log, compare the adapter's exact JSON body with the generated
+  request type and the OpenAPI schema, including `additionalProperties`.
+- Root cause:
+  A conditional object spread can add a stale property to an otherwise typed
+  request without triggering excess-property checking. Strict OpenAPI request
+  validation then rejects the body before the business handler, while eager
+  composer clearing makes the failed request look successful for an instant.
+- Fix:
+  Keep `clientSubmitId` as the top-level idempotency field and carry optional
+  evidence through the typed `submitDiagnostics` contract from AgentGUI through
+  the session engine to the desktop adapter. Assign the final body to the
+  generated request type before sending. Clear a draft only after the engine
+  queues, accepts, or confirms the exact submitted content; failed sends retain
+  the draft.
+- Validation:
+  Assert the adapter's complete create/send body with generated request types,
+  verify the generated client serializes `submitDiagnostics`, and cover that
+  Composer does not clear before its parent applies engine acknowledgment.
+- References:
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [useAgentGUISubmitInteractionActions.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
+
+### AgentGUI new session times out and appears completed without a reply
+
+- Symptom:
+  A new conversation shows the optimistic user prompt, then becomes idle or
+  completed with no assistant reply. The session has no canonical turn or
+  messages.
+- Quick checks:
+  Correlate the create `clientSubmitId`. A characteristic sequence is desktop
+  `renderer_adapter.create.failed errorCode=ETIMEDOUT` at 30 seconds, followed
+  by daemon `provider_runtime_status=failed`, `agent session is not connected`,
+  and a rejected turnless `visible-error` message.
+- Root cause:
+  Runtime command-guide construction asked the CLI registry to run live
+  capability filters. The agent-context filter probes provider availability,
+  so static guide construction could consume the entire create-request budget.
+  Cancellation then reached provider startup. The failed startup was also
+  published as a durable session plus a message without a turn, creating a
+  phantom session that the UI could only project as idle/completed.
+- Fix:
+  Build runtime command guides from static capability registration with live
+  capability filters skipped. Treat provider startup as transactional: return a
+  typed runtime error when the provider fails to start; for create-with-prompt,
+  keep the runtime Session provisional until the first Turn is accepted. A
+  failed or rolled-back attempt must not publish or store a canonical Session,
+  Turn, command/config snapshot, or turnless message.
+- Validation:
+  Cover the non-blocking command-catalog context, typed failed-start mapping,
+  provisional provider callback isolation and rollback, and controller behavior
+  proving that startup failure returns diagnostics but creates no canonical
+  session or activity report.
+- References:
+  [command_catalog.go](../../services/tuttid/service/agentsidecar/command_catalog.go)
+  [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
+  [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
+
+### Canceling an old AgentGUI turn stops a newer turn
+
+- Symptom:
+  A `cancelTurn(turnId)` request targets an older turn, but a newer turn in the
+  same session stops, or the requested turn is reported canceled even though
+  the runtime continued with a different active turn.
+- Quick checks:
+  Compare `requested_turn_id` and `active_turn_id` in
+  `agent_session.cancel.turn_mismatch`. Also check whether a new `Exec` entered
+  between the exact-turn lookup and the provider cancel call.
+- Root cause:
+  Session-level provider cancel APIs do not carry a turn id. Validating the id
+  before calling the adapter is insufficient unless validation and cancel are
+  protected by the same session lifecycle lock used to start turns.
+- Fix:
+  Carry the requested turn id through HTTP service, runtime adapter, and
+  controller. Return an idempotent no-op on mismatch, and hold the per-session
+  lifecycle lock across the active-turn comparison and `adapter.Cancel` so a
+  new turn cannot enter the gap.
+- Validation:
+  Cover both a mismatched active turn (the adapter must not be called) and a
+  blocking adapter cancel (a second lifecycle operation must remain blocked
+  until cancel returns).
+- References:
+  [service_turns.go](../../services/tuttid/service/agent/service_turns.go)
+  [controller_cancel.go](../../packages/agent/daemon/runtime/controller_cancel.go)
+  [controller_test.go](../../packages/agent/daemon/runtime/controller_test.go)
+
+### Historical Agent completions notify again when a workspace opens
+
+- Symptom:
+  Opening a workspace produces completion or failure notifications for turns
+  that settled before the window was opened.
+- Quick checks:
+  Compare notification-controller creation with the first agent activity
+  `load`. If the engine was empty at subscription time and the first populated
+  snapshot contains settled turns, verify those turns were treated as initial
+  hydration rather than live transitions.
+- Root cause:
+  Taking an empty engine snapshot as the history baseline is insufficient when
+  durable loading happens asynchronously after subscribers are registered.
+  The first hydrated settled turn then looks indistinguishable from a newly
+  settled turn.
+- Fix:
+  Keep outcome notifications behind an explicit hydration boundary. Record all
+  settled turns observed before the initial durable load resolves as baseline
+  history. After hydration, notify only the first observation of each
+  session-scoped turn key; a live non-settled turn can also establish readiness
+  when the initial load is unavailable.
+- Validation:
+  Cover the real startup order: subscribe against an empty engine, hydrate a
+  historical settled turn without notifying, finish hydration, then verify a
+  later running-to-settled turn notifies exactly once.
+- References:
+  [workspaceAgentOutcomeNotification.ts](../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workspaceAgentOutcomeNotification.ts)
+  [workspaceAgentOutcomeNotification.test.ts](../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workspaceAgentOutcomeNotification.test.ts)
+
+### Agent GUI context usage is absent or has the wrong total
+
+- Symptom:
+  The Agent GUI composer never shows context usage even though provider usage
+  logs are present. Alternatively, Claude Code GUI usage shows a 200k context
+  window for a model that should have 1M context, or a 200k model keeps showing
+  the prior 1M total after a model switch.
+- Quick checks:
+  Trace the provider update first: use
+  `agent_session.claude_sdk.usage_update` for Claude SDK and
+  `agent_session.acp.usage_update` for ACP providers. Then inspect the daemon
+  session response for its typed `usage.contextWindow` field and confirm the
+  desktop canonical session preserves it. If provider logs contain nonzero
+  used and total tokens but the API field is null, inspect the runtime-context
+  split into typed session metadata. If the API field is populated but the
+  footer is absent, inspect the desktop adapter and the active canonical
+  session passed to the composer capability projection. For Claude, if the
+  payload keys include
+  `modelUsage` but `raw_total_tokens` is `0`, the daemon did not parse the
+  model-usage context window. If `previous_context_model` and
+  `current_context_model` differ but `current_total_tokens` equals
+  `previous_total_tokens`, daemon usage normalization reused a stale context
+  window across models.
+- Root cause:
+  Protocol v2 intentionally removed raw `runtimeContext` from the public
+  session model. If the refactor removes that legacy field without adding a
+  typed `usage` field across persistence, API generation, the desktop adapter,
+  and the canonical session, the provider still records correct telemetry but
+  Agent GUI has no public data to render. A wrong Claude total is a separate
+  normalization failure: Claude SDK result messages expose model usage as a map
+  keyed by model id, for example
+  `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
+  only parses array-shaped `modelUsage`, the context-window total is missing and
+  daemon normalization falls back to 200k.
+- Fix:
+  Define usage in the protocol-v2 OpenAPI contract and carry it as typed durable
+  session metadata through the generated client, desktop adapter, canonical
+  activity session, and composer projection. Keep raw runtime context private
+  to provider recovery; do not restore a GUI runtime-context dependency.
+  Parse `modelUsage` recursively as both arrays and maps before using fallback
+  context-window values. Track the model associated with a cached context
+  window, and only reuse the previous total for the same model or when the model
+  is unknown. Do not hard-code alias-to-model mappings in Tutti.
+- Validation:
+  Cover runtime-context splitting and metadata persistence, generated API
+  projection, desktop canonical-session adaptation, activity-core usage
+  resolution, and the composer hook.
+  Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
+  `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
+  usage updates where the last payload lacks `totalTokens`. Then run the Claude
+  SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
+- References:
+  [agent-activity-packages.md](../architecture/agent-activity-packages.md)
+  [session_metadata.go](../../packages/agent/store-sqlite/session_metadata.go)
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
+  [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
+  [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)

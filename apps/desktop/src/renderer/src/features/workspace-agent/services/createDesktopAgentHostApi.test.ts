@@ -103,7 +103,7 @@ test("desktop agent host api does not inject legacy agent data host apis", () =>
   const api = createAgentHostApi();
 
   assert.equal(api.agentSessions, undefined);
-  assert.equal(api.workspaceAgents, undefined);
+  assert.equal("workspaceAgents" in api, false);
 });
 
 test("desktop agent host api remembers the default project selection per workspace", async () => {

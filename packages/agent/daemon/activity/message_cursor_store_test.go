@@ -67,7 +67,7 @@ func TestStoreResumesMessageSyncFromPersistedCursor(t *testing.T) {
 	dir := t.TempDir()
 	cursorStore := NewFileAgentSyncStateStore(dir)
 	snapshot := &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "session-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
@@ -117,7 +117,7 @@ func TestStoreResumesMessageSyncFromPersistedCursor(t *testing.T) {
 
 func TestStoreWithoutCursorStoreStartsFromZeroAfterRestart(t *testing.T) {
 	snapshot := &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "session-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",

@@ -1,150 +1,143 @@
-import { useCallback, useMemo, useState } from "react";
+import {
+  selectSessionActivationPresentations,
+  sessionActivationPresentationMapsEqual,
+  type AgentActivitySubmitDiagnostics,
+  type AgentSessionEngine
+} from "@tutti-os/agent-activity-core";
+import { useCallback, useMemo, useRef } from "react";
 import {
   type AppErrorCode,
-  type AgentPromptContentBlock,
-  AgentHostActivateAgentSessionResult
+  type AgentPromptContentBlock
 } from "../../../shared/contracts/dto";
 import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
-import { getAppErrorCode } from "../../../shared/errors/appError";
-import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
+import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
-interface AgentGUIActivateInput {
+
+interface AgentGUIActivateInputBase {
   agentSessionId: string;
-  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
-  metadata?: Record<string, unknown>;
-  mode: "existing" | "new";
-  openclawGatewayReady?: boolean;
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   settings?: AgentSessionComposerSettings;
   title?: string;
   visible?: boolean;
 }
 
+type AgentGUIActivateInput =
+  | (AgentGUIActivateInputBase & {
+      agentTargetId: string;
+      clientSubmitId: string;
+      mode: "new";
+    })
+  | (AgentGUIActivateInputBase & {
+      agentTargetId?: string | null;
+      clientSubmitId?: never;
+      mode: "existing";
+    });
+
 interface UseAgentGUIActivationInput {
+  engine: AgentSessionEngine;
   workspaceId: string;
   getErrorMessage: (error: unknown) => string;
   getErrorCode?: (error: unknown) => AppErrorCode | null;
 }
 
+const ACTIVATION_EXPIRY_MS = 45_000;
+
 export function useAgentGUIActivation({
+  engine,
   workspaceId,
   getErrorMessage,
   getErrorCode
 }: UseAgentGUIActivationInput) {
-  const agentActivityRuntime = useAgentActivityRuntime();
-  const [liveStateBySessionId, setLiveStateBySessionId] = useState<
-    Record<string, AgentGUILiveState>
-  >({});
-  const [activationErrorBySessionId, setActivationErrorBySessionId] = useState<
-    Record<string, string | null>
-  >({});
-  const [activationErrorCodeBySessionId, setActivationErrorCodeBySessionId] =
-    useState<Record<string, AppErrorCode | null>>({});
+  const requestSequenceRef = useRef(0);
+  const presentations = useEngineSelector(
+    engine,
+    selectSessionActivationPresentations,
+    sessionActivationPresentationMapsEqual
+  );
+
+  const nextRequestId = (kind: string, agentSessionId: string): string => {
+    requestSequenceRef.current += 1;
+    return `${kind}:${workspaceId}:${agentSessionId}:${Date.now()}:${requestSequenceRef.current}`;
+  };
 
   const activate = useCallback(
-    async (
-      input: AgentGUIActivateInput
-    ): Promise<AgentHostActivateAgentSessionResult> => {
+    (input: AgentGUIActivateInput): string | null => {
       const agentSessionId = input.agentSessionId.trim();
-      setLiveStateBySessionId((current) => ({
-        ...current,
-        [agentSessionId]: "activating"
-      }));
-      setActivationErrorBySessionId((current) => ({
-        ...current,
-        [agentSessionId]: null
-      }));
-      setActivationErrorCodeBySessionId((current) => ({
-        ...current,
-        [agentSessionId]: null
-      }));
-      try {
-        const agentTargetId = input.agentTargetId?.trim() ?? "";
-        if (input.mode === "new" && !agentTargetId) {
-          throw new Error("agent_target_required");
-        }
-        const request =
-          input.mode === "new"
-            ? {
-                mode: input.mode,
-                workspaceId,
-                agentSessionId,
-                agentTargetId,
-                cwd: input.cwd,
-                initialContent: input.initialContent,
-                initialDisplayPrompt: input.initialDisplayPrompt,
-                metadata: input.metadata,
-                title: input.title,
-                settings: input.settings,
-                visible: input.visible,
-                openclawGatewayReady: input.openclawGatewayReady
-              }
-            : {
-                mode: input.mode,
-                workspaceId,
-                agentSessionId,
-                visible: input.visible
-              };
-        const result = await agentActivityRuntime.activateSession(request);
-        const failed =
-          result.activation.status === "failed" ||
-          result.session.status === "failed";
-        setLiveStateBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: failed ? "failed" : "active"
-        }));
-        setActivationErrorBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: failed ? (result.error?.message ?? null) : null
-        }));
-        setActivationErrorCodeBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: null
-        }));
-        return result;
-      } catch (error) {
-        setLiveStateBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: "failed"
-        }));
-        setActivationErrorBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: getErrorMessage(error)
-        }));
-        setActivationErrorCodeBySessionId((current) => ({
-          ...current,
-          [agentSessionId]: getErrorCode?.(error) ?? getAppErrorCode(error)
-        }));
-        throw error;
+      const agentTargetId = input.agentTargetId?.trim() ?? "";
+      if (!agentSessionId) {
+        return null;
       }
+      if (input.mode === "new" && !agentTargetId) {
+        return null;
+      }
+
+      const requestedAtUnixMs = Date.now();
+      const requestId = nextRequestId("activation", agentSessionId);
+      const clientSubmitId = input.clientSubmitId?.trim() ?? "";
+      if (input.mode === "new" && !clientSubmitId) {
+        return null;
+      }
+      const sharedIntent = {
+        type: "activation/requested",
+        agentSessionId,
+        ...(input.initialContent ? { content: input.initialContent } : {}),
+        ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
+        ...(input.initialDisplayPrompt
+          ? { initialDisplayPrompt: input.initialDisplayPrompt }
+          : {}),
+        ...(input.submitDiagnostics
+          ? { submitDiagnostics: input.submitDiagnostics }
+          : {}),
+        requestedAtUnixMs,
+        requestId,
+        ...(input.settings
+          ? {
+              settings: input.settings
+            }
+          : {}),
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.visible !== undefined ? { visible: input.visible } : {}),
+        workspaceId
+      } as const;
+      if (input.mode === "new") {
+        engine.dispatch({
+          ...sharedIntent,
+          agentTargetId,
+          clientSubmitId,
+          mode: "new"
+        });
+      } else {
+        engine.dispatch({
+          ...sharedIntent,
+          ...(agentTargetId ? { agentTargetId } : {}),
+          mode: "existing"
+        });
+      }
+      return requestId;
     },
-    [agentActivityRuntime, getErrorCode, getErrorMessage, workspaceId]
+    [engine, workspaceId]
   );
 
   const unactivate = useCallback(
-    async (agentSessionId: string): Promise<void> => {
+    (agentSessionId: string): Promise<void> => {
       const normalized = agentSessionId.trim();
       if (!normalized) {
-        return;
+        return Promise.resolve();
       }
-      setLiveStateBySessionId((current) => ({
-        ...current,
-        [normalized]: "inactive"
-      }));
-      try {
-        await agentActivityRuntime.unactivateSession({
-          workspaceId,
-          agentSessionId: normalized
-        });
-      } catch {
-        // Switching sessions is driven by durable history. A failed best-effort
-        // buffer transition should not trap the user on the old conversation.
-      }
+      engine.dispatch({
+        type: "activation/unactivateRequested",
+        agentSessionId: normalized,
+        commandId: nextRequestId("unactivate", normalized),
+        workspaceId
+      });
+      return Promise.resolve();
     },
-    [agentActivityRuntime, workspaceId]
+    [engine, workspaceId]
   );
 
   const markFailed = useCallback(
@@ -153,66 +146,50 @@ export function useAgentGUIActivation({
       if (!normalized) {
         return;
       }
-      setLiveStateBySessionId((current) => ({
-        ...current,
-        [normalized]: "failed"
-      }));
-      setActivationErrorBySessionId((current) => ({
-        ...current,
-        [normalized]: getErrorMessage(error)
-      }));
-      setActivationErrorCodeBySessionId((current) => ({
-        ...current,
-        [normalized]: getErrorCode?.(error) ?? getAppErrorCode(error)
-      }));
+      engine.dispatch({
+        type: "activation/failureRecorded",
+        agentSessionId: normalized,
+        errorCode: getErrorCode?.(error) ?? null,
+        errorMessage: getErrorMessage(error),
+        occurredAtUnixMs: Date.now(),
+        requestId: nextRequestId("activation-failure", normalized),
+        workspaceId
+      });
     },
-    [getErrorCode, getErrorMessage]
+    [engine, getErrorCode, getErrorMessage, workspaceId]
   );
 
-  const clearFailure = useCallback((agentSessionId: string): void => {
-    const normalized = agentSessionId.trim();
-    if (!normalized) {
-      return;
-    }
-    setLiveStateBySessionId((current) =>
-      current[normalized] === "failed"
-        ? { ...current, [normalized]: "inactive" }
-        : current
-    );
-    setActivationErrorBySessionId((current) =>
-      current[normalized] === null || current[normalized] === undefined
-        ? current
-        : { ...current, [normalized]: null }
-    );
-    setActivationErrorCodeBySessionId((current) =>
-      current[normalized] === null || current[normalized] === undefined
-        ? current
-        : { ...current, [normalized]: null }
-    );
-  }, []);
+  const clearFailure = useCallback(
+    (agentSessionId: string): void => {
+      const normalized = agentSessionId.trim();
+      if (normalized) {
+        engine.dispatch({
+          type: "activation/failureCleared",
+          agentSessionId: normalized
+        });
+      }
+    },
+    [engine]
+  );
 
   const stateFor = useCallback(
     (agentSessionId: string | null | undefined): AgentGUILiveState =>
-      agentSessionId
-        ? (liveStateBySessionId[agentSessionId] ?? "inactive")
-        : "inactive",
-    [liveStateBySessionId]
+      (agentSessionId ? presentations[agentSessionId]?.status : null) ??
+      "inactive",
+    [presentations]
   );
-
   const errorFor = useCallback(
     (agentSessionId: string | null | undefined): string | null =>
-      agentSessionId
-        ? (activationErrorBySessionId[agentSessionId] ?? null)
-        : null,
-    [activationErrorBySessionId]
+      (agentSessionId ? presentations[agentSessionId]?.errorMessage : null) ??
+      null,
+    [presentations]
   );
-
   const codeFor = useCallback(
     (agentSessionId: string | null | undefined): AppErrorCode | null =>
-      agentSessionId
-        ? (activationErrorCodeBySessionId[agentSessionId] ?? null)
-        : null,
-    [activationErrorCodeBySessionId]
+      ((agentSessionId
+        ? presentations[agentSessionId]?.errorCode
+        : null) as AppErrorCode | null) ?? null,
+    [presentations]
   );
 
   return useMemo(

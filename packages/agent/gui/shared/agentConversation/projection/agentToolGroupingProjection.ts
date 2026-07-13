@@ -104,7 +104,7 @@ export function computeAgentToolGroups(
   const suppressedIndices = new Set<number>();
   const splitFromIndex = allowTrailingFinalization
     ? -1
-    : findActiveTailRunStartIndex(sequence);
+    : findUnfinalizedTailRunStartIndex(sequence);
 
   let currentCalls: AgentToolCallVM[] = [];
   let currentEntries: AgentToolGroupEntryVM[] = [];
@@ -299,59 +299,25 @@ function isGroupableToolCall(call: AgentToolCallVM): boolean {
 }
 
 /**
- * Index where the still-streaming trailing tool run begins, or -1 when there
- * is none. The run is the contiguous block of tool calls at the end of the
- * sequence whose newest (tail) tool is still active. Returning its start lets
- * the projection keep that whole run as individual, always-visible rows while
- * the burst is in flight, instead of grouping (and previously hiding) it.
+ * Index where the unfinalized turn's trailing tool chain begins, or -1 when
+ * there is none. Completion of an individual tool does not finalize the turn:
+ * while the canonical turn is still active, every tool since the last
+ * assistant message remains individually visible. Thinking entries may bridge
+ * those calls and must remain visible too.
  */
-function findActiveTailRunStartIndex(
+function findUnfinalizedTailRunStartIndex(
   sequence: readonly AgentTurnSequenceItemVM[]
 ): number {
-  let tailIndex = -1;
+  let startIndex = -1;
+  let hasToolCall = false;
   for (let index = sequence.length - 1; index >= 0; index -= 1) {
     const item = sequence[index];
-    if (!item) {
-      continue;
-    }
-    tailIndex = index;
-    break;
-  }
-  const tailItem = tailIndex >= 0 ? sequence[tailIndex] : undefined;
-  if (tailItem?.kind !== "tool-call" || !isActiveTailTool(tailItem.call)) {
-    return -1;
-  }
-  let startIndex = tailIndex;
-  for (let index = tailIndex - 1; index >= 0; index -= 1) {
-    const item = sequence[index];
-    if (!item) {
-      continue;
-    }
-    if (item.kind !== "tool-call") {
-      break;
-    }
+    if (!item) continue;
+    if (item.kind === "assistant-message") break;
+    if (item.kind === "tool-call") hasToolCall = true;
     startIndex = index;
   }
-  return startIndex;
-}
-
-function isActiveTailTool(call: AgentToolCallVM): boolean {
-  // Only an actively running tail tool keeps its trailing run in the live,
-  // ungrouped state. Once the latest tail tool has finished, the run finalizes
-  // and groups like any other completed run.
-  if (call.statusKind !== "working" && call.statusKind !== "waiting") {
-    return false;
-  }
-  switch (call.rendererKind) {
-    case "approval":
-    case "ask-user":
-    case "plan-enter":
-    case "plan-exit":
-    case "task":
-      return false;
-    default:
-      return true;
-  }
+  return hasToolCall ? startIndex : -1;
 }
 
 function isEditBoundaryToolCall(call: AgentToolCallVM): boolean {

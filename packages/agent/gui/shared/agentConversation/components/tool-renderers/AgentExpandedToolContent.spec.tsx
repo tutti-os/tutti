@@ -130,7 +130,7 @@ describe("AgentExpandedToolContent", () => {
   it("renders web fetch URL details in a Claude Code web-read approval dialog", async () => {
     setAgentGuiI18nTestLocale("en");
 
-    // Claude Code's approval payload has no ACP `kind` field — the nested
+    // Claude Code's approval payload has no top-level `kind` field — the nested
     // toolCall is identified only by `title`/`toolName` ("WebFetch"), unlike
     // Codex's ACP `kind: "fetch"`. Both must resolve to the web-fetch
     // renderer instead of the bare summary fallback.

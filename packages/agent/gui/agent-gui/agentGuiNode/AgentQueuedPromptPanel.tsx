@@ -1,7 +1,5 @@
 import {
-  useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -100,6 +98,12 @@ function queuedPromptImageHasSafeRemoteUrl(
   }
 }
 
+function queuedPromptImageImmediateSource(
+  image: QueuedPromptImageBlock
+): string | null {
+  return queuedPromptImageDataUrl(image);
+}
+
 function queuedPromptImageKey(
   queuedPrompt: AgentGUIQueuedPromptVM,
   image: QueuedPromptImageBlock,
@@ -115,83 +119,96 @@ function queuedPromptImageKey(
   ].join(":");
 }
 
-function useQueuedPromptImageSources(input: {
+function AgentQueuedPromptImage({
+  agentSessionId,
+  image,
+  imageKey,
+  workspaceId
+}: {
   agentSessionId?: string | null;
-  images: readonly {
-    image: QueuedPromptImageBlock;
-    key: string;
-  }[];
+  image: QueuedPromptImageBlock;
+  imageKey: string;
   workspaceId?: string | null;
-}): ReadonlyMap<string, string> {
+}): React.JSX.Element | null {
   const runtime = useOptionalAgentActivityRuntime();
-  const [sources, setSources] = useState<Map<string, string>>(() => new Map());
-  const workspaceId = input.workspaceId?.trim() ?? "";
-  const agentSessionId = input.agentSessionId?.trim() ?? "";
-  const missingImages = useMemo(
-    () =>
-      input.images.filter(({ image, key }) => {
-        const attachmentId = image.attachmentId?.trim() ?? "";
-        const path = image.path?.trim() ?? "";
-        return (
-          !queuedPromptImageDataUrl(image) &&
-          !queuedPromptImageHasSafeRemoteUrl(image) &&
-          !sources.has(key) &&
-          Boolean(attachmentId || path) &&
-          Boolean(workspaceId)
-        );
-      }),
-    [input.images, sources, workspaceId]
-  );
+  const [loadedSource, setLoadedSource] = useState<string | null>(null);
+  const loadingKeyRef = useRef<string | null>(null);
+  const normalizedWorkspaceId = workspaceId?.trim() ?? "";
+  const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
+  const attachmentId = image.attachmentId?.trim() ?? "";
+  const path = image.path?.trim() ?? "";
+  const source = queuedPromptImageImmediateSource(image) ?? loadedSource;
 
-  useEffect(() => {
-    if (
-      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
-      missingImages.length === 0
-    ) {
+  if (source) {
+    return (
+      <ZoomableImage
+        alt={image.name?.trim() || ""}
+        className={styles.composerQueuedPromptImage}
+        draggable={false}
+        src={source}
+        wrapElement="span"
+      />
+    );
+  }
+  if (
+    !normalizedWorkspaceId ||
+    (!attachmentId && !path) ||
+    queuedPromptImageHasSafeRemoteUrl(image) ||
+    (!runtime?.readSessionAttachment && !runtime?.readPromptAsset)
+  ) {
+    return null;
+  }
+
+  const loadSource = (element: HTMLSpanElement | null): void => {
+    if (!element || loadingKeyRef.current === imageKey) {
       return;
     }
-    let canceled = false;
-    for (const { image, key } of missingImages) {
-      const attachmentId = image.attachmentId?.trim() ?? "";
-      const path = image.path?.trim() ?? "";
-      const readImage = attachmentId
-        ? runtime.readSessionAttachment?.({
-            workspaceId,
-            agentSessionId,
-            attachmentId
-          })
-        : runtime.readPromptAsset?.({
-            workspaceId,
-            agentSessionId,
-            mimeType: image.mimeType,
-            name: image.name,
-            path
-          });
-      if (!readImage) {
-        continue;
+    loadingKeyRef.current = imageKey;
+    const readAsset = async (): Promise<
+      { data: string; mimeType: string } | undefined
+    > => {
+      if (attachmentId) {
+        return await runtime.readSessionAttachment?.({
+          workspaceId: normalizedWorkspaceId,
+          agentSessionId: normalizedAgentSessionId,
+          attachmentId
+        });
       }
-      void readImage
-        .then((asset) => {
-          if (canceled) {
-            return;
-          }
-          setSources((current) => {
-            if (current.has(key)) {
-              return current;
-            }
-            const next = new Map(current);
-            next.set(key, `data:${asset.mimeType};base64,${asset.data}`);
-            return next;
-          });
-        })
-        .catch(() => {});
-    }
-    return () => {
-      canceled = true;
+      return await runtime.readPromptAsset?.({
+        workspaceId: normalizedWorkspaceId,
+        agentSessionId: normalizedAgentSessionId,
+        mimeType: image.mimeType,
+        name: image.name,
+        path
+      });
     };
-  }, [agentSessionId, missingImages, runtime, workspaceId]);
+    void readAsset()
+      .then((asset) => {
+        if (!asset || !element.isConnected) {
+          return;
+        }
+        setLoadedSource(`data:${asset.mimeType};base64,${asset.data}`);
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          "[agent-gui]",
+          JSON.stringify({
+            event: "agent.gui.queued_prompt_image_load_failed",
+            level: "warn",
+            source: "agent-gui",
+            workspaceId: normalizedWorkspaceId,
+            details: {
+              agentSessionId: normalizedAgentSessionId || null,
+              attachmentId: attachmentId || null,
+              path: path || null,
+              error: error instanceof Error ? error.message : String(error)
+            }
+          })
+        );
+      });
+  };
 
-  return sources;
+  return <span ref={loadSource} hidden />;
 }
 
 /**
@@ -238,23 +255,6 @@ export function AgentQueuedPromptPanel({
   const [isSinglePromptOverflowing, setIsSinglePromptOverflowing] =
     useState(false);
   const [expandedListMaxHeightPx, setExpandedListMaxHeightPx] = useState(280);
-  const queuedPromptImageEntries = useMemo(
-    () =>
-      queuedPrompts.flatMap((queuedPrompt) =>
-        queuedPromptImages(queuedPrompt)
-          .slice(0, 3)
-          .map((image, index) => ({
-            image,
-            key: queuedPromptImageKey(queuedPrompt, image, index)
-          }))
-      ),
-    [queuedPrompts]
-  );
-  const queuedPromptImageSources = useQueuedPromptImageSources({
-    agentSessionId,
-    images: queuedPromptImageEntries,
-    workspaceId
-  });
   const singlePromptHasImages =
     queuedPrompts.length === 1 &&
     queuedPromptImages(queuedPrompts[0]!).length > 0;
@@ -445,20 +445,13 @@ export function AgentQueuedPromptPanel({
                           image,
                           index
                         );
-                        const src =
-                          queuedPromptImageSources.get(imageKey) ??
-                          queuedPromptImageDataUrl(image);
-                        if (!src) {
-                          return null;
-                        }
                         return (
-                          <ZoomableImage
+                          <AgentQueuedPromptImage
                             key={imageKey}
-                            alt={image.name?.trim() || ""}
-                            className={styles.composerQueuedPromptImage}
-                            draggable={false}
-                            src={src}
-                            wrapElement="span"
+                            agentSessionId={agentSessionId}
+                            image={image}
+                            imageKey={imageKey}
+                            workspaceId={workspaceId}
                           />
                         );
                       })}

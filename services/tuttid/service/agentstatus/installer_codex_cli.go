@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
@@ -32,16 +31,18 @@ func displayNPMRegistry(registry string) string {
 
 func (s Service) runCodexCLILatestInstaller(
 	ctx context.Context,
+	provider string,
 	spec InstallerSpec,
 	existingCLIPath string,
 ) (InstallCommandResult, error) {
 	if spec.CodexCLI == nil {
 		return InstallCommandResult{ExitCode: 1, Stderr: "codex CLI latest installer config is required"}, nil
 	}
-	return s.runManagedNPMPackageInstaller(ctx, agentprovider.Codex, ManagedNPMPackageInstallerSpec{
-		PackageName:     "@openai/codex",
-		BinaryName:      "codex",
-		IncludeOptional: true,
+	return s.runManagedNPMPackageInstaller(ctx, provider, ManagedNPMPackageInstallerSpec{
+		PackageName:     spec.CodexCLI.PackageName,
+		BinaryName:      spec.CodexCLI.BinaryName,
+		IncludeOptional: spec.CodexCLI.IncludeOptional,
+		InstallDir:      spec.CodexCLI.InstallDir,
 	}, existingCLIPath)
 }
 

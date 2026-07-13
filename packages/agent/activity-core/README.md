@@ -23,6 +23,47 @@ It intentionally does not render UI, open network connections directly, persist
 state, or translate daemon/backend contracts. Those responsibilities belong to a
 host adapter such as the desktop renderer adapter.
 
+## Session Engine (skeleton)
+
+`createAgentSessionEngine` is the workspace-level orchestration loop described
+in `docs/architecture/agent-gui-refactor-plan.md` (section 3.3). It is
+React-free and host-agnostic:
+
+```ts
+import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+
+const engine = createAgentSessionEngine({
+  identity: { workspaceId: "workspace-1", origin: "local-tuttid" },
+  commandPort, // executes external command descriptions (transport adapter)
+  scheduler, // host timer port, e.g. setTimeout-backed outside this package
+  clock, // host clock port: { nowUnixMs() }
+  diagnosticSink // optional instance-level diagnostics receiver
+});
+```
+
+Engine rules:
+
+- Instances are identified by the workspace + origin pair and injected
+  explicitly. There is no module-level singleton; hosts running multiple
+  runtimes against one workspace create one engine per origin.
+- `dispatch(intent)` is the only input. Reducers are pure and return new state
+  plus command descriptions; the effect executor performs commands and feeds
+  every settlement (success, failure, timeout) back into the loop as
+  command-result intents.
+- Timing is never read inside reducers. Deadlines are `scheduleExpiry`
+  commands handled by the expiry clock, which re-enters the loop with expiry
+  intents through the injected host scheduler.
+- `dispatch(intent, { batch: true })` coalesces high-frequency intents inside
+  a 33ms frame window; a non-batched dispatch flushes the pending frame first
+  so ordering is preserved.
+- `getSnapshot()` / `subscribe()` expose the immutable state tree. React
+  surfaces subscribe through the single `useEngineSelector` binding in
+  `@tutti-os/agent-gui`.
+
+The current state tree carries only the skeleton `engineRuntime` domain;
+business domains (turn lifecycle, queue send, optimistic intents) land as
+sibling reducers in later refactor slices.
+
 ## Adapter Contract
 
 Business hosts implement `AgentActivityAdapter`:
@@ -64,7 +105,6 @@ export const adapter: AgentActivityAdapter = {
 
   createSession: createAgentSession,
   sendInput: sendAgentInput,
-  cancelSession: cancelAgentSession,
   goalControl: controlAgentGoal,
   submitInteractive: submitAgentInteractiveResponse,
   deleteSession: deleteAgentSession,
@@ -149,10 +189,14 @@ Live streams emit `AgentActivitySessionEventEnvelope`:
 }
 ```
 
-Supported controller event types:
+The retained controller stream accepts `message_update` and upserts the message
+into `sessionMessagesById`. The session engine's generated
+`AgentActivityUpdatedEvent` input additionally accepts:
 
-- `message_update`: upserts a message into `sessionMessagesById`
-- `session_update`: upserts a session into `sessions`
+- `turn_update`: updates the canonical durable turn projection
+- `interaction_update`: updates the canonical durable interaction projection
+- `session_reconcile_required`: asks the engine transport to reload the session
+- `session_deleted`: removes the session through the engine tombstone flow
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.

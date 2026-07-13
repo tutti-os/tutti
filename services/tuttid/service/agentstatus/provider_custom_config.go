@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 // A provider CLI can diverge from its default Console/OAuth login in two
@@ -42,14 +42,15 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 			return true
 		}
 	}
-	switch provider {
-	case agentprovider.Codex:
-		return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key") || s.codexAuthJSONHasAPIKey()
-	case agentprovider.ClaudeCode:
-		return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
-	default:
-		return false
+	if status, ok := migratedProviderStatus(provider); ok {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
+			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key") || s.codexAuthJSONHasAPIKey()
+		case providerregistry.StatusKindClaudeCLI:
+			return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
+		}
 	}
+	return false
 }
 
 // providerHasAPICredential reports whether the user configured an API
@@ -57,67 +58,64 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 // via env vars or on-disk config. This is the signal that usage is billed to an
 // API account rather than a Console/subscription session, and it overrides
 // whatever `claude auth status` reports (which only reflects the stored OAuth
-// session, not env/settings credentials). Used for Claude Code and Codex today;
-// other providers return false until credential env/config detection is added.
+// session, not env/settings credentials).
 func (s Service) providerHasAPICredential(provider string) bool {
 	for _, key := range providerCredentialEnvVars(provider) {
 		if strings.TrimSpace(s.lookupEnv(key)) != "" {
 			return true
 		}
 	}
-	switch provider {
-	case agentprovider.Codex:
-		return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
-	case agentprovider.ClaudeCode:
-		return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
-	default:
+	if status, ok := migratedProviderStatus(provider); ok {
+		switch status.Kind {
+		case providerregistry.StatusKindCodexCLI:
+			return s.codexConfigDeclares("api_key") || s.codexAuthJSONHasAPIKey()
+		case providerregistry.StatusKindClaudeCLI:
+			return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
+		}
+	}
+	return false
+}
+
+func (s Service) codexAuthJSONHasAPIKey() bool {
+	codexHome := strings.TrimSpace(s.lookupEnv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return false
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	content, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	if err != nil {
 		return false
 	}
+	var parsed struct {
+		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
+	}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return false
+	}
+	return strings.TrimSpace(parsed.OpenAIAPIKey) != ""
 }
 
 // providerCustomConfigEnvVars lists env vars that signal a user-provided API
 // key OR a custom base URL for a provider — either axis counts as custom config
 // for the network-probe skip.
 func providerCustomConfigEnvVars(provider string) []string {
-	switch provider {
-	case agentprovider.Codex:
-		return []string{
-			"OPENAI_API_KEY",
-			"OPENAI_BASE_URL",
-			"OPENAI_API_BASE_URL",
-			"OPENAI_API_BASE",
-		}
-	case agentprovider.ClaudeCode:
-		return []string{
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_AUTH_TOKEN",
-			"ANTHROPIC_BASE_URL",
-			"ANTHROPIC_API_BASE_URL",
-		}
-	case agentprovider.OpenCode:
-		return []string{
-			"OPENCODE_CONFIG",
-			"OPENCODE_CONFIG_DIR",
-			"OPENCODE_CONFIG_CONTENT",
-			"OPENCODE_PERMISSION",
-		}
-	default:
-		return nil
+	if status, ok := migratedProviderStatus(provider); ok {
+		return append([]string(nil), status.CustomConfigEnvVars...)
 	}
+	return nil
 }
 
 // providerCredentialEnvVars lists env vars that signal a user-provided API
 // credential (key/token) for a provider — the billing axis only, excluding
 // custom base URLs.
 func providerCredentialEnvVars(provider string) []string {
-	switch provider {
-	case agentprovider.Codex:
-		return []string{"OPENAI_API_KEY"}
-	case agentprovider.ClaudeCode:
-		return []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
-	default:
-		return nil
+	if status, ok := migratedProviderStatus(provider); ok {
+		return append([]string(nil), status.CredentialEnvVars...)
 	}
+	return nil
 }
 
 // claudeCustomConfigKeys are the ~/.claude/settings.json env keys that count as
@@ -171,37 +169,9 @@ func (s Service) codexConfigDeclares(keys ...string) bool {
 	return false
 }
 
-// codexAuthJSONHasAPIKey reports whether ~/.codex/auth.json (or $CODEX_HOME)
-// stores a non-empty OPENAI_API_KEY. Tools such as cc-switch write custom
-// provider keys there instead of config.toml; Codex can use that key without a
-// ChatGPT OAuth session.
-func (s Service) codexAuthJSONHasAPIKey() bool {
-	codexHome := strings.TrimSpace(s.lookupEnv("CODEX_HOME"))
-	if codexHome == "" {
-		home, err := s.homeDir()
-		if err != nil || strings.TrimSpace(home) == "" {
-			return false
-		}
-		codexHome = filepath.Join(home, ".codex")
-	}
-	content, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
-	if err != nil {
-		return false
-	}
-	var parsed struct {
-		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
-	}
-	if err := json.Unmarshal(content, &parsed); err != nil {
-		return false
-	}
-	return strings.TrimSpace(parsed.OpenAIAPIKey) != ""
-}
-
-// claudeSettingsDeclares reports whether the Claude settings.json sets any of
+// claudeSettingsDeclares reports whether $CLAUDE_CONFIG_DIR/settings.json sets any of
 // the given env keys to a non-blank value, or — when withAPIKeyHelper is true —
-// declares a non-blank apiKeyHelper. The settings file lives under
-// $CLAUDE_CONFIG_DIR when set (matching the claude-sdk-sidecar), otherwise
-// ~/.claude.
+// declares a non-blank apiKeyHelper.
 func (s Service) claudeSettingsDeclares(keys []string, withAPIKeyHelper bool) bool {
 	configDir := strings.TrimSpace(s.lookupEnv("CLAUDE_CONFIG_DIR"))
 	if configDir == "" {

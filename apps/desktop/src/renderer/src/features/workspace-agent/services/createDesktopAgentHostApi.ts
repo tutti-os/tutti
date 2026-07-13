@@ -241,7 +241,7 @@ function toAgentHostUserProject(
   return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
 }
 
-function readDesktopWorkspaceAgentReadState(
+export function readDesktopWorkspaceAgentReadState(
   input: ReadWorkspaceAgentReadStateInput
 ): Promise<WorkspaceAgentReadStateSnapshot> {
   const storage = resolveLocalStorage();
@@ -259,7 +259,7 @@ function readDesktopWorkspaceAgentReadState(
   }
 }
 
-function writeDesktopWorkspaceAgentReadState(
+export function writeDesktopWorkspaceAgentReadState(
   input: WriteWorkspaceAgentReadStateInput
 ): Promise<PersistWriteResult> {
   const storage = resolveLocalStorage();

@@ -18,14 +18,25 @@ func TestDefaultSystemTargetsDisableTuttiAgent(t *testing.T) {
 
 func TestEnabledTargetsByProviderPreservesOrderAndCanonicalizes(t *testing.T) {
 	targets := DefaultSystemTargets(1)
-	targets[0].Provider = "CODEX"
-	targets[1].Enabled = false
-	targets[2].Enabled = true
-	duplicate := targets[0]
+	var codex Target
+	var tuttiAgent Target
+	for index := range targets {
+		switch targets[index].Provider {
+		case "codex":
+			targets[index].Provider = "CODEX"
+			codex = targets[index]
+		case "claude-code":
+			targets[index].Enabled = false
+		case "tutti-agent":
+			targets[index].Enabled = true
+			tuttiAgent = targets[index]
+		}
+	}
+	duplicate := codex
 	duplicate.ID = "user:codex"
 	duplicate.Name = "Other Codex"
 	duplicate.Source = SourceUser
-	targets = append([]Target{targets[2], targets[0], duplicate}, targets[1:]...)
+	targets = append([]Target{tuttiAgent, codex, duplicate}, targets...)
 
 	enabled := EnabledTargetsByProvider(targets)
 	if len(enabled) != 4 {

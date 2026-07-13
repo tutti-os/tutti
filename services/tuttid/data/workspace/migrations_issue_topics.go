@@ -340,14 +340,23 @@ func (s *SQLiteStore) applyWorkspaceIssuesV5(ctx context.Context) error {
 			return fmt.Errorf("migrate workspace issue runs agent target id: %w", err)
 		}
 	}
+	targetIDs := defaultTargetIDBackfillByProvider()
+	codexTargetID := targetIDs["codex"]
+	if codexTargetID == "" {
+		return fmt.Errorf("migrate workspace issue runs agent target id: codex target descriptor is missing")
+	}
 	if _, err := s.db.ExecContext(ctx, `
 UPDATE workspace_issue_runs
 SET agent_target_id = CASE agent_provider
-  WHEN 'codex' THEN 'local:codex'
+  WHEN ? THEN ?
   WHEN 'claude-code' THEN 'local:claude-code'
   ELSE agent_target_id
 END
 WHERE agent_target_id = '';
+`, "codex", codexTargetID); err != nil {
+		return fmt.Errorf("backfill workspace issue run agent target ids: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceIssuesV5, now); err != nil {

@@ -46,7 +46,6 @@ export interface AgentGUINodeData {
   provider: AgentGUIProvider;
   agentTargetId?: string | null;
   lastActiveAgentSessionId: string | null;
-  lastActiveConversationTitle?: string | null;
   conversationCount?: number | null;
   conversationRailWidthPx?: number | null;
   conversationRailCollapsed?: boolean | null;

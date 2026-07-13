@@ -7,6 +7,8 @@ package agentruntime
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func NewNexightAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -14,33 +16,20 @@ func NewNexightAdapter(transport ProcessTransport) *standardACPAdapter {
 }
 
 func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderNexight,
-			adapterName:         "nexight-acp",
-			command:             []string{nexightACPCommand},
-			defaultTitle:        "Nexight",
-			defaultTitleAliases: []string{"", ProviderNexight, "tutti"},
-			authRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
-			permissionModeID:    codexACPModeID,
-			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                 func(session Session) []string { return standardACPEnv(session, host) },
-			// nexight-acp is codex-acp derived: transport retry/fallback text
-			// arrives as ordinary chunks and stderr logs, so keep the notice
-			// projection the old CodexAdapter provided.
-			allowSyntheticNotice: true,
-			stderrMessageMapper:  nexightACPSystemNoticeMessageFromStderr,
-			// Model/effort (and the spark-family model_reasoning_summary=none
-			// override) are spawn-time codex config flags; the reasoning-summary
-			// override cannot change on a live process, so switching across the
-			// spark boundary forces a new session.
-			commandWithSettings:           nexightACPCommandWithSettings,
-			requiresNewSessionForSettings: nexightRequiresNewSessionForSettings,
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
+	descriptor, ok := providerregistry.Find(ProviderNexight)
+	if !ok {
+		panic("nexight provider descriptor is missing")
 	}
+	return newNexightAdapterFromProviderDescriptor(descriptor, transport, host, nil)
+}
+
+func newNexightAdapterFromProviderDescriptor(descriptor providerregistry.ProviderDescriptor, transport ProcessTransport, host HostMetadata, commandResolver ProviderCommandResolver) *standardACPAdapter {
+	adapter := newStandardACPAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
+	adapter.config.allowSyntheticNotice = true
+	adapter.config.stderrMessageMapper = nexightACPSystemNoticeMessageFromStderr
+	adapter.config.commandWithSettings = nexightACPCommandWithSettings
+	adapter.config.requiresNewSessionForSettings = nexightRequiresNewSessionForSettings
+	return adapter
 }
 
 // nexightACPSystemNoticeMessageFromStderr projects codex-acp "handled error

@@ -1,6 +1,12 @@
 package agentstatus
 
-import "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+import (
+	"fmt"
+	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+)
 
 type Registry struct {
 	Specs []ProviderSpec
@@ -14,11 +20,16 @@ const (
 )
 
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
-const codexServiceTierOverride = `service_tier="fast"`
-const minTuttiAgentVersion = "0.0.2"
 
 type ProviderSpec struct {
+	Kind                         providerregistry.StatusKind
+	AuthOutputParserKind         providerregistry.AuthOutputParserKind
+	AuthMarkerParserKind         providerregistry.AuthMarkerParserKind
+	AuthCommandRunnerKind        providerregistry.AuthCommandRunnerKind
+	StaticSpecResolverKind       providerregistry.StaticSpecResolverKind
 	Provider                     string
+	MinVersion                   string
+	NPMRegistryPackage           string
 	SupportStatus                ProviderSupportStatus
 	DisabledReasonCode           string
 	BinaryNames                  []string
@@ -29,10 +40,12 @@ type ProviderSpec struct {
 	AdapterUnavailableReasonCode string
 	AdapterPackage               AdapterPackageRequirement
 	AuthStatusCommand            []string
+	AuthStatusCommandTimeout     time.Duration
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
 	AdapterInstall               InstallerSpec
 	LoginArgs                    []string
+	LoginActionKind              ActionKind
 }
 
 type AdapterPackageRequirement struct {
@@ -82,115 +95,14 @@ func (r Registry) Select(providers []string) ([]ProviderSpec, error) {
 }
 
 func DefaultRegistry() Registry {
-	specsByProvider := map[string]ProviderSpec{
-		agentprovider.ClaudeCode: {
-			Provider:          agentprovider.ClaudeCode,
-			BinaryNames:       []string{"claude"},
-			AuthStatusCommand: []string{"auth", "status"},
-			AuthMarkerPaths:   []string{"~/.claude.json", "~/.claude/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://claude.ai/install.sh | bash",
-				ScriptURL:      "https://claude.ai/install.sh",
-				ScriptShell:    "bash",
-			},
-			LoginArgs: []string{"auth", "login"},
-		},
-		agentprovider.Codex: {
-			Provider:    agentprovider.Codex,
-			BinaryNames: []string{"codex"},
-			// Codex talks to the local codex binary's built-in app-server; there
-			// is no separate ACP adapter. Resolve/probe that command directly so
-			// availability reflects "codex app-server" rather than bare `codex`
-			// (which is an interactive TUI and fails headless with
-			// "stdin is not a terminal").
-			AdapterBinaryNames: []string{"codex"},
-			AdapterCommand:     []string{"codex", "app-server"},
-			AuthStatusCommand:  []string{"login", "-c", codexServiceTierOverride, "status"},
-			AuthMarkerPaths:    []string{"~/.codex/auth.json"},
-			Install:            codexCLIInstallerSpec(),
-			LoginArgs:          []string{"login", "-c", codexServiceTierOverride},
-		},
-		agentprovider.TuttiAgent: {
-			Provider:    agentprovider.TuttiAgent,
-			BinaryNames: []string{"tutti-agent"},
-			// Tutti Agent is a Codex CLI fork and exposes the same built-in
-			// app-server; probe that command directly because bare `tutti-agent`
-			// is an interactive TUI and fails headless.
-			AdapterBinaryNames: []string{"tutti-agent"},
-			AdapterCommand:     []string{"tutti-agent", "app-server"},
-			AdapterPackage: AdapterPackageRequirement{
-				Name:    "@tutti-os/tutti-agent",
-				Version: minTuttiAgentVersion,
-			},
-			AuthStatusCommand: []string{"login", "status"},
-			AuthMarkerPaths:   []string{"~/.tutti-agent/auth.json"},
-			Install:           tuttiAgentInstallerSpec(),
-			LoginArgs:         []string{"login"},
-		},
-		agentprovider.Cursor: {
-			Provider: agentprovider.Cursor,
-			// Cursor's official installer has shipped the CLI as `cursor-agent`
-			// and, more recently, as `agent`; probe both names.
-			BinaryNames:       []string{"cursor-agent", "agent"},
-			AdapterCommand:    []string{"cursor-agent", "acp"},
-			AuthStatusCommand: []string{"status"},
-			AuthMarkerPaths:   []string{"~/.cursor/cli-config.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl https://cursor.com/install -fsS | bash",
-				ScriptURL:      "https://cursor.com/install",
-				ScriptShell:    "bash",
-			},
-			LoginArgs: []string{"login"},
-		},
-		agentprovider.Nexight: {
-			Provider:           agentprovider.Nexight,
-			SupportStatus:      ProviderSupportStatusUnsupported,
-			DisabledReasonCode: DisabledReasonProviderTemporarilyUnsupported,
-			BinaryNames:        []string{"nexight"},
-			AdapterBinaryNames: []string{"nexight-acp"},
-			AdapterCommand:     []string{"nexight-acp"},
-			AuthMarkerPaths:    []string{"~/.nexight/auth.json", "~/.tutti/nexight/auth.json"},
-			LoginArgs:          []string{"login"},
-		},
-		agentprovider.Hermes: {
-			Provider:           agentprovider.Hermes,
-			SupportStatus:      ProviderSupportStatusUnsupported,
-			DisabledReasonCode: DisabledReasonProviderTemporarilyUnsupported,
-			BinaryNames:        []string{"hermes"},
-			AdapterCommand:     []string{"hermes", "acp"},
-			AuthMarkerPaths:    []string{"~/.hermes/auth.json", "~/.config/hermes/auth.json"},
-			LoginArgs:          []string{"login"},
-		},
-		agentprovider.OpenClaw: {
-			Provider:           agentprovider.OpenClaw,
-			SupportStatus:      ProviderSupportStatusUnsupported,
-			DisabledReasonCode: DisabledReasonProviderTemporarilyUnsupported,
-			BinaryNames:        []string{"openclaw"},
-			AdapterCommand:     []string{"openclaw", "acp", "-v"},
-			AuthMarkerPaths:    []string{"~/.openclaw/auth.json", "~/.config/openclaw/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindShellCommand,
-				DisplayCommand: "npm install -g openclaw",
-				ShellCommand:   "npm install -g openclaw",
-			},
-			LoginArgs: []string{"login"},
-		},
-		agentprovider.OpenCode: {
-			Provider:          agentprovider.OpenCode,
-			BinaryNames:       []string{"opencode"},
-			AdapterCommand:    []string{"opencode", "acp"},
-			AuthStatusCommand: []string{"auth", "list"},
-			AuthMarkerPaths:   []string{"~/.local/share/opencode/auth.json"},
-			Install: InstallerSpec{
-				Kind:           InstallerKindOfficialScript,
-				DisplayCommand: "curl -fsSL https://opencode.ai/install | bash",
-				ScriptURL:      "https://opencode.ai/install",
-				ScriptShell:    "bash",
-			},
-			LoginArgs: []string{"auth", "login"},
-		},
+	specsByProvider := make(map[string]ProviderSpec, len(providerregistry.Migrated()))
+	for _, descriptor := range providerregistry.Migrated() {
+		spec, err := providerSpecFromDescriptor(descriptor)
+		if err != nil {
+			panic(fmt.Sprintf("invalid migrated provider status descriptor: %v", err))
+		}
+		spec.Provider = descriptor.Identity.ID
+		specsByProvider[descriptor.Identity.ID] = spec
 	}
 	providers := agentprovider.All()
 	specs := make([]ProviderSpec, 0, len(providers))
@@ -203,25 +115,132 @@ func DefaultRegistry() Registry {
 	return Registry{Specs: specs}
 }
 
-// codexCLIInstallerSpec installs the first-party Codex npm package globally,
-// including its platform-specific optional dependency binary.
-func codexCLIInstallerSpec() InstallerSpec {
-	return InstallerSpec{
-		Kind:           InstallerKindCodexCLILatest,
-		DisplayCommand: "npm install -g @openai/codex --include=optional",
-		CodexCLI:       &CodexCLILatestInstallerSpec{},
+func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) (ProviderSpec, error) {
+	if err := providerregistry.Validate(descriptor); err != nil {
+		return ProviderSpec{}, err
+	}
+	install, err := installerSpecFromProviderDescriptor(descriptor.Status.Install)
+	if err != nil {
+		return ProviderSpec{}, fmt.Errorf("provider %q installer: %w", descriptor.Identity.ID, err)
+	}
+	adapterBinaryNames := append([]string(nil), descriptor.Status.AdapterBinaryNames...)
+	if len(adapterBinaryNames) == 0 && len(descriptor.Runtime.Command) > 0 {
+		adapterBinaryNames = []string{descriptor.Runtime.Command[0]}
+	}
+	return ProviderSpec{
+		Kind:                   descriptor.Status.Kind,
+		AuthOutputParserKind:   descriptor.Status.AuthOutputParserKind,
+		AuthMarkerParserKind:   descriptor.Status.AuthMarkerParserKind,
+		AuthCommandRunnerKind:  descriptor.Status.AuthCommandRunnerKind,
+		StaticSpecResolverKind: descriptor.Status.StaticSpecResolverKind,
+		Provider:               descriptor.Identity.ID,
+		MinVersion:             descriptor.Status.MinVersion,
+		NPMRegistryPackage:     descriptor.Status.NPMRegistryPackage,
+		BinaryNames:            append([]string(nil), descriptor.Status.BinaryNames...),
+		AdapterBinaryNames:     adapterBinaryNames,
+		AdapterCommand:         append([]string(nil), descriptor.Runtime.Command...),
+		AuthStatusCommand:      append([]string(nil), descriptor.Status.AuthStatusCommand...),
+		AuthStatusCommandTimeout: time.Duration(
+			descriptor.Status.AuthStatusCommandTimeoutSeconds,
+		) * time.Second,
+		AuthMarkerPaths:    append([]string(nil), descriptor.Status.AuthMarkerPaths...),
+		Install:            install,
+		LoginArgs:          append([]string(nil), descriptor.Status.LoginArgs...),
+		LoginActionKind:    ActionKind(descriptor.Status.LoginActionKind),
+		SupportStatus:      ProviderSupportStatus(descriptor.Status.SupportStatus),
+		DisabledReasonCode: descriptor.Status.DisabledReasonCode,
+	}, nil
+}
+
+func isCodexStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindCodexCLI
+}
+
+func isClaudeStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindClaudeCLI
+}
+
+func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		return providerregistry.StatusDescriptor{}, false
+	}
+	return descriptor.Status, true
+}
+
+func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDescriptor) (InstallerSpec, error) {
+	failureReasonMarkers := cloneInstallerFailureReasonMarkers(descriptor.FailureReasonMarkers)
+	switch descriptor.Kind {
+	case providerregistry.InstallerKindCodexCLILatest:
+		return InstallerSpec{
+			Kind:                 InstallerKindCodexCLILatest,
+			DisplayCommand:       descriptor.DisplayCommand,
+			FailureReasonMarkers: failureReasonMarkers,
+			CodexCLI: &CodexCLILatestInstallerSpec{
+				PackageName:     descriptor.PackageName,
+				BinaryName:      descriptor.BinaryName,
+				IncludeOptional: descriptor.IncludeOptional,
+			},
+		}, nil
+	case providerregistry.InstallerKindOfficialScript:
+		return InstallerSpec{
+			Kind:                 InstallerKindOfficialScript,
+			DisplayCommand:       descriptor.DisplayCommand,
+			FailureReasonMarkers: failureReasonMarkers,
+			ScriptURL:            descriptor.ScriptURL,
+			ScriptShell:          descriptor.ScriptShell,
+		}, nil
+	case providerregistry.InstallerKindManagedNPM:
+		return InstallerSpec{
+			Kind:                 InstallerKindManagedNPMPackage,
+			DisplayCommand:       descriptor.DisplayCommand,
+			FailureReasonMarkers: failureReasonMarkers,
+			ManagedNPM: &ManagedNPMPackageInstallerSpec{
+				PackageName: descriptor.PackageName, BinaryName: descriptor.BinaryName, IncludeOptional: descriptor.IncludeOptional,
+			},
+		}, nil
+	case providerregistry.InstallerKindShellCommand:
+		return InstallerSpec{Kind: InstallerKindShellCommand, DisplayCommand: descriptor.DisplayCommand, ShellCommand: descriptor.ShellCommand, FailureReasonMarkers: failureReasonMarkers}, nil
+	case "":
+		return InstallerSpec{}, nil
+	default:
+		return InstallerSpec{}, fmt.Errorf("unsupported installer kind %q", descriptor.Kind)
 	}
 }
 
-func tuttiAgentInstallerSpec() InstallerSpec {
-	return InstallerSpec{
-		Kind:           InstallerKindManagedNPMPackage,
-		DisplayCommand: "npm install -g @tutti-os/tutti-agent@" + minTuttiAgentVersion + " --include=optional",
-		ManagedNPM: &ManagedNPMPackageInstallerSpec{
-			PackageName:     "@tutti-os/tutti-agent",
-			PackageVersion:  minTuttiAgentVersion,
-			BinaryName:      "tutti-agent",
-			IncludeOptional: true,
-		},
+func cloneInstallerFailureReasonMarkers(values map[string][]string) map[string][]string {
+	if values == nil {
+		return nil
 	}
+	result := make(map[string][]string, len(values))
+	for reasonCode, markers := range values {
+		result[reasonCode] = append([]string(nil), markers...)
+	}
+	return result
+}
+
+// codexCLIInstallerSpec remains as a focused test/injection helper. Its values
+// come from the migrated provider descriptor; it is not a second registration.
+func codexCLIInstallerSpec() InstallerSpec {
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		panic("codex provider descriptor is missing")
+	}
+	install, err := installerSpecFromProviderDescriptor(descriptor.Status.Install)
+	if err != nil {
+		panic(fmt.Sprintf("invalid codex installer descriptor: %v", err))
+	}
+	return install
 }

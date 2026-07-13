@@ -7,6 +7,12 @@ import type {
   AgentActivitySnapshot
 } from "./types.ts";
 
+export function selectCanonicalAgentActivitySessions(
+  snapshot: Pick<AgentActivitySnapshot, "sessions">
+): readonly AgentActivitySession[] {
+  return snapshot.sessions;
+}
+
 const terminalMessageStatuses = new Set([
   "completed",
   "canceled",
@@ -22,298 +28,20 @@ export function selectNeedsAttentionCount(
   return selectNeedsAttentionItems(snapshot).length;
 }
 
-export function selectSessionDisplayStatuses(
-  snapshot: AgentActivitySnapshot
-): Map<string, AgentActivityDisplayStatus> {
-  const needsAttentionSessionIds = new Set(
-    selectNeedsAttentionItems(snapshot).map((item) => item.agentSessionId)
-  );
-  return new Map(
-    snapshot.sessions.map((session) => {
-      const needsAttention = needsAttentionSessionIds.has(
-        session.agentSessionId
-      );
-      const latestTurnStatus = needsAttention
-        ? null
-        : resolveLatestAgentActivityMessageDisplayStatus(
-            resolveSessionMessages(snapshot, session)
-          );
-      const sessionStatus = normalizeAgentActivityDisplayStatus(
-        session.status,
-        {
-          currentPhase: session.currentPhase,
-          needsAttention,
-          turnLifecycleOutcome: session.turnLifecycle?.outcome,
-          turnLifecyclePhase: session.turnLifecycle?.phase
-        }
-      );
-      return [
-        session.agentSessionId,
-        sessionStatus === "failed"
-          ? shouldLatestTurnStatusOverrideFailedSession(latestTurnStatus)
-            ? latestTurnStatus
-            : sessionStatus
-          : sessionStatus
-      ];
-    })
-  );
-}
-
-function shouldLatestTurnStatusOverrideFailedSession(
-  status: AgentActivityDisplayStatus | null
-): status is AgentActivityDisplayStatus {
-  return status !== null && status !== "working" && status !== "idle";
-}
-
-export function resolveLatestAgentActivityMessageDisplayStatus(
-  messages: readonly AgentActivityMessage[]
-): AgentActivityDisplayStatus | null {
-  const latestMessage = latestMessageWithTurn(messages);
-  const turnId = latestMessage?.turnId?.trim() ?? "";
-  if (!latestMessage || !turnId) {
-    return null;
-  }
-  const turnMessages = messages
-    .filter((message) => message.turnId?.trim() === turnId)
-    .sort(compareMessageOrder);
-  const latestStatus = normalizeStatus(turnMessages.at(-1)?.status);
-  const latestTerminalStatus = displayStatusFromTerminalStatus(latestStatus);
-  if (latestTerminalStatus) {
-    return latestTerminalStatus;
-  }
-  if (isWaitingStatus(latestStatus, "")) {
-    return "waiting";
-  }
-  if (isWorkingStatus(latestStatus)) {
-    return "working";
-  }
-  if (latestMessage.role.trim().toLowerCase() === "user") {
-    return "working";
-  }
-  if (
-    turnMessages.some((message) =>
-      isWaitingStatus(normalizeStatus(message.status), "")
-    )
-  ) {
-    return "waiting";
-  }
-  if (
-    turnMessages.some((message) =>
-      isWorkingStatus(normalizeStatus(message.status))
-    )
-  ) {
-    return "working";
-  }
-  return null;
-}
-
-// SOURCE OF TRUTH: packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go
-// (LiveTurnLifecyclePhases / TurnLifecyclePhaseIsLive). Keep both lists
-// identical; the Go side owns the vocabulary (ADR 0008).
-export const LIVE_TURN_LIFECYCLE_PHASES = [
-  "submitted",
-  "running",
-  "waiting_approval",
-  "waiting_input"
-] as const;
-
-const LEGACY_LIVE_TURN_LIFECYCLE_PHASES = [
-  "working",
-  "streaming",
-  "waiting",
-  "awaiting_approval"
-] as const;
-
-export function isLiveTurnLifecyclePhase(
-  phase: string | null | undefined
-): boolean {
-  const normalized = normalizeStatus(phase);
-  if (!normalized) {
-    return false;
-  }
-  return (
-    (LIVE_TURN_LIFECYCLE_PHASES as readonly string[]).includes(normalized) ||
-    (LEGACY_LIVE_TURN_LIFECYCLE_PHASES as readonly string[]).includes(
-      normalized
-    )
-  );
-}
-
-// SOURCE OF TRUTH: packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go
-// (TurnLifecyclePhaseIsWaiting). Keep both lists identical; the Go side owns
-// the vocabulary (ADR 0008).
-export const WAITING_TURN_LIFECYCLE_PHASES = [
-  "waiting_approval",
-  "waiting_input",
-  "waiting",
-  "awaiting_approval"
-] as const;
-
-export function isWaitingTurnLifecyclePhase(
-  phase: string | null | undefined
-): boolean {
-  const normalized = normalizeStatus(phase);
-  return (
-    normalized !== "" &&
-    (WAITING_TURN_LIFECYCLE_PHASES as readonly string[]).includes(normalized)
-  );
-}
-
-export interface DerivedSubmitAvailability {
-  state: "available" | "blocked";
-  reason?: "active_turn" | "waiting" | "background_agent";
-}
-
-export interface DeriveSubmitAvailabilityInput {
-  turnLifecycle?: {
-    /**
-     * Hosts should clear this when a turn settles. Consumers still treat the
-     * terminal phase as authoritative when older runtimes leave a stale id.
-     */
-    activeTurnId?: string | null;
-    phase?: string | null;
-  } | null;
-  runtimeContext?: Record<string, unknown> | null;
-}
-
-// SOURCE OF TRUTH: packages/agent/daemon/runtime/controller.go
-// (submitAvailabilityForAuthoritySession). The wire submitAvailability carries
-// host authority. Local derivation fills missing/stale derived reasons from the
-// turn lifecycle, but must not turn an explicit wire available state into a
-// local block.
-//
-// Returns null when the record carries no turn lifecycle at all — such
-// records (non-migrated providers, fresh sessions) must keep their
-// status/currentPhase token fallbacks.
-export function deriveSubmitAvailability(
-  record: DeriveSubmitAvailabilityInput
-): DerivedSubmitAvailability | null {
-  const lifecycle = record.turnLifecycle;
-  const activeTurnId = lifecycle?.activeTurnId?.trim() ?? "";
-  const phase = lifecycle?.phase ?? null;
-  if (!lifecycle || (!phase && !activeTurnId)) {
-    return null;
-  }
-  if (isWaitingTurnLifecyclePhase(phase)) {
-    return { state: "blocked", reason: "waiting" };
-  }
-  // Defensive vs Go: a lifecycle with an activeTurnId but no phase counts as
-  // a live turn here (the daemon never emits that shape; treating it as busy
-  // is the safe direction for queue dispatch).
-  if (isLiveTurnLifecyclePhase(phase) || (activeTurnId !== "" && !phase)) {
-    return { state: "blocked", reason: "active_turn" };
-  }
-  if (runtimeContextHasLiveBackgroundAgents(record.runtimeContext)) {
-    return { state: "blocked", reason: "background_agent" };
-  }
-  return { state: "available" };
-}
-
-// The block reasons the local derivation models. A wire blocked value with
-// any other reason (e.g. auth_required) carries knowledge the derivation
-// does not have and must keep blocking even when the derivation says
-// available; a wire blocked value with one of THESE reasons is superseded by
-// the derivation (that is the stale-copy case).
-export const DERIVED_SUBMIT_BLOCK_REASONS: ReadonlySet<string> = new Set([
-  "active_turn",
-  "waiting",
-  "background_agent"
-]);
-
-export interface ResolveSubmitAvailabilityInput extends DeriveSubmitAvailabilityInput {
-  submitAvailability?: {
-    state?: string | null;
-    reason?: string | null;
-  } | null;
-}
-
-// Effective submit availability for decision consumers: wire available is
-// authoritative; local derivation fills missing/stale derived blocks; and
-// unknown wire block reasons always stay respected.
-export function resolveSubmitAvailability(
-  record: ResolveSubmitAvailabilityInput
-): { state: string; reason?: string } {
-  const wire = record.submitAvailability;
-  if (wire?.state === "available") {
-    return {
-      state: "available",
-      ...(wire.reason ? { reason: wire.reason } : {})
-    };
-  }
-  const derived = deriveSubmitAvailability(record);
-  if (!derived) {
-    return wire?.state
-      ? { state: wire.state, ...(wire.reason ? { reason: wire.reason } : {}) }
-      : { state: "available" };
-  }
-  if (derived.state === "blocked") {
-    return derived;
-  }
-  if (
-    wire?.state === "blocked" &&
-    !DERIVED_SUBMIT_BLOCK_REASONS.has(wire.reason ?? "")
-  ) {
-    return {
-      state: "blocked",
-      ...(wire.reason ? { reason: wire.reason } : {})
-    };
-  }
-  return derived;
-}
-
-// SOURCE OF TRUTH: packages/agent/daemon/runtime/controller.go
-// (sessionHasLiveBackgroundAgents) and claude_sdk_adapter.go
-// (claudeSDKBackgroundAgentStatusIsTerminal). count is running-only; an item
-// without a status counts as running.
-export function runtimeContextHasLiveBackgroundAgents(
-  runtimeContext: Record<string, unknown> | null | undefined
-): boolean {
-  const backgroundAgents = runtimeContext?.backgroundAgents;
-  if (!backgroundAgents || typeof backgroundAgents !== "object") {
-    return false;
-  }
-  const record = backgroundAgents as { count?: unknown; items?: unknown };
-  if (typeof record.count === "number" && record.count > 0) {
-    return true;
-  }
-  const items = Array.isArray(record.items) ? record.items : [];
-  return items.some((item) => {
-    // Mirror Go: empty/non-object items are skipped, not treated as agents.
-    if (!item || typeof item !== "object" || Object.keys(item).length === 0) {
-      return false;
-    }
-    const status = normalizeStatus(
-      (item as { status?: unknown }).status as string
-    );
-    return !TERMINAL_BACKGROUND_AGENT_STATUSES.has(status || "running");
-  });
-}
-
-const TERMINAL_BACKGROUND_AGENT_STATUSES = new Set([
-  "completed",
-  "failed",
-  "cancelled",
-  "canceled",
-  "stopped"
-]);
-
 export function normalizeAgentActivityDisplayStatus(
   status: string | null | undefined,
   options: {
-    currentPhase?: string | null;
+    activeTurnPhase?: string | null;
+    latestTurnOutcome?: string | null;
+    latestTurnPhase?: string | null;
     needsAttention?: boolean;
-    turnLifecycleOutcome?: string | null;
-    turnLifecyclePhase?: string | null;
   } = {}
 ): AgentActivityDisplayStatus {
   const normalizedStatus = normalizeStatus(status);
-  const normalizedCurrentPhase = normalizeStatus(options.currentPhase);
-  const normalizedTurnLifecycleOutcome = normalizeStatus(
-    options.turnLifecycleOutcome
-  );
-  switch (normalizeStatus(options.turnLifecyclePhase)) {
+  const normalizedTurnOutcome = normalizeStatus(options.latestTurnOutcome);
+  switch (normalizeStatus(options.activeTurnPhase ?? options.latestTurnPhase)) {
     case "settled":
-      switch (normalizedTurnLifecycleOutcome) {
+      switch (normalizedTurnOutcome) {
         case "failed":
         case "error":
           return "failed";
@@ -329,33 +57,17 @@ export function normalizeAgentActivityDisplayStatus(
         default:
           break;
       }
-      if (
-        [normalizedStatus, normalizedCurrentPhase].some(
-          (value) => value === "failed" || value === "error"
-        )
-      ) {
+      if (normalizedStatus === "failed" || normalizedStatus === "error") {
         return "failed";
       }
-      if (
-        [normalizedStatus, normalizedCurrentPhase].some(
-          (value) => value === "canceled" || value === "cancelled"
-        )
-      ) {
+      if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
         return "canceled";
       }
       return "completed";
     case "waiting":
-    case "waiting_approval":
-    case "waiting_input":
-    case "awaiting_approval":
       return "waiting";
     case "running":
     case "submitted":
-    // Legacy persisted live tokens: a present lifecycle resolves entirely
-    // here — status/currentPhase fallbacks apply only when the record has
-    // no lifecycle at all (non-migrated providers, ADR 0008).
-    case "working":
-    case "streaming":
       return "working";
     default:
       break;
@@ -375,30 +87,6 @@ export function normalizeAgentActivityDisplayStatus(
     case "error":
     case "failed":
       return "failed";
-    default:
-      break;
-  }
-  switch (normalizedCurrentPhase) {
-    case "completed":
-    case "done":
-    case "success":
-    case "succeeded":
-      return "completed";
-    case "canceled":
-    case "cancelled":
-      return "canceled";
-    case "error":
-    case "failed":
-      return "failed";
-    case "awaiting_approval":
-    case "waiting":
-    case "waiting_approval":
-    case "waiting_input":
-      return "waiting";
-    case "running":
-    case "streaming":
-    case "working":
-      return "working";
     default:
       break;
   }
@@ -558,72 +246,6 @@ function messageSummary(message: AgentActivityMessage): string {
 
 function isTerminalMessageStatus(status: string | null | undefined): boolean {
   return terminalMessageStatuses.has(normalizeStatus(status));
-}
-
-function resolveSessionMessages(
-  snapshot: AgentActivitySnapshot,
-  session: AgentActivitySession
-): readonly AgentActivityMessage[] {
-  return (
-    snapshot.sessionMessagesById[session.agentSessionId] ??
-    (session.providerSessionId
-      ? snapshot.sessionMessagesById[session.providerSessionId]
-      : undefined) ??
-    []
-  );
-}
-
-function latestMessageWithTurn(
-  messages: readonly AgentActivityMessage[]
-): AgentActivityMessage | null {
-  return messages.reduce<AgentActivityMessage | null>((latest, message) => {
-    if (!message.turnId?.trim()) {
-      return latest;
-    }
-    if (!latest) {
-      return message;
-    }
-    return compareMessageOrder(message, latest) > 0 ? message : latest;
-  }, null);
-}
-
-function compareMessageOrder(
-  left: AgentActivityMessage,
-  right: AgentActivityMessage
-): number {
-  return (
-    (left.version ?? 0) - (right.version ?? 0) ||
-    (left.occurredAtUnixMs ?? 0) - (right.occurredAtUnixMs ?? 0) ||
-    (left.messageId ?? "").localeCompare(right.messageId ?? "")
-  );
-}
-
-function displayStatusFromTerminalStatus(
-  status: string
-): AgentActivityDisplayStatus | null {
-  switch (status) {
-    case "failed":
-    case "error":
-      return "failed";
-    case "canceled":
-    case "cancelled":
-    case "interrupted":
-      return "canceled";
-    case "completed":
-    case "done":
-    case "success":
-    case "succeeded":
-    case "answered":
-    case "rejected":
-    case "resolved":
-      return "completed";
-    default:
-      return null;
-  }
-}
-
-function isWorkingStatus(status: string): boolean {
-  return status === "running" || status === "streaming" || status === "working";
 }
 
 function normalizeStatus(status: string | null | undefined): string {

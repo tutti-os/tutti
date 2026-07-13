@@ -187,6 +187,7 @@ describe("agent GUI workbench contribution copy", () => {
 
   it("matches unified dock nodes across provider-specific and historical agent GUI identities", () => {
     const [entry] = buildAgentGuiDockEntries({
+      defaultProvider: "codex",
       providerAvailability: {},
       agents: []
     });
@@ -588,10 +589,7 @@ describe("agent GUI workbench contribution copy", () => {
       | null
       | undefined;
 
-    expect(launchResult).toMatchObject({
-      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
-      title: "Agent"
-    });
+    expect(launchResult).toBeNull();
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
@@ -623,10 +621,7 @@ describe("agent GUI workbench contribution copy", () => {
       | null
       | undefined;
 
-    expect(launchResult).toMatchObject({
-      dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
-      title: "Agent"
-    });
+    expect(launchResult).toBeNull();
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
@@ -898,7 +893,8 @@ describe("agent GUI workbench contribution copy", () => {
         },
         surfacePadding: 0
       },
-      payload: null,
+      dockEntryId: "agent-gui:codex",
+      payload: { provider: "codex" },
       reason: "dock",
       surfaceSize: {
         height: 700,
@@ -1324,7 +1320,7 @@ describe("agent GUI workbench contribution copy", () => {
         state?.lastActiveAgentSessionId === "session-1"
           ? {
               iconUrl: "tutti-asset://agent/codex-session.png",
-              title: null
+              title: "Current session title"
             }
           : null,
       workspaceId: "workspace-1"
@@ -1342,8 +1338,7 @@ describe("agent GUI workbench contribution copy", () => {
         dragHandleProps: {},
         externalNodeState: {
           conversationRailCollapsed: true,
-          lastActiveAgentSessionId: "session-1",
-          lastActiveConversationTitle: "Current session title"
+          lastActiveAgentSessionId: "session-1"
         },
         externalWorkspaceState: null,
         instanceId: "agent-gui:codex:panel:test-1",

@@ -1,19 +1,12 @@
-import type {
-  AgentActivityRuntime,
-  AgentQueuedPromptRuntime
-} from "@tutti-os/agent-gui";
-import { createAgentQueuedPromptRuntime } from "@tutti-os/agent-gui/queued-prompt-runtime";
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
 import { createDesktopAgentActivityRuntime } from "../createDesktopAgentActivityRuntime.ts";
 import type { IWorkspaceAgentActivityService } from "../workspaceAgentActivityService.interface";
-import { createDesktopAgentQueuedPromptDrainCoordinator } from "./createDesktopAgentQueuedPromptDrainCoordinator.ts";
 
 export interface DesktopAgentActivityRuntimeServices {
   agentActivityRuntime: AgentActivityRuntime;
-  agentQueuedPromptRuntime: AgentQueuedPromptRuntime;
-  queuedPromptDrainCoordinatorDispose: () => void;
 }
 
 export interface GetDesktopAgentActivityRuntimeServicesInput {
@@ -21,9 +14,6 @@ export interface GetDesktopAgentActivityRuntimeServicesInput {
   reporterNow?: () => number;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
-  warmupOpenclawGateway?: NonNullable<
-    AgentActivityRuntime["warmupOpenclawGateway"]
-  >;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -59,21 +49,11 @@ export function getDesktopAgentActivityRuntimeServices(
       reporterService: input.reporterService,
       hostFilesApi: input.hostFilesApi,
       runtimeApi: input.runtimeApi,
-      warmupOpenclawGateway: input.warmupOpenclawGateway,
       workspaceUserProjectService: input.workspaceUserProjectService
     }
   );
-  const agentQueuedPromptRuntime = createAgentQueuedPromptRuntime();
-  const queuedPromptDrainCoordinatorDispose =
-    createDesktopAgentQueuedPromptDrainCoordinator({
-      agentActivityRuntime,
-      agentQueuedPromptRuntime,
-      workspaceId: input.workspaceId
-    });
   const services: DesktopAgentActivityRuntimeServices = {
-    agentActivityRuntime,
-    agentQueuedPromptRuntime,
-    queuedPromptDrainCoordinatorDispose
+    agentActivityRuntime
   };
   servicesByWorkspace.set(workspaceKey, services);
   return services;

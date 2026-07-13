@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
@@ -36,7 +37,7 @@ type AgentSessionService interface {
 	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (bool, error)
-	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
+	CancelTurn(context.Context, string, string, string) (agentservice.CancelTurnResult, error)
 	GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (agentservice.GoalControlSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
@@ -269,22 +270,6 @@ func (api DaemonAPI) ListWorkspaceAgentGeneratedFiles(ctx context.Context, reque
 	}, nil
 }
 
-func (api DaemonAPI) CancelWorkspaceAgentSession(ctx context.Context, request tuttigenerated.CancelWorkspaceAgentSessionRequestObject) (tuttigenerated.CancelWorkspaceAgentSessionResponseObject, error) {
-	if api.AgentSessionService == nil {
-		return tuttigenerated.CancelWorkspaceAgentSession503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
-		}, nil
-	}
-	result, err := api.AgentSessionService.Cancel(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
-	if err != nil {
-		return writeCancelWorkspaceAgentSessionError(err), nil
-	}
-	return tuttigenerated.CancelWorkspaceAgentSession200JSONResponse{
-		Cancel:  generatedAgentSessionCancelResult(result),
-		Session: generatedAgentSession(result.Session),
-	}, nil
-}
-
 func (api DaemonAPI) ReadWorkspaceAgentSessionAttachment(ctx context.Context, request tuttigenerated.ReadWorkspaceAgentSessionAttachmentRequestObject) (tuttigenerated.ReadWorkspaceAgentSessionAttachmentResponseObject, error) {
 	if api.AgentSessionService == nil {
 		return tuttigenerated.ReadWorkspaceAgentSessionAttachment503JSONResponse{
@@ -361,6 +346,7 @@ func (api DaemonAPI) SubmitWorkspaceAgentInteractive(ctx context.Context, reques
 		}, nil
 	}
 	session, err := api.AgentSessionService.SubmitInteractive(ctx, string(request.WorkspaceID), string(request.AgentSessionID), string(request.RequestID), agentservice.SubmitInteractiveInput{
+		TurnID:   request.Body.TurnId,
 		Action:   request.Body.Action,
 		OptionID: request.Body.OptionId,
 		Payload:  optionalPayloadMap(request.Body.Payload),
@@ -504,15 +490,44 @@ func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComp
 func generatedAgentProviderComposerOptions(options agentservice.ComposerOptions) tuttigenerated.AgentProviderComposerOptionsResponse {
 	effectiveSettings := generatedAgentSessionComposerSettings(options.EffectiveSettings)
 	return tuttigenerated.AgentProviderComposerOptionsResponse{
-		CapabilityCatalog: generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
-		EffectiveSettings: effectiveSettings,
-		ModelConfig:       generatedComposerConfigOption(options.ModelConfig),
-		PermissionConfig:  generatedPermissionConfig(options.PermissionConfig),
-		Provider:          tuttigenerated.WorkspaceAgentProvider(options.Provider),
-		ReasoningConfig:   generatedComposerConfigOption(options.ReasoningConfig),
-		SpeedConfig:       generatedComposerConfigOptionPointer(options.SpeedConfig),
-		RuntimeContext:    options.RuntimeContext,
-		Skills:            generatedAgentProviderSkillOptions(options.Skills),
+		Behavior: tuttigenerated.AgentProviderComposerBehavior{
+			CollapseModelOptionsToLatest:        options.Behavior.CollapseModelOptionsToLatest,
+			ModelOptionsAuthoritative:           options.Behavior.ModelOptionsAuthoritative,
+			RefreshModelOptionsAfterSettings:    options.Behavior.RefreshModelOptionsAfterSettings,
+			PrewarmDraftSession:                 options.Behavior.PrewarmDraftSession,
+			PlanModeExclusiveWithPermissionMode: options.Behavior.PlanModeExclusiveWithPermissionMode,
+		},
+		Capabilities:       generatedAgentSessionCapabilities(options.Capabilities),
+		CapabilityCatalog:  generatedAgentProviderCapabilityOptions(options.CapabilityCatalog),
+		EffectiveSettings:  effectiveSettings,
+		ModelConfig:        generatedComposerConfigOption(options.ModelConfig),
+		PermissionConfig:   generatedPermissionConfig(options.PermissionConfig),
+		Provider:           tuttigenerated.WorkspaceAgentProvider(options.Provider),
+		ReasoningConfig:    generatedComposerConfigOption(options.ReasoningConfig),
+		SpeedConfig:        generatedComposerConfigOptionPointer(options.SpeedConfig),
+		RuntimeContext:     options.RuntimeContext,
+		Skills:             generatedAgentProviderSkillOptions(options.Skills),
+		SlashCommandPolicy: generatedAgentSlashCommandPolicy(options.SlashCommandPolicy),
+	}
+}
+
+func generatedAgentSlashCommandPolicy(
+	policy *providerregistry.SlashCommandPolicyDescriptor,
+) *tuttigenerated.AgentSlashCommandPolicy {
+	if policy == nil {
+		return nil
+	}
+	effects := make([]tuttigenerated.AgentSlashCommandEffectDescriptor, 0, len(policy.CommandEffects))
+	for _, effect := range policy.CommandEffects {
+		effects = append(effects, tuttigenerated.AgentSlashCommandEffectDescriptor{
+			Command: strings.TrimSpace(effect.Command),
+			Effect:  tuttigenerated.AgentSlashCommandEffect(effect.Effect),
+		})
+	}
+	return &tuttigenerated.AgentSlashCommandPolicy{
+		FallbackCommands:            append(make([]string, 0, len(policy.FallbackCommands)), policy.FallbackCommands...),
+		CommandEffects:              effects,
+		CommandCatalogAuthoritative: boolPointer(policy.CommandCatalogAuthoritative),
 	}
 }
 
@@ -634,89 +649,71 @@ func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContent
 	return result
 }
 
-func generatedAgentSessionCancelResult(result agentservice.CancelSessionResult) tuttigenerated.WorkspaceAgentSessionCancelResult {
-	return tuttigenerated.WorkspaceAgentSessionCancelResult{
-		Canceled: result.Canceled,
-		Reason:   tuttigenerated.WorkspaceAgentSessionCancelResultReason(result.Reason),
-	}
-}
-
 func generatedAgentSession(session agentservice.Session) tuttigenerated.WorkspaceAgentSession {
 	var settings *tuttigenerated.AgentSessionComposerSettings
 	if session.Settings != nil {
 		value := generatedAgentSessionComposerSettings(*session.Settings)
 		settings = &value
 	}
-	runtimeContext := clonePayloadPointer(session.RuntimeContext)
+	// Protocol v2 turn state: the session carries an activeTurnId reference
+	// plus the embedded active turn and pending interactions.
+	var activeTurn *tuttigenerated.WorkspaceAgentTurn
+	if session.ActiveTurn != nil {
+		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.ActiveTurn)
+		activeTurn = &turn
+	}
+	var latestTurn *tuttigenerated.WorkspaceAgentTurn
+	if session.LatestTurn != nil {
+		turn := agentservice.GeneratedWorkspaceAgentTurn(*session.LatestTurn)
+		latestTurn = &turn
+	}
+	pendingInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.PendingInteractions))
+	for _, interaction := range session.PendingInteractions {
+		pendingInteractions = append(pendingInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+	}
+	latestTurnInteractions := make([]tuttigenerated.WorkspaceAgentInteraction, 0, len(session.LatestTurnInteractions))
+	for _, interaction := range session.LatestTurnInteractions {
+		latestTurnInteractions = append(latestTurnInteractions, agentservice.GeneratedWorkspaceAgentInteraction(interaction))
+	}
+	updatedAtUnixMS := session.CreatedAt.UnixMilli()
+	if session.UpdatedAt != nil {
+		updatedAtUnixMS = session.UpdatedAt.UnixMilli()
+	}
+	var endedAtUnixMS *int64
+	if session.EndedAt != nil {
+		value := session.EndedAt.UnixMilli()
+		endedAtUnixMS = &value
+	}
+	generatedSettings := tuttigenerated.AgentSessionComposerSettings{}
+	if settings != nil {
+		generatedSettings = *settings
+	}
 	return tuttigenerated.WorkspaceAgentSession{
-		AgentTargetId:      optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
-		CreatedAt:          session.CreatedAt,
-		Cwd:                stringPointer(strings.TrimSpace(session.Cwd)),
-		EndedAt:            session.EndedAt,
-		Id:                 session.ID,
-		LastError:          session.LastError,
-		PermissionConfig:   permissionConfigPointer(session.PermissionConfig),
-		Provider:           tuttigenerated.WorkspaceAgentProvider(session.Provider),
-		ProviderSessionId:  stringPointer(strings.TrimSpace(session.ProviderSessionID)),
-		PinnedAtUnixMs:     int64Pointer(session.PinnedAtUnixMS),
-		Resumable:          boolPointer(session.Resumable),
-		RuntimeContext:     runtimeContext,
-		Settings:           settings,
-		Status:             tuttigenerated.WorkspaceAgentSessionStatus(session.Status),
-		TurnLifecycle:      generatedAgentTurnLifecyclePointer(session.TurnLifecycle),
-		SubmitAvailability: generatedAgentSubmitAvailabilityPointer(session.SubmitAvailability),
-		Title:              session.Title,
-		UpdatedAt:          session.UpdatedAt,
-		Visible:            session.Visible,
+		ActiveTurn:             activeTurn,
+		ActiveTurnId:           optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
+		AgentTargetId:          optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
+		BackgroundAgents:       generatedAgentSessionBackgroundAgents(session.Metadata.BackgroundAgents),
+		Capabilities:           generatedAgentSessionCapabilities(session.Metadata.Capabilities),
+		CreatedAtUnixMs:        session.CreatedAt.UnixMilli(),
+		Cwd:                    stringPointer(strings.TrimSpace(session.Cwd)),
+		EndedAtUnixMs:          endedAtUnixMS,
+		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
+		Id:                     session.ID,
+		Imported:               session.Metadata.Imported,
+		LatestTurn:             latestTurn,
+		LatestTurnInteractions: latestTurnInteractions,
+		PendingInteractions:    pendingInteractions,
+		PermissionConfig:       generatedPermissionConfig(session.PermissionConfig),
+		Provider:               tuttigenerated.WorkspaceAgentProvider(session.Provider),
+		ProviderSessionId:      stringPointer(strings.TrimSpace(session.ProviderSessionID)),
+		PinnedAtUnixMs:         int64Pointer(session.PinnedAtUnixMS),
+		Resumable:              session.Resumable,
+		Settings:               generatedSettings,
+		Title:                  session.Title,
+		UpdatedAtUnixMs:        updatedAtUnixMS,
+		Usage:                  generatedAgentSessionUsage(session.Metadata.Usage),
+		Visible:                session.Visible,
 	}
-}
-
-func generatedAgentSubmitAvailability(value agentservice.SubmitAvailability) tuttigenerated.AgentActivitySubmitAvailability {
-	return tuttigenerated.AgentActivitySubmitAvailability{
-		State:  value.State,
-		Reason: stringPointer(strings.TrimSpace(value.Reason)),
-	}
-}
-
-func generatedAgentSubmitAvailabilityPointer(value *agentservice.SubmitAvailability) *tuttigenerated.AgentActivitySubmitAvailability {
-	if value == nil {
-		return nil
-	}
-	converted := generatedAgentSubmitAvailability(*value)
-	return &converted
-}
-
-func generatedAgentCompletedCommand(value *agentservice.CompletedCommand) *tuttigenerated.AgentActivityCompletedCommand {
-	if value == nil {
-		return nil
-	}
-	return &tuttigenerated.AgentActivityCompletedCommand{
-		Kind:   value.Kind,
-		Status: value.Status,
-	}
-}
-
-func generatedAgentTurnLifecycle(value agentservice.TurnLifecycle) tuttigenerated.AgentActivityTurnLifecycle {
-	return tuttigenerated.AgentActivityTurnLifecycle{
-		ActiveTurnId:     value.ActiveTurnID,
-		Phase:            value.Phase,
-		Settling:         boolPointer(value.Settling),
-		Outcome:          value.Outcome,
-		CompletedCommand: generatedAgentCompletedCommand(value.CompletedCommand),
-	}
-}
-
-func generatedAgentTurnLifecyclePointer(value *agentservice.TurnLifecycle) *tuttigenerated.AgentActivityTurnLifecycle {
-	if value == nil {
-		return nil
-	}
-	converted := generatedAgentTurnLifecycle(*value)
-	return &converted
-}
-
-func permissionConfigPointer(config agentservice.PermissionConfig) *tuttigenerated.PermissionConfig {
-	value := generatedPermissionConfig(config)
-	return &value
 }
 
 func int64Pointer(value int64) *int64 {
@@ -724,47 +721,4 @@ func int64Pointer(value int64) *int64 {
 		return nil
 	}
 	return &value
-}
-
-func clonePayloadPointer(payload map[string]any) *map[string]any {
-	if len(payload) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(payload))
-	for key, value := range payload {
-		out[key] = clonePayloadValue(value)
-	}
-	return &out
-}
-
-func mapValue(payload *map[string]any) map[string]any {
-	if payload == nil || len(*payload) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(*payload))
-	for key, value := range *payload {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
-			out[trimmed] = clonePayloadValue(value)
-		}
-	}
-	return out
-}
-
-func clonePayloadValue(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(typed))
-		for key, item := range typed {
-			out[key] = clonePayloadValue(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(typed))
-		for index, item := range typed {
-			out[index] = clonePayloadValue(item)
-		}
-		return out
-	default:
-		return value
-	}
 }

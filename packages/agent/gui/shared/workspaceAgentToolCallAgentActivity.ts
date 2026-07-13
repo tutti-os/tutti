@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 
 const AGENT_ACTIVITY_KINDS = new Set([
   "thinking",

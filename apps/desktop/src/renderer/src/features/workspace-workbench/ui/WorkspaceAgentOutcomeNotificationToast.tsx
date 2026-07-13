@@ -1,9 +1,7 @@
 import { managedAgentRoundedIconUrl } from "@tutti-os/agent-gui/agent-message-center";
 import { Button, CloseIcon, StatusDot, toast } from "@tutti-os/ui-system";
-import {
-  normalizeDesktopAgentGUIProvider,
-  requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
+import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import type {
   WorkspaceAgentOutcomeForegroundNotification,
   WorkspaceAgentOutcomeForegroundNotificationPresenter

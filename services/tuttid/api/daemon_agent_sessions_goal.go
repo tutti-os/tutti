@@ -38,8 +38,10 @@ func (api DaemonAPI) GoalControlWorkspaceAgentSession(ctx context.Context, reque
 		Session: generatedAgentSession(result.Session),
 	}
 	if len(result.Goal) > 0 {
-		goal := map[string]interface{}(result.Goal)
-		response.Goal = &goal
+		var goal tuttigenerated.WorkspaceAgentSessionGoal
+		if decodeTypedAgentSessionField(result.Goal, &goal) {
+			response.Goal = &goal
+		}
 	}
 	return response, nil
 }

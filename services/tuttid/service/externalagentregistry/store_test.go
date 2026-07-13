@@ -25,11 +25,11 @@ func TestStoreFetchesRegistryAndWritesCache(t *testing.T) {
 		},
 	}
 
-	agent, err := store.Agent(context.Background(), "claude-acp")
+	agent, err := store.Agent(context.Background(), "sample-agent")
 	if err != nil {
 		t.Fatalf("Agent() error = %v", err)
 	}
-	if agent.Distribution.NPM == nil || agent.Distribution.NPM.Package != "@agentclientprotocol/claude-agent-acp@0.46.0" {
+	if agent.Distribution.NPM == nil || agent.Distribution.NPM.Package != "@agentclientprotocol/sample-agent-acp@0.46.0" {
 		t.Fatalf("NPM distribution = %#v", agent.Distribution.NPM)
 	}
 	if _, err := os.Stat(store.CachePath()); err != nil {
@@ -64,7 +64,7 @@ func TestStoreUsesCacheWhenRemoteUnavailable(t *testing.T) {
 		},
 	}
 
-	agent, err := store.Agent(context.Background(), "claude-acp")
+	agent, err := store.Agent(context.Background(), "sample-agent")
 	if err != nil {
 		t.Fatalf("Agent() error = %v", err)
 	}
@@ -124,13 +124,13 @@ func testRegistryJSON() string {
 	return `{
   "version": "test",
   "agents": [{
-    "id": "claude-acp",
-    "name": "Claude Agent",
+    "id": "sample-agent",
+    "name": "Sample Agent",
     "version": "0.46.0",
-    "description": "ACP wrapper for Anthropic's Claude",
+    "description": "ACP wrapper for sample agent",
     "distribution": {
       "npx": {
-        "package": "@agentclientprotocol/claude-agent-acp@0.46.0",
+        "package": "@agentclientprotocol/sample-agent-acp@0.46.0",
         "args": ["--stdio"],
         "env": {"CLAUDE_TEST": "1"}
       }

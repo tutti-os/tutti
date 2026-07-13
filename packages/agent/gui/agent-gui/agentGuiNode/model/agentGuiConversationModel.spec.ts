@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentMessage,
-  AgentHostWorkspaceAgentSession,
-  AgentHostWorkspaceAgentSnapshot,
-  AgentHostWorkspaceAgentTimelineItem
-} from "../../../shared/contracts/dto";
-import type { WorkspaceAgentActivitySnapshot } from "../../../shared/workspaceAgentActivityTypes";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession,
+  type AgentActivitySnapshot
+} from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   buildAgentGUIConversationDetail,
@@ -141,7 +141,9 @@ describe("agentGuiConversationModel", () => {
   it("builds no-project runtime sessions without parent project assignment", () => {
     const noProjectPath =
       "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444";
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -171,27 +173,23 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps imported home-cwd sessions unassigned when external import marks no project", () => {
-    const snapshot: WorkspaceAgentActivitySnapshot = {
+    const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
-        {
+        normalizeAgentActivitySession({
           workspaceId: "workspace-1",
           agentSessionId: "imported-home-session",
           provider: "codex",
           providerSessionId: "imported-home-session",
           cwd: "/Users/local",
           title: "Imported scratch",
-          status: "completed",
-          runtimeContext: {
-            imported: true,
-            externalImportNoProject: true
-          },
+          imported: true,
           createdAtUnixMs: 1,
           updatedAtUnixMs: 30
-        }
-      ],
-      sessionMessagesById: {}
+        })
+      ]
     };
 
     const summaries = buildAgentGUIConversationSummaries({
@@ -221,8 +219,10 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds conversations only from runtime Codex sessions", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("treats every canonical Codex session as a runtime conversation", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -253,6 +253,10 @@ describe("agentGuiConversationModel", () => {
       buildAgentGUIConversationSummaries({ snapshot, provider: "codex" })
     ).toEqual([
       expect.objectContaining({
+        id: "unknown-origin-codex",
+        title: "Unknown Origin Codex"
+      }),
+      expect.objectContaining({
         id: "runtime-codex",
         title: "Runtime Codex"
       })
@@ -260,24 +264,23 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("treats core-native sessions without legacy sessionOrigin as runtime sessions", () => {
-    const snapshot: WorkspaceAgentActivitySnapshot = {
+    const snapshot: AgentActivitySnapshot = {
       workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
-        {
+        normalizeAgentActivitySession({
           workspaceId: "workspace-1",
           agentSessionId: "core-runtime-codex",
           provider: "codex",
           providerSessionId: "core-runtime-codex",
           cwd: "/workspace",
           title: "Core Runtime Codex",
-          status: "completed",
           lastEventUnixMs: 30,
           createdAtUnixMs: 1,
           updatedAtUnixMs: 30
-        }
-      ],
-      sessionMessagesById: {}
+        })
+      ]
     };
 
     expect(
@@ -291,7 +294,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("orders runtime conversations by session sort time instead of message update time", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -343,7 +348,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("indexes user project paths once when building conversation batches", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -449,7 +456,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps provider-specific runtime sessions separated for Nexight, Hermes, and OpenClaw Agent GUI", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -502,8 +511,10 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("keeps runtime sessions whose provider can only be inferred from presence data", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("uses the canonical session provider instead of inferring it from presence", () => {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [
         {
           id: 11,
@@ -517,7 +528,7 @@ describe("agentGuiConversationModel", () => {
         workspaceAgentSession({
           agentSessionId: "presence-only-provider",
           presenceId: 11,
-          provider: undefined,
+          provider: "claude-code",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
           title: "Recovered from presence",
           updatedAtUnixMs: 10
@@ -537,7 +548,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("builds restored conversation titles from cached runtime timelines", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -578,7 +591,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps explicit runtime session titles when cached messages are loaded", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -622,7 +637,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("keeps unknown-provider runtime sessions visible instead of dropping them", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -647,7 +664,9 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("hides empty runtime placeholder sessions from Agent GUI conversation summaries", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot: AgentActivitySnapshot = {
+      workspaceId: "workspace-1",
+      sessionMessagesById: {},
       presences: [],
       sessions: [
         workspaceAgentSession({
@@ -690,17 +709,18 @@ describe("agentGuiConversationModel", () => {
 
   it("preserves the session provider when a session has no explicit title", () => {
     expect(
-      conversationSummaryFromAgentSession({
-        workspaceId: "room-1",
-
-        agentSessionId: "session-hermes",
-        provider: "hermes",
-        providerSessionId: "provider-session-hermes",
-        cwd: "/workspace",
-        status: "ready",
-        createdAtUnixMs: 10,
-        updatedAtUnixMs: 20
-      })
+      conversationSummaryFromAgentSession(
+        normalizeAgentActivitySession({
+          workspaceId: "room-1",
+          agentSessionId: "session-hermes",
+          provider: "hermes",
+          providerSessionId: "provider-session-hermes",
+          cwd: "/workspace",
+          title: "Current task",
+          createdAtUnixMs: 10,
+          updatedAtUnixMs: 20
+        })
+      )
     ).toEqual(
       expect.objectContaining({
         provider: "hermes",
@@ -948,7 +968,13 @@ describe("agentGuiConversationModel", () => {
     const withRunningTurn = buildAgentGUIConversationVM({
       conversation: {
         ...conversationSource,
-        turnLifecycle: { activeTurnId: "turn-1", phase: "running" }
+        activeTurn: {
+          agentSessionId: "session-1",
+          phase: "running",
+          startedAtUnixMs: 10,
+          turnId: "turn-1",
+          updatedAtUnixMs: 20
+        }
       },
       workspaceRoot: "/workspace",
       timelineItems: interimTimelineItems
@@ -1326,11 +1352,7 @@ describe("agentGuiConversationModel", () => {
         titleFallback: null,
         status: "working",
         cwd: "/workspace",
-        updatedAtUnixMs: 10,
-        syncState: {
-          agentSessionId: "claude-session-1",
-          status: "synced"
-        }
+        updatedAtUnixMs: 10
       },
       workspaceRoot: "/workspace"
     });
@@ -1343,7 +1365,6 @@ describe("agentGuiConversationModel", () => {
       })
     );
     expect(detail?.activity.status).toBe("working");
-    expect(detail?.session.effectiveStatus).toBe("working");
     expect(detail?.session.agentSessionId).toBe("claude-session-1");
     expect(detail?.session.providerSessionId).toBe("claude-session-1");
     expect(detail?.session.updatedAtUnixMs).toBe(10);
@@ -1508,7 +1529,7 @@ describe("agentGuiConversationModel", () => {
   });
 
   it("treats switch-mode approval timeline items as exit-plan prompts", () => {
-    const item: AgentHostWorkspaceAgentTimelineItem = {
+    const item: WorkspaceAgentActivityTimelineItem = {
       id: 1,
       workspaceId: "room-1",
       agentSessionId: "session-1",
@@ -2139,11 +2160,11 @@ describe("agentGuiConversationModel", () => {
 });
 
 function timelineItem(
-  overrides: Partial<AgentHostWorkspaceAgentTimelineItem> & {
+  overrides: Partial<WorkspaceAgentActivityTimelineItem> & {
     id: number;
     eventId: string;
   }
-): AgentHostWorkspaceAgentTimelineItem {
+): WorkspaceAgentActivityTimelineItem {
   return {
     workspaceId: "room-1",
     agentSessionId: "session-1",
@@ -2157,7 +2178,7 @@ function timelineItem(
 }
 
 function workspaceAgentMessage(
-  overrides: Partial<AgentHostWorkspaceAgentMessage> & {
+  overrides: Partial<AgentActivityMessage> & {
     id: number;
     eventId?: string;
     content?: string;
@@ -2165,10 +2186,9 @@ function workspaceAgentMessage(
     actorId?: string;
     itemType?: string;
   }
-): AgentHostWorkspaceAgentMessage {
+): AgentActivityMessage {
   const payload = overrides.payload ?? {};
   return {
-    id: overrides.id,
     agentSessionId: overrides.agentSessionId ?? "session-1",
     messageId:
       overrides.messageId ?? overrides.eventId ?? `message-${overrides.id}`,
@@ -2189,28 +2209,38 @@ function workspaceAgentMessage(
 }
 
 function workspaceAgentSession(
-  overrides: Partial<AgentHostWorkspaceAgentSession> & {
+  overrides: Partial<AgentActivitySession> & {
     sessionOrigin?: string;
+    lifecycleStatus?: string;
+    turnPhase?: string;
+    effectiveStatus?: string;
+    presenceId?: string | number;
+    id?: number;
     createdAtUnixMs?: number;
     updatedAtUnixMs?: number;
   }
-): AgentHostWorkspaceAgentSession {
-  return {
-    id: 1,
+): AgentActivitySession {
+  const {
+    effectiveStatus: _effectiveStatus,
+    id: _id,
+    lifecycleStatus: _lifecycleStatus,
+    presenceId: _presenceId,
+    sessionOrigin: _sessionOrigin,
+    turnPhase: _turnPhase,
+    ...canonical
+  } = overrides;
+  return normalizeAgentActivitySession({
+    workspaceId: "workspace-1",
     agentSessionId: "session-1",
-    presenceId: 1,
     userId: "user-1",
     provider: "codex",
     providerSessionId: "provider-session-1",
-    sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
     cwd: "/workspace",
-    lifecycleStatus: "active",
-    turnPhase: "idle",
-    effectiveStatus: "ready",
+    title: "Codex",
     createdAtUnixMs: 1,
     updatedAtUnixMs: 1,
-    ...overrides
-  } as AgentHostWorkspaceAgentSession;
+    ...canonical
+  });
 }
 
 function userProject(id: string, path: string, label: string) {

@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 
 export function looksLikeOpaqueToolCallIdentifier(value: string): boolean {
   return /^call[_:-](?:function[_:-])?[a-z0-9][a-z0-9_-]{11,}$/i.test(value);

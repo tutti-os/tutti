@@ -37,9 +37,8 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 			),
 		}, nil
 	}
-	metadata := mapValue(request.Body.Metadata)
-	provider := workspaceAgentProviderString(request.Body.Provider)
-	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, provider, "", nil)
+	metadata := agentSubmitMetadata(request.Body.ClientSubmitId, request.Body.SubmitDiagnostics)
+	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, "", "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
 		AgentTargetID:          agentTargetID,
@@ -51,9 +50,8 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		PermissionModeID:       request.Body.PermissionModeId,
 		PlanMode:               request.Body.PlanMode,
 		BrowserUse:             request.Body.BrowserUse,
-		Provider:               provider,
 		ReasoningEffort:        request.Body.ReasoningEffort,
-		RuntimeContext:         mapValue(request.Body.RuntimeContext),
+		RuntimeContext:         createSessionRuntimeContext(request.Body.NoProject),
 		Speed:                  request.Body.Speed,
 		Title:                  request.Body.Title,
 		Visible:                request.Body.Visible,
@@ -63,17 +61,17 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		logCreateAgentSubmitTrace("api.create.failed", string(request.WorkspaceID), agentSessionID, metadata, "", "", err)
 		return writeCreateWorkspaceAgentSessionError(err), nil
 	}
-	logCreateAgentSubmitTrace("api.create.completed", string(request.WorkspaceID), agentSessionID, metadata, session.Provider, session.Status, nil)
+	logCreateAgentSubmitTrace("api.create.completed", string(request.WorkspaceID), agentSessionID, metadata, session.Provider, agentSessionTurnPhase(session), nil)
 	return tuttigenerated.CreateWorkspaceAgentSession201JSONResponse{
 		Session: generatedAgentSession(session),
 	}, nil
 }
 
-func workspaceAgentProviderString(provider *tuttigenerated.WorkspaceAgentProvider) string {
-	if provider == nil {
-		return ""
+func createSessionRuntimeContext(noProject *bool) map[string]any {
+	if noProject == nil || !*noProject {
+		return nil
 	}
-	return string(*provider)
+	return map[string]any{"noProject": true}
 }
 
 func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request tuttigenerated.SendWorkspaceAgentSessionInputRequestObject) (tuttigenerated.SendWorkspaceAgentSessionInputResponseObject, error) {
@@ -87,7 +85,7 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
 		}, nil
 	}
-	metadata := mapValue(request.Body.Metadata)
+	metadata := agentSubmitMetadata(request.Body.ClientSubmitId, request.Body.SubmitDiagnostics)
 	logSendAgentSubmitTrace("api.send.received", string(request.WorkspaceID), string(request.AgentSessionID), metadata, "", "", "", nil)
 	result, err := api.AgentSessionService.SendInput(ctx, string(request.WorkspaceID), string(request.AgentSessionID), agentservice.SendInput{
 		Content:       agentPromptContentFromGenerated(request.Body.Content),
@@ -99,11 +97,52 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		logSendAgentSubmitTrace("api.send.failed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, "", "", "", err)
 		return writeSendWorkspaceAgentSessionInputError(err), nil
 	}
-	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, result.Session.Status, result.TurnID, result.TurnLifecycle.Phase, nil)
-	return tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
-		Session:            generatedAgentSession(result.Session),
-		TurnId:             result.TurnID,
-		TurnLifecycle:      generatedAgentTurnLifecycle(result.TurnLifecycle),
-		SubmitAvailability: generatedAgentSubmitAvailability(result.SubmitAvailability),
-	}, nil
+	logSendAgentSubmitTrace("api.send.completed", string(request.WorkspaceID), string(request.AgentSessionID), metadata, agentSessionTurnPhase(result.Session), result.TurnID, result.TurnLifecycle.Phase, nil)
+	response := tuttigenerated.SendWorkspaceAgentSessionInput200JSONResponse{
+		Session: generatedAgentSession(result.Session),
+		TurnId:  result.TurnID,
+	}
+	// Protocol v2: the accepted submission's turn entity rides along when the
+	// session projection already carries it.
+	if result.Session.ActiveTurn != nil {
+		turn := agentservice.GeneratedWorkspaceAgentTurn(*result.Session.ActiveTurn)
+		response.Turn = &turn
+	}
+	return response, nil
+}
+
+func agentSessionTurnPhase(session agentservice.Session) string {
+	if session.ActiveTurn != nil {
+		return session.ActiveTurn.Phase
+	}
+	if session.LatestTurn != nil {
+		return session.LatestTurn.Phase
+	}
+	return ""
+}
+
+func agentSubmitMetadata(clientSubmitID string, diagnostics *tuttigenerated.AgentSubmitDiagnostics) map[string]any {
+	metadata := map[string]any{"clientSubmitId": strings.TrimSpace(clientSubmitID)}
+	if diagnostics == nil {
+		return metadata
+	}
+	if diagnostics.SubmittedAtUnixMs != nil {
+		metadata["clientSubmittedAtUnixMs"] = *diagnostics.SubmittedAtUnixMs
+	}
+	if diagnostics.BlockCount != nil {
+		metadata["blockCount"] = *diagnostics.BlockCount
+	}
+	if diagnostics.HasImage != nil {
+		metadata["hasImage"] = *diagnostics.HasImage
+	}
+	if diagnostics.PromptLength != nil {
+		metadata["promptLength"] = *diagnostics.PromptLength
+	}
+	if diagnostics.Queued != nil {
+		metadata["queued"] = *diagnostics.Queued
+	}
+	if diagnostics.Source != nil {
+		metadata["source"] = strings.TrimSpace(*diagnostics.Source)
+	}
+	return metadata
 }

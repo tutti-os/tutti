@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
 import {
   projectAgentConversationVM,
@@ -83,6 +84,19 @@ describe("projectAgentConversationVM", () => {
     ];
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-2",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             id: "turn-1",
@@ -217,8 +231,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "completed"
+          ...detailViewModel().session
         },
         turns: [
           {
@@ -295,8 +308,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "failed"
+          ...detailViewModel().session
         },
         turns: [
           {
@@ -473,8 +485,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "completed"
+          ...detailViewModel().session
         },
         showProcessingIndicator: false
       })
@@ -513,8 +524,7 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
         session: {
-          ...detailViewModel().session,
-          status: "completed"
+          ...detailViewModel().session
         },
         showProcessingIndicator: false
       })
@@ -993,7 +1003,17 @@ describe("projectAgentConversationVM", () => {
       detailViewModel({
         session: {
           ...detailViewModel().session,
-          status: "completed"
+          activeTurn: null,
+          activeTurnId: null,
+          latestTurn: {
+            agentSessionId: "session-1",
+            outcome: "completed",
+            phase: "settled",
+            settledAtUnixMs: 10,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          }
         },
         turns: [
           {
@@ -1064,6 +1084,19 @@ describe("projectAgentConversationVM", () => {
   it("marks prior turn assistant replies copyable while the latest turn is still working", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-2",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-2"
+        },
         turns: [
           {
             id: "turn-1",
@@ -1125,6 +1158,19 @@ describe("projectAgentConversationVM", () => {
   it("does not mark assistant replies copyable while the session is working", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          activeTurn: {
+            agentSessionId: "session-1",
+            outcome: null,
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-1"
+        },
         turns: [
           {
             id: "turn-1",
@@ -1417,29 +1463,26 @@ function detailViewModel(
       sessionId: "session-1",
       agentName: "Codex",
       agentProvider: "codex",
-      status: "working",
       title: "Codex",
       latestActivitySummary: "Working",
+      status: "working",
       sortTimeUnixMs: 10,
       changedFiles: [{ path: "src/App.tsx", label: "src/App.tsx" }],
       userId: "user-1",
       userName: "Taylor",
       userAvatarUrl: ""
     },
-    session: {
-      id: 1,
+    session: normalizeAgentActivitySession({
+      workspaceId: "workspace-1",
       agentSessionId: "session-1",
-      presenceId: 1,
       userId: "user-1",
       provider: "codex",
       providerSessionId: "provider-session-1",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
       cwd: "/workspace/demo",
-      status: "working",
       title: "Codex",
       createdAtUnixMs: 1,
       updatedAtUnixMs: 10
-    },
+    }),
     cwd: "/workspace/demo",
     workspaceRoot: "/workspace/demo",
     turns: [

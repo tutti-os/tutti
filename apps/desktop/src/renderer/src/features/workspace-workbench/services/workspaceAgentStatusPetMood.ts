@@ -1,6 +1,8 @@
 import {
-  selectSessionDisplayStatuses,
-  type AgentActivitySnapshot
+  selectEngineHasQueuedPrompts,
+  selectSessionActivationPresentations,
+  selectWorkspaceAgentConsumerCounts,
+  type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
 
 export type WorkspaceAgentStatusPetMood =
@@ -11,27 +13,23 @@ export type WorkspaceAgentStatusPetMood =
   | "waiting";
 
 export function resolveWorkspaceAgentStatusPetMood(
-  snapshot: AgentActivitySnapshot,
-  waitingCount: number
+  state: AgentSessionEngineState
 ): WorkspaceAgentStatusPetMood {
-  if (waitingCount > 0) {
+  const counts = selectWorkspaceAgentConsumerCounts(state);
+  if (counts.waiting > 0) {
     return "waiting";
   }
-  const displayStatuses = selectSessionDisplayStatuses(snapshot);
-  const statuses = snapshot.sessions.map((session) => {
-    const rawStatus = session.status.trim().toLowerCase();
-    const displayStatus = displayStatuses.get(session.agentSessionId);
-    return displayStatus && displayStatus !== "idle"
-      ? displayStatus
-      : rawStatus;
-  });
-  if (statuses.some((status) => status === "failed")) {
+  if (counts.failed > 0) {
     return "failed";
   }
-  if (statuses.some((status) => status === "running" || status === "working")) {
+  if (counts.working > 0) {
     return "running";
   }
-  if (statuses.some((status) => status === "queued" || status === "created")) {
+  const hasActivatingSession = Object.values(
+    selectSessionActivationPresentations(state)
+  ).some((activation) => activation.status === "activating");
+  const hasQueuedPrompt = selectEngineHasQueuedPrompts(state);
+  if (hasQueuedPrompt || hasActivatingSession) {
     return "review";
   }
   return "idle";

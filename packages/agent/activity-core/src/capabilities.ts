@@ -1,43 +1,28 @@
 import type { AgentActivityComposerOptions } from "./types.ts";
-
-/** Mirror of packages/agent/daemon/runtime/capabilities.go. */
-export const AGENT_CAPABILITY_KEYS = [
-  "imageInput",
-  "skills",
-  "compact",
-  "tokenUsage",
-  "rateLimits",
-  "planMode",
-  "interrupt",
-  "browserUse",
-  "computerUse",
-  "goalPause"
-] as const;
-
-export type AgentCapabilityKey = (typeof AGENT_CAPABILITY_KEYS)[number];
+export {
+  AGENT_CAPABILITY_KEYS,
+  type AgentCapabilityKey
+} from "./generated/agentCapabilityKeys.ts";
+import type { AgentCapabilityKey } from "./generated/agentCapabilityKeys.ts";
 
 export interface AgentActivityCapabilityInput {
   composerOptions?: AgentActivityComposerOptions | null;
-  sessionRuntimeContext?: Record<string, unknown> | null;
+  sessionCapabilities?: Partial<Record<AgentCapabilityKey, boolean>> | null;
 }
 
 export function resolveAgentActivityCapability(
   key: AgentCapabilityKey,
   input: AgentActivityCapabilityInput
 ): boolean | null {
-  return (
-    capabilityFromRuntimeContext(key, input.sessionRuntimeContext) ??
-    capabilityFromRuntimeContext(key, input.composerOptions?.runtimeContext)
-  );
+  const sessionValue = input.sessionCapabilities?.[key];
+  if (typeof sessionValue === "boolean") return sessionValue;
+  const composerValue = input.composerOptions?.capabilities?.[key];
+  return typeof composerValue === "boolean" ? composerValue : null;
 }
 
-function capabilityFromRuntimeContext(
-  key: string,
-  runtimeContext: Record<string, unknown> | null | undefined
-): boolean | null {
-  const list = runtimeContext?.capabilities;
-  if (!Array.isArray(list)) {
-    return null;
-  }
-  return list.some((entry) => typeof entry === "string" && entry === key);
+export function hasAgentCapability(
+  capabilities: Partial<Record<AgentCapabilityKey, boolean>> | null | undefined,
+  key: AgentCapabilityKey
+): boolean {
+  return capabilities?.[key] === true;
 }

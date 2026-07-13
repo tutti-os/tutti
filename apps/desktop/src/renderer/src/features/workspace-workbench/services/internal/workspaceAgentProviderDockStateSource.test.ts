@@ -1,13 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type {
   AgentProviderStatusService,
   IWorkspaceAgentActivityService
 } from "@renderer/features/workspace-agent";
 import type { WorkspaceWorkbenchDesktopI18nRuntime } from "@shared/i18n";
-import { createWorkspaceAgentProviderDockStateSource } from "./workspaceAgentProviderDockStateSource.ts";
+import { createWorkspaceAgentProviderDockStateSource as createWorkspaceAgentProviderDockStateSourceBase } from "./workspaceAgentProviderDockStateSource.ts";
 import { workspaceAgentGuiDockEntryId } from "./workspaceWorkbenchComposition.ts";
+
+function createWorkspaceAgentProviderDockStateSource(
+  input: Omit<
+    Parameters<typeof createWorkspaceAgentProviderDockStateSourceBase>[0],
+    "agentsService"
+  > & { agents?: readonly AgentGUIAgent[] }
+) {
+  const { agents = [], ...rest } = input;
+  return createWorkspaceAgentProviderDockStateSourceBase({
+    ...rest,
+    agentsService: {
+      getSnapshot: () => ({
+        agents,
+        agentTargets: [],
+        capturedAtUnixMs: 1
+      }),
+      subscribe: () => () => {}
+    }
+  });
+}
 
 test("agent provider dock state source resolves dynamic login state", () => {
   const service = createAgentProviderStatusService({
@@ -71,6 +92,60 @@ test("agent provider dock state source emits subscription updates", () => {
   service.emit();
 
   assert.equal(callCount, 1);
+});
+
+test("agent provider dock state source reacts to live agent directory updates", () => {
+  const service = createAgentProviderStatusService({
+    statuses: [
+      createStatus({
+        actions: [],
+        availability: "ready",
+        provider: "tutti-agent"
+      })
+    ]
+  });
+  const listeners = new Set<() => void>();
+  let agents: readonly AgentGUIAgent[] = [];
+  const source = createWorkspaceAgentProviderDockStateSourceBase({
+    agentProviderStatusService: service,
+    agentsService: {
+      getSnapshot: () => ({
+        agents,
+        agentTargets: [],
+        capturedAtUnixMs: 1
+      }),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }
+    },
+    i18n: createI18n()
+  });
+  let callCount = 0;
+  const unsubscribe = source.subscribe(() => {
+    callCount += 1;
+  });
+
+  agents = [
+    {
+      agentTargetId: "local:tutti-agent",
+      availability: { status: "ready" },
+      iconUrl: "app://icons/tutti-agent.png",
+      name: "Tutti Agent",
+      provider: "tutti-agent"
+    }
+  ];
+  for (const listener of listeners) {
+    listener();
+  }
+
+  assert.equal(callCount, 1);
+  assert.equal(
+    source.getEntryState(workspaceAgentGuiDockEntryId("tutti-agent"))
+      ?.visibility,
+    "always"
+  );
+  unsubscribe();
 });
 
 test("agent provider dock state source loads statuses when subscribed", () => {

@@ -531,7 +531,12 @@ install_dev_cli() {
 start_desktop_dev() {
   local tuttid_bin_path="$1"
   local status
-  local why_did_you_render="${VITE_TUTTI_WHY_DID_YOU_RENDER:-1}"
+  # why-did-you-render instruments every React component and hook. On a real
+  # workspace that work can block the renderer for seconds while AgentGUI
+  # restores its session directory, which also keeps the Workbench hydration
+  # barrier (and therefore the Dock) non-interactive. Keep it opt-in so the
+  # normal development path has production-like scheduling characteristics.
+  local why_did_you_render="${VITE_TUTTI_WHY_DID_YOU_RENDER:-0}"
 
   log "starting desktop dev with prebuilt tuttid"
   if [[ "${why_did_you_render}" == "1" ]]; then

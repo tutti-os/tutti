@@ -1,20 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type {
-  AgentActivityMessage,
-  AgentActivitySnapshot
+import {
+  AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+  createAgentSessionEngine,
+  normalizeAgentActivitySession,
+  type AgentActivitySession,
+  type AgentActivityTurn,
+  type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { NotificationMessage } from "@tutti-os/ui-notifications";
 import {
-  buildWorkspaceAgentOutcomeNotificationFromSessionEvent,
+  buildWorkspaceAgentOutcomeNotificationFromSettledTurn,
   createWorkspaceAgentOutcomeNotificationController
 } from "./workspaceAgentOutcomeNotification.ts";
 
-test("outcome notification builder reports completed turn state patches as success", () => {
+test("outcome builder projects canonical completed and failed settled turns", () => {
   assert.deepEqual(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-      statePatchEvent({ outcome: "success" })
-    ),
+    buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
+      conversationTitle: "Build feature",
+      session: canonicalSession(),
+      turn: canonicalTurn("settled", "completed")
+    }),
     {
       agentSessionId: "session-1",
       conversationTitle: "Build feature",
@@ -24,121 +30,70 @@ test("outcome notification builder reports completed turn state patches as succe
       workspaceId: "ws-1"
     }
   );
-});
-
-test("outcome notification builder reports failed turn state patches as error", () => {
-  assert.deepEqual(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-      statePatchEvent({ outcome: "failed" })
-    ),
-    {
-      agentSessionId: "session-1",
-      conversationTitle: "Build feature",
-      level: "error",
-      provider: "codex",
-      status: "failed",
-      workspaceId: "ws-1"
-    }
-  );
-});
-
-test("outcome notification builder uses the state patch title as the conversation title", () => {
-  assert.deepEqual(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-      statePatchEvent({
-        outcome: "success",
-        title: "Fix the installer bug"
-      })
-    ),
-    {
-      agentSessionId: "session-1",
-      conversationTitle: "Fix the installer bug",
-      level: "success",
-      provider: "codex",
-      status: "completed",
-      workspaceId: "ws-1"
-    }
-  );
-});
-
-test("outcome notification builder ignores message updates", () => {
   assert.equal(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent({
-      eventType: "message_update",
-      data: {
-        workspaceId: "ws-1",
-        agentSessionId: "session-1",
-        messages: [
-          {
-            role: "assistant",
-            status: "completed",
-            turnId: "turn-1"
-          }
-        ]
-      }
+    buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
+      session: canonicalSession(),
+      turn: canonicalTurn("running")
+    }),
+    null
+  );
+  assert.equal(
+    buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
+      session: canonicalSession(),
+      turn: canonicalTurn("settled", "canceled")
     }),
     null
   );
 });
 
-test("outcome notification builder ignores state patches without stable turn outcome", () => {
-  assert.equal(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-      statePatchEvent({ outcome: "canceled" })
-    ),
-    null
-  );
-  assert.equal(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-      statePatchEvent({ outcome: "success", turnId: "" })
-    ),
-    null
-  );
-  assert.equal(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent({
-      eventType: "state_patch",
-      data: {
-        workspaceId: "ws-1",
-        agentSessionId: "session-1",
-        lifecycleStatus: "failed",
-        provider: "codex",
-        title: "Build feature"
-      }
-    }),
-    null
-  );
+test("controller treats settled turns already in the engine as history", () => {
+  const engine = createTestEngine();
+  dispatchSession(engine);
+  dispatchTurn(engine, "settled", "completed");
+  const harness = createOutcomeNotificationHarness(engine);
+
+  assert.deepEqual(harness.foregroundNotifications, []);
+  assert.deepEqual(harness.notifications, []);
+  harness.controller.dispose();
 });
 
-test("outcome notification builder ignores freshly imported sessions with no active turn", () => {
-  // Bulk external-session import (services/tuttid/service/agent/external_import.go
-  // importExternalSession) always reports imported sessions directly in a
-  // terminal "completed" lifecycle status with no live turn. The state patch
-  // synthesized for such a session (hostStatePatchEventFromSession ->
-  // inferActiveTurnState) therefore carries no `turn` field at all, matching
-  // this shape. Regression coverage for the "many spurious AI-completed
-  // toasts after a bulk history import" report.
-  assert.equal(
-    buildWorkspaceAgentOutcomeNotificationFromSessionEvent({
-      eventType: "state_patch",
-      data: {
-        agentSessionId: "imported-codex-session-1",
-        lifecycleStatus: "completed",
-        currentPhase: "completed",
-        provider: "codex",
-        runtimeContext: { imported: true, visible: true },
-        title: "Imported conversation",
-        workspaceId: "ws-1"
-      }
-    }),
-    null
-  );
+test("controller notifies a new turn that first appears settled in one engine batch", () => {
+  const engine = createTestEngine();
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
+
+  dispatchSession(engine);
+  dispatchTurn(engine, "settled", "completed");
+
+  assert.equal(harness.notifications.length, 1);
+  harness.controller.dispose();
 });
 
-test("outcome notification controller notifies from live session events", () => {
-  const harness = createOutcomeNotificationHarness((workspaceId) =>
-    activitySnapshot({ workspaceId })
-  );
+test("controller baselines settled turns received during initial hydration", () => {
+  const engine = createTestEngine();
+  const harness = createOutcomeNotificationHarness(engine);
 
+  requestWorkspaceReconcile(engine);
+  dispatchSession(engine);
+  dispatchTurn(engine, "settled", "completed", "historical-turn");
+  assert.equal(harness.notifications.length, 0);
+
+  completeWorkspaceReconcile(engine);
+  assert.equal(harness.notifications.length, 0);
+
+  dispatchTurn(engine, "running", undefined, "new-turn");
+  dispatchTurn(engine, "settled", "completed", "new-turn");
+  assert.equal(harness.notifications.length, 1);
+  harness.controller.dispose();
+});
+
+test("controller notifies once for a canonical running to settled transition", () => {
+  const engine = createTestEngine();
+  dispatchSession(engine);
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
+
+  dispatchTurn(engine, "running");
   harness.events[0]?.(
     messageUpdateEvent({
       content: "Fix the installer bug",
@@ -146,9 +101,8 @@ test("outcome notification controller notifies from live session events", () => 
       turnId: "turn-1"
     })
   );
-  harness.events[0]?.(
-    statePatchEvent({ outcome: "success", title: "Build feature" })
-  );
+  dispatchTurn(engine, "settled", "completed");
+  dispatchTurn(engine, "settled", "completed");
 
   assert.deepEqual(harness.foregroundNotifications, [
     {
@@ -164,139 +118,133 @@ test("outcome notification controller notifies from live session events", () => 
     }
   ]);
   assert.equal(harness.notifications.length, 1);
-  assert.deepEqual(harness.notifications[0], {
-    description: "The agent finished this run.",
-    level: "success",
-    navigation: {
-      agentSessionId: "session-1",
-      provider: "codex",
-      workspaceId: "ws-1"
-    },
-    presentation: "background-only",
-    title: "Fix the installer bug completed"
-  });
+  assert.equal(
+    harness.notifications[0]?.title,
+    "Fix the installer bug completed"
+  );
 
   harness.controller.dispose();
   assert.equal(harness.events.length, 0);
 });
 
-test("outcome notification controller uses the matching latest user message title", () => {
-  const harness = createOutcomeNotificationHarness((workspaceId) =>
-    activitySnapshot({ workspaceId })
-  );
+test("message updates only cache titles and never synthesize outcomes", () => {
+  const engine = createTestEngine();
+  dispatchSession(engine);
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
 
   harness.events[0]?.(
     messageUpdateEvent({
-      content: "6",
+      content: "Title only",
       role: "user",
-      turnId: "turn-6"
-    })
-  );
-  harness.events[0]?.(
-    statePatchEvent({
-      outcome: "completed",
-      title: "1",
-      turnId: "turn-6"
+      turnId: "turn-1"
     })
   );
 
-  assert.equal(
-    (harness.foregroundNotifications[0] as { conversationTitle?: string })
-      .conversationTitle,
-    "6"
-  );
-  assert.equal(harness.notifications[0]?.title, "6 completed");
+  assert.deepEqual(harness.notifications, []);
+  harness.controller.dispose();
 });
 
-const snapshotMentionTitleCases = [
-  {
-    name: "session mention markdown",
-    title:
-      "[@wang jomes & Codex hi](mention://agent-session/session-linked?workspaceId=ws-1)",
-    expected: "@session · wang jomes & Codex hi"
-  },
-  {
-    name: "plain session mention",
-    title: "@sunhello135-png & Nexight 长标题会话",
-    expected: "@session · sunhello135-png & Nexight 长标题会话"
-  },
-  {
-    name: "workspace issue mention markdown",
-    title:
-      "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=ws-1)",
-    expected: "@调研 spool 仓库 这个任务"
-  },
-  {
-    name: "workspace app mention markdown",
-    title:
-      "[@Claude Code](mention://workspace-app/agent-claude-code?workspaceId=ws-1) 派发个子agent去看看呢？",
-    expected: "@Claude Code 派发个子agent去看看呢？"
-  }
-] as const;
+test("controller uses the canonical engine session title", () => {
+  const engine = createTestEngine();
+  dispatchSession(engine);
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
 
-for (const { name, title, expected } of snapshotMentionTitleCases) {
-  test(`outcome notification controller formats ${name} like Agent GUI`, () => {
-    const harness = createOutcomeNotificationHarness((workspaceId) =>
-      activitySnapshot({ workspaceId, title })
-    );
+  dispatchTurn(engine, "running");
+  dispatchTurn(engine, "settled", "completed");
 
-    harness.events[0]?.(
-      statePatchEvent({ outcome: "completed", title: "Codex" })
-    );
+  assert.equal(harness.notifications[0]?.title, "Build feature completed");
+  harness.controller.dispose();
+});
 
-    assert.equal(
-      (harness.foregroundNotifications[0] as { conversationTitle?: string })
-        .conversationTitle,
-      expected
-    );
-    assert.equal(harness.notifications[0]?.title, `${expected} completed`);
+function createTestEngine(): AgentSessionEngine {
+  return createAgentSessionEngine({
+    clock: { nowUnixMs: () => 1 },
+    commandPort: { execute: () => Promise.resolve(undefined) },
+    identity: {
+      origin: AGENT_SESSION_ENGINE_LOCAL_ORIGIN,
+      workspaceId: "ws-1"
+    },
+    scheduler: {
+      schedule() {
+        return { cancel() {} };
+      }
+    }
   });
 }
 
-test("outcome notification controller resolves provider default titles from snapshot messages", () => {
-  const harness = createOutcomeNotificationHarness((workspaceId) =>
-    activitySnapshot({
-      messages: [
-        activityMessage({
-          content: "Ship the title fix.",
-          messageId: "message-user-1"
-        })
-      ],
-      workspaceId,
-      title: "Codex"
-    })
-  );
+function dispatchSession(engine: AgentSessionEngine): void {
+  engine.dispatch({ session: activitySession(), type: "session/upserted" });
+}
 
-  harness.events[0]?.(
-    statePatchEvent({ outcome: "completed", title: "Codex" })
-  );
+function dispatchTurn(
+  engine: AgentSessionEngine,
+  phase: AgentActivityTurn["phase"],
+  outcome?: AgentActivityTurn["outcome"],
+  turnId = "turn-1"
+): void {
+  engine.dispatch({
+    turn: canonicalTurn(phase, outcome, turnId),
+    type: "turn/upserted"
+  });
+}
 
-  assert.equal(
-    (harness.foregroundNotifications[0] as { conversationTitle?: string })
-      .conversationTitle,
-    "Ship the title fix"
-  );
-  assert.equal(harness.notifications[0]?.title, "Ship the title fix completed");
-});
+function requestWorkspaceReconcile(engine: AgentSessionEngine): void {
+  engine.dispatch({
+    type: "workspace/reconcileRequested",
+    workspaceId: "ws-1"
+  });
+}
 
-function statePatchEvent(input: {
-  outcome: string;
-  title?: string;
-  turnId?: string;
-}): unknown {
+function completeWorkspaceReconcile(engine: AgentSessionEngine): void {
+  const commandId =
+    engine.getSnapshot().engineRuntime.workspaceReconcile.commandId;
+  assert.ok(commandId);
+  engine.dispatch({
+    commandId,
+    commandType: "engine/reconcileWorkspace",
+    outcome: "succeeded",
+    type: "engine/commandResult"
+  });
+}
+
+function markWorkspaceReconcileReady(engine: AgentSessionEngine): void {
+  requestWorkspaceReconcile(engine);
+  completeWorkspaceReconcile(engine);
+}
+
+function canonicalSession() {
+  const session = activitySession();
+  const { activeTurn: _activeTurn, ...canonical } = session;
+  return { ...canonical, activeTurnId: null };
+}
+
+function canonicalTurn(
+  phase: AgentActivityTurn["phase"],
+  outcome?: AgentActivityTurn["outcome"],
+  turnId = "turn-1"
+): AgentActivityTurn {
   return {
-    eventType: "state_patch",
-    data: {
-      workspaceId: "ws-1",
-      agentSessionId: "session-1",
-      provider: "codex",
-      title: input.title ?? "Build feature",
-      turn: {
-        turnId: input.turnId ?? "turn-1",
-        outcome: input.outcome
-      }
-    }
+    agentSessionId: "session-1",
+    outcome,
+    phase,
+    ...(phase === "settled" ? { settledAtUnixMs: 2 } : {}),
+    startedAtUnixMs: 1,
+    turnId,
+    updatedAtUnixMs: 2
   };
+}
+
+function activitySession(): AgentActivitySession {
+  return normalizeAgentActivitySession({
+    activeTurn: null,
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    provider: "codex",
+    title: "Build feature",
+    workspaceId: "ws-1"
+  });
 }
 
 function messageUpdateEvent(input: {
@@ -322,35 +270,7 @@ function messageUpdateEvent(input: {
   };
 }
 
-function activitySnapshot(input: {
-  messages?: AgentActivityMessage[];
-  title?: string;
-  workspaceId: string;
-}): AgentActivitySnapshot {
-  return {
-    workspaceId: input.workspaceId,
-    sessions: [
-      {
-        workspaceId: input.workspaceId,
-        agentSessionId: "session-1",
-        provider: "codex",
-        cwd: "/workspace",
-        title: input.title ?? "Build feature",
-        status: "completed"
-      }
-    ],
-    presences: [],
-    sessionMessagesById: {
-      "session-1": input.messages ?? []
-    }
-  };
-}
-
-function createOutcomeNotificationHarness(
-  snapshot:
-    | AgentActivitySnapshot
-    | ((workspaceId: string) => AgentActivitySnapshot)
-): {
+function createOutcomeNotificationHarness(engine: AgentSessionEngine): {
   controller: ReturnType<
     typeof createWorkspaceAgentOutcomeNotificationController
   >;
@@ -373,60 +293,27 @@ function createOutcomeNotificationHarness(
       }
     },
     translate(key, params) {
-      if (key.endsWith("CompletedBody")) {
-        return "The agent finished this run.";
-      }
-      if (key.endsWith("CompletedTitle")) {
-        return `${params?.title} completed`;
-      }
-      if (key.endsWith("CompletedStatus")) {
-        return "Completed";
-      }
-      if (key === "workspace.agentGui.fallbackAgentLabel") {
-        return "Agent";
-      }
-      if (key === "common.close") {
-        return "Close";
-      }
+      if (key.endsWith("CompletedBody")) return "The agent finished this run.";
+      if (key.endsWith("CompletedTitle")) return `${params?.title} completed`;
+      if (key.endsWith("CompletedStatus")) return "Completed";
+      if (key === "workspace.agentGui.fallbackAgentLabel") return "Agent";
+      if (key === "common.close") return "Close";
       return key;
     },
     workspaceAgentActivityService: {
-      getSnapshot(workspaceId) {
-        return typeof snapshot === "function"
-          ? snapshot(workspaceId)
-          : snapshot;
+      getSessionEngine() {
+        return engine;
       },
       onSessionEvent(workspaceId, listener) {
         assert.equal(workspaceId, "ws-1");
         events.push(listener);
         return () => {
           const index = events.indexOf(listener);
-          if (index >= 0) {
-            events.splice(index, 1);
-          }
+          if (index >= 0) events.splice(index, 1);
         };
       }
     },
     workspaceId: "ws-1"
   });
   return { controller, events, foregroundNotifications, notifications };
-}
-
-function activityMessage(input: {
-  content: string;
-  messageId: string;
-}): AgentActivityMessage {
-  return {
-    workspaceId: "ws-1",
-    agentSessionId: "session-1",
-    messageId: input.messageId,
-    version: 1,
-    turnId: "turn-1",
-    role: "user",
-    kind: "message.user",
-    payload: {
-      text: input.content
-    },
-    occurredAtUnixMs: 1
-  };
 }

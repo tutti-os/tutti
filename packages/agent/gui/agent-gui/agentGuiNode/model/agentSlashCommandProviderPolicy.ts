@@ -1,4 +1,8 @@
 import type { AgentSessionCommand } from "../../../shared/agentSessionTypes";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivitySlashCommandPolicy
+} from "@tutti-os/agent-activity-core";
 import {
   buildTuttiBrowserUseSubmitPrompt,
   parseTuttiBrowserUseInvocation
@@ -10,7 +14,7 @@ import {
   promptForSlashCommand
 } from "./agentSlashCommands";
 
-export type AgentSlashCommandProvider = "codex" | "claude-code" | string;
+export type AgentSlashCommandProvider = string;
 
 export interface AgentSlashCommandCapability {
   aliases?: readonly string[];
@@ -23,7 +27,7 @@ export type AgentSlashCommand =
   | AgentSessionCommand
   | AgentSlashCommandCapability;
 
-export type AgentSlashCommandFallbackMode = "provider-default" | "none";
+export type AgentSlashCommandPolicy = AgentActivitySlashCommandPolicy;
 
 export type SlashCommandSelectionEffect =
   | {
@@ -62,12 +66,14 @@ export type SlashCommandSelectionEffect =
 
 interface ResolveSlashCommandSelectionEffectInput {
   provider: AgentSlashCommandProvider;
+  policy?: AgentSlashCommandPolicy | null;
   command: AgentSlashCommand;
   currentDraft: string;
 }
 
 interface ResolveSlashCommandSubmitEffectInput {
   provider: AgentSlashCommandProvider;
+  policy?: AgentSlashCommandPolicy | null;
   commands: readonly AgentSlashCommand[];
   draft: string;
 }
@@ -79,49 +85,15 @@ interface ProviderSlashPolicy {
   reviewPickerCommands: ReadonlySet<string>;
   /** Commands surfaced when the agent advertises none of its own. */
   fallbackCommands: readonly AgentSessionCommand[];
+  localGoalCommands: ReadonlySet<string>;
+  localPlanCommands: ReadonlySet<string>;
+  localStatusCommands: ReadonlySet<string>;
+  localSpeedCommands: ReadonlySet<string>;
 }
 
-const REVIEW_COMMAND = "review";
-// `compact` is locally handled and submitted immediately for every provider.
-const UNIVERSAL_IMMEDIATE_COMMANDS = new Set(["compact"]);
 // `/plan` toggles plan mode locally (a negotiated capability) rather than
 // reaching the agent as a prompt; surfaced only when plan mode is supported.
-const ACP_LOCAL_TOGGLE_PLAN_COMMANDS = new Set(["plan"]);
-const ACP_LOCAL_STATUS_COMMANDS = new Set(["status"]);
-// `/fast` toggles the orthogonal speed dimension locally rather than reaching
-// the agent as a prompt; supported for codex and claude-code.
-const ACP_LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
-const ACP_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  { name: "compact" },
-  { name: "status" },
-  { name: "fast" },
-  { name: "goal" }
-];
-const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  ...ACP_FALLBACK_COMMANDS,
-  { name: REVIEW_COMMAND }
-];
-const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  ...ACP_FALLBACK_COMMANDS,
-  { name: REVIEW_COMMAND }
-];
-// Cursor exposes only Tutti's local `/plan` toggle; every other slash entry is
-// hidden from the composer palette.
-const CURSOR_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [];
-const OPENCODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
-  { name: "compact" },
-  { name: "goal" },
-  { name: REVIEW_COMMAND }
-];
-const CLAUDE_CODE_SLASH_PALETTE_COMMANDS = new Set([
-  "compact",
-  "context",
-  "fast",
-  "goal",
-  "review",
-  "status",
-  "usage"
-]);
+// `/fast` toggles the descriptor-advertised speed dimension locally.
 const BROWSER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
   kind: "capability",
   capability: "browserUse",
@@ -136,64 +108,43 @@ const COMPUTER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
 };
 const PLAN_MODE_COMMAND: AgentSessionCommand = { name: "plan" };
 
-const PROVIDER_SLASH_POLICY: Record<
-  "codex" | "claude-code" | "cursor" | "opencode",
-  ProviderSlashPolicy
-> = {
-  codex: {
-    immediateCommands: new Set(["init", "compact"]),
-    reviewPickerCommands: new Set([REVIEW_COMMAND]),
-    fallbackCommands: CODEX_FALLBACK_COMMANDS
-  },
-  "claude-code": {
-    immediateCommands: new Set(["compact", "context", "usage"]),
-    reviewPickerCommands: new Set([REVIEW_COMMAND]),
-    fallbackCommands: CLAUDE_CODE_FALLBACK_COMMANDS
-  },
-  cursor: {
-    immediateCommands: new Set(),
-    reviewPickerCommands: new Set(),
-    fallbackCommands: CURSOR_FALLBACK_COMMANDS
-  },
-  opencode: {
-    immediateCommands: new Set(),
-    reviewPickerCommands: new Set([REVIEW_COMMAND]),
-    fallbackCommands: OPENCODE_FALLBACK_COMMANDS
-  }
-};
-
 function providerSlashPolicy(
-  provider: AgentSlashCommandProvider
+  policy?: AgentSlashCommandPolicy | null
 ): ProviderSlashPolicy | undefined {
-  return provider === "codex" ||
-    provider === "claude-code" ||
-    provider === "cursor" ||
-    provider === "opencode"
-    ? PROVIDER_SLASH_POLICY[provider]
-    : undefined;
-}
-
-function isACPProvider(provider: AgentSlashCommandProvider): boolean {
-  return (
-    provider === "codex" ||
-    provider === "claude-code" ||
-    provider === "cursor" ||
-    provider === "opencode"
-  );
+  if (policy) {
+    const commandsForEffect = (
+      effect: AgentSlashCommandPolicy["commandEffects"][number]["effect"]
+    ) =>
+      normalizedCommandSet(
+        policy.commandEffects.flatMap((entry) =>
+          entry.effect === effect ? [entry.command] : []
+        )
+      );
+    return {
+      fallbackCommands: policy.fallbackCommands.map((name) => ({ name })),
+      immediateCommands: commandsForEffect("submitImmediate"),
+      reviewPickerCommands: commandsForEffect("showReviewPicker"),
+      localGoalCommands: commandsForEffect("activateGoalMode"),
+      localPlanCommands: commandsForEffect("togglePlanMode"),
+      localStatusCommands: commandsForEffect("showStatus"),
+      localSpeedCommands: commandsForEffect("toggleSpeed")
+    };
+  }
+  return undefined;
 }
 
 export function resolveSlashCommandsForProvider({
-  provider,
+  provider: _provider,
+  policy,
   commands,
   hasCompactableContext = true,
   compactSupported,
   planSupported = false,
-  goalSupported = true,
   browserSupported = false,
-  computerSupported = false,
-  fallbackMode = "provider-default"
+  computerSupported = false
 }: {
   provider: AgentSlashCommandProvider;
+  policy?: AgentSlashCommandPolicy | null;
   commands: readonly AgentSessionCommand[];
   hasCompactableContext?: boolean;
   /**
@@ -203,21 +154,16 @@ export function resolveSlashCommandsForProvider({
    */
   compactSupported?: boolean | null;
   planSupported?: boolean;
-  goalSupported?: boolean;
   browserSupported?: boolean;
   computerSupported?: boolean;
-  fallbackMode?: AgentSlashCommandFallbackMode;
 }): AgentSlashCommand[] {
-  const useProviderDefaults = fallbackMode !== "none";
-  const fallbackCommands = useProviderDefaults
-    ? fallbackCommandsForProvider(provider)
-    : [];
+  const descriptorCommands = policy ? commands : [];
   const mergedEntries = mergeSlashCommands(
-    filterUnavailableSlashCommands(commands, {
+    filterUnavailableSlashCommands(descriptorCommands, {
       compactSupported,
       hasCompactableContext
     }),
-    filterUnavailableSlashCommands(fallbackCommands, {
+    filterUnavailableSlashCommands(fallbackCommandsForPolicy(policy), {
       compactSupported,
       hasCompactableContext
     })
@@ -226,34 +172,32 @@ export function resolveSlashCommandsForProvider({
   // agent-advertised `plan` and re-surface our own entry only when supported.
   const commandEntries = mergedEntries.filter((entry) => {
     const commandName = normalizedCommandName(entry);
-    if (!useProviderDefaults) {
-      return goalSupported !== false || commandName !== "goal";
-    }
     return (
       commandName !== "plan" &&
-      (goalSupported !== false || commandName !== "goal") &&
-      isSlashPaletteCommandVisible(provider, commandName)
+      isSlashPaletteCommandVisible(commandName, policy)
     );
   });
   const planEntries =
-    useProviderDefaults && planSupported && isACPProvider(provider)
+    planSupported &&
+    (providerSlashPolicy(policy)?.localPlanCommands.has("plan") ?? false)
       ? [PLAN_MODE_COMMAND]
       : [];
   const capabilityEntries: AgentSlashCommandCapability[] = [];
-  if (useProviderDefaults && browserSupported) {
+  if (browserSupported) {
     capabilityEntries.push(BROWSER_USE_CAPABILITY_COMMAND);
   }
-  if (useProviderDefaults && computerSupported) {
+  if (computerSupported) {
     capabilityEntries.push(COMPUTER_USE_CAPABILITY_COMMAND);
   }
   return [...commandEntries, ...planEntries, ...capabilityEntries];
 }
 
 export function resolveSlashCommandSelectionEffect({
-  provider,
+  provider: _provider,
+  policy,
   command,
   currentDraft
-}: ResolveSlashCommandSelectionEffectInput): SlashCommandSelectionEffect {
+}: ResolveSlashCommandSelectionEffectInput): SlashCommandSelectionEffect | null {
   if (isBrowserUseCapability(command)) {
     return {
       kind: "enableBrowserUse",
@@ -266,25 +210,27 @@ export function resolveSlashCommandSelectionEffect({
       draft: draftForSlashCommand(command, currentDraft)
     };
   }
+  if (!policy) {
+    return null;
+  }
   const commandName = normalizedCommandName(command);
-  if (isLocalTogglePlanCommand(provider, commandName)) {
+  if (isLocalTogglePlanCommand(commandName, policy)) {
     return { kind: "togglePlanMode" };
   }
-  if (isGoalModeCommand(commandName)) {
+  if (isLocalGoalCommand(commandName, policy)) {
     return { kind: "activateGoalMode" };
   }
-  if (isLocalToggleSpeedCommand(provider, commandName)) {
+  if (isLocalToggleSpeedCommand(commandName, policy)) {
     return { kind: "toggleSpeed" };
   }
-  if (isLocalStatusCommand(provider, commandName)) {
+  if (isLocalStatusCommand(commandName, policy)) {
     return { kind: "showStatus" };
   }
-  // Picking codex `/review` from the palette never carries args (the palette
-  // closes once a space is typed), so always open the target picker.
-  if (isReviewPickerCommand(provider, commandName)) {
+  // A descriptor may route a bare palette command to a local picker.
+  if (isReviewPickerCommand(commandName, policy)) {
     return { kind: "showReviewPicker" };
   }
-  if (isImmediateCommand(provider, commandName)) {
+  if (isImmediateCommand(commandName, policy)) {
     return {
       kind: "submitPrompt",
       prompt: promptForSlashCommand(command)
@@ -328,7 +274,8 @@ function browserUseDisplayPrompt({ args }: { args: string }): string {
 }
 
 export function resolveSlashCommandSubmitEffect({
-  provider,
+  provider: _provider,
+  policy,
   commands,
   draft
 }: ResolveSlashCommandSubmitEffectInput): SlashCommandSelectionEffect | null {
@@ -346,21 +293,24 @@ export function resolveSlashCommandSubmitEffect({
     return null;
   }
   const commandName = normalizedCommandName(command);
-  if (isLocalTogglePlanCommand(provider, commandName)) {
+  if (isLocalTogglePlanCommand(commandName, policy)) {
     return { kind: "togglePlanMode" };
   }
-  if (isLocalToggleSpeedCommand(provider, commandName)) {
+  if (isLocalGoalCommand(commandName, policy)) {
+    return invocation.args.trim() === "" ? { kind: "activateGoalMode" } : null;
+  }
+  if (isLocalToggleSpeedCommand(commandName, policy)) {
     return { kind: "toggleSpeed" };
   }
-  if (isLocalStatusCommand(provider, commandName)) {
+  if (isLocalStatusCommand(commandName, policy)) {
     return { kind: "showStatus" };
   }
   // Bare `/review` opens the target picker; `/review <text>` keeps the legacy
   // behavior of submitting the text straight through as a custom review.
-  if (isReviewPickerCommand(provider, commandName)) {
+  if (isReviewPickerCommand(commandName, policy)) {
     return invocation.args.trim() === "" ? { kind: "showReviewPicker" } : null;
   }
-  if (isImmediateCommand(provider, commandName)) {
+  if (isImmediateCommand(commandName, policy)) {
     return {
       kind: "submitPrompt",
       prompt: invocation.normalizedPrompt
@@ -370,74 +320,96 @@ export function resolveSlashCommandSubmitEffect({
 }
 
 function isLocalTogglePlanCommand(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
   return (
-    isACPProvider(provider) &&
-    ACP_LOCAL_TOGGLE_PLAN_COMMANDS.has(commandName.trim().toLowerCase())
+    providerSlashPolicy(policy)?.localPlanCommands.has(
+      commandName.trim().toLowerCase()
+    ) ?? false
   );
 }
 
-function isGoalModeCommand(commandName: string): boolean {
-  return commandName.trim().toLowerCase() === "goal";
+function isLocalGoalCommand(
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
+): boolean {
+  return (
+    providerSlashPolicy(policy)?.localGoalCommands.has(
+      commandName.trim().toLowerCase()
+    ) ?? false
+  );
 }
 
 function isReviewPickerCommand(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
   return (
-    providerSlashPolicy(provider)?.reviewPickerCommands.has(commandName) ??
-    false
+    providerSlashPolicy(policy)?.reviewPickerCommands.has(commandName) ?? false
   );
 }
 
-function fallbackCommandsForProvider(
-  provider: AgentSlashCommandProvider
+function fallbackCommandsForPolicy(
+  policy?: AgentSlashCommandPolicy | null
 ): readonly AgentSessionCommand[] {
-  return providerSlashPolicy(provider)?.fallbackCommands ?? [];
+  return providerSlashPolicy(policy)?.fallbackCommands ?? [];
 }
 
 function isSlashPaletteCommandVisible(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
-  if (provider === "claude-code") {
-    return CLAUDE_CODE_SLASH_PALETTE_COMMANDS.has(commandName);
-  }
-  if (provider === "cursor") {
-    return false;
+  if (policy?.commandCatalogAuthoritative === true) {
+    return (
+      policy.fallbackCommands.some(
+        (command) => command.trim().toLowerCase() === commandName
+      ) ||
+      policy.commandEffects.some(
+        (descriptor) => descriptor.command.trim().toLowerCase() === commandName
+      )
+    );
   }
   return true;
 }
 
 function isLocalStatusCommand(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
-  return isACPProvider(provider) && ACP_LOCAL_STATUS_COMMANDS.has(commandName);
+  return (
+    providerSlashPolicy(policy)?.localStatusCommands.has(commandName) ?? false
+  );
 }
 
 function isLocalToggleSpeedCommand(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
   return (
-    isACPProvider(provider) && ACP_LOCAL_TOGGLE_SPEED_COMMANDS.has(commandName)
+    providerSlashPolicy(policy)?.localSpeedCommands.has(commandName) ?? false
   );
 }
 
 function isImmediateCommand(
-  provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
-  if (UNIVERSAL_IMMEDIATE_COMMANDS.has(commandName)) {
-    return true;
-  }
   return (
-    providerSlashPolicy(provider)?.immediateCommands.has(commandName) ?? false
+    providerSlashPolicy(policy)?.immediateCommands.has(commandName) ?? false
   );
+}
+
+function normalizedCommandSet(values: readonly string[]): ReadonlySet<string> {
+  return new Set(
+    values.map((value) => value.trim().toLowerCase()).filter(Boolean)
+  );
+}
+
+export function slashCommandPolicyFromComposerOptions(
+  options: AgentActivityComposerOptions | null
+): AgentSlashCommandPolicy | null {
+  return options?.slashCommandPolicy ?? null;
 }
 
 function normalizedCommandName(command: { name: string }): string {

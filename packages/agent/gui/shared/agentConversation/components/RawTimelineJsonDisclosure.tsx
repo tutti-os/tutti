@@ -1,6 +1,6 @@
 import { useState, type JSX } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import { CollapsibleReveal } from "./CollapsibleReveal";
 
 interface RawTimelineJsonDisclosureProps {

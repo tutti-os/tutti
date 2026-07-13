@@ -1,32 +1,26 @@
 package api
 
 import (
-	"fmt"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
-	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
 func generatedAgentSessionMessages(messages []agentservice.SessionMessage) ([]tuttigenerated.WorkspaceAgentSessionMessage, error) {
 	result := make([]tuttigenerated.WorkspaceAgentSessionMessage, 0, len(messages))
 	for _, message := range messages {
-		turnID := strings.TrimSpace(message.TurnID)
-		if turnID == "" {
-			messageID := strings.TrimSpace(message.MessageID)
-			if messageID == "" {
-				messageID = fmt.Sprintf("id:%d", message.ID)
-			}
-			return nil, apierrors.WorkspaceOperationFailed(
-				apierrors.WithDeveloperMessage(fmt.Sprintf("workspace agent session message %q is missing turnId", messageID)),
-			)
+		// Protocol v2 message ownership: a non-empty turnId attaches the
+		// message to that turn; an empty stored turn id is projected as null
+		// (session-level message) instead of being rejected.
+		var turnID *string
+		if trimmed := strings.TrimSpace(message.TurnID); trimmed != "" {
+			turnID = &trimmed
 		}
 		result = append(result, tuttigenerated.WorkspaceAgentSessionMessage{
 			AgentSessionId:    strings.TrimSpace(message.AgentSessionID),
 			CompletedAtUnixMs: int64Pointer(message.CompletedAtUnixMS),
 			CreatedAtUnixMs:   int64Pointer(message.CreatedAtUnixMS),
-			Id:                int64(message.ID),
 			Kind:              strings.TrimSpace(message.Kind),
 			MessageId:         strings.TrimSpace(message.MessageID),
 			OccurredAtUnixMs:  normalizedGeneratedMessageOccurredAtUnixMS(message),
@@ -78,7 +72,6 @@ func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMess
 		message.CreatedAtUnixMS,
 		message.UpdatedAtUnixMS,
 		int64(message.Version),
-		int64(message.ID),
 		1,
 	)
 }

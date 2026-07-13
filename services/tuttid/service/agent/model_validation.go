@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -69,14 +70,43 @@ func (s *Service) availableComposerModelsForValidation(
 	workspaceID string,
 	cwd string,
 ) ([]string, bool, error) {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
+	provider = agentprovider.Normalize(provider)
+	profile := composerProfileFor(provider)
+	return s.availableComposerModelsForValidationProfile(ctx, provider, workspaceID, cwd, profile)
+}
+
+func (s *Service) availableComposerModelsForValidationProfile(
+	ctx context.Context,
+	provider string,
+	workspaceID string,
+	cwd string,
+	profile composerProfile,
+) ([]string, bool, error) {
+	switch profile.ModelCatalog {
+	case "", providerregistry.ModelCatalogKindCodexCLI, providerregistry.ModelCatalogKindOpenCodeCLI, providerregistry.ModelCatalogKindTuttiCLI:
+	default:
+		return nil, false, fmt.Errorf(
+			"provider %q model catalog kind %q is unsupported: %w",
+			provider,
+			profile.ModelCatalog,
+			ErrInvalidArgument,
+		)
+	}
+	if profile.LiveModelDiscovery && profile.UsesModelCatalog {
+		return nil, false, fmt.Errorf(
+			"provider %q declares both live model discovery and a model catalog: %w",
+			provider,
+			ErrInvalidArgument,
+		)
+	}
+	if profile.LiveModelDiscovery {
 		models, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, time.Now().UTC())
 		if !ok {
 			return nil, false, nil
 		}
 		return composerConfigOptionModelValues(models), true, nil
-	case agentprovider.Codex, agentprovider.OpenCode:
+	}
+	if profile.UsesModelCatalog {
 		if s.ModelCatalog == nil {
 			return nil, false, nil
 		}
@@ -98,9 +128,8 @@ func (s *Service) availableComposerModelsForValidation(
 			values = append(values, id)
 		}
 		return values, true, nil
-	default:
-		return nil, false, nil
 	}
+	return nil, false, nil
 }
 
 func composerConfigOptionModelValues(options []ComposerConfigOptionValue) []string {

@@ -74,7 +74,6 @@ import {
   type DesktopLocale
 } from "../../../../../shared/i18n/index.ts";
 import {
-  type DesktopAgentProvider,
   type DesktopDefaultAgentProvider,
   desktopAgentConversationDetailModes,
   desktopAppCatalogChannels,
@@ -119,6 +118,10 @@ import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { useAccountService } from "./useAccountService";
 import {
+  normalizeWorkspaceSettingsDefaultAgentProvider,
+  workspaceSettingsDefaultAgentProviders
+} from "./workspaceSettingsDefaultAgentProviders";
+import {
   WorkspaceSettingsActionButton,
   workspaceSettingsControlColumnClass
 } from "./WorkspaceSettingsActionButton";
@@ -161,21 +164,6 @@ const cuaDriverToggleDemoUrl = new URL(
   "../../../assets/cua-driver-toggle-demo.gif",
   import.meta.url
 ).href;
-const workspaceSettingsDefaultAgentProviders = [
-  "codex",
-  "claude-code",
-  "cursor",
-  "opencode"
-] as const satisfies readonly DesktopDefaultAgentProvider[];
-
-function isWorkspaceSettingsDefaultAgentProvider(
-  provider: DesktopAgentProvider
-): provider is DesktopDefaultAgentProvider {
-  return workspaceSettingsDefaultAgentProviders.includes(
-    provider as DesktopDefaultAgentProvider
-  );
-}
-
 export function WorkspaceSettingsPanel({
   onOpenExternalAgentImport,
   onSelectWallpaper,
@@ -3671,11 +3659,10 @@ function WorkspaceAgentSettingsSection({
   const isUpdatingDefaultAgentProvider = changingDefaultAgentProvider !== null;
   const rawPendingDefaultAgentProvider =
     changingDefaultAgentProvider ?? defaultAgentProvider;
-  const pendingDefaultAgentProvider = isWorkspaceSettingsDefaultAgentProvider(
-    rawPendingDefaultAgentProvider
-  )
-    ? rawPendingDefaultAgentProvider
-    : "codex";
+  const pendingDefaultAgentProvider =
+    normalizeWorkspaceSettingsDefaultAgentProvider(
+      rawPendingDefaultAgentProvider
+    );
   const isUpdatingBrowserUseConnectionMode =
     changingBrowserUseConnectionMode !== null;
   const pendingBrowserUseConnectionMode =

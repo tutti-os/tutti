@@ -180,6 +180,12 @@ func TestProviderSkillRootDoesNotExposeClaudeCodeProjectSkills(t *testing.T) {
 	if root := providerSkillRoot(cwd, "hermes"); root != filepath.Join(cwd, ".agent_context", "skills") {
 		t.Fatalf("providerSkillRoot() for hermes = %q, want project skill root", root)
 	}
+	if root := providerSkillRoot(cwd, "open-claw"); root != filepath.Join(cwd, ".openclaw", "skills") {
+		t.Fatalf("providerSkillRoot() for open-claw = %q, want project skill root", root)
+	}
+	if root := providerSkillRoot(cwd, "tutti"); root != filepath.Join(cwd, ".nexight", "skills") {
+		t.Fatalf("providerSkillRoot() for historical tutti alias = %q, want Nexight project skill root", root)
+	}
 }
 
 func TestDefaultPreparerRenderSkillBundleUsesDynamicGuide(t *testing.T) {

@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 
@@ -215,31 +216,26 @@ function conversationWithRows(
         sessionId: "session-1",
         agentName: "Codex",
         agentProvider: "codex",
-        status: "working",
         title: "Codex",
         latestActivitySummary: "Working",
+        status: "working",
         sortTimeUnixMs: 10,
         changedFiles: [],
         userId: "user-1",
         userName: "Taylor",
         userAvatarUrl: ""
       },
-      session: {
-        id: 1,
+      session: normalizeAgentActivitySession({
+        workspaceId: "workspace-1",
         agentSessionId: "session-1",
-        presenceId: 1,
         userId: "user-1",
         provider: "codex",
         providerSessionId: "provider-session-1",
-        sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
         cwd: "/workspace/demo",
-        lifecycleStatus: "active",
-        turnPhase: "working",
-        effectiveStatus: "working",
         title: "Codex",
         createdAtUnixMs: 1,
         updatedAtUnixMs: 10
-      },
+      }),
       cwd: "/workspace/demo",
       workspaceRoot: "/workspace/demo",
       turns: rows.map((row) => ({

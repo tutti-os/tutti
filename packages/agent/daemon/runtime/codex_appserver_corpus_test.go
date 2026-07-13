@@ -36,7 +36,7 @@ func TestAppServerCollabAgentCompletedCarriesResultOutput(t *testing.T) {
 	if !ok {
 		t.Fatalf("rawOutput.result = %#v, want map", rawOutput["result"])
 	}
-	if got, _ := acpInt64Value(result["integer"]); got != 7 {
+	if got, _ := int64Value(result["integer"]); got != 7 {
 		t.Fatalf("rawOutput.result.integer = %#v, want 7", result["integer"])
 	}
 }

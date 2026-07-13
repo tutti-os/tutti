@@ -1,8 +1,5 @@
 import type {
-  AgentHostAgentActivityMessageUpdate,
-  AgentHostAgentActivityStreamEvent,
   AgentHostAgentModelCatalogInvalidatedEvent,
-  AgentHostAgentSession,
   AgentHostAgentSessionCommand,
   AgentHostAgentSessionComposerSettings,
   AgentHostAgentSessionEvent,
@@ -15,11 +12,24 @@ import type {
   AgentHostAgentSessionState
 } from "./contracts/dto";
 
-export type AgentActivityMessageUpdate = AgentHostAgentActivityMessageUpdate;
-export type AgentActivityStreamEvent = AgentHostAgentActivityStreamEvent;
+export interface AgentActivityMessageUpdate {
+  agentSessionId: string;
+  callId?: string;
+  completedAtUnixMs?: number;
+  kind: string;
+  messageId: string;
+  occurredAtUnixMs: number;
+  payload?: Record<string, unknown>;
+  role: string;
+  seq: number;
+  startedAtUnixMs?: number;
+  status?: string;
+  title?: string;
+  turnId: string | null;
+  workspaceId?: string;
+}
 export type AgentModelCatalogInvalidatedEvent =
   AgentHostAgentModelCatalogInvalidatedEvent;
-export type AgentSession = AgentHostAgentSession;
 export type AgentSessionCommand = AgentHostAgentSessionCommand;
 export type AgentSessionComposerSettings =
   AgentHostAgentSessionComposerSettings;

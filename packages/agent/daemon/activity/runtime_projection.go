@@ -1,4 +1,3 @@
-//revive:disable:file-length-limit
 package agentsessionstore
 
 import (
@@ -12,7 +11,7 @@ func RuntimeSnapshotForDisplay(
 	upstream WorkspaceAgentSnapshot,
 	local WorkspaceAgentSnapshot,
 ) WorkspaceAgentSnapshot {
-	sessions := make([]WorkspaceAgentSession, 0, len(upstream.Sessions)+len(local.Sessions))
+	sessions := make([]ProviderActivitySessionProjection, 0, len(upstream.Sessions)+len(local.Sessions))
 	bySessionID := make(map[string]int, len(upstream.Sessions)+len(local.Sessions))
 	byProviderSessionID := make(map[string]int, len(upstream.Sessions)+len(local.Sessions))
 	for _, session := range upstream.Sessions {
@@ -64,9 +63,9 @@ func RuntimeSnapshotForDisplay(
 }
 
 func mergeRuntimeAgentSession(
-	upstream WorkspaceAgentSession,
-	local WorkspaceAgentSession,
-) WorkspaceAgentSession {
+	upstream ProviderActivitySessionProjection,
+	local ProviderActivitySessionProjection,
+) ProviderActivitySessionProjection {
 	if shouldKeepLocalCompletedTurn(upstream, local) {
 		merged := local
 		merged.AgentSessionID = preferredMergedAgentSessionID(upstream, local)
@@ -158,7 +157,7 @@ func mergeRuntimeAgentSession(
 	return normalizeRuntimeSessionForDisplay(merged)
 }
 
-func normalizeRuntimeSessionForDisplay(session WorkspaceAgentSession) WorkspaceAgentSession {
+func normalizeRuntimeSessionForDisplay(session ProviderActivitySessionProjection) ProviderActivitySessionProjection {
 	lifecycleStatus := strings.ToLower(strings.TrimSpace(session.LifecycleStatus))
 	effectiveStatus := strings.ToLower(strings.TrimSpace(session.EffectiveStatus))
 	turnPhase := strings.ToLower(strings.TrimSpace(session.TurnPhase))
@@ -200,15 +199,15 @@ func normalizeRuntimeSessionForDisplay(session WorkspaceAgentSession) WorkspaceA
 }
 
 func preferredMergedAgentSessionID(
-	upstream WorkspaceAgentSession,
-	local WorkspaceAgentSession,
+	upstream ProviderActivitySessionProjection,
+	local ProviderActivitySessionProjection,
 ) string {
 	return firstNonEmptyString(upstream.AgentSessionID, local.AgentSessionID)
 }
 
 func shouldKeepLocalCompletedTurn(
-	upstream WorkspaceAgentSession,
-	local WorkspaceAgentSession,
+	upstream ProviderActivitySessionProjection,
+	local ProviderActivitySessionProjection,
 ) bool {
 	if local.EndedAtUnixMS <= 0 {
 		return false
@@ -223,8 +222,8 @@ func shouldKeepLocalCompletedTurn(
 }
 
 func shouldKeepLocalBusyState(
-	upstream WorkspaceAgentSession,
-	local WorkspaceAgentSession,
+	upstream ProviderActivitySessionProjection,
+	local ProviderActivitySessionProjection,
 ) bool {
 	if !isBusyRuntimeSession(local) {
 		return false
@@ -235,7 +234,7 @@ func shouldKeepLocalBusyState(
 	return isIdleLikeRuntimeSession(upstream)
 }
 
-func isWorkingRuntimeSession(session WorkspaceAgentSession) bool {
+func isWorkingRuntimeSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(firstNonEmptyString(session.EffectiveStatus, session.TurnPhase))) {
 	case "working", "running", "streaming":
 		return true
@@ -244,7 +243,7 @@ func isWorkingRuntimeSession(session WorkspaceAgentSession) bool {
 	}
 }
 
-func isBusyRuntimeSession(session WorkspaceAgentSession) bool {
+func isBusyRuntimeSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(firstNonEmptyString(session.EffectiveStatus, session.TurnPhase))) {
 	case "working", "running", "streaming", "waiting", "waiting_approval", "waiting_input", "awaiting_approval":
 		return true
@@ -253,7 +252,7 @@ func isBusyRuntimeSession(session WorkspaceAgentSession) bool {
 	}
 }
 
-func isIdleOrTerminalRuntimeSession(session WorkspaceAgentSession) bool {
+func isIdleOrTerminalRuntimeSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(session.EffectiveStatus)) {
 	case "idle", "completed", "canceled", "ended", "failed":
 		return true
@@ -266,7 +265,7 @@ func isIdleOrTerminalRuntimeSession(session WorkspaceAgentSession) bool {
 	}
 }
 
-func isTerminalRuntimeSession(session WorkspaceAgentSession) bool {
+func isTerminalRuntimeSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(canonicalWorkspaceAgentSessionStatus(session))) {
 	case "completed", "canceled", "failed":
 		return true
@@ -275,7 +274,7 @@ func isTerminalRuntimeSession(session WorkspaceAgentSession) bool {
 	}
 }
 
-func isIdleLikeRuntimeSession(session WorkspaceAgentSession) bool {
+func isIdleLikeRuntimeSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(canonicalWorkspaceAgentSessionStatus(session))) {
 	case "idle":
 		return true
@@ -724,14 +723,14 @@ func LimitTimelineItems(items []WorkspaceAgentTimelineItem, limit int) []Workspa
 }
 
 func FilterSessionsByUserID(
-	sessions []WorkspaceAgentSession,
+	sessions []ProviderActivitySessionProjection,
 	userID string,
-) []WorkspaceAgentSession {
+) []ProviderActivitySessionProjection {
 	userID = strings.TrimSpace(userID)
 	if userID == "" || len(sessions) == 0 {
 		return sessions
 	}
-	filtered := make([]WorkspaceAgentSession, 0, len(sessions))
+	filtered := make([]ProviderActivitySessionProjection, 0, len(sessions))
 	for _, session := range sessions {
 		if strings.TrimSpace(session.UserID) == userID {
 			filtered = append(filtered, session)
@@ -764,9 +763,9 @@ func NonNilPresences(presences []WorkspaceAgentPresence) []WorkspaceAgentPresenc
 	return presences
 }
 
-func NonNilSessions(sessions []WorkspaceAgentSession) []WorkspaceAgentSession {
+func NonNilSessions(sessions []ProviderActivitySessionProjection) []ProviderActivitySessionProjection {
 	if sessions == nil {
-		return []WorkspaceAgentSession{}
+		return []ProviderActivitySessionProjection{}
 	}
 	return sessions
 }

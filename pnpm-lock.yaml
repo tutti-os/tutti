@@ -350,6 +350,9 @@ importers:
       three:
         specifier: ^0.185.1
         version: 0.185.1
+      use-sync-external-store:
+        specifier: ^1.6.0
+        version: 1.6.0(react@19.2.6)
       valtio:
         specifier: ^2.3.2
         version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
@@ -384,6 +387,9 @@ importers:
       "@types/three":
         specifier: ^0.185.1
         version: 0.185.1
+      "@types/use-sync-external-store":
+        specifier: ^0.0.6
+        version: 0.0.6
       jsdom:
         specifier: ^27.2.0
         version: 27.4.0

@@ -30,8 +30,9 @@ type CommandCapability struct {
 }
 
 type CommandContext struct {
-	Source      string
-	WorkspaceID string
+	Source                string
+	WorkspaceID           string
+	SkipCapabilityFilters bool
 }
 
 type CommandCatalog interface {
@@ -44,8 +45,9 @@ func commandGuideFromCatalog(ctx context.Context, catalog CommandCatalog, worksp
 		return fallbackCommandGuide(cliName)
 	}
 	return commandGuideFromCapabilities(cliName, catalog.Capabilities(ctx, CommandContext{
-		Source:      "agent-runtime",
-		WorkspaceID: strings.TrimSpace(workspaceID),
+		Source:                "agent-runtime",
+		WorkspaceID:           strings.TrimSpace(workspaceID),
+		SkipCapabilityFilters: true,
 	}))
 }
 

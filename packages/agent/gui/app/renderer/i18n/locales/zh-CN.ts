@@ -1,5 +1,8 @@
 import type { TranslationDictionary } from "./schema.ts";
 
+import { zhCNAgentGuiProviderIdentity } from "./zh-CN.agentGuiProviderIdentity.ts";
+import { zhCNAgentGuiRuntimeNotices } from "./zh-CN.agentGuiRuntimeNotices.ts";
+import { zhCNAgentGuiSlashPalette } from "./zh-CN.agentGuiSlashPalette.ts";
 import { zhCNMessages } from "./zh-CN.messages.ts";
 import { zhCNSettingsPanel } from "./zh-CN.settingsPanel.ts";
 import { zhCNWebsiteNode } from "./zh-CN.websiteNode.ts";
@@ -650,9 +653,7 @@ export const zhCN = {
       emptyProjectConversations: "暂无对话",
       agentsEmpty: "暂无可用 Agent",
       conversationFilterAll: "全部",
-      conversationFilterCodex: "Codex",
-      conversationFilterClaudeCode: "Claude Code",
-      conversationFilterTutti: "Tutti",
+      ...zhCNAgentGuiProviderIdentity,
       providerSwitchLabel: "切换 Provider",
       handoffConversation: "Handoff",
       handoffConversationTooltip: "交接给其他 Agent",
@@ -745,38 +746,9 @@ export const zhCN = {
       goalClearAction: "删除目标",
       processing: "正在规划下一步",
       agentTargetRequired: "请先选择可用的 Agent 目标。",
+      sessionActivationFailed: "Agent 会话启动失败。",
       promptImagesUnsupported: "当前模型不支持图片输入。",
-      visibleErrorStartFailed: "{{provider}} 启动失败",
-      visibleErrorRequestFailed: "{{provider}} 请求失败",
-      visibleErrorAuthRequired: "{{provider}} 需要认证或配置",
-      visibleErrorAuthRequiredLocalAgentHint:
-        "请在本地登录 {{provider}}，然后重试。",
-      visibleErrorRequestTimedOut: "{{provider}} 请求超时",
-      visibleErrorRuntimeUnavailable: "{{provider}} 因运行环境不可用而无法启动",
-      visibleErrorQuotaOrRateLimit:
-        "{{provider}} 请求失败：额度或频率限制已触发",
-      visibleErrorDetails: "查看详情",
-      visibleErrorRawDetails: "原始错误",
-      visibleErrorCliNotFound:
-        "未检测到 {{provider}} CLI，无法运行。请先完成安装。",
-      visibleErrorVersionUnsupported:
-        "当前 {{provider}} 版本过旧，不支持此请求。请先升级。",
-      visibleErrorNetwork: "{{provider}} 无法连接网络以完成此请求。",
-      visibleErrorConfigTimeout:
-        "{{provider}} 在请求超时前未能应用会话设置。请稍后重试。",
-      visibleErrorStreamDisconnected:
-        "{{provider}} 的响应在完成前被中断。请稍后重试。",
-      visibleErrorConcurrencyLimit:
-        "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
-      visibleErrorActionInstall: "去连接",
-      visibleErrorActionUpgrade: "去升级",
-      visibleErrorActionRelogin: "登录",
-      visibleErrorActionCheckNetwork: "检测网络",
-      visibleErrorActionDetect: "打开检测",
-      systemNoticeTransportRetry: "Codex 连接中断，正在重连",
-      systemNoticeTransportFallback: "Codex 已切换到 HTTPS 传输",
-      systemNoticeWarning: "Codex 警告",
-      systemNoticeDefault: "Agent 通知",
+      ...zhCNAgentGuiRuntimeNotices,
       contextCompactionInProgress: "正在压缩上下文",
       contextCompactionCompleted: "已压缩上下文",
       contextCompactionInterrupted: "上下文压缩已中断",
@@ -859,14 +831,7 @@ export const zhCN = {
       relativeTimeDays: "{{count}} 天",
       relativeTimeMonths: "{{count}} 个月",
       relativeTimeYears: "{{count}} 年",
-      slashCommandPalette: "斜杠菜单",
-      skillPickerPalette: "技能",
-      slashPaletteCommandsGroup: "命令",
-      slashPaletteCapabilitiesGroup: "能力",
-      slashPaletteSkillsGroup: "技能",
-      slashPalettePluginsGroup: "插件",
-      slashPaletteConnectorsGroup: "连接器",
-      slashPaletteMcpGroup: "MCP",
+      ...zhCNAgentGuiSlashPalette,
       slashCommandCompactLabel: "压缩",
       slashCommandContextLabel: "上下文",
       slashCommandFastLabel: "快速",
@@ -1010,10 +975,7 @@ export const zhCN = {
       mentionCollaboratorFallback: "协作者",
       syncPending: "已保存到本地，正在同步到云端",
       syncSynced: "已同步到云端",
-      syncFailed: "云端同步失败",
-      openclawGatewayStarting: "正在启动 OpenClaw gateway...",
-      openclawGatewayFailed: "OpenClaw gateway 启动失败。",
-      openclawGatewayRetry: "重试 gateway"
+      syncFailed: "云端同步失败"
     },
     workspaceInsights: {
       runtimeTitle: "运行时",

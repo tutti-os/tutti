@@ -4,6 +4,7 @@ import {
   claudeRoundedUrl,
   codexRoundedUrl,
   cursorColorfulUrl,
+  agentColorfulUrl,
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentCodexUrl,
@@ -63,5 +64,10 @@ describe("managed agent icon assets", () => {
     );
     expect(MANAGED_AGENT_ICON_URLS.cursor).not.toBe(cursorColorfulUrl);
     expect(MANAGED_AGENT_ICON_ROUNDED_URLS.cursor).toBe(cursorColorfulUrl);
+  });
+
+  it("uses neutral artwork rather than Tutti for unknown providers", () => {
+    expect(MANAGED_AGENT_ICON_FALLBACK_URL).toBe(agentColorfulUrl);
+    expect(MANAGED_AGENT_ICON_FALLBACK_URL).not.toBe(manageAgentTuttiUrl);
   });
 });

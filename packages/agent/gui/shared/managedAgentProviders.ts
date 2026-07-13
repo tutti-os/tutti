@@ -1,3 +1,5 @@
+import { resolveAgentGUIProviderCatalogIdentity } from "../providerIdentityCatalog.ts";
+
 export function normalizeManagedAgentProvider(
   provider: string | undefined
 ): string {
@@ -6,15 +8,8 @@ export function normalizeManagedAgentProvider(
       ?.trim()
       .toLowerCase()
       .replace(/[_\s]+/gu, "-") ?? "";
-  switch (normalized) {
-    case "claude":
-    case "claude-code":
-      return "claude-code";
-    case "nexight":
-    case "tutti-doc":
-    case "tutti-agent":
-      return "tutti";
-    default:
-      return normalized;
-  }
+  return (
+    resolveAgentGUIProviderCatalogIdentity(normalized)?.iconKey ??
+    (normalized === "tutti-doc" ? "tutti" : normalized)
+  );
 }

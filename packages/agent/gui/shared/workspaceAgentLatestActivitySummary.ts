@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import { translate, translateInUiLanguage } from "../i18n/index";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
 

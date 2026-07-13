@@ -3,10 +3,7 @@ import type {
   AgentProviderStatus,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
-
-const runtimeProbeFallbackProviders = new Set<WorkspaceAgentProvider>([
-  "cursor"
-]);
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 
 export function applyDesktopAgentProviderRuntimeProbeFallbacks(input: {
   probeProvider: (
@@ -83,7 +80,10 @@ function runtimeProbeFallbackProviderList(
     statuses.map((status) => [status.provider, status])
   );
   return requestedProviders.filter((provider) => {
-    if (!runtimeProbeFallbackProviders.has(provider)) {
+    const strategy =
+      resolveAgentGUIProviderCatalogIdentity(provider)?.desktop
+        .runtimeProbeFallback;
+    if (strategy !== "direct") {
       return false;
     }
     const status = statusByProvider.get(provider);

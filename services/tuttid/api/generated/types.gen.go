@@ -400,6 +400,36 @@ func (e AgentProviderSkillOptionSourceKind) Valid() bool {
 	}
 }
 
+// Defines values for AgentSlashCommandEffect.
+const (
+	ActivateGoalMode AgentSlashCommandEffect = "activateGoalMode"
+	ShowReviewPicker AgentSlashCommandEffect = "showReviewPicker"
+	ShowStatus       AgentSlashCommandEffect = "showStatus"
+	SubmitImmediate  AgentSlashCommandEffect = "submitImmediate"
+	TogglePlanMode   AgentSlashCommandEffect = "togglePlanMode"
+	ToggleSpeed      AgentSlashCommandEffect = "toggleSpeed"
+)
+
+// Valid indicates whether the value is a known member of the AgentSlashCommandEffect enum.
+func (e AgentSlashCommandEffect) Valid() bool {
+	switch e {
+	case ActivateGoalMode:
+		return true
+	case ShowReviewPicker:
+		return true
+	case ShowStatus:
+		return true
+	case SubmitImmediate:
+		return true
+	case TogglePlanMode:
+		return true
+	case ToggleSpeed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTargetLaunchRefType.
 const (
 	LocalCli AgentTargetLaunchRefType = "local_cli"
@@ -420,6 +450,9 @@ const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
 	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
+	AgentTargetProviderHermes     AgentTargetProvider = "hermes"
+	AgentTargetProviderNexight    AgentTargetProvider = "nexight"
+	AgentTargetProviderOpenclaw   AgentTargetProvider = "openclaw"
 	AgentTargetProviderOpencode   AgentTargetProvider = "opencode"
 	AgentTargetProviderTuttiAgent AgentTargetProvider = "tutti-agent"
 )
@@ -432,6 +465,12 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderCodex:
 		return true
 	case AgentTargetProviderCursor:
+		return true
+	case AgentTargetProviderHermes:
+		return true
+	case AgentTargetProviderNexight:
+		return true
+	case AgentTargetProviderOpenclaw:
 		return true
 	case AgentTargetProviderOpencode:
 		return true
@@ -1102,6 +1141,36 @@ func (e PermissionModeSemantic) Valid() bool {
 	}
 }
 
+// Defines values for SubmitWorkspaceAgentPlanDecisionRequestAction.
+const (
+	Implement SubmitWorkspaceAgentPlanDecisionRequestAction = "implement"
+)
+
+// Valid indicates whether the value is a known member of the SubmitWorkspaceAgentPlanDecisionRequestAction enum.
+func (e SubmitWorkspaceAgentPlanDecisionRequestAction) Valid() bool {
+	switch e {
+	case Implement:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubmitWorkspaceAgentPlanDecisionRequestPromptKind.
+const (
+	PlanImplementation SubmitWorkspaceAgentPlanDecisionRequestPromptKind = "plan-implementation"
+)
+
+// Valid indicates whether the value is a known member of the SubmitWorkspaceAgentPlanDecisionRequestPromptKind enum.
+func (e SubmitWorkspaceAgentPlanDecisionRequestPromptKind) Valid() bool {
+	switch e {
+	case PlanImplementation:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkbenchSnapshotSchemaVersion.
 const (
 	N1 WorkbenchSnapshotSchemaVersion = 1
@@ -1129,6 +1198,141 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 	case Floating:
 		return true
 	case Fullscreen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentBackgroundAgentItemStatus.
+const (
+	WorkspaceAgentBackgroundAgentItemStatusCanceled  WorkspaceAgentBackgroundAgentItemStatus = "canceled"
+	WorkspaceAgentBackgroundAgentItemStatusCompleted WorkspaceAgentBackgroundAgentItemStatus = "completed"
+	WorkspaceAgentBackgroundAgentItemStatusFailed    WorkspaceAgentBackgroundAgentItemStatus = "failed"
+	WorkspaceAgentBackgroundAgentItemStatusRunning   WorkspaceAgentBackgroundAgentItemStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentBackgroundAgentItemStatus enum.
+func (e WorkspaceAgentBackgroundAgentItemStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentBackgroundAgentItemStatusCanceled:
+		return true
+	case WorkspaceAgentBackgroundAgentItemStatusCompleted:
+		return true
+	case WorkspaceAgentBackgroundAgentItemStatusFailed:
+		return true
+	case WorkspaceAgentBackgroundAgentItemStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentCompletedCommandKind.
+const (
+	Compact WorkspaceAgentCompletedCommandKind = "compact"
+	Goal    WorkspaceAgentCompletedCommandKind = "goal"
+	Review  WorkspaceAgentCompletedCommandKind = "review"
+	Undo    WorkspaceAgentCompletedCommandKind = "undo"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentCompletedCommandKind enum.
+func (e WorkspaceAgentCompletedCommandKind) Valid() bool {
+	switch e {
+	case Compact:
+		return true
+	case Goal:
+		return true
+	case Review:
+		return true
+	case Undo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentCompletedCommandStatus.
+const (
+	WorkspaceAgentCompletedCommandStatusCanceled  WorkspaceAgentCompletedCommandStatus = "canceled"
+	WorkspaceAgentCompletedCommandStatusCompleted WorkspaceAgentCompletedCommandStatus = "completed"
+	WorkspaceAgentCompletedCommandStatusFailed    WorkspaceAgentCompletedCommandStatus = "failed"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentCompletedCommandStatus enum.
+func (e WorkspaceAgentCompletedCommandStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentCompletedCommandStatusCanceled:
+		return true
+	case WorkspaceAgentCompletedCommandStatusCompleted:
+		return true
+	case WorkspaceAgentCompletedCommandStatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentInteractionKind.
+const (
+	Approval WorkspaceAgentInteractionKind = "approval"
+	Plan     WorkspaceAgentInteractionKind = "plan"
+	Question WorkspaceAgentInteractionKind = "question"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentInteractionKind enum.
+func (e WorkspaceAgentInteractionKind) Valid() bool {
+	switch e {
+	case Approval:
+		return true
+	case Plan:
+		return true
+	case Question:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentInteractionStatus.
+const (
+	Answered   WorkspaceAgentInteractionStatus = "answered"
+	Pending    WorkspaceAgentInteractionStatus = "pending"
+	Superseded WorkspaceAgentInteractionStatus = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentInteractionStatus enum.
+func (e WorkspaceAgentInteractionStatus) Valid() bool {
+	switch e {
+	case Answered:
+		return true
+	case Pending:
+		return true
+	case Superseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentPlanDecisionOperationStatus.
+const (
+	WorkspaceAgentPlanDecisionOperationStatusCompleted WorkspaceAgentPlanDecisionOperationStatus = "completed"
+	WorkspaceAgentPlanDecisionOperationStatusFailed    WorkspaceAgentPlanDecisionOperationStatus = "failed"
+	WorkspaceAgentPlanDecisionOperationStatusLeased    WorkspaceAgentPlanDecisionOperationStatus = "leased"
+	WorkspaceAgentPlanDecisionOperationStatusPrepared  WorkspaceAgentPlanDecisionOperationStatus = "prepared"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentPlanDecisionOperationStatus enum.
+func (e WorkspaceAgentPlanDecisionOperationStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentPlanDecisionOperationStatusCompleted:
+		return true
+	case WorkspaceAgentPlanDecisionOperationStatusFailed:
+		return true
+	case WorkspaceAgentPlanDecisionOperationStatusLeased:
+		return true
+	case WorkspaceAgentPlanDecisionOperationStatusPrepared:
 		return true
 	default:
 		return false
@@ -1192,21 +1396,30 @@ func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 	}
 }
 
-// Defines values for WorkspaceAgentSessionCancelResultReason.
+// Defines values for WorkspaceAgentSessionGoalStatus.
 const (
-	ActiveTurnCanceled  WorkspaceAgentSessionCancelResultReason = "active_turn_canceled"
-	NoActiveTurn        WorkspaceAgentSessionCancelResultReason = "no_active_turn"
-	StaleTurnReconciled WorkspaceAgentSessionCancelResultReason = "stale_turn_reconciled"
+	Active        WorkspaceAgentSessionGoalStatus = "active"
+	Blocked       WorkspaceAgentSessionGoalStatus = "blocked"
+	BudgetLimited WorkspaceAgentSessionGoalStatus = "budgetLimited"
+	Complete      WorkspaceAgentSessionGoalStatus = "complete"
+	Paused        WorkspaceAgentSessionGoalStatus = "paused"
+	UsageLimited  WorkspaceAgentSessionGoalStatus = "usageLimited"
 )
 
-// Valid indicates whether the value is a known member of the WorkspaceAgentSessionCancelResultReason enum.
-func (e WorkspaceAgentSessionCancelResultReason) Valid() bool {
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalStatus enum.
+func (e WorkspaceAgentSessionGoalStatus) Valid() bool {
 	switch e {
-	case ActiveTurnCanceled:
+	case Active:
 		return true
-	case NoActiveTurn:
+	case Blocked:
 		return true
-	case StaleTurnReconciled:
+	case BudgetLimited:
+		return true
+	case Complete:
+		return true
+	case Paused:
+		return true
+	case UsageLimited:
 		return true
 	default:
 		return false
@@ -1255,30 +1468,72 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	}
 }
 
-// Defines values for WorkspaceAgentSessionStatus.
+// Defines values for WorkspaceAgentTurnCancelResultReason.
 const (
-	WorkspaceAgentSessionStatusCanceled  WorkspaceAgentSessionStatus = "canceled"
-	WorkspaceAgentSessionStatusCompleted WorkspaceAgentSessionStatus = "completed"
-	WorkspaceAgentSessionStatusCreated   WorkspaceAgentSessionStatus = "created"
-	WorkspaceAgentSessionStatusFailed    WorkspaceAgentSessionStatus = "failed"
-	WorkspaceAgentSessionStatusRunning   WorkspaceAgentSessionStatus = "running"
-	WorkspaceAgentSessionStatusWaiting   WorkspaceAgentSessionStatus = "waiting"
+	AlreadySettled WorkspaceAgentTurnCancelResultReason = "already_settled"
+	NotFound       WorkspaceAgentTurnCancelResultReason = "not_found"
+	TurnCanceled   WorkspaceAgentTurnCancelResultReason = "turn_canceled"
 )
 
-// Valid indicates whether the value is a known member of the WorkspaceAgentSessionStatus enum.
-func (e WorkspaceAgentSessionStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the WorkspaceAgentTurnCancelResultReason enum.
+func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 	switch e {
-	case WorkspaceAgentSessionStatusCanceled:
+	case AlreadySettled:
 		return true
-	case WorkspaceAgentSessionStatusCompleted:
+	case NotFound:
 		return true
-	case WorkspaceAgentSessionStatusCreated:
+	case TurnCanceled:
 		return true
-	case WorkspaceAgentSessionStatusFailed:
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentTurnOutcome.
+const (
+	WorkspaceAgentTurnOutcomeCanceled    WorkspaceAgentTurnOutcome = "canceled"
+	WorkspaceAgentTurnOutcomeCompleted   WorkspaceAgentTurnOutcome = "completed"
+	WorkspaceAgentTurnOutcomeFailed      WorkspaceAgentTurnOutcome = "failed"
+	WorkspaceAgentTurnOutcomeInterrupted WorkspaceAgentTurnOutcome = "interrupted"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentTurnOutcome enum.
+func (e WorkspaceAgentTurnOutcome) Valid() bool {
+	switch e {
+	case WorkspaceAgentTurnOutcomeCanceled:
 		return true
-	case WorkspaceAgentSessionStatusRunning:
+	case WorkspaceAgentTurnOutcomeCompleted:
 		return true
-	case WorkspaceAgentSessionStatusWaiting:
+	case WorkspaceAgentTurnOutcomeFailed:
+		return true
+	case WorkspaceAgentTurnOutcomeInterrupted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentTurnPhase.
+const (
+	WorkspaceAgentTurnPhaseRunning   WorkspaceAgentTurnPhase = "running"
+	WorkspaceAgentTurnPhaseSettled   WorkspaceAgentTurnPhase = "settled"
+	WorkspaceAgentTurnPhaseSettling  WorkspaceAgentTurnPhase = "settling"
+	WorkspaceAgentTurnPhaseSubmitted WorkspaceAgentTurnPhase = "submitted"
+	WorkspaceAgentTurnPhaseWaiting   WorkspaceAgentTurnPhase = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentTurnPhase enum.
+func (e WorkspaceAgentTurnPhase) Valid() bool {
+	switch e {
+	case WorkspaceAgentTurnPhaseRunning:
+		return true
+	case WorkspaceAgentTurnPhaseSettled:
+		return true
+	case WorkspaceAgentTurnPhaseSettling:
+		return true
+	case WorkspaceAgentTurnPhaseSubmitted:
+		return true
+	case WorkspaceAgentTurnPhaseWaiting:
 		return true
 	default:
 		return false
@@ -1885,33 +2140,12 @@ type AddIssueManagerContextRefsRequest struct {
 	Refs []AddIssueManagerContextRefItem `json:"refs"`
 }
 
-// AgentActivityCompletedCommand defines model for AgentActivityCompletedCommand.
-type AgentActivityCompletedCommand struct {
-	Kind   string `json:"kind"`
-	Status string `json:"status"`
-}
-
 // AgentActivityMessageSemantics defines model for AgentActivityMessageSemantics.
 type AgentActivityMessageSemantics struct {
 	NoticeCommand                *string `json:"noticeCommand,omitempty"`
 	NoticeCommandStatus          *string `json:"noticeCommandStatus,omitempty"`
 	TurnSettling                 *bool   `json:"turnSettling,omitempty"`
 	UserVisibleAssistantResponse *bool   `json:"userVisibleAssistantResponse,omitempty"`
-}
-
-// AgentActivitySubmitAvailability defines model for AgentActivitySubmitAvailability.
-type AgentActivitySubmitAvailability struct {
-	Reason *string `json:"reason,omitempty"`
-	State  string  `json:"state"`
-}
-
-// AgentActivityTurnLifecycle defines model for AgentActivityTurnLifecycle.
-type AgentActivityTurnLifecycle struct {
-	ActiveTurnId     *string                        `json:"activeTurnId"`
-	CompletedCommand *AgentActivityCompletedCommand `json:"completedCommand,omitempty"`
-	Outcome          *string                        `json:"outcome,omitempty"`
-	Phase            string                         `json:"phase"`
-	Settling         *bool                          `json:"settling,omitempty"`
 }
 
 // AgentPromptContentBlock defines model for AgentPromptContentBlock.
@@ -2067,6 +2301,15 @@ type AgentProviderCliStatus struct {
 	Version    *string `json:"version,omitempty"`
 }
 
+// AgentProviderComposerBehavior defines model for AgentProviderComposerBehavior.
+type AgentProviderComposerBehavior struct {
+	CollapseModelOptionsToLatest        bool `json:"collapseModelOptionsToLatest"`
+	ModelOptionsAuthoritative           bool `json:"modelOptionsAuthoritative"`
+	PlanModeExclusiveWithPermissionMode bool `json:"planModeExclusiveWithPermissionMode"`
+	PrewarmDraftSession                 bool `json:"prewarmDraftSession"`
+	RefreshModelOptionsAfterSettings    bool `json:"refreshModelOptionsAfterSettings"`
+}
+
 // AgentProviderComposerConfig defines model for AgentProviderComposerConfig.
 type AgentProviderComposerConfig struct {
 	Configurable bool                                     `json:"configurable"`
@@ -2086,15 +2329,20 @@ type AgentProviderComposerConfigOptionValue struct {
 
 // AgentProviderComposerOptionsResponse defines model for AgentProviderComposerOptionsResponse.
 type AgentProviderComposerOptionsResponse struct {
-	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
-	EffectiveSettings AgentSessionComposerSettings    `json:"effectiveSettings"`
-	ModelConfig       AgentProviderComposerConfig     `json:"modelConfig"`
-	PermissionConfig  PermissionConfig                `json:"permissionConfig"`
-	Provider          WorkspaceAgentProvider          `json:"provider"`
-	ReasoningConfig   AgentProviderComposerConfig     `json:"reasoningConfig"`
-	RuntimeContext    map[string]interface{}          `json:"runtimeContext"`
-	Skills            []AgentProviderSkillOption      `json:"skills"`
-	SpeedConfig       *AgentProviderComposerConfig    `json:"speedConfig,omitempty"`
+	Behavior AgentProviderComposerBehavior `json:"behavior"`
+
+	// Capabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
+	Capabilities       *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
+	CapabilityCatalog  []AgentProviderCapabilityOption `json:"capabilityCatalog"`
+	EffectiveSettings  AgentSessionComposerSettings    `json:"effectiveSettings"`
+	ModelConfig        AgentProviderComposerConfig     `json:"modelConfig"`
+	PermissionConfig   PermissionConfig                `json:"permissionConfig"`
+	Provider           WorkspaceAgentProvider          `json:"provider"`
+	ReasoningConfig    AgentProviderComposerConfig     `json:"reasoningConfig"`
+	RuntimeContext     map[string]interface{}          `json:"runtimeContext"`
+	Skills             []AgentProviderSkillOption      `json:"skills"`
+	SlashCommandPolicy *AgentSlashCommandPolicy        `json:"slashCommandPolicy,omitempty"`
+	SpeedConfig        *AgentProviderComposerConfig    `json:"speedConfig,omitempty"`
 }
 
 // AgentProviderNetworkEndpoint defines model for AgentProviderNetworkEndpoint.
@@ -2179,6 +2427,32 @@ type AgentSessionComposerSettings struct {
 	PlanMode         *bool   `json:"planMode,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 	Speed            *string `json:"speed,omitempty"`
+}
+
+// AgentSlashCommandEffect defines model for AgentSlashCommandEffect.
+type AgentSlashCommandEffect string
+
+// AgentSlashCommandEffectDescriptor defines model for AgentSlashCommandEffectDescriptor.
+type AgentSlashCommandEffectDescriptor struct {
+	Command string                  `json:"command"`
+	Effect  AgentSlashCommandEffect `json:"effect"`
+}
+
+// AgentSlashCommandPolicy defines model for AgentSlashCommandPolicy.
+type AgentSlashCommandPolicy struct {
+	CommandCatalogAuthoritative *bool                               `json:"commandCatalogAuthoritative,omitempty"`
+	CommandEffects              []AgentSlashCommandEffectDescriptor `json:"commandEffects"`
+	FallbackCommands            []string                            `json:"fallbackCommands"`
+}
+
+// AgentSubmitDiagnostics defines model for AgentSubmitDiagnostics.
+type AgentSubmitDiagnostics struct {
+	BlockCount        *int    `json:"blockCount,omitempty"`
+	HasImage          *bool   `json:"hasImage,omitempty"`
+	PromptLength      *int    `json:"promptLength,omitempty"`
+	Queued            *bool   `json:"queued,omitempty"`
+	Source            *string `json:"source,omitempty"`
+	SubmittedAtUnixMs *int64  `json:"submittedAtUnixMs,omitempty"`
 }
 
 // AgentTarget defines model for AgentTarget.
@@ -2536,28 +2810,23 @@ type CreateWorkspaceAgentSessionRequest struct {
 	// AgentTargetId Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
 	AgentTargetId  string                    `json:"agentTargetId"`
 	BrowserUse     *bool                     `json:"browserUse,omitempty"`
+	ClientSubmitId string                    `json:"clientSubmitId"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
 
 	// InitialDisplayPrompt Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
 	InitialDisplayPrompt *string `json:"initialDisplayPrompt,omitempty"`
+	Model                *string `json:"model,omitempty"`
 
-	// Metadata Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
-	Metadata         *map[string]interface{} `json:"metadata,omitempty"`
-	Model            *string                 `json:"model,omitempty"`
-	PermissionModeId *string                 `json:"permissionModeId,omitempty"`
-	PlanMode         *bool                   `json:"planMode,omitempty"`
-	Provider         *WorkspaceAgentProvider `json:"provider,omitempty"`
-
-	// ProviderTargetRef Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
-	ProviderTargetRef *map[string]interface{} `json:"providerTargetRef,omitempty"`
+	// NoProject Classifies a session that is intentionally not attached to a workspace project.
+	NoProject         *bool                   `json:"noProject,omitempty"`
+	PermissionModeId  *string                 `json:"permissionModeId,omitempty"`
+	PlanMode          *bool                   `json:"planMode,omitempty"`
 	ReasoningEffort   *string                 `json:"reasoningEffort,omitempty"`
-
-	// RuntimeContext Optional durable runtime context hints for session classification and provider startup.
-	RuntimeContext *map[string]interface{} `json:"runtimeContext,omitempty"`
-	Speed          *string                 `json:"speed,omitempty"`
-	Title          *string                 `json:"title,omitempty"`
-	Visible        *bool                   `json:"visible,omitempty"`
+	Speed             *string                 `json:"speed,omitempty"`
+	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
+	Title             *string                 `json:"title,omitempty"`
+	Visible           *bool                   `json:"visible,omitempty"`
 }
 
 // CreateWorkspaceAppFactoryJobRequest defines model for CreateWorkspaceAppFactoryJobRequest.
@@ -3318,24 +3587,24 @@ type RollbackWorkspaceAppRequest struct {
 
 // SendWorkspaceAgentSessionInputRequest defines model for SendWorkspaceAgentSessionInputRequest.
 type SendWorkspaceAgentSessionInputRequest struct {
-	Content []AgentPromptContentBlock `json:"content"`
+	ClientSubmitId string                    `json:"clientSubmitId"`
+	Content        []AgentPromptContentBlock `json:"content"`
 
 	// DisplayPrompt Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
 	DisplayPrompt *string `json:"displayPrompt,omitempty"`
 
 	// Guidance When true, send this input as guidance to the currently active turn instead of starting a new turn.
-	Guidance *bool `json:"guidance,omitempty"`
-
-	// Metadata Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
-	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Guidance          *bool                   `json:"guidance,omitempty"`
+	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
 }
 
 // SendWorkspaceAgentSessionInputResponse defines model for SendWorkspaceAgentSessionInputResponse.
 type SendWorkspaceAgentSessionInputResponse struct {
-	Session            WorkspaceAgentSession           `json:"session"`
-	SubmitAvailability AgentActivitySubmitAvailability `json:"submitAvailability"`
-	TurnId             string                          `json:"turnId"`
-	TurnLifecycle      AgentActivityTurnLifecycle      `json:"turnLifecycle"`
+	Session WorkspaceAgentSession `json:"session"`
+
+	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+	Turn   *WorkspaceAgentTurn `json:"turn,omitempty"`
+	TurnId string              `json:"turnId"`
 }
 
 // SetSystemAgentTargetEnabledRequest defines model for SetSystemAgentTargetEnabledRequest.
@@ -3353,7 +3622,21 @@ type SubmitWorkspaceAgentInteractiveRequest struct {
 	Action   *string                 `json:"action,omitempty"`
 	OptionId *string                 `json:"optionId,omitempty"`
 	Payload  *map[string]interface{} `json:"payload,omitempty"`
+	TurnId   string                  `json:"turnId"`
 }
+
+// SubmitWorkspaceAgentPlanDecisionRequest defines model for SubmitWorkspaceAgentPlanDecisionRequest.
+type SubmitWorkspaceAgentPlanDecisionRequest struct {
+	Action         SubmitWorkspaceAgentPlanDecisionRequestAction     `json:"action"`
+	IdempotencyKey string                                            `json:"idempotencyKey"`
+	PromptKind     SubmitWorkspaceAgentPlanDecisionRequestPromptKind `json:"promptKind"`
+}
+
+// SubmitWorkspaceAgentPlanDecisionRequestAction defines model for SubmitWorkspaceAgentPlanDecisionRequest.Action.
+type SubmitWorkspaceAgentPlanDecisionRequestAction string
+
+// SubmitWorkspaceAgentPlanDecisionRequestPromptKind defines model for SubmitWorkspaceAgentPlanDecisionRequest.PromptKind.
+type SubmitWorkspaceAgentPlanDecisionRequestPromptKind string
 
 // TrackEvent defines model for TrackEvent.
 type TrackEvent struct {
@@ -3507,6 +3790,61 @@ type WorkbenchSnapshotSpace struct {
 	NodeIds []string        `json:"nodeIds"`
 }
 
+// WorkspaceAgentBackgroundAgentItem defines model for WorkspaceAgentBackgroundAgentItem.
+type WorkspaceAgentBackgroundAgentItem struct {
+	CompletedAtUnixMs *int64                                  `json:"completedAtUnixMs,omitempty"`
+	Description       string                                  `json:"description"`
+	LastToolName      *string                                 `json:"lastToolName,omitempty"`
+	StartedAtUnixMs   *int64                                  `json:"startedAtUnixMs,omitempty"`
+	Status            WorkspaceAgentBackgroundAgentItemStatus `json:"status"`
+	Summary           *string                                 `json:"summary,omitempty"`
+	TaskId            string                                  `json:"taskId"`
+	TaskType          *string                                 `json:"taskType,omitempty"`
+	UpdatedAtUnixMs   *int64                                  `json:"updatedAtUnixMs,omitempty"`
+}
+
+// WorkspaceAgentBackgroundAgentItemStatus defines model for WorkspaceAgentBackgroundAgentItem.Status.
+type WorkspaceAgentBackgroundAgentItemStatus string
+
+// WorkspaceAgentBackgroundAgents Protocol v2 explicit field extracted from runtimeContext.
+type WorkspaceAgentBackgroundAgents struct {
+	// Count Number of background agents still running.
+	Count int                                 `json:"count"`
+	Items []WorkspaceAgentBackgroundAgentItem `json:"items"`
+}
+
+// WorkspaceAgentCapabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
+type WorkspaceAgentCapabilities struct {
+	BrowserUse                     bool `json:"browserUse"`
+	Compact                        bool `json:"compact"`
+	ComputerUse                    bool `json:"computerUse"`
+	GoalPause                      bool `json:"goalPause"`
+	ImageInput                     bool `json:"imageInput"`
+	Interrupt                      bool `json:"interrupt"`
+	ModelImageInputRequired        bool `json:"modelImageInputRequired"`
+	PermissionModeChangeDeferred   bool `json:"permissionModeChangeDeferred"`
+	PermissionModeChangeDuringTurn bool `json:"permissionModeChangeDuringTurn"`
+	PlanImplementation             bool `json:"planImplementation"`
+	PlanMode                       bool `json:"planMode"`
+	RateLimits                     bool `json:"rateLimits"`
+	ResumeRunningTurn              bool `json:"resumeRunningTurn"`
+	Review                         bool `json:"review"`
+	Skills                         bool `json:"skills"`
+	TokenUsage                     bool `json:"tokenUsage"`
+}
+
+// WorkspaceAgentCompletedCommand Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
+type WorkspaceAgentCompletedCommand struct {
+	Kind   WorkspaceAgentCompletedCommandKind   `json:"kind"`
+	Status WorkspaceAgentCompletedCommandStatus `json:"status"`
+}
+
+// WorkspaceAgentCompletedCommandKind defines model for WorkspaceAgentCompletedCommand.Kind.
+type WorkspaceAgentCompletedCommandKind string
+
+// WorkspaceAgentCompletedCommandStatus defines model for WorkspaceAgentCompletedCommand.Status.
+type WorkspaceAgentCompletedCommandStatus string
+
 // WorkspaceAgentGeneratedFileEntry defines model for WorkspaceAgentGeneratedFileEntry.
 type WorkspaceAgentGeneratedFileEntry struct {
 	Label string `json:"label"`
@@ -3519,31 +3857,104 @@ type WorkspaceAgentGeneratedFileListResponse struct {
 	WorkspaceId string                             `json:"workspaceId"`
 }
 
+// WorkspaceAgentInteraction Protocol v2 interaction entity. An agent-initiated approval, question, or plan confirmation raised during a turn. Pending means present in a collection with status pending; replaces the tri-state null pendingInteractive protocol.
+type WorkspaceAgentInteraction struct {
+	AgentSessionId  string                          `json:"agentSessionId"`
+	CreatedAtUnixMs int64                           `json:"createdAtUnixMs"`
+	Input           *map[string]interface{}         `json:"input"`
+	Kind            WorkspaceAgentInteractionKind   `json:"kind"`
+	Metadata        *map[string]interface{}         `json:"metadata"`
+	Output          *map[string]interface{}         `json:"output"`
+	RequestId       string                          `json:"requestId"`
+	Status          WorkspaceAgentInteractionStatus `json:"status"`
+	ToolName        *string                         `json:"toolName"`
+	TurnId          string                          `json:"turnId"`
+	UpdatedAtUnixMs int64                           `json:"updatedAtUnixMs"`
+}
+
+// WorkspaceAgentInteractionKind defines model for WorkspaceAgentInteractionKind.
+type WorkspaceAgentInteractionKind string
+
+// WorkspaceAgentInteractionStatus defines model for WorkspaceAgentInteractionStatus.
+type WorkspaceAgentInteractionStatus string
+
+// WorkspaceAgentPlanDecisionOperation defines model for WorkspaceAgentPlanDecisionOperation.
+type WorkspaceAgentPlanDecisionOperation struct {
+	AgentSessionId string                                    `json:"agentSessionId"`
+	Error          *string                                   `json:"error,omitempty"`
+	IdempotencyKey string                                    `json:"idempotencyKey"`
+	OperationId    string                                    `json:"operationId"`
+	RequestId      string                                    `json:"requestId"`
+	Result         *string                                   `json:"result,omitempty"`
+	Status         WorkspaceAgentPlanDecisionOperationStatus `json:"status"`
+	TurnId         string                                    `json:"turnId"`
+	WorkspaceId    string                                    `json:"workspaceId"`
+}
+
+// WorkspaceAgentPlanDecisionOperationStatus defines model for WorkspaceAgentPlanDecisionOperation.Status.
+type WorkspaceAgentPlanDecisionOperationStatus string
+
+// WorkspaceAgentPlanDecisionResponse defines model for WorkspaceAgentPlanDecisionResponse.
+type WorkspaceAgentPlanDecisionResponse struct {
+	Operation WorkspaceAgentPlanDecisionOperation `json:"operation"`
+}
+
 // WorkspaceAgentProvider defines model for WorkspaceAgentProvider.
 type WorkspaceAgentProvider string
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
+	// ActiveTurn Protocol v2. Embedded snapshot of the active turn; null when no turn is in flight.
+	ActiveTurn *WorkspaceAgentTurn `json:"activeTurn"`
+
+	// ActiveTurnId Protocol v2. The only turn reference kept on the session; null when no turn is in flight.
+	ActiveTurnId *string `json:"activeTurnId"`
+
 	// AgentTargetId Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
-	AgentTargetId      *string                          `json:"agentTargetId,omitempty"`
-	CreatedAt          time.Time                        `json:"createdAt"`
-	Cwd                *string                          `json:"cwd"`
-	EndedAt            *time.Time                       `json:"endedAt,omitempty"`
-	Id                 string                           `json:"id"`
-	LastError          *string                          `json:"lastError,omitempty"`
-	PermissionConfig   *PermissionConfig                `json:"permissionConfig,omitempty"`
-	PinnedAtUnixMs     *int64                           `json:"pinnedAtUnixMs,omitempty"`
-	Provider           WorkspaceAgentProvider           `json:"provider"`
-	ProviderSessionId  *string                          `json:"providerSessionId,omitempty"`
-	Resumable          *bool                            `json:"resumable,omitempty"`
-	RuntimeContext     *map[string]interface{}          `json:"runtimeContext,omitempty"`
-	Settings           *AgentSessionComposerSettings    `json:"settings,omitempty"`
-	Status             WorkspaceAgentSessionStatus      `json:"status"`
-	SubmitAvailability *AgentActivitySubmitAvailability `json:"submitAvailability,omitempty"`
-	Title              *string                          `json:"title,omitempty"`
-	TurnLifecycle      *AgentActivityTurnLifecycle      `json:"turnLifecycle,omitempty"`
-	UpdatedAt          *time.Time                       `json:"updatedAt"`
-	Visible            bool                             `json:"visible"`
+	AgentTargetId *string `json:"agentTargetId"`
+
+	// BackgroundAgents Protocol v2. Explicit field extracted from runtimeContext.
+	BackgroundAgents *WorkspaceAgentBackgroundAgents `json:"backgroundAgents"`
+
+	// Capabilities Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
+	Capabilities *WorkspaceAgentCapabilities `json:"capabilities"`
+
+	// CreatedAtUnixMs Protocol v2. Unix milliseconds replacement for createdAt.
+	CreatedAtUnixMs int64   `json:"createdAtUnixMs"`
+	Cwd             *string `json:"cwd"`
+
+	// EndedAtUnixMs Protocol v2. Unix milliseconds replacement for endedAt.
+	EndedAtUnixMs *int64 `json:"endedAtUnixMs"`
+
+	// Goal Protocol v2. Explicit field extracted from runtimeContext.
+	Goal *WorkspaceAgentSessionGoal `json:"goal"`
+	Id   string                     `json:"id"`
+
+	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
+	Imported bool `json:"imported"`
+
+	// LatestTurn Protocol v2. Read-only embedded projection of the most recently updated turn for this session, including settled turns. This is an independent turn entity projection and is not session-owned persistent state or a session reference.
+	LatestTurn *WorkspaceAgentTurn `json:"latestTurn"`
+
+	// LatestTurnInteractions Protocol v2. Read-only independent Interaction entity projections for latestTurn, including pending, answered, and superseded terminal states. These entities are not session-owned persistent state.
+	LatestTurnInteractions []WorkspaceAgentInteraction `json:"latestTurnInteractions"`
+
+	// PendingInteractions Protocol v2. Pending interactions (approvals, questions, plan confirmations) for the active turn. Pending means present in this collection with status pending; there is no tri-state null protocol.
+	PendingInteractions []WorkspaceAgentInteraction  `json:"pendingInteractions"`
+	PermissionConfig    PermissionConfig             `json:"permissionConfig"`
+	PinnedAtUnixMs      *int64                       `json:"pinnedAtUnixMs"`
+	Provider            WorkspaceAgentProvider       `json:"provider"`
+	ProviderSessionId   *string                      `json:"providerSessionId"`
+	Resumable           bool                         `json:"resumable"`
+	Settings            AgentSessionComposerSettings `json:"settings"`
+	Title               *string                      `json:"title"`
+
+	// UpdatedAtUnixMs Protocol v2. Unix milliseconds replacement for updatedAt.
+	UpdatedAtUnixMs int64 `json:"updatedAtUnixMs"`
+
+	// Usage Protocol v2. Typed context-window and quota usage projected from provider runtime state.
+	Usage   *WorkspaceAgentUsage `json:"usage"`
+	Visible bool                 `json:"visible"`
 }
 
 // WorkspaceAgentSessionAttachmentResponse defines model for WorkspaceAgentSessionAttachmentResponse.
@@ -3556,21 +3967,6 @@ type WorkspaceAgentSessionAttachmentResponse struct {
 
 // WorkspaceAgentSessionAttachmentResponseMimeType defines model for WorkspaceAgentSessionAttachmentResponse.MimeType.
 type WorkspaceAgentSessionAttachmentResponseMimeType string
-
-// WorkspaceAgentSessionCancelResponse defines model for WorkspaceAgentSessionCancelResponse.
-type WorkspaceAgentSessionCancelResponse struct {
-	Cancel  WorkspaceAgentSessionCancelResult `json:"cancel"`
-	Session WorkspaceAgentSession             `json:"session"`
-}
-
-// WorkspaceAgentSessionCancelResult defines model for WorkspaceAgentSessionCancelResult.
-type WorkspaceAgentSessionCancelResult struct {
-	Canceled bool                                    `json:"canceled"`
-	Reason   WorkspaceAgentSessionCancelResultReason `json:"reason"`
-}
-
-// WorkspaceAgentSessionCancelResultReason defines model for WorkspaceAgentSessionCancelResult.Reason.
-type WorkspaceAgentSessionCancelResultReason string
 
 // WorkspaceAgentSessionEventEnvelope defines model for WorkspaceAgentSessionEventEnvelope.
 type WorkspaceAgentSessionEventEnvelope struct {
@@ -3588,6 +3984,19 @@ type WorkspaceAgentSessionGitBranchesResponse struct {
 	CurrentBranch *string  `json:"currentBranch,omitempty"`
 }
 
+// WorkspaceAgentSessionGoal Protocol v2 explicit field extracted from runtimeContext.
+type WorkspaceAgentSessionGoal struct {
+	DurationMs *int64                          `json:"durationMs,omitempty"`
+	Iterations *int                            `json:"iterations,omitempty"`
+	Objective  string                          `json:"objective"`
+	Reason     *string                         `json:"reason,omitempty"`
+	Status     WorkspaceAgentSessionGoalStatus `json:"status"`
+	Tokens     *int64                          `json:"tokens,omitempty"`
+}
+
+// WorkspaceAgentSessionGoalStatus defines model for WorkspaceAgentSessionGoal.Status.
+type WorkspaceAgentSessionGoalStatus string
+
 // WorkspaceAgentSessionGoalControlRequest defines model for WorkspaceAgentSessionGoalControlRequest.
 type WorkspaceAgentSessionGoalControlRequest struct {
 	Action    WorkspaceAgentSessionGoalControlRequestAction `json:"action"`
@@ -3599,8 +4008,8 @@ type WorkspaceAgentSessionGoalControlRequestAction string
 
 // WorkspaceAgentSessionGoalControlResponse defines model for WorkspaceAgentSessionGoalControlResponse.
 type WorkspaceAgentSessionGoalControlResponse struct {
-	Goal    *map[string]interface{} `json:"goal,omitempty"`
-	Session WorkspaceAgentSession   `json:"session"`
+	Goal    *WorkspaceAgentSessionGoal `json:"goal,omitempty"`
+	Session WorkspaceAgentSession      `json:"session"`
 }
 
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
@@ -3614,7 +4023,6 @@ type WorkspaceAgentSessionMessage struct {
 	AgentSessionId    string                         `json:"agentSessionId"`
 	CompletedAtUnixMs *int64                         `json:"completedAtUnixMs,omitempty"`
 	CreatedAtUnixMs   *int64                         `json:"createdAtUnixMs,omitempty"`
-	Id                int64                          `json:"id"`
 	Kind              string                         `json:"kind"`
 	MessageId         string                         `json:"messageId"`
 	OccurredAtUnixMs  int64                          `json:"occurredAtUnixMs"`
@@ -3623,9 +4031,11 @@ type WorkspaceAgentSessionMessage struct {
 	Semantics         *AgentActivityMessageSemantics `json:"semantics,omitempty"`
 	StartedAtUnixMs   *int64                         `json:"startedAtUnixMs,omitempty"`
 	Status            *string                        `json:"status,omitempty"`
-	TurnId            string                         `json:"turnId"`
-	UpdatedAtUnixMs   *int64                         `json:"updatedAtUnixMs,omitempty"`
-	Version           int64                          `json:"version"`
+
+	// TurnId Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
+	TurnId          *string `json:"turnId"`
+	UpdatedAtUnixMs *int64  `json:"updatedAtUnixMs,omitempty"`
+	Version         int64   `json:"version"`
 }
 
 // WorkspaceAgentSessionMessagesResponse defines model for WorkspaceAgentSessionMessagesResponse.
@@ -3692,8 +4102,71 @@ type WorkspaceAgentSessionSectionsResponse struct {
 	WorkspaceId string                         `json:"workspaceId"`
 }
 
-// WorkspaceAgentSessionStatus defines model for WorkspaceAgentSessionStatus.
-type WorkspaceAgentSessionStatus string
+// WorkspaceAgentTurn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+type WorkspaceAgentTurn struct {
+	AgentSessionId   string                          `json:"agentSessionId"`
+	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand"`
+	Error            *WorkspaceAgentTurnError        `json:"error"`
+	FileChanges      *map[string]interface{}         `json:"fileChanges"`
+	Outcome          *WorkspaceAgentTurnOutcome      `json:"outcome"`
+
+	// Phase Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
+	Phase           WorkspaceAgentTurnPhase `json:"phase"`
+	SettledAtUnixMs *int64                  `json:"settledAtUnixMs"`
+	StartedAtUnixMs int64                   `json:"startedAtUnixMs"`
+	TurnId          string                  `json:"turnId"`
+	UpdatedAtUnixMs int64                   `json:"updatedAtUnixMs"`
+}
+
+// WorkspaceAgentTurnCancelResponse defines model for WorkspaceAgentTurnCancelResponse.
+type WorkspaceAgentTurnCancelResponse struct {
+	Cancel WorkspaceAgentTurnCancelResult `json:"cancel"`
+
+	// Turn Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+	Turn *WorkspaceAgentTurn `json:"turn,omitempty"`
+}
+
+// WorkspaceAgentTurnCancelResult defines model for WorkspaceAgentTurnCancelResult.
+type WorkspaceAgentTurnCancelResult struct {
+	Canceled bool `json:"canceled"`
+
+	// Reason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+	Reason WorkspaceAgentTurnCancelResultReason `json:"reason"`
+}
+
+// WorkspaceAgentTurnCancelResultReason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+type WorkspaceAgentTurnCancelResultReason string
+
+// WorkspaceAgentTurnError Protocol v2 turn-scoped error; never pollutes session state.
+type WorkspaceAgentTurnError struct {
+	Code    *string `json:"code,omitempty"`
+	Message string  `json:"message"`
+}
+
+// WorkspaceAgentTurnOutcome Protocol v2 closed turn outcome vocabulary; only present once the turn is settled. interrupted marks turns reconciled at daemon startup after the provider process disappeared.
+type WorkspaceAgentTurnOutcome string
+
+// WorkspaceAgentTurnPhase Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
+type WorkspaceAgentTurnPhase string
+
+// WorkspaceAgentUsage defines model for WorkspaceAgentUsage.
+type WorkspaceAgentUsage struct {
+	ContextWindow *WorkspaceAgentUsageContextWindow `json:"contextWindow"`
+	Quotas        []WorkspaceAgentUsageQuota        `json:"quotas"`
+}
+
+// WorkspaceAgentUsageContextWindow defines model for WorkspaceAgentUsageContextWindow.
+type WorkspaceAgentUsageContextWindow struct {
+	TotalTokens int64 `json:"totalTokens"`
+	UsedTokens  int64 `json:"usedTokens"`
+}
+
+// WorkspaceAgentUsageQuota defines model for WorkspaceAgentUsageQuota.
+type WorkspaceAgentUsageQuota struct {
+	PercentRemaining float64 `json:"percentRemaining"`
+	QuotaType        string  `json:"quotaType"`
+	ResetsAtUnixMs   *int64  `json:"resetsAtUnixMs"`
+}
 
 // WorkspaceApp defines model for WorkspaceApp.
 type WorkspaceApp struct {
@@ -4167,6 +4640,9 @@ type AgentSessionAttachmentID = string
 // AgentSessionID defines model for AgentSessionID.
 type AgentSessionID = string
 
+// AgentTurnID defines model for AgentTurnID.
+type AgentTurnID = string
+
 // CliCommandID defines model for CliCommandID.
 type CliCommandID = string
 
@@ -4514,6 +4990,9 @@ type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSe
 
 // UpdateWorkspaceAgentSessionTitleJSONRequestBody defines body for UpdateWorkspaceAgentSessionTitle for application/json ContentType.
 type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessionTitleRequest
+
+// SubmitWorkspaceAgentPlanDecisionJSONRequestBody defines body for SubmitWorkspaceAgentPlanDecision for application/json ContentType.
+type SubmitWorkspaceAgentPlanDecisionJSONRequestBody = SubmitWorkspaceAgentPlanDecisionRequest
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest

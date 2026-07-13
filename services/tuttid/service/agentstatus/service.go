@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
@@ -159,7 +158,7 @@ type CLIStatus struct {
 	Version    string
 	// MinVersion is the lowest CLI version this provider supports, when it
 	// enforces a floor (codex). Empty for providers with no version gate. Lets
-	// the UI surface "current X, requires >= Y" from the same constant the gate uses.
+	// the UI surface "current X, requires Y" from the same constant the gate uses.
 	MinVersion string
 }
 
@@ -168,10 +167,9 @@ type AdapterStatus struct {
 	BinaryPath string
 	Command    []string
 	// Version is the installed adapter package version (when resolvable);
-	// RequiredVersion is the minimum adapter package version this provider
-	// accepts. Exposed so the UI can show "current X, requires >= Y" on an
-	// adapter version mismatch and so telemetry can surface the drift — the same
-	// data the readiness gate uses.
+	// RequiredVersion is the version this provider requires. Exposed so the UI
+	// can show "current X, requires Y" on an adapter version mismatch and so
+	// telemetry can surface the drift — the same data the readiness gate uses.
 	Version         string
 	RequiredVersion string
 }
@@ -347,7 +345,7 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Message = agentProviderProbeAdapterUnavailableMessage(result.ReasonCode)
 		return result, nil
 	}
-	if spec.Provider == agentprovider.Codex && status.LastError != nil {
+	if isCodexStatusSpec(spec) && status.LastError != nil {
 		result.Status = ProbeFailed
 		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
 		result.Message = status.LastError.Message
@@ -389,7 +387,7 @@ func (s Service) probeAdapterRuntimeCommand(
 		result.BinaryPath = command[0]
 	}
 	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
-	if spec.Provider == agentprovider.Codex && result.Status == ProbeFailed {
+	if isCodexStatusSpec(spec) && result.Status == ProbeFailed {
 		if code, ok := classifyCodexRuntimeError(result.Message); ok {
 			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
 			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
@@ -445,7 +443,7 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(installCtx, spec, runtimeResolution)
 	result = applyInstallerExecutionSummary(result, summary)
 	if err != nil {
-		return installActionErrorResult(result, err, s.installTimeout()), nil
+		return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
 	}
 	if len(summary.Commands) == 0 {
 		probeStartedAt := s.now()
@@ -469,7 +467,7 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 				result = applyInstallerExecutionSummary(result, summary)
 				result.Probe = nil
 				if err != nil {
-					return installActionErrorResult(result, err, s.installTimeout()), nil
+					return installActionErrorResult(result, err, s.installTimeout(), spec.Install), nil
 				}
 				if len(summary.Commands) > 0 {
 					goto postInstallProbe
@@ -497,8 +495,8 @@ func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result
 	}
 	if summary.ExitCode != nil && *summary.ExitCode != 0 {
 		result.Status = RunActionFailed
-		result.ReasonCode = "install_command_failed"
 		result.Message = firstNonBlank(result.Stderr, result.Stdout, "Install command failed")
+		result.ReasonCode = installerFailureReasonCode(spec.Install, result.Message, "install_command_failed")
 		return result, nil
 	}
 
@@ -549,7 +547,7 @@ func applyInstallerExecutionSummary(result RunActionResult, summary installerExe
 	return result
 }
 
-func installActionErrorResult(result RunActionResult, err error, timeout time.Duration) RunActionResult {
+func installActionErrorResult(result RunActionResult, err error, timeout time.Duration, installer InstallerSpec) RunActionResult {
 	result.Status = RunActionFailed
 	if errors.Is(err, context.DeadlineExceeded) {
 		result.ReasonCode = "install_timed_out"
@@ -561,9 +559,21 @@ func installActionErrorResult(result RunActionResult, err error, timeout time.Du
 		result.Message = err.Error()
 		return result
 	}
-	result.ReasonCode = "install_start_failed"
 	result.Message = err.Error()
+	result.ReasonCode = installerFailureReasonCode(installer, result.Message, "install_start_failed")
 	return result
+}
+
+func installerFailureReasonCode(installer InstallerSpec, message string, fallback string) string {
+	normalized := strings.ToLower(message)
+	for reasonCode, markers := range installer.FailureReasonMarkers {
+		for _, marker := range markers {
+			if normalizedMarker := strings.ToLower(strings.TrimSpace(marker)); normalizedMarker != "" && strings.Contains(normalized, normalizedMarker) {
+				return reasonCode
+			}
+		}
+	}
+	return fallback
 }
 
 func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.Time) ProviderStatus {
@@ -588,7 +598,7 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath, runtimeResolution.Env)
 	}
 	codexPlatformOK := true
-	if spec.Provider == agentprovider.Codex && installed {
+	if isCodexStatusSpec(spec) && installed {
 		codexPlatformOK = s.codexPlatformBinaryOK(runtimeResolution.CLIPath)
 	}
 	availability := Availability{
@@ -613,28 +623,31 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "acp_adapter_version_mismatch"
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if spec.Provider == agentprovider.Codex && !codexPlatformOK {
+	} else if isCodexStatusSpec(spec) && !codexPlatformOK {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
 		actions = append(actions, daemonAction(ActionInstall))
-	} else if spec.Provider == agentprovider.Codex && !codexVersionMeetsMinimum(cliVersion) {
+	} else if isCodexStatusSpec(spec) && !cliVersionMeetsMinimum(cliVersion, spec.MinVersion) {
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
 		actions = append(actions, daemonAction(ActionInstall))
 	} else {
-		actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
+		if spec.LoginActionKind == ActionKindDaemonAction {
+			actions = append(actions, daemonAction(ActionLogin))
+		} else {
+			actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
+		}
 
-		// Providers can run in API Usage Billing mode — an API key, an auth
+		// Claude Code can run in API Usage Billing mode — an API key, an auth
 		// token, or an apiKeyHelper — which bills usage to an API account and
-		// overrides any stored OAuth/subscription session. CLI auth-status
-		// commands (e.g. `claude auth status`, `codex login status`) only
-		// reflect the stored session, so they are blind to these env/config
-		// credentials; detect them directly and prefer that signal over
-		// whatever the CLI reports, so the wizard shows "已配置 API 计费"
-		// instead of a stale OAuth label or "未登录". A bare custom endpoint
-		// without a credential is NOT API billing (the user may still be on
-		// an OAuth session), so it does not trigger this override.
-		if s.providerHasAPICredential(spec.Provider) {
+		// overrides any stored OAuth/subscription session. `claude auth status`
+		// only reflects the stored session, so it is blind to these env/settings
+		// credentials; detect them directly and prefer that signal over whatever
+		// the CLI reports, so the wizard shows "已配置 API 计费" instead of a
+		// stale OAuth label or "未登录". A bare custom endpoint without a
+		// credential is NOT API billing (the user may still be on an OAuth
+		// session), so it does not trigger this override.
+		if isClaudeStatusSpec(spec) && s.providerHasAPICredential(spec.Provider) {
 			auth.Status = AuthAuthenticated
 			auth.AccountLabel = "API Usage Billing"
 			auth.AuthMethod = "apiKey"
@@ -687,8 +700,22 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 			"stdoutLines", lines,
 		)
 	}
-	if spec.Provider == agentprovider.Codex {
-		status.CLI.MinVersion = MinSupportedCodexVersion
+	if isClaudeStatusSpec(spec) {
+		slog.Info(
+			"claude-code agent provider status checked",
+			"event", "tutti.agent_provider.status.checked",
+			"provider", spec.Provider,
+			"availability", status.Availability.Status,
+			"reasonCode", status.Availability.ReasonCode,
+			"authStatus", status.Auth.Status,
+			"authMethod", status.Auth.AuthMethod,
+			"cliInstalled", status.CLI.Installed,
+			"cliVersion", status.CLI.Version,
+			"sdkSidecarInstalled", status.Adapter.Installed,
+		)
+	}
+	if isCodexStatusSpec(spec) {
+		status.CLI.MinVersion = spec.MinVersion
 		status.Checks = codexProviderChecks(status, codexPlatformOK, s.codexNodeRuntimeCheck(spec))
 		status.LastError = codexProviderLastError(status)
 		slog.Info(
@@ -707,7 +734,7 @@ func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeRe
 	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
 		return true
 	}
-	return spec.Provider == agentprovider.Codex && s.executableFile(runtimeResolution.AdapterPath)
+	return isCodexStatusSpec(spec) && s.executableFile(runtimeResolution.AdapterPath)
 }
 
 func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
@@ -718,8 +745,8 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 }
 
 func agentNPMRegistryProbePackage(spec ProviderSpec) string {
-	if spec.Provider == agentprovider.Codex {
-		return "@openai/codex"
+	if strings.TrimSpace(spec.NPMRegistryPackage) != "" {
+		return strings.TrimSpace(spec.NPMRegistryPackage)
 	}
 	if spec.AdapterInstall.RegistryNPM != nil {
 		packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)

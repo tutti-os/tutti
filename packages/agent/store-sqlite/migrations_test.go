@@ -73,11 +73,12 @@ CREATE TABLE workspace_agent_sessions (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 INSERT INTO workspace_agent_sessions (
-  workspace_id, agent_session_id, origin, agent_target_id, provider, title, status,
+  workspace_id, agent_session_id, origin, agent_target_id, provider, title, status, runtime_context_json,
   created_at_unix_ms, updated_at_unix_ms
 ) VALUES
-  ('ws-legacy', 'session-with-target', 'runtime', 'local:codex', 'codex', 'Old Session', 'completed', 1, 2),
-  ('ws-legacy', 'session-untargeted', 'runtime', '', 'codex', 'Untargeted Session', 'completed', 1, 1);
+  ('ws-legacy', 'session-with-target', 'runtime', 'local:codex', 'codex', 'Old Session', 'completed',
+   '{"visible":false,"imported":true,"capabilities":["planMode","planMode","unknown","modelImageInputRequired"],"backgroundAgents":{"count":99,"items":[{"taskId":"task-1","description":"done","status":"cancelled"}]},"goal":{"objective":"ship","status":"usageLimited"},"providerConfig":{"threadId":"thread-1"}}', 1, 2),
+  ('ws-legacy', 'session-untargeted', 'runtime', '', 'codex', 'Untargeted Session', 'completed', '{}', 1, 1);
 
 CREATE TABLE workspace_agent_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,6 +136,38 @@ func TestStoreMigrateClaimsLegacyTuttidMigrationsWithoutReplay(t *testing.T) {
 
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
+	}
+	var metadataJSON, internalJSON string
+	if err := db.QueryRowContext(ctx, `
+SELECT session_metadata_json, internal_runtime_context_json
+FROM workspace_agent_sessions
+WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-with-target'
+`).Scan(&metadataJSON, &internalJSON); err != nil {
+		t.Fatalf("read migrated session metadata: %v", err)
+	}
+	metadata, err := unmarshalJSONMap(metadataJSON)
+	if err != nil || metadata["visible"] != false || metadata["imported"] != true ||
+		payloadString(metadata, "backgroundAgents") != "" {
+		t.Fatalf("metadata=%#v err=%v", metadata, err)
+	}
+	capabilities, _ := metadata["capabilities"].([]any)
+	background, _ := metadata["backgroundAgents"].(map[string]any)
+	items, _ := background["items"].([]any)
+	item, _ := items[0].(map[string]any)
+	goal, _ := metadata["goal"].(map[string]any)
+	if len(capabilities) != 2 || background["count"] != float64(0) || item["status"] != "canceled" || goal["status"] != "usageLimited" {
+		t.Fatalf("normalized metadata=%#v", metadata)
+	}
+	internal, err := unmarshalJSONMap(internalJSON)
+	providerConfig, _ := internal["providerConfig"].(map[string]any)
+	if err != nil || providerConfig["threadId"] != "thread-1" || internal["visible"] != nil || internal["goal"] != nil {
+		t.Fatalf("internal context=%#v err=%v", internal, err)
+	}
+	for _, removedColumn := range []string{"status", "current_phase", "last_error", "runtime_context_json"} {
+		hasColumn, err := store.hasColumn(ctx, "workspace_agent_sessions", removedColumn)
+		if err != nil || hasColumn {
+			t.Fatalf("removed column %s present=%v err=%v", removedColumn, hasColumn, err)
+		}
 	}
 
 	// Every legacy record is claimed into the package ledger with its
@@ -209,15 +242,16 @@ WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-untargeted'
 		t.Fatalf("legacy message page = %#v", page)
 	}
 
-	// Deliberate compatibility trade-off: the claimed (not replayed) v1
-	// leaves the legacy workspaces foreign key on workspace_agent_sessions.
-	// Only fresh databases get the FK-free schema.
+	// The final entity migration deliberately normalizes legacy sessions onto
+	// the package-owned schema: host workspaces are not an agent-store parent,
+	// while active_turn_id is an exact nullable turn reference.
 	rows, err := db.QueryContext(ctx, `PRAGMA foreign_key_list(workspace_agent_sessions)`)
 	if err != nil {
 		t.Fatalf("foreign_key_list error = %v", err)
 	}
 	defer rows.Close()
 	hasWorkspacesFK := false
+	hasTurnsFK := false
 	for rows.Next() {
 		var (
 			id, seq                                    int
@@ -229,17 +263,92 @@ WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-untargeted'
 		if table == "workspaces" {
 			hasWorkspacesFK = true
 		}
+		if table == "workspace_agent_turns" {
+			hasTurnsFK = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate foreign_key_list: %v", err)
 	}
-	if !hasWorkspacesFK {
-		t.Fatal("upgraded legacy database lost its workspaces foreign key; claim semantics changed unexpectedly")
+	if hasWorkspacesFK || !hasTurnsFK {
+		t.Fatalf("legacy session foreign keys workspaces=%v turns=%v, want package-owned turn reference only", hasWorkspacesFK, hasTurnsFK)
 	}
 
 	// A second Migrate is a no-op for claimed and applied migrations.
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate() second run error = %v", err)
+	}
+}
+
+func TestSessionMetadataMigrationRollsBackDDLAndBackfillAtomically(t *testing.T) {
+	db := openTestDB(t)
+	createLegacyTuttidDatabase(t, db)
+	store := New(db, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := db.Exec(`
+CREATE TABLE agent_store_schema_migrations (id TEXT PRIMARY KEY, applied_at_unix_ms INTEGER NOT NULL);
+CREATE TRIGGER fail_session_metadata_backfill BEFORE UPDATE ON workspace_agent_sessions
+BEGIN SELECT RAISE(ABORT, 'injected metadata backfill failure'); END;
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSessionMetadataV1(ctx); err == nil {
+		t.Fatal("metadata migration error=nil")
+	}
+	for _, column := range []string{"session_metadata_json", "internal_runtime_context_json"} {
+		present, err := store.hasColumn(ctx, "workspace_agent_sessions", column)
+		if err != nil || present {
+			t.Fatalf("rolled back column %s present=%v err=%v", column, present, err)
+		}
+	}
+	if _, err := db.Exec(`DROP TRIGGER fail_session_metadata_backfill`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSessionMetadataV1(ctx); err != nil {
+		t.Fatalf("metadata migration retry: %v", err)
+	}
+	for _, column := range []string{"session_metadata_json", "internal_runtime_context_json"} {
+		present, err := store.hasColumn(ctx, "workspace_agent_sessions", column)
+		if err != nil || !present {
+			t.Fatalf("retried column %s present=%v err=%v", column, present, err)
+		}
+	}
+}
+
+func TestSessionMetadataDropMigrationRollsBackAllColumnsAtomically(t *testing.T) {
+	db := openTestDB(t)
+	createLegacyTuttidDatabase(t, db)
+	store := New(db, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if _, err := db.Exec(`CREATE TABLE agent_store_schema_migrations (id TEXT PRIMARY KEY, applied_at_unix_ms INTEGER NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSessionMetadataV1(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE INDEX block_runtime_context_drop ON workspace_agent_sessions(runtime_context_json)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSessionMetadataV2(ctx); err == nil {
+		t.Fatal("drop migration error=nil")
+	}
+	for _, column := range []string{"status", "current_phase", "last_error", "runtime_context_json"} {
+		present, err := store.hasColumn(ctx, "workspace_agent_sessions", column)
+		if err != nil || !present {
+			t.Fatalf("rolled back column %s present=%v err=%v", column, present, err)
+		}
+	}
+	if _, err := db.Exec(`DROP INDEX block_runtime_context_drop`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSessionMetadataV2(ctx); err != nil {
+		t.Fatalf("drop migration retry: %v", err)
+	}
+	for _, column := range []string{"status", "current_phase", "last_error", "runtime_context_json"} {
+		present, err := store.hasColumn(ctx, "workspace_agent_sessions", column)
+		if err != nil || present {
+			t.Fatalf("dropped column %s present=%v err=%v", column, present, err)
+		}
 	}
 }
 
@@ -409,8 +518,8 @@ VALUES ('local-codex', 'codex', '{"type":"local_cli","provider":"codex"}', 'Lega
 		t.Fatalf("insert legacy target fixture: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `
-INSERT INTO workspace_agent_sessions (workspace_id, agent_session_id, origin, agent_target_id, provider, status, created_at_unix_ms, updated_at_unix_ms)
-VALUES ('ws-reconcile', 'session-1', 'runtime', 'local-codex', 'codex', 'ready', ?, ?);
+INSERT INTO workspace_agent_sessions (workspace_id, agent_session_id, origin, agent_target_id, provider, created_at_unix_ms, updated_at_unix_ms)
+VALUES ('ws-reconcile', 'session-1', 'runtime', 'local-codex', 'codex', ?, ?);
 `, now, now); err != nil {
 		t.Fatalf("insert legacy session fixture: %v", err)
 	}

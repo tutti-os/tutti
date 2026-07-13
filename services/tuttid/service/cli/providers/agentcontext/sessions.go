@@ -15,7 +15,9 @@ import (
 var sessionColumns = []cliservice.TableColumn{
 	{Key: "id", Label: "ID"},
 	{Key: "provider", Label: "Provider"},
-	{Key: "status", Label: "Status"},
+	{Key: "activeTurnId", Label: "Active Turn"},
+	{Key: "latestTurnPhase", Label: "Latest Phase"},
+	{Key: "latestTurnOutcome", Label: "Latest Outcome"},
 	{Key: "title", Label: "Title"},
 }
 
@@ -30,6 +32,7 @@ type sessionSummaryInput struct {
 type waitInput struct {
 	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to await."`
 	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Wait for a stop point after this message version."`
+	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent messages to return."`
 	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
 }
 
@@ -46,7 +49,8 @@ type sessionSummaryResult struct {
 }
 
 type waitCommandResult struct {
-	Result agentservice.WaitResult
+	ImageLocalPath imageLocalPathResolver
+	Result         agentservice.WaitResult
 }
 
 type turnResourcesResult struct {
@@ -198,14 +202,15 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
 		AfterVersion:   afterVersion,
-		SkipMessages:   true,
+		MessageLimit:   input.Limit,
 		Timeout:        timeout,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return waitCommandResult{
-		Result: result,
+		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
+		Result:         result,
 	}, nil
 }
 
@@ -266,7 +271,10 @@ func waitJSONValue(result any) map[string]any {
 	return map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
 		"session":        sessionSummaryValue(waited.Result.Session),
+		"messages":       messageCompactValues(waited.Result.Messages, waited.ImageLocalPath),
 		"latestVersion":  waited.Result.LatestVersion,
+		"hasMore":        waited.Result.HasMore,
+		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
 	}
@@ -306,11 +314,19 @@ func sessionRows(sessions []agentservice.Session) []map[string]any {
 		if session.Title != nil {
 			title = *session.Title
 		}
+		latestTurnPhase := ""
+		latestTurnOutcome := ""
+		if session.LatestTurn != nil {
+			latestTurnPhase = session.LatestTurn.Phase
+			latestTurnOutcome = session.LatestTurn.Outcome
+		}
 		rows = append(rows, map[string]any{
-			"id":       session.ID,
-			"provider": session.Provider,
-			"status":   session.Status,
-			"title":    strings.TrimSpace(title),
+			"id":                session.ID,
+			"provider":          session.Provider,
+			"activeTurnId":      strings.TrimSpace(session.ActiveTurnID),
+			"latestTurnPhase":   latestTurnPhase,
+			"latestTurnOutcome": latestTurnOutcome,
+			"title":             strings.TrimSpace(title),
 		})
 	}
 	return rows

@@ -54,8 +54,11 @@ func activePeerValues(peers []agentservice.ActivePeer) []any {
 			"agentSessionId": peer.Session.ID,
 			"provider":       peer.Session.Provider,
 			"cwd":            strings.TrimSpace(peer.Session.Cwd),
-			"status":         string(peer.Session.Status),
+			"activeTurnId":   strings.TrimSpace(peer.Session.ActiveTurnID),
 			"title":          "",
+		}
+		if peer.Session.ActiveTurn != nil {
+			value["activeTurnPhase"] = peer.Session.ActiveTurn.Phase
 		}
 		if peer.Session.Title != nil {
 			value["title"] = *peer.Session.Title

@@ -283,11 +283,15 @@ func (s *Service) sessionSectionPage(
 	if !ok {
 		return SessionSection{}, ErrInvalidArgument
 	}
+	sessions, err := s.sessionsFromActivity(ctx, workspaceID, page.Sessions)
+	if err != nil {
+		return SessionSection{}, err
+	}
 	return SessionSection{
 		Kind:        kind,
 		SectionKey:  sectionKey,
 		UserProject: project,
-		Sessions:    s.sessionsFromActivity(page.Sessions),
+		Sessions:    sessions,
 		HasMore:     page.HasMore,
 		NextCursor:  page.NextCursor,
 	}, nil
@@ -347,14 +351,18 @@ func (s *Service) sessionPinnedPage(
 	if !ok {
 		return SessionPage{}, ErrInvalidArgument
 	}
+	sessions, err := s.sessionsFromActivity(ctx, workspaceID, page.Sessions)
+	if err != nil {
+		return SessionPage{}, err
+	}
 	return SessionPage{
-		Sessions:   s.sessionsFromActivity(page.Sessions),
+		Sessions:   sessions,
 		HasMore:    page.HasMore,
 		NextCursor: page.NextCursor,
 	}, nil
 }
 
-func (s *Service) sessionsFromActivity(sessions []agentactivitybiz.Session) []Session {
+func (s *Service) sessionsFromActivity(ctx context.Context, workspaceID string, sessions []agentactivitybiz.Session) ([]Session, error) {
 	result := make([]Session, 0, len(sessions))
 	for _, session := range sessions {
 		persisted := persistedSessionFromActivity(session)
@@ -363,7 +371,7 @@ func (s *Service) sessionsFromActivity(sessions []agentactivitybiz.Session) []Se
 			persistedSessionCanResume(s.controller(), persisted),
 		))
 	}
-	return result
+	return s.withProtocolV2TurnStates(ctx, workspaceID, result)
 }
 
 func userProjectWithSectionKey(project userprojectbiz.Project) userprojectbiz.Project {

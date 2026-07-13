@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceAgentActivitySession } from "../../../shared/workspaceAgentActivityTypes.ts";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel.ts";
 import type { AgentGUIResolvedProvider } from "../../../shared/agentConversationTitleProjection.ts";
 import {
@@ -77,17 +80,16 @@ describe("agentGuiConversationFilter", () => {
 function session(
   agentSessionId: string,
   agentTargetId: string | null
-): WorkspaceAgentActivitySession {
-  return {
+): AgentActivitySession {
+  return normalizeAgentActivitySession({
     agentSessionId,
     agentTargetId,
     cwd: "/repo",
     provider: "codex",
-    status: "completed",
     title: agentSessionId,
     updatedAtUnixMs: 1,
     workspaceId: "workspace-1"
-  };
+  });
 }
 
 function conversation(

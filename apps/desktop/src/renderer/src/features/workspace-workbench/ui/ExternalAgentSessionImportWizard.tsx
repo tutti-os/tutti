@@ -23,7 +23,7 @@ import {
   formatTuttiShortDateTime
 } from "@tutti-os/ui-system";
 import { useService } from "@tutti-os/infra/di";
-import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import { useTranslation } from "@renderer/i18n";
 import {
   externalImportGroupsFromScan,

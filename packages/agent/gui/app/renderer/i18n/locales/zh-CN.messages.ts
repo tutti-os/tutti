@@ -8,6 +8,7 @@ export const zhCNMessages = {
     "这个会话没法在当前设备里直接恢复，你可以在新会话里 @这段对话，接着继续聊。",
   agentImportedSessionResumeUnavailable:
     "这段对话已导入成功，新开会话并 @ 这段对话，接着继续聊。",
+  agentSessionReconnecting: "正在重新连接 Agent 会话…",
   agentSettingsRequireNewSession: "为了保留上下文，这个模型只能在新会话中使用",
   agentPermissionModeAppliesNextTurn: "权限模式将从你的下一条消息开始生效。",
   agentThisSessionMentionLabel: "本 session",

@@ -13,7 +13,7 @@ func newBackoffTestFixture(t *testing.T, opts ...Option) (*Store, *sessionSyncer
 	t.Helper()
 	client := &backoffTestRepository{
 		snapshot: &WorkspaceAgentSnapshot{
-			Sessions: []WorkspaceAgentSession{{
+			Sessions: []ProviderActivitySessionProjection{{
 				AgentSessionID:  "session-1",
 				SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 				LifecycleStatus: "active",

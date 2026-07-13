@@ -32,8 +32,8 @@ export function compareAgentActivityMessages(
   right: AgentActivityMessage
 ): number {
   return (
+    left.occurredAtUnixMs - right.occurredAtUnixMs ||
     left.version - right.version ||
-    (left.id ?? 0) - (right.id ?? 0) ||
     left.messageId.localeCompare(right.messageId)
   );
 }
@@ -70,7 +70,6 @@ export function areAgentActivityMessagesEqual(
     left.workspaceId === right.workspaceId &&
     left.agentSessionId === right.agentSessionId &&
     left.messageId === right.messageId &&
-    Object.is(left.id, right.id) &&
     left.version === right.version &&
     Object.is(left.turnId, right.turnId) &&
     left.role === right.role &&
@@ -121,7 +120,7 @@ function shouldReplaceAgentActivityMessage(
   if (incoming.version !== existing.version) {
     return incoming.version > existing.version;
   }
-  return (incoming.id ?? 0) >= (existing.id ?? 0);
+  return incoming.occurredAtUnixMs >= existing.occurredAtUnixMs;
 }
 
 export function areJsonLikeValuesEqual(left: unknown, right: unknown): boolean {

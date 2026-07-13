@@ -108,6 +108,15 @@ test("workspace workbench host session resolution keeps stable refs and isolates
     workspaceWorkbenchHostServiceSource,
     /cached\.dynamicHostInput = dynamicHostInput;\s+return dynamicHostInput/
   );
+  assert.match(
+    workspaceWorkbenchHostServiceSource,
+    /agentsService: this\.dependencies\.agentsService/
+  );
+  assert.doesNotMatch(workspaceWorkbenchHostServiceSource, /cached\.agents/);
+  assert.doesNotMatch(
+    workspaceWorkbenchHostServiceSource,
+    /cached\.defaultAgentTargetId/
+  );
 });
 
 test("shouldCloseTerminalNodeAfterError closes stale terminal nodes", () => {

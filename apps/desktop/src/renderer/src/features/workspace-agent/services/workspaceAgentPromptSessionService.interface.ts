@@ -15,7 +15,6 @@ export interface WorkspaceAgentPromptSessionCreateInput {
 export interface WorkspaceAgentPromptSessionCreateResult {
   agentSessionId: string;
   provider: string;
-  status?: string | null;
 }
 
 export interface IWorkspaceAgentPromptSessionService {

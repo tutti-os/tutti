@@ -12,10 +12,8 @@ import type {
   AgentHostManagedAgentsState
 } from "../../shared/contracts/dto";
 import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
-import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "../../shared/workspaceAgentActivityTypes";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../shared/workspaceAgentTimelineTypes";
 
 export interface DesktopSize {
   width: number;
@@ -195,7 +193,7 @@ export interface WorkspaceDesktopProps {
   focusNodeId?: string | null;
   focusSequence?: number;
   workspaceShellRuntime?: WorkspaceShellRuntimePanelSnapshot | null;
-  workspaceAgentSessions?: WorkspaceAgentActivitySession[];
+  workspaceAgentSessions?: AgentActivitySession[];
   workspaceAgentSessionTimelineById?: Record<
     string,
     WorkspaceAgentActivityTimelineItem[]

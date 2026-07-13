@@ -1,18 +1,11 @@
-import { isLiveTurnLifecyclePhase } from "@tutti-os/agent-activity-core";
-import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import {
-  buildWorkspaceAgentToolCallDisplay,
   isWorkspaceAgentToolCallItem,
-  resolveWorkspaceAgentToolName,
-  type ToolCallStatusKind
+  resolveWorkspaceAgentToolName
 } from "./workspaceAgentToolCallDisplay";
 import type {
   BuildWorkspaceAgentSessionDetailInput,
   WorkspaceAgentSessionDetailAgentItem,
-  WorkspaceAgentSessionDetailMessage,
   WorkspaceAgentSessionDetailToolCall,
   WorkspaceAgentSessionDetailToolGroupEntry,
   WorkspaceAgentSessionDetailTurn,
@@ -29,6 +22,22 @@ import {
   thinkingStatusKind
 } from "./workspaceAgentTimelineMessageHelpers";
 import { timelineItemOwnerThreadId } from "./agentConversation/projection/subAgentTimelinePartition";
+import {
+  compareToolCallsAscending,
+  delegatedToolStepFromCall,
+  firstPresentString,
+  isTaskLikeToolCall,
+  mergeSourceTimelineItems,
+  normalizedPayload,
+  parentToolUseIdFromCall,
+  shouldShowProcessingIndicator,
+  stringRecordValue,
+  summarizeToolCallGroup,
+  systemNoticeFromPayload,
+  toolCallView,
+  visibleErrorFromPayload,
+  withSourceTimelineItems
+} from "./workspaceAgentTimelineProjectionHelpers";
 
 export function buildCanonicalWorkspaceAgentDetailView({
   activity,
@@ -46,10 +55,8 @@ export function buildCanonicalWorkspaceAgentDetailView({
   const sortedTimelineItems = [...timelineItems].sort(
     compareTimelineItemsAscending
   );
-  const suppressedToolCallIds = suppressedClaudeAskUserQuestionCallIds(
-    session,
-    sortedTimelineItems
-  );
+  const suppressedToolCallIds =
+    suppressedUnavailableAskUserQuestionCallIds(sortedTimelineItems);
 
   for (const item of sortedTimelineItems) {
     // Sub-agent child-thread rows (payload.ownerThreadId) belong to the
@@ -282,14 +289,9 @@ function upsertToolCall(
   upsertToolCallAgentItem(turn, call, itemId(item));
 }
 
-function suppressedClaudeAskUserQuestionCallIds(
-  session: WorkspaceAgentActivitySession,
+function suppressedUnavailableAskUserQuestionCallIds(
   items: readonly WorkspaceAgentActivityTimelineItem[]
 ): Set<string> {
-  const provider = session.provider?.trim().toLowerCase() ?? "";
-  if (provider !== "claude-code") {
-    return new Set();
-  }
   const suppressed = new Set<string>();
   for (const item of items) {
     if (
@@ -732,42 +734,6 @@ function pruneTurnToolCalls(
     });
 }
 
-function parentToolUseIdFromCall(
-  call: WorkspaceAgentSessionDetailToolCall
-): string | null {
-  const metadata = normalizedPayload(
-    call.payload?.metadata as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const input = normalizedPayload(
-    call.payload?.input as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const output = normalizedPayload(
-    call.payload?.output as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const error = normalizedPayload(
-    call.payload?.error as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  return firstPresentString(
-    stringRecordValue(metadata, "parentToolUseId"),
-    stringRecordValue(call.payload, "parentToolUseId"),
-    claudeCodeMetaValue(input, "parentToolUseId"),
-    claudeCodeMetaValue(output, "parentToolUseId"),
-    claudeCodeMetaValue(error, "parentToolUseId")
-  );
-}
-
-function isTaskLikeToolCall(
-  call: WorkspaceAgentSessionDetailToolCall
-): boolean {
-  return [
-    "task",
-    "subagent",
-    "delegatetask",
-    "delegateagent",
-    "agent"
-  ].includes(normalizeToolName(call.toolName));
-}
-
 function appendDelegatedToolSteps(
   parentCall: WorkspaceAgentSessionDetailToolCall,
   childCalls: readonly WorkspaceAgentSessionDetailToolCall[]
@@ -808,212 +774,10 @@ function appendDelegatedToolSteps(
   parentCall.payload = nextPayload;
 }
 
-function delegatedToolStepFromCall(
-  call: WorkspaceAgentSessionDetailToolCall
-): Record<string, unknown> {
-  const payload = normalizedPayload(call.payload ?? undefined);
-  return {
-    id: call.id,
-    toolUseId: call.id.replace(/^call:/, ""),
-    name: call.name,
-    toolName: call.toolName,
-    callType: call.callType,
-    status: call.status,
-    toolInput: normalizedPayload(
-      payload?.input as WorkspaceAgentActivityTimelineItem["payload"]
-    ),
-    toolResult: normalizedPayload(
-      payload?.output as WorkspaceAgentActivityTimelineItem["payload"]
-    ),
-    toolError: normalizedPayload(
-      payload?.error as WorkspaceAgentActivityTimelineItem["payload"]
-    ),
-    payload,
-    metadata: normalizedPayload(
-      payload?.metadata as WorkspaceAgentActivityTimelineItem["payload"]
-    ),
-    content: Array.isArray(payload?.content) ? payload.content : null,
-    locations: Array.isArray(payload?.locations) ? payload.locations : null,
-    occurredAtUnixMs: call.occurredAtUnixMs ?? null
-  };
-}
-
-function compareToolCallsAscending(
-  left: WorkspaceAgentSessionDetailToolCall,
-  right: WorkspaceAgentSessionDetailToolCall
-): number {
-  return (
-    (left.occurredAtUnixMs ?? 0) - (right.occurredAtUnixMs ?? 0) ||
-    left.id.localeCompare(right.id)
-  );
-}
-
-function toolCallView(
-  item: WorkspaceAgentActivityTimelineItem
-): WorkspaceAgentSessionDetailToolCall {
-  const display = buildWorkspaceAgentToolCallDisplay(item);
-  const preserveTimelineTitle =
-    item.itemType.trim().toLowerCase().startsWith("approval.") ||
-    item.itemType.trim().toLowerCase().startsWith("interactive.") ||
-    firstPresentString(
-      item.callType,
-      stringRecordValue(item.payload, "callType")
-    ) === "approval";
-  const fallbackName = preserveTimelineTitle
-    ? firstPresentString(item.name, display.name)
-    : display.name;
-  return withSourceTimelineItems(
-    {
-      id: display.id,
-      name: fallbackName || display.name,
-      toolName: toolNameFromItem(item),
-      callType: firstPresentString(
-        item.callType,
-        stringRecordValue(item.payload, "callType")
-      ),
-      status: display.status,
-      statusKind: display.statusKind,
-      summary: display.detail ?? "",
-      payload: normalizedPayload(item.payload),
-      turnId: item.turnId?.trim() || undefined,
-      compactSummary: display.detail ?? "",
-      occurredAtUnixMs: item.occurredAtUnixMs ?? item.createdAtUnixMs ?? null
-    },
-    [item]
-  );
-}
-
-function withSourceTimelineItems<T extends object>(
-  value: T,
-  sourceTimelineItems: readonly WorkspaceAgentActivityTimelineItem[] | undefined
-): T & { sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[] } {
-  if (!sourceTimelineItems || sourceTimelineItems.length === 0) {
-    return value;
-  }
-  Object.defineProperty(value, "sourceTimelineItems", {
-    configurable: true,
-    enumerable: false,
-    value: [...sourceTimelineItems],
-    writable: true
-  });
-  return value as T & {
-    sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
-  };
-}
-
-function mergeSourceTimelineItems(
-  previous: readonly WorkspaceAgentActivityTimelineItem[] | undefined,
-  next: readonly WorkspaceAgentActivityTimelineItem[] | undefined
-): WorkspaceAgentActivityTimelineItem[] | undefined {
-  const merged = [...(previous ?? []), ...(next ?? [])];
-  if (merged.length === 0) {
-    return undefined;
-  }
-  const byKey = new Map<string, WorkspaceAgentActivityTimelineItem>();
-  for (const item of merged) {
-    byKey.set(sourceTimelineItemKey(item), item);
-  }
-  return [...byKey.values()].sort(compareTimelineItemsAscending);
-}
-
-function sourceTimelineItemKey(
-  item: WorkspaceAgentActivityTimelineItem
-): string {
-  const eventId = item.eventId?.trim();
-  if (eventId) {
-    return `event:${eventId}`;
-  }
-  if (Number.isFinite(item.id) && item.id > 0) {
-    return `id:${item.id}`;
-  }
-  const seq = item.seq ?? 0;
-  return seq > 0
-    ? `seq:${seq}`
-    : `local:${item.itemType}:${item.occurredAtUnixMs ?? 0}`;
-}
-
 function toolNameFromItem(
   item: WorkspaceAgentActivityTimelineItem
 ): string | null {
   return resolveWorkspaceAgentToolName(item);
-}
-
-function normalizedPayload(
-  payload: WorkspaceAgentActivityTimelineItem["payload"]
-): Record<string, unknown> | null {
-  return payload && typeof payload === "object" ? payload : null;
-}
-
-function visibleErrorFromPayload(
-  payload: Record<string, unknown> | null
-): WorkspaceAgentSessionDetailMessage["visibleError"] {
-  if (stringRecordValue(payload, "kind") !== "agent_visible_error") {
-    return null;
-  }
-  return {
-    code: stringRecordValue(payload, "code"),
-    phase: stringRecordValue(payload, "phase"),
-    provider: stringRecordValue(payload, "provider"),
-    detail: stringRecordValue(payload, "detail"),
-    retryable: booleanRecordValue(payload, "retryable")
-  };
-}
-
-function systemNoticeFromPayload(
-  payload: Record<string, unknown> | null
-): WorkspaceAgentSessionDetailMessage["systemNotice"] {
-  if (stringRecordValue(payload, "kind") !== "agent_system_notice") {
-    return null;
-  }
-  const source = stringRecordValue(payload, "source");
-  return {
-    noticeKind: stringRecordValue(payload, "noticeKind"),
-    severity: stringRecordValue(payload, "severity"),
-    ...(source ? { source } : {}),
-    title: stringRecordValue(payload, "title"),
-    detail: stringRecordValue(payload, "detail"),
-    retryable: booleanRecordValue(payload, "retryable")
-  };
-}
-
-function stringRecordValue(record: unknown, key: string): string | null {
-  if (!record || typeof record !== "object" || Array.isArray(record)) {
-    return null;
-  }
-  const value = (record as Record<string, unknown>)[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function claudeCodeMetaValue(
-  record: Record<string, unknown> | null,
-  key: string
-): string | null {
-  const meta = normalizedPayload(
-    record?._meta as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  const claudeCode = normalizedPayload(
-    meta?.claudeCode as WorkspaceAgentActivityTimelineItem["payload"]
-  );
-  return stringRecordValue(claudeCode, key);
-}
-
-function booleanRecordValue(record: unknown, key: string): boolean | null {
-  if (!record || typeof record !== "object" || Array.isArray(record)) {
-    return null;
-  }
-  const value = (record as Record<string, unknown>)[key];
-  return typeof value === "boolean" ? value : null;
-}
-
-function firstPresentString(
-  ...values: Array<string | null | undefined>
-): string | null {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-  return null;
 }
 
 function normalizeToolName(name: string | null): string {
@@ -1023,126 +787,8 @@ function normalizeToolName(name: string | null): string {
     .toLowerCase();
 }
 
-function summarizeToolCallGroup(
-  calls: readonly WorkspaceAgentSessionDetailToolCall[]
-): string | null {
-  if (calls.length < 2) {
-    return null;
-  }
-  const changedTargets = dedupeStrings(
-    calls
-      .filter((call) =>
-        ["edit", "multiedit", "write"].includes(
-          normalizeToolName(call.toolName)
-        )
-      )
-      .map((call) => summarizeCallTarget(call.summary))
-      .filter((value): value is string => value !== null)
-  );
-  if (changedTargets.length === 0) {
-    return null;
-  }
-  if (changedTargets.length === 1) {
-    return `Changed ${changedTargets[0]}`;
-  }
-  return `Changed ${changedTargets[0]} and ${changedTargets.length - 1} more files`;
-}
-
-function summarizeCallTarget(summary: string): string | null {
-  const normalized = summary.trim();
-  if (!normalized) {
-    return null;
-  }
-  const firstLine = normalized.split("\n")[0]?.trim() ?? normalized;
-  if (!firstLine) {
-    return null;
-  }
-  const segments = firstLine.split(/[\\/]/).filter(Boolean);
-  return segments.at(-1) ?? firstLine;
-}
-
-function dedupeStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function shouldShowProcessingIndicator(
-  session: BuildWorkspaceAgentSessionDetailInput["session"],
-  turns: readonly WorkspaceAgentSessionDetailTurn[]
-): boolean {
-  // The turn lifecycle is the source of truth for "is a turn running"
-  // (ADR 0008); session.status is only a fallback for records that carry no
-  // lifecycle (non-migrated providers).
-  if (!sessionHasRunnableIndicatorState(session)) {
-    return false;
-  }
-  const lastTurn = turns.at(-1);
-  if (!lastTurn) {
-    return true;
-  }
-  const lastAgentItem = lastTurn.agentItems.at(-1);
-  if (
-    lastAgentItem?.kind === "message" &&
-    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind) &&
-    !hasActiveRunningTurnLifecycle(session)
-  ) {
-    return false;
-  }
-  return !lastTurn.toolCalls.some(
-    (call) => call.statusKind === "working" || call.statusKind === "waiting"
-  );
-}
-
-// A completed assistant message usually means the turn is about to settle, so
-// the indicator is suppressed to avoid trailing dots after the final answer.
-// Providers can also emit completed interim messages mid-turn (e.g. codex
-// narration between tool phases); when the turn lifecycle still reports an
-// active, non-settling turn, keep the indicator visible.
-function hasActiveRunningTurnLifecycle(
-  session: BuildWorkspaceAgentSessionDetailInput["session"]
-): boolean {
-  const lifecycle = session.turnLifecycle;
-  if (!lifecycle?.activeTurnId || lifecycle.settling === true) {
-    return false;
-  }
-  return isLiveTurnLifecyclePhase(lifecycle.phase);
-}
-
-// Primary indicator gate: a present turn lifecycle decides entirely; the
-// legacy session.status check applies only when the record has no lifecycle.
-function sessionHasRunnableIndicatorState(
-  session: BuildWorkspaceAgentSessionDetailInput["session"]
-): boolean {
-  const lifecycle = session.turnLifecycle;
-  if (lifecycle?.phase) {
-    return (
-      Boolean(lifecycle.activeTurnId) &&
-      isLiveTurnLifecyclePhase(lifecycle.phase)
-    );
-  }
-  return isSessionWorking(session);
-}
-
-function isTerminalAgentMessageStatus(
-  statusKind: ToolCallStatusKind | null | undefined
-): boolean {
-  return (
-    statusKind === "completed" ||
-    statusKind === "failed" ||
-    statusKind === "canceled"
-  );
-}
-
 function isSessionWorking(
   session: BuildWorkspaceAgentSessionDetailInput["session"]
 ): boolean {
-  const status = normalizedSessionStatus(session.status);
-  return isWorkingSessionStatus(status);
-}
-
-function isWorkingSessionStatus(status: string): boolean {
-  return status === "working";
-}
-
-function normalizedSessionStatus(status: string | null | undefined): string {
-  return status?.trim().toLowerCase() ?? "";
+  return session.activeTurn ? session.activeTurn.phase !== "settled" : false;
 }

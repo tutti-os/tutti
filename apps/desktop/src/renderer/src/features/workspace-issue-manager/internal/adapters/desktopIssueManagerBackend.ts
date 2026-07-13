@@ -13,6 +13,7 @@ import type {
   IssueManagerTaskDetail,
   IssueManagerTaskSummary
 } from "@tutti-os/workspace-issue-manager/contracts";
+import { resolveAgentGUIProviderIdentity } from "@tutti-os/agent-gui/provider-identity";
 
 export function createDesktopIssueManagerBackend(
   tuttidClient: TuttidClient
@@ -265,16 +266,7 @@ function resolveIssueManagerCreateRunAgentTargetId(
   if (normalizedAgentTargetId) {
     return normalizedAgentTargetId;
   }
-  switch (provider?.trim()) {
-    case "codex":
-      return "local:codex";
-    case "claude-code":
-      return "local:claude-code";
-    case "cursor":
-      return "local:cursor";
-    default:
-      return "";
-  }
+  return resolveAgentGUIProviderIdentity(provider)?.targetId ?? "";
 }
 
 function requireIssueManagerCreateRunAgentTargetId(

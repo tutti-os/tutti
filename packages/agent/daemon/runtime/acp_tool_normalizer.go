@@ -15,7 +15,7 @@ func acpToolCallEvent(session Session, turnID string, update map[string]any) (ac
 }
 
 func acpToolCallEventWithID(session Session, eventID string, turnID string, update map[string]any) (activityshared.Event, bool) {
-	callID := firstNonEmpty(asString(update["toolCallId"]), asString(update["id"]))
+	callID := firstNonEmpty(asString(update["toolCallId"]), asString(update["callId"]), asString(update["id"]))
 	name := firstNonEmpty(asString(update["title"]), asString(update["name"]), callID, "tool")
 	kind := asString(update["kind"])
 	status := acpResolvedToolCallStatus(update, string(activityshared.ActivityStatusRunning))
@@ -23,7 +23,7 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	rawOutput := acpToolCallRawOutput(update)
 	locations := clonePayloadValue(update["locations"])
 	content := acpSanitizeImagePayload(update["content"])
-	toolName := acpToolName(callID, name, kind, rawInput)
+	toolName := firstNonEmpty(asString(update["toolName"]), acpToolName(callID, name, kind, rawInput))
 	eventType := EventCallStarted
 	inputBody := acpNormalizeToolInput(rawInput, kind, locations)
 	callBody := inputBody
@@ -122,6 +122,12 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 	if input != nil {
 		if strings.TrimSpace(asString(input["cmd"])) != "" || acpExtractShellCommand(input["command"]) != "" {
 			return "Bash"
+		}
+		if input["todos"] != nil {
+			return "TodoWrite"
+		}
+		if strings.TrimSpace(asString(input["patchText"])) != "" {
+			return "Edit"
 		}
 	}
 	if fetchToolName := acpFetchToolName(input); fetchToolName != "" {
@@ -324,6 +330,7 @@ func acpNormalizeToolOutput(rawOutput any, content any) map[string]any {
 		body = map[string]any{}
 	}
 	body = acpSanitizeImagePayloadMap(body)
+	acpPromoteToolOutputMetadata(body)
 	if content != nil {
 		sanitizedContent := acpSanitizeImagePayload(content)
 		body["content"] = sanitizedContent
@@ -335,6 +342,21 @@ func acpNormalizeToolOutput(rawOutput any, content any) map[string]any {
 		acpApplyDiffContent(body, sanitizedContent)
 	}
 	return body
+}
+
+func acpPromoteToolOutputMetadata(body map[string]any) {
+	metadata, _ := body["metadata"].(map[string]any)
+	if len(metadata) == 0 {
+		return
+	}
+	for _, key := range []string{"diff", "files", "structuredPatch", "detailedContent", "changes"} {
+		if _, exists := body[key]; !exists && metadata[key] != nil {
+			body[key] = clonePayloadValue(metadata[key])
+		}
+	}
+	if _, exists := body["exitCode"]; !exists && metadata["exit"] != nil {
+		body["exitCode"] = clonePayloadValue(metadata["exit"])
+	}
 }
 
 func acpSanitizeImagePayloadMap(value map[string]any) map[string]any {

@@ -1,7 +1,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   type JSX,
   type PropsWithChildren
@@ -15,28 +14,12 @@ import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime
 } from "./agentActivityRuntime";
-import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "./shared/workspaceAgentActivityTypes";
 
 const AgentActivityHostContext = createContext<AgentHostRuntimeApi | null>(
   null
 );
 
 let currentAgentHostApi: AgentHostRuntimeApi | null = null;
-
-// Host APIs indexed by their runtime origin, mirroring the runtime registry.
-// Read-state persistence resolves the host API by the query's origin so a
-// local window persists to the local host and a shared/cloud window persists to
-// its own cloud host — each backend keyed by (roomId, userId) with no origin
-// needed on the record itself.
-const hostApiByOrigin = new Map<string, AgentHostRuntimeApi>();
-
-function resolveHostOrigin(
-  runtime: AgentActivityRuntime | null | undefined
-): string {
-  return (
-    runtime?.origin?.trim() || WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN
-  );
-}
 
 export interface AgentActivityHostProviderProps extends PropsWithChildren {
   agentActivityRuntime?: AgentActivityRuntime | null;
@@ -53,23 +36,6 @@ export function AgentActivityHostProvider({
     [agentHostApi]
   );
   currentAgentHostApi = resolvedAgentHostApi;
-  const origin = resolveHostOrigin(agentActivityRuntime);
-  // Register during render to close the gap before the effect runs; the effect
-  // owns cleanup on unmount.
-  if (resolvedAgentHostApi) {
-    hostApiByOrigin.set(origin, resolvedAgentHostApi);
-  }
-  useEffect(() => {
-    if (!resolvedAgentHostApi) {
-      return;
-    }
-    hostApiByOrigin.set(origin, resolvedAgentHostApi);
-    return () => {
-      if (hostApiByOrigin.get(origin) === resolvedAgentHostApi) {
-        hostApiByOrigin.delete(origin);
-      }
-    };
-  }, [origin, resolvedAgentHostApi]);
   return (
     <AgentActivityRuntimeProvider runtime={agentActivityRuntime}>
       <AgentActivityHostContext.Provider value={resolvedAgentHostApi}>
@@ -102,35 +68,9 @@ export function getOptionalAgentHostApi(): AgentHostRuntimeApi | null {
   );
 }
 
-/**
- * Resolve the host API for a given runtime origin. When the origin is registered
- * (local vs shared/cloud host), returns that exact host API so its persistence
- * (read-state, etc.) targets the matching backend; otherwise falls back to
- * legacy single-host resolution.
- */
-export function getAgentHostApiByOrigin(
-  origin: string | null | undefined
-): AgentHostRuntimeApi | null {
-  const normalizedOrigin =
-    origin?.trim() || WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
-  const hostApi = hostApiByOrigin.get(normalizedOrigin);
-  if (hostApi) {
-    return hostApi;
-  }
-  // Only the default (local) origin falls back to the legacy single-host slot.
-  // An explicit non-default origin that is not registered returns null so its
-  // persistence never lands in a different host's store (e.g. shared read-state
-  // must not be written to the local backend).
-  if (normalizedOrigin === WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN) {
-    return getOptionalAgentHostApi();
-  }
-  return null;
-}
-
 export function resetAgentHostApiForTests(): void {
   if (process.env.NODE_ENV === "test") {
     currentAgentHostApi = null;
-    hostApiByOrigin.clear();
   }
 }
 

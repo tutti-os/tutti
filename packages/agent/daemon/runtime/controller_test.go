@@ -87,11 +87,13 @@ func (r *recordingReporter) waitForReports(
 	}
 }
 
-func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *testing.T) {
+func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t *testing.T) {
 	t.Parallel()
 
 	reporter := &recordingReporter{}
 	controller := NewController([]Adapter{failingStartAdapter{}}, reporter)
+	controller.pendingCommandSnapshots["agent-session-1"] = AgentSessionCommandSnapshot{AgentSessionID: "agent-session-1"}
+	controller.pendingConfigOptionsUpdates[sessionKey("room-1", "agent-session-1")] = []AgentSessionConfigOptionsUpdate{{AgentSessionID: "agent-session-1"}}
 
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
@@ -100,37 +102,110 @@ func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *test
 		CWD:            "/workspace",
 		Title:          "Hermes",
 	})
+	if err == nil {
+		t.Fatal("Start error = nil")
+	}
+	if code := AppErrorCode(err); code != "process_exited" {
+		t.Fatalf("start error code = %q, want process_exited", code)
+	}
+	if detail := AppErrorDebugMessage(err); detail != "acp process exited with code 1: Config invalid" {
+		t.Fatalf("start error detail = %q", detail)
+	}
+	if started.Session.AgentSessionID != "" {
+		t.Fatalf("start result = %#v, want no failed session result", started)
+	}
+	if stored, ok := controller.get("room-1", "agent-session-1"); ok {
+		t.Fatalf("stored session = %#v, want no canonical session", stored)
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("reports = %#v, want no turnless failure report", reports)
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
+		t.Fatalf("pending snapshots survived failed start: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+}
+
+func TestControllerProvisionalStartRollsBackWithoutCanonicalReport(t *testing.T) {
+	t.Parallel()
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+		CWD: "/workspace", Provisional: true,
+	})
+	if err != nil || started.Session.AgentSessionID != "agent-session-1" {
+		t.Fatalf("Start() = %#v, %v", started, err)
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("reports before commit = %#v", reports)
+	}
+	controller.applySessionEventsByAgentSessionID("agent-session-1", []activityshared.Event{
+		newSessionActivityEvent(started.Session, EventSessionStarted, SessionStatusReady, nil),
+	})
+	controller.applyCommandSnapshotByAgentSessionID(AgentSessionCommandSnapshot{
+		AgentSessionID: "agent-session-1",
+		Commands:       []AgentSessionCommand{{Name: "review"}},
+	})
+	controller.applyConfigOptionsUpdateByAgentSessionID(AgentSessionConfigOptionsUpdate{
+		RoomID: "room-1", AgentSessionID: "agent-session-1",
+	})
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("provider callbacks leaked reports before commit = %#v", reports)
+	}
+	controller.mu.Lock()
+	if _, ok := controller.commands[sessionKey("room-1", "agent-session-1")]; ok {
+		controller.mu.Unlock()
+		t.Fatal("provider command callback became canonical before commit")
+	}
+	if len(controller.pendingCommandSnapshots) != 1 || len(controller.pendingConfigOptionsUpdates) != 1 {
+		controller.mu.Unlock()
+		t.Fatalf("provider callbacks were not retained transactionally: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+	controller.mu.Unlock()
+	if _, err := controller.Close(context.Background(), CloseInput{RoomID: "room-1", AgentSessionID: "agent-session-1"}); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, ok := controller.get("room-1", "agent-session-1"); ok {
+		t.Fatal("provisional session survived rollback")
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("rollback reports = %#v", reports)
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
+		t.Fatalf("rollback retained provider callbacks: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+}
+
+func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
+	t.Parallel()
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, reporter)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+		CWD: "/workspace", Provisional: true,
+	})
 	if err != nil {
-		t.Fatalf("Start: %v", err)
+		t.Fatalf("Start() error = %v", err)
 	}
-	if started.Session.Status != SessionStatusFailed {
-		t.Fatalf("session status = %q, want failed", started.Session.Status)
-	}
-	if started.Error == nil || started.Error.Code != "process_exited" {
-		t.Fatalf("start error = %#v, want process_exited", started.Error)
-	}
-	if started.Session.LastError != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("session last error = %q, want visible start failure detail", started.Session.LastError)
-	}
-	stored, ok := controller.get("room-1", "agent-session-1")
-	if !ok || stored.Status != SessionStatusFailed {
-		t.Fatalf("stored session = %#v, ok=%v", stored, ok)
-	}
-	if stored.LastError != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("stored last error = %q, want visible start failure detail", stored.LastError)
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1",
+		Content: []PromptContentBlock{{Type: "text", Text: "hello"}},
+	})
+	if err != nil || result.TurnID == "" {
+		t.Fatalf("Exec() = %#v, %v", result, err)
 	}
 	reports := reporter.waitForCalls(t, 1)
-	if len(reports[0].report.StatePatches) != 1 {
-		t.Fatalf("state patches = %#v, want failed session patch", reports[0].report.StatePatches)
+	if len(reports[0].report.StatePatches) == 0 {
+		t.Fatalf("commit report = %#v, want session and turn state", reports[0].report)
 	}
-	if len(reports[0].report.MessageUpdates) != 1 {
-		t.Fatalf("message updates = %#v, want visible failure message", reports[0].report.MessageUpdates)
-	}
-	item := reports[0].report.MessageUpdates[0]
-	if item.Payload["kind"] != visibleErrorKind ||
-		item.Payload["phase"] != "start" ||
-		item.Payload["detail"] != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("visible start failure item = %#v", item)
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if controller.provisionalSessions[sessionKey("room-1", "agent-session-1")] {
+		t.Fatal("session remained provisional after first turn acceptance")
 	}
 }
 
@@ -918,37 +993,6 @@ func TestControllerReportsMessageUpdateOnlyRuntimeBatch(t *testing.T) {
 		update.Payload["content"] != "partial" ||
 		update.Payload["source"] != "runtime" {
 		t.Fatalf("message update = %#v", update)
-	}
-}
-
-func TestControllerStartPassesOpenclawGatewayReadyToTransport(t *testing.T) {
-	t.Parallel()
-
-	transport := newScriptedACPTransport()
-	controller := NewDefaultControllerWithProcessTransport(nil, transport)
-
-	started, err := controller.Start(context.Background(), StartInput{
-		RoomID:               "room-1",
-		AgentSessionID:       "agent-session-1",
-		Provider:             ProviderOpenClaw,
-		CWD:                  "/workspace",
-		Title:                "OpenClaw",
-		OpenclawGatewayReady: true,
-	})
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	if started.Session.AgentSessionID != "agent-session-1" {
-		t.Fatalf("agent session id = %q, want propagated id", started.Session.AgentSessionID)
-	}
-
-	transport.mu.Lock()
-	defer transport.mu.Unlock()
-	if len(transport.specs) != 1 {
-		t.Fatalf("transport specs = %d, want 1", len(transport.specs))
-	}
-	if !transport.specs[0].OpenclawGatewayReady {
-		t.Fatalf("process spec = %#v, want openclaw gateway ready", transport.specs[0])
 	}
 }
 
@@ -1884,8 +1928,8 @@ func TestControllerCancelStopsBackgroundTurn(t *testing.T) {
 		AgentSessionID: started.Session.AgentSessionID,
 		RequestID:      "permission-1",
 		OptionID:       "allow_once",
-	}); err == nil {
-		t.Fatal("SubmitInteractive after cancel returned nil error, want no longer live")
+	}); !errors.Is(err, ErrInteractiveRequestNotLive) {
+		t.Fatalf("SubmitInteractive after cancel error = %v, want ErrInteractiveRequestNotLive", err)
 	}
 }
 
@@ -2041,8 +2085,11 @@ func (streamingMessageOnlyAdapter) Cancel(context.Context, Session, string) ([]a
 }
 
 type recordingStartAdapter struct {
-	provider string
-	started  Session
+	provider       string
+	started        Session
+	cancelCalls    int
+	cancelEntered  chan<- struct{}
+	cancelReleased <-chan struct{}
 }
 
 type recordingPromptAdapter struct {
@@ -2076,7 +2123,17 @@ func (*recordingStartAdapter) Exec(context.Context, Session, []PromptContentBloc
 	return nil, nil
 }
 
-func (*recordingStartAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+func (a *recordingStartAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	a.cancelCalls++
+	if a.cancelEntered != nil {
+		select {
+		case a.cancelEntered <- struct{}{}:
+		default:
+		}
+	}
+	if a.cancelReleased != nil {
+		<-a.cancelReleased
+	}
 	return nil, nil
 }
 
@@ -2457,6 +2514,20 @@ func (a *statefulInteractiveAdapter) SubmitInteractive(_ context.Context, sessio
 		Accepted:       true,
 		OptionID:       optionID,
 	}, nil
+}
+
+func (a *statefulInteractiveAdapter) StateAfterInteractiveSelection(
+	_ Session,
+	optionID string,
+) (InteractiveSelectionState, bool) {
+	if a.Provider() != ProviderClaudeCode {
+		return InteractiveSelectionState{}, false
+	}
+	planMode, permissionMode, ok := claudeCodeModeFromID(optionID)
+	return InteractiveSelectionState{
+		PlanMode:       planMode,
+		PermissionMode: permissionMode,
+	}, ok
 }
 
 func (a *statefulInteractiveAdapter) ApplySessionSettings(_ context.Context, session Session, patch SessionSettingsPatch) error {
@@ -2849,6 +2920,31 @@ func TestControllerCancelWithoutAnyWorkReturnsNotCanceled(t *testing.T) {
 	}
 }
 
+func TestControllerExactCancelReportsTargetAbsentWithoutTurnRegistryRecord(t *testing.T) {
+	t.Parallel()
+
+	adapter := &cancelReconcileAdapter{empty: true}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex, Title: "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID, TurnID: "turn-1",
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if result.Canceled || !result.TargetAbsent {
+		t.Fatalf("result = %#v, want exact target absent evidence", result)
+	}
+	if adapter.cancelCalls.Load() != 1 {
+		t.Fatalf("adapter cancel calls = %d, want 1", adapter.cancelCalls.Load())
+	}
+}
+
 type cancelReconcileAdapter struct {
 	cancelCalls atomic.Int64
 	empty       bool
@@ -3006,6 +3102,20 @@ func (a *blockingExecAdapter) SubmitInteractive(_ context.Context, session Sessi
 		Accepted:       true,
 		OptionID:       optionID,
 	}, nil
+}
+
+func (a *blockingExecAdapter) StateAfterInteractiveSelection(
+	_ Session,
+	optionID string,
+) (InteractiveSelectionState, bool) {
+	if a.Provider() != ProviderClaudeCode {
+		return InteractiveSelectionState{}, false
+	}
+	planMode, permissionMode, ok := claudeCodeModeFromID(optionID)
+	return InteractiveSelectionState{
+		PlanMode:       planMode,
+		PermissionMode: permissionMode,
+	}, ok
 }
 
 func (a *blockingExecAdapter) waitForPrompt(t *testing.T, prompt string) {
@@ -4004,7 +4114,7 @@ func TestControllerSubmitInteractiveSyncsClaudeCodePermissionModeSelection(t *te
 		{name: "accept edits", initial: "default", optionID: "acceptEdits", wantMode: "acceptEdits"},
 		{name: "bypass permissions", initial: "default", optionID: "bypassPermissions", wantMode: "bypassPermissions"},
 		{name: "default", initial: "acceptEdits", optionID: "default", wantMode: "default"},
-		{name: "auto", initial: "default", optionID: "auto", wantMode: "auto"},
+		{name: "legacy auto", initial: "default", optionID: "auto", wantMode: "acceptEdits"},
 		{name: "dont ask from payload", initial: "default", payload: map[string]any{"optionId": "dontAsk"}, resolved: "dontAsk", wantMode: "dontAsk"},
 	}
 
@@ -4091,7 +4201,7 @@ func TestClaudeCodeModeFromID(t *testing.T) {
 		{modeID: "default", wantPlan: false, wantPermission: "default", wantOK: true},
 		{modeID: "acceptEdits", wantPlan: false, wantPermission: "acceptEdits", wantOK: true},
 		{modeID: "bypassPermissions", wantPlan: false, wantPermission: "bypassPermissions", wantOK: true},
-		{modeID: "auto", wantPlan: false, wantPermission: "auto", wantOK: true},
+		{modeID: "auto", wantPlan: false, wantPermission: "acceptEdits", wantOK: true},
 		{modeID: "dontAsk", wantPlan: false, wantPermission: "dontAsk", wantOK: true},
 		{modeID: "allow_once", wantOK: false},
 		{modeID: "reject", wantOK: false},
@@ -4144,14 +4254,14 @@ func TestControllerSubmitInteractiveExitsPlanModeOnPermissionSelection(t *testin
 	if !ok {
 		t.Fatal("Session returned ok=false")
 	}
-	if session.PermissionModeID != "auto" {
-		t.Fatalf("session permission mode = %q, want auto", session.PermissionModeID)
+	if session.PermissionModeID != "acceptEdits" {
+		t.Fatalf("session permission mode = %q, want acceptEdits", session.PermissionModeID)
 	}
 	if session.Settings == nil || session.Settings.PlanMode {
 		t.Fatalf("session settings = %#v, want plan mode cleared", session.Settings)
 	}
 
-	event := waitForStatePatchPermissionMode(t, events, "auto")
+	event := waitForStatePatchPermissionMode(t, events, "acceptEdits")
 	patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
 	if !ok {
 		t.Fatalf("event data = %#v, want state patch", event.Data)
@@ -5048,7 +5158,7 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 	}
 	usage, _ := patch.RuntimeContext["usage"].(map[string]any)
 	contextWindow, _ := usage["contextWindow"].(map[string]any)
-	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 200000 {
+	if got, _ := int64Value(contextWindow["totalTokens"]); got != 200000 {
 		t.Fatalf("runtime context usage = %#v, want totalTokens=200000", patch.RuntimeContext["usage"])
 	}
 	if patch.TurnLifecycle == nil ||
@@ -5353,6 +5463,95 @@ func TestControllerCancelReconcilesStuckTurnView(t *testing.T) {
 	calls := reporter.waitForCalls(t, 1)
 	if len(calls[len(calls)-1].report.StatePatches) == 0 {
 		t.Fatalf("reconcile report = %#v, want a state patch", calls[len(calls)-1].report)
+	}
+}
+
+func TestControllerExactTurnCancelDoesNotCancelNewerActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, &recordingReporter{})
+	controller.store(Session{
+		RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderCodex,
+		ProviderSessionID: "prov-1", Status: SessionStatusWorking,
+	})
+	controller.mu.Lock()
+	controller.turns[sessionKey("room-1", "agent-1")] = activeTurn{turnID: "turn-new"}
+	controller.mu.Unlock()
+
+	result, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID: "room-1", AgentSessionID: "agent-1", TurnID: "turn-old", Reason: "user",
+	})
+	if err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+	if result.Canceled {
+		t.Fatalf("Cancel() result = %#v, want not canceled", result)
+	}
+	if adapter.cancelCalls != 0 {
+		t.Fatalf("adapter cancel calls = %d, want 0", adapter.cancelCalls)
+	}
+	active, ok := controller.activeTurn("room-1", "agent-1")
+	if !ok || active.turnID != "turn-new" {
+		t.Fatalf("active turn after exact cancel = %#v, %v, want turn-new", active, ok)
+	}
+}
+
+func TestControllerExactTurnCancelHoldsLifecycleLockThroughAdapterCancel(t *testing.T) {
+	t.Parallel()
+
+	cancelEntered := make(chan struct{}, 1)
+	cancelReleased := make(chan struct{})
+	adapter := &recordingStartAdapter{
+		provider: ProviderCodex, cancelEntered: cancelEntered, cancelReleased: cancelReleased,
+	}
+	controller := NewController([]Adapter{adapter}, &recordingReporter{})
+	controller.store(Session{
+		RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderCodex,
+		ProviderSessionID: "prov-1", Status: SessionStatusWorking,
+	})
+	controller.mu.Lock()
+	controller.turns[sessionKey("room-1", "agent-1")] = activeTurn{turnID: "turn-1"}
+	controller.mu.Unlock()
+
+	cancelDone := make(chan error, 1)
+	go func() {
+		_, err := controller.Cancel(context.Background(), CancelInput{
+			RoomID: "room-1", AgentSessionID: "agent-1", TurnID: "turn-1", Reason: "user",
+		})
+		cancelDone <- err
+	}()
+	select {
+	case <-cancelEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("adapter cancel did not start")
+	}
+
+	secondLockAcquired := make(chan struct{})
+	go func() {
+		release := controller.acquireLifecycleLock("room-1", "agent-1")
+		close(secondLockAcquired)
+		release()
+	}()
+	select {
+	case <-secondLockAcquired:
+		t.Fatal("session lifecycle lock was released before adapter cancel completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(cancelReleased)
+	select {
+	case err := <-cancelDone:
+		if err != nil {
+			t.Fatalf("Cancel() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Cancel() did not finish")
+	}
+	select {
+	case <-secondLockAcquired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session lifecycle lock was not released after adapter cancel")
 	}
 }
 

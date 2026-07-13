@@ -3,6 +3,7 @@ import type {
   AgentHostManagedAgentsState
 } from "../contracts/dto";
 import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
+import { resolveMigratedAgentGUIProviderIdentity } from "../../providerIdentityCatalog.ts";
 
 export type AgentHostManagedToolchainAgent = {
   id: string;
@@ -41,8 +42,7 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
     },
     {
       id: "codex",
-      // i18n-check-ignore: Provider brand name.
-      label: "Codex",
+      label: migratedProviderDisplayName("codex"),
       toolIds: ["codex-cli"],
       agentIds: ["codex"],
       runtimeManaged: true,
@@ -90,15 +90,30 @@ export const AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS: readonly AgentHostManagedToolc
     },
     {
       id: "opencode",
-      // i18n-check-ignore: Provider brand name.
-      label: "Open Code",
+      label: migratedProviderDisplayName("opencode"),
       toolIds: ["opencode-cli"],
       agentIds: ["opencode"],
       runtimeManaged: true,
       helperProvider: "opencode",
-      aliases: ["open code", "open-code", "opencode-ai"]
+      aliases: migratedProviderAliases("opencode")
     }
   ] as const;
+
+function migratedProviderDisplayName(providerId: string): string {
+  const identity = resolveMigratedAgentGUIProviderIdentity(providerId);
+  if (!identity) {
+    throw new Error(`Missing migrated provider identity for ${providerId}`);
+  }
+  return identity.displayName;
+}
+
+function migratedProviderAliases(providerId: string): string[] {
+  const identity = resolveMigratedAgentGUIProviderIdentity(providerId);
+  if (!identity) {
+    throw new Error(`Missing migrated provider identity for ${providerId}`);
+  }
+  return [...identity.aliases];
+}
 
 /**
  * Workspace Dock 中托管 Agent 图标顺序，与 Manage Agents 页面列表（`AGENT_HOST_MANAGED_TOOLCHAIN_AGENTS`）一致。

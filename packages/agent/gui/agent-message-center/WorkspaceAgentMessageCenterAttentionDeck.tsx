@@ -19,7 +19,7 @@ const DECK_LEAVE_ANIMATION_FALLBACK_MS = 420;
 export interface WorkspaceAgentMessageCenterAttentionDeckProps {
   items: WorkspaceAgentMessageCenterItem[];
   highlightedItemId?: string | null;
-  submittingPromptKey: string | null;
+  isPromptSubmitting: (item: WorkspaceAgentMessageCenterItem) => boolean;
   registerNode?: (itemId: string, node: HTMLElement | null) => void;
   renderCard?: (
     input: WorkspaceAgentMessageCenterAttentionDeckRenderCardInput
@@ -54,7 +54,7 @@ export interface WorkspaceAgentMessageCenterAttentionDeckRenderCardInput {
 export function WorkspaceAgentMessageCenterAttentionDeck({
   items,
   highlightedItemId = null,
-  submittingPromptKey,
+  isPromptSubmitting,
   registerNode,
   renderCard,
   onLinkAction,
@@ -137,9 +137,7 @@ export function WorkspaceAgentMessageCenterAttentionDeck({
   }
 
   const peekCount = Math.min(ordered.length - 1, DECK_MAX_PEEK);
-  const topIsSubmitting =
-    submittingPromptKey ===
-    `${topItem.agentSessionId}:${topItem.pendingPrompt?.requestId}`;
+  const topIsSubmitting = isPromptSubmitting(topItem);
 
   return (
     <section

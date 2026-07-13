@@ -3,22 +3,21 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
+import { desktopInstallBootstrapProviders } from "./desktopManagedAgentProviders.ts";
 
-const tuttiAgentProvider = "tutti-agent" satisfies WorkspaceAgentProvider;
 const installActionId = "install";
-const bootstrapStorageKey = "tutti.agentBootstrap.tutti-agent";
 const defaultFailureBackoffMs = 6 * 60 * 60 * 1000;
 
-let attemptedInstallThisSession = false;
-let bootstrapInFlight: Promise<void> | null = null;
+const attemptedInstallThisSession = new Set<WorkspaceAgentProvider>();
+const bootstrapInFlight = new Map<WorkspaceAgentProvider, Promise<void>>();
 
-export interface TuttiAgentInstallBootstrapOptions {
+export interface ManagedAgentInstallBootstrapOptions {
   backoffMs?: number;
   now?: () => number;
-  storage?: TuttiAgentInstallBootstrapStorage | null;
+  storage?: ManagedAgentInstallBootstrapStorage | null;
 }
 
-export interface TuttiAgentInstallBootstrapStorage {
+export interface ManagedAgentInstallBootstrapStorage {
   getItem(key: string): string | null;
   removeItem(key: string): void;
   setItem(key: string, value: string): void;
@@ -31,33 +30,53 @@ interface BootstrapFailureState {
   packageVersion?: string;
 }
 
-export function startTuttiAgentInstallBootstrap(
+export function startManagedAgentInstallBootstraps(
   service: IAgentProviderStatusService,
-  options: TuttiAgentInstallBootstrapOptions = {}
+  options: ManagedAgentInstallBootstrapOptions = {}
 ): void {
-  if (attemptedInstallThisSession || bootstrapInFlight) {
+  for (const provider of desktopInstallBootstrapProviders) {
+    startManagedAgentInstallBootstrap(service, provider, options);
+  }
+}
+
+function startManagedAgentInstallBootstrap(
+  service: IAgentProviderStatusService,
+  provider: WorkspaceAgentProvider,
+  options: ManagedAgentInstallBootstrapOptions
+): void {
+  if (
+    attemptedInstallThisSession.has(provider) ||
+    bootstrapInFlight.has(provider)
+  ) {
     return;
   }
-  bootstrapInFlight = runTuttiAgentInstallBootstrap(service, options)
+  const request = runManagedAgentInstallBootstrap(service, provider, options)
     .catch(() => {})
     .finally(() => {
-      bootstrapInFlight = null;
+      bootstrapInFlight.delete(provider);
     });
+  bootstrapInFlight.set(provider, request);
 }
 
-export function resetTuttiAgentInstallBootstrapForTests(): void {
-  attemptedInstallThisSession = false;
-  bootstrapInFlight = null;
+export function resetManagedAgentInstallBootstrapForTests(): void {
+  attemptedInstallThisSession.clear();
+  bootstrapInFlight.clear();
 }
 
-export async function runTuttiAgentInstallBootstrap(
+export async function runManagedAgentInstallBootstrap(
   service: IAgentProviderStatusService,
-  options: TuttiAgentInstallBootstrapOptions = {}
+  provider: WorkspaceAgentProvider,
+  options: ManagedAgentInstallBootstrapOptions = {}
 ): Promise<void> {
   const now = options.now?.() ?? Date.now();
   const storage = resolveBootstrapStorage(options.storage);
   if (
-    hasRecentFailure(storage, now, options.backoffMs ?? defaultFailureBackoffMs)
+    hasRecentFailure(
+      storage,
+      provider,
+      now,
+      options.backoffMs ?? defaultFailureBackoffMs
+    )
   ) {
     return;
   }
@@ -65,10 +84,10 @@ export async function runTuttiAgentInstallBootstrap(
   let response;
   try {
     response = await service.ensureLoaded({
-      providers: [tuttiAgentProvider]
+      providers: [provider]
     });
   } catch (error) {
-    writeBootstrapFailure(storage, {
+    writeBootstrapFailure(storage, provider, {
       failureReason: error instanceof Error ? error.message : String(error),
       lastAttemptAt: now,
       lastStatus: "failed",
@@ -77,22 +96,20 @@ export async function runTuttiAgentInstallBootstrap(
     throw error;
   }
   const status =
-    service.getStatus(tuttiAgentProvider) ??
-    response?.providers.find(
-      (provider) => provider.provider === tuttiAgentProvider
-    ) ??
+    service.getStatus(provider) ??
+    response?.providers.find((candidate) => candidate.provider === provider) ??
     null;
   if (!status) {
     return;
   }
   if (status.availability.status === "ready") {
-    clearBootstrapFailure(storage);
+    clearBootstrapFailure(storage, provider);
     return;
   }
   if (status.availability.status !== "not_installed") {
     return;
   }
-  if (service.isActionPending(tuttiAgentProvider, installActionId)) {
+  if (service.isActionPending(provider, installActionId)) {
     return;
   }
   if (!hasInstallAction(status)) {
@@ -100,12 +117,12 @@ export async function runTuttiAgentInstallBootstrap(
   }
 
   try {
-    attemptedInstallThisSession = true;
-    await service.runAction(tuttiAgentProvider, installActionId);
-    clearBootstrapFailure(storage);
-    await service.refresh([tuttiAgentProvider]).catch(() => {});
+    attemptedInstallThisSession.add(provider);
+    await service.runAction(provider, installActionId);
+    clearBootstrapFailure(storage, provider);
+    await service.refresh([provider]).catch(() => {});
   } catch (error) {
-    writeBootstrapFailure(storage, {
+    writeBootstrapFailure(storage, provider, {
       failureReason: error instanceof Error ? error.message : String(error),
       lastAttemptAt: now,
       lastStatus: "failed",
@@ -119,8 +136,8 @@ function hasInstallAction(status: AgentProviderStatus): boolean {
 }
 
 function resolveBootstrapStorage(
-  storage: TuttiAgentInstallBootstrapOptions["storage"]
-): TuttiAgentInstallBootstrapStorage | null {
+  storage: ManagedAgentInstallBootstrapOptions["storage"]
+): ManagedAgentInstallBootstrapStorage | null {
   if (storage !== undefined) {
     return storage;
   }
@@ -128,11 +145,12 @@ function resolveBootstrapStorage(
 }
 
 function hasRecentFailure(
-  storage: TuttiAgentInstallBootstrapStorage | null,
+  storage: ManagedAgentInstallBootstrapStorage | null,
+  provider: WorkspaceAgentProvider,
   now: number,
   backoffMs: number
 ): boolean {
-  const state = readBootstrapFailure(storage);
+  const state = readBootstrapFailure(storage, provider);
   if (
     state?.lastStatus !== "failed" ||
     typeof state.lastAttemptAt !== "number"
@@ -143,13 +161,14 @@ function hasRecentFailure(
 }
 
 function readBootstrapFailure(
-  storage: TuttiAgentInstallBootstrapStorage | null
+  storage: ManagedAgentInstallBootstrapStorage | null,
+  provider: WorkspaceAgentProvider
 ): BootstrapFailureState | null {
   if (!storage) {
     return null;
   }
   try {
-    const raw = storage.getItem(bootstrapStorageKey);
+    const raw = storage.getItem(bootstrapStorageKey(provider));
     return raw ? (JSON.parse(raw) as BootstrapFailureState) : null;
   } catch {
     return null;
@@ -157,28 +176,34 @@ function readBootstrapFailure(
 }
 
 function writeBootstrapFailure(
-  storage: TuttiAgentInstallBootstrapStorage | null,
+  storage: ManagedAgentInstallBootstrapStorage | null,
+  provider: WorkspaceAgentProvider,
   state: BootstrapFailureState
 ): void {
   if (!storage) {
     return;
   }
   try {
-    storage.setItem(bootstrapStorageKey, JSON.stringify(state));
+    storage.setItem(bootstrapStorageKey(provider), JSON.stringify(state));
   } catch {
     // Best-effort bootstrap metadata must never block manual setup.
   }
 }
 
 function clearBootstrapFailure(
-  storage: TuttiAgentInstallBootstrapStorage | null
+  storage: ManagedAgentInstallBootstrapStorage | null,
+  provider: WorkspaceAgentProvider
 ): void {
   if (!storage) {
     return;
   }
   try {
-    storage.removeItem(bootstrapStorageKey);
+    storage.removeItem(bootstrapStorageKey(provider));
   } catch {
     // Best-effort cleanup.
   }
+}
+
+function bootstrapStorageKey(provider: WorkspaceAgentProvider): string {
+  return `tutti.agentBootstrap.${provider}`;
 }

@@ -1,17 +1,17 @@
 import {
   loadAllAgentSessionMessages,
-  mergeAgentActivityMessages
+  mergeAgentActivityMessages,
+  type AgentActivityMessage
 } from "@tutti-os/agent-activity-core";
 import {
   isWorkspaceAgentActivityOptimisticMessage,
-  mergeWorkspaceAgentActivityDurableAndOverlayMessages,
-  type WorkspaceAgentActivityMessage
-} from "../shared/workspaceAgentActivityTypes";
+  mergeWorkspaceAgentActivityDurableAndOverlayMessages
+} from "../shared/workspaceAgentMessageOverlay";
 
 const DEFAULT_WORKSPACE_AGENT_MESSAGES_LIMIT = 20;
 
-export interface WorkspaceAgentActivitySessionMessagesPage {
-  messages: WorkspaceAgentActivityMessage[];
+export interface AgentActivitySessionMessagesPage {
+  messages: AgentActivityMessage[];
   latestVersion?: number;
   hasMore?: boolean;
 }
@@ -40,38 +40,37 @@ export async function loadWorkspaceAgentSessionMessagePages({
   maxPages?: number;
   listSessionMessages: (
     payload: WorkspaceAgentActivityListSessionMessagesInput
-  ) => Promise<WorkspaceAgentActivitySessionMessagesPage>;
-}): Promise<WorkspaceAgentActivityMessage[]> {
+  ) => Promise<AgentActivitySessionMessagesPage>;
+}): Promise<AgentActivityMessage[]> {
   const normalizedWorkspaceId = workspaceId?.trim() || "";
-  const { messages } =
-    await loadAllAgentSessionMessages<WorkspaceAgentActivityMessage>({
-      afterVersion,
-      ...(maxPages === undefined ? {} : { maxPages }),
-      listPage: async (cursor) => {
-        const response = await listSessionMessages({
-          workspaceId: normalizedWorkspaceId,
-          agentSessionId,
-          afterVersion: cursor,
-          limit
-        });
-        return {
-          messages: response.messages,
-          latestVersion: response.latestVersion,
-          hasMore:
-            typeof response.hasMore === "boolean"
-              ? response.hasMore
-              : response.messages.length >= limit
-        };
-      }
-    });
+  const { messages } = await loadAllAgentSessionMessages<AgentActivityMessage>({
+    afterVersion,
+    ...(maxPages === undefined ? {} : { maxPages }),
+    listPage: async (cursor) => {
+      const response = await listSessionMessages({
+        workspaceId: normalizedWorkspaceId,
+        agentSessionId,
+        afterVersion: cursor,
+        limit
+      });
+      return {
+        messages: response.messages,
+        latestVersion: response.latestVersion,
+        hasMore:
+          typeof response.hasMore === "boolean"
+            ? response.hasMore
+            : response.messages.length >= limit
+      };
+    }
+  });
 
   return messages;
 }
 
 export function mergeWorkspaceAgentMessages(
-  previous: readonly WorkspaceAgentActivityMessage[],
-  incoming: readonly WorkspaceAgentActivityMessage[]
-): WorkspaceAgentActivityMessage[] {
+  previous: readonly AgentActivityMessage[],
+  incoming: readonly AgentActivityMessage[]
+): AgentActivityMessage[] {
   const previousDurableMessages = previous.filter(
     (message) => !isWorkspaceAgentActivityOptimisticMessage(message)
   );

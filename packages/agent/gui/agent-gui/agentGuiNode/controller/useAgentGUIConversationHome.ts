@@ -1,0 +1,315 @@
+import {
+  useCallback,
+  useEffect,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction
+} from "react";
+import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
+import type { AgentGUIConversationFilter } from "../model/agentGuiConversationFilter";
+import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
+import { emptyAgentComposerDraft } from "../model/agentComposerDraft";
+import type {
+  AgentGUINodeData,
+  AgentGUIProvider,
+  AgentGUIAgentTarget
+} from "../../../types";
+import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
+import {
+  nodeDefaultDraftKey,
+  normalizeProjectDraftPath
+} from "./agentGuiController.composerHelpers";
+import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
+
+export interface AgentGUIPrefillPromptRequest {
+  agentTargetId?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt: string;
+  provider?: AgentGUIProvider;
+  sequence: number;
+  userProjectPath?: string | null;
+}
+
+export interface UseAgentGUIConversationHomeInput {
+  activeConversationIdRef: RefObject<string | null>;
+  agentActivityRuntime: AgentActivityRuntime;
+  currentProvider: AgentGUIProvider;
+  composerTargetDataFromProviderTarget: (input: {
+    current: AgentGUINodeData;
+    isExplicit: boolean;
+    target: AgentGUIAgentTarget;
+  }) => AgentGUIComposerTargetData;
+  conversationFilterRef: RefObject<AgentGUIConversationFilter>;
+  dataRef: RefObject<AgentGUINodeData>;
+  defaultAgentTargetId: string | null;
+  handledPrefillPromptSequenceRef: RefObject<number | null>;
+  isComposerHomeRef: RefObject<boolean>;
+  isExplicitAgentGUIAgentTarget: (
+    target: AgentGUIAgentTarget,
+    explicitTargets: readonly AgentGUIAgentTarget[]
+  ) => boolean;
+  loadDraftComposerOptions: () => void;
+  normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
+  normalizedProviderTargets: readonly AgentGUIAgentTarget[];
+  onDataChangeRef: RefObject<
+    (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+  >;
+  submitPrefillPrompt: (prompt: string) => void;
+  persistActiveConversation: (agentSessionId: string | null) => void;
+  prefillPromptRequest: AgentGUIPrefillPromptRequest | null;
+  previewMode: boolean;
+  reportActiveConversationCleared: (input: {
+    details: Record<string, unknown>;
+    previousAgentSessionId: string | null;
+    reason: "create_conversation" | "prefill_prompt";
+    runtime: AgentActivityRuntime;
+    workspaceId: string;
+  }) => void;
+  selectedComposerTargetDataRef: RefObject<AgentGUIComposerTargetData>;
+  selectedProjectPathRef: RefObject<string | null>;
+  setActiveConversationId: Dispatch<SetStateAction<string | null>>;
+  setConversationFilter: Dispatch<SetStateAction<AgentGUIConversationFilter>>;
+  setDetailError: Dispatch<SetStateAction<string | null>>;
+  setDraftBySessionId: Dispatch<
+    SetStateAction<Record<string, AgentComposerDraft>>
+  >;
+  setHomeComposerTargetOverride: Dispatch<
+    SetStateAction<AgentGUIAgentTarget | null>
+  >;
+  setIntent: (intent: { tag: "home" }) => void;
+  setIsComposerHome: Dispatch<SetStateAction<boolean>>;
+  setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
+  setSelectedProjectPath: Dispatch<SetStateAction<string | null>>;
+  shouldUseStaticProviderTargets: boolean;
+  unactivate: (agentSessionId: string) => Promise<unknown>;
+  workspaceId: string;
+}
+
+/** Owns transitions from an active conversation back to the home composer. */
+export function useAgentGUIConversationHome({
+  activeConversationIdRef,
+  agentActivityRuntime,
+  composerTargetDataFromProviderTarget,
+  conversationFilterRef,
+  currentProvider,
+  dataRef,
+  defaultAgentTargetId,
+  handledPrefillPromptSequenceRef,
+  isComposerHomeRef,
+  isExplicitAgentGUIAgentTarget,
+  loadDraftComposerOptions,
+  normalizedExplicitProviderTargets,
+  normalizedProviderTargets,
+  onDataChangeRef,
+  submitPrefillPrompt,
+  persistActiveConversation,
+  prefillPromptRequest,
+  previewMode,
+  reportActiveConversationCleared,
+  selectedComposerTargetDataRef,
+  selectedProjectPathRef,
+  setActiveConversationId,
+  setConversationFilter,
+  setDetailError,
+  setDraftBySessionId,
+  setHomeComposerTargetOverride,
+  setIntent,
+  setIsComposerHome,
+  setIsLoadingMessages,
+  setSelectedProjectPath,
+  shouldUseStaticProviderTargets,
+  unactivate,
+  workspaceId
+}: UseAgentGUIConversationHomeInput) {
+  const enterHome = useCallback(
+    (
+      reason: "create_conversation" | "prefill_prompt",
+      details: Record<string, unknown>
+    ) => {
+      const previous = activeConversationIdRef.current;
+      reportActiveConversationCleared({
+        details,
+        previousAgentSessionId: previous,
+        reason,
+        runtime: agentActivityRuntime,
+        workspaceId
+      });
+      if (previous) void unactivate(previous);
+      setIntent({ tag: "home" });
+      isComposerHomeRef.current = true;
+      setIsComposerHome(true);
+      activeConversationIdRef.current = null;
+      setActiveConversationId(null);
+      setIsLoadingMessages(false);
+      setDetailError(null);
+    },
+    [
+      activeConversationIdRef,
+      agentActivityRuntime,
+      isComposerHomeRef,
+      reportActiveConversationCleared,
+      setActiveConversationId,
+      setDetailError,
+      setIntent,
+      setIsComposerHome,
+      setIsLoadingMessages,
+      unactivate,
+      workspaceId
+    ]
+  );
+
+  const createConversation = useCallback(
+    (options?: { projectPath?: string | null; source?: string }) => {
+      if (options && "projectPath" in options) {
+        const projectPath = normalizeProjectDraftPath(options.projectPath);
+        selectedProjectPathRef.current = projectPath;
+        setSelectedProjectPath(projectPath);
+      }
+      enterHome("create_conversation", {
+        hasProjectPathOption: Boolean(options && "projectPath" in options),
+        isComposerHome: isComposerHomeRef.current,
+        projectPathPresent: Boolean(
+          options &&
+          "projectPath" in options &&
+          normalizeProjectDraftPath(options.projectPath)
+        ),
+        source: options?.source ?? "controller"
+      });
+      persistActiveConversation(null);
+      const filter = conversationFilterRef.current;
+      if (filter.kind === "agentTarget") {
+        const target = resolveAgentGUIAgentTarget({
+          agentTargetId: filter.agentTargetId,
+          defaultAgentTargetId,
+          provider: currentProvider,
+          agentTargets: normalizedProviderTargets,
+          useStaticCatalog: false
+        });
+        if (
+          target &&
+          target.disabled !== true &&
+          (target.agentTargetId?.trim() ?? "") === filter.agentTargetId
+        ) {
+          setHomeComposerTargetOverride(target);
+        }
+      }
+      loadDraftComposerOptions();
+    },
+    [
+      currentProvider,
+      conversationFilterRef,
+      dataRef,
+      defaultAgentTargetId,
+      enterHome,
+      isComposerHomeRef,
+      loadDraftComposerOptions,
+      normalizedProviderTargets,
+      persistActiveConversation,
+      selectedProjectPathRef,
+      setHomeComposerTargetOverride,
+      setSelectedProjectPath
+    ]
+  );
+
+  useEffect(() => {
+    if (
+      previewMode ||
+      !prefillPromptRequest ||
+      handledPrefillPromptSequenceRef.current === prefillPromptRequest.sequence
+    ) {
+      return;
+    }
+    handledPrefillPromptSequenceRef.current = prefillPromptRequest.sequence;
+    const draftPrompt = prefillPromptRequest.draftPrompt.trim();
+    if (!draftPrompt) return;
+    const projectPath = normalizeProjectDraftPath(
+      prefillPromptRequest.userProjectPath
+    );
+    selectedProjectPathRef.current = projectPath;
+    setSelectedProjectPath(projectPath);
+    enterHome("prefill_prompt", {
+      autoSubmit: prefillPromptRequest.autoSubmit === true,
+      sequence: prefillPromptRequest.sequence
+    });
+    const selectedTargetData = selectedComposerTargetDataRef.current;
+    const target =
+      prefillPromptRequest.provider || prefillPromptRequest.agentTargetId
+        ? resolveAgentGUIAgentTarget({
+            agentTargetId: prefillPromptRequest.agentTargetId,
+            defaultAgentTargetId,
+            provider:
+              prefillPromptRequest.provider ?? selectedTargetData.provider,
+            agentTargets: normalizedProviderTargets,
+            useStaticCatalog: shouldUseStaticProviderTargets
+          })
+        : null;
+    const targetData = target
+      ? composerTargetDataFromProviderTarget({
+          current: dataRef.current,
+          isExplicit: isExplicitAgentGUIAgentTarget(
+            target,
+            normalizedExplicitProviderTargets
+          ),
+          target
+        })
+      : selectedTargetData;
+    if (target) {
+      setHomeComposerTargetOverride(target);
+      setConversationFilter(
+        targetData.agentTargetId
+          ? { kind: "agentTarget", agentTargetId: targetData.agentTargetId }
+          : { kind: "all" }
+      );
+      onDataChangeRef.current((current) => {
+        const nextTargetData = composerTargetDataFromProviderTarget({
+          current,
+          isExplicit: isExplicitAgentGUIAgentTarget(
+            target,
+            normalizedExplicitProviderTargets
+          ),
+          target
+        });
+        const nextData = {
+          ...nextTargetData.data,
+          lastActiveAgentSessionId: null
+        };
+        dataRef.current = nextData;
+        return nextData;
+      });
+    }
+    setDraftBySessionId((current) => ({
+      ...current,
+      [nodeDefaultDraftKey(targetData.provider, targetData.agentTargetId)]: {
+        ...emptyAgentComposerDraft(),
+        prompt: draftPrompt
+      }
+    }));
+    if (prefillPromptRequest.autoSubmit) {
+      submitPrefillPrompt(draftPrompt);
+    }
+    persistActiveConversation(null);
+    loadDraftComposerOptions();
+  }, [
+    dataRef,
+    defaultAgentTargetId,
+    enterHome,
+    handledPrefillPromptSequenceRef,
+    loadDraftComposerOptions,
+    normalizedExplicitProviderTargets,
+    normalizedProviderTargets,
+    onDataChangeRef,
+    persistActiveConversation,
+    prefillPromptRequest,
+    previewMode,
+    selectedComposerTargetDataRef,
+    selectedProjectPathRef,
+    setConversationFilter,
+    setDraftBySessionId,
+    setHomeComposerTargetOverride,
+    setSelectedProjectPath,
+    submitPrefillPrompt,
+    shouldUseStaticProviderTargets
+  ]);
+
+  return { createConversation, enterHome };
+}

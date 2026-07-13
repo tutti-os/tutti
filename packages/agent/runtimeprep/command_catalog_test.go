@@ -210,6 +210,9 @@ func TestCommandGuideFromCatalogPassesAgentRuntimeContext(t *testing.T) {
 	if catalog.context.Source != "agent-runtime" || catalog.context.WorkspaceID != "workspace-1" {
 		t.Fatalf("context = %#v", catalog.context)
 	}
+	if !catalog.context.SkipCapabilityFilters {
+		t.Fatalf("context = %#v, want static capability discovery", catalog.context)
+	}
 	if !strings.Contains(guide, "tutti issue list") {
 		t.Fatalf("guide = %q", guide)
 	}

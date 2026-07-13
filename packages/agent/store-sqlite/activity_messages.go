@@ -33,7 +33,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return version, nil
 }
 
-func upsertAgentMessageTx(
+func (s *Store) upsertAgentMessageTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,
@@ -67,6 +67,20 @@ func upsertAgentMessageTx(
 	if !accepted {
 		return Message{}, false, nil
 	}
+	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
+		if _, exists, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
+			return Message{}, false, err
+		} else if !exists {
+			if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
+				WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
+				Phase: TurnPhaseSubmitted, OccurredAtUnixMS: message.OccurredAtUnixMS,
+			}, now); err != nil {
+				return Message{}, false, fmt.Errorf("ensure workspace agent turn for message: %w", err)
+			} else if !accepted {
+				return Message{}, false, errors.New("workspace agent message turn transition was rejected")
+			}
+		}
+	}
 	payloadJSON, err := json.Marshal(message.Payload)
 	if err != nil {
 		return Message{}, false, fmt.Errorf("encode workspace agent message payload: %w", err)
@@ -90,7 +104,7 @@ ON CONFLICT(workspace_id, agent_session_id, message_id) DO UPDATE SET
   deleted_at_unix_ms = 0,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, workspaceID, agentSessionID, strings.TrimSpace(input.MessageID), version,
-		message.TurnID, message.Role, message.Kind, message.Status, string(payloadJSON),
+		nullString(strings.TrimSpace(message.TurnID)), message.Role, message.Kind, message.Status, string(payloadJSON),
 		message.OccurredAtUnixMS, message.StartedAtUnixMS, message.CompletedAtUnixMS,
 		message.CreatedAtUnixMS, message.UpdatedAtUnixMS)
 	if err != nil {
@@ -152,12 +166,13 @@ func messageProjectionSnapshot(message Message) agentactivityprojection.MessageS
 func scanAgentMessage(scanner rowScanner) (Message, error) {
 	var message Message
 	var payloadJSON string
+	var turnID sql.NullString
 	err := scanner.Scan(
 		&message.ID,
 		&message.AgentSessionID,
 		&message.MessageID,
 		&message.Version,
-		&message.TurnID,
+		&turnID,
 		&message.Role,
 		&message.Kind,
 		&message.Status,
@@ -171,6 +186,9 @@ func scanAgentMessage(scanner rowScanner) (Message, error) {
 	if err != nil {
 		return Message{}, fmt.Errorf("scan workspace agent message row: %w", err)
 	}
+	// NULL turn_id (session-level message) is surfaced as an empty string in
+	// the Go DTO; transport projections re-encode it as null.
+	message.TurnID = strings.TrimSpace(turnID.String)
 	if strings.TrimSpace(payloadJSON) == "" {
 		message.Payload = map[string]any{}
 		return message, nil

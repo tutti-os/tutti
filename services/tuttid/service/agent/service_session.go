@@ -4,10 +4,11 @@ import (
 	"strings"
 	"time"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
-func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeInput {
+func runtimeResumeInputFromRuntimeSession(session ProviderRuntimeSession) RuntimeResumeInput {
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
@@ -26,22 +27,36 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 	}
 }
 
+func persistedRuntimeResumeStatus(activeTurnID string) string {
+	if strings.TrimSpace(activeTurnID) != "" {
+		return "working"
+	}
+	return "ready"
+}
+
+func persistedSessionRuntimeContext(session PersistedSession) map[string]any {
+	return agentactivitybiz.JoinSessionRuntimeContext(session.Metadata, session.InternalRuntimeContext)
+}
+
 func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeResumeInput {
+	runtimeContext := agentactivitybiz.JoinSessionRuntimeContext(session.Metadata, session.InternalRuntimeContext)
 	return RuntimeResumeInput{
-		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
-		AgentSessionID:    strings.TrimSpace(session.ID),
-		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-		Provider:          strings.TrimSpace(session.Provider),
-		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-		Cwd:               strings.TrimSpace(session.Cwd),
-		Env:               nil,
-		Title:             strings.TrimSpace(session.Title),
-		Status:            strings.TrimSpace(session.Status),
-		Settings:          normalizeComposerSettingsForProvider(session.Provider, cloneComposerSettings(session.Settings)),
-		CreatedAtUnixMS:   session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
-		Visible:           boolPointer(visibleFromRuntimeContext(session.RuntimeContext, true)),
-		RuntimeContext:    clonePayload(session.RuntimeContext),
+		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
+		AgentSessionID:         strings.TrimSpace(session.ID),
+		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
+		Provider:               strings.TrimSpace(session.Provider),
+		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
+		Cwd:                    strings.TrimSpace(session.Cwd),
+		Env:                    nil,
+		Title:                  strings.TrimSpace(session.Title),
+		Status:                 persistedRuntimeResumeStatus(session.ActiveTurnID),
+		Settings:               normalizeComposerSettingsForProvider(session.Provider, cloneComposerSettings(session.Settings)),
+		CreatedAtUnixMS:        session.CreatedAtUnixMS,
+		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
+		Visible:                boolPointer(session.Metadata.Visible),
+		RuntimeContext:         runtimeContext,
+		Metadata:               session.Metadata,
+		InternalRuntimeContext: clonePayload(session.InternalRuntimeContext),
 	}
 }
 
@@ -52,15 +67,9 @@ func persistedSessionCanResume(controller RuntimeController, session PersistedSe
 		return false
 	}
 	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported &&
-		!externalImportResumeSupported(session.RuntimeContext) {
+		!externalImportResumeSupported(session.InternalRuntimeContext) {
 		return false
 	}
-	// Imported local CLI transcripts carry the provider session id captured at
-	// import time (Codex thread id / Claude Code sessionId), so they can resume
-	// in place on the same device; when the provider session is missing, the
-	// runtime recreates a fresh one on send. Provider data exports explicitly
-	// opt out above because their web conversation UUID is not a runtime session
-	// id. All other imported and normal sessions defer to the adapter.
 	return controller.CanResume(runtimeResumeInputFromPersistedSession(session))
 }
 
@@ -73,56 +82,46 @@ func externalImportResumeSupported(runtimeContext map[string]any) bool {
 	return ok && supported
 }
 
-func serviceSession(session RuntimeSession, resumable bool) Session {
+func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 	createdAt := timeFromUnixMS(session.CreatedAtUnixMS)
 	updatedAt := timeFromUnixMSPointer(session.UpdatedAtUnixMS)
-	endedAt := endedAtForStatus(session.Status, updatedAt)
 	title := stringPointer(strings.TrimSpace(session.Title))
 	normalizedProvider := strings.TrimSpace(session.Provider)
 	normalizedSettings := normalizeComposerSettingsForProvider(
 		normalizedProvider,
 		cloneComposerSettingsPointerValue(session.Settings),
 	)
-	runtimeContext := normalizeRuntimeContextForProvider(
-		normalizedProvider,
-		normalizedSettings,
-		session.RuntimeContext,
-	)
+	metadata, _, err := agentactivitybiz.SplitSessionRuntimeContext(session.RuntimeContext)
+	if err != nil {
+		metadata = agentactivitybiz.SessionMetadata{Visible: session.Visible, Capabilities: []string{}}
+	}
+	metadata.Visible = session.Visible
 	return Session{
-		ID:                 strings.TrimSpace(session.ID),
-		UserID:             strings.TrimSpace(session.UserID),
-		AgentTargetID:      strings.TrimSpace(session.AgentTargetID),
-		Provider:           normalizedProvider,
-		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
-		Cwd:                strings.TrimSpace(session.Cwd),
-		Resumable:          resumable,
-		Status:             serviceStatus(session.Status),
-		TurnLifecycle:      cloneTurnLifecycle(session.TurnLifecycle),
-		SubmitAvailability: cloneSubmitAvailability(session.SubmitAvailability),
-		Visible:            session.Visible,
-		Settings:           cloneComposerSettingsPointer(&normalizedSettings),
-		PermissionConfig:   composerPermissionConfig(normalizedProvider, permissionModeIDFromSettings(&normalizedSettings), preferencesbiz.DefaultDesktopLocale),
-		RuntimeContext:     runtimeContext,
-		Title:              title,
-		PinnedAtUnixMS:     session.PinnedAtUnixMS,
-		CreatedAt:          createdAt,
-		UpdatedAt:          updatedAt,
-		EndedAt:            endedAt,
-		LastError:          stringPointer(strings.TrimSpace(session.LastError)),
+		ID:                strings.TrimSpace(session.ID),
+		UserID:            strings.TrimSpace(session.UserID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
+		Provider:          normalizedProvider,
+		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
+		Cwd:               strings.TrimSpace(session.Cwd),
+		Resumable:         resumable,
+		Visible:           session.Visible,
+		Settings:          cloneComposerSettingsPointer(&normalizedSettings),
+		PermissionConfig:  composerPermissionConfig(normalizedProvider, permissionModeIDFromSettings(&normalizedSettings), preferencesbiz.DefaultDesktopLocale),
+		Title:             title,
+		PinnedAtUnixMS:    session.PinnedAtUnixMS,
+		CreatedAt:         createdAt,
+		UpdatedAt:         updatedAt,
+		Metadata:          metadata,
 	}
 }
 
 func serviceSessionWithComposerSkillOptions(
-	session RuntimeSession,
+	session ProviderRuntimeSession,
 	resumable bool,
 	options []ComposerSkillOption,
 ) Session {
-	result := serviceSession(session, resumable)
-	result.RuntimeContext = withFallbackComposerSkillOptionsRuntimeContext(
-		result.RuntimeContext,
-		options,
-	)
-	return result
+	_ = options
+	return serviceSession(session, resumable)
 }
 
 func sessionFromPersisted(session PersistedSession, resumable bool) Session {
@@ -132,7 +131,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		createdAtUnixMS = firstNonZeroInt64(session.StartedAtUnixMS, session.CreatedAtUnixMS)
 		updatedAtUnixMS = importedSessionDisplayUpdatedAtUnixMS(session)
 	}
-	return serviceSession(RuntimeSession{
+	result := serviceSession(ProviderRuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		UserID:            strings.TrimSpace(session.UserID),
@@ -141,15 +140,16 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
 		Settings:          normalizeComposerSettingsPointerForProvider(session.Provider, &session.Settings),
-		RuntimeContext:    clonePayload(session.RuntimeContext),
-		Status:            strings.TrimSpace(session.Status),
+		Status:            persistedRuntimeResumeStatus(session.ActiveTurnID),
 		Title:             strings.TrimSpace(session.Title),
-		LastError:         strings.TrimSpace(session.LastError),
 		PinnedAtUnixMS:    session.PinnedAtUnixMS,
 		CreatedAtUnixMS:   createdAtUnixMS,
 		UpdatedAtUnixMS:   updatedAtUnixMS,
-		Visible:           visibleFromRuntimeContext(session.RuntimeContext, true),
+		Visible:           session.Metadata.Visible,
 	}, resumable)
+	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	result.Metadata = session.Metadata
+	return result
 }
 
 func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
@@ -176,64 +176,12 @@ func mergePersistedSessionState(session Session, persisted PersistedSession) Ses
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
-	if len(session.RuntimeContext) == 0 {
-		session.RuntimeContext = clonePayload(persisted.RuntimeContext)
-	} else {
-		session.RuntimeContext = mergeImportRuntimeContextFields(session.RuntimeContext, persisted.RuntimeContext)
-	}
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
+	session.Metadata = persisted.Metadata
 	return session
 }
 
-// importRuntimeContextFields are the import-classification markers written
-// once at import time (see external_import.go's ReportSessionState call).
-// They are a Tutti-app-level annotation, not part of the underlying provider
-// adapter's own runtime bookkeeping, so a live RuntimeSession's RuntimeContext
-// never sets them itself.
-var importRuntimeContextFields = []string{
-	"imported",
-	"externalImportNoProject",
-	"externalImportResumeSupported",
-	"externalSourcePath",
-	"noProject",
-}
-
-// mergeImportRuntimeContextFields carries the import-classification markers
-// forward onto a live runtime session's RuntimeContext. Without this, once an
-// imported session is opened/resumed into a live RuntimeSession, its live
-// RuntimeContext is non-empty (it carries the adapter's own bookkeeping), so
-// the all-or-nothing swap above never runs — silently dropping
-// "imported": true from the projected Session. The frontend's unread-badge
-// guard depends on that flag staying set, so losing it made a read imported
-// Codex session's unread badge reappear once its runtime session activated.
-func mergeImportRuntimeContextFields(live map[string]any, persisted map[string]any) map[string]any {
-	if len(persisted) == 0 {
-		return live
-	}
-	merged := live
-	cloned := false
-	for _, key := range importRuntimeContextFields {
-		if _, ok := merged[key]; ok {
-			continue
-		}
-		value, ok := persisted[key]
-		if !ok {
-			continue
-		}
-		if !cloned {
-			next := make(map[string]any, len(live)+len(importRuntimeContextFields))
-			for k, v := range live {
-				next[k] = v
-			}
-			merged = next
-			cloned = true
-		}
-		merged[key] = clonePayloadValue(value)
-	}
-	return merged
-}
-
-func serviceSessionWithPersistedFreshness(session RuntimeSession, persisted PersistedSession, resumable bool) Session {
+func serviceSessionWithPersistedFreshness(session ProviderRuntimeSession, persisted PersistedSession, resumable bool) Session {
 	if !persistedSessionIsNewerThanRuntime(persisted, session) {
 		return mergePersistedSessionState(serviceSession(session, resumable), persisted)
 	}
@@ -242,68 +190,19 @@ func serviceSessionWithPersistedFreshness(session RuntimeSession, persisted Pers
 		service.ProviderSessionID = strings.TrimSpace(session.ProviderSessionID)
 	}
 	if liveSettings := normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings); liveSettings != nil {
-		runtimeContext := clonePayload(session.RuntimeContext)
-		if len(runtimeContext) == 0 {
-			runtimeContext = clonePayload(service.RuntimeContext)
-		} else {
-			runtimeContext = mergeImportRuntimeContextFields(runtimeContext, service.RuntimeContext)
-		}
 		service.Settings = liveSettings
-		service.RuntimeContext = normalizeRuntimeContextForProvider(
-			service.Provider,
-			*liveSettings,
-			runtimeContext,
-		)
 	} else if service.Settings == nil {
 		service.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, session.Settings)
 	}
-	if len(service.RuntimeContext) == 0 {
-		service.RuntimeContext = clonePayload(session.RuntimeContext)
-	}
 	service.PermissionConfig = composerPermissionConfig(service.Provider, permissionModeIDFromSettings(service.Settings), preferencesbiz.DefaultDesktopLocale)
-	service.TurnLifecycle = persistedSessionTurnLifecycle(persisted)
-	service.SubmitAvailability = persistedSessionSubmitAvailability(persisted)
 	return service
 }
 
-func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session RuntimeSession) bool {
+func persistedSessionIsNewerThanRuntime(persisted PersistedSession, session ProviderRuntimeSession) bool {
 	persistedUpdatedAtUnixMS := firstNonZeroInt64(persisted.LastEventUnixMS, persisted.UpdatedAtUnixMS)
 	return persistedUpdatedAtUnixMS > 0 &&
 		session.UpdatedAtUnixMS > 0 &&
 		persistedUpdatedAtUnixMS > session.UpdatedAtUnixMS
-}
-
-func persistedSessionTurnLifecycle(session PersistedSession) *TurnLifecycle {
-	status := strings.TrimSpace(session.Status)
-	phase := strings.TrimSpace(session.CurrentPhase)
-	switch {
-	case status == "completed":
-		outcome := "completed"
-		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
-	case status == "failed" || phase == "failed":
-		outcome := "failed"
-		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
-	case status == "canceled":
-		outcome := "canceled"
-		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
-	case phase == "idle":
-		outcome := "completed"
-		return &TurnLifecycle{Phase: "settled", Outcome: &outcome}
-	default:
-		return nil
-	}
-}
-
-func persistedSessionSubmitAvailability(session PersistedSession) *SubmitAvailability {
-	if lifecycle := persistedSessionTurnLifecycle(session); lifecycle != nil && strings.TrimSpace(lifecycle.Phase) == "settled" {
-		return &SubmitAvailability{State: "available"}
-	}
-	switch strings.TrimSpace(session.Status) {
-	case "working", "waiting":
-		return &SubmitAvailability{State: "blocked", Reason: "active_turn"}
-	default:
-		return nil
-	}
 }
 
 func permissionModeIDFromSettings(settings *ComposerSettings) string {
@@ -313,49 +212,8 @@ func permissionModeIDFromSettings(settings *ComposerSettings) string {
 	return strings.TrimSpace(settings.PermissionModeID)
 }
 
-func visibleFromRuntimeContext(runtimeContext map[string]any, defaultVisible bool) bool {
-	if runtimeContext == nil {
-		return defaultVisible
-	}
-	value, ok := runtimeContext["visible"]
-	if !ok {
-		return defaultVisible
-	}
-	visible, ok := value.(bool)
-	if !ok {
-		return defaultVisible
-	}
-	return visible
-}
-
 func boolPointer(value bool) *bool {
 	return &value
-}
-
-func serviceStatus(status string) string {
-	switch strings.TrimSpace(status) {
-	case "working":
-		return "running"
-	case "waiting":
-		return "waiting"
-	case "completed":
-		return "completed"
-	case "canceled":
-		return "canceled"
-	case "failed":
-		return "failed"
-	default:
-		return "created"
-	}
-}
-
-func endedAtForStatus(status string, updatedAt *time.Time) *time.Time {
-	switch strings.TrimSpace(status) {
-	case "completed", "canceled", "failed":
-		return updatedAt
-	default:
-		return nil
-	}
 }
 
 func timeFromUnixMS(value int64) time.Time {

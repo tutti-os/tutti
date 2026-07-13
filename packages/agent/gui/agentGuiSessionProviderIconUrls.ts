@@ -1,15 +1,13 @@
-import claudeCodeFlatFilledIconUrl from "./app/renderer/assets/icons/agents/claudecode-flat-filled.svg";
-import codexFlatFilledIconUrl from "./app/renderer/assets/icons/agents/codex-flat-filled.svg";
-import cursorFlatFilledIconUrl from "./app/renderer/assets/icons/agents/cursor-flat-filled.svg";
-import opencodeFlatFilledIconUrl from "./app/renderer/assets/icons/agents/opencode-flat-filled.svg";
-import tuttiFlatFilledIconUrl from "./app/renderer/assets/icons/agents/tutti-flat-filled.svg";
 import {
-  claudeRoundedUrl,
-  codexRoundedUrl,
-  cursorColorfulUrl,
-  manageAgentTuttiUrl,
-  opencodeRoundedUrl
-} from "./managedAgentIconAssets";
+  claudeCodeFlatFilledIconUrl,
+  codexFlatFilledIconUrl,
+  cursorFlatFilledIconUrl,
+  opencodeFlatFilledIconUrl,
+  resolveProviderIconAsset,
+  tuttiFlatFilledIconUrl
+} from "./providerIconAssets.ts";
+import { resolveAgentGUIProviderCatalogIdentity } from "./providerIdentityCatalog.ts";
+import { cursorColorfulUrl } from "./managedAgentIconAssets.ts";
 import { normalizeManagedAgentProvider } from "./shared/managedAgentProviders";
 
 export {
@@ -28,20 +26,10 @@ export {
 export function resolveAgentGuiSessionProviderIconUrl(
   provider: string | undefined
 ): string | null {
-  switch (normalizeManagedAgentProvider(provider)) {
-    case "claude-code":
-      return claudeRoundedUrl;
-    case "codex":
-      return codexRoundedUrl;
-    case "cursor":
-      return cursorColorfulUrl;
-    case "opencode":
-      return opencodeRoundedUrl;
-    case "tutti":
-      return manageAgentTuttiUrl;
-    default:
-      return null;
-  }
+  const identity = resolveAgentGUIProviderCatalogIdentity(
+    normalizeManagedAgentProvider(provider)
+  );
+  return resolveProviderIconAsset(identity?.iconKey, "sessionColorful");
 }
 
 /**
@@ -53,18 +41,8 @@ export function resolveAgentGuiSessionProviderIconUrl(
 export function resolveAgentGuiSessionProviderFlatIconUrl(
   provider: string | undefined
 ): string | null {
-  switch (normalizeManagedAgentProvider(provider)) {
-    case "claude-code":
-      return claudeCodeFlatFilledIconUrl;
-    case "codex":
-      return codexFlatFilledIconUrl;
-    case "cursor":
-      return cursorFlatFilledIconUrl;
-    case "opencode":
-      return opencodeFlatFilledIconUrl;
-    case "tutti":
-      return tuttiFlatFilledIconUrl;
-    default:
-      return null;
-  }
+  const identity = resolveAgentGUIProviderCatalogIdentity(
+    normalizeManagedAgentProvider(provider)
+  );
+  return resolveProviderIconAsset(identity?.iconKey, "sessionFlat");
 }

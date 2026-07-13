@@ -166,7 +166,7 @@ export function buildComposerModelMenuModel(
         selectedLabel: modelLabel,
         options,
         groups:
-          showModel && composerSettings.modelListCollapsedToLatest
+          showModel && composerSettings.collapseModelOptionsToLatest
             ? groupModelOptionsByVendor(options)
             : []
       };
@@ -601,7 +601,7 @@ function modelOptionsWithSelectedValue(
   // Collapse to the latest version per family first, then re-guarantee the
   // selected value: a previously chosen older version stays visible (and
   // selectable) even though its family collapsed to a newer release.
-  const models = composerSettings.modelListCollapsedToLatest
+  const models = composerSettings.collapseModelOptionsToLatest
     ? collapseModelOptionsToLatest(composerSettings.availableModels)
     : composerSettings.availableModels;
   return optionsWithSelectedValue(

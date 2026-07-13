@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func TestParseCodexCapabilityResponses(t *testing.T) {
@@ -19,5 +21,24 @@ func TestParseCodexCapabilityResponses(t *testing.T) {
 	mcp := parseCodexMCPCapabilities(json.RawMessage(`{"data":[{"name":"docs","status":"running","tools":[{"name":"search","description":"Search docs"}]}]}`))
 	if len(mcp) != 2 || mcp[0].Kind != "mcpServer" || mcp[1].Kind != "mcpTool" || mcp[1].ToolName != "search" {
 		t.Fatalf("parseCodexMCPCapabilities = %#v", mcp)
+	}
+}
+
+func TestComposerCapabilityCatalogListerRejectsUnknownKind(t *testing.T) {
+	_, ok, err := composerCapabilityCatalogLister(composerProfile{
+		CapabilityCatalogKind:    "poison",
+		CapabilityCatalogCommand: []string{"codex", "app-server"},
+	})
+	if err == nil || ok {
+		t.Fatalf("composerCapabilityCatalogLister() = (_, %v, %v), want unsupported error", ok, err)
+	}
+}
+
+func TestComposerCapabilityCatalogListerRequiresRuntimeCommand(t *testing.T) {
+	_, ok, err := composerCapabilityCatalogLister(composerProfile{
+		CapabilityCatalogKind: providerregistry.CapabilityCatalogKindCodexAppServer,
+	})
+	if err == nil || ok {
+		t.Fatalf("composerCapabilityCatalogLister() = (_, %v, %v), want command error", ok, err)
 	}
 }

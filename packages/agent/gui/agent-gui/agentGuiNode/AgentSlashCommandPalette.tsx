@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { Spinner } from "@tutti-os/ui-system";
 import {
   Globe,
   Info,
@@ -48,6 +49,8 @@ interface AgentSlashCommandPaletteProps {
   label: string;
   commandsGroupLabel: string;
   capabilitiesGroupLabel: string;
+  capabilitiesLoading?: boolean;
+  capabilitiesLoadingLabel?: string;
   skillsGroupLabel: string;
   pluginsGroupLabel: string;
   connectorsGroupLabel: string;
@@ -80,7 +83,9 @@ const paletteStyles = {
   groupHeaderFirst: "pt-1.5",
   groupHeaderSeparated: "mt-1 border-t border-[var(--border-1)] pt-2",
   settingsButton:
-    "nodrag ml-1 shrink-0 rounded-[5px] border-0 bg-[var(--transparency-hover)] px-2 py-1 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]"
+    "nodrag ml-1 shrink-0 rounded-[5px] border-0 bg-[var(--transparency-hover)] px-2 py-1 text-[11px] font-semibold leading-[14px] text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-active)] hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--agent-gui-focus-ring,var(--border-focus))]",
+  loading:
+    "flex min-h-9 w-full items-center gap-2 px-2.5 py-2 text-[11px] text-[var(--text-secondary)]"
 };
 
 export function AgentSlashCommandPalette({
@@ -89,6 +94,8 @@ export function AgentSlashCommandPalette({
   label,
   commandsGroupLabel,
   capabilitiesGroupLabel,
+  capabilitiesLoading = false,
+  capabilitiesLoadingLabel = "",
   skillsGroupLabel,
   pluginsGroupLabel,
   connectorsGroupLabel,
@@ -106,7 +113,7 @@ export function AgentSlashCommandPalette({
     highlightedOptionRef.current?.scrollIntoView({ block: "nearest" });
   }, [highlightedIndex]);
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && !capabilitiesLoading) {
     return null;
   }
   // Headers render only when multiple sections are present, except
@@ -114,6 +121,9 @@ export function AgentSlashCommandPalette({
   // plain separators outside the option list, so keyboard navigation indices
   // are untouched.
   const entryTypes = new Set(entries.map((entry) => entryGroupType(entry)));
+  if (capabilitiesLoading) {
+    entryTypes.add("capability");
+  }
   const showGroupHeaders = entryTypes.size > 1 || entryTypes.has("capability");
   const firstEntryIndexByType = new Map<AgentSlashPaletteEntryGroup, number>();
   entries.forEach((entry, index) => {
@@ -122,6 +132,35 @@ export function AgentSlashCommandPalette({
       firstEntryIndexByType.set(groupType, index);
     }
   });
+  const hasCapabilityEntries = entries.some(
+    (entry) => entry.type === "capability"
+  );
+  const capabilityLoadingInsertIndex = capabilitiesLoading
+    ? capabilityLoadingIndex(entries)
+    : -1;
+  const capabilityLoadingNode = capabilitiesLoading ? (
+    <Fragment key="capability-loading">
+      {!hasCapabilityEntries ? (
+        <div
+          aria-hidden="true"
+          className={cn(
+            paletteStyles.groupHeader,
+            capabilityLoadingInsertIndex === 0
+              ? paletteStyles.groupHeaderFirst
+              : paletteStyles.groupHeaderSeparated
+          )}
+        >
+          {capabilitiesGroupLabel}
+        </div>
+      ) : null}
+      <div aria-live="polite" className={paletteStyles.loading} role="status">
+        <span aria-hidden="true" className={paletteStyles.icon}>
+          <Spinner size={12} strokeWidth={2} />
+        </span>
+        <span>{capabilitiesLoadingLabel}</span>
+      </div>
+    </Fragment>
+  ) : null;
   return (
     <div className={paletteStyles.palette} role="listbox" aria-label={label}>
       {entries.map((entry, index) => {
@@ -134,7 +173,7 @@ export function AgentSlashCommandPalette({
               aria-hidden="true"
               className={cn(
                 paletteStyles.groupHeader,
-                index === 0
+                index === 0 && capabilityLoadingInsertIndex !== 0
                   ? paletteStyles.groupHeaderFirst
                   : paletteStyles.groupHeaderSeparated
               )}
@@ -151,6 +190,9 @@ export function AgentSlashCommandPalette({
           ) : null;
         return (
           <Fragment key={entry.key}>
+            {capabilityLoadingInsertIndex === index
+              ? capabilityLoadingNode
+              : null}
             {groupHeader}
             <div
               ref={isHighlighted ? highlightedOptionRef : null}
@@ -227,6 +269,9 @@ export function AgentSlashCommandPalette({
           </Fragment>
         );
       })}
+      {capabilityLoadingInsertIndex === entries.length
+        ? capabilityLoadingNode
+        : null}
     </div>
   );
 }
@@ -238,6 +283,23 @@ type AgentSlashPaletteEntryGroup =
   | "plugin"
   | "connector"
   | "mcp";
+
+function capabilityLoadingIndex(
+  entries: readonly AgentSlashPaletteEntry[]
+): number {
+  let lastCapabilityIndex = -1;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    if (entries[index]?.type === "capability") {
+      lastCapabilityIndex = index;
+      break;
+    }
+  }
+  if (lastCapabilityIndex >= 0) {
+    return lastCapabilityIndex + 1;
+  }
+  const firstSkillIndex = entries.findIndex((entry) => entry.type === "skill");
+  return firstSkillIndex >= 0 ? firstSkillIndex : entries.length;
+}
 
 function entryGroupType(
   entry: AgentSlashPaletteEntry

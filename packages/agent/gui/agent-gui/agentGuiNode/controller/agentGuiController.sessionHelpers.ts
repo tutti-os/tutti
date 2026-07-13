@@ -1,14 +1,9 @@
 // Agent GUI controller — session control state, message, and timeline helpers.
 
-import type {
-  AgentActivityMessageUpdate,
-  AgentSessionState
-} from "../../../shared/agentSessionTypes";
+import type { AgentActivityMessageUpdate } from "../../../shared/agentSessionTypes";
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../../shared/workspaceAgentStatusNormalizer";
-import type {
-  WorkspaceAgentActivityMessage,
-  WorkspaceAgentActivityTimelineItem
-} from "../../../shared/workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 
 export function normalizeTimelineStatus(
   value: string | null | undefined
@@ -32,7 +27,7 @@ export function normalizeTimelineStatus(
 
 export function messageFromMessageUpdate(
   update: AgentActivityMessageUpdate
-): WorkspaceAgentActivityMessage {
+): AgentActivityMessage {
   const payload = update.payload ?? {};
   const normalizedKind = update.kind.trim().toLowerCase();
   const normalizedRole = update.role.trim().toLowerCase();
@@ -48,12 +43,11 @@ export function messageFromMessageUpdate(
       : "text";
   const role = normalizedRole === "user" ? "user" : "assistant";
   return {
-    id,
     workspaceId: update.workspaceId?.trim() || "",
     agentSessionId: update.agentSessionId,
     messageId: update.messageId.trim() || `message:${id}`,
     version: id,
-    turnId: update.turnId.trim(),
+    turnId: update.turnId?.trim() || null,
     role,
     kind,
     status: update.status,
@@ -69,28 +63,10 @@ export function messageFromMessageUpdate(
     occurredAtUnixMs: update.occurredAtUnixMs,
     ...(update.startedAtUnixMs !== undefined
       ? { startedAtUnixMs: update.startedAtUnixMs }
+      : {}),
+    ...(update.completedAtUnixMs !== undefined
+      ? { completedAtUnixMs: update.completedAtUnixMs }
       : {})
-  };
-}
-
-export function mergeAgentSessionControlStateSnapshot(
-  current: AgentSessionState | null,
-  snapshot: AgentSessionState
-): AgentSessionState {
-  const incomingUsage = recordValue(snapshot.runtimeContext?.usage);
-  if (incomingUsage || !current) {
-    return snapshot;
-  }
-  const previousUsage = recordValue(current.runtimeContext?.usage);
-  if (!previousUsage) {
-    return snapshot;
-  }
-  return {
-    ...snapshot,
-    runtimeContext: {
-      ...(snapshot.runtimeContext ?? {}),
-      usage: previousUsage
-    }
   };
 }
 
@@ -106,10 +82,4 @@ export function timelineItemTime(
   item: WorkspaceAgentActivityTimelineItem
 ): number {
   return item.occurredAtUnixMs ?? item.createdAtUnixMs ?? 0;
-}
-
-function recordValue(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }

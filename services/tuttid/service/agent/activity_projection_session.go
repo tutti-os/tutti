@@ -1,40 +1,40 @@
 package agent
 
 import (
-	"strings"
-
-	agentactivityprojection "github.com/tutti-os/tutti/packages/agent/daemon/activity/projection"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	"strings"
 )
 
 func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSession {
+	activeTurnID := strings.TrimSpace(session.ActiveTurnID)
 	return PersistedSession{
-		ID:                strings.TrimSpace(session.ID),
-		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
-		Origin:            strings.TrimSpace(session.Origin),
-		UserID:            strings.TrimSpace(session.UserID),
-		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-		Provider:          strings.TrimSpace(session.Provider),
-		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-		Cwd:               strings.TrimSpace(session.Cwd),
-		Settings:          composerSettingsFromPayload(session.Settings),
-		RuntimeContext:    clonePayload(session.RuntimeContext),
-		Status:            agentActivitySessionStatus(session),
-		CurrentPhase:      strings.TrimSpace(session.CurrentPhase),
-		Visible:           visibleFromRuntimeContext(session.RuntimeContext, true),
-		Title:             strings.TrimSpace(session.Title),
-		LastError:         strings.TrimSpace(session.LastError),
-		PinnedAtUnixMS:    session.PinnedAtUnixMS,
-		LastEventUnixMS:   session.LastEventUnixMS,
-		StartedAtUnixMS:   session.StartedAtUnixMS,
-		EndedAtUnixMS:     session.EndedAtUnixMS,
-		CreatedAtUnixMS:   session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
+		ID:                     strings.TrimSpace(session.ID),
+		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
+		Origin:                 strings.TrimSpace(session.Origin),
+		UserID:                 strings.TrimSpace(session.UserID),
+		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
+		Provider:               strings.TrimSpace(session.Provider),
+		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
+		Cwd:                    strings.TrimSpace(session.Cwd),
+		Settings:               composerSettingsFromPayload(session.Settings),
+		Metadata:               session.Metadata,
+		InternalRuntimeContext: clonePayload(session.InternalRuntimeContext),
+		Title:                  strings.TrimSpace(session.Title),
+		PinnedAtUnixMS:         session.PinnedAtUnixMS,
+		LastEventUnixMS:        session.LastEventUnixMS,
+		StartedAtUnixMS:        session.StartedAtUnixMS,
+		EndedAtUnixMS:          session.EndedAtUnixMS,
+		CreatedAtUnixMS:        session.CreatedAtUnixMS,
+		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
+		ActiveTurnID:           activeTurnID,
 	}
 }
 
 func agentActivitySessionStatus(session agentactivitybiz.Session) string {
-	return agentactivityprojection.CanonicalSessionStatus(session.Status, session.CurrentPhase)
+	if strings.TrimSpace(session.ActiveTurnID) != "" {
+		return "running"
+	}
+	return "ready"
 }
 
 func sessionMessagesFromActivity(messages []agentactivitybiz.Message) []SessionMessage {

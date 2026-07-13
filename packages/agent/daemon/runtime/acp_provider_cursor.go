@@ -33,6 +33,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
@@ -62,19 +63,6 @@ func cursorACPModeID(mode string) string {
 		return "agent"
 	default:
 		return ""
-	}
-}
-
-// cursorPlanModeFromACPModeID maps Cursor ACP execution modes back to Tutti's
-// orthogonal planMode flag. Permission tiers stay unchanged.
-func cursorPlanModeFromACPModeID(modeID string) (planMode bool, ok bool) {
-	switch strings.TrimSpace(modeID) {
-	case "plan":
-		return true, true
-	case "agent", "ask":
-		return false, true
-	default:
-		return false, false
 	}
 }
 
@@ -121,37 +109,30 @@ func NewCursorAdapter(transport ProcessTransport) *standardACPAdapter {
 }
 
 func NewCursorAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return newCursorAdapterWithHostMetadata(transport, host, cursorACPCommandResolver)
+	descriptor, ok := providerregistry.Find(ProviderCursor)
+	if !ok {
+		panic("cursor provider descriptor is missing")
+	}
+	return newCursorAdapterFromProviderDescriptor(descriptor, transport, host, cursorACPCommandResolver)
 }
 
-func newCursorAdapterWithHostMetadata(
+func newCursorAdapterFromProviderDescriptor(
+	descriptor providerregistry.ProviderDescriptor,
 	transport ProcessTransport,
 	host HostMetadata,
 	commandResolver ProviderCommandResolver,
 ) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderCursor,
-			adapterName:         "cursor-acp",
-			command:             []string{"cursor-agent", "acp"},
-			defaultTitle:        "Cursor Agent",
-			defaultTitleAliases: []string{"Cursor", ProviderCursor, "cursor-agent"},
-			authRequiredMessage: "Cursor ACP requires authentication; run `cursor-agent login` (or set CURSOR_API_KEY) on the host, then retry this session.",
-			permissionModeID:    cursorACPModeID,
-			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                 func(session Session) []string { return standardACPEnv(session, host) },
-			commandResolver:     commandResolver,
-			commandWithSettings: cursorACPCommandWithPluginDir,
-			// full-access auto-approves permission requests live; all tiers
-			// switch without a respawn.
-			autoApprovePermissionDecision: cursorAutoApprovePermissionDecision,
-			// cursor-agent ends the turn "successfully" after streaming
-			// transient upstream failures (RetriableError/ConnectError) as
-			// plain text; auto-continue instead of stalling the conversation.
-			autoContinueRetriableTurnError: true,
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
+	adapter := newStandardACPAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
+	adapter.config.commandWithSettings = cursorACPCommandWithPluginDir
+	adapter.config.autoApprovePermissionDecision = cursorAutoApprovePermissionDecision
+	adapter.config.autoContinueRetriableTurnError = true
+	return adapter
+}
+
+func newCursorAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata, commandResolver ProviderCommandResolver) *standardACPAdapter {
+	descriptor, ok := providerregistry.Find(ProviderCursor)
+	if !ok {
+		panic("cursor provider descriptor is missing")
 	}
+	return newCursorAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
 }

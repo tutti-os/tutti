@@ -1,0 +1,189 @@
+import { memo } from "react";
+import { ChevronsDown } from "lucide-react";
+import { cn } from "@tutti-os/ui-system";
+import styles from "../AgentGUINode.styles";
+import { AgentInteractivePromptSurface } from "../AgentInteractivePromptSurface";
+import { AgentSessionChrome } from "../AgentSessionChrome";
+import { AgentComposer, type AgentComposerProps } from "../AgentComposer";
+import {
+  AgentGoalBanner,
+  isGoalBannerVisible,
+  type AgentGoalBannerLabels
+} from "../AgentGoalBanner";
+import type {
+  AgentGUINodeViewModel,
+  AgentGUISessionChrome
+} from "../model/agentGuiNodeTypes";
+import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
+import type {
+  ChromeLabels,
+  InteractivePromptLabels
+} from "./AgentGUIDetailHeader";
+import { numberValue, objectRecord, stringValue } from "./agentGUIViewUtils";
+
+interface AgentGUIBottomDockPaneProps {
+  bottomDockRef: React.RefObject<HTMLDivElement | null>;
+  showScrollToBottom: boolean;
+  scrollToBottomLabel: string;
+  onScrollToBottom: () => void;
+  // Approval / ask-user prompts lifted above the inline notice (composer stays
+  // visible below). Mutually exclusive with bottomDockReplacementPrompt.
+  bottomDockLiftedPrompt:
+    | AgentGUINodeViewModel["interaction"]["pendingApproval"]
+    | AgentGUINodeViewModel["interaction"]["pendingInteractivePrompt"];
+  // When set, this interactive prompt takes the composer's slot in the bottom
+  // dock (the composer is hidden). Closing the prompt returns the composer.
+  bottomDockReplacementPrompt:
+    | AgentGUINodeViewModel["interaction"]["pendingApproval"]
+    | AgentGUINodeViewModel["interaction"]["pendingInteractivePrompt"];
+  composerProps: AgentComposerProps;
+  inlineNoticeChrome: AgentGUISessionChrome | null;
+  isRespondingApproval: boolean;
+  sessionChrome: AgentGUISessionChrome;
+  keyboardShortcutsEnabled: boolean;
+  chromeLabels: ChromeLabels;
+  goalBannerLabels: AgentGoalBannerLabels;
+  promptLabels: InteractivePromptLabels;
+  onSubmitApprovalOption: AgentGUINodeViewProps["actions"]["submitApprovalOption"];
+  onAuthLogin?: (provider?: string | null) => void;
+  onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
+  onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
+  onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
+  onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
+  goalPauseSupported: boolean;
+}
+
+export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
+  bottomDockRef,
+  showScrollToBottom,
+  scrollToBottomLabel,
+  onScrollToBottom,
+  bottomDockLiftedPrompt,
+  bottomDockReplacementPrompt,
+  composerProps,
+  inlineNoticeChrome,
+  isRespondingApproval,
+  sessionChrome,
+  keyboardShortcutsEnabled,
+  chromeLabels,
+  goalBannerLabels,
+  promptLabels,
+  onSubmitApprovalOption,
+  onAuthLogin,
+  onRetryActivation,
+  onContinueInNewConversation,
+  onSubmitBottomDockInteractivePrompt,
+  onGoalControl,
+  goalPauseSupported
+}: AgentGUIBottomDockPaneProps): React.JSX.Element {
+  "use memo";
+  const previewMode = composerProps.previewMode === true;
+
+  // Active thread goal rides the same runtimeContext channel as account /
+  // rateLimits, so we read it straight off the session chrome's raw state.
+  const goal = objectRecord(sessionChrome.rawState?.goal);
+  const goalObjective = goal ? stringValue(goal.objective) : "";
+  const goalStatus = goal ? stringValue(goal.status) : "";
+  const goalTokenBudget = goal ? numberValue(goal.tokenBudget) : null;
+  const goalTokensUsed = goal ? numberValue(goal.tokensUsed) : null;
+  const goalTimeUsedSeconds = goal ? numberValue(goal.timeUsedSeconds) : null;
+  const showGoalBanner = isGoalBannerVisible(goalObjective, goalStatus);
+
+  return (
+    <div
+      ref={bottomDockRef}
+      className={styles.bottomDock}
+      data-testid="agent-gui-bottom-dock"
+    >
+      {showScrollToBottom ? (
+        <button
+          type="button"
+          className={cn(
+            styles.bottomDockScrollToBottom,
+            "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+          )}
+          data-testid="agent-gui-scroll-to-bottom"
+          aria-label={scrollToBottomLabel}
+          title={scrollToBottomLabel}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onScrollToBottom}
+        >
+          <ChevronsDown aria-hidden="true" size={15} strokeWidth={2.2} />
+        </button>
+      ) : null}
+      {bottomDockLiftedPrompt ? (
+        <div
+          className={styles.bottomDockPrompt}
+          data-testid="agent-gui-bottom-dock-active-prompt"
+        >
+          <AgentInteractivePromptSurface
+            prompt={bottomDockLiftedPrompt}
+            embedded={true}
+            edgeGlow={true}
+            keyboardShortcuts={keyboardShortcutsEnabled}
+            previewMode={previewMode}
+            isSubmitting={isRespondingApproval}
+            onSubmit={onSubmitBottomDockInteractivePrompt}
+            labels={promptLabels}
+          />
+        </div>
+      ) : null}
+      {inlineNoticeChrome ? (
+        <AgentSessionChrome
+          chrome={inlineNoticeChrome}
+          isRespondingApproval={isRespondingApproval}
+          onSubmitApprovalOption={onSubmitApprovalOption}
+          onAuthLogin={onAuthLogin}
+          onRetryActivation={onRetryActivation}
+          onContinueInNewConversation={onContinueInNewConversation}
+          labels={chromeLabels}
+        />
+      ) : null}
+      <AgentSessionChrome
+        chrome={sessionChrome}
+        isRespondingApproval={isRespondingApproval}
+        onSubmitApprovalOption={onSubmitApprovalOption}
+        onAuthLogin={onAuthLogin}
+        onRetryActivation={onRetryActivation}
+        onContinueInNewConversation={onContinueInNewConversation}
+        labels={chromeLabels}
+      />
+      {showGoalBanner ? (
+        <AgentGoalBanner
+          objective={goalObjective}
+          status={goalStatus}
+          tokenBudget={goalTokenBudget ?? undefined}
+          tokensUsed={goalTokensUsed ?? undefined}
+          timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
+          labels={goalBannerLabels}
+          onPauseGoal={
+            goalPauseSupported ? () => onGoalControl("pause") : undefined
+          }
+          onResumeGoal={
+            goalPauseSupported ? () => onGoalControl("resume") : undefined
+          }
+          onClearGoal={() => onGoalControl("clear")}
+        />
+      ) : null}
+      {bottomDockReplacementPrompt ? (
+        <div
+          className={styles.bottomDockPrompt}
+          data-testid="agent-gui-bottom-dock-active-prompt"
+        >
+          <AgentInteractivePromptSurface
+            prompt={bottomDockReplacementPrompt}
+            embedded={true}
+            edgeGlow={true}
+            keyboardShortcuts={keyboardShortcutsEnabled}
+            previewMode={previewMode}
+            isSubmitting={isRespondingApproval}
+            onSubmit={onSubmitBottomDockInteractivePrompt}
+            labels={promptLabels}
+          />
+        </div>
+      ) : (
+        <AgentComposer {...composerProps} />
+      )}
+    </div>
+  );
+});

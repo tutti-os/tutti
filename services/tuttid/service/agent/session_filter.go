@@ -25,10 +25,7 @@ func filterSessions(
 }
 
 func sessionVisibleInLists(session Session) bool {
-	if !session.Visible {
-		return false
-	}
-	return visibleFromRuntimeContext(session.RuntimeContext, true)
+	return session.Visible
 }
 
 func matchesSessionSearch(session Session, rawQuery string) bool {
@@ -40,7 +37,6 @@ func matchesSessionSearch(session Session, rawQuery string) bool {
 		session.ID,
 		session.Provider,
 		value(session.Title),
-		session.Status,
 		session.Cwd,
 	}, "\n"))
 	for _, token := range strings.Fields(query) {

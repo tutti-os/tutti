@@ -17,28 +17,17 @@ const (
 	InstallerKindManagedNPMPackage        InstallerKind = "managed_npm_package"
 )
 
-// InstallerPostStep names an optional, idempotent step run after a successful
-// install (best-effort; failures are surfaced but do not fail the install).
-type InstallerPostStep string
-
-const (
-	InstallerPostStepNone InstallerPostStep = ""
-	// InstallerPostStepPatchClaudeAgentACP patches the claude-agent-acp bridge
-	// to advertise a `fast` config option backed by the SDK's `Settings.fastMode`.
-	InstallerPostStepPatchClaudeAgentACP InstallerPostStep = "patch_claude_agent_acp"
-)
-
 type InstallerSpec struct {
-	Kind           InstallerKind
-	DisplayCommand string
-	ShellCommand   string
-	ScriptURL      string
-	ScriptShell    string
-	ReleaseBinary  *ReleaseBinaryInstallerSpec
-	RegistryNPM    *ExternalAgentRegistryNPMInstallerSpec
-	CodexCLI       *CodexCLILatestInstallerSpec
-	ManagedNPM     *ManagedNPMPackageInstallerSpec
-	PostInstall    InstallerPostStep
+	Kind                 InstallerKind
+	DisplayCommand       string
+	ShellCommand         string
+	ScriptURL            string
+	ScriptShell          string
+	ReleaseBinary        *ReleaseBinaryInstallerSpec
+	RegistryNPM          *ExternalAgentRegistryNPMInstallerSpec
+	CodexCLI             *CodexCLILatestInstallerSpec
+	ManagedNPM           *ManagedNPMPackageInstallerSpec
+	FailureReasonMarkers map[string][]string
 }
 
 type ExternalAgentRegistryNPMInstallerSpec struct {
@@ -64,8 +53,11 @@ type ReleaseBinaryAsset struct {
 }
 
 type CodexCLILatestInstallerSpec struct {
-	BaseURL    string
-	InstallDir string
+	PackageName     string
+	BinaryName      string
+	IncludeOptional bool
+	BaseURL         string
+	InstallDir      string
 }
 
 type ManagedNPMPackageInstallerSpec struct {
@@ -93,7 +85,14 @@ func (s InstallerSpec) displayCommand() string {
 		}
 		return strings.TrimSpace(s.DisplayCommand)
 	case InstallerKindCodexCLILatest:
-		return firstNonBlank(s.DisplayCommand, "npm install -g @openai/codex --include=optional")
+		if s.CodexCLI != nil {
+			args := []string{"npm install -g", strings.TrimSpace(s.CodexCLI.PackageName)}
+			if s.CodexCLI.IncludeOptional {
+				args = append(args, "--include=optional")
+			}
+			return firstNonBlank(s.DisplayCommand, strings.Join(args, " "))
+		}
+		return strings.TrimSpace(s.DisplayCommand)
 	case InstallerKindManagedNPMPackage:
 		if s.ManagedNPM != nil {
 			packageSpec := managedNPMPackageSpec(*s.ManagedNPM)
@@ -163,6 +162,12 @@ func validateInstallerSpec(spec InstallerSpec) error {
 	case InstallerKindCodexCLILatest:
 		if spec.CodexCLI == nil {
 			return fmt.Errorf("codex CLI latest installer config is required")
+		}
+		if strings.TrimSpace(spec.CodexCLI.PackageName) == "" {
+			return fmt.Errorf("codex CLI latest installer package name is required")
+		}
+		if strings.TrimSpace(spec.CodexCLI.BinaryName) == "" {
+			return fmt.Errorf("codex CLI latest installer binary name is required")
 		}
 	case InstallerKindManagedNPMPackage:
 		if spec.ManagedNPM == nil {

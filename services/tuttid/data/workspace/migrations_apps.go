@@ -279,14 +279,23 @@ ALTER TABLE app_factory_jobs ADD COLUMN agent_target_id TEXT NOT NULL DEFAULT ''
 	}
 
 	now := unixMs(time.Now().UTC())
-	_, err = s.db.ExecContext(ctx, `
+	targetIDs := defaultTargetIDBackfillByProvider()
+	codexTargetID := targetIDs["codex"]
+	if codexTargetID == "" {
+		return fmt.Errorf("migrate workspace app factory jobs agent target id: codex target descriptor is missing")
+	}
+	if _, err := s.db.ExecContext(ctx, `
 UPDATE app_factory_jobs
 SET agent_target_id = CASE provider
-  WHEN 'codex' THEN 'local:codex'
+  WHEN ? THEN ?
   WHEN 'claude-code' THEN 'local:claude-code'
   ELSE agent_target_id
 END
 WHERE agent_target_id = '';
+`, "codex", codexTargetID); err != nil {
+		return fmt.Errorf("backfill workspace app factory job agent target ids: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
 INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationAppFactoryJobsV3, now)

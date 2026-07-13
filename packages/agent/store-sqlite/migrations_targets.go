@@ -77,6 +77,47 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, target.ID, target.Provider, target.LaunchRefJSON, target.Name, target.IconKey, target.Enabled, target.Source, target.SortOrder, target.CreatedAtUnixMS, target.UpdatedAtUnixMS); err != nil {
 			return fmt.Errorf("seed system agent target %q: %w", target.ID, err)
 		}
+		if target.Source != systemTargetSource {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `
+UPDATE agent_targets
+SET provider = ?,
+    launch_ref_json = ?,
+    name = ?,
+    icon_key = ?,
+    enabled = ?,
+    sort_order = ?,
+    updated_at_ms = ?
+WHERE id = ?
+  AND source = ?
+  AND (
+    provider != ? OR
+    launch_ref_json != ? OR
+    name != ? OR
+    COALESCE(icon_key, '') != ? OR
+    enabled != ? OR
+    sort_order != ?
+  )
+`,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.Enabled,
+			target.SortOrder,
+			now,
+			target.ID,
+			systemTargetSource,
+			target.Provider,
+			target.LaunchRefJSON,
+			target.Name,
+			target.IconKey,
+			target.Enabled,
+			target.SortOrder,
+		); err != nil {
+			return fmt.Errorf("refresh system agent target %q: %w", target.ID, err)
+		}
 	}
 	return nil
 }

@@ -13,7 +13,7 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
-  CancelWorkspaceAgentSessionResponse,
+  WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
   WorkspaceAgentSessionGoalControlRequest,
@@ -82,6 +82,7 @@ import type {
   ReloadLocalWorkspaceAppRequest,
   ResizeWorkspaceTerminalRequest,
   SendWorkspaceAgentSessionInputResponse,
+  SubmitWorkspaceAgentPlanDecisionRequest,
   SendWorkspaceAgentSessionInputRequest,
   SubmitWorkspaceAgentInteractiveRequest,
   TrackEvent,
@@ -99,6 +100,7 @@ import type {
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
   WorkspaceAgentSession,
+  WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
   WorkspaceAgentSessionAttachmentResponse,
   WorkspaceAgentGeneratedFileListResponse,
@@ -643,14 +645,11 @@ export interface TuttidClient {
     terminalID: string,
     request: ResizeWorkspaceTerminalRequest
   ): Promise<WorkspaceTerminalSession>;
-  cancelWorkspaceAgentSession(
+  cancelWorkspaceAgentTurn?(
     workspaceID: string,
-    agentSessionID: string
-  ): Promise<WorkspaceAgentSession>;
-  cancelWorkspaceAgentSessionWithResult(
-    workspaceID: string,
-    agentSessionID: string
-  ): Promise<CancelWorkspaceAgentSessionResponse>;
+    agentSessionID: string,
+    turnID: string
+  ): Promise<WorkspaceAgentTurnCancelResponse>;
   goalControlWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string,
@@ -661,6 +660,13 @@ export interface TuttidClient {
     agentSessionID: string,
     request: SendWorkspaceAgentSessionInputRequest
   ): Promise<SendWorkspaceAgentSessionInputResponse>;
+  submitWorkspaceAgentPlanDecision(
+    workspaceID: string,
+    agentSessionID: string,
+    turnID: string,
+    requestID: string,
+    request: SubmitWorkspaceAgentPlanDecisionRequest
+  ): Promise<WorkspaceAgentPlanDecisionResponse>;
   readWorkspaceAgentSessionAttachment(
     workspaceID: string,
     agentSessionID: string,

@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivitySession } from "../../../shared/workspaceAgentActivityTypes.ts";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel.ts";
 
 export type AgentGUIConversationFilter =
@@ -49,9 +49,9 @@ export function filterAgentGUIConversationSummaries(
 }
 
 export function filterWorkspaceAgentActivitySessionsForConversations(
-  sessions: readonly WorkspaceAgentActivitySession[],
+  sessions: readonly AgentActivitySession[],
   filter: AgentGUIConversationFilter
-): WorkspaceAgentActivitySession[] {
+): AgentActivitySession[] {
   const normalizedFilter = normalizeAgentGUIConversationFilter(filter);
   return sessions.filter((session) =>
     matchesAgentGUIConversationFilterAgentTarget(

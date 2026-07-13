@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import { Button, CloseIcon, toast } from "@tutti-os/ui-system";
 import { useService } from "@tutti-os/infra/di";
-import { IAgentProviderStatusService } from "@renderer/features/workspace-agent";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import { useTranslation } from "@renderer/i18n";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 

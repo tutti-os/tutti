@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -54,15 +55,16 @@ func (s *Service) discoverComposerSkillOptions(provider string, cwd string, env 
 }
 
 func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]composerSkillRoot, skillTriggerFunc) {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex:
+	profile := composerProfileFor(provider)
+	switch providerregistry.SkillKind(profile.SkillKind) {
+	case providerregistry.SkillKindCodex:
 		return codexComposerSkillRoots(cwd, env), codexSkillTrigger
-	case agentprovider.ClaudeCode:
+	case providerregistry.SkillKindClaudeCode:
 		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
-	case agentprovider.Cursor:
+	case providerregistry.SkillKindCursor:
 		return cursorComposerSkillRoots(cwd, env), cursorSkillTrigger
-	case agentprovider.OpenCode:
-		return openCodeComposerSkillRoots(cwd, env), openCodeSkillTrigger
+	case providerregistry.SkillKindOpenCode:
+		return openCodeComposerSkillRoots(cwd, env, profile.SkillConfigDirSuffix), openCodeSkillTrigger
 	default:
 		return nil, nil
 	}
@@ -132,7 +134,7 @@ func cursorComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 	return roots
 }
 
-func openCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
+func openCodeComposerSkillRoots(cwd string, env []string, configDirSuffix string) []composerSkillRoot {
 	roots := make([]composerSkillRoot, 0)
 	roots = append(roots, ancestorSkillRoots(cwd, ".opencode", "skills", composerSkillSourceProject)...)
 	roots = append(roots, ancestorSkillRoots(cwd, ".claude", "skills", composerSkillSourceProject)...)
@@ -151,7 +153,7 @@ func openCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 			sourceKind: composerSkillSourcePersonal,
 		})
 	}
-	if configDir := openCodeConfigDir(env); configDir != "" {
+	if configDir := openCodeConfigDir(env, configDirSuffix); configDir != "" {
 		roots = append(roots, composerSkillRoot{
 			path:       filepath.Join(configDir, "skills"),
 			sourceKind: composerSkillSourcePersonal,
@@ -160,13 +162,14 @@ func openCodeComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 	return roots
 }
 
-func openCodeConfigDir(env []string) string {
+func openCodeConfigDir(env []string, configDirSuffix string) string {
 	configDir := envValue(env, "OPENCODE_CONFIG_DIR")
 	if configDir == "" {
 		return ""
 	}
-	if filepath.Base(filepath.Clean(configDir)) != "opencode" {
-		configDir = filepath.Join(configDir, "opencode")
+	configDirSuffix = strings.TrimSpace(configDirSuffix)
+	if configDirSuffix != "" && filepath.Base(filepath.Clean(configDir)) != configDirSuffix {
+		configDir = filepath.Join(configDir, configDirSuffix)
 	}
 	return configDir
 }
@@ -609,9 +612,9 @@ func composerCapabilityCatalogFromSkills(provider string, skills []ComposerSkill
 		if name == "" || trigger == "" {
 			continue
 		}
-		invocation := "textTrigger"
-		if agentprovider.Normalize(provider) == agentprovider.Codex && strings.HasPrefix(trigger, "$") {
-			invocation = "promptItem"
+		invocation := strings.TrimSpace(composerProfileFor(provider).SkillInvocation)
+		if invocation == "" {
+			invocation = "textTrigger"
 		}
 		result = append(result, ComposerCapabilityOption{
 			ID:          "skill:" + name,
@@ -659,35 +662,6 @@ func composerCapabilityOptionsRuntimeContext(options []ComposerCapabilityOption)
 		result = append(result, value)
 	}
 	return result
-}
-
-func withComposerSkillOptionsRuntimeContext(
-	runtimeContext map[string]any,
-	options []ComposerSkillOption,
-) map[string]any {
-	if len(options) == 0 {
-		return runtimeContext
-	}
-	if runtimeContext == nil {
-		runtimeContext = map[string]any{}
-	}
-	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(options)
-	return runtimeContext
-}
-
-func withFallbackComposerSkillOptionsRuntimeContext(
-	runtimeContext map[string]any,
-	options []ComposerSkillOption,
-) map[string]any {
-	if len(options) == 0 {
-		return runtimeContext
-	}
-	if runtimeContext != nil {
-		if _, ok := runtimeContext["skills"]; ok {
-			return runtimeContext
-		}
-	}
-	return withComposerSkillOptionsRuntimeContext(runtimeContext, options)
 }
 
 func skillSourceRank(sourceKind string) int {

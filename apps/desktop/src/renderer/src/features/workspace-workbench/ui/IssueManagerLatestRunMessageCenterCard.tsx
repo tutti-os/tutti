@@ -4,25 +4,33 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
-  type JSX,
-  type MutableRefObject
+  type JSX
 } from "react";
-import { AgentGuiI18nProvider } from "@tutti-os/agent-gui";
+import { AgentGuiI18nProvider } from "@tutti-os/agent-gui/i18n";
 import {
-  buildWorkspaceAgentMessageCenterModel,
+  buildWorkspaceAgentMessageCenterModelFromEngine,
+  selectWorkspaceAgentMessageCenterPresentation,
+  workspaceAgentMessageCenterPromptStatus,
+  workspaceAgentMessageCenterPresentationEqual,
   WorkspaceAgentMessageCenterCard,
+  dispatchAgentPlanPromptAction,
+  useEngineSelector,
   type WorkspaceAgentMessageCenterCardProps,
   type WorkspaceAgentMessageCenterItem
 } from "@tutti-os/agent-gui/agent-message-center";
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
+import {
+  selectEnginePendingInteractions,
+  selectWorkspaceAgentConsumerSession,
+  type AgentActivityMessage,
+  type CanonicalAgentSession
+} from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopLocale } from "@shared/i18n";
 import type { IssueManagerLatestRunStatusRenderInput } from "@tutti-os/workspace-issue-manager/ui";
 import type { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
-type WorkspaceAgentActivitySession = AgentActivitySnapshot["sessions"][number];
+type MessageCenterAgentSession = CanonicalAgentSession;
 
 export function renderIssueManagerLatestRunMessageCenterCard(
   input: IssueManagerLatestRunStatusRenderInput,
@@ -66,72 +74,50 @@ function IssueManagerLatestRunMessageCenterCard({
   workspaceId: string;
 }): JSX.Element {
   const requestedMessageSummarySessionIdsRef = useRef<Set<string>>(new Set());
-  const snapshotRef = useRef<{
-    snapshot: AgentActivitySnapshot;
-    workspaceId: string;
-  } | null>(null);
-  const [submittingPromptKey, setSubmittingPromptKey] = useState<string | null>(
-    null
-  );
+  const [sessionMessagesById, setSessionMessagesById] = useState<
+    Record<string, AgentActivityMessage[]>
+  >({});
   const agentSessionId = input.latestRun.agentSessionId?.trim() ?? "";
-  const readSnapshot = useCallback(
-    () =>
-      readWorkspaceAgentActivitySnapshot({
-        snapshotRef,
-        workspaceAgentActivityService,
-        workspaceId
-      }),
+  const sessionEngine = useMemo(
+    () => workspaceAgentActivityService.getSessionEngine(workspaceId),
     [workspaceAgentActivityService, workspaceId]
   );
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      let disposed = false;
-      const unsubscribe = workspaceAgentActivityService.subscribe(
-        workspaceId,
-        (nextSnapshot) => {
-          snapshotRef.current = {
-            snapshot: nextSnapshot,
-            workspaceId
-          };
-          queueMicrotask(() => {
-            if (!disposed) {
-              listener();
-            }
-          });
-        }
-      );
-      return () => {
-        disposed = true;
-        unsubscribe();
-      };
-    },
-    [workspaceAgentActivityService, workspaceId]
+  const messageCenterPresentation = useEngineSelector(
+    sessionEngine,
+    selectWorkspaceAgentMessageCenterPresentation,
+    workspaceAgentMessageCenterPresentationEqual
   );
-  const snapshot = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
-
-  useEffect(() => {
-    void workspaceAgentActivityService.load(workspaceId);
-  }, [workspaceAgentActivityService, workspaceId]);
+  const targetSessionConsumer = useEngineSelector(
+    sessionEngine,
+    useCallback(
+      (state) => selectWorkspaceAgentConsumerSession(state, agentSessionId),
+      [agentSessionId]
+    ),
+    workspaceAgentConsumerSessionEqual
+  );
 
   const model = useMemo(
     () =>
-      buildWorkspaceAgentMessageCenterModel(snapshot, {
-        promptFallbackLabels: {
-          constraintHeader: i18n.t(
-            "workspace.agentMessageCenter.promptConstraintHeader"
-          ),
-          inputHeader: i18n.t("workspace.agentMessageCenter.promptInputHeader"),
-          question: i18n.t("workspace.agentMessageCenter.promptQuestion"),
-          title: i18n.t("workspace.agentMessageCenter.promptTitle")
-        },
-        workspaceRoot: null
-      }),
-    [i18n, snapshot]
+      buildWorkspaceAgentMessageCenterModelFromEngine(
+        messageCenterPresentation,
+        { sessionMessagesById, workspaceId },
+        {
+          promptFallbackLabels: {
+            constraintHeader: i18n.t(
+              "workspace.agentMessageCenter.promptConstraintHeader"
+            ),
+            inputHeader: i18n.t(
+              "workspace.agentMessageCenter.promptInputHeader"
+            ),
+            question: i18n.t("workspace.agentMessageCenter.promptQuestion"),
+            title: i18n.t("workspace.agentMessageCenter.promptTitle")
+          },
+          workspaceRoot: null
+        }
+      ),
+    [i18n, messageCenterPresentation, sessionMessagesById, workspaceId]
   );
-  const targetSession = useMemo(
-    () => findWorkspaceAgentSession(snapshot, agentSessionId),
-    [agentSessionId, snapshot]
-  );
+  const targetSession = targetSessionConsumer?.session ?? null;
   const modelItem = useMemo(
     () =>
       findWorkspaceAgentMessageCenterItem({
@@ -147,6 +133,10 @@ function IssueManagerLatestRunMessageCenterCard({
       agentSessionId,
       input
     });
+  const promptStatus = workspaceAgentMessageCenterPromptStatus(
+    messageCenterPresentation,
+    item
+  );
 
   useEffect(() => {
     const sessionId =
@@ -161,10 +151,7 @@ function IssueManagerLatestRunMessageCenterCard({
     }
     if (
       targetSession &&
-      hasCachedWorkspaceAgentSessionMessages(
-        snapshot.sessionMessagesById,
-        targetSession
-      )
+      hasCachedWorkspaceAgentSessionMessages(sessionMessagesById, targetSession)
     ) {
       return undefined;
     }
@@ -179,8 +166,22 @@ function IssueManagerLatestRunMessageCenterCard({
         signal: abortController.signal,
         workspaceId
       })
-      .catch(() => {
+      .then((page) => {
+        setSessionMessagesById((current) => ({
+          ...current,
+          [sessionId]: page.messages
+        }));
+      })
+      .catch((error: unknown) => {
         requestedMessageSummarySessionIdsRef.current.delete(sessionId);
+        console.error(
+          "[workspace-agent-message-summary]",
+          JSON.stringify({
+            agentSessionId: sessionId,
+            error: error instanceof Error ? error.message : String(error),
+            workspaceId
+          })
+        );
       });
 
     return () => {
@@ -188,7 +189,7 @@ function IssueManagerLatestRunMessageCenterCard({
     };
   }, [
     agentSessionId,
-    snapshot.sessionMessagesById,
+    sessionMessagesById,
     targetSession,
     workspaceAgentActivityService,
     workspaceId
@@ -201,44 +202,56 @@ function IssueManagerLatestRunMessageCenterCard({
       payload?: Record<string, unknown>;
       requestId: string;
     }) => {
-      const promptKey = `${item.agentSessionId}:${submitInput.requestId}`;
-      setSubmittingPromptKey(promptKey);
-      try {
-        // Route through submitPlanDecision (same as the message-center deck):
-        // a synthesized Codex "plan-implementation" prompt needs planMode-off +
-        // literal send, not a submitInteractive call. promptKind is carried by
-        // the item's pending prompt; other kinds fall through to submitInteractive.
-        await workspaceAgentActivityService.submitPlanDecision({
-          workspaceId,
+      const commandId = [
+        workspaceId,
+        item.agentSessionId,
+        "interaction",
+        submitInput.requestId
+      ].join(":");
+      if (
+        item.pendingPrompt?.kind === "plan-implementation" &&
+        (submitInput.action === "implement" ||
+          submitInput.action === "feedback" ||
+          submitInput.action === "skip")
+      ) {
+        dispatchAgentPlanPromptAction({
+          action: submitInput.action,
           agentSessionId: item.agentSessionId,
-          promptKind: item.pendingPrompt?.kind ?? "",
+          engine: sessionEngine,
+          feedbackText:
+            typeof submitInput.payload?.text === "string"
+              ? submitInput.payload.text
+              : undefined,
           requestId: submitInput.requestId,
+          workspaceId
+        });
+      } else {
+        const interaction = selectEnginePendingInteractions(
+          sessionEngine.getSnapshot(),
+          item.agentSessionId
+        ).find((candidate) => candidate.requestId === submitInput.requestId);
+        if (!interaction) return;
+        sessionEngine.dispatch({
+          type: "interaction/responseRequested",
+          agentSessionId: item.agentSessionId,
+          commandId,
+          requestId: submitInput.requestId,
+          turnId: interaction.turnId,
+          workspaceId,
           ...(submitInput.action ? { action: submitInput.action } : {}),
           ...(submitInput.optionId ? { optionId: submitInput.optionId } : {}),
           ...(submitInput.payload ? { payload: submitInput.payload } : {})
         });
-      } finally {
-        setSubmittingPromptKey((current) =>
-          current === promptKey ? null : current
-        );
       }
     },
-    [
-      item.agentSessionId,
-      item.pendingPrompt?.kind,
-      workspaceAgentActivityService,
-      workspaceId
-    ]
+    [item.agentSessionId, item.pendingPrompt?.kind, sessionEngine, workspaceId]
   );
 
   return (
     <AgentGuiI18nProvider runtime={i18n} locale={locale}>
       <WorkspaceAgentMessageCenterCard
         isSubmitting={
-          item.pendingPrompt
-            ? submittingPromptKey ===
-              `${item.agentSessionId}:${item.pendingPrompt.requestId}`
-            : false
+          promptStatus === "responding" || promptStatus === "unknown"
         }
         item={item}
         onOpenChat={() => {
@@ -253,41 +266,22 @@ function IssueManagerLatestRunMessageCenterCard({
   );
 }
 
-function readWorkspaceAgentActivitySnapshot({
-  snapshotRef,
-  workspaceAgentActivityService,
-  workspaceId
-}: {
-  snapshotRef: MutableRefObject<{
-    snapshot: AgentActivitySnapshot;
-    workspaceId: string;
-  } | null>;
-  workspaceAgentActivityService: IWorkspaceAgentActivityService;
-  workspaceId: string;
-}): AgentActivitySnapshot {
-  if (snapshotRef.current?.workspaceId === workspaceId) {
-    return snapshotRef.current.snapshot;
-  }
-  const snapshot = workspaceAgentActivityService.getSnapshot(workspaceId);
-  snapshotRef.current = {
-    snapshot,
-    workspaceId
-  };
-  return snapshot;
-}
-
-function findWorkspaceAgentSession(
-  snapshot: AgentActivitySnapshot,
-  agentSessionId: string
-): WorkspaceAgentActivitySession | null {
-  const target = agentSessionId.trim();
-  if (!target) {
-    return null;
-  }
+function workspaceAgentConsumerSessionEqual(
+  left: ReturnType<typeof selectWorkspaceAgentConsumerSession>,
+  right: ReturnType<typeof selectWorkspaceAgentConsumerSession>
+): boolean {
   return (
-    snapshot.sessions.find((session) =>
-      workspaceAgentSessionMessageAliases(session).includes(target)
-    ) ?? null
+    left === right ||
+    (left !== null &&
+      right !== null &&
+      left.session === right.session &&
+      left.activeTurn === right.activeTurn &&
+      left.latestTurn === right.latestTurn &&
+      left.displayStatus === right.displayStatus &&
+      left.pendingInteractions.length === right.pendingInteractions.length &&
+      left.pendingInteractions.every(
+        (interaction, index) => interaction === right.pendingInteractions[index]
+      ))
   );
 }
 
@@ -298,7 +292,7 @@ function findWorkspaceAgentMessageCenterItem({
 }: {
   agentSessionId: string;
   itemCandidates: readonly WorkspaceAgentMessageCenterItem[];
-  session: WorkspaceAgentActivitySession | null;
+  session: MessageCenterAgentSession | null;
 }): WorkspaceAgentMessageCenterItem | null {
   const aliases = new Set([
     agentSessionId.trim(),
@@ -405,8 +399,8 @@ function issueManagerRunTimestampToUnixMs(
 }
 
 function hasCachedWorkspaceAgentSessionMessages(
-  sessionMessagesById: AgentActivitySnapshot["sessionMessagesById"],
-  session: WorkspaceAgentActivitySession
+  sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>,
+  session: MessageCenterAgentSession
 ): boolean {
   return workspaceAgentSessionMessageAliases(session).some(
     (alias) => (sessionMessagesById[alias]?.length ?? 0) > 0
@@ -414,7 +408,7 @@ function hasCachedWorkspaceAgentSessionMessages(
 }
 
 function workspaceAgentSessionMessageAliases(
-  session: WorkspaceAgentActivitySession
+  session: MessageCenterAgentSession
 ): string[] {
   return [
     session.agentSessionId,

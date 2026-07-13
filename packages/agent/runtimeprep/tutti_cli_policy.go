@@ -110,7 +110,7 @@ Claude Code mention routing:
 - If the current user turn contains ` + "`mention://workspace-app/<appId>?workspaceId=...`" + `, first use $workspace-app. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, first use $reference. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
 - If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands.
-- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Choose ` + "`agent`" + `, ` + "`codex`" + `, ` + "`claude`" + `, or ` + "`tutti-agent`" + ` CLI workflow from the user's prompt; this is not launch-only.`)
+- If the current user turn contains ` + "`mention://agent-target/<targetId>?workspaceId=...`" + `, first use $tutti-cli. Call the exact visible Skill tool when available and successful; if no exact visible Skill tool is available or it fails, fall back to that materialized skill file before any Bash, WebFetch, browser, MCP lookup, file search, or raw CLI commands. Choose ` + "`agent`" + `, ` + "`codex`" + `, or ` + "`claude`" + ` CLI workflow from the user's prompt; this is not launch-only.`)
 	default:
 		return ""
 	}
@@ -123,7 +123,7 @@ func providerSpecificExecutionEnvironment(provider string, cliCommand string) st
 		return "- Codex: `" + command + "` needs localhost/IPC. When running `" + command + "` from a sandboxed exec tool, set `sandbox_permissions=require_escalated`. If `" + command + "` reports `daemon is not reachable from this agent execution environment`, rerun once with `sandbox_permissions=require_escalated`.\n"
 	case "claude", "claude-code":
 		return "- Claude Code `Monitor` tool is disabled. Poll async Tutti jobs with one bounded shell/script.\n- Claude Code: run `" + command + "` only from a shell environment that can reach localhost/IPC. If the provider runtime cannot reach the local Tutti daemon, report that limitation; do not invent Codex `sandbox_permissions`.\n"
-	case "cursor", "cursor-agent", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw", "opencode", "open-code":
+	case "cursor", "cursor-agent", "hermes", "hermes-agent", "nexight", "tutti", "openclaw", "open-claw", "opencode", "open-code", "tutti-agent":
 		return "- This provider must run `" + command + "` from an execution environment with localhost/IPC access. If the daemon is unreachable from the provider runtime, report that limitation instead of retrying with provider-specific sandbox flags.\n"
 	default:
 		return ""
@@ -219,6 +219,8 @@ func commandGuideScopeSummaries(guide string, cliName string) []commandScopeSumm
 }
 
 func commandScopeDescription(scope string, info *commandScopeInfo) string {
+	const codexCommandScope = "codex"
+
 	switch strings.TrimSpace(scope) {
 	case "agent":
 		return "agent sessions, waits, summaries, turn resources, active peers."
@@ -228,7 +230,7 @@ func commandScopeDescription(scope string, info *commandScopeInfo) string {
 		return "daemon-owned browser automation."
 	case "claude":
 		return "start/manage Claude Code agent sessions."
-	case "codex":
+	case codexCommandScope:
 		return "start/manage Codex agent sessions."
 	case "computer":
 		return "daemon-owned macOS desktop automation."

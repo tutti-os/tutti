@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:1b69c706c4d5eca2"
+	BusinessEventCatalogRevision = "sha256:f4b16255b2e3b578"
 )
 
 type Topic string
@@ -422,7 +422,7 @@ type ServerPongFrame struct {
 var BusinessEventDefinitions = []EventDefinition{
 	{
 		Topic:     TopicAgentActivityUpdated,
-		Version:   1,
+		Version:   2,
 		Direction: DirectionServerToClient,
 		Owner:     "agent",
 		Scope:     ScopeNameWorkspace,

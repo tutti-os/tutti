@@ -179,7 +179,9 @@ export function resolveWorkspaceFilePathCandidate({
     };
   }
 
-  const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  const selectedRoot = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  const sessionRoot = normalizeWorkspaceFilePath(basePath?.trim() ?? "");
+  const root = selectedRoot || sessionRoot;
   if (!root) {
     return null;
   }

@@ -153,13 +153,13 @@ func (r codexAppServerReducer) ReduceNotification(
 		return emit(events)
 	case appServerNotifyTokenUsage:
 		a.applyTokenUsage(session.AgentSessionID, params)
-		if event, ok := acpUsageUpdatedEvent(session); ok {
+		if event, ok := normalizedUsageUpdatedEvent(session); ok {
 			return emit([]activityshared.Event{event})
 		}
 		return codexAppServerReduction{}
 	case appServerNotifyRateLimitsUpdated:
 		a.applyRateLimits(session.AgentSessionID, payloadObject(params["rateLimits"]))
-		if event, ok := acpUsageUpdatedEvent(session); ok {
+		if event, ok := normalizedUsageUpdatedEvent(session); ok {
 			return emit([]activityshared.Event{event})
 		}
 		return codexAppServerReduction{}
@@ -171,7 +171,7 @@ func (r codexAppServerReducer) ReduceNotification(
 		if isInternalMentionRoutingTitle(threadName) {
 			return codexAppServerReduction{}
 		}
-		if event, ok := acpSessionTitleEvent(session, map[string]any{
+		if event, ok := normalizedSessionTitleEvent(session, map[string]any{
 			"title": threadName,
 		}); ok {
 			return emit([]activityshared.Event{event})
@@ -205,7 +205,7 @@ func (r codexAppServerReducer) ReduceNotification(
 		// (returned reduction events are dropped without an active turn).
 		_, newStatus, statusChanged := a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
 		goalEvents := []activityshared.Event{}
-		if event, ok := acpGoalUpdatedEvent(session, "thread_goal_update"); ok {
+		if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_update"); ok {
 			goalEvents = append(goalEvents, event)
 		}
 		if statusChanged {
@@ -219,7 +219,7 @@ func (r codexAppServerReducer) ReduceNotification(
 		return codexAppServerReduction{}
 	case appServerNotifyThreadGoalCleared:
 		a.applyGoalClear(session.AgentSessionID)
-		if event, ok := acpGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
+		if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
 			a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwner([]activityshared.Event{event}, ownerThreadID, ownerCallID))
 		}
 		return codexAppServerReduction{}

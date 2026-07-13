@@ -32,8 +32,5 @@ export type {
 } from "../shared/workspaceAgentSessionDetailViewModel";
 
 export type { AgentConversationVM } from "../shared/agentConversation/contracts/agentConversationVM";
-export type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "../shared/workspaceAgentActivityTypes";
+export type { WorkspaceAgentActivityTimelineItem } from "../shared/workspaceAgentTimelineTypes";
 export type { WorkspaceAgentActivityCard } from "../shared/workspaceAgentActivityListViewModel";

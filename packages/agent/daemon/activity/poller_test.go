@@ -10,7 +10,7 @@ func TestPollerListsAgentsAndFetchesIncrementalMessagesWithNextCursors(t *testin
 
 	client := &fakePollClient{
 		snapshot: &WorkspaceAgentSnapshot{
-			Sessions: []WorkspaceAgentSession{
+			Sessions: []ProviderActivitySessionProjection{
 				{AgentSessionID: "session-1", SessionOrigin: WorkspaceAgentSessionOriginRuntime},
 				{AgentSessionID: "session-2", SessionOrigin: WorkspaceAgentSessionOriginRuntime},
 			},

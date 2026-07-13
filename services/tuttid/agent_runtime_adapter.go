@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
@@ -20,6 +21,7 @@ func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.Runt
 	result, err := a.controller.Cancel(ctx, agentruntime.CancelInput{
 		RoomID:         input.WorkspaceID,
 		AgentSessionID: input.AgentSessionID,
+		TurnID:         input.TurnID,
 		Reason:         input.Reason,
 	})
 	if err != nil {
@@ -28,6 +30,7 @@ func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.Runt
 	return agentservice.RuntimeCancelResult{
 		AgentSessionID: result.AgentSessionID,
 		Canceled:       result.Canceled,
+		TargetAbsent:   result.TargetAbsent,
 	}, nil
 }
 
@@ -222,7 +225,7 @@ func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentserv
 	return nil
 }
 
-func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.RuntimeResumeInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.RuntimeResumeInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.Resume(ctx, agentruntime.ResumeInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
@@ -242,45 +245,45 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.RuntimeSession, bool) {
+func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.ProviderRuntimeSession, bool) {
 	session, ok := a.controller.Session(workspaceID, agentSessionID)
 	if !ok {
-		return agentservice.RuntimeSession{}, false
+		return agentservice.ProviderRuntimeSession{}, false
 	}
 	return a.runtimeSessionWithState(session), true
 }
 
-func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.RuntimeSetVisibleInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.RuntimeSetVisibleInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.SetVisible(ctx, input.WorkspaceID, input.AgentSessionID, input.Visible)
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) SetTitle(ctx context.Context, input agentservice.RuntimeSetTitleInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) SetTitle(ctx context.Context, input agentservice.RuntimeSetTitleInput) (agentservice.ProviderRuntimeSession, error) {
 	session, err := a.controller.SetTitle(ctx, input.WorkspaceID, input.AgentSessionID, input.Title)
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(session), nil
 }
 
-func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.RuntimeSession {
+func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.ProviderRuntimeSession {
 	sessions := a.controller.Sessions(workspaceID)
-	result := make([]agentservice.RuntimeSession, 0, len(sessions))
+	result := make([]agentservice.ProviderRuntimeSession, 0, len(sessions))
 	for _, session := range sessions {
 		result = append(result, a.runtimeSessionWithState(session))
 	}
 	return result
 }
 
-func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.RuntimeSession, error) {
+func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.ProviderRuntimeSession, error) {
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
 		RoomID:            input.WorkspaceID,
 		AgentSessionID:    input.AgentSessionID,
@@ -301,10 +304,11 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 			PermissionModeID:       input.PermissionModeID,
 			ConversationDetailMode: input.ConversationDetailMode,
 		},
-		Visible: input.Visible,
+		Visible:     input.Visible,
+		Provisional: input.Provisional,
 	})
 	if err != nil {
-		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
 	}
 	return a.runtimeSessionWithState(result.Session), nil
 }
@@ -328,8 +332,8 @@ func agentRuntimeStreamEvents(events <-chan agentruntime.StreamEvent) <-chan age
 	return out
 }
 
-func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSession {
-	return agentservice.RuntimeSession{
+func agentRuntimeSession(session agentruntime.Session) agentservice.ProviderRuntimeSession {
+	return agentservice.ProviderRuntimeSession{
 		ID:                 session.AgentSessionID,
 		WorkspaceID:        session.RoomID,
 		AgentTargetID:      session.AgentTargetID,
@@ -350,7 +354,7 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSessi
 	}
 }
 
-func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.RuntimeSession {
+func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.ProviderRuntimeSession {
 	result := agentRuntimeSession(session)
 	state, err := a.controller.State(session.RoomID, session.AgentSessionID)
 	if err != nil {
@@ -472,6 +476,15 @@ func mapAgentRuntimeError(err error) error {
 	}
 	if errors.Is(err, agentruntime.ErrSessionNotFound) {
 		return agentservice.ErrSessionNotFound
+	}
+	if errors.Is(err, agentruntime.ErrSessionDisconnected) {
+		return fmt.Errorf("%w: %v", agentservice.ErrRuntimeSessionDisconnected, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveRequestNotLive) {
+		return fmt.Errorf("%w: %v", agentservice.ErrInteractiveRequestNotLive, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveAlreadyAnswered) {
+		return fmt.Errorf("%w: %v", agentservice.ErrInteractiveAlreadyAnswered, err)
 	}
 	if errors.Is(err, agentruntime.ErrSessionNoActiveTurn) {
 		return agentservice.ErrSessionNoActiveTurn

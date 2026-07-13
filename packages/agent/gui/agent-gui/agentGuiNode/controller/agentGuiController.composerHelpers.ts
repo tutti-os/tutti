@@ -1,6 +1,9 @@
 // Agent GUI controller — composer settings, drafts, and permission labels.
 
-import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivitySlashCommandPolicy
+} from "@tutti-os/agent-activity-core";
 import type {
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
@@ -12,29 +15,13 @@ import type { AgentGUINodeData } from "../../../types";
 import { translate } from "../../../i18n/index";
 import type {
   AgentGUIComposerSettingOption,
-  AgentGUIProviderSkillOption,
-  AgentGUIQueuedPromptVM
+  AgentGUIProviderSkillOption
 } from "../model/agentGuiNodeTypes";
 import type { ACPConfigOptionSelection } from "./agentGuiController.types";
-import {
-  normalizeOptionalText,
-  recordValue
-} from "./agentGuiController.promptHelpers";
+import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 export function normalizeConfigOptionValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-export function reasoningConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "reasoning_effort" : "effort";
-}
-
-export function speedConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "service_tier" : "fast";
 }
 
 export function composerSettingOptionsFromActivity(
@@ -99,6 +86,12 @@ function reasoningOptionsFromRuntimeConfig(
   return null;
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function reasoningProfileForModel(
   options: AgentActivityComposerOptions | null,
   model: string | null
@@ -109,28 +102,14 @@ function reasoningProfileForModel(
   if (!options || !model) {
     return null;
   }
-  const profiles = recordValue(
-    options.runtimeContext?.modelReasoningOptionsByModel
-  );
-  const profile = recordValue(profiles?.[model]);
+  const profile = options.reasoningOptionsByModel?.[model];
   if (!profile || !Array.isArray(profile.options)) {
     return null;
   }
-  const runtime = reasoningOptionsFromRuntimeConfig({
-    configOptions: [
-      {
-        id: "reasoning_effort",
-        currentValue: profile.defaultValue,
-        options: profile.options
-      }
-    ]
-  });
-  return runtime
-    ? {
-        defaultValue: normalizeConfigOptionValue(profile.defaultValue),
-        options: runtime.options
-      }
-    : null;
+  return {
+    defaultValue: normalizeConfigOptionValue(profile.defaultValue),
+    options: profile.options.map((option) => ({ ...option }))
+  };
 }
 
 export function reasoningSelectionForModelFromComposerOptions(
@@ -160,46 +139,6 @@ export function reasoningSelectionForModelFromComposerOptions(
 // live ACP session advertises through its runtime-context config options
 // (configOptions[id="model"].options[].value). Providers such as Cursor only
 // expose their model list this way — there is no static catalog.
-export function liveModelOptionValuesFromRuntimeContext(
-  runtimeContext: Record<string, unknown> | null | undefined
-): string[] {
-  const configOptions = runtimeContext?.configOptions;
-  if (!Array.isArray(configOptions)) {
-    return [];
-  }
-  for (const optionRaw of configOptions) {
-    if (!optionRaw || typeof optionRaw !== "object") {
-      continue;
-    }
-    const option = optionRaw as Record<string, unknown>;
-    if (normalizeConfigOptionValue(option.id) !== "model") {
-      continue;
-    }
-    const entries = option.options;
-    if (!Array.isArray(entries)) {
-      return [];
-    }
-    const values: string[] = [];
-    for (const entryRaw of entries) {
-      if (!entryRaw || typeof entryRaw !== "object") {
-        continue;
-      }
-      const value = normalizeConfigOptionValue(
-        (entryRaw as Record<string, unknown>).value
-      );
-      if (value) {
-        values.push(value);
-      }
-    }
-    return values;
-  }
-  return [];
-}
-
-// composerOptionsMissingLiveModelValues reports whether the loaded composer
-// options lack model values the live session advertises — the signal that the
-// daemon fetched composer options before the session's model list existed and
-// a forced refetch (which merges the live list server-side) is needed.
 export function composerOptionsMissingLiveModelValues(
   options: AgentActivityComposerOptions | null,
   liveValues: readonly string[]
@@ -284,8 +223,23 @@ export function providerSkillsFromComposerOptions(
   if (!options) {
     return [];
   }
+  const invocationByTrigger = new Map(
+    (options.capabilityCatalog ?? []).flatMap((capability) =>
+      capability.trigger &&
+      capability.status === "available" &&
+      (capability.invocation === "promptItem" ||
+        capability.invocation === "textTrigger")
+        ? [[capability.trigger, capability.invocation] as const]
+        : []
+    )
+  );
   return dedupeProviderSkills([
-    ...options.skills.map((skill) => ({ ...skill })),
+    ...options.skills.map((skill) => ({
+      ...skill,
+      ...(invocationByTrigger.get(skill.trigger)
+        ? { invocation: invocationByTrigger.get(skill.trigger) }
+        : {})
+    })),
     ...(options.capabilityCatalog ?? [])
       .filter(
         (capability) =>
@@ -300,6 +254,7 @@ export function providerSkillsFromComposerOptions(
         return {
           name: isConnector ? capability.label : capability.name,
           trigger: capability.trigger!,
+          invocation: "promptItem",
           sourceKind: isConnector ? "connector" : "plugin",
           kind: isConnector ? "connector" : "skill",
           ...(capability.description
@@ -321,6 +276,7 @@ export function areProviderSkillOptionsEqual(
   return (
     left.name === right.name &&
     left.trigger === right.trigger &&
+    left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&
     left.description === right.description &&
     left.pluginName === right.pluginName &&
@@ -338,6 +294,32 @@ export function areProviderSkillOptionListsEqual(
     left.every((skill, index) =>
       areProviderSkillOptionsEqual(skill, right[index]!)
     )
+  );
+}
+
+export function slashCommandPoliciesEqual(
+  left: AgentActivitySlashCommandPolicy | null | undefined,
+  right: AgentActivitySlashCommandPolicy | null | undefined
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    (left.commandCatalogAuthoritative ?? false) ===
+      (right.commandCatalogAuthoritative ?? false) &&
+    left.fallbackCommands.length === right.fallbackCommands.length &&
+    left.fallbackCommands.every(
+      (command, index) => command === right.fallbackCommands[index]
+    ) &&
+    left.commandEffects.length === right.commandEffects.length &&
+    left.commandEffects.every((effect, index) => {
+      const other = right.commandEffects[index];
+      return (
+        other !== undefined &&
+        effect.command === other.command &&
+        effect.effect === other.effect
+      );
+    })
   );
 }
 
@@ -415,117 +397,6 @@ export function resolveEffectiveComposerSettings(input: {
   };
 }
 
-export function runtimeConfigKeyForSetting(
-  provider: AgentGUINodeData["provider"],
-  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
-): string {
-  if (setting === "reasoningEffort") {
-    return reasoningConfigOptionIdForProvider(provider);
-  }
-  if (setting === "speed") {
-    return speedConfigOptionIdForProvider(provider);
-  }
-  if (setting === "permissionModeId") {
-    return "mode";
-  }
-  return "model";
-}
-
-export function shouldUpdateRuntimeConfigOption(
-  provider: AgentGUINodeData["provider"],
-  id: string | null,
-  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
-): boolean {
-  if (setting === "model") {
-    return id === "model";
-  }
-  if (setting === "permissionModeId") {
-    return id === "mode";
-  }
-  if (setting === "speed") {
-    return (
-      id === speedConfigOptionIdForProvider(provider) ||
-      id === "service_tier" ||
-      id === "speed" ||
-      id === "fast"
-    );
-  }
-  return (
-    id === reasoningConfigOptionIdForProvider(provider) ||
-    id === "model_reasoning_effort" ||
-    id === "reasoning_effort" ||
-    id === "effort"
-  );
-}
-
-export function mergeRuntimeContextComposerSettings(
-  provider: AgentGUINodeData["provider"],
-  runtimeContext: Record<string, unknown> | undefined,
-  settings: AgentSessionComposerSettings
-): Record<string, unknown> | undefined {
-  if (!runtimeContext) {
-    return runtimeContext;
-  }
-  const nextRuntimeContext: Record<string, unknown> = { ...runtimeContext };
-  const runtimeConfigPatch: Record<string, unknown> = {};
-  const optionPatches: Array<{
-    setting: "model" | "reasoningEffort" | "speed" | "permissionModeId";
-    value: string | null;
-  }> = [];
-
-  if (settings.model !== undefined) {
-    const value = normalizeOptionalText(settings.model);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "model")] = value;
-    optionPatches.push({ setting: "model", value });
-  }
-  if (settings.reasoningEffort !== undefined) {
-    const value = normalizeOptionalText(settings.reasoningEffort);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "reasoningEffort")
-    ] = value;
-    optionPatches.push({ setting: "reasoningEffort", value });
-  }
-  if (settings.speed !== undefined) {
-    const value = normalizeOptionalText(settings.speed);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "speed")] = value;
-    optionPatches.push({ setting: "speed", value });
-  }
-  if (settings.permissionModeId !== undefined) {
-    const value = normalizeOptionalText(settings.permissionModeId);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "permissionModeId")
-    ] = value;
-    optionPatches.push({ setting: "permissionModeId", value });
-  }
-
-  if (Object.keys(runtimeConfigPatch).length > 0) {
-    const currentConfig = recordValue(nextRuntimeContext.config);
-    nextRuntimeContext.config = {
-      ...(currentConfig ?? {}),
-      ...runtimeConfigPatch
-    };
-  }
-  if (
-    optionPatches.length > 0 &&
-    Array.isArray(nextRuntimeContext.configOptions)
-  ) {
-    nextRuntimeContext.configOptions = nextRuntimeContext.configOptions.map(
-      (option) => {
-        const optionRecord = recordValue(option);
-        if (!optionRecord) {
-          return option;
-        }
-        const id = normalizeConfigOptionValue(optionRecord.id);
-        const patch = optionPatches.find((item) =>
-          shouldUpdateRuntimeConfigOption(provider, id, item.setting)
-        );
-        return patch ? { ...optionRecord, currentValue: patch.value } : option;
-      }
-    );
-  }
-  return nextRuntimeContext;
-}
-
 export function normalizePermissionModeId(
   value: string | null | undefined
 ): string | null {
@@ -601,37 +472,6 @@ export function nodeComposerOverridesForProvider(
     data.composerOverrides ??
     null
   );
-}
-
-export function composerSupportForProvider(
-  provider: AgentGUINodeData["provider"]
-): {
-  model: boolean;
-  permission: boolean;
-  reasoning: boolean;
-  speed: boolean;
-  plan: boolean;
-} {
-  if (
-    provider === "claude-code" ||
-    provider === "codex" ||
-    provider === "opencode"
-  ) {
-    return {
-      model: true,
-      permission: provider === "claude-code" || provider === "codex",
-      reasoning: provider !== "opencode",
-      speed: provider === "claude-code" || provider === "codex",
-      plan: false
-    };
-  }
-  return {
-    model: false,
-    permission: provider === "nexight",
-    reasoning: false,
-    speed: false,
-    plan: false
-  };
 }
 
 export function permissionModeOptions(
@@ -724,13 +564,6 @@ export function permissionModeDescription(
     return contractDescription;
   }
   return undefined;
-}
-
-export function removeQueuedPromptById(
-  queue: readonly AgentGUIQueuedPromptVM[],
-  queuedPromptId: string
-): AgentGUIQueuedPromptVM[] {
-  return queue.filter((queuedPrompt) => queuedPrompt.id !== queuedPromptId);
 }
 
 export const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";

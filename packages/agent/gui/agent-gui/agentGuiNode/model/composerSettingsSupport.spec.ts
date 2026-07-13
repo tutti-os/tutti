@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { composerSettingsSupportFromOptions } from "./composerSettingsSupport";
-import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core";
+import {
+  AGENT_CAPABILITY_KEYS,
+  type AgentActivityComposerOptions,
+  type AgentActivitySessionCapabilities
+} from "@tutti-os/agent-activity-core";
 
 function optionsFixture(input: {
   model: boolean;
@@ -10,6 +14,12 @@ function optionsFixture(input: {
 }): AgentActivityComposerOptions {
   return {
     provider: "test",
+    capabilities: Object.fromEntries(
+      AGENT_CAPABILITY_KEYS.map((key) => [
+        key,
+        (input.capabilities ?? []).includes(key)
+      ])
+    ) as unknown as AgentActivitySessionCapabilities,
     models: [],
     reasoningEfforts: [],
     speeds: [],
@@ -20,10 +30,15 @@ function optionsFixture(input: {
       defaultValue: null,
       modes: []
     },
-    runtimeContext: input.capabilities
-      ? { capabilities: input.capabilities }
-      : {},
+    capabilityCatalog: [],
     skills: [],
+    behavior: {
+      collapseModelOptionsToLatest: false,
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     loadedAtUnixMs: 0
   };
 }
@@ -53,7 +68,8 @@ describe("composerSettingsSupportFromOptions", () => {
         "tokenUsage",
         "rateLimits",
         "planMode",
-        "interrupt"
+        "interrupt",
+        "browserUse"
       ]
     },
     codex: {
@@ -67,14 +83,21 @@ describe("composerSettingsSupportFromOptions", () => {
         "tokenUsage",
         "rateLimits",
         "planMode",
-        "interrupt"
+        "interrupt",
+        "browserUse"
       ]
     },
     opencode: {
       model: true,
       reasoning: false,
       permission: false,
-      capabilities: ["interrupt"]
+      capabilities: ["interrupt", "planMode", "browserUse"]
+    },
+    cursor: {
+      model: true,
+      reasoning: false,
+      permission: true,
+      capabilities: ["interrupt", "planMode", "browserUse"]
     },
     hermes: {
       model: false,
@@ -102,6 +125,7 @@ describe("composerSettingsSupportFromOptions", () => {
     "claude-code": { model: true, reasoning: true, permission: true },
     codex: { model: true, reasoning: true, permission: true },
     opencode: { model: true, reasoning: false, permission: false },
+    cursor: { model: true, reasoning: false, permission: true },
     hermes: { model: false, reasoning: false, permission: false },
     nexight: { model: false, reasoning: false, permission: true },
     openclaw: { model: false, reasoning: false, permission: false }
@@ -117,8 +141,12 @@ describe("composerSettingsSupportFromOptions", () => {
       expect(support.reasoning).toBe(legacyTable[provider]!.reasoning);
       expect(support.permission).toBe(legacyTable[provider]!.permission);
       expect(support.plan).toBe(
-        provider === "claude-code" || provider === "codex"
+        provider === "claude-code" ||
+          provider === "codex" ||
+          provider === "cursor" ||
+          provider === "opencode"
       );
+      expect(support.browser).toBe(flags.capabilities.includes("browserUse"));
     });
   }
 
@@ -130,7 +158,10 @@ describe("composerSettingsSupportFromOptions", () => {
       permission: false,
       plan: false,
       browser: false,
-      computer: false
+      computer: false,
+      planImplementation: false,
+      permissionModeChangeDuringTurn: false,
+      permissionModeChangeDeferred: false
     });
   });
 
@@ -142,7 +173,7 @@ describe("composerSettingsSupportFromOptions", () => {
         permission: true,
         capabilities: []
       }),
-      { capabilities: ["planMode"] }
+      { planMode: true }
     );
     expect(support.plan).toBe(true);
   });

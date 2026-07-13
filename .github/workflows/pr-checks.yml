@@ -55,6 +55,28 @@ jobs:
       - name: Check golangci-lint version pin
         run: node ./tools/scripts/setup-dev.mjs --only=golangci-lint
 
+  fix-scope:
+    name: Fix Scope Soft Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Check fix scope justification
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node ./tools/scripts/check-fix-scope.mjs
+
   ts-lint:
     name: TypeScript Lint
     runs-on: ubuntu-latest
@@ -90,6 +112,9 @@ jobs:
 
       - name: Check renderer feature boundaries
         run: pnpm check:renderer-boundaries
+
+      - name: Check agent GUI degradation baseline
+        run: pnpm check:agent-gui-degradation
 
       - name: Check i18n
         run: pnpm check:i18n

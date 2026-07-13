@@ -1,13 +1,11 @@
 // Agent GUI controller — prompt content normalization and optimistic messages.
 
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import { mergeAgentGUITimelineItems } from "../model/agentGuiConversationModel";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
-import {
-  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
-  type WorkspaceAgentActivityMessage,
-  type WorkspaceAgentActivityTimelineItem
-} from "../../../shared/workspaceAgentActivityTypes";
+import { createWorkspaceAgentActivityUserMessageIdFromClientSubmitId } from "../../../shared/workspaceAgentMessageOverlay";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 
 export function stringPayloadValue(
   value: Record<string, unknown> | undefined,
@@ -34,7 +32,7 @@ export function createOptimisticPromptMessage(input: {
   prompt: string;
   content: AgentPromptContentBlock[];
   occurredAtUnixMs: number;
-}): WorkspaceAgentActivityMessage {
+}): AgentActivityMessage {
   const clientSubmitMessageId = input.clientSubmitId
     ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
         input.clientSubmitId
@@ -46,7 +44,6 @@ export function createOptimisticPromptMessage(input: {
   // twin and poison version-based cursors. version/id 0 keeps the echo out of
   // that domain; ordering comes from the durable/overlay split, not version.
   return {
-    id: 0,
     workspaceId: input.workspaceId,
     agentSessionId: input.agentSessionId,
     messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
@@ -67,7 +64,7 @@ export function createOptimisticPromptMessage(input: {
 }
 
 export function projectAgentGUIMessagesToTimelineItems(
-  messages: readonly WorkspaceAgentActivityMessage[]
+  messages: readonly AgentActivityMessage[]
 ): WorkspaceAgentActivityTimelineItem[] {
   return mergeAgentGUITimelineItems(
     [],

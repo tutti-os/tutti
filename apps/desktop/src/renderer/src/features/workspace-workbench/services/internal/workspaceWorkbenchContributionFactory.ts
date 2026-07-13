@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   AgentGUIProvider,
-  AgentGUIAgentsEmptyRenderer,
-  AgentGUIAgent
+  AgentGUIAgentsEmptyRenderer
 } from "@tutti-os/agent-gui";
 import type {
   TuttidClient,
@@ -25,6 +24,7 @@ import type {
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type {
   AgentProviderStatusService,
+  IAgentsService,
   IWorkspaceAgentActivityService,
   WorkspaceAgentPromptSessionService
 } from "@renderer/features/workspace-agent";
@@ -55,7 +55,6 @@ export interface DesktopWorkbenchContributionContext {
   ) => Promise<boolean> | boolean;
   dockPreviewCache: WorkbenchDockPreviewCache;
   defaultAgentProvider?: string | null;
-  defaultAgentTargetId?: string | null;
   dockIcons: {
     agentUnified: string;
     agents: Record<string, string>;
@@ -71,8 +70,7 @@ export interface DesktopWorkbenchContributionContext {
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  agents: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
+  agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   agentProviderStatusService: AgentProviderStatusService;

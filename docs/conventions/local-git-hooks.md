@@ -34,6 +34,7 @@ Current behavior:
 - `pnpm check:electron-runtime-boundaries:staged`
 - `pnpm check:ui-boundaries:staged`
 - `pnpm check:renderer-boundaries:staged`
+- `pnpm check:agent-gui-degradation:staged`
 
 Rules:
 
@@ -72,6 +73,7 @@ machine-readable task results and log paths are recorded in
 That full validation currently includes:
 
 - `pnpm check:defaults-generated`
+- `pnpm check:agent-gui-provider-catalog-generated`
 - `pnpm check:api-generated`
 - `pnpm check:event-protocol-generated`
 - `pnpm check:i18n`
@@ -166,3 +168,21 @@ It rejects:
 - externalized workspace packages that still resolve to raw source files instead of runnable JS
 
 The script also emits fix-oriented suggestions such as using a narrower non-UI subpath or adding the package to the Electron bundling exclude list when that is the intended runtime seam.
+
+## Agent GUI Degradation Enforcement
+
+The agent GUI degradation ratchet is enforced in two modes:
+
+- `pnpm check:agent-gui-degradation:staged` for `pre-commit`, blocking new
+  degradation patterns (uncommented timers, swallowed catches, stores created
+  in component files, new provider behavior branches, direct
+  `useSyncExternalStore` calls, module-level mutable globals) on staged added
+  lines under `packages/agent/gui` and `packages/agent/activity-core`
+- `pnpm check:agent-gui-degradation` for `check:full`, pull-request CI, and a
+  `check:changed` lane selected when files under `packages/agent/` or
+  `tools/degradation-baseline/` change; it compares entropy metrics against
+  the committed baseline and fails on any increase, and on any decrease that
+  is not locked in by updating the baseline in the same change
+
+Details of the metrics and baseline mechanism live in
+[Static Analysis](static-analysis.md).

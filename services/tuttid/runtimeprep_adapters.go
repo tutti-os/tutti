@@ -18,8 +18,9 @@ func (a runtimePrepCommandCatalog) Capabilities(ctx context.Context, input runti
 		return nil
 	}
 	capabilities := a.Catalog.Capabilities(ctx, cliservice.InvokeContext{
-		Source:      input.Source,
-		WorkspaceID: input.WorkspaceID,
+		Source:                input.Source,
+		WorkspaceID:           input.WorkspaceID,
+		SkipCapabilityFilters: input.SkipCapabilityFilters,
 	})
 	out := make([]runtimeprep.CommandCapability, 0, len(capabilities))
 	for _, capability := range capabilities {

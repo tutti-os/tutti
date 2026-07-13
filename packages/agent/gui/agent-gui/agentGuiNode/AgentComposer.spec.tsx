@@ -14,7 +14,6 @@ import {
 } from "@tutti-os/workspace-user-project/i18n";
 import { AgentComposer } from "./AgentComposer";
 import { textPromptContent } from "./controller/agentGuiController.promptHelpers";
-import { cursorColorfulUrl } from "../../managedAgentIconAssets";
 import {
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,
@@ -376,6 +375,8 @@ vi.mock("./AgentComposerSettingsMenus", () => ({
 
 vi.mock("./AgentSlashCommandPalette", () => ({
   AgentSlashCommandPalette: ({
+    capabilitiesLoading,
+    capabilitiesLoadingLabel,
     capabilitiesGroupLabel,
     commandsGroupLabel,
     entries,
@@ -387,6 +388,8 @@ vi.mock("./AgentSlashCommandPalette", () => ({
     pluginsGroupLabel,
     skillsGroupLabel
   }: {
+    capabilitiesLoading?: boolean;
+    capabilitiesLoadingLabel?: string;
     capabilitiesGroupLabel?: string;
     commandsGroupLabel: string;
     connectorsGroupLabel: string;
@@ -399,6 +402,7 @@ vi.mock("./AgentSlashCommandPalette", () => ({
     skillsGroupLabel: string;
   }) => (
     <div data-testid="mock-slash-palette">
+      {capabilitiesLoading ? <div>{capabilitiesLoadingLabel}</div> : null}
       {entries.some((entry) => entry.type === "command") ? (
         <div>{commandsGroupLabel}</div>
       ) : null}
@@ -524,6 +528,57 @@ vi.mock("./AgentMentionSearchController", () => ({
 }));
 
 describe("AgentComposer", () => {
+  it("shows settings loading controls before new-session composer options arrive", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsModel: false,
+          supportsReasoningEffort: false,
+          supportsSpeed: false,
+          supportsPermissionMode: false,
+          isSettingsLoading: true,
+          availableModels: [],
+          availableReasoningEfforts: [],
+          availableSpeeds: [],
+          availablePermissionModes: []
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-permission-mode-dropdown")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-model-reasoning-dropdown")
+    ).toBeInTheDocument();
+  });
+
   it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {
     render(
       <AgentComposer
@@ -630,6 +685,46 @@ describe("AgentComposer", () => {
     expect(onSettingsChange).toHaveBeenCalledWith({ browserUse: true });
   });
 
+  it("opens the slash palette while initial capabilities are loading", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="cursor"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          isCapabilityOptionsLoading: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByTestId("mock-slash-palette")).toHaveTextContent(
+      "能力加载中…"
+    );
+  });
+
   it("requests browser-use settings from the slash capability group", async () => {
     const onDraftContentChange = vi.fn();
     const onSettingsChange = vi.fn();
@@ -720,6 +815,57 @@ describe("AgentComposer", () => {
     expect(palette).toHaveTextContent("设置、查看或清除当前目标。");
     expect(palette).toHaveTextContent("发起代码审查。");
     expect(palette).toHaveTextContent("切换计划模式。");
+  });
+
+  it("uses typed catalog authority to filter provider command noise", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="claude-code"
+        draftContent={createDraft("/")}
+        availableCommands={
+          [
+            { name: "context" },
+            { name: "usage" },
+            { name: "plugin-noise" }
+          ] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          slashCommandPolicy: {
+            fallbackCommands: ["context", "usage"],
+            commandCatalogAuthoritative: true,
+            commandEffects: []
+          }
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("查看当前上下文快照。");
+    expect(palette).toHaveTextContent("查看上下文和额度用量。");
+    expect(palette).not.toHaveTextContent("plugin-noise");
   });
 
   it("shows Chinese slash command labels with English aliases in zh-CN", async () => {
@@ -1502,7 +1648,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("uses Cursor colorful artwork for Cursor in the provider switch menu", async () => {
+  it("honors target artwork in the provider switch menu", async () => {
     const codexTarget = {
       targetId: "local:codex",
       agentTargetId: "local:codex",
@@ -1557,7 +1703,7 @@ describe("AgentComposer", () => {
     const trigger = screen.getByRole("combobox", { name: "切换 Provider" });
     expect(trigger.querySelector("img")).toHaveAttribute(
       "src",
-      cursorColorfulUrl
+      "app://old-cursor-target-icon.png"
     );
 
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
@@ -1566,7 +1712,7 @@ describe("AgentComposer", () => {
       (await screen.findByRole("option", { name: "Cursor" })).querySelector(
         "img"
       )
-    ).toHaveAttribute("src", cursorColorfulUrl);
+    ).toHaveAttribute("src", "app://old-cursor-target-icon.png");
   });
 
   it("matches the browser-use slash capability by its English alias", async () => {
@@ -1738,7 +1884,11 @@ describe("AgentComposer", () => {
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings({
-          supportsPlanMode: true
+          supportsPlanMode: true,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [{ command: "plan", effect: "togglePlanMode" }]
+          }
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
@@ -1783,7 +1933,11 @@ describe("AgentComposer", () => {
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings({
-          supportsPlanMode: true
+          supportsPlanMode: true,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [{ command: "plan", effect: "togglePlanMode" }]
+          }
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
@@ -1857,12 +2011,12 @@ describe("AgentComposer", () => {
       expect(onSubmit).toHaveBeenCalledWith([
         { type: "text", text: "/goal ship the review picker" }
       ]);
-      expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+      expect(onDraftContentChange).not.toHaveBeenCalled();
       unmount();
     }
   });
 
-  it("clears the visible draft immediately after a normal prompt submit", () => {
+  it("keeps the visible draft until the engine acknowledges a normal prompt submit", () => {
     let draftContent = createDraft("run the tests");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -1909,29 +2063,22 @@ describe("AgentComposer", () => {
     expect(onSubmit).toHaveBeenCalledWith([
       { type: "text", text: "run the tests" }
     ]);
-    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    rerender(renderComposer());
+    expect(editor).toHaveValue("run the tests");
+
+    draftContent = createDraft("");
     rerender(renderComposer());
     expect(editor).toHaveValue("");
   });
 
-  it("keeps the submitted text visible when starting a brand-new conversation, until the view catches up", () => {
-    // hasActiveConversation is derived from viewModel.activeConversationId
-    // (see AgentGUINodeView wiring). startConversation in
-    // useAgentGUINodeController now flips activeConversationId synchronously
-    // on submit (optimistic entry), so in practice this prop goes true
-    // almost immediately for a brand-new conversation. This test still pins
-    // the composer's own contract — it must not eagerly clear the draft
-    // while hasActiveConversation is false — as defensive/fallback coverage
-    // for any path where the flip is delayed. Regression coverage for
-    // Feishu bug UUl2Oc: previously the composer cleared its text
-    // synchronously on submit regardless, leaving a visible gap where the
-    // input was empty and the conversation view had not appeared yet.
+  it("keeps submitted text visible until the parent acknowledges it", () => {
     let draftContent = createDraft("start a new session");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
     });
     const onSubmit = vi.fn();
-    const renderComposer = (hasActiveConversation: boolean) => (
+    const renderComposer = () => (
       <AgentComposer
         workspaceId="workspace-1"
         currentUserId="user-1"
@@ -1939,7 +2086,6 @@ describe("AgentComposer", () => {
         draftContent={draftContent}
         availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
         disabled={false}
-        hasActiveConversation={hasActiveConversation}
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings()}
@@ -1963,28 +2109,22 @@ describe("AgentComposer", () => {
         onSubmitInteractivePrompt={vi.fn()}
       />
     );
-    const { container, rerender } = render(renderComposer(false));
+    const { container, rerender } = render(renderComposer());
 
     const editor = screen.getByPlaceholderText("placeholder");
     expect(editor).toHaveValue("start a new session");
 
     fireEvent.submit(container.querySelector("form")!);
 
-    // The submit still fires immediately...
     expect(onSubmit).toHaveBeenCalledWith([
       { type: "text", text: "start a new session" }
     ]);
-    // ...but with no active conversation yet, the draft is not eagerly
-    // cleared: no gap where the input is blank and nothing has happened.
     expect(onDraftContentChange).not.toHaveBeenCalled();
-    rerender(renderComposer(false));
+    rerender(renderComposer());
     expect(editor).toHaveValue("start a new session");
 
-    // Once the conversation actually activates (activeConversationId flips
-    // and the parent authoritatively clears the draft), the composer
-    // transitions to empty together with the view — no separate gap.
     draftContent = createDraft("");
-    rerender(renderComposer(true));
+    rerender(renderComposer());
     expect(editor).toHaveValue("");
   });
 
@@ -2034,11 +2174,7 @@ describe("AgentComposer", () => {
     expect(onSubmitGuidance).toHaveBeenCalledWith(
       textPromptContent("steer the running turn")
     );
-    expect(onDraftContentChange).toHaveBeenLastCalledWith({
-      prompt: "",
-      images: [],
-      files: []
-    });
+    expect(onDraftContentChange).not.toHaveBeenCalled();
   });
 
   it("toggles a persistent status panel for the local status slash command", () => {
@@ -3965,6 +4101,7 @@ describe("AgentComposer", () => {
     expect(sendButton).not.toBeDisabled();
     expect(sendButton).toHaveAttribute("data-state", "queue");
     expect(screen.queryByRole("button", { name: "停止" })).toBeNull();
+    onDraftContentChange.mockClear();
     fireEvent.click(sendButton);
     expect(onSubmit).toHaveBeenCalledWith([
       {
@@ -3974,6 +4111,8 @@ describe("AgentComposer", () => {
         name: "screen.png"
       }
     ]);
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    draftContent = createDraft("");
     rerender(renderComposer());
     expect(
       screen.queryByTestId("agent-gui-composer-image-drafts")
@@ -4577,20 +4716,24 @@ describe("AgentComposer", () => {
     rerender(renderComposer());
 
     expect(
-      consoleInfo.mock.calls.some(
-        ([prefix, event, payload]) =>
+      consoleInfo.mock.calls.some(([prefix, serializedPayload]) => {
+        const payload = JSON.parse(String(serializedPayload));
+        return (
           prefix === "[agent-gui]" &&
-          event === "agent.gui.composer.image_upload.resolved" &&
+          payload?.event === "agent.gui.composer.image_upload.resolved" &&
           payload?.details?.hasUrl === true
-      )
+        );
+      })
     ).toBe(true);
     expect(
-      consoleInfo.mock.calls.some(
-        ([prefix, event, payload]) =>
+      consoleInfo.mock.calls.some(([prefix, serializedPayload]) => {
+        const payload = JSON.parse(String(serializedPayload));
+        return (
           prefix === "[agent-gui]" &&
-          event === "agent.gui.composer.submit_state_changed" &&
+          payload?.event === "agent.gui.composer.submit_state_changed" &&
           payload?.details?.sendDisabledReason === null
-      )
+        );
+      })
     ).toBe(true);
   });
 
@@ -5221,7 +5364,6 @@ describe("AgentComposer", () => {
       const removeButton = within(drafts).getByRole("button", {
         name: "移除引用"
       });
-      expect(removeButton).toHaveClass("z-[2]");
       fireEvent.click(removeButton);
       rerender(renderComposer());
 
@@ -5251,7 +5393,7 @@ describe("AgentComposer", () => {
     }
   });
 
-  it("clears pasted image drafts immediately after submitting", () => {
+  it("keeps pasted image drafts until the engine acknowledges submitting", () => {
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -5300,6 +5442,7 @@ describe("AgentComposer", () => {
       "data:image/png;base64,aW1hZ2U="
     );
 
+    onDraftContentChange.mockClear();
     fireEvent.submit(container.querySelector("form")!);
     expect(onSubmit).toHaveBeenCalledWith([
       {
@@ -5312,8 +5455,10 @@ describe("AgentComposer", () => {
 
     rerender(renderComposer(false));
     expect(
-      screen.queryByTestId("agent-gui-composer-image-drafts")
-    ).not.toBeInTheDocument();
+      screen.getByTestId("agent-gui-composer-image-drafts")
+    ).toBeInTheDocument();
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    draftContent = createDraft("");
     rerender(renderComposer(true));
     expect(
       screen.queryByTestId("agent-gui-composer-image-drafts")
@@ -5546,6 +5691,18 @@ function createComposerSettings(
     speedUnavailable: false,
     availableSpeeds: [],
     supportsPlanMode: false,
+    slashCommandPolicy: {
+      fallbackCommands: ["compact", "status", "fast", "goal", "review"],
+      commandEffects: [
+        { command: "init", effect: "submitImmediate" },
+        { command: "compact", effect: "submitImmediate" },
+        { command: "review", effect: "showReviewPicker" },
+        { command: "goal", effect: "activateGoalMode" },
+        { command: "plan", effect: "togglePlanMode" },
+        { command: "status", effect: "showStatus" },
+        { command: "fast", effect: "toggleSpeed" }
+      ]
+    },
     isSettingsLoading: false,
     modelUnavailable: false,
     reasoningUnavailable: false,
@@ -5628,6 +5785,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     skillPickerPalette: "技能",
     slashPaletteCommandsGroup: "命令",
     slashPaletteCapabilitiesGroup: "能力",
+    slashPaletteCapabilitiesLoading: "能力加载中…",
     slashPaletteSkillsGroup: "技能",
     slashPalettePluginsGroup: "插件",
     slashPaletteConnectorsGroup: "连接器",

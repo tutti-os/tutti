@@ -10,6 +10,7 @@ import {
 import {
   claudeRoundedUrl,
   codexRoundedUrl,
+  hermesRoundedUrl,
   manageAgentTuttiUrl,
   opencodeRoundedUrl
 } from "./managedAgentIconAssets.ts";
@@ -52,8 +53,10 @@ describe("resolveAgentGuiSessionProviderIconUrl", () => {
     );
   });
 
-  it("returns null for providers without a session icon override", () => {
-    expect(resolveAgentGuiSessionProviderIconUrl("hermes")).toBeNull();
+  it("returns the Hermes session icon from the provider catalog", () => {
+    expect(resolveAgentGuiSessionProviderIconUrl("hermes")).toBe(
+      hermesRoundedUrl
+    );
   });
 });
 
@@ -82,7 +85,9 @@ describe("resolveAgentGuiSessionProviderFlatIconUrl", () => {
     );
   });
 
-  it("returns null for providers without a flat session icon", () => {
-    expect(resolveAgentGuiSessionProviderFlatIconUrl("hermes")).toBeNull();
+  it("returns the catalog session icon for Hermes masked surfaces", () => {
+    expect(resolveAgentGuiSessionProviderFlatIconUrl("hermes")).toBe(
+      hermesRoundedUrl
+    );
   });
 });

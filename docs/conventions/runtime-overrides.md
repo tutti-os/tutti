@@ -99,18 +99,29 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_AGENT_SESSION_ID`               | This document                                                                         | Identifies the caller agent session for CLI invoke context and agent runtime logs.               |
 | `TUTTI_AGENT_ROUTING`                  | This document                                                                         | Marks provider subprocesses launched through the migrated agent routing path.                    |
 | `TUTTI_ACP_TOOL_DEBUG`                 | This document                                                                         | Enables verbose migrated ACP tool-call normalization diagnostics.                                |
-| `TUTTI_CLAUDE_CODE_RUNTIME`            | This document                                                                         | Selects the Claude Code runtime adapter. Default is `sdk`; `acp` selects the legacy ACP adapter. |
-| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the experimental Claude SDK sidecar.              |
+| `TUTTI_CLAUDE_SDK_SIDECAR_COMMAND`     | This document                                                                         | Overrides the command used by tuttid to launch the Claude SDK sidecar.                           |
 | `TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH`  | This document                                                                         | Internal packaged-desktop handoff pointing tuttid at the vendored Claude SDK sidecar entry.      |
 | `TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER` | This document                                                                         | Enables the deterministic Claude SDK sidecar test driver instead of the real SDK query loop.     |
+| `TUTTI_CLAUDE_AUTH_REFRESH_DEBUG`      | This document                                                                         | Explicitly enables sanitized Claude credential-refresh diagnostics; disabled by default.         |
+| `CLAUDE_CONFIG_DIR`                    | This document                                                                         | Selects Claude's native user configuration and credential directory; unset uses Claude defaults. |
+| `CLAUDE_CODE_EXECUTABLE`               | This document                                                                         | Selects the Claude executable passed to the Claude Agent SDK.                                    |
+| `ANTHROPIC_API_KEY`                    | This document                                                                         | Supplies Anthropic API-key authentication to Claude without modifying user config files.         |
+| `ANTHROPIC_AUTH_TOKEN`                 | This document                                                                         | Supplies Anthropic bearer-token authentication to Claude.                                        |
+| `ANTHROPIC_BASE_URL`                   | This document                                                                         | Selects a Claude-compatible Anthropic endpoint.                                                  |
+| `ANTHROPIC_API_BASE_URL`               | This document                                                                         | Preserves the alternate Anthropic endpoint variable supported by Claude tooling.                 |
+| `ANTHROPIC_MODEL`                      | This document                                                                         | Preserves Claude's native default-model override.                                                |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL`         | This document                                                                         | Preserves Claude's native Opus alias override.                                                   |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL`       | This document                                                                         | Preserves Claude's native Sonnet alias override.                                                 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`        | This document                                                                         | Preserves Claude's native Haiku alias override.                                                  |
 | `TUTTI_MOCK_AGENT_UNBOUND`             | This document                                                                         | Forces Codex unbound and Claude Code auth-required for onboarding diagnostics.                   |
 | `TUTTI_WORKSPACE_ID`                   | This document                                                                         | Supplies a workspace id to migrated agent context readers when no input id is provided.          |
 | `TUTTI_AGENT_NPM_REGISTRY`             | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md) | Pins managed agent npm installation to one registry with no fallback.                            |
 
-Claude Code provider availability follows `TUTTI_CLAUDE_CODE_RUNTIME`: the
-default `sdk` runtime checks the `claude` CLI plus the Claude SDK sidecar entry
-and Node runtime, while `acp` keeps using the legacy `claude-acp` package from
-the ACP External Agent Registry.
+Claude Code always uses the SDK sidecar runtime. Provider availability checks
+the `claude` CLI plus the Claude SDK sidecar entry and Node runtime.
+Claude-native credential and endpoint values pass through unchanged. Logs may
+record only their presence, storage source, expiry metadata, and non-reversible
+fingerprints; they must never record values, account names, or personal paths.
 
 OpenCode provider availability checks the `opencode` CLI directly and launches
 sessions through the official `opencode acp` command. Do not add model,

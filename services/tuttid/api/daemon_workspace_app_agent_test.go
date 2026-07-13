@@ -42,6 +42,7 @@ func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesDefaultToEnabledAgentTa
 				return agentstatusservice.Snapshot{
 					Providers: []agentstatusservice.ProviderStatus{
 						{Provider: "codex"},
+						{Provider: "hermes"},
 						{Provider: "opencode"},
 					},
 				}, nil
@@ -98,8 +99,8 @@ func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesDefaultToEnabledAgentTa
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
-	if !reflect.DeepEqual(capturedProviders, []string{"codex", "opencode"}) {
-		t.Fatalf("providers = %#v, want [codex opencode]", capturedProviders)
+	if !reflect.DeepEqual(capturedProviders, []string{"codex", "hermes", "opencode"}) {
+		t.Fatalf("providers = %#v, want [codex hermes opencode]", capturedProviders)
 	}
 
 	var response tuttigenerated.AgentProviderStatusListResponse
@@ -108,8 +109,8 @@ func TestDaemonAPIRoutesWorkspaceAppAgentProviderStatusesDefaultToEnabledAgentTa
 	for _, provider := range response.Providers {
 		gotProviders = append(gotProviders, string(provider.Provider))
 	}
-	if !reflect.DeepEqual(gotProviders, []string{"codex", "opencode"}) {
-		t.Fatalf("response providers = %#v, want [codex opencode]", gotProviders)
+	if !reflect.DeepEqual(gotProviders, []string{"codex", "hermes", "opencode"}) {
+		t.Fatalf("response providers = %#v, want [codex hermes opencode]", gotProviders)
 	}
 }
 

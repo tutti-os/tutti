@@ -73,22 +73,22 @@ func TestAgentActivityProjectionPublishesEventHubUpdatesAndSupportsReconcile(t *
 	}
 
 	stateEvent := receiveAgentActivityEvent(t, events, session)
-	if stateEvent.EventType != "state_patch" {
-		t.Fatalf("state event type = %q, want state_patch", stateEvent.EventType)
+	if stateEvent.EventType != "session_reconcile_required" {
+		t.Fatalf("state event type = %q, want session_reconcile_required", stateEvent.EventType)
 	}
 	stateData := agentActivityDataMap(t, stateEvent)
 	if stateData["lastEventUnixMs"] != float64(100) {
 		t.Fatalf("state event data = %#v, want lastEventUnixMs 100", stateData)
 	}
-	if stateData["title"] != "Hello from activity" || stateData["lifecycleStatus"] != "running" {
-		t.Fatalf("state event data = %#v, want inline title/status", stateData)
+	if _, leaked := stateData["lifecycleStatus"]; leaked {
+		t.Fatalf("state event data = %#v, session lifecycle must not leak into v2 event", stateData)
 	}
 
 	persisted, ok := projection.GetSession(workspaceID, agentSessionID)
 	if !ok {
 		t.Fatal("GetSession() ok = false, want true")
 	}
-	if persisted.Title != "Hello from activity" || persisted.Status != "working" {
+	if persisted.Title != "Hello from activity" || persisted.ActiveTurnID != "" {
 		t.Fatalf("persisted session = %#v", persisted)
 	}
 

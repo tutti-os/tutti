@@ -1,20 +1,90 @@
 import { setAgentGuiI18nTestLocale } from "../i18n/testUtils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type {
-  AgentHostWorkspaceAgentMessage,
-  AgentHostWorkspaceAgentSnapshot,
-  AgentHostUserInfo
-} from "./contracts/dto";
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
-import { buildAgentActivitySnapshotProjection } from "./agentActivitySnapshotProjection";
+import type { AgentHostUserInfo } from "./contracts/dto";
 import {
-  buildWorkspaceAgentActivityListViewModel,
+  normalizeAgentActivitySession,
+  type AgentActivitySessionInput,
+  type AgentActivityMessage,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import {
+  buildWorkspaceAgentActivityListViewModel as buildCanonicalWorkspaceAgentActivityListViewModel,
   collectWorkspaceAgentGeneratedFiles,
   reuseWorkspaceAgentActivityListViewModelIfUnchanged,
   type WorkspaceAgentActivityCard
 } from "./workspaceAgentActivityListViewModel";
 
-type WorkspaceAgentMessageFixture = Partial<AgentHostWorkspaceAgentMessage> & {
+function canonicalSource<
+  Source extends { sessions: readonly AgentActivitySessionInput[] }
+>(
+  source: Source
+): Omit<Source, "sessions"> & { sessions: AgentActivitySession[] } {
+  return {
+    ...source,
+    sessions: source.sessions.map((session) =>
+      normalizeAgentActivitySession(session)
+    )
+  };
+}
+
+function buildWorkspaceAgentActivityListViewModel(
+  snapshot: {
+    presences: readonly Record<string, unknown>[];
+    sessions: readonly Record<string, unknown>[];
+  },
+  options?: Parameters<
+    typeof buildCanonicalWorkspaceAgentActivityListViewModel
+  >[1]
+) {
+  const presenceById = new Map(
+    snapshot.presences.map((item) => [item.id, item])
+  );
+  const sessions = snapshot.sessions.map((raw) => {
+    const presence = presenceById.get(raw.presenceId);
+    const agentSessionId = String(
+      raw.agentSessionId ?? raw.sessionId ?? raw.id ?? "session"
+    );
+    const status = String(
+      raw.effectiveStatus ?? raw.status ?? raw.turnPhase ?? "unknown"
+    );
+    const turn = {
+      agentSessionId,
+      phase: status === "working" || status === "waiting" ? status : "settled",
+      startedAtUnixMs: 0,
+      turnId: `turn:${agentSessionId}`,
+      updatedAtUnixMs: Number(raw.updatedAtUnixMs ?? 0)
+    } as const;
+    return {
+      ...raw,
+      agentSessionId,
+      workspaceId: String(raw.workspaceId ?? "workspace-1"),
+      provider: String(raw.provider ?? ""),
+      cwd: String(raw.cwd ?? ""),
+      title: String(raw.title ?? ""),
+      ...(status === "working" || status === "waiting"
+        ? { activeTurn: turn, activeTurnId: turn.turnId }
+        : ["completed", "failed", "canceled"].includes(status)
+          ? { latestTurn: { ...turn, outcome: status } }
+          : {}),
+      userId: raw.userId ?? presence?.userId ?? ""
+    } as unknown as AgentActivitySession;
+  });
+  return buildCanonicalWorkspaceAgentActivityListViewModel(
+    {
+      presences: snapshot.presences.map((raw, index) => ({
+        id: (raw.id as string | number | undefined) ?? index,
+        workspaceId: String(raw.workspaceId ?? "workspace-1"),
+        provider: String(raw.provider ?? ""),
+        status: String(raw.status ?? "unknown"),
+        userId: typeof raw.userId === "string" ? raw.userId : null
+      })),
+      sessions
+    },
+    options
+  );
+}
+
+type WorkspaceAgentMessageFixture = Partial<AgentActivityMessage> & {
   id: number;
   agentSessionId?: string;
   content?: string;
@@ -30,12 +100,11 @@ type WorkspaceAgentMessageFixture = Partial<AgentHostWorkspaceAgentMessage> & {
 
 function callItem(
   overrides: WorkspaceAgentMessageFixture
-): AgentHostWorkspaceAgentMessage {
+): AgentActivityMessage {
   const { id, agentSessionId = "session-10", ...rest } = overrides;
   const payload = rest.payload ?? {};
   return {
     agentSessionId,
-    id,
     messageId: rest.messageId ?? rest.eventId ?? `call-${id}`,
     version: rest.version ?? id,
     turnId: rest.turnId ?? `turn-${id}`,
@@ -59,12 +128,11 @@ function callItem(
 
 function messageItem(
   overrides: WorkspaceAgentMessageFixture
-): AgentHostWorkspaceAgentMessage {
+): AgentActivityMessage {
   const { id, agentSessionId = "session-10", ...rest } = overrides;
   const payload = rest.payload ?? {};
   return {
     agentSessionId,
-    id,
     messageId: rest.messageId ?? rest.eventId ?? `message-${id}`,
     version: rest.version ?? id,
     turnId: rest.turnId ?? `turn-${id}`,
@@ -225,76 +293,6 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     expect(reused.activities[1]).toBe(firstActivity);
   });
 
-  it("builds status panel state directly from an agent activity snapshot", () => {
-    const snapshot: AgentActivitySnapshot = {
-      workspaceId: "workspace-1",
-      presences: [
-        {
-          id: 1,
-          provider: "codex",
-          status: "active",
-          userId: "local",
-          workspaceId: "workspace-1"
-        }
-      ],
-      sessions: [
-        {
-          agentSessionId: "session-core",
-          createdAtUnixMs: 1_000,
-          cwd: "/repo",
-          provider: "codex",
-          providerSessionId: "provider-core",
-          resumable: true,
-          status: "waiting",
-          title: "Pick deployment target",
-          updatedAtUnixMs: 2_000,
-          workspaceId: "workspace-1"
-        }
-      ],
-      sessionMessagesById: {
-        "session-core": [
-          {
-            agentSessionId: "session-core",
-            id: 7,
-            kind: "ask_user_question",
-            messageId: "message-7",
-            occurredAtUnixMs: 2_000,
-            payload: { title: "Use staging?" },
-            role: "assistant",
-            status: "waiting",
-            turnId: "turn-7",
-            version: 7,
-            workspaceId: "workspace-1"
-          }
-        ]
-      }
-    };
-
-    const model = buildAgentActivitySnapshotProjection(snapshot);
-
-    expect(model.needsAttentionCount).toBe(1);
-    expect(model.needsAttentionItems[0]).toMatchObject({
-      agentSessionId: "session-core",
-      kind: "question",
-      summary: "Use staging?"
-    });
-    expect(model.sessionsById["session-core"]).toMatchObject({
-      agentSessionId: "session-core",
-      providerSessionId: "provider-core",
-      resumable: true,
-      turnPhase: "waiting"
-    });
-    expect(model.sessionMessagesById["session-core"]?.[0]).toMatchObject({
-      messageId: "message-7",
-      workspaceId: "workspace-1"
-    });
-    expect(model.view.activities[0]).toMatchObject({
-      sessionId: "session-core",
-      status: "waiting",
-      title: "Pick deployment target"
-    });
-  });
-
   it("reuses unchanged activity card references when activities are added", () => {
     const firstActivity = createActivityCard({
       id: "activity-session-1",
@@ -345,7 +343,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("builds one flat card per agent session without group data", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 1,
@@ -426,8 +424,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
-  it("uses sync-state session timeline aliases when building activity summaries", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("uses the canonical session id when building activity summaries", () => {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -439,21 +437,17 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           cwd: "/repo",
           effectiveStatus: "completed",
           updatedAtUnixMs: 2000,
-          createdAtUnixMs: 2000,
-          syncState: {
-            agentSessionId: "remote-session-10",
-            status: "synced"
-          }
+          createdAtUnixMs: 2000
         }
       ]
     };
 
     const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
       sessionMessagesById: {
-        "remote-session-10": [
+        "local-session-10": [
           messageItem({
             id: 1,
-            agentSessionId: "remote-session-10",
+            agentSessionId: "local-session-10",
             content: "请分析 open code 架构设计"
           })
         ]
@@ -468,7 +462,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("prefers displayPrompt for activity titles and latest summaries", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -509,7 +503,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("treats resumed active sessions without a running turn as idle", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -536,7 +530,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("hides empty runtime sessions that only have the provider default title and no timeline", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -583,7 +577,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("hides empty core-native runtime sessions that omit legacy sessionOrigin", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -613,7 +607,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("prefers the explicit session status over the derived effective status", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -638,7 +632,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("maps canonical working sessions to working", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -663,7 +657,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("keeps lifecycle status when pending approval messages need user action", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -715,7 +709,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("treats passive active session updates as idle", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -742,7 +736,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("derives waiting from turn phase when session status still lags as idle", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -755,6 +749,13 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           lifecycleStatus: "active",
           turnPhase: "waiting_approval",
           effectiveStatus: "idle",
+          activeTurn: {
+            agentSessionId: "session-turn-waiting",
+            phase: "waiting",
+            startedAtUnixMs: 1,
+            turnId: "turn-waiting",
+            updatedAtUnixMs: 2
+          },
           title: "Server says idle"
         },
         {
@@ -767,6 +768,13 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           lifecycleStatus: "active",
           turnPhase: "waiting_input",
           effectiveStatus: "idle",
+          activeTurn: {
+            agentSessionId: "session-turn-input",
+            phase: "waiting",
+            startedAtUnixMs: 1,
+            turnId: "turn-input",
+            updatedAtUnixMs: 2
+          },
           title: "Needs input"
         },
         {
@@ -798,7 +806,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("does not derive outer working status from messages sharing a turn id", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -854,7 +862,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses user message as title when session title is the current issue placeholder", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -893,7 +901,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("does not use Claude synthetic interrupt messages as activity titles", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -949,7 +957,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses waiting only for session effective status", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -984,7 +992,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("maps ended and failed statuses and extracts changed files from turn completion items", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 2,
@@ -1067,8 +1075,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     });
   });
 
-  it("uses the latest turn status for activity cards instead of a stale failed session status", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("uses the canonical latest turn status for activity cards", () => {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1078,7 +1086,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           provider: "codex",
           providerSessionId: "provider-stale-failed",
           cwd: "/repo",
-          status: "failed",
+          status: "completed",
           title: "Recover after a failed turn"
         }
       ]
@@ -1098,8 +1106,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           callItem({
             id: 2,
             agentSessionId: "session-stale-failed",
-            messageId: "latest-completed",
-            status: "completed",
+            messageId: "latest-message",
+            status: "failed",
             turnId: "turn-2",
             version: 2
           })
@@ -1115,7 +1123,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses completed as the canonical activity status instead of end", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1137,7 +1145,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("extracts changed files from message payload metadata", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 2,
@@ -1194,7 +1202,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("falls back to Codex apply_patch payload paths when fileChanges metadata is missing", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1244,7 +1252,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("keeps changed file keys from lightweight change maps", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1296,7 +1304,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("extracts changed files from Codex Edit changes arrays", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1361,7 +1369,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("does not infer changed files from failed writes without fileChanges metadata", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1399,7 +1407,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("ignores structured payload strings in changed file paths", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1446,7 +1454,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("filters non-workspace file paths from left room status cards", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -1490,7 +1498,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("collects agent-generated files across sessions for mention picker", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1551,9 +1559,12 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     };
 
-    const files = collectWorkspaceAgentGeneratedFiles(snapshot, {
-      workspaceRoot: "/Users/demo/project"
-    });
+    const files = collectWorkspaceAgentGeneratedFiles(
+      canonicalSource(snapshot),
+      {
+        workspaceRoot: "/Users/demo/project"
+      }
+    );
 
     expect(files).toEqual([
       {
@@ -1568,7 +1579,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("collects agent-generated files from Codex Edit changes arrays", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1615,9 +1626,12 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     };
 
-    const files = collectWorkspaceAgentGeneratedFiles(snapshot, {
-      workspaceRoot: "/Users/demo/project"
-    });
+    const files = collectWorkspaceAgentGeneratedFiles(
+      canonicalSource(snapshot),
+      {
+        workspaceRoot: "/Users/demo/project"
+      }
+    );
 
     expect(files).toEqual([
       {
@@ -1636,7 +1650,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("collects agent-generated files from lightweight change maps", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1674,9 +1688,12 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     };
 
-    const files = collectWorkspaceAgentGeneratedFiles(snapshot, {
-      workspaceRoot: "/Users/demo/project"
-    });
+    const files = collectWorkspaceAgentGeneratedFiles(
+      canonicalSource(snapshot),
+      {
+        workspaceRoot: "/Users/demo/project"
+      }
+    );
 
     expect(files).toEqual([
       {
@@ -1691,7 +1708,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("filters agent-generated files to the selected session work directory", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1755,7 +1772,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     };
 
     expect(
-      collectWorkspaceAgentGeneratedFiles(snapshot, {
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
         sessionCwd: "/Users/demo/project/apps/web"
       })
     ).toEqual([
@@ -1767,7 +1784,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("collects Codex edit tool file paths from structured tool payloads", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1850,7 +1867,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     };
 
     expect(
-      collectWorkspaceAgentGeneratedFiles(snapshot, {
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
         workspaceRoot: "/Users/demo/project"
       })
     ).toEqual([
@@ -1862,7 +1879,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("does not treat Bash read commands as agent-generated files", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1917,14 +1934,14 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     };
 
     expect(
-      collectWorkspaceAgentGeneratedFiles(snapshot, {
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
         workspaceRoot: "/Users/demo/project"
       })
     ).toEqual([]);
   });
 
   it("does not collect failed file change tool payloads as agent-generated files", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -1996,7 +2013,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     };
 
     expect(
-      collectWorkspaceAgentGeneratedFiles(snapshot, {
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
         workspaceRoot: "/Users/demo/project"
       })
     ).toEqual([
@@ -2008,7 +2025,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("resolves relative agent-generated file paths against the session cwd", () => {
-    const snapshot: AgentActivitySnapshot = {
+    const snapshot = {
       workspaceId: "workspace-1",
       presences: [],
       sessions: [
@@ -2044,7 +2061,9 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       }
     };
 
-    expect(collectWorkspaceAgentGeneratedFiles(snapshot)).toEqual([
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot))
+    ).toEqual([
       {
         path: "/Users/demo/project/11.md",
         label: "11.md"
@@ -2053,7 +2072,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses the shortest unique suffix for duplicate file names on left room status cards", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2101,8 +2120,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
-  it("matches message file changes through session aliases", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+  it("matches message file changes through the canonical session id", () => {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2113,21 +2132,17 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "runtime-session-20",
           cwd: "/repo",
           status: "working",
-          title: "Implement protocol",
-          syncState: {
-            agentSessionId: "runtime-sync-session-20",
-            status: "synced"
-          }
+          title: "Implement protocol"
         }
       ]
     };
 
     const view = buildWorkspaceAgentActivityListViewModel(snapshot, {
       sessionMessagesById: {
-        "runtime-sync-session-20": [
+        "alias-session-20": [
           callItem({
             id: 1,
-            agentSessionId: "runtime-sync-session-20",
+            agentSessionId: "alias-session-20",
             name: "apply_patch",
             status: "completed",
             payload: {
@@ -2153,7 +2168,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("treats terminal lifecycle statuses as ended before effective working status", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2199,7 +2214,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses session user data when presence is missing", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2235,7 +2250,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("falls back to status summary when only tool activity is available", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 3,
@@ -2278,7 +2293,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("does not use the latest tool call as the activity summary", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 4,
@@ -2325,7 +2340,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("prefers the latest message over a newer tool call for the activity summary", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2387,7 +2402,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses the latest user message as the activity summary when it is newest", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 5,
@@ -2439,7 +2454,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses the first user message as the activity title when the session title is blank", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 5,
@@ -2490,7 +2505,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses the first user message as the activity title when the session title is a provider placeholder", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [
         {
           id: 6,
@@ -2533,7 +2548,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("uses session sort time for ordering before timeline items are loaded", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2572,7 +2587,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("orders activities by session start instead of ordinary activity messages", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2635,7 +2650,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("moves an older session up when a newer turn starts from a user message", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2697,7 +2712,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("falls back to session update time when messages have not been loaded", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2736,7 +2751,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("orders activities by session sort time regardless of status", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2790,7 +2805,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("humanizes mention markdown titles for display", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {
@@ -2813,7 +2828,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
   });
 
   it("humanizes workspace markdown link titles for display", () => {
-    const snapshot: AgentHostWorkspaceAgentSnapshot = {
+    const snapshot = {
       presences: [],
       sessions: [
         {

@@ -4,6 +4,7 @@ import {
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
 import type { DesktopBackendConfig } from "@shared/contracts/ipc";
+import { createDesktopWorkspaceAgentClient } from "./createDesktopWorkspaceAgentClient.ts";
 
 export function createDesktopTuttidClient(
   runtimeApi: DesktopRuntimeApi
@@ -38,6 +39,7 @@ export function createDesktopTuttidClient(
   };
 
   return {
+    ...createDesktopWorkspaceAgentClient(resolveClient),
     async listAgentTargets() {
       return (await resolveClient()).listAgentTargets();
     },
@@ -707,90 +709,6 @@ export function createDesktopTuttidClient(
       return (await resolveClient()).resizeWorkspaceTerminal(
         workspaceID,
         terminalID,
-        request
-      );
-    },
-    async cancelWorkspaceAgentSession(workspaceID, agentSessionID) {
-      return (await resolveClient()).cancelWorkspaceAgentSession(
-        workspaceID,
-        agentSessionID
-      );
-    },
-    async cancelWorkspaceAgentSessionWithResult(workspaceID, agentSessionID) {
-      return (await resolveClient()).cancelWorkspaceAgentSessionWithResult(
-        workspaceID,
-        agentSessionID
-      );
-    },
-    async goalControlWorkspaceAgentSession(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      return (await resolveClient()).goalControlWorkspaceAgentSession(
-        workspaceID,
-        agentSessionID,
-        request
-      );
-    },
-    async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
-      return (await resolveClient()).sendWorkspaceAgentSessionInput(
-        workspaceID,
-        agentSessionID,
-        request
-      );
-    },
-    async readWorkspaceAgentSessionAttachment(
-      workspaceID,
-      agentSessionID,
-      attachmentID
-    ) {
-      return (await resolveClient()).readWorkspaceAgentSessionAttachment(
-        workspaceID,
-        agentSessionID,
-        attachmentID
-      );
-    },
-    async listWorkspaceAgentSessionGitBranches(workspaceID, agentSessionID) {
-      return (await resolveClient()).listWorkspaceAgentSessionGitBranches(
-        workspaceID,
-        agentSessionID
-      );
-    },
-    async listWorkspaceGitBranches(workspaceID, workingDirectory) {
-      return (await resolveClient()).listWorkspaceGitBranches(
-        workspaceID,
-        workingDirectory
-      );
-    },
-    async updateWorkspaceAgentSessionSettings(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      return (await resolveClient()).updateWorkspaceAgentSessionSettings(
-        workspaceID,
-        agentSessionID,
-        request
-      );
-    },
-    async updateWorkspaceAgentSessionPin(workspaceID, agentSessionID, request) {
-      return (await resolveClient()).updateWorkspaceAgentSessionPin(
-        workspaceID,
-        agentSessionID,
-        request
-      );
-    },
-    async submitWorkspaceAgentInteractive(
-      workspaceID,
-      agentSessionID,
-      requestID,
-      request
-    ) {
-      return (await resolveClient()).submitWorkspaceAgentInteractive(
-        workspaceID,
-        agentSessionID,
-        requestID,
         request
       );
     },

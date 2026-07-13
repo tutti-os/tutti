@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import {
   attachSubAgentLanesToConversationVM,
   buildSubAgentLanesByCallId,

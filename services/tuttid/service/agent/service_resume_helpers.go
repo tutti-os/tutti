@@ -2,26 +2,21 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
-
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
 
 func (s *Service) ensureRuntimeSession(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
-) (RuntimeSession, error) {
+) (ProviderRuntimeSession, error) {
 	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	return ensured.Session, err
 }
 
 type ensuredRuntimeSession struct {
-	Session             RuntimeSession
-	StaleTurnReconciled bool
+	Session ProviderRuntimeSession
 }
 
 func (s *Service) ensureRuntimeSessionResult(
@@ -30,25 +25,10 @@ func (s *Service) ensureRuntimeSessionResult(
 	agentSessionID string,
 ) (ensuredRuntimeSession, error) {
 	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
-		// Provider data exports are marked non-resumable at import time.
-		// Enforce the marker on the fast path too, so the opt-out below does
-		// not depend on the resume path being the only way a session can end
-		// up in the runtime registry.
 		if !externalImportResumeSupported(session.RuntimeContext) {
 			return ensuredRuntimeSession{}, ErrSessionNotFound
 		}
-		staleTurnReconciled := false
-		shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
-		if err != nil {
-			return ensuredRuntimeSession{}, err
-		}
-		if shouldReconcile {
-			staleTurnReconciled, err = s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
-			if err != nil {
-				return ensuredRuntimeSession{}, err
-			}
-		}
-		return ensuredRuntimeSession{Session: session, StaleTurnReconciled: staleTurnReconciled}, nil
+		return ensuredRuntimeSession{Session: session}, nil
 	}
 	if s.SessionReader == nil {
 		return ensuredRuntimeSession{}, ErrSessionNotFound
@@ -63,13 +43,11 @@ func (s *Service) ensureRuntimeSessionResult(
 		}
 		return ensuredRuntimeSession{}, ErrSessionNotFound
 	}
-	// Imported local CLI transcripts resume in place (same-device) or, when the
-	// provider session can't be restored locally, get a fresh provider session
-	// created on demand. Provider data exports opt out because their web UUID is
-	// not a runtime session id. RecreateIfMissing stays scoped to the remaining
-	// imported transcripts and does not change normal restore-error handling.
+	// Imported local CLI transcripts can resume in place or recreate a provider
+	// session. Provider data exports explicitly opt out because their web UUID is
+	// not a provider runtime session id.
 	imported := strings.TrimSpace(persisted.Origin) == WorkspaceAgentSessionOriginImported
-	if imported && !externalImportResumeSupported(persisted.RuntimeContext) {
+	if imported && !externalImportResumeSupported(persisted.InternalRuntimeContext) {
 		return ensuredRuntimeSession{}, ErrSessionNotFound
 	}
 	prepared, err := s.prepareRuntimeForResume(ctx, persisted)
@@ -83,8 +61,9 @@ func (s *Service) ensureRuntimeSessionResult(
 	if err != nil {
 		return ensuredRuntimeSession{}, err
 	}
-	session, err := func() (RuntimeSession, error) {
+	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
+		runtimeContext := persistedSessionRuntimeContext(persisted)
 		return s.controller().Resume(ctx, RuntimeResumeInput{
 			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
 			AgentSessionID:    strings.TrimSpace(persisted.ID),
@@ -93,259 +72,19 @@ func (s *Service) ensureRuntimeSessionResult(
 			Cwd:               strings.TrimSpace(prepared.Cwd),
 			Env:               append([]string(nil), prepared.Env...),
 			Title:             strings.TrimSpace(persisted.Title),
-			Status:            strings.TrimSpace(persisted.Status),
+			Status:            persistedRuntimeResumeStatus(persisted.ActiveTurnID),
 			Settings:          cloneComposerSettings(persisted.Settings),
 			CreatedAtUnixMS:   persisted.CreatedAtUnixMS,
 			UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
-			Visible:           boolPointer(visibleFromRuntimeContext(persisted.RuntimeContext, true)),
-			RuntimeContext:    clonePayload(persisted.RuntimeContext),
+			Visible:           boolPointer(persisted.Metadata.Visible),
+			RuntimeContext:    runtimeContext,
 			RecreateIfMissing: imported,
 		})
 	}()
 	if err != nil {
 		return ensuredRuntimeSession{}, normalizeRuntimeError(err)
 	}
-	staleTurnReconciled, err := s.reconcileStaleTurnOnResume(ctx, persisted)
-	if err != nil {
-		return ensuredRuntimeSession{}, err
-	}
-	return ensuredRuntimeSession{Session: session, StaleTurnReconciled: staleTurnReconciled}, nil
-}
-
-func (s *Service) reconcilePersistedStaleTurn(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
-	if s.SessionReader == nil {
-		return false, nil
-	}
-	persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
-	if !ok {
-		return false, nil
-	}
-	return s.reconcileStaleTurnOnResume(ctx, persisted)
-}
-
-func (s *Service) shouldReconcilePersistedStaleTurn(session RuntimeSession, workspaceID string, agentSessionID string) (bool, error) {
-	if !runtimeSessionHasLiveTurn(session) {
-		return true, nil
-	}
-	return s.shouldReconcileGhostOpenApprovals(session, workspaceID, agentSessionID)
-}
-
-func (s *Service) shouldReconcileGhostOpenApprovals(session RuntimeSession, workspaceID string, agentSessionID string) (bool, error) {
-	if runtimeSessionHasLivePendingInteractive(session) {
-		return false, nil
-	}
-	if runtimeSessionHasLiveWaitingInteractiveTurn(session) {
-		return false, nil
-	}
-	if s == nil || s.MessageReader == nil {
-		return false, nil
-	}
-	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
-		WorkspaceID:    strings.TrimSpace(workspaceID),
-		AgentSessionID: strings.TrimSpace(agentSessionID),
-		Limit:          100,
-		Order:          agentactivitybiz.MessageOrderDesc,
-	})
-	if !ok {
-		return false, nil
-	}
-	return hasStaleResumeGhostApproval(page.Messages), nil
-}
-
-func (s *Service) reconcileStaleTurnOnResume(ctx context.Context, session PersistedSession) (bool, error) {
-	shouldReconcile, err := s.shouldReconcileStaleTurn(session)
-	if err != nil {
-		return false, err
-	}
-	if !shouldReconcile {
-		return false, nil
-	}
-	reconciler, ok := s.SessionReader.(StaleTurnResumeReconciler)
-	if !ok || reconciler == nil {
-		return false, nil
-	}
-	if err := reconciler.ReconcileStaleTurnOnResume(ctx, session); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func (s *Service) shouldReconcileStaleTurn(session PersistedSession) (bool, error) {
-	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported {
-		return false, nil
-	}
-	if isResumeStaleTurnStatus(session.Status) || isResumeStaleTurnStatus(session.CurrentPhase) {
-		return true, nil
-	}
-	if s == nil || s.MessageReader == nil {
-		return false, nil
-	}
-	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
-		WorkspaceID:    strings.TrimSpace(session.WorkspaceID),
-		AgentSessionID: strings.TrimSpace(session.ID),
-		Limit:          100,
-		Order:          agentactivitybiz.MessageOrderDesc,
-	})
-	if !ok {
-		return false, nil
-	}
-	return hasStaleResumeOpenToolCall(page.Messages), nil
-}
-
-func hasStaleResumeOpenToolCall(messages []SessionMessage) bool {
-	for _, message := range messages {
-		if isStaleResumeOpenToolCall(message) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasStaleResumeGhostApproval(messages []SessionMessage) bool {
-	for _, message := range messages {
-		if isStaleResumeGhostApproval(message) {
-			return true
-		}
-	}
-	return false
-}
-
-func isStaleResumeGhostApproval(message SessionMessage) bool {
-	if strings.TrimSpace(message.Kind) != "tool_call" {
-		return false
-	}
-	status := strings.TrimSpace(message.Status)
-	if status == "" {
-		status = payloadString(message.Payload, "status")
-	}
-	switch status {
-	case "waiting_approval", "waiting_input", "awaiting_approval":
-		return true
-	default:
-		return false
-	}
-}
-
-func isResumeStaleTurnStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "running", "streaming", "submitted", "working", "waiting":
-		return true
-	default:
-		return false
-	}
-}
-
-func isRuntimeActiveTurnStatus(status string) bool {
-	switch strings.TrimSpace(status) {
-	case "working":
-		return true
-	default:
-		return false
-	}
-}
-
-func runtimeSessionHasLiveTurn(session RuntimeSession) bool {
-	if isRuntimeActiveTurnStatus(session.Status) {
-		return true
-	}
-	if runtimeSessionHasLivePendingInteractive(session) {
-		return true
-	}
-	if runtimeSessionHasLiveBackgroundAgent(session) {
-		return true
-	}
-	if session.TurnLifecycle == nil {
-		return false
-	}
-	activeTurnID := ""
-	if session.TurnLifecycle.ActiveTurnID != nil {
-		activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
-	}
-	return activeTurnID != "" && isRuntimeActiveTurnPhase(session.TurnLifecycle.Phase)
-}
-
-func runtimeSessionHasLivePendingInteractive(session RuntimeSession) bool {
-	if session.PendingInteractive == nil {
-		return false
-	}
-	if strings.TrimSpace(session.PendingInteractive.RequestID) == "" {
-		return false
-	}
-	switch strings.TrimSpace(session.PendingInteractive.Status) {
-	case "completed", "failed", "canceled", "cancelled", "stopped":
-		return false
-	default:
-		return true
-	}
-}
-
-func runtimeSessionHasLiveWaitingInteractiveTurn(session RuntimeSession) bool {
-	if session.TurnLifecycle == nil {
-		return false
-	}
-	activeTurnID := ""
-	if session.TurnLifecycle.ActiveTurnID != nil {
-		activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
-	}
-	if activeTurnID == "" {
-		return false
-	}
-	switch strings.TrimSpace(session.TurnLifecycle.Phase) {
-	case "waiting_approval", "waiting_input", "awaiting_approval":
-		return true
-	default:
-		return false
-	}
-}
-
-func runtimeSessionHasLiveBackgroundAgent(session RuntimeSession) bool {
-	backgroundAgents, ok := session.RuntimeContext["backgroundAgents"].(map[string]any)
-	if !ok {
-		return false
-	}
-	if runtimeContextPositiveCount(backgroundAgents["count"]) {
-		return true
-	}
-	items, _ := backgroundAgents["items"].([]any)
-	for _, item := range items {
-		agent, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		status := strings.TrimSpace(payloadString(agent, "status"))
-		if status == "" {
-			status = "running"
-		}
-		switch status {
-		case "completed", "failed", "canceled", "cancelled", "stopped":
-			continue
-		default:
-			return true
-		}
-	}
-	return false
-}
-
-func runtimeContextPositiveCount(value any) bool {
-	switch typed := value.(type) {
-	case int:
-		return typed > 0
-	case int64:
-		return typed > 0
-	case float64:
-		return typed > 0
-	case json.Number:
-		count, err := typed.Int64()
-		return err == nil && count > 0
-	default:
-		return false
-	}
-}
-
-func isRuntimeActiveTurnPhase(phase string) bool {
-	// Delegates to the canonical predicate in activityshared; do not add
-	// phase tokens here.
-	return activityshared.TurnLifecyclePhaseIsLive(phase)
+	return ensuredRuntimeSession{Session: session}, nil
 }
 
 func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {

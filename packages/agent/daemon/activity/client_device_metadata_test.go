@@ -332,7 +332,7 @@ func TestListAgentsWithFilterSendsDeviceIDQuery(t *testing.T) {
 }
 
 func TestWorkspaceAgentSessionUnmarshalsDeviceIDLeniently(t *testing.T) {
-	var camel WorkspaceAgentSession
+	var camel ProviderActivitySessionProjection
 	if err := json.Unmarshal([]byte(`{"agentSessionId":"session-1","deviceId":"device-1"}`), &camel); err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestWorkspaceAgentSessionUnmarshalsDeviceIDLeniently(t *testing.T) {
 		t.Fatalf("camelCase deviceId = %q, want device-1", camel.DeviceID)
 	}
 
-	var snake WorkspaceAgentSession
+	var snake ProviderActivitySessionProjection
 	if err := json.Unmarshal([]byte(`{"agent_session_id":"session-1","device_id":"device-2"}`), &snake); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestWorkspaceAgentSessionUnmarshalsDeviceIDLeniently(t *testing.T) {
 		t.Fatalf("snake_case device_id = %q, want device-2", snake.DeviceID)
 	}
 
-	roundtrip, err := json.Marshal(WorkspaceAgentSession{AgentSessionID: "session-1", DeviceID: "device-1"})
+	roundtrip, err := json.Marshal(ProviderActivitySessionProjection{AgentSessionID: "session-1", DeviceID: "device-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

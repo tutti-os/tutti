@@ -2,16 +2,11 @@ import type {
   WorkspaceAgentSessionDetailTurn,
   WorkspaceAgentSessionDetailViewModel
 } from "../../workspaceAgentSessionDetailViewModel";
-import type { AgentApprovalItemVM } from "../contracts/agentApprovalItemVM";
-import type {
-  AgentConversationPendingInteractivePromptVM,
-  AgentConversationVM
-} from "../contracts/agentConversationVM";
+import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
-import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import {
   buildAgentTurnSequenceItems,
@@ -19,11 +14,15 @@ import {
 } from "./agentToolGroupingProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
-import { linkifyPastedTextReferences } from "../../../agent-gui/agentGuiNode/model/agentComposerDraft";
 import {
   projectAgentTurnSummaryRowForTurn,
   projectAgentTurnSummaryRows
 } from "./agentTurnSummaryProjection";
+import {
+  selectConversationPendingApproval,
+  selectConversationPendingInteractivePrompt
+} from "./agentConversationInteractionProjection";
+import { projectConversationUserRows } from "./agentConversationUserProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -44,7 +43,7 @@ export function projectAgentConversationVM(
   const allowTrailingToolGrouping = !isSessionWorking(detail);
 
   turns.forEach((turn, index) => {
-    rows.push(...projectUserRows(turn, detail.session.workspaceId));
+    rows.push(...projectConversationUserRows(turn, detail.session.workspaceId));
     rows.push(
       ...projectTurnAgentRows(turn, {
         agentSessionId: detail.session.agentSessionId,
@@ -93,8 +92,9 @@ export function projectAgentConversationVM(
     workspaceRoot: detail.workspaceRoot,
     sourceDetail: detail,
     rows: normalizedRows,
-    pendingApproval: selectPendingApproval(normalizedRows),
-    pendingInteractivePrompt: selectPendingInteractivePrompt(normalizedRows)
+    pendingApproval: selectConversationPendingApproval(normalizedRows),
+    pendingInteractivePrompt:
+      selectConversationPendingInteractivePrompt(normalizedRows)
   };
 }
 
@@ -269,7 +269,7 @@ function dropCodexRuntimeDiagnosticNotices(
       continue;
     }
     const messages = row.messages.filter(
-      (message) => !isCodexRuntimeDiagnosticNotice(message)
+      (message) => !isCodexSkillsContextBudgetNotice(message)
     );
     if (messages.length === 0 && row.thinking.length === 0) {
       continue;
@@ -283,7 +283,7 @@ function dropCodexRuntimeDiagnosticNotices(
   return filteredRows;
 }
 
-function isCodexRuntimeDiagnosticNotice(
+function isCodexSkillsContextBudgetNotice(
   message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
@@ -588,251 +588,20 @@ function shouldShowLatestTurnSummaryFallback(
 function isLatestTurnSettled(
   detail: WorkspaceAgentSessionDetailViewModel
 ): boolean {
-  const status = normalizedSessionDisplayStatus(detail);
-  return !isUnsettledSessionStatus(status);
+  const phase = detail.session.activeTurn?.phase.trim().toLowerCase() ?? "";
+  const canonicalTurnUnsettled = [
+    "submitted",
+    "running",
+    "waiting",
+    "settling"
+  ].includes(phase);
+  return detail.showProcessingIndicator !== true && !canonicalTurnUnsettled;
 }
 
 function isSessionWorking(
   detail: WorkspaceAgentSessionDetailViewModel
 ): boolean {
-  const status = normalizedSessionDisplayStatus(detail);
-  return isWorkingSessionStatus(status);
-}
-
-function isWorkingSessionStatus(status: string): boolean {
-  return status === "working";
-}
-
-function isUnsettledSessionStatus(status: string): boolean {
-  return isWorkingSessionStatus(status) || status === "waiting";
-}
-
-function normalizeStatusToken(status: string | null | undefined): string {
-  return status?.trim().toLowerCase() ?? "";
-}
-
-function normalizedSessionDisplayStatus(
-  detail: WorkspaceAgentSessionDetailViewModel
-): string {
-  const session = detail.session as {
-    effectiveStatus?: string | null;
-    turnPhase?: string | null;
-    status?: string | null;
-  };
-  return normalizeStatusToken(
-    session.effectiveStatus ?? session.turnPhase ?? session.status
-  );
-}
-
-function projectUserRows(
-  turn: WorkspaceAgentSessionDetailTurn,
-  workspaceId: string | null | undefined
-): AgentMessageRowVM[] {
-  return turn.userMessages.map((message) => {
-    const turnId = message.turnId ?? turn.id;
-    return {
-      kind: "message",
-      id: `message:user:${message.id}`,
-      turnId,
-      speaker: "user",
-      messages: projectUserMessageContentParts(message, turnId, workspaceId),
-      thinking: [],
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null
-    };
-  });
-}
-
-function projectUserMessageContentParts(
-  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
-  turnId: string,
-  workspaceId: string | null | undefined
-): AgentMessageContentVM[] {
-  const blocks = userPromptContentBlocks(message, workspaceId);
-  if (blocks.length === 0) {
-    return [
-      {
-        kind: "message-content",
-        id: message.id,
-        turnId,
-        body: message.body,
-        contentKind: "text",
-        occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-        sourceTimelineItems: message.sourceTimelineItems
-      }
-    ];
-  }
-
-  const parts: AgentMessageContentVM[] = [];
-  const imageBlocks = blocks.filter(
-    (block): block is UserPromptImageBlock => block.type === "image"
-  );
-  if (imageBlocks.length > 0) {
-    parts.push({
-      kind: "message-content",
-      id: `${message.id}:images:0`,
-      turnId,
-      body: "",
-      contentKind: "image-grid",
-      images: imageBlocks.map((image, index) => ({
-        id:
-          image.path || image.attachmentId || `${message.id}:image:0:${index}`,
-        workspaceId: image.workspaceId,
-        agentSessionId: image.agentSessionId,
-        attachmentId: image.attachmentId,
-        mimeType: image.mimeType,
-        name: image.name,
-        data: image.data,
-        url: image.url,
-        path: image.path
-      })),
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-      sourceTimelineItems: message.sourceTimelineItems
-    });
-  }
-
-  blocks.forEach((block, index) => {
-    if (block.type === "image") {
-      return;
-    }
-    if (block.text.trim() === "") {
-      return;
-    }
-    parts.push({
-      kind: "message-content",
-      id: `${message.id}:text:${index}`,
-      turnId,
-      body: block.text,
-      contentKind: "text",
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-      sourceTimelineItems: message.sourceTimelineItems
-    });
-  });
-
-  return parts.length > 0
-    ? parts
-    : [
-        {
-          kind: "message-content",
-          id: message.id,
-          turnId,
-          body: message.body,
-          contentKind: "text",
-          occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-          sourceTimelineItems: message.sourceTimelineItems
-        }
-      ];
-}
-
-type UserPromptContentBlock = UserPromptTextBlock | UserPromptImageBlock;
-
-interface UserPromptTextBlock {
-  type: "text";
-  text: string;
-}
-
-interface UserPromptImageBlock {
-  type: "image";
-  workspaceId?: string | null;
-  agentSessionId: string;
-  attachmentId?: string | null;
-  mimeType: string;
-  name?: string | null;
-  data?: string | null;
-  url?: string | null;
-  path?: string | null;
-}
-
-function userPromptContentBlocks(
-  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
-  fallbackWorkspaceId: string | null | undefined
-): UserPromptContentBlock[] {
-  const item = message.sourceTimelineItems?.find((candidate) =>
-    Array.isArray(candidate.payload?.content)
-  );
-  const content = Array.isArray(item?.payload?.content)
-    ? item.payload.content
-    : null;
-  if (!content) {
-    return [];
-  }
-  const displayPrompt = firstString(
-    message.sourceTimelineItems?.map((candidate) =>
-      typeof candidate.payload?.displayPrompt === "string"
-        ? candidate.payload.displayPrompt
-        : ""
-    ) ?? []
-  );
-  const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
-    const block =
-      raw && typeof raw === "object" && !Array.isArray(raw)
-        ? (raw as Record<string, unknown>)
-        : null;
-    if (!block) {
-      return [];
-    }
-    if (block.type === "text" && typeof block.text === "string") {
-      if (displayPrompt) {
-        return [];
-      }
-      // Reload-safe pasted-text chips: the persisted content carries the
-      // codex-style "Referenced pasted text files: - pasted text file: <path>"
-      // instruction; rewrite it back into the same mention chips the optimistic
-      // display prompt renders, so a refreshed message stays consistent.
-      return [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
-    }
-    if (block.type !== "image") {
-      return [];
-    }
-    const mimeType =
-      typeof block.mimeType === "string" && block.mimeType.trim()
-        ? block.mimeType.trim()
-        : "";
-    if (!mimeType) {
-      return [];
-    }
-    return [
-      {
-        type: "image",
-        workspaceId: item?.workspaceId ?? fallbackWorkspaceId ?? null,
-        agentSessionId: item?.agentSessionId ?? message.id,
-        attachmentId:
-          typeof block.attachmentId === "string" && block.attachmentId.trim()
-            ? block.attachmentId.trim()
-            : null,
-        mimeType,
-        name:
-          typeof block.name === "string" && block.name.trim()
-            ? block.name.trim()
-            : null,
-        data:
-          typeof block.data === "string" && block.data.trim()
-            ? block.data.trim()
-            : null,
-        url:
-          typeof block.url === "string" && block.url.trim()
-            ? block.url.trim()
-            : null,
-        path:
-          typeof block.path === "string" && block.path.trim()
-            ? block.path.trim()
-            : null
-      }
-    ];
-  });
-  if (!displayPrompt) {
-    return blocks;
-  }
-  return [{ type: "text", text: displayPrompt }, ...blocks];
-}
-
-function firstString(values: readonly string[]): string {
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-  return "";
+  return detail.showProcessingIndicator === true;
 }
 
 function projectTurnAgentRows(
@@ -851,254 +620,4 @@ function projectTurnAgentRows(
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
   return projectTurnRows(sequence, groups, skippedIndices, turn.id);
-}
-
-function selectPendingApproval(
-  rows: readonly AgentTranscriptRowVM[]
-): AgentApprovalItemVM | null {
-  for (const row of [...rows].reverse()) {
-    if (row.kind !== "tool-group") {
-      continue;
-    }
-    for (const call of toolCallsFromRow(row).reverse()) {
-      const nestedApproval = pendingApprovalFromNestedTask(call);
-      if (nestedApproval) {
-        return nestedApproval;
-      }
-      const approval = call.approval ?? fallbackApprovalFromCall(call);
-      if (
-        approval &&
-        normalizeApprovalPendingStatus(
-          approval.status ?? call.status,
-          call.statusKind
-        ) &&
-        !approval.output
-      ) {
-        return approval;
-      }
-    }
-  }
-  return null;
-}
-
-// A delegated Task/subagent call renders its own tool activity as nested
-// `task.steps`, each carrying a fully-projected AgentToolCallVM (including its
-// own `approval`, recursively, for sub-subagents). Those nested calls never
-// appear in `toolCallsFromRow`, so without this a subagent step waiting on
-// approval was invisible to the parent conversation's `pendingApproval` --
-// the bottom-dock prompt would never mount even though the delegated tool
-// call was genuinely blocked on a human decision.
-function pendingApprovalFromNestedTask(
-  call: AgentToolCallVM
-): AgentApprovalItemVM | null {
-  if (!call.task) {
-    return null;
-  }
-  for (const step of [...call.task.steps].reverse()) {
-    const stepCall = step.tool;
-    if (!stepCall) {
-      continue;
-    }
-    const nestedApproval = pendingApprovalFromNestedTask(stepCall);
-    if (nestedApproval) {
-      return nestedApproval;
-    }
-    const approval = stepCall.approval ?? fallbackApprovalFromCall(stepCall);
-    if (
-      approval &&
-      normalizeApprovalPendingStatus(
-        approval.status ?? stepCall.status,
-        stepCall.statusKind
-      ) &&
-      !approval.output
-    ) {
-      return approval;
-    }
-  }
-  return null;
-}
-
-function selectPendingInteractivePrompt(
-  rows: readonly AgentTranscriptRowVM[]
-): AgentConversationPendingInteractivePromptVM | null {
-  for (const row of [...rows].reverse()) {
-    if (row.kind !== "tool-group") {
-      continue;
-    }
-    for (const call of toolCallsFromRow(row).reverse()) {
-      const prompt = pendingInteractivePromptFromCall(call);
-      if (prompt) {
-        return prompt;
-      }
-    }
-  }
-  return null;
-}
-
-// See pendingApprovalFromNestedTask: a delegated Task/subagent call's own
-// ask-user / exit-plan prompts live under `task.steps`, not in the parent
-// row's flat call list, so they need the same nested lookup.
-function pendingInteractivePromptFromCall(
-  call: AgentToolCallVM
-): AgentConversationPendingInteractivePromptVM | null {
-  if (
-    call.askUserQuestion &&
-    normalizeInteractivePendingStatus(
-      call.askUserQuestion.status ?? call.status,
-      call.statusKind
-    ) &&
-    call.askUserQuestion.questions.some((question) => question.answer === null)
-  ) {
-    return {
-      kind: "ask-user",
-      requestId: call.askUserQuestion.requestId,
-      title: call.askUserQuestion.title,
-      questions: call.askUserQuestion.questions
-    };
-  }
-  if (
-    call.planMode?.kind === "exit" &&
-    normalizeInteractivePendingStatus(
-      call.planMode.status ?? call.status,
-      call.statusKind
-    )
-  ) {
-    return {
-      kind: "exit-plan",
-      requestId: call.planMode.requestId ?? call.id.replace(/^call:/, ""),
-      title: call.planMode.title,
-      options: call.planMode.options ?? [],
-      ...(call.planMode.keepPlanningOptionId
-        ? { keepPlanningOptionId: call.planMode.keepPlanningOptionId }
-        : {})
-    };
-  }
-  if (!call.task) {
-    return null;
-  }
-  for (const step of [...call.task.steps].reverse()) {
-    if (!step.tool) {
-      continue;
-    }
-    const prompt = pendingInteractivePromptFromCall(step.tool);
-    if (prompt) {
-      return prompt;
-    }
-  }
-  return null;
-}
-
-function toolCallsFromRow(
-  row: Extract<AgentTranscriptRowVM, { kind: "tool-group" }>
-): AgentToolCallVM[] {
-  return row.calls.length > 0
-    ? [...row.calls]
-    : row.entries.flatMap((entry) =>
-        entry.kind === "tool-call" ? [entry.call] : []
-      );
-}
-
-function normalizeApprovalPendingStatus(
-  value: string | null | undefined,
-  statusKind: AgentToolCallVM["statusKind"]
-): boolean {
-  if (statusKind === "waiting") {
-    return true;
-  }
-  const normalized = (value ?? "").trim().toLowerCase();
-  switch (normalized) {
-    case "awaiting_approval":
-    case "requested":
-    case "waiting_approval":
-    case "waiting":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function normalizeInteractivePendingStatus(
-  value: string | null | undefined,
-  statusKind: AgentToolCallVM["statusKind"]
-): boolean {
-  if (statusKind === "waiting" || statusKind === "working") {
-    return true;
-  }
-  const normalized = (value ?? "").trim().toLowerCase();
-  return (
-    normalized === "waiting_input" ||
-    normalized === "waiting" ||
-    normalized === "pending" ||
-    normalized === "running" ||
-    normalized === "streaming" ||
-    normalized === "working"
-  );
-}
-
-function fallbackApprovalFromCall(
-  call: AgentToolCallVM
-): AgentApprovalItemVM | null {
-  if (call.rendererKind !== "approval") {
-    return null;
-  }
-  const rawOptions = Array.isArray(call.input?.options)
-    ? call.input.options
-    : [];
-  const options = rawOptions.flatMap((option) => {
-    const record =
-      option && typeof option === "object" && !Array.isArray(option)
-        ? (option as Record<string, unknown>)
-        : null;
-    const id =
-      typeof record?.id === "string" && record.id.trim()
-        ? record.id.trim()
-        : typeof record?.optionId === "string" && record.optionId.trim()
-          ? record.optionId.trim()
-          : "";
-    if (!id) {
-      return [];
-    }
-    return [
-      {
-        id,
-        label:
-          typeof record?.name === "string" && record.name.trim()
-            ? record.name.trim()
-            : typeof record?.label === "string" && record.label.trim()
-              ? record.label.trim()
-              : id,
-        kind:
-          typeof record?.kind === "string" && record.kind.trim()
-            ? record.kind.trim()
-            : id,
-        ...(typeof record?.description === "string" && record.description.trim()
-          ? { description: record.description.trim() }
-          : {})
-      }
-    ];
-  });
-  const requestId =
-    (typeof call.input?.requestId === "string" && call.input.requestId.trim()
-      ? call.input.requestId.trim()
-      : null) ?? call.id.replace(/^call:/, "");
-  if (!requestId || options.length === 0) {
-    return null;
-  }
-  return {
-    kind: "approval",
-    id: call.id,
-    turnId: call.turnId,
-    requestId,
-    callId: call.id.replace(/^call:/, ""),
-    title: call.summary.trim() || call.name,
-    status:
-      typeof call.payload?.status === "string" && call.payload.status.trim()
-        ? call.payload.status.trim()
-        : call.status,
-    toolName: call.toolName,
-    input: call.input,
-    options,
-    output: call.output,
-    occurredAtUnixMs: call.occurredAtUnixMs
-  };
 }

@@ -1,15 +1,8 @@
 import type {
   AgentHostBatchUserInfoInput,
   AgentHostBatchUserInfoResult,
-  AgentHostDeleteWorkspaceAgentSessionInput,
-  AgentHostWorkspaceAgentListInput as AgentHostListWorkspaceAgentsInput,
   AgentHostListWorkspaceAgentProbesInput,
-  AgentHostWorkspaceAgentSessionMessages,
-  AgentHostWorkspaceAgentSessionMessagesInput,
-  AgentHostWorkspaceAgentSessionSummary,
-  AgentHostWorkspaceAgentSessionSummaryInput,
   AgentHostWorkspaceAgentProbesResult,
-  AgentHostWorkspaceAgentSnapshot,
   PersistWriteResult,
   ReadWorkspaceAgentReadStateInput,
   ReadWorkspaceFileResult as AgentHostReadWorkspaceFileResult,
@@ -21,21 +14,6 @@ import type { WorkspaceUserProjectService } from "@tutti-os/workspace-user-proje
 type AgentHostAsyncResult<T = any> = Promise<T>;
 type AgentHostRecord = Record<string, unknown>;
 type AgentHostUnsubscribe = () => void;
-type AgentHostWorkspaceScopedInput<
-  T extends {
-    workspaceId?: string | null;
-  }
-> = Omit<T, "workspaceId"> & {
-  workspaceId: string;
-};
-type AgentHostWorkspaceAgentsListInput =
-  AgentHostWorkspaceScopedInput<AgentHostListWorkspaceAgentsInput>;
-type AgentHostWorkspaceAgentSessionMessagesRuntimeInput =
-  AgentHostWorkspaceScopedInput<AgentHostWorkspaceAgentSessionMessagesInput>;
-type AgentHostWorkspaceAgentSessionSummaryRuntimeInput =
-  AgentHostWorkspaceScopedInput<AgentHostWorkspaceAgentSessionSummaryInput>;
-type AgentHostDeleteWorkspaceAgentSessionRuntimeInput =
-  AgentHostWorkspaceScopedInput<AgentHostDeleteWorkspaceAgentSessionInput>;
 
 export type AgentHostClipboardApi = {
   writeImage?: (input: {
@@ -76,7 +54,6 @@ export type AgentHostMetaApi = AgentHostRecord & {
 
 export type AgentHostEnvironmentApi = AgentHostRecord & {
   getBaseUrl?: () => AgentHostAsyncResult<string>;
-  warmupOpenclawGateway?: (input?: unknown) => AgentHostAsyncResult<unknown>;
 };
 
 export type AgentHostPersistenceApi = AgentHostRecord & {
@@ -176,7 +153,6 @@ export interface AgentHostInputApi {
   userProjects?: AgentHostUserProjectsApi;
   workspace: AgentHostWorkspaceApi;
   workspaceAgentProbes?: AgentHostWorkspaceAgentProbesApi;
-  workspaceAgents?: AgentHostWorkspaceAgentsApi;
 }
 
 export type AgentHostApi = AgentHostInputApi;
@@ -254,78 +230,15 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
 
 export type AgentHostAgentSessionsApi = AgentHostRecord & {
   activate: (input: any) => AgentHostAsyncResult<any>;
-  /**
-   * @deprecated AgentGUI production writes must use AgentActivityRuntime.cancelSession.
-   */
-  cancel: (input: any) => AgentHostAsyncResult<any>;
-  /**
-   * @deprecated AgentGUI production writes must use AgentActivityRuntime.sendInput.
-   */
-  exec: (input: any) => AgentHostAsyncResult<any>;
   getComposerOptions?: (input: any) => AgentHostAsyncResult<any>;
   getState: (input: any) => AgentHostAsyncResult<any>;
   onEvent?: (listener: (event: any) => void) => AgentHostUnsubscribe;
-  /**
-   * @deprecated AgentGUI production writes must use AgentActivityRuntime.setSessionPinned.
-   */
-  pinSession?: (input: any) => AgentHostAsyncResult<any>;
-  /**
-   * @deprecated AgentGUI production sync must use AgentActivityRuntime.ensureSessionSynchronized.
-   */
-  releaseEventStream?: (input?: any) => AgentHostAsyncResult;
-  /**
-   * @deprecated AgentGUI production sync must use AgentActivityRuntime.ensureSessionSynchronized.
-   */
-  retainEventStream?: (input: any) => AgentHostAsyncResult;
-  /**
-   * @deprecated AgentGUI production writes must use AgentActivityRuntime.submitInteractive.
-   */
-  submitInteractive: (input: any) => AgentHostAsyncResult<any>;
-  /**
-   * @deprecated AgentGUI production UI must derive events from AgentActivityRuntime snapshots.
-   */
-  trackSettingsProjectChange?: (input: {
-    action: "clear" | "create_new" | "select_existing";
-    agentSessionId: string;
-    provider?: string | null;
-  }) => AgentHostAsyncResult<void>;
   subscribeEvents: (
     input: any,
     listener: (event: any) => void
   ) => AgentHostUnsubscribe;
   unactivate: (input: any) => AgentHostAsyncResult<any>;
   updateSettings: (input: any) => AgentHostAsyncResult<any>;
-};
-
-/**
- * @deprecated Legacy host DTO projection. AgentGUI production reads and writes
- * must use AgentActivityRuntime and AgentActivity* models.
- */
-export type AgentHostWorkspaceAgentsApi = AgentHostRecord & {
-  /**
-   * @deprecated Use AgentActivityRuntime.deleteSession.
-   */
-  deleteSession: (
-    input: AgentHostDeleteWorkspaceAgentSessionRuntimeInput
-  ) => AgentHostAsyncResult<any>;
-  /**
-   * @deprecated Derive summaries from AgentActivitySnapshot/session messages.
-   */
-  getSessionSummary: (
-    input: AgentHostWorkspaceAgentSessionSummaryRuntimeInput
-  ) => AgentHostAsyncResult<AgentHostWorkspaceAgentSessionSummary>;
-  /**
-   * @deprecated Use AgentActivityRuntime.load/getSnapshot.
-   */
-  list: (
-    input: string | AgentHostWorkspaceAgentsListInput
-  ) => AgentHostAsyncResult<AgentHostWorkspaceAgentSnapshot>;
-  /**
-   * @deprecated Use AgentActivityRuntime.listSessionMessages.
-   */
-  listSessionMessages: (
-    input: AgentHostWorkspaceAgentSessionMessagesRuntimeInput
-  ) => AgentHostAsyncResult<AgentHostWorkspaceAgentSessionMessages>;
 };
 
 export interface AgentHostRuntimeApi {

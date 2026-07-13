@@ -136,6 +136,22 @@
   background: rgb(0 0 0 / 0%);
 }
 
+.tsh-zoom-dialog[data-closing="true"] {
+  animation: tsh-zoom-dialog-close 180ms ease-out forwards;
+}
+
+@keyframes tsh-zoom-dialog-close {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tsh-zoom-dialog[data-closing="true"] {
+    animation-duration: 1ms;
+  }
+}
+
 .tsh-zoom-dialog [data-rmiz-btn-unzoom] {
   position: fixed;
   top: max(20px, calc(var(--cove-titlebar-reserve, 0px) + 10px));
@@ -9128,63 +9144,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   object-fit: contain;
   animation: agent-gui-empty-hero-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms
     both;
-}
-
-.agent-gui-node__empty-hero-icon-rail {
-  display: flex;
-  width: min(216px, 44vw);
-  height: 64px;
-  align-items: center;
-  overflow: hidden;
-  object-fit: unset;
-}
-
-.agent-gui-node__empty-hero-icon-rail-scroller {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 20px;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  mask-image: linear-gradient(
-    90deg,
-    transparent 0,
-    #000 24px,
-    #000 calc(100% - 24px),
-    transparent 100%
-  );
-}
-
-.agent-gui-node__empty-hero-icon-rail-scroller::-webkit-scrollbar {
-  display: none;
-}
-
-.agent-gui-node__empty-hero-icon-rail-item {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  place-items: center;
-  scroll-snap-align: center;
-  transition:
-    opacity 140ms ease,
-    transform 140ms ease;
-}
-
-.agent-gui-node__empty-hero-icon-rail-item:hover {
-  transform: translateY(-1px);
-}
-
-.agent-gui-node__empty-hero-icon-rail-item > img {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
 }
 
 /* Empty-hero agent carousel ("All" tab): a three.js ring of same-sized agent

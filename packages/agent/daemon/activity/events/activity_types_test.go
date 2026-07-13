@@ -30,6 +30,21 @@ func TestNormalizeProviderMapsSupportedAgentsToServerValues(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderUsesMigratedProviderIdentities(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]Provider{
+		" CODEX ":       ProviderCodex,
+		" opencode-ai ": ProviderOpenCode,
+	}
+	for input, want := range tests {
+		provider, ok := NormalizeProvider(input)
+		if !ok || provider != want {
+			t.Fatalf("NormalizeProvider(%q) = %q, %v; want %q, true", input, provider, ok, want)
+		}
+	}
+}
+
 func TestNormalizeProviderRejectsTuttiAsNexightAlias(t *testing.T) {
 	t.Parallel()
 

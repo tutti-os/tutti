@@ -116,14 +116,11 @@ export interface WorkspaceWorkbenchHostSessionUpdate {
     request: WorkbenchHostCloseDialogRequest
   ) => Promise<boolean> | boolean;
   defaultAgentProvider?: string | null;
-  defaultAgentTargetId?: string | null;
   dockIconStyle: DesktopDockIconStyle;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
   ) => void;
-  agents?: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext

@@ -265,6 +265,31 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("resolves local file links from the session cwd without a project root", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content={"打开 [index.html](/Users/local/session-1/index.html)"}
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: null,
+          basePath: "/Users/local/session-1",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "index.html" }));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/Users/local/session-1/index.html",
+      directoryPath: "/Users/local/session-1",
+      workspaceRoot: "/Users/local/session-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("resolves home-relative markdown file links when workspace context is provided", () => {
     const onLinkAction = vi.fn();
     render(

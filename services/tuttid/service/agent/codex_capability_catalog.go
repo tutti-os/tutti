@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 const codexAppServerCapabilityListTimeout = 8 * time.Second
@@ -52,14 +52,41 @@ func discoverComposerCapabilityOptions(
 	fallbackSkills []ComposerSkillOption,
 ) ([]ComposerCapabilityOption, []string) {
 	fallback := composerCapabilityCatalogFromSkills(provider, fallbackSkills)
-	if agentprovider.Normalize(provider) != agentprovider.Codex {
+	lister, ok, err := composerCapabilityCatalogLister(composerProfileFor(provider))
+	if err != nil {
+		return fallback, []string{err.Error()}
+	}
+	if !ok {
 		return fallback, nil
 	}
-	options, err := (CodexCLICapabilityLister{}).List(ctx, cwd)
+	options, err := lister.List(ctx, cwd)
 	if err != nil {
 		return fallback, []string{err.Error()}
 	}
 	return mergeComposerCapabilityOptions(fallback, options), nil
+}
+
+func composerCapabilityCatalogLister(profile composerProfile) (CodexCLICapabilityLister, bool, error) {
+	switch profile.CapabilityCatalogKind {
+	case "":
+		return CodexCLICapabilityLister{}, false, nil
+	case providerregistry.CapabilityCatalogKindCodexAppServer:
+		command := append([]string(nil), profile.CapabilityCatalogCommand...)
+		if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
+			return CodexCLICapabilityLister{}, false, fmt.Errorf("capability catalog command is required")
+		}
+		for index, argument := range command[1:] {
+			if strings.TrimSpace(argument) == "" {
+				return CodexCLICapabilityLister{}, false, fmt.Errorf("capability catalog command argument %d is empty", index+1)
+			}
+		}
+		return CodexCLICapabilityLister{
+			Command: command[0],
+			Args:    command[1:],
+		}, true, nil
+	default:
+		return CodexCLICapabilityLister{}, false, fmt.Errorf("unsupported capability catalog kind %q", profile.CapabilityCatalogKind)
+	}
 }
 
 func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]ComposerCapabilityOption, error) {
@@ -72,7 +99,7 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 
 	command := strings.TrimSpace(l.Command)
 	if command == "" {
-		command = "codex"
+		return nil, fmt.Errorf("capability catalog command is required")
 	}
 	resolver := runtimecmd.Resolver{
 		Environ:          l.Environ,
@@ -83,9 +110,6 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	processEnv := resolver.Env(nil)
 	command = resolver.Resolve(command, processEnv)
 	args := append([]string{}, l.Args...)
-	if len(args) == 0 {
-		args = []string{"app-server"}
-	}
 	cmd := exec.CommandContext(processCtx, command, args...)
 	cmd.Env = processEnv
 	cmd.WaitDelay = codexAppServerShutdownWaitDelay

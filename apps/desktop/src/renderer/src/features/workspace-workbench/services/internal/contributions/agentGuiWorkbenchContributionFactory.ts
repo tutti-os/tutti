@@ -7,14 +7,12 @@ import { createWorkspaceAgentGuiContribution } from "../workspaceAgentGuiContrib
 type AgentGuiWorkbenchContributionContext = Pick<
   DesktopWorkbenchContributionContext,
   | "agentProviderStatusService"
-  | "agents"
-  | "agentsLoading"
+  | "agentsService"
   | "appCenterService"
   | "appI18n"
   | "comingSoonAgentProviders"
   | "computerUseApi"
   | "defaultAgentProvider"
-  | "defaultAgentTargetId"
   | "dockIcons"
   | "dockPreviewCache"
   | "hostFilesApi"
@@ -47,13 +45,11 @@ export const agentGuiWorkbenchContributionFactory: DesktopWorkbenchContributionF
         unifiedDockIconUrl: context.dockIcons.agentUnified,
         dockPreviewCache: context.dockPreviewCache,
         defaultAgentProvider: context.defaultAgentProvider,
-        defaultAgentTargetId: context.defaultAgentTargetId,
         hostFilesApi: context.hostFilesApi,
         hostWindowApi: context.hostWindowApi,
         i18n: context.i18n,
         onCapabilitySettingsRequest: context.onCapabilitySettingsRequest,
-        agents: context.agents,
-        agentsLoading: context.agentsLoading,
+        agentsService: context.agentsService,
         renderAgentsEmpty: context.renderAgentsEmpty,
         comingSoonAgentProviders: context.comingSoonAgentProviders,
         tuttidClient: context.tuttidClient,

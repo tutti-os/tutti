@@ -1,3 +1,5 @@
+import type { AgentActivitySessionUsage } from "./types.ts";
+
 export interface AgentActivityUsage {
   usedTokens: number | null;
   totalTokens: number | null;
@@ -6,13 +8,13 @@ export interface AgentActivityUsage {
 }
 
 export interface AgentActivityUsageInput {
-  sessionRuntimeContext?: Record<string, unknown> | null;
+  sessionUsage?: AgentActivitySessionUsage | null;
 }
 
 export function resolveAgentActivityUsage(
   input: AgentActivityUsageInput
 ): AgentActivityUsage | null {
-  const usage = recordValue(input.sessionRuntimeContext?.usage);
+  const usage = recordValue(input.sessionUsage);
   if (!usage) {
     return null;
   }

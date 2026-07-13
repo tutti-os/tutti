@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import {
   isWorkspaceAgentToolCallItem,
   resolveWorkspaceAgentToolName
@@ -634,9 +634,7 @@ function collectChildStatusesInto(
     return;
   }
   const record = value as Record<string, unknown>;
-  const status = subAgentStatusFromLifecycle(
-    record.status ?? record.state ?? record.lifecycleStatus
-  );
+  const status = subAgentStatusFromLifecycle(record.status ?? record.state);
   const id = firstString(
     stringValue(record.threadId),
     stringValue(record.threadID),

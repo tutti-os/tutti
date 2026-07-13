@@ -1,86 +1,77 @@
 package agentruntime
 
-import "strings"
+import (
+	"slices"
+	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
 
 // Canonical provider capability keys shared by all adapters and surfaced to
 // the GUI through runtimeContext.capabilities. Keep in sync with the
 // TypeScript side (packages/agent/activity-core/src/capabilities.ts).
 const (
-	CapabilityImageInput  = "imageInput"
-	CapabilitySkills      = "skills"
-	CapabilityCompact     = "compact"
-	CapabilityTokenUsage  = "tokenUsage"
-	CapabilityRateLimits  = "rateLimits"
-	CapabilityPlanMode    = "planMode"
-	CapabilityInterrupt   = "interrupt"
-	CapabilityBrowserUse  = "browserUse"
-	CapabilityComputerUse = "computerUse"
+	CapabilityImageInput                     = providerregistry.CapabilityImageInput
+	CapabilityModelImageInputRequired        = providerregistry.CapabilityModelImageInputRequired
+	CapabilitySkills                         = providerregistry.CapabilitySkills
+	CapabilityCompact                        = providerregistry.CapabilityCompact
+	CapabilityTokenUsage                     = providerregistry.CapabilityTokenUsage
+	CapabilityRateLimits                     = providerregistry.CapabilityRateLimits
+	CapabilityPlanMode                       = providerregistry.CapabilityPlanMode
+	CapabilityInterrupt                      = providerregistry.CapabilityInterrupt
+	CapabilityBrowserUse                     = providerregistry.CapabilityBrowserUse
+	CapabilityComputerUse                    = providerregistry.CapabilityComputerUse
+	CapabilityPlanImplementation             = providerregistry.CapabilityPlanImplementation
+	CapabilityPermissionModeChangeDuringTurn = providerregistry.CapabilityPermissionModeChangeDuringTurn
+	CapabilityPermissionModeChangeDeferred   = providerregistry.CapabilityPermissionModeChangeDeferred
+	CapabilityReview                         = providerregistry.CapabilityReview
 	// CapabilityGoalPause marks providers whose goal is a controllable
 	// entity with a real paused state (codex thread goals). Providers
 	// without it (Claude Code: /goal command in, goal_status attachments
 	// out, no pause) render the goal banner without pause/resume controls.
-	CapabilityGoalPause = "goalPause"
+	CapabilityGoalPause = providerregistry.CapabilityGoalPause
 )
 
 // standardACPCapabilities derives the canonical capability list for ACP
-// family providers. claude-code has a known full surface; other providers
-// are derived conservatively from the live session state.
+// family providers from the live session state.
 func standardACPCapabilities(provider string, promptImage bool, state acpLiveStateSnapshot) []string {
-	if provider == ProviderClaudeCode {
-		capabilities := []string{
-			CapabilitySkills,
-			CapabilityCompact,
-			CapabilityTokenUsage,
-			CapabilityRateLimits,
-			CapabilityPlanMode,
-			CapabilityInterrupt,
-			"review",
-		}
-		if promptImage {
-			capabilities = append([]string{CapabilityImageInput}, capabilities...)
-		}
-		return capabilities
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		return nil
 	}
-	if provider == ProviderOpenCode {
-		capabilities := []string{CapabilityPlanMode, CapabilityInterrupt}
-		if promptImage {
-			capabilities = append([]string{CapabilityImageInput}, capabilities...)
+	profile := descriptor.ComposerProfile
+	capabilities := make([]string, 0, len(profile.Capabilities)+2)
+	for _, capability := range profile.Capabilities {
+		if capability == CapabilityImageInput && !promptImage {
+			continue
 		}
-		if acpLiveStateHasCommand(state, "compact") {
-			capabilities = append(capabilities, CapabilityCompact)
-		}
-		if acpLiveStateHasCommand(state, "review") {
-			capabilities = append(capabilities, "review")
-		}
-		return capabilities
+		capabilities = append(capabilities, capability)
 	}
-	capabilities := []string{CapabilityInterrupt}
-	if promptImage {
+	standardACP := descriptor.Runtime.StandardACP
+	if promptImage && standardACP.DeriveImageInputFromPrompt && !slices.Contains(capabilities, CapabilityImageInput) {
 		capabilities = append(capabilities, CapabilityImageInput)
 	}
-	// Cursor exposes plan mode through ACP session/set_mode ("plan"); advertise
-	// it so the composer plan badge survives the authoritative session snapshots
-	// emitted during/after a turn (otherwise supportsPlanMode flips to false and
-	// the badge vanishes once the reply settles).
-	if provider == ProviderCursor {
-		capabilities = append(capabilities, CapabilityPlanMode)
-	}
-	for _, command := range state.availableCommands {
-		if strings.EqualFold(strings.TrimSpace(command.Name), "compact") {
-			capabilities = append(capabilities, CapabilityCompact)
-			break
+	for _, capability := range standardACP.DeriveCapabilitiesFromCommands {
+		if slices.Contains(capabilities, capability) {
+			continue
+		}
+		for _, command := range state.availableCommands {
+			if strings.EqualFold(strings.TrimSpace(command.Name), capability) {
+				capabilities = append(capabilities, capability)
+				break
+			}
 		}
 	}
 	return capabilities
 }
 
-func acpLiveStateHasCommand(state acpLiveStateSnapshot, name string) bool {
-	normalizedName := strings.TrimSpace(name)
-	if normalizedName == "" {
+func migratedProviderHasCapability(provider string, capability string) bool {
+	profile, ok := migratedProviderComposerProfile(provider)
+	if !ok {
 		return false
 	}
-	for _, command := range state.availableCommands {
-		if strings.EqualFold(strings.TrimSpace(command.Name), normalizedName) {
+	for _, candidate := range profile.Capabilities {
+		if candidate == capability {
 			return true
 		}
 	}

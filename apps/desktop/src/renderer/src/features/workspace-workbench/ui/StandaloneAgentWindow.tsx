@@ -1,19 +1,18 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  type ComponentProps,
   type ReactNode
 } from "react";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
-import {
-  normalizeAgentGUIAgents,
-  type AgentGUIAgent
-} from "@tutti-os/agent-gui";
+import { normalizeAgentGUIAgents } from "@tutti-os/agent-gui/agents";
+import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -36,22 +35,24 @@ import type {
   WorkbenchSize
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
+import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
+import { ensureAllDesktopManagedAgentProviderStatuses } from "@renderer/features/workspace-agent/services/desktopManagedAgentProviders.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import type {
+  AgentProviderStatusSnapshot,
+  IAgentProviderStatusService as AgentProviderStatusService
+} from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import type { IWorkspaceAgentActivityService as WorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
+import type { DesktopAgentGUIWorkbenchBodyProps } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchModel.ts";
+import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import {
-  AgentEnvPanel,
-  createDesktopAgentGUIWorkbenchHostInput,
-  DesktopAgentGUIWorkbenchBody,
   desktopAgentGUIOpenSessionActivationType,
-  ensureAllDesktopManagedAgentProviderStatuses,
-  IAgentsService,
   normalizeDesktopAgentGUIProvider,
   type DesktopAgentGUIProvider,
-  type AgentProviderStatusSnapshot,
-  type AgentProviderStatusService,
-  type WorkspaceAgentActivityService
-} from "@renderer/features/workspace-agent";
-import { resolveDesktopAgentGUIProviderForAgentTarget } from "@renderer/features/workspace-agent/ui/desktopAgentGUIWorkbenchStateHelpers.ts";
-import { isDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
-import type { DesktopAgentGUIWorkbenchState } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
+  type DesktopAgentGUIWorkbenchState
+} from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -81,6 +82,13 @@ import type {
 const standaloneAgentNodeId = "standalone-agent-window-node";
 const standaloneAgentInstanceKey = "standalone-agent-window";
 const standaloneAgentDefaultConversationRailWidthPx = 280;
+const desktopAgentGUIWorkbenchBodyModulePromise =
+  import("@renderer/features/workspace-agent/ui/DesktopAgentGUIWorkbenchBody.tsx");
+const LazyDesktopAgentGUIWorkbenchBody = lazy(() =>
+  desktopAgentGUIWorkbenchBodyModulePromise.then((module) => ({
+    default: module.DesktopAgentGUIWorkbenchBody
+  }))
+);
 
 function renderStandaloneAgentSidebarFooter(): ReactNode {
   return <WorkspaceAccountMenu />;
@@ -318,8 +326,7 @@ export function StandaloneAgentWindow({
     resolveAgentGuiSessionProviderIconUrl(headerProvider);
   const headerConversationIconUrl =
     headerAgentTarget?.iconUrl ?? headerConversationIconFallbackUrl;
-  const headerConversationTitle =
-    nodeState.lastActiveConversationTitle?.trim() || null;
+  const headerConversationTitle = null;
   const headerConversationRailWidthPx =
     typeof nodeState.conversationRailWidthPx === "number" &&
     Number.isFinite(nodeState.conversationRailWidthPx)
@@ -483,9 +490,7 @@ export function StandaloneAgentWindow({
   const handleLinkAction = useCallback(
     (
       action: Parameters<
-        NonNullable<
-          ComponentProps<typeof DesktopAgentGUIWorkbenchBody>["onLinkAction"]
-        >
+        NonNullable<DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]>
       >[0]
     ) => {
       if (
@@ -612,63 +617,65 @@ export function StandaloneAgentWindow({
         resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
         workspaceId={workspaceId}
       >
-        <DesktopAgentGUIWorkbenchBody
-          agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
-          agentQueuedPromptRuntime={agentGuiHostInput.agentQueuedPromptRuntime}
-          agentHostApi={agentGuiHostInput.agentHostApi}
-          appCenterService={workspaceAppCenterService}
-          agentProviderStatusService={agentProviderStatusService}
-          context={context}
-          computerUseApi={desktopApi.computerUse}
-          dockPreviewCache={dockPreviewCache}
-          onLinkAction={handleLinkAction}
-          onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
-          onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
-            // Hand off whatever is cached right now — see the matching note
-            // in workspaceAgentGuiContribution.ts's onOpenDetachedWindow for
-            // why we don't block this click on a full provider probe.
-            void hostWindowApi.openAgentWindow({
-              agentSessionId,
-              providerStatusSnapshot: agentProviderStatusService.getSnapshot(),
-              agents: agents ?? undefined,
-              provider,
-              workspaceId
-            });
-          }}
-          onStateChange={setNodeState}
-          providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
-          agents={agents ?? []}
-          agentsLoading={agents === null}
-          contextMentionProviders={agentGuiHostInput.contextMentionProviders}
-          runtimeApi={desktopApi.runtime}
-          trackAgentProviderChatReady={
-            agentGuiHostInput.trackAgentProviderChatReady
-          }
-          trackWorkspaceFileReferences={
-            agentGuiHostInput.trackWorkspaceFileReferences
-          }
-          workspaceFileReferenceAdapter={
-            agentGuiHostInput.workspaceFileReferenceAdapter
-          }
-          resolveDroppedFileReferences={
-            agentGuiHostInput.resolveDroppedFileReferences
-          }
-          onRequestGitBranches={agentGuiHostInput.onRequestGitBranches}
-          referenceSourceAggregator={
-            agentGuiHostInput.referenceSourceAggregator
-          }
-          renderSidebarFooter={renderStandaloneAgentSidebarFooter}
-          resolveWorkspaceReferenceEntryIconUrl={
-            agentGuiHostInput.resolveWorkspaceReferenceEntryIconUrl
-          }
-          resolveMentionReferenceTarget={
-            agentGuiHostInput.resolveMentionReferenceTarget
-          }
-          resolveWorkspaceReferenceInitialTarget={
-            agentGuiHostInput.resolveWorkspaceReferenceInitialTarget
-          }
-          workspaceId={workspaceId}
-        />
+        <Suspense fallback={<div className="h-full min-h-0 bg-background" />}>
+          <LazyDesktopAgentGUIWorkbenchBody
+            agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+            agentHostApi={agentGuiHostInput.agentHostApi}
+            appCenterService={workspaceAppCenterService}
+            agentProviderStatusService={agentProviderStatusService}
+            context={context}
+            computerUseApi={desktopApi.computerUse}
+            dockPreviewCache={dockPreviewCache}
+            onLinkAction={handleLinkAction}
+            onCapabilitySettingsRequest={handleCapabilitySettingsRequest}
+            onOpenAgentConversationWindow={({ agentSessionId, provider }) => {
+              // Hand off whatever is cached right now — see the matching note
+              // in workspaceAgentGuiContribution.ts's onOpenDetachedWindow for
+              // why we don't block this click on a full provider probe.
+              void hostWindowApi.openAgentWindow({
+                agentSessionId,
+                providerStatusSnapshot:
+                  agentProviderStatusService.getSnapshot(),
+                agents: agents ?? undefined,
+                provider,
+                workspaceId
+              });
+            }}
+            onStateChange={setNodeState}
+            providerStatusBootstrapSnapshot={providerStatusBootstrapSnapshot}
+            agents={agents ?? []}
+            agentsLoading={agents === null}
+            contextMentionProviders={agentGuiHostInput.contextMentionProviders}
+            runtimeApi={desktopApi.runtime}
+            trackAgentProviderChatReady={
+              agentGuiHostInput.trackAgentProviderChatReady
+            }
+            trackWorkspaceFileReferences={
+              agentGuiHostInput.trackWorkspaceFileReferences
+            }
+            workspaceFileReferenceAdapter={
+              agentGuiHostInput.workspaceFileReferenceAdapter
+            }
+            resolveDroppedFileReferences={
+              agentGuiHostInput.resolveDroppedFileReferences
+            }
+            onRequestGitBranches={agentGuiHostInput.onRequestGitBranches}
+            referenceSourceAggregator={
+              agentGuiHostInput.referenceSourceAggregator
+            }
+            renderSidebarFooter={renderStandaloneAgentSidebarFooter}
+            resolveWorkspaceReferenceEntryIconUrl={
+              agentGuiHostInput.resolveWorkspaceReferenceEntryIconUrl
+            }
+            resolveMentionReferenceTarget={
+              agentGuiHostInput.resolveMentionReferenceTarget
+            }
+            resolveWorkspaceReferenceInitialTarget={
+              agentGuiHostInput.resolveWorkspaceReferenceInitialTarget
+            }
+            workspaceId={workspaceId}
+          />
+        </Suspense>
       </StandaloneAgentToolSidebar>
       <StandaloneAgentWindowPanelHosts
         agentProviderStatusService={agentProviderStatusService}

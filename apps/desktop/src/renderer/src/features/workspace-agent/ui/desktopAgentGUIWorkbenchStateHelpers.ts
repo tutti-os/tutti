@@ -25,15 +25,6 @@ export function resolveDesktopAgentGUIProviderForAgentTarget(
   if (target) {
     return target.provider;
   }
-  if (agentTargetId === "local:codex") {
-    return "codex";
-  }
-  if (agentTargetId === "local:claude-code") {
-    return "claude-code";
-  }
-  if (agentTargetId === "local:cursor") {
-    return "cursor";
-  }
   return fallbackProvider;
 }
 

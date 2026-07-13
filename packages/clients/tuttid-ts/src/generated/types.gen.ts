@@ -448,7 +448,10 @@ export type AgentTargetProvider =
   | "claude-code"
   | "tutti-agent"
   | "cursor"
-  | "opencode";
+  | "opencode"
+  | "nexight"
+  | "hermes"
+  | "openclaw";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -957,14 +960,6 @@ export type WorkspaceAgentProvider =
   | "openclaw"
   | "opencode";
 
-export type WorkspaceAgentSessionStatus =
-  | "created"
-  | "running"
-  | "waiting"
-  | "completed"
-  | "canceled"
-  | "failed";
-
 export type AgentSessionComposerSettings = {
   model?: string | null;
   permissionModeId?: string | null;
@@ -1039,8 +1034,38 @@ export type AgentProviderComposerOptionsResponse = {
   runtimeContext: {
     [key: string]: unknown;
   };
+  capabilities?: WorkspaceAgentCapabilities;
   skills: Array<AgentProviderSkillOption>;
   capabilityCatalog: Array<AgentProviderCapabilityOption>;
+  behavior: AgentProviderComposerBehavior;
+  slashCommandPolicy?: AgentSlashCommandPolicy;
+};
+
+export type AgentProviderComposerBehavior = {
+  collapseModelOptionsToLatest: boolean;
+  modelOptionsAuthoritative: boolean;
+  refreshModelOptionsAfterSettings: boolean;
+  prewarmDraftSession: boolean;
+  planModeExclusiveWithPermissionMode: boolean;
+};
+
+export type AgentSlashCommandEffect =
+  | "submitImmediate"
+  | "showReviewPicker"
+  | "activateGoalMode"
+  | "togglePlanMode"
+  | "showStatus"
+  | "toggleSpeed";
+
+export type AgentSlashCommandEffectDescriptor = {
+  command: string;
+  effect: AgentSlashCommandEffect;
+};
+
+export type AgentSlashCommandPolicy = {
+  fallbackCommands: Array<string>;
+  commandEffects: Array<AgentSlashCommandEffectDescriptor>;
+  commandCatalogAuthoritative?: boolean;
 };
 
 export type AgentProviderSkillOption = {
@@ -1249,65 +1274,253 @@ export type WorkspaceAgentSession = {
   /**
    * Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
    */
-  agentTargetId?: string | null;
+  agentTargetId: string | null;
   provider: WorkspaceAgentProvider;
-  providerSessionId?: string | null;
+  providerSessionId: string | null;
   cwd: string | null;
-  status: WorkspaceAgentSessionStatus;
-  turnLifecycle?: AgentActivityTurnLifecycle;
-  submitAvailability?: AgentActivitySubmitAvailability;
+  /**
+   * Protocol v2. The only turn reference kept on the session; null when no turn is in flight.
+   */
+  activeTurnId: string | null;
+  /**
+   * Protocol v2. Embedded snapshot of the active turn; null when no turn is in flight.
+   */
+  activeTurn: WorkspaceAgentTurn | null;
+  /**
+   * Protocol v2. Read-only embedded projection of the most recently updated turn for this session, including settled turns. This is an independent turn entity projection and is not session-owned persistent state or a session reference.
+   */
+  latestTurn: WorkspaceAgentTurn | null;
+  /**
+   * Protocol v2. Read-only independent Interaction entity projections for latestTurn, including pending, answered, and superseded terminal states. These entities are not session-owned persistent state.
+   */
+  latestTurnInteractions: Array<WorkspaceAgentInteraction>;
+  /**
+   * Protocol v2. Pending interactions (approvals, questions, plan confirmations) for the active turn. Pending means present in this collection with status pending; there is no tri-state null protocol.
+   */
+  pendingInteractions: Array<WorkspaceAgentInteraction>;
+  /**
+   * Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
+   */
+  capabilities: WorkspaceAgentCapabilities | null;
+  /**
+   * Protocol v2. Typed context-window and quota usage projected from provider runtime state.
+   */
+  usage: WorkspaceAgentUsage | null;
+  /**
+   * Protocol v2. Explicit field extracted from runtimeContext.
+   */
+  backgroundAgents: WorkspaceAgentBackgroundAgents | null;
+  /**
+   * Protocol v2. Explicit field extracted from runtimeContext.
+   */
+  goal: WorkspaceAgentSessionGoal | null;
+  /**
+   * Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
+   */
+  imported: boolean;
   visible: boolean;
-  settings?: AgentSessionComposerSettings;
-  permissionConfig?: PermissionConfig;
-  runtimeContext?: {
-    [key: string]: unknown;
-  };
-  resumable?: boolean;
-  pinnedAtUnixMs?: number | null;
-  title?: string | null;
-  createdAt: string;
-  updatedAt: string | null;
-  endedAt?: string | null;
-  lastError?: string | null;
+  settings: AgentSessionComposerSettings;
+  permissionConfig: PermissionConfig;
+  resumable: boolean;
+  pinnedAtUnixMs: number | null;
+  title: string | null;
+  /**
+   * Protocol v2. Unix milliseconds replacement for createdAt.
+   */
+  createdAtUnixMs: number;
+  /**
+   * Protocol v2. Unix milliseconds replacement for updatedAt.
+   */
+  updatedAtUnixMs: number;
+  /**
+   * Protocol v2. Unix milliseconds replacement for endedAt.
+   */
+  endedAtUnixMs: number | null;
 };
 
 export type WorkspaceAgentSessionResponse = {
   session: WorkspaceAgentSession;
 };
 
-export type WorkspaceAgentSessionCancelResponse = {
-  session: WorkspaceAgentSession;
-  cancel: WorkspaceAgentSessionCancelResult;
-};
-
-export type WorkspaceAgentSessionCancelResult = {
-  canceled: boolean;
-  reason: "active_turn_canceled" | "no_active_turn" | "stale_turn_reconciled";
-};
-
 export type SendWorkspaceAgentSessionInputResponse = {
   session: WorkspaceAgentSession;
   turnId: string;
-  turnLifecycle: AgentActivityTurnLifecycle;
-  submitAvailability: AgentActivitySubmitAvailability;
+  turn?: WorkspaceAgentTurn;
 };
 
-export type AgentActivityTurnLifecycle = {
-  activeTurnId: string | null;
-  phase: string;
-  settling?: boolean;
-  outcome?: string | null;
-  completedCommand?: AgentActivityCompletedCommand;
+/**
+ * Protocol v2 closed turn phase vocabulary. submitted -> running -> waiting (interactions) -> settling -> settled.
+ */
+export type WorkspaceAgentTurnPhase =
+  | "submitted"
+  | "running"
+  | "waiting"
+  | "settling"
+  | "settled";
+
+/**
+ * Protocol v2 closed turn outcome vocabulary; only present once the turn is settled. interrupted marks turns reconciled at daemon startup after the provider process disappeared.
+ */
+export type WorkspaceAgentTurnOutcome =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "interrupted";
+
+/**
+ * Protocol v2 turn-scoped error; never pollutes session state.
+ */
+export type WorkspaceAgentTurnError = {
+  message: string;
+  code?: string;
 };
 
-export type AgentActivityCompletedCommand = {
-  kind: string;
-  status: string;
+/**
+ * Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
+ */
+export type WorkspaceAgentCompletedCommand = {
+  kind: "compact" | "review" | "undo" | "goal";
+  status: "completed" | "failed" | "canceled";
 };
 
-export type AgentActivitySubmitAvailability = {
-  state: string;
+/**
+ * Protocol v2 turn entity. One user-submission-driven execution: submit, run, wait, settle. Owns phase, outcome, error, and file changes; the session only keeps an activeTurnId reference.
+ */
+export type WorkspaceAgentTurn = {
+  turnId: string;
+  agentSessionId: string;
+  phase: WorkspaceAgentTurnPhase;
+  outcome: WorkspaceAgentTurnOutcome | null;
+  error: WorkspaceAgentTurnError | null;
+  fileChanges: {
+    [key: string]: unknown;
+  } | null;
+  completedCommand: WorkspaceAgentCompletedCommand | null;
+  startedAtUnixMs: number;
+  settledAtUnixMs: number | null;
+  updatedAtUnixMs: number;
+};
+
+export type WorkspaceAgentInteractionKind = "approval" | "question" | "plan";
+
+export type WorkspaceAgentInteractionStatus =
+  | "pending"
+  | "answered"
+  | "superseded";
+
+/**
+ * Protocol v2 interaction entity. An agent-initiated approval, question, or plan confirmation raised during a turn. Pending means present in a collection with status pending; replaces the tri-state null pendingInteractive protocol.
+ */
+export type WorkspaceAgentInteraction = {
+  requestId: string;
+  agentSessionId: string;
+  turnId: string;
+  kind: WorkspaceAgentInteractionKind;
+  status: WorkspaceAgentInteractionStatus;
+  toolName: string | null;
+  input: {
+    [key: string]: unknown;
+  } | null;
+  output: {
+    [key: string]: unknown;
+  } | null;
+  metadata: {
+    [key: string]: unknown;
+  } | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+/**
+ * Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
+ */
+export type WorkspaceAgentCapabilities = {
+  imageInput: boolean;
+  modelImageInputRequired: boolean;
+  skills: boolean;
+  compact: boolean;
+  tokenUsage: boolean;
+  rateLimits: boolean;
+  planMode: boolean;
+  interrupt: boolean;
+  browserUse: boolean;
+  computerUse: boolean;
+  goalPause: boolean;
+  planImplementation: boolean;
+  permissionModeChangeDuringTurn: boolean;
+  permissionModeChangeDeferred: boolean;
+  review: boolean;
+  resumeRunningTurn: boolean;
+};
+
+export type WorkspaceAgentUsageContextWindow = {
+  usedTokens: number;
+  totalTokens: number;
+};
+
+export type WorkspaceAgentUsageQuota = {
+  quotaType: string;
+  percentRemaining: number;
+  resetsAtUnixMs: number | null;
+};
+
+export type WorkspaceAgentUsage = {
+  contextWindow: WorkspaceAgentUsageContextWindow | null;
+  quotas: Array<WorkspaceAgentUsageQuota>;
+};
+
+export type WorkspaceAgentBackgroundAgentItem = {
+  taskId: string;
+  description: string;
+  status: "running" | "completed" | "failed" | "canceled";
+  summary?: string;
+  lastToolName?: string;
+  taskType?: string;
+  startedAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+};
+
+/**
+ * Protocol v2 explicit field extracted from runtimeContext.
+ */
+export type WorkspaceAgentBackgroundAgents = {
+  /**
+   * Number of background agents still running.
+   */
+  count: number;
+  items: Array<WorkspaceAgentBackgroundAgentItem>;
+};
+
+/**
+ * Protocol v2 explicit field extracted from runtimeContext.
+ */
+export type WorkspaceAgentSessionGoal = {
+  objective: string;
+  status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usageLimited"
+    | "budgetLimited"
+    | "complete";
   reason?: string;
+  iterations?: number;
+  durationMs?: number;
+  tokens?: number;
+};
+
+export type WorkspaceAgentTurnCancelResult = {
+  canceled: boolean;
+  /**
+   * turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+   */
+  reason: "turn_canceled" | "already_settled" | "not_found";
+};
+
+export type WorkspaceAgentTurnCancelResponse = {
+  cancel: WorkspaceAgentTurnCancelResult;
+  turn?: WorkspaceAgentTurn;
 };
 
 export type AgentActivityMessageSemantics = {
@@ -1318,10 +1531,12 @@ export type AgentActivityMessageSemantics = {
 };
 
 export type WorkspaceAgentSessionMessage = {
-  id: number;
   agentSessionId: string;
   messageId: string;
-  turnId: string;
+  /**
+   * Protocol v2 message ownership is an explicit choice: a non-empty turnId attaches the message to that turn; null marks a session-level message (system notices, imported history). Empty strings are forbidden.
+   */
+  turnId: string | null;
   role: string;
   kind: string;
   status?: string;
@@ -1522,9 +1737,7 @@ export type WorkspaceAgentSessionGoalControlRequest = {
 
 export type WorkspaceAgentSessionGoalControlResponse = {
   session: WorkspaceAgentSession;
-  goal?: {
-    [key: string]: unknown;
-  };
+  goal?: WorkspaceAgentSessionGoal | null;
 };
 
 export type CreateWorkspaceAgentSessionRequest = {
@@ -1533,35 +1746,22 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
    */
   agentTargetId: string;
-  provider?: WorkspaceAgentProvider;
+  clientSubmitId: string;
+  submitDiagnostics?: AgentSubmitDiagnostics;
   initialContent: Array<AgentPromptContentBlock>;
   /**
    * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
    */
   initialDisplayPrompt?: string | null;
-  /**
-   * Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
-   */
-  metadata?: {
-    [key: string]: unknown;
-  };
-  /**
-   * Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
-   */
-  providerTargetRef?: {
-    [key: string]: unknown;
-  } | null;
   title?: string | null;
   cwd?: string | null;
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
   /**
-   * Optional durable runtime context hints for session classification and provider startup.
+   * Classifies a session that is intentionally not attached to a workspace project.
    */
-  runtimeContext?: {
-    [key: string]: unknown;
-  } | null;
+  noProject?: boolean | null;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -1570,6 +1770,8 @@ export type CreateWorkspaceAgentSessionRequest = {
 
 export type SendWorkspaceAgentSessionInputRequest = {
   content: Array<AgentPromptContentBlock>;
+  clientSubmitId: string;
+  submitDiagnostics?: AgentSubmitDiagnostics;
   /**
    * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
    */
@@ -1578,12 +1780,15 @@ export type SendWorkspaceAgentSessionInputRequest = {
    * When true, send this input as guidance to the currently active turn instead of starting a new turn.
    */
   guidance?: boolean;
-  /**
-   * Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
-   */
-  metadata?: {
-    [key: string]: unknown;
-  };
+};
+
+export type AgentSubmitDiagnostics = {
+  submittedAtUnixMs?: number;
+  blockCount?: number;
+  hasImage?: boolean;
+  promptLength?: number;
+  queued?: boolean;
+  source?: string;
 };
 
 export type AgentPromptContentBlock = {
@@ -1691,11 +1896,34 @@ export type UserProjectPathCheckResponse = {
 };
 
 export type SubmitWorkspaceAgentInteractiveRequest = {
+  turnId: string;
   action?: string | null;
   optionId?: string | null;
   payload?: {
     [key: string]: unknown;
   } | null;
+};
+
+export type SubmitWorkspaceAgentPlanDecisionRequest = {
+  promptKind: "plan-implementation";
+  action: "implement";
+  idempotencyKey: string;
+};
+
+export type WorkspaceAgentPlanDecisionOperation = {
+  operationId: string;
+  workspaceId: string;
+  agentSessionId: string;
+  turnId: string;
+  requestId: string;
+  idempotencyKey: string;
+  status: "prepared" | "leased" | "completed" | "failed";
+  result?: string | null;
+  error?: string | null;
+};
+
+export type WorkspaceAgentPlanDecisionResponse = {
+  operation: WorkspaceAgentPlanDecisionOperation;
 };
 
 export type WorkspaceAgentSessionEventEnvelope = {
@@ -2333,6 +2561,8 @@ export type AgentSessionId = string;
 export type AgentSessionAttachmentId = string;
 
 export type AgentPermissionRequestId = string;
+
+export type AgentTurnId = string;
 
 export type TerminalAfterSeq = number;
 
@@ -6392,17 +6622,18 @@ export type ListWorkspaceAgentSessionGitBranchesResponses = {
 export type ListWorkspaceAgentSessionGitBranchesResponse =
   ListWorkspaceAgentSessionGitBranchesResponses[keyof ListWorkspaceAgentSessionGitBranchesResponses];
 
-export type CancelWorkspaceAgentSessionData = {
+export type CancelWorkspaceAgentTurnData = {
   body?: never;
   path: {
     workspaceID: string;
     agentSessionID: string;
+    turnID: string;
   };
   query?: never;
-  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel";
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel";
 };
 
-export type CancelWorkspaceAgentSessionErrors = {
+export type CancelWorkspaceAgentTurnErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -6429,18 +6660,74 @@ export type CancelWorkspaceAgentSessionErrors = {
   503: ApiErrorResponse;
 };
 
-export type CancelWorkspaceAgentSessionError =
-  CancelWorkspaceAgentSessionErrors[keyof CancelWorkspaceAgentSessionErrors];
+export type CancelWorkspaceAgentTurnError =
+  CancelWorkspaceAgentTurnErrors[keyof CancelWorkspaceAgentTurnErrors];
 
-export type CancelWorkspaceAgentSessionResponses = {
+export type CancelWorkspaceAgentTurnResponses = {
   /**
-   * Workspace agent session canceled
+   * Workspace agent turn cancel result
    */
-  200: WorkspaceAgentSessionCancelResponse;
+  200: WorkspaceAgentTurnCancelResponse;
 };
 
-export type CancelWorkspaceAgentSessionResponse =
-  CancelWorkspaceAgentSessionResponses[keyof CancelWorkspaceAgentSessionResponses];
+export type CancelWorkspaceAgentTurnResponse =
+  CancelWorkspaceAgentTurnResponses[keyof CancelWorkspaceAgentTurnResponses];
+
+export type SubmitWorkspaceAgentPlanDecisionData = {
+  body: SubmitWorkspaceAgentPlanDecisionRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+    turnID: string;
+    requestID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}";
+};
+
+export type SubmitWorkspaceAgentPlanDecisionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The idempotency identity conflicts or the scoped plan turn is not currently decidable
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SubmitWorkspaceAgentPlanDecisionError =
+  SubmitWorkspaceAgentPlanDecisionErrors[keyof SubmitWorkspaceAgentPlanDecisionErrors];
+
+export type SubmitWorkspaceAgentPlanDecisionResponses = {
+  /**
+   * Durable plan decision operation state
+   */
+  200: WorkspaceAgentPlanDecisionResponse;
+};
+
+export type SubmitWorkspaceAgentPlanDecisionResponse =
+  SubmitWorkspaceAgentPlanDecisionResponses[keyof SubmitWorkspaceAgentPlanDecisionResponses];
 
 export type GoalControlWorkspaceAgentSessionData = {
   body: WorkspaceAgentSessionGoalControlRequest;

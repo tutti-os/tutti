@@ -48,8 +48,6 @@ export interface AgentGuiWorkbenchNodeState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
-  /** @deprecated Conversation titles are derived from the active session id. */
-  lastActiveConversationTitle?: string | null;
   provider: AgentGuiWorkbenchProvider;
 }
 
@@ -58,7 +56,6 @@ export interface AgentGuiWorkbenchState {
   conversationRailCollapsed?: boolean | null;
   conversationRailWidthPx?: number | null;
   lastActiveAgentSessionId: string | null;
-  lastActiveConversationTitle?: string | null;
 }
 
 export interface AgentGuiWorkbenchWorkspaceState {

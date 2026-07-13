@@ -1,17 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  deriveSubmitAvailability,
-  isLiveTurnLifecyclePhase,
-  resolveSubmitAvailability,
-  LIVE_TURN_LIFECYCLE_PHASES,
   normalizeAgentActivityDisplayStatus,
-  resolveLatestAgentActivityMessageDisplayStatus,
   selectNeedsAttentionCount,
-  selectNeedsAttentionItems,
-  selectSessionDisplayStatuses,
-  type DerivedSubmitAvailability,
-  type DeriveSubmitAvailabilityInput
+  selectNeedsAttentionItems
 } from "./selectors.ts";
 import type {
   AgentActivityMessage,
@@ -19,6 +11,7 @@ import type {
   AgentActivitySession,
   AgentActivitySnapshot
 } from "./types.ts";
+import { normalizeAgentActivitySession } from "./sessionNormalization.ts";
 
 test("needs-attention selectors count pending permission and question items", () => {
   const snapshot = snapshotWithMessages([
@@ -57,180 +50,11 @@ test("needs-attention selectors count pending permission and question items", ()
   );
 });
 
-test("session display status is waiting when a working session needs attention", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [session({ agentSessionId: "session-1", status: "working" })],
-    {
-      "session-1": [
-        message({
-          messageId: "approval-tool",
-          kind: "tool_call",
-          status: "waiting_approval",
-          payload: { callType: "approval", toolName: "Approval" }
-        })
-      ]
-    }
-  );
-
-  assert.equal(
-    selectSessionDisplayStatuses(snapshot).get("session-1"),
-    "waiting"
-  );
-});
-
-test("session display status uses current phase when lifecycle status is active", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [
-      session({
-        agentSessionId: "session-working",
-        status: "active",
-        currentPhase: "working"
-      }),
-      session({
-        agentSessionId: "session-waiting",
-        status: "active",
-        currentPhase: "waiting_input"
-      }),
-      session({
-        agentSessionId: "session-failed",
-        status: "active",
-        currentPhase: "failed"
-      })
-    ],
-    {}
-  );
-  const statuses = selectSessionDisplayStatuses(snapshot);
-
-  assert.equal(statuses.get("session-working"), "working");
-  assert.equal(statuses.get("session-waiting"), "waiting");
-  assert.equal(statuses.get("session-failed"), "failed");
-});
-
-test("session display status treats settled turn lifecycle as terminal", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [
-      session({
-        agentSessionId: "session-completed",
-        status: "working",
-        currentPhase: "working",
-        turnLifecycle: {
-          activeTurnId: null,
-          phase: "settled",
-          outcome: "completed"
-        }
-      }),
-      session({
-        agentSessionId: "session-failed",
-        status: "working",
-        currentPhase: "working",
-        turnLifecycle: {
-          activeTurnId: null,
-          phase: "settled",
-          outcome: "failed"
-        }
-      })
-    ],
-    {}
-  );
-  const statuses = selectSessionDisplayStatuses(snapshot);
-
-  assert.equal(statuses.get("session-completed"), "completed");
-  assert.equal(statuses.get("session-failed"), "failed");
-});
-
-test("session display status follows the latest turn instead of stale session failure", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [
-      session({
-        agentSessionId: "session-1",
-        status: "failed",
-        currentPhase: "failed"
-      })
-    ],
-    {
-      "session-1": [
-        message({
-          messageId: "failed-message",
-          status: "failed",
-          turnId: "turn-1",
-          version: 1
-        }),
-        message({
-          messageId: "latest-user",
-          role: "user",
-          status: null,
-          turnId: "turn-2",
-          version: 2
-        }),
-        message({
-          messageId: "latest-assistant",
-          status: "completed",
-          turnId: "turn-2",
-          version: 3
-        })
-      ]
-    }
-  );
-
-  assert.equal(
-    selectSessionDisplayStatuses(snapshot).get("session-1"),
-    "completed"
-  );
-});
-
-test("session display status keeps failed sessions failed while latest turn is only working", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [
-      session({
-        agentSessionId: "session-1",
-        status: "error"
-      })
-    ],
-    {
-      "session-1": [
-        message({
-          messageId: "latest-user",
-          role: "user",
-          status: null,
-          turnId: "turn-1",
-          version: 1
-        })
-      ]
-    }
-  );
-
-  assert.equal(
-    selectSessionDisplayStatuses(snapshot).get("session-1"),
-    "failed"
-  );
-});
-
-test("latest message display status uses only the newest turn", () => {
-  assert.equal(
-    resolveLatestAgentActivityMessageDisplayStatus([
-      message({
-        messageId: "old-failed",
-        status: "failed",
-        turnId: "turn-1",
-        version: 1
-      }),
-      message({
-        messageId: "new-user",
-        role: "user",
-        status: null,
-        turnId: "turn-2",
-        version: 2
-      })
-    ]),
-    "working"
-  );
-});
-
 test("agent activity display status normalizes raw status aliases", () => {
   assert.equal(normalizeAgentActivityDisplayStatus("running"), "working");
   assert.equal(
     normalizeAgentActivityDisplayStatus("active", {
-      currentPhase: "working"
+      activeTurnPhase: "running"
     }),
     "working"
   );
@@ -564,16 +388,15 @@ function snapshotWithSessionMessages(
 function session(
   overrides: Partial<AgentActivitySession> = {}
 ): AgentActivitySession {
-  return {
+  return normalizeAgentActivitySession({
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     provider: "codex",
     cwd: "/repo",
     title: "Status card fields",
-    status: "waiting",
     updatedAtUnixMs: 1,
     ...overrides
-  };
+  });
 }
 
 function message(
@@ -593,186 +416,3 @@ function message(
     ...overrides
   };
 }
-
-test("LIVE_TURN_LIFECYCLE_PHASES mirrors the Go canonical list", () => {
-  // SOURCE OF TRUTH: packages/agent/daemon/activity/events/turn_lifecycle_snapshot.go
-  // (LiveTurnLifecyclePhases). The Go side pins the same literal list in
-  // TestLiveTurnLifecyclePhasesCanonicalList; change both together.
-  assert.deepEqual(
-    [...LIVE_TURN_LIFECYCLE_PHASES],
-    ["submitted", "running", "waiting_approval", "waiting_input"]
-  );
-  for (const phase of LIVE_TURN_LIFECYCLE_PHASES) {
-    assert.equal(isLiveTurnLifecyclePhase(phase), true);
-  }
-  for (const legacy of [
-    "working",
-    "streaming",
-    "waiting",
-    "awaiting_approval"
-  ]) {
-    assert.equal(isLiveTurnLifecyclePhase(legacy), true);
-  }
-  for (const dead of ["", "settled", "idle", "failed"]) {
-    assert.equal(isLiveTurnLifecyclePhase(dead), false);
-  }
-});
-
-test("a present turn lifecycle resolves the display status entirely", () => {
-  // Legacy live tokens resolve inside the lifecycle branch — a contradictory
-  // session.status must not override them (ADR 0008).
-  assert.equal(
-    normalizeAgentActivityDisplayStatus("ready", {
-      turnLifecyclePhase: "working"
-    }),
-    "working"
-  );
-  assert.equal(
-    normalizeAgentActivityDisplayStatus("failed", {
-      turnLifecyclePhase: "streaming"
-    }),
-    "working"
-  );
-});
-
-// PARITY TABLE: mirrored in Go at
-// packages/agent/daemon/runtime/submit_availability_parity_test.go — keep the
-// two tables identical (the Go side owns the derivation semantics).
-const deriveSubmitAvailabilityParityCases: Array<{
-  name: string;
-  input: DeriveSubmitAvailabilityInput;
-  expected: DerivedSubmitAvailability | null;
-}> = [
-  {
-    name: "no lifecycle -> null (caller falls back to status tokens)",
-    input: { turnLifecycle: null, runtimeContext: null },
-    expected: null
-  },
-  {
-    name: "running turn -> blocked/active_turn",
-    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "running" } },
-    expected: { state: "blocked", reason: "active_turn" }
-  },
-  {
-    name: "submitted turn -> blocked/active_turn",
-    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" } },
-    expected: { state: "blocked", reason: "active_turn" }
-  },
-  {
-    name: "waiting_approval -> blocked/waiting",
-    input: {
-      turnLifecycle: { activeTurnId: "turn-1", phase: "waiting_approval" }
-    },
-    expected: { state: "blocked", reason: "waiting" }
-  },
-  {
-    name: "legacy awaiting_approval -> blocked/waiting",
-    input: {
-      turnLifecycle: { activeTurnId: "turn-1", phase: "awaiting_approval" }
-    },
-    expected: { state: "blocked", reason: "waiting" }
-  },
-  {
-    name: "settled -> available",
-    input: { turnLifecycle: { activeTurnId: null, phase: "settled" } },
-    expected: { state: "available" }
-  },
-  {
-    name: "settled with stale activeTurnId -> available",
-    input: { turnLifecycle: { activeTurnId: "turn-1", phase: "settled" } },
-    expected: { state: "available" }
-  },
-  {
-    name: "settled with live background agents (count) -> blocked/background_agent",
-    input: {
-      turnLifecycle: { activeTurnId: null, phase: "settled" },
-      runtimeContext: { backgroundAgents: { count: 1, items: [] } }
-    },
-    expected: { state: "blocked", reason: "background_agent" }
-  },
-  {
-    name: "settled with a running background item (no status) -> blocked/background_agent",
-    input: {
-      turnLifecycle: { activeTurnId: null, phase: "settled" },
-      runtimeContext: {
-        backgroundAgents: { count: 0, items: [{ id: "agent-1" }] }
-      }
-    },
-    expected: { state: "blocked", reason: "background_agent" }
-  },
-  {
-    name: "settled with only terminal background items -> available",
-    input: {
-      turnLifecycle: { activeTurnId: null, phase: "settled" },
-      runtimeContext: {
-        backgroundAgents: {
-          count: 0,
-          items: [
-            { status: "completed" },
-            { status: "failed" },
-            { status: "stopped" }
-          ]
-        }
-      }
-    },
-    expected: { state: "available" }
-  }
-];
-
-for (const parityCase of deriveSubmitAvailabilityParityCases) {
-  test(`deriveSubmitAvailability parity: ${parityCase.name}`, () => {
-    assert.deepEqual(
-      deriveSubmitAvailability(parityCase.input),
-      parityCase.expected
-    );
-  });
-}
-
-test("deriveSubmitAvailability treats an activeTurnId without a phase as a live turn (defensive vs Go)", () => {
-  assert.deepEqual(
-    deriveSubmitAvailability({
-      turnLifecycle: { activeTurnId: "turn-1", phase: null }
-    }),
-    { state: "blocked", reason: "active_turn" }
-  );
-});
-
-test("resolveSubmitAvailability supersedes stale wire blocks with derivable reasons", () => {
-  assert.deepEqual(
-    resolveSubmitAvailability({
-      turnLifecycle: { activeTurnId: null, phase: "settled" },
-      submitAvailability: { state: "blocked", reason: "active_turn" }
-    }),
-    { state: "available" }
-  );
-});
-
-test("resolveSubmitAvailability keeps explicit wire available over a derived active turn block", () => {
-  assert.deepEqual(
-    resolveSubmitAvailability({
-      turnLifecycle: { activeTurnId: "turn-1", phase: "running" },
-      submitAvailability: { state: "available" }
-    }),
-    { state: "available" }
-  );
-});
-
-test("resolveSubmitAvailability keeps unknown wire block reasons", () => {
-  assert.deepEqual(
-    resolveSubmitAvailability({
-      turnLifecycle: { activeTurnId: null, phase: "settled" },
-      submitAvailability: { state: "blocked", reason: "auth_required" }
-    }),
-    { state: "blocked", reason: "auth_required" }
-  );
-});
-
-test("resolveSubmitAvailability falls back to the wire value without a lifecycle", () => {
-  assert.deepEqual(
-    resolveSubmitAvailability({
-      submitAvailability: { state: "blocked", reason: "active_turn" }
-    }),
-    { state: "blocked", reason: "active_turn" }
-  );
-  assert.deepEqual(resolveSubmitAvailability({}), { state: "available" });
-});

@@ -327,6 +327,22 @@ func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T
 	}
 }
 
+func TestProjectMessageUpdateAllowsSessionScopedMessageWithoutTurn(t *testing.T) {
+	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
+		MessageID:        "imported-message-1",
+		Role:             "user",
+		Kind:             "text",
+		Payload:          map[string]any{"text": "historical import"},
+		OccurredAtUnixMS: 100,
+	}, 1, 100)
+	if !ok {
+		t.Fatal("ok = false, want session-scoped message accepted")
+	}
+	if message.TurnID != "" {
+		t.Fatalf("TurnID = %q, want no synthetic turn", message.TurnID)
+	}
+}
+
 func TestProjectMessageUpdateClearsStaleToolErrorOnCompletion(t *testing.T) {
 	existing := MessageSnapshot{
 		ID:                3,
@@ -365,19 +381,6 @@ func TestProjectMessageUpdateClearsStaleToolErrorOnCompletion(t *testing.T) {
 	}
 	if got := message.Payload["input"].(map[string]any)["toolName"]; got != "Read" {
 		t.Fatalf("payload = %#v, want existing input preserved", message.Payload)
-	}
-}
-
-func TestProjectMessageUpdateRejectsNewMessageWithoutTurn(t *testing.T) {
-	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
-		MessageID: "message-1",
-		Role:      "assistant",
-		Kind:      "text",
-		Payload:   map[string]any{"text": "hello"},
-	}, 1, 150)
-
-	if ok {
-		t.Fatalf("ok = true with message %#v, want false", message)
 	}
 }
 

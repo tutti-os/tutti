@@ -5,9 +5,8 @@ describe("normalizeWorkspaceAgentStatus", () => {
   it("lets the current turn phase override a stale session failure", () => {
     expect(
       normalizeWorkspaceAgentStatus({
-        lifecycleStatus: "failed",
         status: "failed",
-        currentPhase: "working"
+        activeTurnPhase: "running"
       })
     ).toEqual({ kind: "working" });
   });
@@ -15,9 +14,7 @@ describe("normalizeWorkspaceAgentStatus", () => {
   it("keeps failed when the latest phase is failed", () => {
     expect(
       normalizeWorkspaceAgentStatus({
-        lifecycleStatus: "failed",
-        status: "failed",
-        currentPhase: "failed"
+        status: "failed"
       })
     ).toEqual({ kind: "failed" });
   });

@@ -1,7 +1,5 @@
-import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "./workspaceAgentActivityTypes";
+import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "./workspaceAgentActivityListViewModel";
 import type { ToolCallStatusKind } from "./workspaceAgentToolCallDisplay";
 import { buildCanonicalWorkspaceAgentDetailView } from "./workspaceAgentTimelineCanonical";
@@ -98,7 +96,7 @@ export interface WorkspaceAgentSessionDetailTurn {
 
 export interface WorkspaceAgentSessionDetailViewModel {
   activity: WorkspaceAgentActivityCard;
-  session: WorkspaceAgentActivitySession;
+  session: AgentActivitySession;
   cwd: string;
   workspaceRoot: string | null;
   turns: WorkspaceAgentSessionDetailTurn[];
@@ -107,7 +105,7 @@ export interface WorkspaceAgentSessionDetailViewModel {
 
 export interface BuildWorkspaceAgentSessionDetailInput {
   activity: WorkspaceAgentActivityCard;
-  session: WorkspaceAgentActivitySession;
+  session: AgentActivitySession;
   timelineItems: WorkspaceAgentActivityTimelineItem[];
   workspaceRoot?: string | null;
 }

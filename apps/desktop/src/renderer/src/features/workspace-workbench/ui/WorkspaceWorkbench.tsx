@@ -18,7 +18,6 @@ import {
 } from "@tutti-os/workspace-issue-manager/workbench";
 import {
   isEditableShortcutTarget,
-  type WorkbenchHostCloseDialogRequest,
   type WorkbenchContribution,
   type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
@@ -26,27 +25,19 @@ import {
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
 import {
-  Button,
-  CardDescription,
-  CardTitle,
-  ConfirmationDialog,
-  LoadingIcon,
-  WarningLinedIcon
-} from "@tutti-os/ui-system";
-import {
   useWorkspaceAppCenterService,
   WorkspaceAppCenterIntegration,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog";
+import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
+import { DesktopAgentProviderManageDialog } from "@renderer/features/workspace-agent/ui/DesktopAgentProviderManageDialog.tsx";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
 import {
-  AgentEnvPanel,
-  DesktopAgentProviderManageDialog,
-  IAgentProviderStatusService,
   registerWorkspaceAgentGuiLaunchHandler,
   requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
+} from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import {
   isDesktopAgentGUIProvider,
   normalizeDesktopAgentGUIProvider
@@ -105,12 +96,10 @@ import {
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
-import {
-  StandaloneAgentWindow,
-  type StandaloneAgentWindowProps
-} from "./StandaloneAgentWindow.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService.ts";
+import { WorkspaceCloseGuardDialog } from "./WorkspaceCloseGuardDialog.tsx";
+import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
 import type { WorkspaceWorkbenchHostSessionBinding } from "../services/workspaceWorkbenchHostService.interface.ts";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
@@ -134,29 +123,22 @@ const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
-  agentWindowInput?: Omit<
-    StandaloneAgentWindowProps,
-    "toolWorkbench" | "workspace"
-  >;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
-  routeView: string;
   workspaceAppExternalApi?: DesktopWorkspaceAppExternalHostApi;
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
-  agentWindowInput,
   enableWindowCloseGuard,
   headerSlot,
-  routeView,
   workspaceAppExternalApi,
   workspaceID
 }: WorkspaceWorkbenchProps) {
   const { service, state } = useWorkspaceCatalogService();
   const { t } = useTranslation();
   const loadWorkspaceWindow = useCallback(() => {
-    void service.loadWorkspaceWindow(workspaceID, routeView);
-  }, [routeView, service, workspaceID]);
+    void service.loadWorkspaceWindow(workspaceID, "workspace");
+  }, [service, workspaceID]);
 
   useEffect(() => {
     loadWorkspaceWindow();
@@ -179,17 +161,6 @@ export function WorkspaceWorkbench({
     return <main className="h-screen min-h-0 bg-background" />;
   }
 
-  if (routeView === "agent" && agentWindowInput) {
-    return (
-      <StandaloneAgentWindowWithSession
-        {...agentWindowInput}
-        enableWindowCloseGuard={enableWindowCloseGuard}
-        platform={state.platform}
-        workspace={state.workspace}
-      />
-    );
-  }
-
   return (
     <ReadyWorkspaceWorkbench
       enableWindowCloseGuard={enableWindowCloseGuard}
@@ -200,85 +171,6 @@ export function WorkspaceWorkbench({
       }}
       workspaceAppExternalApi={workspaceAppExternalApi}
     />
-  );
-}
-
-function StandaloneAgentWindowWithSession(
-  props: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
-    enableWindowCloseGuard: boolean;
-    platform: NodeJS.Platform;
-  }
-) {
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const [hostSession, setHostSession] =
-    useState<WorkspaceWorkbenchHostSessionBinding | null>(null);
-
-  useLayoutEffect(() => {
-    const binding = workbenchHostService.openHostSession(props.workspace.id);
-    setHostSession(binding);
-    return () => {
-      binding.release();
-    };
-  }, [props.workspace.id, workbenchHostService]);
-
-  if (
-    !hostSession ||
-    !hostSession.isActive ||
-    hostSession.workspaceId !== props.workspace.id
-  ) {
-    return <main className="h-screen min-h-0 bg-background" />;
-  }
-
-  return (
-    <StandaloneAgentWindowWithToolRuntime
-      {...props}
-      hostSession={hostSession}
-    />
-  );
-}
-
-function StandaloneAgentWindowWithToolRuntime({
-  enableWindowCloseGuard,
-  hostSession,
-  platform,
-  ...props
-}: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
-  enableWindowCloseGuard: boolean;
-  hostSession: WorkspaceWorkbenchHostSessionBinding;
-  platform: NodeJS.Platform;
-}) {
-  const runtime = useWorkspaceWorkbenchShellRuntime({
-    enableWindowCloseGuard,
-    hostSession,
-    state: {
-      platform,
-      workspace: props.workspace
-    }
-  });
-  const toolWorkbench = useMemo(
-    () => ({
-      appI18n: runtime.appI18n,
-      contributions: runtime.hostInput.contributions,
-      onHostReady: runtime.onWorkbenchCloseGuardHostReady,
-      requestWindowClose: runtime.requestWindowClose
-    }),
-    [
-      runtime.appI18n,
-      runtime.hostInput.contributions,
-      runtime.onWorkbenchCloseGuardHostReady,
-      runtime.requestWindowClose
-    ]
-  );
-
-  return (
-    <>
-      <StandaloneAgentWindow {...props} toolWorkbench={toolWorkbench} />
-      <WorkspaceCloseGuardDialog
-        request={runtime.closeDialog.request}
-        onCancel={runtime.closeDialog.onCancel}
-        onConfirm={runtime.closeDialog.onConfirm}
-      />
-    </>
   );
 }
 
@@ -1294,94 +1186,5 @@ function resolveCurrentWorkspaceBrowserNodeId(
   return (
     snapshot.nodes.find((node) => node.data.typeId === workspaceBrowserNodeID)
       ?.id ?? null
-  );
-}
-
-function WorkspaceCloseGuardDialog({
-  request,
-  onCancel,
-  onConfirm
-}: {
-  request: WorkbenchHostCloseDialogRequest | null;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  if (request === null) {
-    return null;
-  }
-
-  return (
-    <ConfirmationDialog
-      cancelLabel={request.cancelLabel}
-      confirmLabel={request.confirmLabel}
-      description={request.description}
-      open={true}
-      title={request.title}
-      tone={request.variant === "destructive" ? "destructive" : "default"}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          onCancel();
-        }
-      }}
-      onConfirm={onConfirm}
-    >
-      {request.details ? (
-        <div className="whitespace-pre-wrap">{request.details}</div>
-      ) : null}
-    </ConfirmationDialog>
-  );
-}
-
-interface WorkspaceFallbackStateProps {
-  description: string;
-  isLoading?: boolean;
-  onRetry?: () => void;
-  title: string;
-  tone?: "default" | "destructive";
-}
-
-function WorkspaceFallbackState({
-  description,
-  isLoading = false,
-  onRetry,
-  title,
-  tone = "default"
-}: WorkspaceFallbackStateProps) {
-  const { t } = useTranslation();
-
-  return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 sm:py-7">
-      <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-3xl items-center justify-center">
-        <div className="flex max-w-3xl flex-col items-center text-center">
-          <div
-            className={cn(
-              "text-primary",
-              tone === "destructive" && "text-[var(--state-danger)]"
-            )}
-          >
-            {isLoading ? (
-              <LoadingIcon className="size-9 animate-spin" />
-            ) : (
-              <WarningLinedIcon className="size-9" />
-            )}
-          </div>
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <CardTitle className="text-3xl tracking-tight">{title}</CardTitle>
-            <CardDescription className="text-[15px] text-muted-foreground">
-              {description}
-            </CardDescription>
-            {onRetry ? (
-              <Button
-                className="mt-3 h-10 rounded-lg px-4"
-                type="button"
-                onClick={onRetry}
-              >
-                {t("workspace.fallback.retryAction")}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </main>
   );
 }

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func providerRuntimeConfig(session Session, provider string) map[string]any {
@@ -19,33 +21,40 @@ func providerRuntimeConfig(session Session, provider string) map[string]any {
 
 func providerBaseURL(session Session, provider string) string {
 	env := append(os.Environ(), session.Env...)
-	switch strings.TrimSpace(provider) {
-	case ProviderClaudeCode:
-		if baseURL := firstNonEmptyEnv(env,
-			"ANTHROPIC_BASE_URL",
-			"ANTHROPIC_API_BASE_URL",
-		); baseURL != "" {
-			return baseURL
-		}
-		return claudeSettingsBaseURL(session.CWD)
-	case ProviderCodex:
-		if baseURL := firstNonEmptyEnv(env,
-			"OPENAI_BASE_URL",
-			"OPENAI_API_BASE_URL",
-			"OPENAI_API_BASE",
-		); baseURL != "" {
-			return baseURL
-		}
+	if descriptor, ok := providerregistry.Find(provider); ok {
+		return providerBaseURLFromDescriptor(env, session.CWD, descriptor.Runtime.Endpoint)
+	}
+	return ""
+}
+
+func providerBaseURLFromDescriptor(
+	env []string,
+	cwd string,
+	endpoint providerregistry.RuntimeEndpointDescriptor,
+) string {
+	if baseURL := firstNonEmptyEnv(env, endpoint.BaseURLEnvVars...); baseURL != "" {
+		return baseURL
+	}
+	switch endpoint.ConfigKind {
+	case providerregistry.EndpointConfigKindCodexCLI:
 		return codexConfigBaseURL(env)
+	case providerregistry.EndpointConfigKindClaudeSettings:
+		return claudeSettingsBaseURL(env, cwd)
 	default:
 		return ""
 	}
 }
 
-func claudeSettingsBaseURL(cwd string) string {
+func claudeSettingsBaseURL(env []string, cwd string) string {
 	var candidates []string
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		candidates = append(candidates, filepath.Join(home, ".claude", "settings.json"))
+	configDir := firstNonEmptyEnv(env, "CLAUDE_CONFIG_DIR")
+	if configDir == "" {
+		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+			configDir = filepath.Join(home, ".claude")
+		}
+	}
+	if configDir != "" {
+		candidates = append(candidates, filepath.Join(configDir, "settings.json"))
 	}
 	candidates = append(candidates, claudeProjectSettingsPaths(cwd)...)
 	for index := len(candidates) - 1; index >= 0; index-- {

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
@@ -252,19 +252,20 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 		t.Fatalf("legacy message page = %#v", page)
 	}
 
-	// Seeded system targets survive untouched, and newer system targets
-	// (tutti-agent, cursor, and opencode) are seeded onto the upgraded database.
+	// Seeded system targets survive untouched, and the complete descriptor
+	// catalog is seeded onto the upgraded database.
 	targets, err := store.ListAgentTargets(ctx)
 	if err != nil {
 		t.Fatalf("ListAgentTargets() error = %v", err)
 	}
-	if len(targets) != 5 ||
-		targets[0].ID != agenttargetbiz.IDLocalCodex ||
-		targets[1].ID != agenttargetbiz.IDLocalClaudeCode ||
-		targets[2].ID != agenttargetbiz.IDLocalTuttiAgent ||
-		targets[3].ID != agenttargetbiz.IDLocalCursor ||
-		targets[4].ID != agenttargetbiz.IDLocalOpenCode {
-		t.Fatalf("targets after upgrade = %#v, want the five system targets", targets)
+	descriptors := providerregistry.Migrated()
+	if len(targets) != len(descriptors) {
+		t.Fatalf("targets after upgrade = %#v, want %d descriptor targets", targets, len(descriptors))
+	}
+	for index, target := range targets {
+		if target.ID != descriptors[index].Target.ID || target.Provider != descriptors[index].Identity.ID || target.Enabled != descriptors[index].Target.Enabled {
+			t.Fatalf("target[%d] after upgrade = %#v, want descriptor target %#v", index, target, descriptors[index].Target)
+		}
 	}
 
 	// Migrate is idempotent after the claim.
@@ -272,15 +273,15 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 		t.Fatalf("Migrate() second run error = %v", err)
 	}
 
-	// Deliberate compatibility trade-off: claimed (not replayed) v1 keeps
-	// the legacy workspaces foreign key on upgraded databases; only fresh
-	// schemas are FK-free.
+	// The final entity migration normalizes the claimed legacy table onto the
+	// package-owned schema and replaces host coupling with the active-turn FK.
 	rows, err := store.db.QueryContext(ctx, `PRAGMA foreign_key_list(workspace_agent_sessions)`)
 	if err != nil {
 		t.Fatalf("foreign_key_list error = %v", err)
 	}
 	defer rows.Close()
 	hasWorkspacesFK := false
+	hasTurnsFK := false
 	for rows.Next() {
 		var (
 			id, seq                                    int
@@ -292,12 +293,15 @@ SELECT applied_at_unix_ms FROM agent_store_schema_migrations WHERE id = ?
 		if table == "workspaces" {
 			hasWorkspacesFK = true
 		}
+		if table == "workspace_agent_turns" {
+			hasTurnsFK = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate foreign_key_list: %v", err)
 	}
-	if !hasWorkspacesFK {
-		t.Fatal("upgraded legacy database lost its workspaces foreign key; claim semantics changed unexpectedly")
+	if hasWorkspacesFK || !hasTurnsFK {
+		t.Fatalf("upgraded session foreign keys workspaces=%v turns=%v, want package-owned turn reference", hasWorkspacesFK, hasTurnsFK)
 	}
 
 	// Workspace deletion on the upgraded schema clears agent rows through

@@ -5,25 +5,21 @@ UI. It is a UI package, not a host transport or business-core package.
 
 Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
 [AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).
-It records the source-of-truth rules, common chains, debugging playbooks, and
-the self-evolution loop for durable lessons.
+It defines daemon, workspace-engine, GUI-module, provider, and desktop-host
+ownership.
 
 ## Data Source
 
-`AgentActivityRuntime` is the AgentGUI source for agent activity data.
+The injected workspace `AgentSessionEngine`, reached through
+`AgentActivityRuntime`, is AgentGUI's only source for canonical agent activity
+data.
 
 Runtime-owned data includes:
 
-- workspace activity snapshots
-- session lists
-- paged session messages
-- retained live session events
-- session event subscriptions
-- session create, activate, unactivate, input, cancel, interactive submit,
-  delete, pin, settings update, control-state read, composer-options read, and
-  get session operations
-- provider/session preparation hooks that directly gate activity flow, such as
-  OpenClaw gateway warmup
+- canonical sessions, turns, interactions, and operation state
+- prompt queue and correlated optimistic intents
+- stable selector projections
+- semantic session, turn, prompt, interaction, settings, and goal commands
 
 Runtime-owned capability declarations are optional and default to enabled:
 
@@ -49,40 +45,42 @@ render-state changes, and caught errors. Set
 fallback. Production builds stay silent unless the host provides
 `reportDiagnostic`.
 
-`AgentHostApi` is still accepted for host capabilities that are not agent
-activity data:
+Host capabilities remain separate from activity data. `AgentHostApi` is still
+accepted for host capabilities that are not agent activity data:
 
 - workspace files and file references
 - clipboard
-- runtime metadata and diagnostics
 - account/user lookup
 - user-project selection
 - local file picking/reading and batch export helpers
 
-Production AgentGUI must receive `agentActivityRuntime` and must not use legacy
-Host API methods as an agent data fallback. Compatibility helpers remain only
-for projection boundaries, non-desktop legacy hosts, and tests.
+AgentGUI has no host-API activity fallback. A host must inject the runtime and
+the grouped `AgentGUINodeProps` responsibility objects.
 
 ## Boundary Rule
 
 `AgentActivity*` types from `@tutti-os/agent-activity-core` are the canonical
-frontend agent activity model.
+frontend agent activity model. Production reads use exported engine selectors;
+production writes use engine commands. GUI modules must not read entity maps,
+subscribe to daemon streams, or reconstruct session/turn lifecycle from
+messages.
 
-`AgentHostWorkspaceAgent*` DTOs are allowed only in compatibility/projection
-code that adapts legacy AgentGUI internals. New production read paths should use
-`useAgentActivityRuntime()` or `useOptionalAgentActivityRuntime()` instead of
-calling `workspaceAgents.list`, `workspaceAgents.listSessionMessages`,
-`agentSessions.retainEventStream`, `agentSessions.subscribeEvents`, or
-`agentSessions.getState` directly. Production writes should call runtime methods
-instead of `agentSessions.activate`, `agentSessions.unactivate`,
-`agentSessions.exec`, `agentSessions.cancel`, `agentSessions.submitInteractive`,
-`agentSessions.updateSettings`, or `agentSessions.pinSession`.
+Runtime identity is explicit: each consumer resolves the injected engine and
+verifies its `(workspaceId, origin)` identity. Module-global runtime slots and
+hidden origin registries are forbidden.
 
 Run this boundary check after changing AgentGUI data flow:
 
 ```sh
 pnpm check:agent-activity-runtime-boundaries
 ```
+
+## Node Contract
+
+`AgentGUINodeProps` has eight required top-level responsibilities:
+`identity`, `workspace`, `frame`, `state`, `runtimeRequests`,
+`hostCapabilities`, `hostActions`, and `renderSlots`. Extend the owning object;
+do not restore flat compatibility props.
 
 ## Agent Directory
 
@@ -121,6 +119,10 @@ may share the same `provider` and remain distinct. `provider` is runtime metadat
 for provider-native execution, composer policy, probes, and capabilities; it
 must not be used to group, deduplicate, name, icon, or select agents.
 
+Runnable provider targets are host-supplied. If the target catalog is absent,
+AgentGUI presents an explicit unavailable state; it does not synthesize local
+targets from presentation metadata.
+
 Agent names and primary icons always come from `agents[].name` and
 `agents[].iconUrl`. `owner.avatarUrl` is rendered separately as an ownership
 badge. Invalid entries and duplicate `agentTargetId` values are discarded by
@@ -130,6 +132,19 @@ With one agent, AgentGUI hides the aggregate `All` entry and renders that agent
 directly. With multiple agents, it shows `All` plus the host-ordered agent rail
 and empty-home carousel. Hosts may customize the aggregate icon with
 `allAgentsPresentation.iconUrl`.
+
+Hosts adapting daemon-owned agent targets must resolve the target's descriptor
+`iconKey` instead of assuming it equals the provider ID. The narrow
+`@tutti-os/agent-gui/provider-icons` subpath exports
+`resolveProviderIconAsset(iconKey, variant)` for that adapter seam. Unknown
+keys return `null`; hosts should render a neutral icon rather than silently
+substituting another provider's icon.
+
+Hosts that need provider identity presentation may call
+`resolveAgentGUIProviderIdentity(value)` from the narrow
+`@tutti-os/agent-gui/provider-identity` subpath. Migrated providers resolve from
+the generated descriptor catalog, which is checked against the daemon provider
+registry and OpenAPI provider enums.
 
 Inside AgentGUI, normalized directory entries use the canonical
 `AgentGUIAgentTarget` / `agentTargets` vocabulary. `provider` is execution

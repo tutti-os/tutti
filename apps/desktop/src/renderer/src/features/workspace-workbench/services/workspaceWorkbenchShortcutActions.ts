@@ -7,7 +7,7 @@ import {
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
   type AgentGuiWorkbenchNewConversationDetail
 } from "@tutti-os/agent-gui/workbench/contribution";
-import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import {
   createWorkspaceAgentGuiSessionLaunchRequest,

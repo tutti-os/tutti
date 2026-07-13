@@ -1,4 +1,3 @@
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentsessionstore
 
 import (
@@ -202,7 +201,7 @@ func (s *sessionSyncer) syncRoom(ctx context.Context, roomID string) {
 	s.syncSessionMessages(ctx, roomID, current)
 }
 
-func (s *sessionSyncer) syncSessionState(ctx context.Context, roomID string) ([]WorkspaceAgentSession, bool) {
+func (s *sessionSyncer) syncSessionState(ctx context.Context, roomID string) ([]ProviderActivitySessionProjection, bool) {
 	if s == nil || s.svc == nil || s.client == nil {
 		return nil, false
 	}
@@ -220,18 +219,7 @@ func (s *sessionSyncer) syncSessionState(ctx context.Context, roomID string) ([]
 	return snapshot.Sessions, true
 }
 
-func (s *sessionSyncer) roomSessions(roomID string) []WorkspaceAgentSession {
-	if s == nil || s.svc == nil {
-		return nil
-	}
-	state, ok := s.svc.GetAgentState(roomID)
-	if !ok {
-		return nil
-	}
-	return state.Sessions
-}
-
-func isActiveSession(session WorkspaceAgentSession) bool {
+func isActiveSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(session.LifecycleStatus)) {
 	case "completed", "failed", "canceled", "ended":
 		return false
@@ -245,7 +233,7 @@ func isActiveSession(session WorkspaceAgentSession) bool {
 	}
 }
 
-func isTerminalSession(session WorkspaceAgentSession) bool {
+func isTerminalSession(session ProviderActivitySessionProjection) bool {
 	switch strings.ToLower(strings.TrimSpace(session.LifecycleStatus)) {
 	case "completed", "failed", "canceled", "ended":
 		return true
@@ -257,7 +245,7 @@ func isTerminalSession(session WorkspaceAgentSession) bool {
 func (s *sessionSyncer) syncSessionMessages(
 	ctx context.Context,
 	roomID string,
-	sessions []WorkspaceAgentSession,
+	sessions []ProviderActivitySessionProjection,
 ) {
 	if s == nil || s.svc == nil || s.client == nil {
 		return

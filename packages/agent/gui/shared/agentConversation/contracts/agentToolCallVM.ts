@@ -1,5 +1,5 @@
 import type { ToolCallStatusKind } from "../../workspaceAgentToolCallDisplay";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { AgentApprovalItemVM } from "./agentApprovalItemVM";
 import type { AgentAskUserQuestionItemVM } from "./agentAskUserQuestionItemVM";
 import type { AgentPlanModeItemVM } from "./agentPlanModeItemVM";

@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -19,9 +19,6 @@ const ReasonExternalAgentRegistryUnavailable = "external_agent_registry_unavaila
 const ReasonManagedRuntimeUnavailable = "managed_runtime_unavailable"
 const ReasonClaudeSDKSidecarUnavailable = "claude_sdk_sidecar_unavailable"
 
-const claudeCodeRuntimeEnv = "TUTTI_CLAUDE_CODE_RUNTIME"
-const claudeCodeRuntimeACP = "acp"
-const claudeCodeRuntimeSDK = "sdk"
 const claudeSDKSidecarCommandEnv = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
 const claudeSDKSidecarEntryPathEnv = "TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH"
 const claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
@@ -67,8 +64,8 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 }
 
 func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) (ProviderSpec, error) {
-	if spec.Provider == agentprovider.ClaudeCode {
-		spec = s.resolveClaudeCodeRuntimeSpec(ctx, spec, requireManagedRuntime)
+	if isClaudeStatusSpec(spec) {
+		spec = s.resolveClaudeCodeProviderSpec(ctx, spec, requireManagedRuntime)
 	}
 	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
 		return s.resolveStaticProviderSpec(ctx, spec, requireManagedRuntime), nil
@@ -88,37 +85,7 @@ func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, req
 	return spec, nil
 }
 
-func (s Service) resolveClaudeCodeRuntimeSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
-	if claudeCodeAgentStatusRuntime() == claudeCodeRuntimeACP {
-		return claudeCodeACPProviderSpec(spec)
-	}
-	return s.resolveClaudeCodeSDKProviderSpec(ctx, spec, requireManagedRuntime)
-}
-
-func claudeCodeAgentStatusRuntime() string {
-	runtime := strings.TrimSpace(os.Getenv(claudeCodeRuntimeEnv))
-	if strings.EqualFold(runtime, claudeCodeRuntimeACP) {
-		return claudeCodeRuntimeACP
-	}
-	return claudeCodeRuntimeSDK
-}
-
-func claudeCodeACPProviderSpec(spec ProviderSpec) ProviderSpec {
-	spec.ExternalRegistryID = firstNonBlank(spec.ExternalRegistryID, "claude-acp")
-	if spec.AdapterInstall.Kind == "" {
-		spec.AdapterInstall.Kind = InstallerKindExternalAgentRegistryNPM
-	}
-	spec.AdapterInstall.DisplayCommand = firstNonBlank(
-		spec.AdapterInstall.DisplayCommand,
-		"Install claude-acp from ACP External Agent Registry",
-	)
-	if spec.AdapterInstall.PostInstall == InstallerPostStepNone {
-		spec.AdapterInstall.PostInstall = InstallerPostStepPatchClaudeAgentACP
-	}
-	return spec
-}
-
-func (s Service) resolveClaudeCodeSDKProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
+func (s Service) resolveClaudeCodeProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
 	spec.ExternalRegistryID = ""
 	spec.AdapterPackage = AdapterPackageRequirement{}
 	spec.AdapterInstall = InstallerSpec{}
@@ -196,10 +163,19 @@ func fileExistsPath(path string) bool {
 }
 
 func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) ProviderSpec {
-	if spec.Provider == agentprovider.Cursor {
-		return s.resolveCursorProviderSpec(spec)
+	resolverKind := spec.StaticSpecResolverKind
+	if resolverKind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			resolverKind = status.StaticSpecResolverKind
+		}
 	}
-	if spec.Provider != agentprovider.Codex {
+	switch resolverKind {
+	case providerregistry.StaticSpecResolverKindCursor:
+		return s.resolveCursorProviderSpec(spec)
+	case providerregistry.StaticSpecResolverKindGeneric:
+		return spec
+	case providerregistry.StaticSpecResolverKindManagedNode:
+	default:
 		return spec
 	}
 	if s.userNodeRuntimeAvailable(spec.AdapterEnv) {
@@ -291,7 +267,6 @@ func (s Service) resolveExternalRegistryNPMSpec(
 			PackageDir: packageDir,
 			Version:    firstNonBlank(packageVersion, agent.Version),
 		},
-		PostInstall: spec.AdapterInstall.PostInstall,
 	}
 	appRuntime, ok := s.resolveManagedRuntimeForProvider(ctx, requireManagedRuntime)
 	if !ok {

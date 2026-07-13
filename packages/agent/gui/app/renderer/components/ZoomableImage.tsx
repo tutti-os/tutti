@@ -7,7 +7,6 @@ import {
   type WheelEvent,
   useCallback,
   useEffect,
-  useRef,
   useState
 } from "react";
 import { createPortal } from "react-dom";
@@ -27,6 +26,10 @@ import { cn } from "../lib/utils";
 import { ConversationImageContextMenu } from "../../../shared/agentConversation/components/ConversationImageContextMenu";
 import { copyImageToClipboard } from "../../../shared/agentConversation/lib/copyImageToClipboard";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
+import {
+  downloadImage,
+  resolveImageDownloadName
+} from "./zoomableImageDownload";
 
 interface ZoomableImageProps extends ComponentPropsWithoutRef<"img"> {
   downloadName?: string;
@@ -67,7 +70,6 @@ export function ZoomableImage({
   const [isWheelZooming, setIsWheelZooming] = useState(false);
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false);
   const [isImagePreviewClosing, setIsImagePreviewClosing] = useState(false);
-  const closePreviewTimerRef = useRef<number | null>(null);
   const imagePreviewZoomPercent = Math.round(imagePreviewZoom * 100);
   const canZoomOut = imagePreviewZoom > IMAGE_PREVIEW_ZOOM_MIN;
   const canZoomIn = imagePreviewZoom < IMAGE_PREVIEW_ZOOM_MAX;
@@ -76,55 +78,31 @@ export function ZoomableImage({
     setContextMenuPosition(null);
   }, []);
 
-  const finishClosePreviewImage = useCallback((): void => {
-    if (closePreviewTimerRef.current !== null) {
-      window.clearTimeout(closePreviewTimerRef.current);
-      closePreviewTimerRef.current = null;
-    }
+  const finishClosePreviewImage = (): void => {
     setIsImagePreviewOpen(false);
     setIsImagePreviewClosing(false);
     setIsWheelZooming(false);
     setImagePreviewZoom(1);
-  }, []);
+  };
 
-  const closePreviewImage = useCallback((): void => {
+  const closePreviewImage = (): void => {
     if (!isImagePreviewOpen) {
       return;
-    }
-    if (closePreviewTimerRef.current !== null) {
-      window.clearTimeout(closePreviewTimerRef.current);
     }
     setIsImagePreviewClosing(true);
     setIsWheelZooming(false);
     setImagePreviewZoom(1);
     closeContextMenu();
-    closePreviewTimerRef.current = window.setTimeout(
-      finishClosePreviewImage,
-      180
-    );
-  }, [closeContextMenu, finishClosePreviewImage, isImagePreviewOpen]);
+  };
 
-  const openPreviewImage = useCallback((): void => {
+  const openPreviewImage = (): void => {
     if (!actionSource) {
       return;
-    }
-    if (closePreviewTimerRef.current !== null) {
-      window.clearTimeout(closePreviewTimerRef.current);
-      closePreviewTimerRef.current = null;
     }
     closeContextMenu();
     setIsImagePreviewClosing(false);
     setIsImagePreviewOpen(true);
-  }, [actionSource, closeContextMenu]);
-
-  useEffect(
-    () => () => {
-      if (closePreviewTimerRef.current !== null) {
-        window.clearTimeout(closePreviewTimerRef.current);
-      }
-    },
-    []
-  );
+  };
 
   useEffect(() => {
     if (!contextMenuPosition) {
@@ -138,34 +116,6 @@ export function ZoomableImage({
       document.removeEventListener("scroll", closeContextMenu, true);
     };
   }, [closeContextMenu, contextMenuPosition]);
-
-  useEffect(() => {
-    if (!isImagePreviewOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      closePreviewImage();
-    };
-
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [closePreviewImage, isImagePreviewOpen]);
-
-  useEffect(() => {
-    if (!copyStatus || copyStatus.busy) {
-      return;
-    }
-    const timer = setTimeout(() => setCopyStatus(null), 1600);
-    return () => clearTimeout(timer);
-  }, [copyStatus]);
 
   const handleContextMenu = useCallback(
     (event: MouseEvent<HTMLElement>): void => {
@@ -368,10 +318,20 @@ export function ZoomableImage({
         ? createPortal(
             <div
               aria-modal="true"
+              autoFocus
               className="tsh-zoom-dialog nodrag tsh-desktop-no-drag"
+              data-closing={isImagePreviewClosing ? "true" : undefined}
               data-rmiz-modal=""
               role="dialog"
               tabIndex={-1}
+              onAnimationEnd={(event) => {
+                if (
+                  isImagePreviewClosing &&
+                  event.currentTarget === event.target
+                ) {
+                  finishClosePreviewImage();
+                }
+              }}
               onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
                 if (event.key === "Escape") {
                   closePreviewImage();
@@ -735,108 +695,4 @@ function clampImagePreviewZoom(value: number): number {
 
 function formatImagePreviewZoom(value: number): string {
   return Number(value.toFixed(2)).toString();
-}
-
-function downloadImage(src: string, name: string): void {
-  const link = document.createElement("a");
-  link.href = src;
-  link.download = name;
-  link.rel = "noopener";
-  document.body.append(link);
-  link.click();
-  link.remove();
-}
-
-function resolveImageDownloadName(
-  name: string | undefined,
-  src: string | null,
-  alt: string | undefined
-): string {
-  const semanticName =
-    resolveImageNameBase(name) ??
-    resolveImageNameBase(alt) ??
-    resolveImageNameBase(src) ??
-    "image";
-  const extension =
-    resolveImageNameExtension(name) ??
-    resolveImageNameExtension(src) ??
-    resolveDataImageExtension(src) ??
-    "png";
-  return `${semanticName}-${formatImageDownloadTimestamp(new Date())}-${createDownloadRandomSuffix()}.${extension}`;
-}
-
-function resolveImageNameBase(value: string | null | undefined): string | null {
-  const segment = imageNameSegment(value);
-  if (!segment) {
-    return null;
-  }
-  const base = segment.replace(/\.[A-Za-z0-9]{2,8}$/u, "");
-  const sanitized = stripControlCharacters(base)
-    .replace(/[\\/:*?"<>|#%&{}$!'@+`=]+/gu, "-")
-    .replace(/\s+/gu, "-")
-    .replace(/-+/gu, "-")
-    .replace(/^-|-$/gu, "")
-    .slice(0, 80);
-  return sanitized || null;
-}
-
-function stripControlCharacters(value: string): string {
-  return Array.from(value)
-    .filter((char) => char.charCodeAt(0) >= 32)
-    .join("");
-}
-
-function resolveImageNameExtension(
-  value: string | null | undefined
-): string | null {
-  const segment = imageNameSegment(value);
-  const match = segment?.match(/\.([A-Za-z0-9]{2,8})$/u);
-  if (!match?.[1]) {
-    return null;
-  }
-  return normalizeImageExtension(match[1]);
-}
-
-function imageNameSegment(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const withoutQuery = decodeURIComponentSafe(
-    trimmed.split(/[?#]/, 1)[0] ?? ""
-  );
-  return withoutQuery.split(/[\\/]/).pop()?.trim() || null;
-}
-
-function resolveDataImageExtension(src: string | null): string | null {
-  const match = src?.match(/^data:image\/([A-Za-z0-9.+-]+)[;,]/u);
-  return match?.[1] ? normalizeImageExtension(match[1]) : null;
-}
-
-function normalizeImageExtension(extension: string): string {
-  const normalized = extension.toLowerCase();
-  if (normalized === "jpeg") {
-    return "jpg";
-  }
-  if (normalized === "svg+xml") {
-    return "svg";
-  }
-  return normalized.replace(/[^a-z0-9]/gu, "") || "png";
-}
-
-function formatImageDownloadTimestamp(date: Date): string {
-  const pad = (value: number): string => String(value).padStart(2, "0");
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-}
-
-function createDownloadRandomSuffix(): string {
-  return Math.random().toString(36).slice(2, 6).padEnd(4, "0");
-}
-
-function decodeURIComponentSafe(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }

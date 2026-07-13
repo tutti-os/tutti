@@ -1,12 +1,3 @@
-export type AgentActivitySessionStatus =
-  | "queued"
-  | "working"
-  | "waiting"
-  | "completed"
-  | "failed"
-  | "canceled"
-  | "unknown";
-
 export type AgentActivityDisplayStatus =
   | "working"
   | "waiting"
@@ -18,29 +9,54 @@ export type AgentActivityDisplayStatus =
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
-  agentTargetId?: string | null;
+  agentTargetId: string | null;
   provider: string;
-  providerSessionId?: string | null;
+  providerSessionId: string | null;
   userId?: string;
   model?: string | null;
+  noProject?: boolean | null;
   cwd: string;
   title: string;
-  status: AgentActivitySessionStatus | (string & {});
-  turnLifecycle?: AgentActivityTurnLifecycle | null;
-  submitAvailability?: AgentActivitySubmitAvailability | null;
-  pendingInteractive?: AgentActivityInteractivePrompt | null;
-  visible?: boolean;
-  resumable?: boolean;
-  currentPhase?: string | null;
-  lastError?: string | null;
-  runtimeContext?: Record<string, unknown>;
-  messageVersion?: number;
-  lastEventUnixMs?: number;
-  startedAtUnixMs?: number;
-  endedAtUnixMs?: number;
-  pinnedAtUnixMs?: number | null;
-  createdAtUnixMs?: number;
-  updatedAtUnixMs?: number;
+  activeTurnId: string | null;
+  activeTurn: AgentActivityTurn | null;
+  latestTurn: AgentActivityTurn | null;
+  latestTurnInteractions: readonly AgentActivityInteraction[];
+  pendingInteractions: readonly AgentActivityInteraction[];
+  settings: AgentActivitySessionSettings;
+  permissionConfig: AgentActivitySessionPermissionConfig;
+  capabilities: AgentActivitySessionCapabilities | null;
+  usage: AgentActivitySessionUsage | null;
+  backgroundAgents: AgentActivitySessionBackgroundAgents | null;
+  goal: AgentActivitySessionGoal | null;
+  imported: boolean;
+  visible: boolean;
+  resumable: boolean;
+  messageVersion: number;
+  lastEventUnixMs: number;
+  startedAtUnixMs: number;
+  endedAtUnixMs: number | null;
+  pinnedAtUnixMs: number | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+}
+
+export type AgentActivityActivationMode = "new" | "existing";
+export type AgentActivityActivationStatus =
+  | "attached"
+  | "already_attached"
+  | "failed";
+
+export interface AgentActivityActivateSessionResult {
+  session: AgentActivitySession;
+  activation: {
+    mode: AgentActivityActivationMode;
+    status: AgentActivityActivationStatus;
+  };
+  error?: {
+    code: string;
+    message: string;
+    debugMessage?: string;
+  };
 }
 
 export interface AgentActivityInteractivePrompt {
@@ -54,24 +70,12 @@ export interface AgentActivityInteractivePrompt {
   metadata?: Record<string, unknown>;
 }
 
-export type AgentActivityCancelReason =
-  | "active_turn_canceled"
-  | "no_active_turn"
-  | "stale_turn_reconciled";
-
-export interface AgentActivityCancelSessionResult {
-  session: AgentActivitySession;
-  canceled: boolean;
-  reason: AgentActivityCancelReason | (string & {});
-}
-
 export interface AgentActivityMessage {
   workspaceId?: string;
   agentSessionId: string;
   messageId: string;
-  id?: number;
   version: number;
-  turnId: string;
+  turnId: string | null;
   role: string;
   kind: string;
   status?: string | null;
@@ -175,10 +179,44 @@ export interface AgentActivityComposerSettings {
   permissionModeId?: string | null;
 }
 
+export type AgentActivitySlashCommandEffect =
+  | "submitImmediate"
+  | "showReviewPicker"
+  | "activateGoalMode"
+  | "togglePlanMode"
+  | "showStatus"
+  | "toggleSpeed";
+
+export interface AgentActivitySlashCommandPolicy {
+  fallbackCommands: readonly string[];
+  commandCatalogAuthoritative?: boolean;
+  commandEffects: readonly {
+    command: string;
+    effect: AgentActivitySlashCommandEffect;
+  }[];
+}
+
+export interface AgentActivityComposerBehavior {
+  collapseModelOptionsToLatest: boolean;
+  modelOptionsAuthoritative: boolean;
+  refreshModelOptionsAfterSettings: boolean;
+  prewarmDraftSession: boolean;
+  planModeExclusiveWithPermissionMode: boolean;
+}
+
 export interface AgentActivityComposerOptions {
   provider: string;
+  /** Typed capabilities available before a session exists. */
+  capabilities: AgentActivitySessionCapabilities | null;
   models: AgentActivityComposerSettingOption[];
   reasoningEfforts: AgentActivityComposerSettingOption[];
+  reasoningOptionsByModel?: Record<
+    string,
+    {
+      defaultValue?: string | null;
+      options: AgentActivityComposerSettingOption[];
+    }
+  >;
   /** Orthogonal speed tiers (e.g. standard/fast); empty when unsupported. */
   speeds: AgentActivityComposerSettingOption[];
   /** Mirrors tuttid modelConfig.configurable; false when absent. */
@@ -187,10 +225,15 @@ export interface AgentActivityComposerOptions {
   reasoningConfigurable?: boolean;
   /** Mirrors tuttid speedConfig.configurable; false when absent. */
   speedConfigurable?: boolean;
+  /** Effective pre-session settings paired with this options snapshot. */
+  effectiveSettings?: AgentActivityComposerSettings | null;
   permissionConfig?: AgentActivityComposerPermissionConfig | null;
-  runtimeContext?: Record<string, unknown>;
+  draftAgentSessionId?: string | null;
+  modelOptionsLoading?: boolean;
   skills: AgentActivityComposerSkillOption[];
   capabilityCatalog?: AgentActivityComposerCapabilityOption[];
+  behavior: AgentActivityComposerBehavior;
+  slashCommandPolicy?: AgentActivitySlashCommandPolicy | null;
   loadedAtUnixMs: number;
 }
 
@@ -210,6 +253,11 @@ export interface AgentActivityLoadComposerOptionsInput {
   signal?: AbortSignal;
 }
 
+export type AgentActivityComposerOptionsLoadStatus =
+  | "loading"
+  | "ready"
+  | "error";
+
 export interface AgentActivitySnapshot {
   workspaceId: string;
   sessions: AgentActivitySession[];
@@ -221,76 +269,141 @@ export interface AgentActivitySnapshot {
    * never parsed or rewritten.
    */
   composerOptionsByTargetKey?: Record<string, AgentActivityComposerOptions>;
+  /** Request lifecycle for composer options, keyed by the same opaque target. */
+  composerOptionsLoadStatusByTargetKey?: Record<
+    string,
+    AgentActivityComposerOptionsLoadStatus
+  >;
 }
 
-export interface AgentActivitySessionEventEnvelope {
+export type AgentActivityUpdatedEvent =
+  | AgentActivitySessionReconcileRequiredEvent
+  | AgentActivitySessionDeletedEvent
+  | AgentActivityMessageUpdatedEvent
+  | AgentActivityTurnUpdatedEvent
+  | AgentActivityInteractionUpdatedEvent;
+
+export interface AgentActivitySessionReconcileRequiredEvent {
   workspaceId: string;
   agentSessionId: string;
-  eventType: string;
-  data?: unknown;
-}
-
-export interface AgentActivityUpdatedEvent {
-  workspaceId: string;
-  agentSessionId: string;
-  eventType: string;
-  data?: unknown;
-}
-
-export interface AgentActivityStatePatch {
-  agentSessionId: string;
-  agentTargetId?: string;
-  currentPhase?: string;
-  cwd?: string;
-  lastError?: string;
-  lastEventUnixMs?: number;
-  lifecycleStatus?: string;
-  model?: string;
-  occurredAtUnixMs?: number;
-  provider?: string;
-  providerSessionId?: string;
-  runtimeContext?: Record<string, unknown>;
-  startedAtUnixMs?: number;
-  submitAvailability?: AgentActivitySubmitAvailability;
-  pendingInteractive?: AgentActivityInteractivePrompt | null;
-  endedAtUnixMs?: number;
-  title?: string;
-  turn?: {
-    activeTurnId?: string | null;
-    completedCommand?: AgentActivityCompletedCommand | null;
-    completedAtUnixMs?: number;
-    fileChanges?: unknown;
-    outcome?: string;
-    phase?: string;
-    settling?: boolean;
-    submitAvailability?: AgentActivitySubmitAvailability;
-    startedAtUnixMs?: number;
-    turnId: string;
+  eventType: "session_reconcile_required";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    agentTargetId?: string;
+    eventType: "session_reconcile_required";
+    lastEventUnixMs: number;
   };
-  workspaceId?: string;
 }
+
+export interface AgentActivitySessionDeletedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_deleted";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "session_deleted";
+    deletedAtUnixMs: number;
+  };
+}
+
+export interface AgentActivityMessageUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "message_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "message_update";
+    latestVersion: number;
+    acceptedCount: number;
+    messages: readonly AgentActivityEventMessage[];
+  };
+}
+
+export interface AgentActivityEventMessage {
+  agentSessionId: string;
+  kind: string;
+  messageId: string;
+  payload: Record<string, unknown>;
+  role: string;
+  version: number;
+  turnId: string | null;
+  status?: string;
+  occurredAtUnixMs: number;
+  startedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+  createdAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+}
+
+export interface AgentActivityTurnUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "turn_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "turn_update";
+    occurredAtUnixMs: number;
+    activeTurnId: string | null;
+    turn: AgentActivityEventTurn;
+  };
+}
+
+export interface AgentActivityEventTurn {
+  turnId: string;
+  agentSessionId: string;
+  phase: AgentActivityTurnPhase;
+  outcome: AgentActivityTurnOutcome;
+  error: Record<string, unknown> | null;
+  fileChanges: unknown;
+  completedCommand: Record<string, unknown> | null;
+  startedAtUnixMs: number;
+  settledAtUnixMs: number | null;
+  updatedAtUnixMs: number;
+}
+
+export interface AgentActivityInteractionUpdatedEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "interaction_update";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "interaction_update";
+    occurredAtUnixMs: number;
+    interaction: AgentActivityInteraction;
+  };
+}
+
+export type AgentActivitySessionEventEnvelope = Extract<
+  AgentActivityUpdatedEvent,
+  { eventType: "message_update" }
+>;
 
 export interface AgentActivityUpdatedApplyResult {
   applied: boolean;
   messages: AgentActivityMessage[];
   session: AgentActivitySession | null;
-  statePatch: AgentActivityStatePatch | null;
 }
 
 export interface AgentActivityCreateSessionInput {
+  clientSubmitId: string;
   workspaceId: string;
   agentSessionId?: string | null;
   agentTargetId: string;
   cwd?: string | null;
+  noProject?: boolean | null;
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
-  metadata?: Record<string, unknown>;
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
-  runtimeContext?: Record<string, unknown> | null;
   speed?: string | null;
   title?: string | null;
   visible?: boolean | null;
@@ -298,63 +411,37 @@ export interface AgentActivityCreateSessionInput {
 }
 
 export interface AgentActivitySendInput {
+  clientSubmitId: string;
   workspaceId: string;
   agentSessionId: string;
   content: AgentPromptContentBlock[];
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
   guidance?: boolean;
-  metadata?: Record<string, unknown>;
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   signal?: AbortSignal;
 }
 
-export type AgentActivityTurnPhase =
-  | "submitted"
-  | "running"
-  | "waiting"
-  | "settled";
-
-export type AgentActivityTurnOutcome =
-  | "completed"
-  | "failed"
-  | "canceled"
-  | (string & {});
-
-export interface AgentActivityCompletedCommand {
-  kind: "compact" | "review" | "undo" | "goal" | (string & {});
-  status: "completed" | "failed" | "canceled" | (string & {});
-}
-
-export interface AgentActivityTurnLifecycle {
-  activeTurnId: string | null;
-  phase: AgentActivityTurnPhase | (string & {});
-  settling?: boolean;
-  outcome?: AgentActivityTurnOutcome | null;
-  completedCommand?: AgentActivityCompletedCommand | null;
-}
-
-export interface AgentActivitySubmitAvailability {
-  state: "available" | "blocked" | "queueable" | (string & {});
-  reason?: string;
+export interface AgentActivitySubmitDiagnostics {
+  submittedAtUnixMs?: number;
+  blockCount?: number;
+  hasImage?: boolean;
+  promptLength?: number;
+  queued?: boolean;
+  source?: string;
 }
 
 export interface AgentActivityMessageSemantics {
   userVisibleAssistantResponse?: boolean;
   turnSettling?: boolean;
-  noticeCommand?: "compact" | "review" | "undo" | "goal" | (string & {});
-  noticeCommandStatus?:
-    | "running"
-    | "completed"
-    | "failed"
-    | "canceled"
-    | (string & {});
+  noticeCommand?: "compact" | "review" | "undo" | "goal";
+  noticeCommandStatus?: "running" | "completed" | "failed" | "canceled";
 }
 
 export interface AgentActivitySendInputResult {
   session: AgentActivitySession;
   turnId: string;
-  turnLifecycle: AgentActivityTurnLifecycle;
-  submitAvailability: AgentActivitySubmitAvailability;
+  turn: AgentActivityTurn;
 }
 
 export interface AgentPromptContentBlock {
@@ -374,12 +461,6 @@ export interface AgentPromptContentBlock {
   sizeBytes?: number;
 }
 
-export interface AgentActivityCancelSessionInput {
-  workspaceId: string;
-  agentSessionId: string;
-  signal?: AbortSignal;
-}
-
 export type AgentActivityGoalControlAction =
   | "pause"
   | "resume"
@@ -396,17 +477,22 @@ export interface AgentActivityGoalControlInput {
 
 export interface AgentActivityGoalControlResult {
   session: AgentActivitySession;
-  goal?: Record<string, unknown> | null;
+  goal?: AgentActivitySessionGoal | null;
 }
 
 export interface AgentActivitySubmitInteractiveInput {
   workspaceId: string;
   agentSessionId: string;
   requestId: string;
+  turnId: string;
   action?: string | null;
   optionId?: string | null;
   payload?: Record<string, unknown> | null;
   signal?: AbortSignal;
+}
+
+export interface AgentActivitySubmitInteractiveResult {
+  session: AgentActivitySession;
 }
 
 export interface AgentActivityDeleteSessionInput {
@@ -435,4 +521,154 @@ export interface AgentActivityNeedsAttentionItem {
   kind: AgentActivityNeedsAttentionKind;
   summary: string;
   occurredAtUnixMs: number;
+}
+export type AgentActivityTurnPhase =
+  | "submitted"
+  | "running"
+  | "waiting"
+  | "settling"
+  | "settled";
+
+export type AgentActivityTurnOutcome =
+  | "completed"
+  | "failed"
+  | "canceled"
+  | "interrupted";
+
+export interface AgentActivityCompletedCommand {
+  kind: "compact" | "review" | "undo" | "goal";
+  status: "completed" | "failed" | "canceled";
+}
+
+export interface AgentActivityTurn {
+  agentSessionId: string;
+  completedCommand?: AgentActivityCompletedCommand | null;
+  error?: { code?: string; message: string } | null;
+  fileChanges?: Record<string, unknown> | null;
+  outcome?: AgentActivityTurnOutcome | null;
+  phase: AgentActivityTurnPhase;
+  settledAtUnixMs?: number | null;
+  startedAtUnixMs: number;
+  turnId: string;
+  updatedAtUnixMs: number;
+}
+export interface AgentActivityInteraction {
+  agentSessionId: string;
+  createdAtUnixMs: number;
+  input?: Record<string, unknown> | null;
+  kind: "approval" | "question" | "plan";
+  metadata?: Record<string, unknown> | null;
+  output?: Record<string, unknown> | null;
+  requestId: string;
+  status: "pending" | "answered" | "superseded";
+  toolName?: string | null;
+  turnId: string;
+  updatedAtUnixMs: number;
+}
+
+export type AgentActivitySessionSettings = {
+  model?: string | null;
+  permissionModeId?: string | null;
+  planMode?: boolean | null;
+  browserUse?: boolean | null;
+  reasoningEffort?: string | null;
+  speed?: string | null;
+};
+
+export type AgentActivityPermissionModeSemantic =
+  | "ask-before-write"
+  | "accept-edits"
+  | "locked-down"
+  | "auto"
+  | "full-access"
+  | "unconfigurable";
+
+export interface AgentActivitySessionPermissionModeOption {
+  id: string;
+  label: string;
+  description?: string;
+  semantic: AgentActivityPermissionModeSemantic;
+}
+
+export interface AgentActivitySessionPermissionConfig {
+  configurable: boolean;
+  defaultValue?: string;
+  modes: AgentActivitySessionPermissionModeOption[];
+}
+
+export interface AgentActivitySessionCapabilities {
+  imageInput: boolean;
+  modelImageInputRequired: boolean;
+  skills: boolean;
+  compact: boolean;
+  tokenUsage: boolean;
+  rateLimits: boolean;
+  planMode: boolean;
+  interrupt: boolean;
+  browserUse: boolean;
+  computerUse: boolean;
+  goalPause: boolean;
+  planImplementation: boolean;
+  permissionModeChangeDuringTurn: boolean;
+  permissionModeChangeDeferred: boolean;
+  review: boolean;
+  resumeRunningTurn: boolean;
+}
+
+export interface AgentActivitySessionBackgroundAgentItem {
+  taskId: string;
+  description: string;
+  status: "running" | "completed" | "failed" | "canceled";
+  summary?: string;
+  lastToolName?: string;
+  taskType?: string;
+  startedAtUnixMs?: number;
+  updatedAtUnixMs?: number;
+  completedAtUnixMs?: number;
+}
+
+export interface AgentActivitySessionBackgroundAgents {
+  count: number;
+  items: AgentActivitySessionBackgroundAgentItem[];
+}
+
+export interface AgentActivitySessionGoal {
+  objective: string;
+  status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usageLimited"
+    | "budgetLimited"
+    | "complete";
+  reason?: string;
+  iterations?: number;
+  durationMs?: number;
+  tokens?: number;
+}
+
+export interface AgentActivitySessionUsage {
+  contextWindow: {
+    usedTokens: number;
+    totalTokens: number;
+  } | null;
+  quotas: {
+    quotaType: string;
+    percentRemaining: number;
+    resetsAtUnixMs: number | null;
+  }[];
+}
+
+export interface AgentActivityTurnCancelResponse {
+  cancel: {
+    canceled: boolean;
+    reason: "turn_canceled" | "already_settled" | "not_found";
+  };
+  turn?: AgentActivityTurn;
+}
+
+export interface AgentActivityCancelTurnInput {
+  agentSessionId: string;
+  turnId: string;
+  workspaceId: string;
 }

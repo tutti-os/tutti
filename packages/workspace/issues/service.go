@@ -7,6 +7,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 type IDKind string
@@ -309,18 +311,11 @@ func (s Service) CreateRun(ctx context.Context, input CreateRunInput) (Run, erro
 }
 
 func legacyAgentTargetIDForProvider(provider string) string {
-	switch strings.TrimSpace(provider) {
-	case "codex":
-		return "local:codex"
-	case "claude-code":
-		return "local:claude-code"
-	case "cursor":
-		return "local:cursor"
-	case "opencode":
-		return "local:opencode"
-	default:
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
 		return ""
 	}
+	return descriptor.Target.ID
 }
 
 func agentProviderForAgentTargetID(agentTargetID string) string {

@@ -8,7 +8,7 @@ import { ISSUE_SOURCE_ID } from "./issueReferenceSource.ts";
  * 故映射收在 desktop;agent-gui 只负责把该函数透传到 picker。
  */
 export type MentionReferenceTargetResolver = NonNullable<
-  AgentGUIProps["resolveMentionReferenceTarget"]
+  AgentGUIProps["workspace"]["resolveMentionReferenceTarget"]
 >;
 
 export const resolveMentionReferenceTarget: MentionReferenceTargetResolver = (

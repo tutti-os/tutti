@@ -213,10 +213,14 @@ func TestClaudeExportArchiveImportIsIdempotentNoProjectAndNonResumable(t *testin
 	if session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode || session.Resumable {
 		t.Fatalf("imported session target/resumable = %#v", session)
 	}
-	if session.RuntimeContext["imported"] != true ||
-		session.RuntimeContext["externalImportNoProject"] != true ||
-		session.RuntimeContext["externalImportResumeSupported"] != false {
-		t.Fatalf("runtime context = %#v", session.RuntimeContext)
+	persisted, ok := projection.GetSession("ws-claude-export", session.ID)
+	if !ok {
+		t.Fatalf("persisted imported session %q not found", session.ID)
+	}
+	if !persisted.Metadata.Imported ||
+		persisted.InternalRuntimeContext["externalImportNoProject"] != true ||
+		persisted.InternalRuntimeContext["externalImportResumeSupported"] != false {
+		t.Fatalf("internal runtime context = %#v", persisted.InternalRuntimeContext)
 	}
 	if _, err := service.SendInput(ctx, "ws-claude-export", session.ID, SendInput{Content: TextPromptContent("continue")}); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("SendInput error = %v, want archive history to remain non-resumable", err)

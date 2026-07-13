@@ -35,24 +35,10 @@ type fakeDesktopPreferencesReader struct {
 	preferences preferencesbiz.DesktopPreferences
 }
 
-type fakeAgentTargetLister struct {
-	targets []agenttargetbiz.Target
-	err     error
-}
+type fakeAgentTargetLister struct{}
 
-func (f fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return append([]agenttargetbiz.Target(nil), f.targets...), nil
-}
-
-func enabledTestAgentTargets() fakeAgentTargetLister {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	for index := range targets {
-		targets[index].Enabled = true
-	}
-	return fakeAgentTargetLister{targets: targets}
+func (fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, error) {
+	return agenttargetbiz.DefaultSystemTargets(1), nil
 }
 
 func (f fakeDesktopPreferencesReader) Get(context.Context) (preferencesbiz.DesktopPreferences, error) {
@@ -87,7 +73,7 @@ type fakeAgentSessions struct {
 }
 
 func newTestProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
-	return NewProviderWithAgentTargets(workspaces, sessions, nil, enabledTestAgentTargets())
+	return NewProviderWithAgentTargets(workspaces, sessions, nil, fakeAgentTargetLister{})
 }
 
 func newTestCodexStartCommand(provider Provider) cliservice.Command {
@@ -116,25 +102,11 @@ func newTestClaudeStartCommand(provider Provider) cliservice.Command {
 	})
 }
 
-func TestProviderWithoutAgentTargetsDoesNotAdvertiseCatalogCommands(t *testing.T) {
-	provider := NewProviderWithLaunchPublisher(nil, nil, nil)
-	for _, command := range provider.Commands() {
-		path := strings.Join(command.Capability.Path, " ")
-		if path == "agent providers" || path == "agent composer-options" || path == "agent start" {
-			t.Fatalf("command %q requires AgentTargetLister", path)
-		}
-	}
-}
-
-func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
+func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, sessionID string, _ string) (agentservice.CancelTurnResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
 	f.cancelCallCount++
-	return agentservice.CancelSessionResult{
-		Session:  agentservice.Session{ID: sessionID, Provider: "codex", Status: "canceled", Visible: true},
-		Canceled: true,
-		Reason:   agentservice.CancelReasonActiveTurnCanceled,
-	}, nil
+	return agentservice.CancelTurnResult{Canceled: true, Reason: agentservice.CancelTurnReasonTurnCanceled}, nil
 }
 
 func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
@@ -153,7 +125,6 @@ func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input 
 		ID:       "SESSION-NEW",
 		Provider: input.Provider,
 		Cwd:      cwd,
-		Status:   "created",
 		Visible:  visible,
 	}, nil
 }
@@ -167,7 +138,7 @@ func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID
 	if f.getSession.ID != "" {
 		return f.getSession, nil
 	}
-	return agentservice.Session{ID: sessionID, Provider: "codex", Status: "created", Visible: true}, nil
+	return agentservice.Session{ID: sessionID, Provider: "codex", Visible: true}, nil
 }
 
 func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
@@ -259,8 +230,8 @@ func (f *fakeAgentSessions) List(_ context.Context, workspaceID string) ([]agent
 	f.listCallCount++
 	title := "Work"
 	return []agentservice.Session{
-		{ID: "SESSION-1", Provider: "codex", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
-		{ID: "SESSION-2", Provider: "claude", Status: "completed", CreatedAt: time.Unix(2, 0)},
+		{ID: "SESSION-1", Provider: "codex", ActiveTurnID: "turn-1", Title: &title, CreatedAt: time.Unix(1, 0)},
+		{ID: "SESSION-2", Provider: "claude", CreatedAt: time.Unix(2, 0)},
 	}, nil
 }
 
@@ -269,7 +240,7 @@ func (f *fakeAgentSessions) ListActivePeers(_ context.Context, workspaceID strin
 	title := "Work"
 	return agentservice.ActivePeers{
 		Agents: []agentservice.ActivePeer{{
-			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Cwd: "/workspace/repo", Status: "working", Title: &title, CreatedAt: time.Unix(1, 0)},
+			Session:      agentservice.Session{ID: "SESSION-1", Provider: "codex", Cwd: "/workspace/repo", ActiveTurnID: "turn-1", Title: &title, CreatedAt: time.Unix(1, 0)},
 			SelfRelation: "unknown",
 		}},
 		SelfKnown:      false,
@@ -364,7 +335,7 @@ func (f *fakeAgentSessions) SendInput(_ context.Context, workspaceID string, ses
 	f.sessionID = sessionID
 	f.sendInput = input
 	return agentservice.SendInputResult{
-		Session: agentservice.Session{ID: sessionID, Provider: "codex", Status: "working", Visible: true},
+		Session: agentservice.Session{ID: sessionID, Provider: "codex", ActiveTurnID: "turn-1", Visible: true},
 	}, nil
 }
 
@@ -381,10 +352,10 @@ func (f *fakeAgentSessions) Wait(_ context.Context, input agentservice.WaitInput
 	}
 	return agentservice.WaitResult{
 		Session: agentservice.Session{
-			ID:       input.AgentSessionID,
-			Provider: "codex",
-			Status:   "waiting",
-			Visible:  true,
+			ID:           input.AgentSessionID,
+			Provider:     "codex",
+			ActiveTurnID: "turn-1",
+			Visible:      true,
 		},
 		Messages: []agentservice.SessionMessage{{
 			AgentSessionID: input.AgentSessionID,
@@ -433,9 +404,7 @@ func providerAgentAppIDs(capabilities []cliservice.Capability) []string {
 	ids := []string{}
 	for _, capability := range capabilities {
 		if capability.Source.Kind == cliservice.CapabilitySourceApp &&
-			(capability.Source.AppID == codexAgentAppID ||
-				capability.Source.AppID == claudeCodeAgentAppID ||
-				capability.Source.AppID == tuttiAgentAppID) {
+			(capability.Source.AppID == codexAgentAppID || capability.Source.AppID == claudeCodeAgentAppID) {
 			ids = append(ids, capability.Source.AppID)
 		}
 	}
@@ -461,6 +430,13 @@ func equalStrings(left []string, right []string) bool {
 		}
 	}
 	return true
+}
+
+func waitAfterVersionValue(value *uint64) (uint64, bool) {
+	if value == nil {
+		return 0, false
+	}
+	return *value, true
 }
 
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
@@ -680,75 +656,151 @@ func TestSessionSummaryCommandRejectsInvalidOrder(t *testing.T) {
 	}
 }
 
-func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
+func TestWaitCommandReturnsRecentAgentMessages(t *testing.T) {
 	sessions := &fakeAgentSessions{
 		waitResult: agentservice.WaitResult{
 			Session: agentservice.Session{
-				ID:       "SESSION-1",
-				Provider: "codex",
-				Status:   "waiting",
-				Visible:  true,
-				TurnLifecycle: &agentservice.TurnLifecycle{
-					Phase: "waiting_input",
+				ID:           "SESSION-1",
+				Provider:     "codex",
+				ActiveTurnID: "turn-1",
+				Visible:      true,
+				ActiveTurn:   &agentactivitybiz.Turn{TurnID: "turn-1", Phase: agentactivitybiz.TurnPhaseWaiting},
+			},
+			Messages: []agentservice.SessionMessage{
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "assistant-1",
+					Role:           "assistant",
+					Kind:           "text",
+					Status:         "completed",
+					Payload:        map[string]any{"content": "First reply"},
+					Version:        8,
+				},
+				{
+					AgentSessionID: "SESSION-1",
+					MessageID:      "tool-1",
+					Role:           "tool",
+					Kind:           "call",
+					Status:         "completed",
+					Payload:        map[string]any{"name": "Read files", "status": "completed"},
+					Version:        9,
 				},
 			},
-			LatestVersion: 9,
-			Reason:        agentservice.WaitReasonWaitingInput,
+			LatestVersion:  9,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
 		},
 	}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "timeout-ms": "2500"},
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "limit": "5", "timeout-ms": "2500"},
 		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.waitInput.AfterVersion == nil || *sessions.waitInput.AfterVersion != 7 {
-		t.Fatalf("after version = %#v, want 7", sessions.waitInput.AfterVersion)
-	}
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
 	if sessions.waitInput.WorkspaceID != "workspace-1" ||
 		sessions.waitInput.AgentSessionID != "SESSION-1" ||
-		sessions.waitInput.MessageLimit != 0 ||
-		!sessions.waitInput.SkipMessages ||
+		!ok ||
+		waitAfterVersion != 7 ||
+		sessions.waitInput.MessageLimit != 5 ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
 		t.Fatalf("wait input = %#v", sessions.waitInput)
 	}
 	if output.Value["agentSessionId"] != "SESSION-1" ||
 		output.Value["reason"] != "waiting_input" ||
 		output.Value["timedOut"] != false ||
-		output.Value["latestVersion"] != uint64(9) {
+		output.Value["latestVersion"] != uint64(9) ||
+		output.Value["effectiveAfter"] != uint64(7) {
 		t.Fatalf("output = %#v", output.Value)
 	}
 	session := output.Value["session"].(map[string]any)
 	if _, ok := session["settings"]; ok {
 		t.Fatalf("wait session should stay compact: %#v", session)
 	}
-	for _, key := range []string{"messages", "hasMore", "effectiveAfter"} {
-		if _, ok := output.Value[key]; ok {
-			t.Fatalf("wait output should omit %q: %#v", key, output.Value)
-		}
+	messages := output.Value["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	first := messages[0].(map[string]any)
+	if first["messageId"] != "assistant-1" || first["text"] != "First reply" {
+		t.Fatalf("first message = %#v", first)
+	}
+	second := messages[1].(map[string]any)
+	if second["messageId"] != "tool-1" || second["text"] != "call: Read files" {
+		t.Fatalf("second message = %#v", second)
 	}
 }
 
-func TestWaitCommandExposesCursorAndSleepParameters(t *testing.T) {
-	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newWaitCommand()
+func TestWaitCommandPreservesExplicitZeroAfterVersion(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
 
-	properties := command.Capability.InputSchema["properties"].(map[string]any)
-	if _, ok := properties["session-id"]; !ok {
-		t.Fatalf("schema = %#v, want session-id", properties)
+	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "0"},
+		OutputMode: cliservice.OutputModeJSON,
+	}); err != nil {
+		t.Fatalf("Handler: %v", err)
 	}
-	if _, ok := properties["after-version"]; !ok {
-		t.Fatalf("schema = %#v, want after-version", properties)
+	waitAfterVersion, ok := waitAfterVersionValue(sessions.waitInput.AfterVersion)
+	if !ok || waitAfterVersion != 0 {
+		t.Fatalf("wait after version = %#v, want explicit zero", sessions.waitInput.AfterVersion)
 	}
-	if _, ok := properties["timeout-ms"]; !ok {
-		t.Fatalf("schema = %#v, want timeout-ms", properties)
+}
+
+func TestWaitCommandIncludesImageCompactMetadata(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		localPaths: map[string]string{"attachment-1": "/tmp/agent/attachments/SESSION-1/attachment-1.png"},
+		waitResult: agentservice.WaitResult{
+			Session: agentservice.Session{
+				ID:           "SESSION-1",
+				Provider:     "codex",
+				ActiveTurnID: "turn-1",
+				Visible:      true,
+			},
+			Messages: []agentservice.SessionMessage{{
+				AgentSessionID: "SESSION-1",
+				MessageID:      "message-1",
+				Role:           "user",
+				Kind:           "text",
+				Status:         "completed",
+				Payload: map[string]any{
+					"content": []any{
+						map[string]any{"type": "text", "text": "look"},
+						map[string]any{
+							"type":         "image",
+							"attachmentId": "attachment-1",
+							"mimeType":     "image/png",
+							"name":         "shot.png",
+						},
+					},
+				},
+				Version: 8,
+			}},
+			LatestVersion:  8,
+			Reason:         agentservice.WaitReasonWaitingInput,
+			EffectiveAfter: 7,
+		},
 	}
-	for _, key := range []string{"limit"} {
-		if _, ok := properties[key]; ok {
-			t.Fatalf("schema should omit %q: %#v", key, properties)
-		}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	messages := output.Value["messages"].([]any)
+	images := messages[0].(map[string]any)["images"].([]any)
+	image := images[0].(map[string]any)
+	if image["attachmentId"] != "attachment-1" ||
+		image["mimeType"] != "image/png" ||
+		image["name"] != "shot.png" ||
+		image["localPath"] != "/tmp/agent/attachments/SESSION-1/attachment-1.png" {
+		t.Fatalf("image = %#v", image)
 	}
 }
 
@@ -764,9 +816,6 @@ func TestWaitCommandUsesDefaultTimeout(t *testing.T) {
 	}
 	if sessions.waitInput.AfterVersion != nil {
 		t.Fatalf("after version = %#v, want nil when omitted", sessions.waitInput.AfterVersion)
-	}
-	if !sessions.waitInput.SkipMessages {
-		t.Fatalf("skip messages = false, want true")
 	}
 	if sessions.waitInput.Timeout != 5*time.Minute {
 		t.Fatalf("timeout = %v, want 5m", sessions.waitInput.Timeout)
@@ -828,74 +877,8 @@ func TestStartCommandRequiresProviderAndPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.createCallCount != 1 {
-		t.Fatalf("createCallCount = %d, want 1", sessions.createCallCount)
-	}
-	if sessions.createInput.Provider != "codex" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
-		t.Fatalf("create input = %#v", sessions.createInput)
-	}
-}
-
-func TestGenericStartCanonicalizesLegacyProviderAndRejectsDisabledProvider(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	command := newTestProvider(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-	).newStartCommand()
-	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "claude", "prompt": "do work"},
-	}); err != nil {
-		t.Fatalf("legacy provider Handler: %v", err)
-	}
-	if sessions.createInput.Provider != "claude-code" || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
-		t.Fatalf("create input = %#v", sessions.createInput)
-	}
-
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	targets[0].Enabled = false
-	disabledSessions := &fakeAgentSessions{}
-	disabledCommand := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		disabledSessions,
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	).newStartCommand()
-	_, err := disabledCommand.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex", "prompt": "do work"},
-	})
-	var unavailable *agentservice.ProviderUnavailableError
-	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
-		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
-	}
-	if disabledSessions.createCallCount != 0 {
-		t.Fatalf("createCallCount = %d, want 0", disabledSessions.createCallCount)
-	}
-}
-
-func TestProviderStartRejectsDisabledAgentTarget(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	for index := range targets {
-		if targets[index].Provider == "codex" {
-			targets[index].Enabled = false
-		}
-	}
-	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	))
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"prompt": "do work"},
-	})
-	var unavailable *agentservice.ProviderUnavailableError
-	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
-		t.Fatalf("Handler() error = %v, want disabled provider", err)
-	}
-	if sessions.createCallCount != 0 {
-		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
+	if sessions.createCallCount != 1 || sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("create input = %#v, count = %d", sessions.createInput, sessions.createCallCount)
 	}
 }
 
@@ -951,9 +934,6 @@ func TestProvidersCommandReturnsAvailability(t *testing.T) {
 	if len(providers) != 1 || providers[0].(map[string]any)["providerId"] != "codex" {
 		t.Fatalf("providers = %#v", providers)
 	}
-	if output.Value["schemaVersion"] != 2 {
-		t.Fatalf("schemaVersion = %#v, want 2", output.Value["schemaVersion"])
-	}
 	if output.Value["defaultProviderId"] != "codex" {
 		t.Fatalf("defaultProviderId = %#v, want codex", output.Value["defaultProviderId"])
 	}
@@ -965,7 +945,7 @@ func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
-		enabledTestAgentTargets(),
+		fakeAgentTargetLister{},
 		fakeDesktopPreferencesReader{
 			preferences: preferencesbiz.DesktopPreferences{
 				DefaultAgentProvider: "claude-code",
@@ -983,97 +963,6 @@ func TestProvidersCommandReturnsDefaultProviderFromPreferences(t *testing.T) {
 	}
 	if output.Value["defaultProviderId"] != "claude-code" {
 		t.Fatalf("defaultProviderId = %#v, want claude-code", output.Value["defaultProviderId"])
-	}
-}
-
-func TestProvidersCommandUsesEnabledTargetOrderAndStructuredAvailability(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	targets[0].Enabled = false
-	targets[2].Enabled = true
-	targets = []agenttargetbiz.Target{targets[2], targets[1], targets[0]}
-	sessions := &fakeAgentSessions{availability: []agentservice.ProviderAvailability{
-		availableProvider("claude-code"),
-		{
-			Provider: "tutti-agent",
-			Status:   agentservice.ProviderAvailabilityUnavailable,
-			LastError: &agentservice.ProviderAvailabilityError{
-				Code:    "cli_not_found",
-				Message: "runtime missing",
-			},
-		},
-		availableProvider("codex"),
-	}}
-	command := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-		nil,
-		fakeAgentTargetLister{targets: targets},
-		fakeDesktopPreferencesReader{preferences: preferencesbiz.DesktopPreferences{DefaultAgentProvider: "codex"}},
-	).newProvidersCommand()
-
-	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	providers := output.Value["providers"].([]any)
-	if len(providers) != 2 {
-		t.Fatalf("providers = %#v, want two enabled targets", providers)
-	}
-	first := providers[0].(map[string]any)
-	second := providers[1].(map[string]any)
-	if first["providerId"] != "tutti-agent" || first["agentTargetId"] != agenttargetbiz.IDLocalTuttiAgent || first["displayName"] != "Tutti Agent" {
-		t.Fatalf("first provider = %#v", first)
-	}
-	availability := first["availability"].(map[string]any)
-	if availability["status"] != agentservice.ProviderAvailabilityUnavailable || availability["reasonCode"] != "cli_not_found" || availability["detail"] != "runtime missing" {
-		t.Fatalf("availability = %#v", availability)
-	}
-	if second["providerId"] != "claude-code" {
-		t.Fatalf("second provider = %#v", second)
-	}
-	if output.Value["defaultProviderId"] != "tutti-agent" {
-		t.Fatalf("defaultProviderId = %#v, want first enabled provider", output.Value["defaultProviderId"])
-	}
-}
-
-func TestProvidersCommandAllowsEmptyEnabledTargetCatalog(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	for index := range targets {
-		targets[index].Enabled = false
-	}
-	command := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		&fakeAgentSessions{},
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	).newProvidersCommand()
-
-	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	if providers := output.Value["providers"].([]any); len(providers) != 0 {
-		t.Fatalf("providers = %#v, want empty", providers)
-	}
-	if output.Value["defaultProviderId"] != "" {
-		t.Fatalf("defaultProviderId = %#v, want empty", output.Value["defaultProviderId"])
-	}
-}
-
-func TestProvidersCommandKeepsTableOutputCompatible(t *testing.T) {
-	command := newTestProvider(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		&fakeAgentSessions{},
-	).newProvidersCommand()
-	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"provider": "codex"},
-		OutputMode: cliservice.OutputModeTable,
-	})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	if len(output.Rows) != 1 || output.Rows[0]["provider"] != "codex" || output.Rows[0]["status"] != "available" || output.Rows[0]["detail"] != "codex status" {
-		t.Fatalf("rows = %#v", output.Rows)
 	}
 }
 
@@ -1097,13 +986,10 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 		t.Fatalf("composer input = %#v", sessions.composerInput)
 	}
 	if sessions.composerInput.IncludeCapabilityCatalog == nil || *sessions.composerInput.IncludeCapabilityCatalog {
-		t.Fatalf("include capability catalog = %#v, want fixed false", sessions.composerInput.IncludeCapabilityCatalog)
+		t.Fatalf("include capability catalog = %#v, want explicit false", sessions.composerInput.IncludeCapabilityCatalog)
 	}
 	if output.Value["provider"] != "codex" {
 		t.Fatalf("output = %#v", output.Value)
-	}
-	if output.Value["schemaVersion"] != 1 {
-		t.Fatalf("schemaVersion = %#v, want 1", output.Value["schemaVersion"])
 	}
 	effectiveSettings := output.Value["effectiveSettings"].(map[string]any)
 	if effectiveSettings["model"] != "gpt-5" || effectiveSettings["reasoningEffort"] != "high" {
@@ -1124,58 +1010,6 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	speedOptions := speedConfig["options"].([]any)
 	if len(speedOptions) != 2 || speedOptions[0].(map[string]any)["value"] != "standard" || speedOptions[1].(map[string]any)["value"] != "fast" {
 		t.Fatalf("speed options = %#v", speedOptions)
-	}
-}
-
-func TestComposerOptionsCommandRejectsDisabledProviderBeforeDiscovery(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	targets[0].Enabled = false
-	sessions := &fakeAgentSessions{}
-	command := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	).newComposerOptionsCommand()
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "codex"}})
-	var unavailable *agentservice.ProviderUnavailableError
-	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
-		t.Fatalf("err = %v, want agent_provider_not_enabled", err)
-	}
-	if sessions.composerInput.Provider != "" {
-		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
-	}
-}
-
-func TestComposerOptionsCommandRejectsUnknownProviderAsInvalidArgument(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	command := newTestProvider(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-	).newComposerOptionsCommand()
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "codxe"}})
-	if !errors.Is(err, agentservice.ErrInvalidArgument) {
-		t.Fatalf("err = %v, want ErrInvalidArgument", err)
-	}
-	if sessions.composerInput.Provider != "" {
-		t.Fatalf("composer discovery was called: %#v", sessions.composerInput)
-	}
-}
-
-func TestComposerOptionsCommandCanonicalizesLegacyProviderInput(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	command := newTestProvider(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-	).newComposerOptionsCommand()
-
-	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"provider": "claude"}}); err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	if sessions.composerInput.Provider != "claude-code" {
-		t.Fatalf("provider = %q, want claude-code", sessions.composerInput.Provider)
 	}
 }
 
@@ -1206,7 +1040,7 @@ func TestComposerOptionsCommandUsesComposerDefaultsFromPreferences(t *testing.T)
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
 		nil,
-		enabledTestAgentTargets(),
+		fakeAgentTargetLister{},
 		fakeDesktopPreferencesReader{
 			preferences: preferencesbiz.DesktopPreferences{
 				AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
@@ -1293,51 +1127,6 @@ func TestSkillBundleCommandReturnsAgentACPKitShape(t *testing.T) {
 		first["deliveryMode"] != "materialized-files" ||
 		first["materializedPath"] != nil {
 		t.Fatalf("skill bundle output = %#v", output.Value)
-	}
-}
-
-func TestSkillBundleCommandRejectsDisabledProviderBeforeRendering(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	for index := range targets {
-		if targets[index].Provider == "tutti-agent" {
-			targets[index].Enabled = false
-		}
-	}
-	command := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	).newSkillBundleCommand()
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "tutti-agent"},
-	})
-	var unavailable *agentservice.ProviderUnavailableError
-	if !errors.As(err, &unavailable) || unavailable.ReasonCode != "agent_provider_not_enabled" {
-		t.Fatalf("Handler() error = %v, want disabled provider", err)
-	}
-	if sessions.skillBundleIn.Provider != "" {
-		t.Fatalf("skill bundle was rendered for disabled provider: %#v", sessions.skillBundleIn)
-	}
-}
-
-func TestSkillBundleCommandCanonicalizesLegacyProviderAtIngress(t *testing.T) {
-	sessions := &fakeAgentSessions{}
-	command := newTestProvider(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		sessions,
-	).newSkillBundleCommand()
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "claude"},
-	})
-	if err != nil {
-		t.Fatalf("Handler() error = %v", err)
-	}
-	if sessions.skillBundleIn.Provider != "claude-code" {
-		t.Fatalf("provider = %q, want claude-code", sessions.skillBundleIn.Provider)
 	}
 }
 
@@ -1653,7 +1442,6 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 	commands := provider.Commands()
 	codex := commandByID(t, commands, "agent-context.codex.start")
 	claude := commandByID(t, commands, "agent-context.claude.start")
-	tuttiAgent := commandByID(t, commands, "agent-context.tutti-agent.start")
 
 	if codex.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
 		codex.Capability.Source.AppID != codexAgentAppID ||
@@ -1671,23 +1459,14 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		claude.Capability.Path[1] != "start" {
 		t.Fatalf("claude capability = %#v", claude.Capability)
 	}
-	if tuttiAgent.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
-		tuttiAgent.Capability.Source.AppID != tuttiAgentAppID ||
-		tuttiAgent.Capability.Source.AppName != "Tutti Agent" ||
-		len(tuttiAgent.Capability.Path) != 2 ||
-		tuttiAgent.Capability.Path[0] != "tutti-agent" ||
-		tuttiAgent.Capability.Path[1] != "start" {
-		t.Fatalf("tutti-agent capability = %#v", tuttiAgent.Capability)
-	}
 
 	for name, tc := range map[string]struct {
 		commandID  string
 		want       string
 		wantTarget string
 	}{
-		"codex":       {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
-		"claude":      {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
-		"tutti-agent": {commandID: "agent-context.tutti-agent.start", want: "tutti-agent", wantTarget: agenttargetbiz.IDLocalTuttiAgent},
+		"codex":  {commandID: "agent-context.codex.start", want: "codex", wantTarget: agenttargetbiz.IDLocalCodex},
+		"claude": {commandID: "agent-context.claude.start", want: "claude-code", wantTarget: agenttargetbiz.IDLocalClaudeCode},
 	} {
 		sessions := &fakeAgentSessions{}
 		command := commandByID(t, newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
@@ -1716,41 +1495,29 @@ func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				availableProvider("claude-code"),
-				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID, tuttiAgentAppID},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
 		},
 		"codex unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
 				availableProvider("claude-code"),
-				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID},
 		},
 		"claude unavailable": {
 			availability: []agentservice.ProviderAvailability{
 				availableProvider("codex"),
 				providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
-				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{codexAgentAppID, tuttiAgentAppID},
-		},
-		"tutti-agent unavailable": {
-			availability: []agentservice.ProviderAvailability{
-				availableProvider("codex"),
-				availableProvider("claude-code"),
-				providerAvailability("tutti-agent", agentservice.ProviderAvailabilityUnavailable),
-			},
-			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
+			wantAppIDs: []string{codexAgentAppID},
 		},
 		"unknown hidden": {
 			availability: []agentservice.ProviderAvailability{
 				providerAvailability("codex", agentservice.ProviderAvailabilityUnknown),
 				availableProvider("claude-code"),
-				availableProvider("tutti-agent"),
 			},
-			wantAppIDs: []string{claudeCodeAgentAppID, tuttiAgentAppID},
+			wantAppIDs: []string{claudeCodeAgentAppID},
 		},
 		"missing hidden": {
 			availability: []agentservice.ProviderAvailability{
@@ -1803,34 +1570,6 @@ func TestProviderCapabilitiesHideAgentAppsWithoutSessions(t *testing.T) {
 	}
 	if !containsString(capabilityIDs(capabilities), appID+".agent.start") {
 		t.Fatalf("generic agent start capability missing: %#v", capabilityIDs(capabilities))
-	}
-}
-
-func TestProviderCapabilitiesHideDisabledAgentTargetEvenWhenRuntimeIsAvailable(t *testing.T) {
-	targets := agenttargetbiz.DefaultSystemTargets(1)
-	for index := range targets {
-		if targets[index].Provider == "tutti-agent" {
-			targets[index].Enabled = false
-		}
-	}
-	provider := NewProviderWithAgentTargets(
-		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
-		&fakeAgentSessions{availability: []agentservice.ProviderAvailability{
-			availableProvider("codex"),
-			availableProvider("claude-code"),
-			availableProvider("tutti-agent"),
-		}},
-		nil,
-		fakeAgentTargetLister{targets: targets},
-	)
-	registry, err := cliservice.NewRegistryFromProviders(provider)
-	if err != nil {
-		t.Fatalf("NewRegistryFromProviders: %v", err)
-	}
-
-	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
-	if got := providerAgentAppIDs(capabilities); containsString(got, tuttiAgentAppID) {
-		t.Fatalf("disabled Tutti Agent capability leaked: %#v", got)
 	}
 }
 
@@ -2067,7 +1806,7 @@ func TestSendCommandConvertsImageFilesToPromptContentBlocks(t *testing.T) {
 	}
 }
 
-func TestSendCommandDoesNotReturnWaitCursor(t *testing.T) {
+func TestSendCommandReturnsWaitAfterVersionInJSON(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -2084,11 +1823,11 @@ func TestSendCommandDoesNotReturnWaitCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.limit != 0 {
-		t.Fatalf("send should not query latest message version, limit = %d", sessions.limit)
+	if sessions.limit != 1 || sessions.order != agentactivitybiz.MessageOrderDesc {
+		t.Fatalf("list messages input = limit %d order %q", sessions.limit, sessions.order)
 	}
-	if _, ok := output.Value["waitAfterVersion"]; ok {
-		t.Fatalf("send output should omit wait cursor: %#v", output.Value)
+	if output.Value["waitAfterVersion"] != uint64(2) {
+		t.Fatalf("output = %#v", output.Value)
 	}
 }
 
@@ -2116,7 +1855,9 @@ func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
 }
 
 func TestCancelCommandCancelsSession(t *testing.T) {
-	sessions := &fakeAgentSessions{}
+	sessions := &fakeAgentSessions{getSession: agentservice.Session{
+		ID: "SESSION-1", Provider: "codex", ActiveTurnID: "turn-1", Visible: true,
+	}}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
@@ -2131,7 +1872,7 @@ func TestCancelCommandCancelsSession(t *testing.T) {
 	if sessions.cancelCallCount != 1 || sessions.sessionID != "SESSION-1" {
 		t.Fatalf("sessions = %#v", sessions)
 	}
-	if output.Rows[0]["status"] != "canceled" {
+	if output.Rows[0]["id"] != "SESSION-1" {
 		t.Fatalf("output = %#v", output)
 	}
 }

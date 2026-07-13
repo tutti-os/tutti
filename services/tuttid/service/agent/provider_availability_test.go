@@ -50,7 +50,7 @@ func TestServiceListProviderAvailabilityUsesAgentStatusSnapshot(t *testing.T) {
 			}},
 		},
 	}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	availability, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
@@ -101,7 +101,7 @@ func TestServiceListProviderAvailabilityUsesClaudeSDKSidecarDetail(t *testing.T)
 			}},
 		},
 	}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	availability, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
@@ -142,7 +142,7 @@ func TestServiceListProviderAvailabilityUsesShortCache(t *testing.T) {
 			}},
 		},
 	}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	first, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{Provider: "codex"})
@@ -173,7 +173,7 @@ func TestServiceListProviderAvailabilityCacheCanBeDisabled(t *testing.T) {
 			}},
 		},
 	}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.ProviderAvailabilityCacheTTL = -1
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
@@ -189,7 +189,7 @@ func TestServiceListProviderAvailabilityCacheCanBeDisabled(t *testing.T) {
 
 func TestServiceListProviderAvailabilityAcceptsSupportedRuntimeProvider(t *testing.T) {
 	lister := &fakeAgentProviderStatusLister{}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
@@ -218,7 +218,7 @@ func TestServiceListProviderAvailabilityMapsUnsupportedProviderAsUnavailable(t *
 			}},
 		},
 	}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	availability, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
@@ -244,7 +244,7 @@ func TestServiceListProviderAvailabilityMapsUnsupportedProviderAsUnavailable(t *
 
 func TestServiceListProviderAvailabilityPreservesUnfilteredRegistry(t *testing.T) {
 	lister := &fakeAgentProviderStatusLister{}
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	service.AvailabilityChecker = AgentStatusProviderAvailabilityChecker{Service: lister}
 
 	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{}); err != nil {
@@ -259,7 +259,7 @@ func TestServiceListProviderAvailabilityPreservesUnfilteredRegistry(t *testing.T
 }
 
 func TestServiceListProviderAvailabilityMapsInvalidProvider(t *testing.T) {
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 
 	if _, err := service.ListProviderAvailability(context.Background(), ProviderAvailabilityInput{
 		Provider: "unsupported",

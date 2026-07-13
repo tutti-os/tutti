@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -107,7 +108,9 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 	configDir := filepath.Join(home, "opencode-config")
 	dataDir := filepath.Join(home, "opencode-data")
 	configPath := filepath.Join(home, "custom-opencode.json")
+	codexHome := filepath.Join(home, "custom-codex")
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
 	t.Setenv("OPENCODE_CONFIG", configPath)
 	t.Setenv("OPENCODE_CONFIG_DIR", configDir)
 	t.Setenv("XDG_DATA_HOME", dataDir)
@@ -117,11 +120,20 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 	for _, entry := range entries {
 		byProvider[entry.Provider] = entry.Paths
 	}
-	if len(byProvider[agentprovider.Codex]) == 0 {
-		t.Fatal("expected codex watch paths")
+	codexPaths := byProvider[agentprovider.Codex]
+	for _, want := range []string{
+		filepath.Join(codexHome, "auth.json"),
+		filepath.Join(codexHome, "config.toml"),
+	} {
+		if !containsString(codexPaths, want) {
+			t.Fatalf("codex paths = %v, want %q", codexPaths, want)
+		}
 	}
 	if len(byProvider[agentprovider.ClaudeCode]) == 0 {
 		t.Fatal("expected claude-code watch paths")
+	}
+	if !containsString(byProvider[agentprovider.ClaudeCode], filepath.Join(home, ".claude", ".credentials.json")) {
+		t.Fatalf("claude-code watch paths = %v, want credentials file", byProvider[agentprovider.ClaudeCode])
 	}
 	opencodePaths := byProvider[agentprovider.OpenCode]
 	if len(opencodePaths) == 0 {
@@ -136,6 +148,37 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexClaudeAndOpenCode(t *testing.T
 		if !containsString(opencodePaths, want) {
 			t.Fatalf("opencode paths = %v, want %q", opencodePaths, want)
 		}
+	}
+}
+
+func TestProviderAuthWatchEntryUsesDescriptorMetadata(t *testing.T) {
+	descriptor, ok := providerregistry.Find(agentprovider.Codex)
+	if !ok {
+		t.Fatal("codex descriptor missing")
+	}
+	root := t.TempDir()
+	descriptor.Identity.ID = "poison-provider"
+	descriptor.Status.AuthWatch = providerregistry.AuthWatchDescriptor{
+		Sources: []providerregistry.AuthWatchSourceDescriptor{
+			{
+				RootCandidates: []providerregistry.AuthWatchRootCandidateDescriptor{
+					{EnvVar: "POISON_PROVIDER_HOME"},
+				},
+				DefaultRoot: "~/unused",
+				Paths:       []string{"credential.json", "settings.toml"},
+			},
+		},
+	}
+	t.Setenv("POISON_PROVIDER_HOME", root)
+	entry, ok := providerAuthWatchEntryFromDescriptor(descriptor, "/unused-home")
+	if !ok {
+		t.Fatal("providerAuthWatchEntryFromDescriptor() ok = false")
+	}
+	if entry.Provider != "poison-provider" || len(entry.Paths) != 2 {
+		t.Fatalf("entry = %#v", entry)
+	}
+	if entry.Paths[0] != filepath.Join(root, "credential.json") || entry.Paths[1] != filepath.Join(root, "settings.toml") {
+		t.Fatalf("entry paths = %#v", entry.Paths)
 	}
 }
 

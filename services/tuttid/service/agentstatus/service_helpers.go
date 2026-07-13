@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,9 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 )
 
 func (s Service) probeCommandWithReadyAfter(
@@ -198,7 +199,7 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	if !installed {
 		return AuthInfo{Status: AuthUnknown}
 	}
-	if spec.Provider == agentprovider.ClaudeCode && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
+	if isClaudeStatusSpec(spec) && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
 		return AuthInfo{Status: AuthRequired}
 	}
 	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
@@ -265,19 +266,28 @@ func (s Service) authFromMarkerFile(spec ProviderSpec, path string) (AuthInfo, b
 	if !s.fileExists(path) {
 		return AuthInfo{}, false
 	}
-	if spec.Provider == agentprovider.ClaudeCode {
+	markerParserKind := spec.AuthMarkerParserKind
+	if markerParserKind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			markerParserKind = status.AuthMarkerParserKind
+		}
+	}
+	switch markerParserKind {
+	case providerregistry.AuthMarkerParserKindClaude:
 		if auth, ok := parseClaudeAuthMarkerFile(path); ok {
 			return auth, true
 		}
 		return AuthInfo{}, false
-	}
-	if spec.Provider == agentprovider.TuttiAgent {
+	case providerregistry.AuthMarkerParserKindTuttiToken:
 		if auth, ok := parseTuttiAgentAuthMarkerFile(path); ok {
 			return auth, true
 		}
 		return AuthInfo{}, false
+	case providerregistry.AuthMarkerParserKindFileExists:
+		return AuthInfo{Status: AuthAuthenticated}, true
+	default:
+		return AuthInfo{}, false
 	}
-	return AuthInfo{Status: AuthAuthenticated}, true
 }
 
 // parseTuttiAgentAuthMarkerFile validates that the Tutti Agent auth.json holds
@@ -369,113 +379,6 @@ func (Service) cliVersion(ctx context.Context, binaryPath string, env []string) 
 	return parseCLIVersion(string(output))
 }
 
-func (s Service) codexPlatformBinaryOK(binaryPath string) bool {
-	pkgDir := codexPackageDirForBinary(binaryPath)
-	if pkgDir == "" {
-		return true
-	}
-	_, ok := s.codexPlatformBinaryComplete(pkgDir, runtime.GOOS, runtime.GOARCH)
-	return ok
-}
-
-func codexProviderChecks(status ProviderStatus, platformBinaryOK bool, nodeRuntime ProviderCheck) []ProviderCheck {
-	return []ProviderCheck{
-		{
-			Name:   "cli_present",
-			Passed: status.CLI.Installed,
-			Detail: firstNonBlank(status.CLI.BinaryPath, "CLI binary not found"),
-		},
-		{
-			Name:   "platform_binary",
-			Passed: platformBinaryOK,
-			Detail: codexPlatformBinaryDetail(status.CLI.BinaryPath, platformBinaryOK),
-		},
-		{
-			Name:   "version_floor",
-			Passed: codexVersionMeetsMinimum(status.CLI.Version),
-			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
-		},
-		nodeRuntime,
-		{
-			Name:   "auth",
-			Passed: status.Auth.Status == AuthAuthenticated,
-			Detail: providerAvailabilityAuthDetailForStatus(status.Auth),
-		},
-	}
-}
-
-func (s Service) codexNodeRuntimeCheck(spec ProviderSpec) ProviderCheck {
-	if nodePath := strings.TrimSpace(managedruntime.EnvValue(spec.AdapterEnv, "TUTTI_APP_NODE")); nodePath != "" {
-		return ProviderCheck{
-			Name:   "node_runtime",
-			Passed: true,
-			Detail: "Using Tutti managed Node fallback: " + nodePath,
-		}
-	}
-	if resolved := s.userNodeRuntimePath(spec.AdapterEnv); resolved != "" {
-		return ProviderCheck{
-			Name:   "node_runtime",
-			Passed: true,
-			Detail: "Using user Node from PATH: " + resolved,
-		}
-	}
-	return ProviderCheck{
-		Name:   "node_runtime",
-		Passed: false,
-		Detail: "Node runtime not found",
-	}
-}
-
-func codexProviderLastError(status ProviderStatus) *ProviderLastError {
-	switch strings.TrimSpace(status.Availability.ReasonCode) {
-	case "cli_not_found":
-		return &ProviderLastError{Code: string(CodexErrCLIMissing), Message: "CLI binary not found"}
-	case "codex_platform_pkg_incomplete":
-		return &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: "Codex platform package is incomplete"}
-	case "codex_version_too_old":
-		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + MinSupportedCodexVersion}
-	case "auth_required", "auth_unknown":
-		return &ProviderLastError{Code: string(CodexErrAuthRequired), Message: "authentication required"}
-	default:
-		return nil
-	}
-}
-
-func codexReasonCodeFromErrorCode(code string) string {
-	switch CodexErrorCode(code) {
-	case CodexErrCLIMissing:
-		return "cli_not_found"
-	case CodexErrPlatformPkgIncomplete:
-		return "codex_platform_pkg_incomplete"
-	case CodexErrVersionTooOld:
-		return "codex_version_too_old"
-	case CodexErrAuthRequired:
-		return "auth_required"
-	case CodexErrNetwork:
-		return "network_error"
-	default:
-		return "codex_runtime_error"
-	}
-}
-
-func codexPlatformBinaryDetail(binaryPath string, ok bool) string {
-	if ok {
-		return firstNonBlank(binaryPath, "platform binary available")
-	}
-	return "Codex platform package is incomplete"
-}
-
-func providerAvailabilityAuthDetailForStatus(auth AuthInfo) string {
-	switch auth.Status {
-	case AuthAuthenticated:
-		return firstNonBlank(auth.AccountLabel, "authenticated")
-	case AuthRequired:
-		return "authentication required"
-	default:
-		return "authentication unknown"
-	}
-}
-
 func cloneProviderChecks(input []ProviderCheck) []ProviderCheck {
 	if len(input) == 0 {
 		return []ProviderCheck{}
@@ -508,26 +411,66 @@ func (s Service) authStatusCommandRetryDelay() time.Duration {
 }
 
 func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string, env []string) (AuthInfo, bool) {
-	if agentprovider.Normalize(spec.Provider) == agentprovider.Cursor {
+	runnerKind := spec.AuthCommandRunnerKind
+	if runnerKind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			runnerKind = status.AuthCommandRunnerKind
+		}
+	}
+	if runnerKind == providerregistry.AuthCommandRunnerKindCursor {
 		return runCursorAuthStatusCommand(ctx, binaryPath, env)
 	}
-	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
+	commandCtx, cancel := context.WithTimeout(ctx, authStatusTimeout(spec))
 	defer cancel()
+	isClaude := runnerKind == providerregistry.AuthCommandRunnerKindClaudeGate
+	if isClaude {
+		if err := claudecodeservice.DefaultStartupGate.Acquire(commandCtx); err != nil {
+			return AuthInfo{}, false
+		}
+		defer claudecodeservice.DefaultStartupGate.Release()
+	}
 	command := exec.CommandContext(commandCtx, binaryPath, spec.AuthStatusCommand...)
 	// Inject the macOS system proxy so the auth-status probe reaches the upstream
 	// API through the same proxy as spawned agents (mirroring agent install &
 	// login), instead of connecting directly and hitting `403 Request not allowed`
 	// from a restricted region.
 	command.Env = runtimecmd.InjectSystemProxyEnv(env)
+	startedAt := time.Now()
 	output, err := command.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			output = append(output, exitErr.Stderr...)
 		} else {
+			if isClaude {
+				logClaudeAuthStatusCommandOutput(err, time.Since(startedAt))
+			}
 			return AuthInfo{}, false
 		}
 	}
+	if isClaude {
+		logClaudeAuthStatusCommandOutput(err, time.Since(startedAt))
+	}
 	return parseAuthStatusCommandOutput(spec.Provider, output)
+}
+
+func logClaudeAuthStatusCommandOutput(commandErr error, duration time.Duration) {
+	exitStatus := "success"
+	if commandErr != nil {
+		exitStatus = "failed"
+	}
+	slog.Info(
+		"claude auth status command completed",
+		"event", "tutti.agent_provider.claude.auth_status_command.completed",
+		"exitStatus", exitStatus,
+		"durationMs", duration.Milliseconds(),
+	)
+}
+
+func authStatusTimeout(spec ProviderSpec) time.Duration {
+	if spec.AuthStatusCommandTimeout > 0 {
+		return spec.AuthStatusCommandTimeout
+	}
+	return authStatusCommandTimeout
 }
 
 func sleepContext(ctx context.Context, delay time.Duration) bool {
@@ -545,22 +488,19 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 	if auth, ok := parseAuthCommandConfigurationError(output); ok {
 		return auth, true
 	}
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.ClaudeCode:
-		return parseClaudeAuthStatusOutput(output)
-	case agentprovider.Codex:
-		return parseCodexAuthStatusOutput(output)
-	case agentprovider.TuttiAgent:
-		// Tutti Agent is a Codex CLI fork; `tutti-agent login status` prints the
-		// same "Logged in ..." / "Not logged in" copy.
-		return parseCodexAuthStatusOutput(output)
-	case agentprovider.Cursor:
-		return parseCursorAuthStatusOutput(output)
-	case agentprovider.OpenCode:
-		return parseOpenCodeAuthStatusOutput(output)
-	default:
-		return AuthInfo{}, false
+	if status, ok := migratedProviderStatus(provider); ok {
+		switch status.AuthOutputParserKind {
+		case providerregistry.AuthOutputParserKindCodex:
+			return parseCodexAuthStatusOutput(output)
+		case providerregistry.AuthOutputParserKindOpenCode:
+			return parseOpenCodeAuthStatusOutput(output)
+		case providerregistry.AuthOutputParserKindClaude:
+			return parseClaudeAuthStatusOutput(output)
+		case providerregistry.AuthOutputParserKindCursor:
+			return parseCursorAuthStatusOutput(output)
+		}
 	}
+	return AuthInfo{}, false
 }
 
 func parseAuthCommandConfigurationError(output []byte) (AuthInfo, bool) {

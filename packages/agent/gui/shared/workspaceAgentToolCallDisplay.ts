@@ -1,10 +1,9 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import { translate } from "../i18n/index";
 import {
   extractImageGenerationPreview,
   resolveImageGenerationCanonicalToolName
 } from "./imageGenerationTool";
-import { fileChangeCountFromChanges } from "./workspaceAgentFileChangePayload";
 import {
   resolveCanonicalToolName,
   resolveLiveCanonicalToolName
@@ -14,10 +13,28 @@ import { isOpaqueWorkspaceAgentToolCallIdentifier } from "./workspaceAgentToolCa
 import {
   AGENT_ACTIVITY_KINDS,
   TOOL_ACTIVITY_KIND_TRANSLATION_KEYS,
-  TOOL_NAME_TRANSLATION_KEYS,
   legacyKindToToolName,
   type ToolActivityKind
 } from "./workspaceAgentToolCallLabels";
+import {
+  isGenericToolLabel,
+  itemId,
+  looksLikeOpaqueToolCallID,
+  normalizeToolNameToken,
+  toolCallLabel
+} from "./workspaceAgentToolCallPresentation";
+import {
+  collectToolPaths,
+  firstPath,
+  firstPresentString,
+  recordValue,
+  stringArrayFirstRecordValue,
+  stringRecordValue,
+  summarizeFileChangeCount,
+  summarizeTodoProgress,
+  summarizeToolInput,
+  summarizeWebDomain
+} from "./workspaceAgentToolCallSummary";
 export type { ToolActivityKind } from "./workspaceAgentToolCallLabels";
 export type ToolCallStatusKind =
   | "working"
@@ -187,13 +204,20 @@ function resolveLegacyToolName(
 function resolveLegacyACPToolName(
   item: WorkspaceAgentActivityTimelineItem
 ): string | null {
+  const input = recordValue(item.payload, "input");
   const normalizedKind = normalizeToolToken(
-    stringRecordValue(item.payload, "kind")
+    firstPresentString(
+      stringRecordValue(item.payload, "kind"),
+      stringRecordValue(input, "kind")
+    )
   );
   const normalizedTitle = normalizeToolToken(
-    firstPresentString(stringRecordValue(item.payload, "title"), item.name)
+    firstPresentString(
+      stringRecordValue(item.payload, "title"),
+      stringRecordValue(input, "title"),
+      item.name
+    )
   );
-  const input = recordValue(item.payload, "input");
   const fetchToolName = resolveFetchToolName(item.payload);
 
   if (fetchToolName) {
@@ -229,6 +253,11 @@ function resolveLegacyACPToolName(
   }
   if (normalizedKind === "other") {
     switch (normalizedTitle) {
+      case "todowrite":
+      case "updatetodo":
+        return "TodoWrite";
+      case "skill":
+        return "Skill";
       case "task":
       case "subagent":
       case "runsubagent":
@@ -761,379 +790,4 @@ function normalizeToolToken(value: string | undefined): string {
       .toLowerCase()
       .replace(/[-\s]+/gu, "_") ?? ""
   );
-}
-
-function recordValue(
-  value: Record<string, unknown> | undefined,
-  key: string
-): Record<string, unknown> | undefined {
-  const nested = value?.[key];
-  return nested && typeof nested === "object" && !Array.isArray(nested)
-    ? (nested as Record<string, unknown>)
-    : undefined;
-}
-
-function stringRecordValue(
-  value: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  const nested = value?.[key];
-  return typeof nested === "string" ? nested : undefined;
-}
-
-function stringArrayRecordValue(
-  value: Record<string, unknown> | undefined,
-  key: string
-): string[] {
-  const nested = value?.[key];
-  if (!Array.isArray(nested)) {
-    return [];
-  }
-  return nested.flatMap((item) =>
-    typeof item === "string" && item.trim() ? [item.trim()] : []
-  );
-}
-
-function stringArrayFirstRecordValue(
-  value: Record<string, unknown> | undefined,
-  key: string
-): string | undefined {
-  return stringArrayRecordValue(value, key)[0];
-}
-
-function arrayRecordValue(
-  value: Record<string, unknown> | undefined,
-  key: string
-): Array<Record<string, unknown>> {
-  const nested = value?.[key];
-  if (!Array.isArray(nested)) {
-    return [];
-  }
-  return nested.flatMap((item) =>
-    item && typeof item === "object" && !Array.isArray(item)
-      ? [item as Record<string, unknown>]
-      : []
-  );
-}
-
-function collectToolPaths(
-  metadata: Record<string, unknown> | undefined,
-  metadataInput: Record<string, unknown> | undefined,
-  payloadInput: Record<string, unknown> | undefined
-): string[] {
-  const values = [
-    ...stringArrayRecordValue(metadata, "paths"),
-    ...toolInputPaths(metadataInput),
-    ...toolInputPaths(payloadInput)
-  ];
-  return Array.from(new Set(values));
-}
-
-function toolInputPaths(value: Record<string, unknown> | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  return [
-    ...stringValues(
-      value,
-      "path",
-      "file_path",
-      "filePath",
-      "filepath",
-      "fileName",
-      "filename",
-      "target_path",
-      "targetPath"
-    ),
-    ...stringArrayRecordValue(value, "paths"),
-    ...stringArrayRecordValue(value, "file_paths"),
-    ...stringArrayRecordValue(value, "filePaths"),
-    ...stringArrayRecordValue(value, "file_names"),
-    ...stringArrayRecordValue(value, "fileNames"),
-    ...stringArrayRecordValue(value, "filenames")
-  ];
-}
-
-function summarizeToolInput(
-  value: Record<string, unknown> | undefined
-): string {
-  if (!value) {
-    return "";
-  }
-
-  for (const key of [
-    "path",
-    "file_path",
-    "filePath",
-    "filepath",
-    "fileName",
-    "filename",
-    "target_path",
-    "targetPath",
-    "url",
-    "uri",
-    "query",
-    "pattern",
-    "prompt",
-    "instruction",
-    "task",
-    "title",
-    "message",
-    "text",
-    "cmd",
-    "command"
-  ]) {
-    const text = summarizeInputField(value, key);
-    if (text) {
-      return text;
-    }
-  }
-
-  for (const [key, fieldValue] of Object.entries(value)) {
-    if (isSensitiveKey(key)) {
-      continue;
-    }
-    const text = summarizeInputValue(key, fieldValue);
-    if (text) {
-      return text;
-    }
-  }
-
-  return "";
-}
-
-function summarizeFileChangeCount(
-  ...values: Array<Record<string, unknown> | undefined>
-): string | null {
-  for (const value of values) {
-    const structuredPatch = arrayRecordValue(value, "structuredPatch");
-    if (structuredPatch.length > 1) {
-      return `${structuredPatch.length} files`;
-    }
-    const fileChanges = arrayRecordValue(
-      recordValue(value, "fileChanges"),
-      "files"
-    );
-    if (fileChanges.length > 1) {
-      return `${fileChanges.length} files`;
-    }
-    const changesCount = fileChangeCountFromChanges(value?.changes);
-    if (changesCount > 1) {
-      return `${changesCount} files`;
-    }
-  }
-  return null;
-}
-
-function summarizeTodoProgress(
-  value: Record<string, unknown> | undefined
-): string | null {
-  const todos = arrayRecordValue(value, "todos");
-  if (todos.length === 0) {
-    return null;
-  }
-  const completed = todos.filter(
-    (todo) =>
-      normalizeToolToken(stringRecordValue(todo, "status")) === "completed"
-  ).length;
-  return `${completed}/${todos.length} completed`;
-}
-
-function summarizeWebDomain(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  try {
-    return new URL(value).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
-function summarizeInputField(
-  value: Record<string, unknown>,
-  key: string
-): string {
-  const fieldValue = value[key];
-  if (typeof fieldValue === "string") {
-    return formatInputSummary(key, fieldValue);
-  }
-  if (Array.isArray(fieldValue)) {
-    const items = fieldValue
-      .flatMap((item) =>
-        typeof item === "string" && item.trim() ? [item.trim()] : []
-      )
-      .slice(0, 3);
-    if (items.length > 0) {
-      return formatInputSummary(key, items.join(", "));
-    }
-  }
-  if (
-    fieldValue &&
-    typeof fieldValue === "object" &&
-    !Array.isArray(fieldValue)
-  ) {
-    for (const [nestedKey, nestedValue] of Object.entries(
-      fieldValue as Record<string, unknown>
-    )) {
-      if (isSensitiveKey(nestedKey)) {
-        continue;
-      }
-      const text = summarizeInputValue(`${key}.${nestedKey}`, nestedValue);
-      if (text) {
-        return text;
-      }
-    }
-  }
-  return "";
-}
-
-function summarizeInputValue(key: string, value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) {
-    return "";
-  }
-  return formatInputSummary(key, value);
-}
-
-function formatInputSummary(key: string, value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const normalizedKey = normalizeToolToken(key);
-  const prefixlessKeys = new Set(
-    [
-      "path",
-      "file_path",
-      "filePath",
-      "filepath",
-      "fileName",
-      "filename",
-      "target_path",
-      "targetPath",
-      "url",
-      "uri",
-      "query",
-      "pattern",
-      "cmd",
-      "command"
-    ].map((token) => normalizeToolToken(token))
-  );
-  const text = truncateSummary(trimmed);
-  // i18n-check-ignore: Tool input summaries combine schema keys with user input.
-  return prefixlessKeys.has(normalizedKey) ? text : `${key}: ${text}`;
-}
-
-function truncateSummary(value: string, limit = 140): string {
-  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
-}
-
-function isSensitiveKey(key: string): boolean {
-  const normalized = normalizeToolToken(key);
-  return (
-    normalized.includes("token") ||
-    normalized.includes("password") ||
-    normalized.includes("secret") ||
-    normalized.includes("api_key") ||
-    normalized.includes("apikey") ||
-    normalized.includes("authorization")
-  );
-}
-
-function stringValues(
-  value: Record<string, unknown>,
-  ...keys: string[]
-): string[] {
-  return keys.flatMap((key) => {
-    const text = stringRecordValue(value, key)?.trim();
-    return text ? [text] : [];
-  });
-}
-
-function firstPath(paths: string[]): string {
-  return paths[0] ?? "";
-}
-
-function firstPresentString(
-  ...values: Array<string | null | undefined>
-): string {
-  for (const value of values) {
-    const normalized = value?.trim();
-    if (normalized) {
-      return normalized;
-    }
-  }
-  return "";
-}
-
-function itemId(item: WorkspaceAgentActivityTimelineItem): string {
-  return item.eventId.trim() || `id:${item.id}`;
-}
-
-function isGenericToolLabel(normalizedTitle: string): boolean {
-  return normalizedTitle === "tool" || normalizedTitle === "usetool";
-}
-
-function looksLikeOpaqueToolCallID(
-  value: string | null,
-  item: WorkspaceAgentActivityTimelineItem
-): boolean {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) {
-    return false;
-  }
-  const metadata = recordValue(item.payload, "metadata");
-  const callID = firstPresentString(
-    item.callId,
-    stringRecordValue(item.payload, "callId"),
-    stringRecordValue(item.payload, "callID"),
-    stringRecordValue(item.payload, "call_id"),
-    stringRecordValue(metadata, "callId"),
-    stringRecordValue(metadata, "callID"),
-    stringRecordValue(metadata, "call_id")
-  );
-  if (callID && trimmed === callID) {
-    return true;
-  }
-  const lower = trimmed.toLowerCase();
-  if (lower.startsWith("call_")) {
-    return isOpaqueIdentifierTail(trimmed.slice("call_".length));
-  }
-  if (lower.startsWith("ws_")) {
-    return isOpaqueIdentifierTail(trimmed.slice("ws_".length));
-  }
-  return false;
-}
-
-function isOpaqueIdentifierTail(value: string): boolean {
-  return value.length >= 12 && /^[a-z0-9]+$/i.test(value);
-}
-
-function toolCallLabel(toolName: string | null): string {
-  const normalized = normalizeToolNameToken(toolName);
-  const translationKey = normalized
-    ? TOOL_NAME_TRANSLATION_KEYS[normalized]
-    : null;
-  if (translationKey) {
-    return translate(translationKey);
-  }
-  if (toolName?.trim()) {
-    return humanizeToolName(toolName);
-  }
-  return translate("agentHost.agentTool.fallbackName");
-}
-
-function normalizeToolNameToken(value: string | null | undefined): string {
-  return (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s-]+/gu, "");
-}
-
-function humanizeToolName(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
 }

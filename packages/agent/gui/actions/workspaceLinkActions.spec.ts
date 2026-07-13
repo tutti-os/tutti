@@ -248,6 +248,23 @@ describe("resolveWorkspaceFileLinkAction", () => {
     });
   });
 
+  it("uses the agent session cwd when a no-project conversation has no workspace root", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/Users/test/Documents/tutti/session-1/index.html",
+        workspaceRoot: null,
+        basePath: "/Users/test/Documents/tutti/session-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-workspace-file",
+      path: "/Users/test/Documents/tutti/session-1/index.html",
+      directoryPath: "/Users/test/Documents/tutti/session-1",
+      workspaceRoot: "/Users/test/Documents/tutti/session-1",
+      source: "agent-markdown"
+    });
+  });
+
   it("preserves home-relative paths for the desktop launch layer", () => {
     expect(
       resolveWorkspaceFileLinkAction({

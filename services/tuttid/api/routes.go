@@ -464,14 +464,6 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ReadWorkspaceAgentSessionAttachment(w, r)
 	})
 
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			tuttitypes.WriteMethodNotAllowed(w)
-			return
-		}
-		wrapper.CancelWorkspaceAgentSession(w, r)
-	})
-
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

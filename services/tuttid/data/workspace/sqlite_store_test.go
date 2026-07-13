@@ -391,6 +391,12 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 	if !ok || len(next.Messages) != 1 || next.Messages[0].Version != 2 {
 		t.Fatalf("next page = %#v ok=%v", next, ok)
 	}
+	if _, accepted, err := store.agentStore().RecordTurnTransition(ctx, agentactivitybiz.TurnTransition{
+		WorkspaceID: "ws-agent-activity", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: agentactivitybiz.TurnPhaseSettled, Outcome: agentactivitybiz.TurnOutcomeCompleted, OccurredAtUnixMS: 125,
+	}); err != nil || !accepted {
+		t.Fatalf("settle first turn accepted=%v error=%v", accepted, err)
+	}
 
 	third, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-activity",
@@ -1641,8 +1647,8 @@ func TestSQLiteStoreReportSessionStateReturnsCurrentLastEventForStalePatch(t *te
 	if state.StateApplied {
 		t.Fatalf("stale state applied = true, want false")
 	}
-	if state.Session.Status != "completed" || state.Session.CurrentPhase != "idle" || state.Session.LastEventUnixMS != 200 {
-		t.Fatalf("projected session runtime state = %q/%q last=%d, want completed/idle last=200", state.Session.Status, state.Session.CurrentPhase, state.Session.LastEventUnixMS)
+	if state.Session.LastEventUnixMS != 200 {
+		t.Fatalf("projected session last event = %d, want 200", state.Session.LastEventUnixMS)
 	}
 	session, ok, err := store.GetSession(ctx, "ws-agent-state-order", "session-1")
 	if err != nil {
@@ -1651,8 +1657,8 @@ func TestSQLiteStoreReportSessionStateReturnsCurrentLastEventForStalePatch(t *te
 	if !ok {
 		t.Fatal("GetSession() ok = false, want true")
 	}
-	if session.Status != "completed" || session.CurrentPhase != "idle" || session.LastEventUnixMS != 200 {
-		t.Fatalf("session runtime state = %q/%q last=%d, want completed/idle last=200", session.Status, session.CurrentPhase, session.LastEventUnixMS)
+	if session.LastEventUnixMS != 200 {
+		t.Fatalf("session last event = %d, want 200", session.LastEventUnixMS)
 	}
 }
 

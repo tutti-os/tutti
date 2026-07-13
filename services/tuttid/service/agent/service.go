@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	claudecodeservice "github.com/tutti-os/tutti/services/tuttid/service/claudecode"
 )
 
 var (
@@ -22,6 +22,9 @@ var (
 	ErrPromptImageUnsupported           = errors.New("agent prompt image input is unsupported")
 	ErrSessionNoActiveTurn              = errors.New("agent session has no active turn")
 	ErrSessionNotFound                  = errors.New("workspace agent session not found")
+	ErrRuntimeSessionDisconnected       = errors.New("agent runtime session is disconnected")
+	ErrInteractiveRequestNotLive        = errors.New("interactive request is no longer live")
+	ErrInteractiveAlreadyAnswered       = errors.New("interactive request has already been answered")
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 )
@@ -36,7 +39,7 @@ func NewService(runtime RuntimeController) *Service {
 		providerAvailabilityCache: newProviderAvailabilityCache(),
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
 		liveModelCache:            newComposerLiveModelCache(),
-		claudeStartupLock:         newClaudeStartupSerializer(),
+		claudeStartupLock:         claudecodeservice.DefaultStartupGate,
 	}
 }
 
@@ -80,6 +83,25 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
+	var submitClaim agentactivitybiz.SubmitClaim
+	claimPending := false
+	if len(normalizedContent) > 0 {
+		submitClaim, claimPending, err = s.prepareSubmitClaim(ctx, workspaceID, input.AgentSessionID, input.Metadata)
+		if err != nil {
+			return Session{}, err
+		}
+		if submitClaim.ClientSubmitID != "" && !claimPending {
+			if submitClaim.Status == "accepted" {
+				return s.Get(ctx, workspaceID, input.AgentSessionID)
+			}
+			return Session{}, ErrSubmitDeliveryUnknown
+		}
+		defer func() {
+			if claimPending {
+				s.abandonSubmitClaim(workspaceID, input.AgentSessionID, submitClaim.ClientSubmitID)
+			}
+		}()
+	}
 	nodeStartedAt := time.Now()
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt, err)
@@ -135,7 +157,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if err != nil {
 		return Session{}, cleanupPrepared(err)
 	}
-	session, err := func() (RuntimeSession, error) {
+	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
 		return s.controller().Start(ctx, RuntimeStartInput{
 			WorkspaceID:      workspaceID,
@@ -162,6 +184,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			),
 			ConversationDetailMode: input.ConversationDetailMode,
 			Visible:                input.Visible,
+			Provisional:            len(normalizedContent) > 0,
 		})
 	}()
 	if err != nil {
@@ -171,7 +194,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_started", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.Metadata, map[string]any{
-		"session_status": session.Status,
+		"provider_runtime_status": session.Status,
 	})
 	if len(normalizedContent) == 0 {
 		return serviceSessionWithComposerSkillOptions(
@@ -208,13 +231,14 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	if _, err := s.controller().Exec(ctx, RuntimeExecInput{
+	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
 		Content:        content,
 		DisplayPrompt:  displayPrompt,
 		Metadata:       cloneMetadata(input.Metadata),
-	}); err != nil {
+	})
+	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt, normalizedErr)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
@@ -222,6 +246,12 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			AgentSessionID: session.ID,
 		})
 		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr))
+	}
+	if submitClaim.ClientSubmitID != "" {
+		claimPending = false
+		if err := s.acceptSubmitClaim(workspaceID, session.ID, submitClaim.ClientSubmitID, execResult.TurnID); err != nil {
+			return Session{}, err
+		}
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.Metadata, nil)
@@ -328,7 +358,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 			value(input.ReasoningEffort),
 		),
 		ConversationDetailMode:    input.ConversationDetailMode,
-		ExtraSkills:               sessionSkillBundlesToRuntimePrepSkills(input.ExtraSkills),
+		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
 		Metadata:                  input.Metadata,
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
 	})
@@ -344,7 +374,7 @@ func (s *Service) prepareRuntime(ctx context.Context, workspaceID string, cwd st
 	}, nil
 }
 
-func sessionSkillBundlesToRuntimePrepSkills(input []SessionSkillBundle) []runtimeprep.ProviderSkillBundle {
+func sessionSkillBundlesToProviderSkillBundles(input []SessionSkillBundle) []runtimeprep.ProviderSkillBundle {
 	if len(input) == 0 {
 		return nil
 	}
@@ -409,20 +439,9 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 	return store.LocalPath(workspaceID, agentSessionID, attachmentID, mimeType)
 }
 
-func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
+func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, _ bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
-		if reconcileStaleTurn {
-			shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
-			if err != nil {
-				return Session{}, err
-			}
-			if shouldReconcile {
-				if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
-					return Session{}, err
-				}
-			}
-		}
 		resumable := s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session))
 		service := serviceSession(session, resumable)
 		if s.SessionReader != nil {
@@ -430,12 +449,7 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				service = serviceSessionWithPersistedFreshness(session, persisted, resumable)
 			}
 		}
-		return service, nil
-	}
-	if reconcileStaleTurn {
-		if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
-			return Session{}, err
-		}
+		return s.withProtocolV2TurnState(ctx, workspaceID, service)
 	}
 	if s.SessionReader != nil {
 		if persisted, ok := s.SessionReader.GetSession(workspaceID, agentSessionID); ok {
@@ -445,10 +459,10 @@ func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID st
 				}
 				return Session{}, ErrSessionNotFound
 			}
-			return sessionFromPersisted(
+			return s.withProtocolV2TurnState(ctx, workspaceID, sessionFromPersisted(
 				persisted,
 				persistedSessionCanResume(s.controller(), persisted),
-			), nil
+			))
 		}
 	}
 	return Session{}, ErrSessionNotFound
@@ -556,154 +570,6 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 	})
 }
 
-// GoalControlSessionResult carries the refreshed session plus the goal
-// snapshot after a goal control action (nil after clear).
-type GoalControlSessionResult struct {
-	Session Session
-	Goal    map[string]any
-}
-
-// GoalControl performs a direct goal action (pause/resume/clear/set) on the
-// session's thread. Like Cancel it is a control operation: it never opens a
-// turn, so it works while a turn is running.
-func (s *Service) GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (GoalControlSessionResult, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	slog.Info("workspace agent session goal control requested",
-		"event", "workspace_agent_session.goal_control.requested",
-		"workspaceId", workspaceID,
-		"agentSessionId", agentSessionID,
-		"action", action,
-	)
-	if _, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID); err != nil {
-		slog.Warn("workspace agent session goal control prepare failed",
-			"event", "workspace_agent_session.goal_control.prepare_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", err.Error(),
-		)
-		return GoalControlSessionResult{}, err
-	}
-	controlResult, err := s.controller().GoalControl(ctx, RuntimeGoalControlInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Action:         action,
-		Objective:      objective,
-	})
-	if err != nil {
-		normalizedErr := normalizeRuntimeError(err)
-		slog.Warn("workspace agent session goal control runtime request failed",
-			"event", "workspace_agent_session.goal_control.runtime_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"action", action,
-			"error", normalizedErr.Error(),
-		)
-		return GoalControlSessionResult{}, normalizedErr
-	}
-	session, err := s.Get(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		slog.Warn("workspace agent session goal control refresh failed",
-			"event", "workspace_agent_session.goal_control.refresh_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", err.Error(),
-		)
-		return GoalControlSessionResult{}, err
-	}
-	slog.Info("workspace agent session goal control completed",
-		"event", "workspace_agent_session.goal_control.completed",
-		"workspaceId", workspaceID,
-		"agentSessionId", agentSessionID,
-		"action", action,
-	)
-	return GoalControlSessionResult{Session: session, Goal: controlResult.Goal}, nil
-}
-
-func (s *Service) Cancel(ctx context.Context, workspaceID string, agentSessionID string) (CancelSessionResult, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	slog.Info("workspace agent session cancel requested",
-		"event", "workspace_agent_session.cancel.requested",
-		"workspaceId", workspaceID,
-		"agentSessionId", agentSessionID,
-	)
-	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		slog.Warn("workspace agent session cancel prepare failed",
-			"event", "workspace_agent_session.cancel.prepare_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", err.Error(),
-		)
-		return CancelSessionResult{}, err
-	}
-	if ensured.StaleTurnReconciled {
-		session, getErr := s.get(ctx, workspaceID, agentSessionID, false)
-		if getErr != nil {
-			slog.Warn("workspace agent session cancel stale turn refresh failed",
-				"event", "workspace_agent_session.cancel.stale_turn_refresh_failed",
-				"workspaceId", workspaceID,
-				"agentSessionId", agentSessionID,
-				"error", getErr.Error(),
-			)
-			return CancelSessionResult{}, getErr
-		}
-		slog.Info("workspace agent session cancel skipped after stale turn reconciliation",
-			"event", "workspace_agent_session.cancel.stale_turn_reconciled",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"cancelReason", string(CancelReasonStaleTurnReconciled),
-			"returnedStatus", session.Status,
-		)
-		return CancelSessionResult{
-			Session:  session,
-			Canceled: false,
-			Reason:   CancelReasonStaleTurnReconciled,
-		}, nil
-	}
-	cancelResult, err := s.controller().Cancel(ctx, RuntimeCancelInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Reason:         "user requested cancellation",
-	})
-	if err != nil {
-		normalizedErr := normalizeRuntimeError(err)
-		slog.Warn("workspace agent session cancel runtime request failed",
-			"event", "workspace_agent_session.cancel.runtime_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", normalizedErr.Error(),
-		)
-		return CancelSessionResult{}, normalizedErr
-	}
-	session, err := s.Get(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		slog.Warn("workspace agent session cancel refresh failed",
-			"event", "workspace_agent_session.cancel.refresh_failed",
-			"workspaceId", workspaceID,
-			"agentSessionId", agentSessionID,
-			"error", err.Error(),
-		)
-		return CancelSessionResult{}, err
-	}
-	cancelReason := cancelReasonFromRuntimeResult(cancelResult)
-	slog.Info("workspace agent session cancel completed",
-		"event", "workspace_agent_session.cancel.completed",
-		"workspaceId", workspaceID,
-		"agentSessionId", agentSessionID,
-		"runtimeAgentSessionId", cancelResult.AgentSessionID,
-		"runtimeCanceled", cancelResult.Canceled,
-		"cancelReason", string(cancelReason),
-		"returnedStatus", session.Status,
-	)
-	return CancelSessionResult{
-		Session:  session,
-		Canceled: cancelResult.Canceled,
-		Reason:   cancelReason,
-	}, nil
-}
-
 func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettingsPatch) (Session, error) {
 	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
@@ -730,68 +596,25 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	}); err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
-	if err := s.persistUpdatedRuntimeSettings(ctx, workspaceID, agentSessionID); err != nil {
-		return Session{}, err
-	}
-	session, err := s.Get(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return Session{}, err
-	}
-	return session, nil
-}
-
-func (s *Service) persistUpdatedRuntimeSettings(ctx context.Context, workspaceID string, agentSessionID string) error {
-	reporter, ok := s.SessionReader.(SessionStateReporter)
-	if !ok {
-		return nil
-	}
-	session, ok := s.controller().Session(workspaceID, agentSessionID)
-	if !ok || session.Settings == nil {
-		return nil
-	}
-	_, err := reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
-		WorkspaceID:    strings.TrimSpace(workspaceID),
-		AgentSessionID: strings.TrimSpace(agentSessionID),
-		SessionOrigin:  agentsessionstore.WorkspaceAgentSessionOriginRuntime,
-		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
-			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-			Provider:          strings.TrimSpace(session.Provider),
-			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-			Model:             strings.TrimSpace(session.Settings.Model),
-			Settings:          composerSettingsToStatePayload(*session.Settings),
-			CWD:               strings.TrimSpace(session.Cwd),
-			Title:             strings.TrimSpace(session.Title),
-			OccurredAtUnixMS:  time.Now().UnixMilli(),
-		},
-	})
-	return err
+	return s.Get(ctx, workspaceID, agentSessionID)
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
-	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
+	_, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return Session{}, err
 	}
-	if ensured.StaleTurnReconciled {
-		return s.get(ctx, workspaceID, agentSessionID, false)
+	operation, err := s.prepareInteractiveRuntimeOperation(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		strings.TrimSpace(requestID),
+		input,
+	)
+	if err != nil {
+		return Session{}, err
 	}
-	if err := s.controller().SubmitInteractive(ctx, RuntimeSubmitInteractiveInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		RequestID:      requestID,
-		Action:         optionalInputString(input.Action),
-		OptionID:       optionalInputString(input.OptionID),
-		Payload:        input.Payload,
-	}); err != nil {
-		if isStaleInteractiveRequestError(err) {
-			reconciled, recErr := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
-			if recErr != nil {
-				return Session{}, recErr
-			}
-			if reconciled {
-				return s.get(ctx, workspaceID, agentSessionID, false)
-			}
-		}
+	if _, err := s.processRuntimeOperation(ctx, operation, false); err != nil {
 		return Session{}, normalizeRuntimeError(err)
 	}
 	return s.Get(ctx, workspaceID, agentSessionID)

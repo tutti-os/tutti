@@ -1,8 +1,10 @@
 import type { WorkbenchHostDockEntryStateSource } from "@tutti-os/workbench-surface";
 import type { AgentGUIAgent } from "@tutti-os/agent-gui";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentProviderStatusService,
+  IAgentsService,
   IWorkspaceAgentActivityService
 } from "@renderer/features/workspace-agent";
 import {
@@ -22,7 +24,6 @@ import {
 
 const installedDockOrderOffset = 0;
 const pendingInstallDockOrderOffset = 100;
-const openClawSetupRequiredDockOrderOffset = 200;
 
 const agentProviderDockBaseOrder = new Map<WorkspaceAgentGuiProvider, number>(
   workspaceAgentGuiProviders.map((provider, index) => [provider, index])
@@ -30,8 +31,8 @@ const agentProviderDockBaseOrder = new Map<WorkspaceAgentGuiProvider, number>(
 
 export function createWorkspaceAgentProviderDockStateSource(input: {
   agentProviderStatusService: AgentProviderStatusService;
+  agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
-  agents?: readonly AgentGUIAgent[];
   /** Feature gate: providers reported hidden never render a dock entry. */
   isAgentProviderHidden?: (provider: WorkspaceAgentGuiProvider) => boolean;
   subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
@@ -47,7 +48,12 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       if (!provider) {
         return null;
       }
-      if (isAgentProviderHiddenByTargets(provider, input.agents)) {
+      if (
+        isAgentProviderHiddenByTargets(
+          provider,
+          input.agentsService.getSnapshot().agents
+        )
+      ) {
         return {
           visibility: "never"
         };
@@ -117,6 +123,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       void input.agentProviderStatusService.ensureLoaded().catch(() => {});
       const unsubscribeProviderStatus =
         input.agentProviderStatusService.subscribe(listener);
+      const unsubscribeAgents = input.agentsService.subscribe(listener);
       const unsubscribeAgentActivity =
         input.workspaceAgentActivityService && input.workspaceId
           ? input.workspaceAgentActivityService.subscribe(
@@ -130,6 +137,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
         input.subscribeAgentProviderVisibility?.(listener);
       return () => {
         unsubscribeProviderStatus();
+        unsubscribeAgents();
         unsubscribeAgentActivity?.();
         unsubscribeProviderVisibility?.();
       };
@@ -179,7 +187,10 @@ function isAgentProviderHiddenByTargets(
   provider: WorkspaceAgentGuiProvider,
   agents: readonly AgentGUIAgent[] | null | undefined
 ): boolean {
-  if (provider !== "tutti-agent") {
+  if (
+    resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.visibilityGate !==
+    "tutti_agent"
+  ) {
     return false;
   }
   return !agents?.some(
@@ -193,8 +204,11 @@ function resolveAgentProviderDockOrder(
   status: AgentProviderStatus | null
 ): number {
   const baseOrder = agentProviderDockBaseOrder.get(provider) ?? 0;
-  if (provider === "openclaw" && status?.availability.status !== "ready") {
-    return openClawSetupRequiredDockOrderOffset + baseOrder;
+  const unavailableOffset =
+    resolveAgentGUIProviderCatalogIdentity(provider)?.desktop
+      .unavailableDockOrderOffset ?? 0;
+  if (unavailableOffset > 0 && status?.availability.status !== "ready") {
+    return unavailableOffset + baseOrder;
   }
   const statusOffset =
     status &&

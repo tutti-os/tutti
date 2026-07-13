@@ -4,6 +4,37 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentSlashCommandPalette } from "./AgentSlashCommandPalette";
 
 describe("AgentSlashCommandPalette", () => {
+  it("renders a capability loading row before any options arrive", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        capabilitiesLoading
+        capabilitiesLoadingLabel="Loading capabilities…"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("listbox", { name: "Slash commands" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Loading capabilities…"
+    );
+    expect(screen.queryByRole("option")).toBeNull();
+  });
+
   it("renders command options without input hints", () => {
     render(
       <AgentSlashCommandPalette

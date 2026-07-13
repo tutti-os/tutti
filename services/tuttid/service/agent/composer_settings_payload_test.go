@@ -90,7 +90,7 @@ func TestCreateSessionInputFromPersistedCarriesExternalRolloutSourcePath(t *test
 	input := createSessionInputFromPersisted(PersistedSession{
 		ID:       "session-1",
 		Provider: "codex",
-		RuntimeContext: map[string]any{
+		InternalRuntimeContext: map[string]any{
 			"imported":           true,
 			"externalSourcePath": "/home/user/.codex/sessions/2026/07/04/rollout-abc.jsonl",
 		},
@@ -104,7 +104,7 @@ func TestCreateSessionInputFromPersistedDoesNotTreatClaudeExportAsRollout(t *tes
 	input := createSessionInputFromPersisted(PersistedSession{
 		ID:       "session-1",
 		Provider: "claude-code",
-		RuntimeContext: map[string]any{
+		InternalRuntimeContext: map[string]any{
 			"imported":                      true,
 			"externalImportResumeSupported": false,
 			"externalSourcePath":            "/home/user/Downloads/claude-export.zip",

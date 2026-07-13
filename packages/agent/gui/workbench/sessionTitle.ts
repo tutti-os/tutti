@@ -1,6 +1,6 @@
 import type {
   AgentActivityMessage,
-  AgentActivitySnapshot
+  AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import type { UiLanguage } from "../contexts/settings/domain/agentSettings";
 import {
@@ -22,7 +22,8 @@ export interface ResolveAgentGuiWorkbenchSessionTitleInput extends AgentGuiSessi
   agentSessionId?: string | null;
   fallbackTitle?: string | null;
   provider: AgentGuiWorkbenchProvider | string;
-  snapshot: AgentActivitySnapshot;
+  messages?: readonly AgentActivityMessage[];
+  session?: AgentActivitySession | null;
 }
 
 export interface AgentGuiWorkbenchSessionTitleResult {
@@ -53,23 +54,19 @@ export function resolveAgentGuiWorkbenchSessionTitle({
   fallbackTitle,
   language,
   provider,
-  snapshot
+  messages = [],
+  session = null
 }: ResolveAgentGuiWorkbenchSessionTitleInput): AgentGuiWorkbenchSessionTitleResult {
   const normalizedAgentSessionId = agentSessionId?.trim() ?? "";
   if (!normalizedAgentSessionId) {
     return { agentSessionId: null, source: "none", title: null };
   }
 
-  const session = snapshot.sessions.find(
-    (item) => item.agentSessionId === normalizedAgentSessionId
-  );
-  const sessionMessages =
-    snapshot.sessionMessagesById[normalizedAgentSessionId] ?? [];
   const normalizedProvider = normalizeAgentGUIProviderIdentity(
     session?.provider ?? provider
   );
   const snapshotTitle = resolveDisplayableSnapshotSessionTitle({
-    messages: sessionMessages,
+    messages,
     provider: normalizedProvider,
     sessionTitle: session?.title ?? "",
     language
@@ -82,7 +79,7 @@ export function resolveAgentGuiWorkbenchSessionTitle({
     };
   }
 
-  if (session || sessionMessages.length > 0) {
+  if (session || messages.length > 0) {
     return {
       agentSessionId: normalizedAgentSessionId,
       source: "none",

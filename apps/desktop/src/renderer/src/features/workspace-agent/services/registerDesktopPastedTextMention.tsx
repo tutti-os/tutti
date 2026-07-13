@@ -2,7 +2,7 @@ import { FileTextIcon } from "@tutti-os/ui-system/icons";
 import {
   AGENT_PASTED_TEXT_MENTION_KIND,
   registerAgentCustomMentionKind
-} from "@tutti-os/agent-gui";
+} from "@tutti-os/agent-gui/custom-mention";
 
 /**
  * Registers the `pasted-text` custom mention kind so a pasted-text reference in

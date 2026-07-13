@@ -1,12 +1,10 @@
 import * as THREE from "three";
-import claudeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/claude-vinyl.png";
-import codexVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/codex-vinyl.png";
-import cursorVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/cursor-vinyl.png";
-import hermesVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/hermes-vinyl.png";
-import openclawVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/openclaw-vinyl.png";
-import opencodeVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/opencode-vinyl.png";
-import tuttiVinylAssetUrl from "../../app/renderer/assets/icons/agent-vinyls/tutti-vinyl.png";
 import type { AgentGUIAgentAvatarPresentation } from "./model/agentGuiAgentAvatarPresentation";
+import {
+  coverImageTexture,
+  roundedIconTexture,
+  vinylRecordTexture
+} from "./agentGuiHeroCarouselTextures";
 
 // Three.js scene behind the empty-hero agent carousel, modelled after
 // animos.app's "Wheel Carousel": same-sized vinyl records ride the rim of a
@@ -47,37 +45,19 @@ const SPRING_MIN_LAUNCH_VELOCITY = 2.6;
 const SPRING_SETTLE_EPSILON = 0.001;
 const SPRING_SETTLE_VELOCITY = 0.02;
 const MAX_FRAME_DELTA_SECONDS = 0.032;
-const TEXTURE_SIZE = 256;
-const UNSELECTED_COVER_SCALE = 0.86;
 const BADGE_CORNER_RADIUS = 0.5;
 const BADGE_DIAMETER = 0.36;
 const BADGE_OFFSET = 0.4;
 const MAX_PIXEL_RATIO = 2;
-const RECORD_RADIUS_RATIO = 0.47;
-const RECORD_LABEL_RADIUS_RATIO = 0.41;
 const RECORD_SPIN_SECONDS = 10;
 const RECORD_MODEL_SCALE = 1.3;
-// Keep the 3D rim just inside the textured record face so the tilted edge
-// cannot protrude as a dark outline on light backgrounds.
 const RECORD_MODEL_RADIUS = 0.45;
-// Keep the record edge subtle when the tilted cylinder is viewed against a
-// light background; a thicker side wall visibly spills beyond the face.
 const RECORD_MODEL_THICKNESS = 0.03;
 const RECORD_MODEL_TILT_X = -0.11;
 const RECORD_MODEL_SIDE_TILT_FACTOR = 0.18;
 const RECORD_MODEL_MAX_SIDE_TILT = 0.16;
 const RECORD_RENDER_RANGE_SLOTS = 3.4;
 const RECORD_EDGE_SEGMENTS = 48;
-
-const AGENT_VINYL_COVER_BY_PROVIDER: Record<string, string> = {
-  "claude-code": claudeVinylAssetUrl,
-  codex: codexVinylAssetUrl,
-  cursor: cursorVinylAssetUrl,
-  hermes: hermesVinylAssetUrl,
-  openclaw: openclawVinylAssetUrl,
-  opencode: opencodeVinylAssetUrl,
-  "tutti-agent": tuttiVinylAssetUrl
-};
 
 // Signed ring offset of tile `index` for a continuous scroll position, in
 // (-count / 2, count / 2].
@@ -93,206 +73,6 @@ function ringOffset(index: number, scroll: number, count: number): number {
     offset += count;
   }
   return offset;
-}
-
-// Composites each host-provided agent icon into the paper label of a shared
-// vinyl-record treatment. The monochrome groove/rim palette is intentionally
-// material-specific; the label keeps the host artwork and brand color intact.
-function vinylRecordTexture(
-  image: HTMLImageElement,
-  onReadyRender: () => void
-): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = TEXTURE_SIZE;
-  canvas.height = TEXTURE_SIZE;
-  const context = canvas.getContext("2d");
-  if (context) {
-    const center = TEXTURE_SIZE / 2;
-    const recordRadius = TEXTURE_SIZE * RECORD_RADIUS_RATIO;
-    const recordMaskRadius = recordRadius - 2;
-    const labelRadius = recordRadius * RECORD_LABEL_RADIUS_RATIO;
-
-    context.clearRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-    context.save();
-    context.beginPath();
-    // Pull the circular mask inward by two source pixels to keep filtered edge
-    // samples from exposing a jagged transparent fringe in WebGL.
-    context.arc(center, center, recordMaskRadius, 0, Math.PI * 2);
-    context.clip();
-
-    const recordFill = context.createRadialGradient(
-      center * 0.92,
-      center * 0.88,
-      labelRadius,
-      center,
-      center,
-      recordRadius
-    );
-    recordFill.addColorStop(0, "rgb(26 26 27)");
-    recordFill.addColorStop(0.54, "rgb(5 5 6)");
-    recordFill.addColorStop(0.82, "rgb(18 18 19)");
-    recordFill.addColorStop(1, "rgb(3 3 4)");
-    context.fillStyle = recordFill;
-    context.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-
-    // Closely spaced low-contrast rings read as pressed vinyl grooves without
-    // competing with the center artwork at the small carousel size.
-    for (
-      let radius = labelRadius + 4;
-      radius < recordRadius - 3;
-      radius += 3.5
-    ) {
-      const grooveIndex = Math.round((radius - labelRadius) / 3.5);
-      context.beginPath();
-      context.arc(center, center, radius, 0, Math.PI * 2);
-      context.strokeStyle =
-        grooveIndex % 3 === 0
-          ? "rgb(255 255 255 / 0.12)"
-          : "rgb(255 255 255 / 0.055)";
-      context.lineWidth = grooveIndex % 3 === 0 ? 0.7 : 0.45;
-      context.stroke();
-    }
-
-    // A narrow diagonal sheen makes the grooves visible on both light and
-    // dark application themes while leaving most of the record near-black.
-    context.save();
-    context.translate(center, center);
-    context.rotate(-Math.PI / 4);
-    const sheen = context.createLinearGradient(
-      -recordRadius,
-      0,
-      recordRadius,
-      0
-    );
-    sheen.addColorStop(0, "rgb(255 255 255 / 0)");
-    sheen.addColorStop(0.42, "rgb(255 255 255 / 0.02)");
-    sheen.addColorStop(0.5, "rgb(255 255 255 / 0.18)");
-    sheen.addColorStop(0.58, "rgb(255 255 255 / 0.02)");
-    sheen.addColorStop(1, "rgb(255 255 255 / 0)");
-    context.fillStyle = sheen;
-    context.fillRect(
-      -recordRadius,
-      -recordRadius,
-      recordRadius * 2,
-      recordRadius * 2
-    );
-    context.restore();
-
-    // Keep the one-pixel theme-colored rim fully inside the inset mask so the
-    // edge cannot blend with the transparent texture fringe.
-    context.beginPath();
-    context.arc(center, center, recordMaskRadius - 0.5, 0, Math.PI * 2);
-    context.strokeStyle =
-      getComputedStyle(document.body)
-        .getPropertyValue("--background-session-flow")
-        .trim() || "transparent";
-    context.lineWidth = 2;
-    context.stroke();
-    context.restore();
-
-    // Crop the existing provider artwork into a circular paper label. Cover
-    // fit preserves the bold center mark of square/full-bleed app icons.
-    context.save();
-    context.beginPath();
-    context.arc(center, center, labelRadius, 0, Math.PI * 2);
-    context.clip();
-    const scale = Math.max(
-      (labelRadius * 2) / image.width,
-      (labelRadius * 2) / image.height
-    );
-    const width = image.width * scale;
-    const height = image.height * scale;
-    context.drawImage(
-      image,
-      center - width / 2,
-      center - height / 2,
-      width,
-      height
-    );
-    context.restore();
-
-    context.beginPath();
-    context.arc(center, center, labelRadius, 0, Math.PI * 2);
-    context.strokeStyle = "rgb(255 255 255 / 0.2)";
-    context.lineWidth = 1;
-    context.stroke();
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  onReadyRender();
-  return texture;
-}
-
-function roundedIconTexture(
-  image: HTMLImageElement,
-  onReadyRender: () => void,
-  cornerRadius: number
-): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = TEXTURE_SIZE;
-  canvas.height = TEXTURE_SIZE;
-  const context = canvas.getContext("2d");
-  if (context) {
-    const radius = TEXTURE_SIZE * cornerRadius;
-    context.beginPath();
-    context.roundRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE, radius);
-    context.clip();
-    const scale = Math.max(
-      TEXTURE_SIZE / image.width,
-      TEXTURE_SIZE / image.height
-    );
-    const width = image.width * scale;
-    const height = image.height * scale;
-    context.drawImage(
-      image,
-      (TEXTURE_SIZE - width) / 2,
-      (TEXTURE_SIZE - height) / 2,
-      width,
-      height
-    );
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  onReadyRender();
-  return texture;
-}
-
-function coverImageTexture(
-  image: HTMLImageElement,
-  onReadyRender: () => void
-): THREE.Texture {
-  const canvas = document.createElement("canvas");
-  canvas.width = TEXTURE_SIZE;
-  canvas.height = TEXTURE_SIZE;
-  const context = canvas.getContext("2d");
-  if (context) {
-    // The texture is rendered at roughly 2x the display size, so 12 source
-    // pixels produces the requested 6px corner radius on screen.
-    const radius = 12;
-    const scale = Math.max(
-      TEXTURE_SIZE / image.width,
-      TEXTURE_SIZE / image.height
-    );
-    const width = image.width * scale * UNSELECTED_COVER_SCALE;
-    const height = image.height * scale * UNSELECTED_COVER_SCALE;
-    const x = (TEXTURE_SIZE - width) / 2;
-    const y = (TEXTURE_SIZE - height) / 2;
-    context.clearRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
-    context.save();
-    context.beginPath();
-    context.roundRect(x, y, width, height, radius);
-    context.clip();
-    context.drawImage(image, x, y, width, height);
-    context.restore();
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  texture.needsUpdate = true;
-  onReadyRender();
-  return texture;
 }
 
 interface AgentGuiHeroCarouselTile {
@@ -489,25 +269,11 @@ export class AgentGuiHeroCarouselScene {
       } else if (!loadedImage) {
         image.src = item.iconUrl;
       }
-      const coverUrl = AGENT_VINYL_COVER_BY_PROVIDER[item.provider];
-      if (coverUrl && options.loadedCoverImages) {
-        const coverImage =
-          options.loadedCoverImages?.[agentIndex] ?? new Image();
-        if (!options.loadedCoverImages?.[agentIndex]) {
-          coverImage.decoding = "async";
-          coverImage.loading = "eager";
-          this.ownedImages.add(coverImage);
-        }
+      const coverImage = options.loadedCoverImages?.[agentIndex] ?? null;
+      if (coverImage) {
         this.images.push(coverImage);
-        coverImage.onload = () => {
-          if (!this.disposed) {
-            this.applyCoverImageTexture(coverImage, agentIndex);
-          }
-        };
         if (coverImage.complete && coverImage.naturalWidth > 0) {
           this.applyCoverImageTexture(coverImage, agentIndex);
-        } else {
-          coverImage.src = coverUrl;
         }
       }
       if (item.badge?.iconUrl) {

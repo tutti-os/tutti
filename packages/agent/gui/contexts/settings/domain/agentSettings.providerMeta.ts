@@ -1,15 +1,18 @@
-import type { AgentProvider } from "./agentSettings";
+import { resolveAgentGUIProviderCatalogIdentity } from "../../../providerIdentityCatalog.ts";
+import {
+  AGENT_PROVIDERS,
+  type AgentProvider
+} from "./agentSettings.providers.ts";
 
-export const AGENT_PROVIDER_LABEL: Record<AgentProvider, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  "tutti-agent": "Tutti Agent",
-  cursor: "Cursor",
-  nexight: "Nexight",
-  opencode: "Open Code",
-  openclaw: "OpenClaw",
-  hermes: "Hermes Agent"
-};
+export const AGENT_PROVIDER_LABEL = Object.fromEntries(
+  AGENT_PROVIDERS.map((provider) => {
+    const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+    if (!identity) {
+      throw new Error(`Missing provider identity for ${provider}`);
+    }
+    return [provider, identity.displayName];
+  })
+) as Record<AgentProvider, string>;
 
 export interface AgentProviderCapabilities {
   runtimeObservation: "jsonl" | "provider-api" | "none";

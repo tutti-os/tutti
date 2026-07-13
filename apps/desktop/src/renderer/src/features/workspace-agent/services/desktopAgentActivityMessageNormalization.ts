@@ -2,14 +2,9 @@ import type { WorkspaceAgentSessionMessage } from "@tutti-os/client-tuttid-ts";
 
 export function normalizedTuttidMessageTurnId(
   message: WorkspaceAgentSessionMessage
-): string {
+): string | null {
   const turnId = message.turnId?.trim() ?? "";
-  if (!turnId) {
-    throw new Error(
-      `workspace agent session message ${message.messageId.trim()} is missing turnId`
-    );
-  }
-  return turnId;
+  return turnId || null;
 }
 
 export function normalizedTuttidMessageOccurredAtUnixMs(

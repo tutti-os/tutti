@@ -17,7 +17,7 @@ func newClaudeSDKLifecycleTestSession(t *testing.T, adapter *ClaudeCodeSDKAdapte
 		conn:            conn,
 		reader:          &claudeSDKLineReader{conn: conn},
 		session:         session,
-		pendingRequests: make(map[string]*pendingACPRequest),
+		pendingRequests: make(map[string]*pendingInteractiveRequest),
 		liveState:       newClaudeSDKLiveState(),
 	}
 	adapter.storeSession(session.AgentSessionID, adapterSession)
@@ -213,7 +213,7 @@ func TestClaudeSDKGoalControlSetAndClear(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	type controlResult struct {
@@ -327,7 +327,7 @@ func TestClaudeSDKExecGoalControl(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
@@ -412,7 +412,7 @@ func TestClaudeSDKExecGoalControlSetDoesNotInterrupt(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
@@ -446,7 +446,7 @@ func TestClaudeSDKGoalResetClearsWithoutArming(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
@@ -482,7 +482,7 @@ func TestClaudeSDKGoalControlClearInterruptsLiveTurn(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
@@ -556,7 +556,7 @@ func TestClaudeSDKGoalSurvivesInterruptAndFailure(t *testing.T) {
 			t.Fatalf("%s: %v", sidecarType, err)
 		}
 		for _, event := range events {
-			if event.Payload.Metadata["acpSessionUpdate"] != nil {
+			if event.Payload.Metadata["sessionUpdateKind"] != nil {
 				t.Fatalf("%s must not touch the goal mirror: %#v", sidecarType, events)
 			}
 		}
@@ -574,7 +574,7 @@ func TestClaudeSDKGoalArmTurnGatesCompletion(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	type controlResult struct {
@@ -625,7 +625,7 @@ func TestClaudeSDKGoalArmTurnCanceledClearsMirror(t *testing.T) {
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	conn := newBlockingClaudeSDKConnection()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	done := make(chan error, 1)
@@ -659,7 +659,7 @@ func assertClaudeSDKGoalUpdateEvent(t *testing.T, events []activityshared.Event,
 		if event.Payload.Metadata == nil {
 			continue
 		}
-		if event.Payload.Metadata["acpSessionUpdate"] == updateType {
+		if event.Payload.Metadata["sessionUpdateKind"] == updateType {
 			return
 		}
 	}

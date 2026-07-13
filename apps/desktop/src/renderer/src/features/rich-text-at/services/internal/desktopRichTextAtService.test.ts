@@ -374,14 +374,25 @@ test("desktop rich text @ service assembles agent session providers by capabilit
           workspaceId,
           sessions: [
             {
-              createdAt: "2026-06-01T00:00:00Z",
+              activeTurn: {
+                agentSessionId: "session-1",
+                completedCommand: null,
+                error: null,
+                fileChanges: null,
+                outcome: null,
+                phase: "running",
+                settledAtUnixMs: null,
+                startedAtUnixMs: 1780272000000,
+                turnId: "turn-1",
+                updatedAtUnixMs: 1780272000000
+              },
+              createdAtUnixMs: 1780272000000,
               cwd: null,
               id: "session-1",
               provider: "codex",
-              status: "working",
               title:
                 "[@wang jomes & Codex hi](mention://agent-session/session-2?workspaceId=workspace-1)",
-              updatedAt: null
+              updatedAtUnixMs: 1780272000000
             }
           ]
         };
@@ -943,7 +954,8 @@ function createAgentsService(
   targets: readonly AgentTarget[]
 ): Pick<IAgentsService, "load"> {
   const agentTargets = mapAgentTargetsToPresentations(targets, {
-    resolveAgentIconUrl: resolveTestAgentIconUrl
+    resolveAgentTargetIconUrl: ({ provider }) =>
+      resolveTestAgentIconUrl(provider)
   });
   const snapshot: AgentsSnapshot = {
     agentTargets,
@@ -1123,26 +1135,48 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
           workspaceId,
           sessions: [
             {
-              createdAt: "2026-06-01T00:00:00Z",
+              activeTurn: {
+                agentSessionId: "session-1",
+                completedCommand: null,
+                error: null,
+                fileChanges: null,
+                outcome: null,
+                phase: "running",
+                settledAtUnixMs: null,
+                startedAtUnixMs: 1780272000000,
+                turnId: "turn-1",
+                updatedAtUnixMs: 1780272000000
+              },
+              createdAtUnixMs: 1780272000000,
               cwd: null,
               id: "session-1",
               provider: "codex",
-              status: "working",
               title: "Codex run",
-              updatedAt: null
+              updatedAtUnixMs: 1780272000000
             }
           ]
         };
       },
       async getWorkspaceAgentSession(workspaceId: string, id: string) {
         return {
-          createdAt: "2026-06-01T00:00:00Z",
+          activeTurn: {
+            agentSessionId: id,
+            completedCommand: null,
+            error: null,
+            fileChanges: null,
+            outcome: null,
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1780272000000,
+            turnId: "turn-1",
+            updatedAtUnixMs: 1780272000000
+          },
+          createdAtUnixMs: 1780272000000,
           cwd: null,
           id,
           provider: "codex",
-          status: "working",
           title: "Codex run",
-          updatedAt: null,
+          updatedAtUnixMs: 1780272000000,
           workspaceId
         };
       }

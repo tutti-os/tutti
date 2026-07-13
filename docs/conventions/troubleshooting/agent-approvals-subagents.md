@@ -362,3 +362,45 @@ Approval gates, plan exits, parent/child event attribution, background agents, a
   should still have its Agent tool row marked completed from the
   `task_notification` system message, which confirms the daemon saw the
   completion even though the parent model never acknowledged it.
+
+### Interactive response or exact-turn cancel succeeds in the provider but durable state stays pending
+
+- Symptom:
+  The provider has consumed an approval response or canceled the requested turn,
+  but the HTTP call reports a persistence error, the interaction remains pending,
+  or the turn remains active after a daemon restart. Repeating the request may
+  report that the interactive request is no longer live.
+- Quick checks:
+  Inspect `workspace_agent_runtime_operations` for the deterministic
+  workspace/session/subject operation. Check `status`, `attempt`,
+  `next_attempt_at_unix_ms`, lease owner/expiry, and `last_error`. For a completed
+  operation, verify that `workspace_agent_runtime_operation_events` contains an
+  unpublished event rather than assuming the activity stream was delivered.
+- Root cause:
+  A provider side effect and SQLite cannot share one transaction. Calling the
+  provider before recording durable intent, or persisting the turn/interaction
+  separately from completion and its event, creates a crash window where a
+  one-shot provider response is consumed without a recoverable local transition.
+- Fix:
+  Prepare a deterministic runtime operation before invoking the provider. Claim
+  it with a lease, then commit the domain transition, completed operation, and
+  event outbox row in one SQLite transaction. Leave an operation leased when
+  completion fails, requeue prior-process leases before startup stale-turn
+  settlement, and use bounded retry backoff for typed transient errors. Startup
+  stale settlement must exclude turns referenced by every prepared/leased
+  operation, including operations whose next attempt is still in the future;
+  the interrupted turn, session active pointer, pending interaction, and
+  restart system notice must commit in one transaction; a settlement database
+  error must fail daemon startup. Exact cancel with no controller turn-registry entry must
+  reach the adapter and return typed target-absent evidence; do not synthesize
+  a completed outcome from the session view. Treat an
+  interactive request as already consumed only when a typed runtime error and
+  the live registry agree for the same request id. Drain outbox events
+  independently; a publish failure must not acknowledge or delete the row.
+- Validation:
+  Use a fake clock and step-driven worker tests for prepare-before-side-effect,
+  atomic completion rollback, lease expiry/takeover, duplicate submission after
+  completion, startup lease recovery ordering, typed transient backoff, and
+  outbox publish failure. Include a database failure after provider success and
+  verify recovery reaches exactly one terminal operation without reverting a
+  terminal interaction.

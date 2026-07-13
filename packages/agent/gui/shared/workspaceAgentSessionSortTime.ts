@@ -1,6 +1,6 @@
 export interface WorkspaceAgentSessionSortTimeSession {
   createdAtUnixMs?: number;
-  endedAtUnixMs?: number;
+  endedAtUnixMs?: number | null;
   id?: number;
   agentSessionId?: string;
   providerSessionId?: string | null;

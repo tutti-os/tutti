@@ -7,28 +7,18 @@ import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
-import { normalizeAgentTitleText } from "@tutti-os/agent-gui/agent-title-text";
 import { appCenterI18nResources } from "@tutti-os/workspace-app-center/i18n";
 import {
   createRichTextMarkdownLinkInsertResult,
-  createRichTextTriggerProvider,
-  createRichTextMentionInsertResult
+  createRichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/plugins";
-import type {
-  RichTextMentionInsert,
-  RichTextMentionPresentation,
-  RichTextMentionResolved,
-  RichTextTriggerProvider
-} from "@tutti-os/ui-rich-text/types";
+import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import {
   tuttiFileAssetUrls,
   tuttiFolderAssetUrls,
   tuttiIssueAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
-import type {
-  AgentTargetPresentation,
-  IAgentsService
-} from "../../../workspace-agent/services/agentsService.interface";
+import type { IAgentsService } from "../../../workspace-agent/services/agentsService.interface";
 import { resolveDesktopWorkspaceAppDefaultIconUrl } from "../../../../../../shared/workspaceAppIconDefaults.ts";
 import type {
   DesktopRichTextAtCapability,
@@ -40,13 +30,18 @@ import {
   createDesktopAgentSessionMentionProvider,
   type DesktopAgentSessionStatusView
 } from "../../providers/desktopAgentSessionMentionProvider.ts";
-
-interface DesktopRichTextAtContributor {
-  capability: DesktopRichTextAtCapability;
-  getProviders: (
-    input: DesktopRichTextTriggerProviderRequest
-  ) => readonly RichTextTriggerProvider<unknown>[];
-}
+import {
+  createAgentSessionAtContributor,
+  createAgentTargetAtContributor
+} from "./desktopRichTextAtAgentContributors.ts";
+import {
+  compactMentionPresentation,
+  compactStringRecord,
+  createDesktopRichTextMentionInsertResult,
+  resolveMentionSafely,
+  scopeString,
+  type DesktopRichTextAtContributor
+} from "./desktopRichTextAtMentionSupport.ts";
 
 export interface DesktopRichTextAtServiceDependencies {
   agentsService?: Pick<IAgentsService, "load">;
@@ -63,6 +58,8 @@ export interface DesktopRichTextAtServiceDependencies {
   ) => DesktopAgentSessionStatusView | null;
   /** Live getter for agent availability, used to hide unbound agent apps. */
   agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
+  /** Live getter for the renderer-local Tutti Agent entry switch. */
+  isTuttiAgentSwitchEnabled?: () => boolean;
 }
 
 interface WorkspaceFileAtItem {
@@ -79,30 +76,6 @@ interface WorkspaceIssueAtItem {
   status?: string | null;
   title: string;
   topicId: string;
-  workspaceId: string;
-}
-
-interface AgentSessionAtItem {
-  agentName?: string | null;
-  createdAtUnixMs?: number | null;
-  id: string;
-  initiatorName?: string | null;
-  provider?: string | null;
-  scope?: "my_sessions" | "collab_sessions";
-  sessionOrigin?: string | null;
-  status?: string | null;
-  title?: string | null;
-  updatedAtUnixMs?: number | null;
-  userId?: string | null;
-  workspaceId: string;
-}
-
-interface AgentTargetAtItem {
-  description: string;
-  displayName: string;
-  iconUrl: string;
-  provider: WorkspaceAgentProvider;
-  targetId: string;
   workspaceId: string;
 }
 
@@ -136,28 +109,11 @@ interface BuiltInWorkspaceAppResource {
 }
 
 const {
-  agentTarget: AGENT_TARGET_PROVIDER_ID,
   agentSession: AGENT_SESSION_PROVIDER_ID,
   file: FILE_PROVIDER_ID,
   workspaceApp: WORKSPACE_APP_PROVIDER_ID,
   workspaceIssue: WORKSPACE_ISSUE_PROVIDER_ID
 } = AGENT_CONTEXT_MENTION_PROVIDER_IDS;
-
-const RICH_TEXT_MENTION_PRESENTATION_KEYS = [
-  "agentProviderId",
-  "agentIconUrl",
-  "iconUrl",
-  "thumbnailUrl",
-  "subtitle",
-  "description",
-  "participant",
-  "status",
-  "statusDataStatus",
-  "statusLabel",
-  "statusPulse",
-  "userAvatarPlaceholderUrl",
-  "referencesListSupported"
-] as const satisfies readonly (keyof RichTextMentionPresentation)[];
 
 export class DesktopRichTextAtService implements IDesktopRichTextAtService {
   readonly _serviceBrand = undefined;
@@ -175,7 +131,8 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceIssueAtContributor(dependencies.tuttidClient),
       createAgentTargetAtContributor({
         agentsService: dependencies.agentsService,
-        agentProviderStatuses: dependencies.agentProviderStatuses
+        agentProviderStatuses: dependencies.agentProviderStatuses,
+        isTuttiAgentSwitchEnabled: dependencies.isTuttiAgentSwitchEnabled
       }),
       createAgentSessionAtContributor(dependencies.tuttidClient),
       createWorkspaceAppAtContributor({
@@ -433,22 +390,6 @@ function shouldShowWorkspaceAppMentionCandidate(input: {
   return provider === undefined;
 }
 
-function shouldShowReadyAgentTarget(input: {
-  agentProviderStatuses?: readonly AgentProviderStatus[];
-  provider: WorkspaceAgentProvider;
-}): boolean {
-  if (input.agentProviderStatuses === undefined) {
-    return true;
-  }
-  // UI-only guard for agent targets. This reads an existing renderer
-  // snapshot and must not trigger provider availability/auth probing.
-  return input.agentProviderStatuses.some(
-    (status) =>
-      status.provider === input.provider &&
-      status.availability.status === "ready"
-  );
-}
-
 function workspaceAppIconUrl(
   candidate: Awaited<
     ReturnType<TuttidClient["listWorkspaceAppMentionCandidates"]>
@@ -603,51 +544,6 @@ function resolveWorkspaceFileLabel(item: WorkspaceFileAtItem): string {
 
   const path = item.path.trim();
   return path.split("/").filter(Boolean).at(-1) || path;
-}
-
-function createDesktopRichTextMentionInsertResult(
-  mention: RichTextMentionInsert
-) {
-  return createRichTextMentionInsertResult(mention);
-}
-
-function compactStringRecord(
-  values: Readonly<Record<string, string | null | undefined>>
-): Readonly<Record<string, string>> | undefined {
-  const entries = Object.entries(values)
-    .map(([key, value]) => [key.trim(), value?.trim() ?? ""] as const)
-    .filter(([key, value]) => key.length > 0 && value.length > 0);
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-function compactMentionPresentation(
-  presentation: RichTextMentionPresentation
-): RichTextMentionPresentation | undefined {
-  const compacted: RichTextMentionPresentation = {};
-  for (const key of RICH_TEXT_MENTION_PRESENTATION_KEYS) {
-    const value = presentation[key]?.trim();
-    if (value) {
-      compacted[key] = value;
-    }
-  }
-  return Object.keys(compacted).length > 0 ? compacted : undefined;
-}
-
-function scopeString(
-  scope: Readonly<Record<string, string>> | undefined,
-  key: string
-): string {
-  return scope?.[key]?.trim() ?? "";
-}
-
-async function resolveMentionSafely(
-  resolve: () => Promise<RichTextMentionResolved | null>
-): Promise<RichTextMentionResolved | null> {
-  try {
-    return await resolve();
-  } catch {
-    return null;
-  }
 }
 
 function isIssueWorkspaceRuntimePath(path: string, root: string): boolean {
@@ -868,369 +764,4 @@ function workspaceIssueAtItemFromIssue(issue: {
 function workspaceIssueIdSearchKeyword(keyword: string): string | null {
   const issueId = keyword.trim();
   return /^issue-[A-Za-z0-9_-]+$/.test(issueId) ? issueId : null;
-}
-
-function createAgentTargetAtContributor(contributorInput: {
-  agentsService?: Pick<IAgentsService, "load">;
-  agentProviderStatuses?: () => readonly AgentProviderStatus[] | undefined;
-}): DesktopRichTextAtContributor {
-  return {
-    capability: "agent-target",
-    getProviders(input) {
-      return [
-        createRichTextTriggerProvider<AgentTargetAtItem>({
-          id: AGENT_TARGET_PROVIDER_ID,
-          trigger: "@",
-          async query(searchInput) {
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            const response = await contributorInput.agentsService?.load(
-              searchInput.abortSignal
-            );
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            if (!response) {
-              return [];
-            }
-            return agentTargetAtItemsFromTargets({
-              agentProviderStatuses: contributorInput.agentProviderStatuses?.(),
-              keyword: searchInput.keyword,
-              maxResults: searchInput.maxResults,
-              targets: response.agentTargets,
-              workspaceId: input.workspaceId
-            });
-          },
-          getItemKey: (item) => item.targetId,
-          getItemLabel: (item) => item.displayName,
-          getItemSubtitle: (item) => item.description,
-          getItemIconUrl: (item) => item.iconUrl,
-          toInsertResult(item) {
-            return createDesktopRichTextMentionInsertResult({
-              entityId: item.targetId,
-              label: item.displayName,
-              scope: compactStringRecord({
-                workspaceId: item.workspaceId
-              }),
-              presentation: compactMentionPresentation({
-                agentProviderId: item.provider,
-                description: item.description,
-                iconUrl: item.iconUrl,
-                subtitle: item.description
-              })
-            });
-          },
-          async resolveMention(identity) {
-            const workspaceId = scopeString(identity.scope, "workspaceId");
-            if (!workspaceId) {
-              return null;
-            }
-            return resolveMentionSafely(async () => {
-              const response = await contributorInput.agentsService?.load();
-              if (!response) {
-                return null;
-              }
-              const item = agentTargetAtItemsFromTargets({
-                agentProviderStatuses:
-                  contributorInput.agentProviderStatuses?.(),
-                keyword: "",
-                targets: response.agentTargets,
-                workspaceId
-              }).find((target) => target.targetId === identity.entityId);
-              if (!item) {
-                return null;
-              }
-              return {
-                label: item.displayName,
-                presentation: compactMentionPresentation({
-                  agentProviderId: item.provider,
-                  description: item.description,
-                  iconUrl: item.iconUrl,
-                  subtitle: item.description
-                })
-              };
-            });
-          }
-        })
-      ];
-    }
-  };
-}
-
-function agentTargetAtItemsFromTargets(input: {
-  agentProviderStatuses?: readonly AgentProviderStatus[];
-  keyword: string;
-  maxResults?: number;
-  targets: readonly AgentTargetPresentation[];
-  workspaceId: string;
-}): AgentTargetAtItem[] {
-  const keyword = input.keyword.trim().toLowerCase();
-  const items = input.targets
-    .filter((target) => target.enabled)
-    .map((target): AgentTargetAtItem | null => {
-      const provider = normalizeWorkspaceAgentProvider(target.provider);
-      if (!provider) {
-        return null;
-      }
-      if (
-        !shouldShowReadyAgentTarget({
-          agentProviderStatuses: input.agentProviderStatuses,
-          provider
-        })
-      ) {
-        return null;
-      }
-      const targetId = target.agentTargetId.trim();
-      if (!targetId) {
-        return null;
-      }
-      const label =
-        normalizeText(target.name) ??
-        resolveAgentSessionProviderLabel(provider);
-      const rawDescription = normalizeText(target.name) ?? label;
-      // Avoid rendering the provider name twice (e.g. "Codex Codex") when the
-      // description is identical to the label.
-      const description = rawDescription === label ? "" : rawDescription;
-      return {
-        description,
-        displayName: label,
-        iconUrl: target.iconUrl,
-        provider,
-        targetId,
-        workspaceId: input.workspaceId
-      };
-    })
-    .filter((item): item is AgentTargetAtItem => item !== null)
-    .filter((item) => agentTargetMatchesKeyword(item, keyword))
-    .sort(compareAgentTargetAtItems);
-  return input.maxResults === undefined
-    ? items
-    : items.slice(0, Math.max(0, input.maxResults));
-}
-
-function normalizeWorkspaceAgentProvider(
-  provider: string
-): WorkspaceAgentProvider | null {
-  switch (provider.trim()) {
-    case "claude-code":
-      return "claude-code";
-    case "codex":
-      return "codex";
-    case "tutti-agent":
-      return "tutti-agent";
-    case "cursor":
-      return "cursor";
-    default:
-      return null;
-  }
-}
-
-function agentTargetMatchesKeyword(
-  item: AgentTargetAtItem,
-  keyword: string
-): boolean {
-  if (!keyword) {
-    return true;
-  }
-  return [item.targetId, item.provider, item.displayName, item.description]
-    .join("\n")
-    .toLowerCase()
-    .includes(keyword);
-}
-
-function compareAgentTargetAtItems(
-  left: AgentTargetAtItem,
-  right: AgentTargetAtItem
-): number {
-  const providerOrder =
-    agentTargetProviderRank(left.provider) -
-    agentTargetProviderRank(right.provider);
-  if (providerOrder !== 0) {
-    return providerOrder;
-  }
-  const labelOrder = left.displayName.localeCompare(
-    right.displayName,
-    undefined,
-    {
-      sensitivity: "base"
-    }
-  );
-  if (labelOrder !== 0) {
-    return labelOrder;
-  }
-  return left.targetId.localeCompare(right.targetId);
-}
-
-function agentTargetProviderRank(provider: WorkspaceAgentProvider): number {
-  return provider === "codex" ? 0 : 1;
-}
-
-function createAgentSessionAtContributor(
-  tuttidClient: TuttidClient
-): DesktopRichTextAtContributor {
-  return {
-    capability: "agent-session",
-    getProviders(input) {
-      return [
-        createRichTextTriggerProvider<AgentSessionAtItem>({
-          id: AGENT_SESSION_PROVIDER_ID,
-          trigger: "@",
-          async query(searchInput) {
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            const currentUserId = metadataString(
-              searchInput.context.metadata,
-              "currentUserId"
-            );
-            const response = await tuttidClient.listWorkspaceAgentSessions(
-              input.workspaceId,
-              {
-                limit: searchInput.maxResults,
-                searchQuery: searchInput.keyword.trim()
-              }
-            );
-            if (searchInput.abortSignal?.aborted) {
-              return [];
-            }
-            return response.sessions.map((session) => ({
-              agentName: resolveAgentSessionProviderLabel(session.provider),
-              createdAtUnixMs: dateTimeToUnixMs(session.createdAt),
-              id: session.id,
-              initiatorName: "local",
-              provider: session.provider,
-              scope: resolveAgentSessionScope(currentUserId, "local"),
-              sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-              status: session.status,
-              title: session.title,
-              updatedAtUnixMs: dateTimeToUnixMs(
-                session.updatedAt ?? session.createdAt
-              ),
-              userId: "local",
-              workspaceId: response.workspaceId || input.workspaceId
-            }));
-          },
-          getItemKey: (item) => item.id,
-          getItemLabel: resolveAgentSessionLabel,
-          getItemSubtitle: (item) =>
-            [item.provider, item.status]
-              .map((value) => value?.trim() ?? "")
-              .filter(Boolean)
-              .join(" · "),
-          toInsertResult(item) {
-            return createDesktopRichTextMentionInsertResult({
-              entityId: item.id,
-              label: resolveAgentSessionLabel(item),
-              scope: compactStringRecord({
-                scope: item.scope,
-                userId: item.userId,
-                workspaceId: item.workspaceId
-              }),
-              presentation: compactMentionPresentation({
-                agentProviderId: item.provider?.trim() ?? "",
-                participant: [item.initiatorName, item.agentName]
-                  .map((value) => value?.trim() ?? "")
-                  .filter(Boolean)
-                  .join(" & "),
-                status: item.status?.trim() ?? "",
-                subtitle: item.agentName?.trim() ?? ""
-              })
-            });
-          },
-          async resolveMention(identity) {
-            const workspaceId = scopeString(identity.scope, "workspaceId");
-            if (!workspaceId) {
-              return null;
-            }
-            return resolveMentionSafely(async () => {
-              const session = await tuttidClient.getWorkspaceAgentSession(
-                workspaceId,
-                identity.entityId
-              );
-              return {
-                label: resolveAgentSessionLabel({
-                  id: session.id,
-                  provider: session.provider,
-                  title: session.title,
-                  workspaceId
-                }),
-                presentation: compactMentionPresentation({
-                  agentProviderId: session.provider,
-                  status: session.status,
-                  subtitle: resolveAgentSessionProviderLabel(session.provider)
-                })
-              };
-            });
-          }
-        })
-      ];
-    }
-  };
-}
-
-function metadataString(
-  metadata: Readonly<Record<string, unknown>> | undefined,
-  key: string
-): string {
-  const value = metadata?.[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function resolveAgentSessionScope(
-  currentUserId: string,
-  userId: string
-): NonNullable<AgentSessionAtItem["scope"]> {
-  const normalizedCurrentUserId = currentUserId.trim();
-  const normalizedUserId = userId.trim();
-  if (
-    !normalizedCurrentUserId ||
-    !normalizedUserId ||
-    normalizedCurrentUserId === "local" ||
-    normalizedUserId === "local"
-  ) {
-    return "my_sessions";
-  }
-  return normalizedCurrentUserId === normalizedUserId
-    ? "my_sessions"
-    : "collab_sessions";
-}
-
-function resolveAgentSessionLabel(item: AgentSessionAtItem): string {
-  const title = normalizeAgentTitleText(item.title);
-  if (title) {
-    return title;
-  }
-  const provider = item.provider?.trim();
-  return provider ? `${provider} session` : item.id;
-}
-
-function resolveAgentSessionProviderLabel(provider?: string | null): string {
-  switch (provider?.trim()) {
-    case "claude-code":
-      return "Claude Code";
-    case "codex":
-      return "Codex";
-    case "cursor":
-      return "Cursor";
-    case "hermes":
-      return "Hermes Agent";
-    case "nexight":
-      return "Nexight";
-    case "openclaw":
-      return "OpenClaw";
-    case "opencode":
-      return "Open Code";
-    default:
-      return provider?.trim() || "";
-  }
-}
-
-function dateTimeToUnixMs(value?: string | null): number | null {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) {
-    return null;
-  }
-  const unixMs = Date.parse(trimmed);
-  return Number.isFinite(unixMs) ? unixMs : null;
 }

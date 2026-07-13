@@ -1,5 +1,3 @@
-import type { AgentHostWorkspaceAgentStatePatch } from "./agentHost";
-
 export type AgentHostAgentSessionProvider =
   | "claude-code"
   | "codex"
@@ -9,11 +7,6 @@ export type AgentHostAgentSessionProvider =
   | "hermes"
   | "opencode"
   | "openclaw";
-export interface AgentHostAgentSessionProviderTargetRef {
-  kind: string;
-  provider: AgentHostAgentSessionProvider;
-  [key: string]: unknown;
-}
 export type AgentHostAgentSessionPermissionModeSemantic =
   | "ask-before-write"
   | "accept-edits"
@@ -54,25 +47,6 @@ export interface AgentHostAgentSessionComposerSettings {
   permissionModeId?: string | null;
 }
 
-export interface AgentHostAgentSession {
-  workspaceId: string;
-  agentSessionId: string;
-  agentTargetId?: string | null;
-  provider: AgentHostAgentSessionProvider;
-  providerSessionId: string;
-  resumable?: boolean;
-  cwd?: string;
-  status: "ready" | "working" | "canceled" | "failed" | "completed" | string;
-  title?: string;
-  pinnedAtUnixMs?: number | null;
-  visible?: boolean;
-  permissionModeId?: string;
-  permissionConfig?: AgentHostAgentSessionPermissionConfig;
-  settings?: AgentHostAgentSessionComposerSettings;
-  createdAtUnixMs: number;
-  updatedAtUnixMs: number;
-}
-
 export interface AgentHostAgentSessionEvent {
   id: string;
   workspaceId: string;
@@ -107,95 +81,13 @@ export interface AgentHostAgentSessionState {
   provider: AgentHostAgentSessionProvider;
   providerSessionId?: string;
   resumable?: boolean;
-  status: AgentHostAgentSession["status"];
-  turnLifecycle?: AgentHostAgentActivityTurnLifecycle | null;
-  submitAvailability?: AgentHostAgentActivitySubmitAvailability | null;
   permissionModeId?: string;
   permissionConfig?: AgentHostAgentSessionPermissionConfig;
   settings?: AgentHostAgentSessionComposerSettings;
   authState?: string;
-  runtimeContext?: Record<string, unknown>;
   pinnedAtUnixMs?: number | null;
-  pendingInteractive?: AgentHostAgentSessionInteractivePrompt | null;
   updatedAtUnixMs: number;
 }
-
-export interface AgentHostAgentActivityCompletedCommand {
-  kind: string;
-  status: string;
-}
-
-export interface AgentHostAgentActivityTurnLifecycle {
-  activeTurnId: string | null;
-  phase: string;
-  settling?: boolean;
-  outcome?: string | null;
-  completedCommand?: AgentHostAgentActivityCompletedCommand | null;
-}
-
-export interface AgentHostAgentActivitySubmitAvailability {
-  state: string;
-  reason?: string;
-}
-export type AgentHostAgentSessionActivationMode = "new" | "existing";
-export type AgentHostAgentSessionActivationStatus =
-  | "attached"
-  | "already_attached"
-  | "failed";
-
-interface AgentHostActivateAgentSessionInputBase {
-  workspaceId?: string | null;
-  agentSessionId: string;
-  /**
-   * Controls whether this runtime session is visible to room-level agent activity surfaces.
-   * Hidden sessions still publish live session events to direct subscribers, but are not
-   * projected into workspaceAgents.list and are not reported upstream.
-   */
-  visible?: boolean;
-}
-
-export interface AgentHostActivateNewAgentSessionInput extends AgentHostActivateAgentSessionInputBase {
-  mode: "new";
-  agentTargetId?: string | null;
-  provider: AgentHostAgentSessionProvider;
-  /**
-   * Opaque target reference supplied by the host. It is not authority,
-   * credential material, or an invocation plan; trusted host code must
-   * re-authenticate and resolve it before launching.
-   */
-  providerTargetRef?: AgentHostAgentSessionProviderTargetRef | null;
-  cwd: string;
-  title: string;
-  settings: AgentHostAgentSessionComposerSettings;
-  metadata?: Record<string, unknown>;
-  openclawGatewayReady?: boolean;
-}
-
-export interface AgentHostActivateExistingAgentSessionInput extends AgentHostActivateAgentSessionInputBase {
-  mode: "existing";
-  provider?: never;
-  cwd?: never;
-  title?: never;
-  settings?: never;
-}
-
-export type AgentHostActivateAgentSessionInput =
-  | AgentHostActivateNewAgentSessionInput
-  | AgentHostActivateExistingAgentSessionInput;
-
-export interface AgentHostActivateAgentSessionResult {
-  session: AgentHostAgentSession;
-  activation: {
-    mode: AgentHostAgentSessionActivationMode;
-    status: AgentHostAgentSessionActivationStatus;
-  };
-  error?: {
-    code: string;
-    message: string;
-    debugMessage?: string;
-  };
-}
-
 export interface AgentHostUnactivateAgentSessionInput {
   workspaceId?: string | null;
   agentSessionId: string;
@@ -234,7 +126,7 @@ export interface AgentHostExecAgentSessionResult {
   status?: "started" | string;
   turnId?: string;
   accepted: boolean;
-  sessionStatus: AgentHostAgentSession["status"];
+  sessionStatus: string;
 }
 
 export interface AgentHostCancelAgentSessionInput {
@@ -251,7 +143,7 @@ export interface AgentHostCancelAgentSessionResult {
     | "no_active_turn"
     | "stale_turn_reconciled"
     | (string & {});
-  sessionStatus?: AgentHostAgentSession["status"];
+  sessionStatus?: string;
 }
 
 export interface AgentHostRespondAgentSessionPermissionInput {
@@ -278,14 +170,6 @@ export interface AgentHostUpdateAgentSessionSettingsResult {
   settings: AgentHostAgentSessionComposerSettings;
 }
 
-export interface AgentHostPinAgentSessionInput {
-  workspaceId?: string | null;
-  agentSessionId: string;
-  pinned: boolean;
-}
-
-export type AgentHostPinAgentSessionResult = AgentHostAgentSession;
-
 export interface AgentHostGetAgentSessionStateInput {
   workspaceId?: string | null;
   agentSessionId: string;
@@ -297,6 +181,7 @@ export interface AgentHostSubmitAgentSessionInteractiveInput {
   workspaceId?: string | null;
   agentSessionId: string;
   requestId: string;
+  turnId: string;
   action?: string;
   optionId?: string;
   payload?: Record<string, unknown>;
@@ -326,52 +211,6 @@ export interface AgentHostAgentSessionCommand {
   description?: string;
   inputHint?: string;
 }
-
-export interface AgentHostAgentSessionCommandSnapshot {
-  workspaceId?: string;
-  agentSessionId: string;
-  commands: AgentHostAgentSessionCommand[];
-}
-
-export interface AgentHostAgentSessionConfigOptionsUpdate {
-  workspaceId?: string;
-  agentSessionId: string;
-  provider?: string;
-  providerSessionId?: string;
-  configOptionKey?: string;
-  occurredAtUnixMs: number;
-}
-
-export interface AgentHostAgentActivityMessageUpdate {
-  workspaceId?: string;
-  agentSessionId: string;
-  messageId: string;
-  seq: number;
-  turnId: string;
-  role: string;
-  kind: string;
-  status?: string;
-  callId?: string;
-  parentCallId?: string;
-  rootCallId?: string;
-  title?: string;
-  payload?: Record<string, unknown>;
-  occurredAtUnixMs: number;
-  startedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-}
-
-export type AgentHostAgentActivityStreamEvent =
-  | { eventType: "message_update"; data: AgentHostAgentActivityMessageUpdate }
-  | { eventType: "state_patch"; data: AgentHostWorkspaceAgentStatePatch }
-  | {
-      eventType: "available_commands_update";
-      data: AgentHostAgentSessionCommandSnapshot;
-    }
-  | {
-      eventType: "config_options_update";
-      data: AgentHostAgentSessionConfigOptionsUpdate;
-    };
 
 export interface AgentHostAgentSessionEventsSubscription {
   subscriptionId: string;

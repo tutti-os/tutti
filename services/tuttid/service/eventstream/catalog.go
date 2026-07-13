@@ -96,7 +96,7 @@ func DefaultCatalog() StaticCatalog {
 			Name:               TopicAgentActivityUpdated,
 			ClientCanPublish:   false,
 			ClientCanSubscribe: true,
-			Version:            1,
+			Version:            2,
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateAgentActivityUpdatedPayload,
@@ -296,13 +296,12 @@ type agentActivityMessageUpdateData struct {
 
 type agentActivityMessageData struct {
 	AgentSessionID string         `json:"agentSessionId"`
-	ID             *uint64        `json:"id"`
 	Kind           string         `json:"kind"`
 	MessageID      string         `json:"messageId"`
 	Payload        map[string]any `json:"payload"`
 	Role           string         `json:"role"`
 	Version        *uint64        `json:"version"`
-	TurnID         string         `json:"turnId"`
+	TurnID         *string        `json:"turnId"`
 	Status         string         `json:"status,omitempty"`
 	OccurredAtMS   *int64         `json:"occurredAtUnixMs"`
 	StartedAtMS    *int64         `json:"startedAtUnixMs,omitempty"`
@@ -311,39 +310,54 @@ type agentActivityMessageData struct {
 	UpdatedAtMS    *int64         `json:"updatedAtUnixMs,omitempty"`
 }
 
-type agentActivityStatePatchData struct {
+type agentActivityTurnUpdateData struct {
 	agentActivityUpdatedDataHeader
-	LastEventUnixMS    *int64                               `json:"lastEventUnixMs"`
-	OccurredAtUnixMS   *int64                               `json:"occurredAtUnixMs,omitempty"`
-	Provider           string                               `json:"provider,omitempty"`
-	AgentTargetID      string                               `json:"agentTargetId,omitempty"`
-	ProviderSession    string                               `json:"providerSessionId,omitempty"`
-	Model              string                               `json:"model,omitempty"`
-	CWD                string                               `json:"cwd,omitempty"`
-	Title              string                               `json:"title,omitempty"`
-	LifecycleStatus    string                               `json:"lifecycleStatus,omitempty"`
-	CurrentPhase       string                               `json:"currentPhase,omitempty"`
-	LastError          string                               `json:"lastError,omitempty"`
-	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS      *int64                               `json:"endedAtUnixMs,omitempty"`
-	RuntimeContext     map[string]any                       `json:"runtimeContext,omitempty"`
-	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
-	Turn               *agentActivityStateTurnData          `json:"turn,omitempty"`
+	OccurredAtUnixMS *int64                `json:"occurredAtUnixMs"`
+	ActiveTurnID     *string               `json:"activeTurnId"`
+	Turn             agentActivityTurnData `json:"turn"`
 }
 
-type agentActivityStateTurnData struct {
-	TurnID             string                               `json:"turnId"`
-	Phase              string                               `json:"phase,omitempty"`
-	Outcome            string                               `json:"outcome,omitempty"`
-	FileChanges        any                                  `json:"fileChanges,omitempty"`
-	StartedAtUnixMS    *int64                               `json:"startedAtUnixMs,omitempty"`
-	CompletedAtUnixMS  *int64                               `json:"completedAtUnixMs,omitempty"`
-	SubmitAvailability *agentActivitySubmitAvailabilityData `json:"submitAvailability,omitempty"`
+type agentActivityTurnData struct {
+	TurnID           string                         `json:"turnId"`
+	AgentSessionID   string                         `json:"agentSessionId"`
+	Phase            string                         `json:"phase"`
+	Outcome          *string                        `json:"outcome"`
+	Error            *agentActivityTurnErrorData    `json:"error"`
+	FileChanges      *map[string]any                `json:"fileChanges"`
+	CompletedCommand *agentActivityCompletedCommand `json:"completedCommand"`
+	StartedAtUnixMS  *int64                         `json:"startedAtUnixMs"`
+	SettledAtUnixMS  *int64                         `json:"settledAtUnixMs"`
+	UpdatedAtUnixMS  *int64                         `json:"updatedAtUnixMs"`
 }
 
-type agentActivitySubmitAvailabilityData struct {
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
+type agentActivityTurnErrorData struct {
+	Message string  `json:"message"`
+	Code    *string `json:"code"`
+}
+
+type agentActivityCompletedCommand struct {
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
+type agentActivityInteractionUpdateData struct {
+	agentActivityUpdatedDataHeader
+	OccurredAtUnixMS *int64                       `json:"occurredAtUnixMs"`
+	Interaction      agentActivityInteractionData `json:"interaction"`
+}
+
+type agentActivityInteractionData struct {
+	RequestID       string          `json:"requestId"`
+	AgentSessionID  string          `json:"agentSessionId"`
+	TurnID          string          `json:"turnId"`
+	Kind            string          `json:"kind"`
+	Status          string          `json:"status"`
+	ToolName        *string         `json:"toolName"`
+	Input           *map[string]any `json:"input"`
+	Output          *map[string]any `json:"output"`
+	Metadata        *map[string]any `json:"metadata"`
+	CreatedAtUnixMS *int64          `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS *int64          `json:"updatedAtUnixMs"`
 }
 
 type workbenchNodeLaunchRequestedPayload struct {
@@ -579,7 +593,7 @@ func validateAgentActivityUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("agentSessionId is required")
 	}
 	switch strings.TrimSpace(decoded.EventType) {
-	case "session_update", "session_deleted", "message_update", "state_patch":
+	case "session_reconcile_required", "session_deleted", "message_update", "turn_update", "interaction_update":
 	default:
 		return fmt.Errorf("eventType is unsupported")
 	}
@@ -634,25 +648,18 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	if strings.TrimSpace(header.EventType) != eventType {
 		return fmt.Errorf("data.eventType must match eventType")
 	}
-	// Data payloads are decoded tolerantly (unknown fields ignored): the
-	// agent activity data objects evolve additively, and a strict decoder
-	// here turns a producer-side field addition into a dropped event — the
-	// GUI then silently misses state (a dropped settle patch reads as "the
-	// turn never finished"). Producer/schema agreement is pinned by the
-	// payload->ValidatePublish contract tests instead. The envelope and all
-	// other topics stay strict.
 	switch eventType {
-	case "session_update":
+	case "session_reconcile_required":
 		var data agentActivitySessionUpdateData
-		if err := json.Unmarshal(decoded.Data, &data); err != nil {
-			return fmt.Errorf("decode session_update data: %w", err)
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+			return fmt.Errorf("decode session_reconcile_required data: %w", err)
 		}
 		if data.LastEventUnixMS == nil {
 			return fmt.Errorf("data.lastEventUnixMs is required")
 		}
 	case "session_deleted":
 		var data agentActivitySessionDeletedData
-		if err := json.Unmarshal(decoded.Data, &data); err != nil {
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode session_deleted data: %w", err)
 		}
 		if data.DeletedAtUnixMS == nil {
@@ -660,7 +667,7 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 		}
 	case "message_update":
 		var data agentActivityMessageUpdateData
-		if err := json.Unmarshal(decoded.Data, &data); err != nil {
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
 			return fmt.Errorf("decode message_update data: %w", err)
 		}
 		if data.LatestVersion == nil {
@@ -679,9 +686,6 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 			if strings.TrimSpace(message.AgentSessionID) != agentSessionID {
 				return fmt.Errorf("data.messages[%d].agentSessionId must match agentSessionId", index)
 			}
-			if message.ID == nil {
-				return fmt.Errorf("data.messages[%d].id is required", index)
-			}
 			if strings.TrimSpace(message.Kind) == "" {
 				return fmt.Errorf("data.messages[%d].kind is required", index)
 			}
@@ -697,30 +701,59 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 			if message.Version == nil || *message.Version == 0 {
 				return fmt.Errorf("data.messages[%d].version is required", index)
 			}
-			if strings.TrimSpace(message.TurnID) == "" {
-				return fmt.Errorf("data.messages[%d].turnId is required", index)
+			if message.TurnID != nil && strings.TrimSpace(*message.TurnID) == "" {
+				return fmt.Errorf("data.messages[%d].turnId must be null or non-empty", index)
 			}
 			if message.OccurredAtMS == nil || *message.OccurredAtMS <= 0 {
 				return fmt.Errorf("data.messages[%d].occurredAtUnixMs is required", index)
 			}
 		}
-	case "state_patch":
-		var data agentActivityStatePatchData
-		if err := json.Unmarshal(decoded.Data, &data); err != nil {
-			return fmt.Errorf("decode state_patch data: %w", err)
+	case "turn_update":
+		if err := requireJSONFields(decoded.Data, "", "occurredAtUnixMs", "activeTurnId", "turn"); err != nil {
+			return err
 		}
-		if data.LastEventUnixMS == nil {
-			return fmt.Errorf("data.lastEventUnixMs is required")
+		if err := requireJSONFields(decoded.Data, "turn", "turnId", "agentSessionId", "phase", "outcome", "error", "fileChanges", "completedCommand", "startedAtUnixMs", "settledAtUnixMs", "updatedAtUnixMs"); err != nil {
+			return err
 		}
-		if data.Turn != nil && strings.TrimSpace(data.Turn.TurnID) == "" {
-			return fmt.Errorf("data.turn.turnId is required")
+		var data agentActivityTurnUpdateData
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+			return fmt.Errorf("decode turn_update data: %w", err)
 		}
-		if data.SubmitAvailability != nil && strings.TrimSpace(data.SubmitAvailability.State) == "" {
-			return fmt.Errorf("data.submitAvailability.state is required")
+		if data.OccurredAtUnixMS == nil || strings.TrimSpace(data.Turn.TurnID) == "" || data.Turn.AgentSessionID != agentSessionID ||
+			!isOneOf(data.Turn.Phase, "submitted", "running", "waiting", "settling", "settled") || data.Turn.StartedAtUnixMS == nil || data.Turn.UpdatedAtUnixMS == nil {
+			return fmt.Errorf("data.turn is invalid")
 		}
-		if data.Turn != nil && data.Turn.SubmitAvailability != nil &&
-			strings.TrimSpace(data.Turn.SubmitAvailability.State) == "" {
-			return fmt.Errorf("data.turn.submitAvailability.state is required")
+		if data.Turn.Outcome != nil && !isOneOf(*data.Turn.Outcome, "completed", "failed", "canceled", "interrupted") {
+			return fmt.Errorf("data.turn.outcome is invalid")
+		}
+		if data.Turn.Phase == "settled" {
+			if data.ActiveTurnID != nil || data.Turn.Outcome == nil || data.Turn.SettledAtUnixMS == nil {
+				return fmt.Errorf("settled turn must clear activeTurnId and include outcome/settledAtUnixMs")
+			}
+		} else if data.ActiveTurnID == nil || strings.TrimSpace(*data.ActiveTurnID) != data.Turn.TurnID || data.Turn.Outcome != nil || data.Turn.SettledAtUnixMS != nil {
+			return fmt.Errorf("live turn must own activeTurnId and omit outcome/settledAtUnixMs")
+		}
+		if data.Turn.Error != nil && (data.Turn.Outcome == nil || !isOneOf(*data.Turn.Outcome, "failed", "interrupted")) {
+			return fmt.Errorf("data.turn.error requires failed or interrupted outcome")
+		}
+	case "interaction_update":
+		if err := requireJSONFields(decoded.Data, "", "occurredAtUnixMs", "interaction"); err != nil {
+			return err
+		}
+		if err := requireJSONFields(decoded.Data, "interaction", "requestId", "agentSessionId", "turnId", "kind", "status", "toolName", "input", "output", "metadata", "createdAtUnixMs", "updatedAtUnixMs"); err != nil {
+			return err
+		}
+		var data agentActivityInteractionUpdateData
+		if err := decodeJSONStrict(decoded.Data, &data); err != nil {
+			return fmt.Errorf("decode interaction_update data: %w", err)
+		}
+		interaction := data.Interaction
+		if data.OccurredAtUnixMS == nil || interaction.AgentSessionID != agentSessionID || strings.TrimSpace(interaction.RequestID) == "" || strings.TrimSpace(interaction.TurnID) == "" ||
+			!isOneOf(interaction.Kind, "approval", "question", "plan") || !isOneOf(interaction.Status, "pending", "answered", "superseded") || interaction.CreatedAtUnixMS == nil || interaction.UpdatedAtUnixMS == nil {
+			return fmt.Errorf("data.interaction is invalid")
+		}
+		if *data.OccurredAtUnixMS < 0 || *interaction.CreatedAtUnixMS < 0 || *interaction.UpdatedAtUnixMS < *interaction.CreatedAtUnixMS {
+			return fmt.Errorf("data.interaction timestamps are invalid")
 		}
 	}
 	return nil

@@ -23,10 +23,8 @@ import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-ma
 import type { DesktopDockIconStyle } from "@shared/preferences";
 import type { DesktopThemeAppearance } from "@shared/theme";
 import { useService } from "@tutti-os/infra/di";
-import {
-  IAgentProviderStatusService,
-  requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { IReporterService } from "@renderer/features/analytics";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import {

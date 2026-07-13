@@ -8,7 +8,14 @@ import {
   resolveAgentGUIAgentTarget
 } from "./agentTargets";
 
-describe("agent gui agent targets", () => {
+describe("agent gui provider targets", () => {
+  it("keeps migration-window default providers unique", () => {
+    const providers = createLocalAgentGUIAgentTargets().map(
+      (target) => target.provider
+    );
+    expect(new Set(providers).size).toBe(providers.length);
+  });
+
   it("creates local targets for the default provider catalog", () => {
     expect(createLocalAgentGUIAgentTarget("codex")).toEqual({
       targetId: "local:codex",
@@ -28,6 +35,7 @@ describe("agent gui agent targets", () => {
       "local:cursor",
       "local:tutti-agent",
       "local:opencode",
+      "local:nexight",
       "local:hermes",
       "local:openclaw"
     ]);
@@ -38,12 +46,12 @@ describe("agent gui agent targets", () => {
     });
     expect(createLocalAgentGUIAgentTarget("nexight")).toMatchObject({
       agentTargetId: "local:nexight",
-      label: "Tutti Agent",
+      label: "Nexight",
       provider: "nexight"
     });
     expect(createLocalAgentGUIAgentTarget("hermes")).toMatchObject({
       agentTargetId: "local:hermes",
-      label: "Hermes",
+      label: "Hermes Agent",
       provider: "hermes"
     });
     expect(createLocalAgentGUIAgentTarget("openclaw")).toMatchObject({
@@ -86,9 +94,21 @@ describe("agent gui agent targets", () => {
         provider: "claude-code"
       },
       {
+        agentTargetId: "local:tutti-agent",
+        disabled: true,
+        label: "Tutti Agent",
+        provider: "tutti-agent"
+      },
+      {
+        agentTargetId: "local:nexight",
+        disabled: true,
+        label: "Nexight",
+        provider: "nexight"
+      },
+      {
         agentTargetId: "local:hermes",
         disabled: true,
-        label: "Hermes",
+        label: "Hermes Agent",
         provider: "hermes"
       },
       {
@@ -255,8 +275,9 @@ describe("agent gui agent targets", () => {
       { disabled: false, provider: "codex" },
       { disabled: false, provider: "claude-code" },
       { disabled: false, provider: "cursor" },
-      { disabled: false, provider: "tutti-agent" },
+      { disabled: true, provider: "tutti-agent" },
       { disabled: false, provider: "opencode" },
+      { disabled: true, provider: "nexight" },
       { disabled: true, provider: "hermes" },
       { disabled: true, provider: "openclaw" }
     ]);
@@ -316,6 +337,7 @@ describe("agent gui agent targets", () => {
 
     expect(
       resolveAgentGUIAgentTarget({
+        agentTargetId: "shared-agent:missing",
         defaultAgentTargetId: "shared-agent:claude-1",
         provider: "codex",
         agentTargets: targets

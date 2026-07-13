@@ -2688,22 +2688,28 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/cancel:
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
       - $ref: "#/components/parameters/AgentSessionID"
+      - $ref: "#/components/parameters/AgentTurnID"
     post:
-      operationId: cancelWorkspaceAgentSession
+      operationId: cancelWorkspaceAgentTurn
       tags:
         - agent-session
-      summary: Cancel one workspace agent session
+      summary: Cancel one workspace agent turn
+      description: >-
+        Idempotent turn-scoped cancellation (protocol v2). Canceling a turn
+        that is already settled or unknown is a no-op success, not an error;
+        the race between a user stop request and natural turn settlement is
+        harmless at the protocol level.
       responses:
         "200":
-          description: Workspace agent session canceled
+          description: Workspace agent turn cancel result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionCancelResponse"
+                $ref: "#/components/schemas/WorkspaceAgentTurnCancelResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2712,6 +2718,53 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+      - $ref: "#/components/parameters/AgentTurnID"
+      - $ref: "#/components/parameters/AgentPermissionRequestID"
+    post:
+      operationId: submitWorkspaceAgentPlanDecision
+      tags:
+        - agent-session
+      summary: Submit one durable workspace agent plan decision
+      description: >-
+        Prepares and advances an idempotent daemon-owned plan decision saga.
+        The workspace, session, turn, request, and idempotency key form the
+        strict operation scope. A retry with the same identity and payload
+        returns the existing operation; a mismatched payload is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitWorkspaceAgentPlanDecisionRequest"
+      responses:
+        "200":
+          description: Durable plan decision operation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentPlanDecisionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The idempotency identity conflicts or the scoped plan turn is not currently decidable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -3807,6 +3860,13 @@ components:
       schema:
         type: string
         minLength: 1
+    AgentTurnID:
+      name: turnID
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
     TerminalAfterSeq:
       name: afterSeq
       in: query
@@ -4881,6 +4941,9 @@ components:
         - tutti-agent
         - cursor
         - opencode
+        - nexight
+        - hermes
+        - openclaw
     AgentTargetSource:
       type: string
       enum:
@@ -5478,7 +5541,7 @@ components:
         createdAtUnixMs:
           type: integer
           format: int64
-          minimum: 0
+          minimum: 1
         installProgress:
           $ref: "#/components/schemas/WorkspaceAppInstallProgress"
           nullable: true
@@ -6172,15 +6235,6 @@ components:
         - hermes
         - openclaw
         - opencode
-    WorkspaceAgentSessionStatus:
-      type: string
-      enum:
-        - created
-        - running
-        - waiting
-        - completed
-        - canceled
-        - failed
     AgentSessionComposerSettings:
       type: object
       additionalProperties: false
@@ -6322,6 +6376,7 @@ components:
         - runtimeContext
         - skills
         - capabilityCatalog
+        - behavior
       properties:
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
@@ -6338,6 +6393,13 @@ components:
         runtimeContext:
           type: object
           additionalProperties: true
+        capabilities:
+          $ref: "#/components/schemas/WorkspaceAgentCapabilities"
+          description: >-
+            Typed provider capabilities available before a session exists.
+            Once a session is active, WorkspaceAgentSession.capabilities is
+            authoritative. Older daemons may omit this field during a rolling
+            desktop upgrade.
         skills:
           type: array
           items:
@@ -6346,6 +6408,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderCapabilityOption"
+        behavior:
+          $ref: "#/components/schemas/AgentProviderComposerBehavior"
+        slashCommandPolicy:
+          $ref: "#/components/schemas/AgentSlashCommandPolicy"
+    AgentProviderComposerBehavior:
+      type: object
+      additionalProperties: false
+      required:
+        - collapseModelOptionsToLatest
+        - modelOptionsAuthoritative
+        - refreshModelOptionsAfterSettings
+        - prewarmDraftSession
+        - planModeExclusiveWithPermissionMode
+      properties:
+        collapseModelOptionsToLatest:
+          type: boolean
+        modelOptionsAuthoritative:
+          type: boolean
+        refreshModelOptionsAfterSettings:
+          type: boolean
+        prewarmDraftSession:
+          type: boolean
+        planModeExclusiveWithPermissionMode:
+          type: boolean
+    AgentSlashCommandEffect:
+      type: string
+      enum:
+        - submitImmediate
+        - showReviewPicker
+        - activateGoalMode
+        - togglePlanMode
+        - showStatus
+        - toggleSpeed
+    AgentSlashCommandEffectDescriptor:
+      type: object
+      additionalProperties: false
+      required:
+        - command
+        - effect
+      properties:
+        command:
+          type: string
+        effect:
+          $ref: "#/components/schemas/AgentSlashCommandEffect"
+    AgentSlashCommandPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - fallbackCommands
+        - commandEffects
+      properties:
+        fallbackCommands:
+          type: array
+          items:
+            type: string
+        commandEffects:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentSlashCommandEffectDescriptor"
+        commandCatalogAuthoritative:
+          type: boolean
     AgentProviderSkillOption:
       type: object
       additionalProperties: false
@@ -6820,12 +6943,29 @@ components:
       additionalProperties: false
       required:
         - id
+        - agentTargetId
         - provider
+        - providerSessionId
         - cwd
-        - status
         - visible
-        - createdAt
-        - updatedAt
+        - settings
+        - permissionConfig
+        - resumable
+        - pinnedAtUnixMs
+        - title
+        - createdAtUnixMs
+        - updatedAtUnixMs
+        - endedAtUnixMs
+        - latestTurnInteractions
+        - activeTurnId
+        - activeTurn
+        - latestTurn
+        - pendingInteractions
+        - capabilities
+        - usage
+        - backgroundAgents
+        - goal
+        - imported
       properties:
         id:
           type: string
@@ -6842,21 +6982,81 @@ components:
         cwd:
           type: string
           nullable: true
-        status:
-          $ref: "#/components/schemas/WorkspaceAgentSessionStatus"
-        turnLifecycle:
-          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
-        submitAvailability:
-          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
+        activeTurnId:
+          type: string
+          nullable: true
+          description: >-
+            Protocol v2. The only turn reference kept on the session; null
+            when no turn is in flight.
+        activeTurn:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurn"
+          nullable: true
+          description: >-
+            Protocol v2. Embedded snapshot of the active turn; null when no
+            turn is in flight.
+        latestTurn:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurn"
+          nullable: true
+          description: >-
+            Protocol v2. Read-only embedded projection of the most recently
+            updated turn for this session, including settled turns. This is
+            an independent turn entity projection and is not session-owned
+            persistent state or a session reference.
+        latestTurnInteractions:
+          type: array
+          description: >-
+            Protocol v2. Read-only independent Interaction entity projections
+            for latestTurn, including pending, answered, and superseded
+            terminal states. These entities are not session-owned persistent
+            state.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentInteraction"
+        pendingInteractions:
+          type: array
+          description: >-
+            Protocol v2. Pending interactions (approvals, questions, plan
+            confirmations) for the active turn. Pending means present in this
+            collection with status pending; there is no tri-state null
+            protocol.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentInteraction"
+        capabilities:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentCapabilities"
+          nullable: true
+          description: >-
+            Protocol v2. Daemon-issued capability descriptor; clients must
+            branch on capabilities, never on provider identity.
+        usage:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentUsage"
+          nullable: true
+          description: >-
+            Protocol v2. Typed context-window and quota usage projected from
+            provider runtime state.
+        backgroundAgents:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentBackgroundAgents"
+          nullable: true
+          description: Protocol v2. Explicit field extracted from runtimeContext.
+        goal:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
+          description: Protocol v2. Explicit field extracted from runtimeContext.
+        imported:
+          type: boolean
+          description: >-
+            Protocol v2. True when the session was imported from external
+            provider history. Explicit field extracted from runtimeContext.
         visible:
           type: boolean
         settings:
           $ref: "#/components/schemas/AgentSessionComposerSettings"
         permissionConfig:
           $ref: "#/components/schemas/PermissionConfig"
-        runtimeContext:
-          type: object
-          additionalProperties: true
         resumable:
           type: boolean
         pinnedAtUnixMs:
@@ -6867,20 +7067,22 @@ components:
         title:
           type: string
           nullable: true
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for createdAt.
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for updatedAt.
+        endedAtUnixMs:
+          type: integer
+          format: int64
           nullable: true
-        endedAt:
-          type: string
-          format: date-time
-          nullable: true
-        lastError:
-          type: string
-          nullable: true
+          minimum: 0
+          description: Protocol v2. Unix milliseconds replacement for endedAt.
     WorkspaceAgentSessionResponse:
       type: object
       additionalProperties: false
@@ -6889,18 +7091,402 @@ components:
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
-    WorkspaceAgentSessionCancelResponse:
+    SendWorkspaceAgentSessionInputResponse:
       type: object
       additionalProperties: false
       required:
         - session
-        - cancel
+        - turnId
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
-        cancel:
-          $ref: "#/components/schemas/WorkspaceAgentSessionCancelResult"
-    WorkspaceAgentSessionCancelResult:
+        turnId:
+          type: string
+          minLength: 1
+        turn:
+          $ref: "#/components/schemas/WorkspaceAgentTurn"
+          nullable: true
+          description: >-
+            Protocol v2. Snapshot of the turn created by this submission;
+            optimistic client intents reconcile against its turnId.
+    WorkspaceAgentTurnPhase:
+      type: string
+      description: >-
+        Protocol v2 closed turn phase vocabulary. submitted -> running ->
+        waiting (interactions) -> settling -> settled.
+      enum:
+        - submitted
+        - running
+        - waiting
+        - settling
+        - settled
+    WorkspaceAgentTurnOutcome:
+      type: string
+      description: >-
+        Protocol v2 closed turn outcome vocabulary; only present once the
+        turn is settled. interrupted marks turns reconciled at daemon
+        startup after the provider process disappeared.
+      enum:
+        - completed
+        - failed
+        - canceled
+        - interrupted
+    WorkspaceAgentTurnError:
+      type: object
+      description: Protocol v2 turn-scoped error; never pollutes session state.
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+        code:
+          type: string
+    WorkspaceAgentCompletedCommand:
+      type: object
+      description: >-
+        Protocol v2 closed-enum replacement for AgentActivityCompletedCommand.
+      additionalProperties: false
+      required:
+        - kind
+        - status
+      properties:
+        kind:
+          type: string
+          enum:
+            - compact
+            - review
+            - undo
+            - goal
+        status:
+          type: string
+          enum:
+            - completed
+            - failed
+            - canceled
+    WorkspaceAgentTurn:
+      type: object
+      description: >-
+        Protocol v2 turn entity. One user-submission-driven execution:
+        submit, run, wait, settle. Owns phase, outcome, error, and file
+        changes; the session only keeps an activeTurnId reference.
+      additionalProperties: false
+      required:
+        - turnId
+        - agentSessionId
+        - phase
+        - outcome
+        - error
+        - fileChanges
+        - completedCommand
+        - startedAtUnixMs
+        - settledAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        turnId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        phase:
+          $ref: "#/components/schemas/WorkspaceAgentTurnPhase"
+        outcome:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurnOutcome"
+          nullable: true
+        error:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentTurnError"
+          nullable: true
+        fileChanges:
+          type: object
+          additionalProperties: true
+          nullable: true
+        completedCommand:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentCompletedCommand"
+          nullable: true
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        settledAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentInteractionKind:
+      type: string
+      enum:
+        - approval
+        - question
+        - plan
+    WorkspaceAgentInteractionStatus:
+      type: string
+      enum:
+        - pending
+        - answered
+        - superseded
+    WorkspaceAgentInteraction:
+      type: object
+      description: >-
+        Protocol v2 interaction entity. An agent-initiated approval,
+        question, or plan confirmation raised during a turn. Pending means
+        present in a collection with status pending; replaces the tri-state
+        null pendingInteractive protocol.
+      additionalProperties: false
+      required:
+        - requestId
+        - agentSessionId
+        - turnId
+        - kind
+        - status
+        - toolName
+        - input
+        - output
+        - metadata
+        - createdAtUnixMs
+        - updatedAtUnixMs
+      properties:
+        requestId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        turnId:
+          type: string
+          minLength: 1
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentInteractionKind"
+        status:
+          $ref: "#/components/schemas/WorkspaceAgentInteractionStatus"
+        toolName:
+          type: string
+          nullable: true
+        input:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentCapabilities:
+      type: object
+      description: >-
+        Protocol v2 daemon-issued capability descriptor. Clients branch on
+        these booleans instead of provider identity. Field names mirror the
+        canonical capability keys in
+        packages/agent/daemon/runtime/capabilities.go.
+      additionalProperties: false
+      required:
+        - imageInput
+        - modelImageInputRequired
+        - skills
+        - compact
+        - tokenUsage
+        - rateLimits
+        - planMode
+        - interrupt
+        - browserUse
+        - computerUse
+        - goalPause
+        - planImplementation
+        - permissionModeChangeDuringTurn
+        - permissionModeChangeDeferred
+        - review
+        - resumeRunningTurn
+      properties:
+        imageInput:
+          type: boolean
+        modelImageInputRequired:
+          type: boolean
+        skills:
+          type: boolean
+        compact:
+          type: boolean
+        tokenUsage:
+          type: boolean
+        rateLimits:
+          type: boolean
+        planMode:
+          type: boolean
+        interrupt:
+          type: boolean
+        browserUse:
+          type: boolean
+        computerUse:
+          type: boolean
+        goalPause:
+          type: boolean
+        planImplementation:
+          type: boolean
+        permissionModeChangeDuringTurn:
+          type: boolean
+        permissionModeChangeDeferred:
+          type: boolean
+        review:
+          type: boolean
+        resumeRunningTurn:
+          type: boolean
+    WorkspaceAgentUsageContextWindow:
+      type: object
+      additionalProperties: false
+      required:
+        - usedTokens
+        - totalTokens
+      properties:
+        usedTokens:
+          type: integer
+          format: int64
+          minimum: 0
+        totalTokens:
+          type: integer
+          format: int64
+          minimum: 1
+    WorkspaceAgentUsageQuota:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaType
+        - percentRemaining
+        - resetsAtUnixMs
+      properties:
+        quotaType:
+          type: string
+          minLength: 1
+        percentRemaining:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        resetsAtUnixMs:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+    WorkspaceAgentUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - contextWindow
+        - quotas
+      properties:
+        contextWindow:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentUsageContextWindow"
+          nullable: true
+        quotas:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentUsageQuota"
+    WorkspaceAgentBackgroundAgentItem:
+      type: object
+      additionalProperties: false
+      required:
+        - taskId
+        - description
+        - status
+      properties:
+        taskId:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        status:
+          type: string
+          enum:
+            - running
+            - completed
+            - failed
+            - canceled
+        summary:
+          type: string
+        lastToolName:
+          type: string
+        taskType:
+          type: string
+        startedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        completedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentBackgroundAgents:
+      type: object
+      description: Protocol v2 explicit field extracted from runtimeContext.
+      additionalProperties: false
+      required:
+        - count
+        - items
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          description: Number of background agents still running.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentBackgroundAgentItem"
+    WorkspaceAgentSessionGoal:
+      type: object
+      description: Protocol v2 explicit field extracted from runtimeContext.
+      additionalProperties: false
+      required:
+        - objective
+        - status
+      properties:
+        objective:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - blocked
+            - usageLimited
+            - budgetLimited
+            - complete
+        reason:
+          type: string
+        iterations:
+          type: integer
+          minimum: 0
+        durationMs:
+          type: integer
+          format: int64
+          minimum: 0
+        tokens:
+          type: integer
+          format: int64
+          minimum: 0
+    WorkspaceAgentTurnCancelResult:
       type: object
       additionalProperties: false
       required:
@@ -6911,73 +7497,24 @@ components:
           type: boolean
         reason:
           type: string
+          description: >-
+            turn_canceled reports an active turn was stopped. already_settled
+            and not_found are idempotent no-op successes, not errors.
           enum:
-            - active_turn_canceled
-            - no_active_turn
-            - stale_turn_reconciled
-    SendWorkspaceAgentSessionInputResponse:
+            - turn_canceled
+            - already_settled
+            - not_found
+    WorkspaceAgentTurnCancelResponse:
       type: object
       additionalProperties: false
       required:
-        - session
-        - turnId
-        - turnLifecycle
-        - submitAvailability
+        - cancel
       properties:
-        session:
-          $ref: "#/components/schemas/WorkspaceAgentSession"
-        turnId:
-          type: string
-          minLength: 1
-        turnLifecycle:
-          $ref: "#/components/schemas/AgentActivityTurnLifecycle"
-        submitAvailability:
-          $ref: "#/components/schemas/AgentActivitySubmitAvailability"
-    AgentActivityTurnLifecycle:
-      type: object
-      additionalProperties: false
-      required:
-        - activeTurnId
-        - phase
-      properties:
-        activeTurnId:
-          type: string
+        cancel:
+          $ref: "#/components/schemas/WorkspaceAgentTurnCancelResult"
+        turn:
+          $ref: "#/components/schemas/WorkspaceAgentTurn"
           nullable: true
-        phase:
-          type: string
-          minLength: 1
-        settling:
-          type: boolean
-        outcome:
-          type: string
-          nullable: true
-        completedCommand:
-          $ref: "#/components/schemas/AgentActivityCompletedCommand"
-          nullable: true
-    AgentActivityCompletedCommand:
-      type: object
-      additionalProperties: false
-      required:
-        - kind
-        - status
-      properties:
-        kind:
-          type: string
-          minLength: 1
-        status:
-          type: string
-          minLength: 1
-    AgentActivitySubmitAvailability:
-      type: object
-      additionalProperties: false
-      required:
-        - state
-      properties:
-        state:
-          type: string
-          minLength: 1
-        reason:
-          type: string
     AgentActivityMessageSemantics:
       type: object
       additionalProperties: false
@@ -6994,7 +7531,6 @@ components:
       type: object
       additionalProperties: false
       required:
-        - id
         - agentSessionId
         - messageId
         - turnId
@@ -7003,10 +7539,6 @@ components:
         - occurredAtUnixMs
         - version
       properties:
-        id:
-          type: integer
-          format: int64
-          minimum: 0
         agentSessionId:
           type: string
           minLength: 1
@@ -7015,7 +7547,12 @@ components:
           minLength: 1
         turnId:
           type: string
-          minLength: 1
+          nullable: true
+          description: >-
+            Protocol v2 message ownership is an explicit choice: a non-empty
+            turnId attaches the message to that turn; null marks a
+            session-level message (system notices, imported history). Empty
+            strings are forbidden.
         role:
           type: string
           minLength: 1
@@ -7550,8 +8087,9 @@ components:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
         goal:
-          type: object
-          additionalProperties: true
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
+          nullable: true
     CreateWorkspaceAgentSessionRequest:
       type: object
       additionalProperties: false
@@ -7559,6 +8097,7 @@ components:
         - agentSessionId
         - agentTargetId
         - initialContent
+        - clientSubmitId
       properties:
         agentSessionId:
           type: string
@@ -7568,9 +8107,11 @@ components:
           type: string
           minLength: 1
           description: Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
-        provider:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
-          description: Legacy provider hint. Optional when agentTargetId is present; when both are present, the daemon rejects mismatches with the target launchRef-derived provider. It does not authorize launches without agentTargetId.
+        clientSubmitId:
+          type: string
+          minLength: 1
+        submitDiagnostics:
+          $ref: "#/components/schemas/AgentSubmitDiagnostics"
         initialContent:
           type: array
           minItems: 1
@@ -7580,15 +8121,6 @@ components:
           type: string
           nullable: true
           description: Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
-        providerTargetRef:
-          type: object
-          nullable: true
-          additionalProperties: true
-          description: Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
         title:
           type: string
           nullable: true
@@ -7604,11 +8136,10 @@ components:
         reasoningEffort:
           type: string
           nullable: true
-        runtimeContext:
-          type: object
+        noProject:
+          type: boolean
           nullable: true
-          additionalProperties: true
-          description: Optional durable runtime context hints for session classification and provider startup.
+          description: Classifies a session that is intentionally not attached to a workspace project.
         speed:
           type: string
           nullable: true
@@ -7626,12 +8157,18 @@ components:
       additionalProperties: false
       required:
         - content
+        - clientSubmitId
       properties:
         content:
           type: array
           minItems: 1
           items:
             $ref: "#/components/schemas/AgentPromptContentBlock"
+        clientSubmitId:
+          type: string
+          minLength: 1
+        submitDiagnostics:
+          $ref: "#/components/schemas/AgentSubmitDiagnostics"
         displayPrompt:
           type: string
           nullable: true
@@ -7639,10 +8176,26 @@ components:
         guidance:
           type: boolean
           description: When true, send this input as guidance to the currently active turn instead of starting a new turn.
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
+    AgentSubmitDiagnostics:
+      type: object
+      additionalProperties: false
+      properties:
+        submittedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        blockCount:
+          type: integer
+          minimum: 0
+        hasImage:
+          type: boolean
+        promptLength:
+          type: integer
+          minimum: 0
+        queued:
+          type: boolean
+        source:
+          type: string
     AgentPromptContentBlock:
       type: object
       additionalProperties: false
@@ -7899,7 +8452,12 @@ components:
     SubmitWorkspaceAgentInteractiveRequest:
       type: object
       additionalProperties: false
+      required:
+        - turnId
       properties:
+        turnId:
+          type: string
+          minLength: 1
         action:
           type: string
           nullable: true
@@ -7910,6 +8468,76 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+    SubmitWorkspaceAgentPlanDecisionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - promptKind
+        - action
+        - idempotencyKey
+      properties:
+        promptKind:
+          type: string
+          enum:
+            - plan-implementation
+        action:
+          type: string
+          enum:
+            - implement
+        idempotencyKey:
+          type: string
+          minLength: 1
+    WorkspaceAgentPlanDecisionOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - workspaceId
+        - agentSessionId
+        - turnId
+        - requestId
+        - idempotencyKey
+        - status
+      properties:
+        operationId:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        turnId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+        idempotencyKey:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum:
+            - prepared
+            - leased
+            - completed
+            - failed
+        result:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    WorkspaceAgentPlanDecisionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+      properties:
+        operation:
+          $ref: "#/components/schemas/WorkspaceAgentPlanDecisionOperation"
     WorkspaceAgentSessionEventEnvelope:
       type: object
       additionalProperties: false

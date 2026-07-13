@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -20,7 +21,7 @@ import (
 var sessionActionColumns = []cliservice.TableColumn{
 	{Key: "id", Label: "ID"},
 	{Key: "provider", Label: "Provider"},
-	{Key: "status", Label: "Status"},
+	{Key: "activeTurnId", Label: "Active Turn"},
 	{Key: "launchRequested", Label: "Launch Requested"},
 }
 
@@ -65,8 +66,9 @@ type sendInput struct {
 }
 
 type sessionActionResult struct {
-	Session         agentservice.Session
-	LaunchRequested bool
+	Session          agentservice.Session
+	LaunchRequested  bool
+	WaitAfterVersion *uint64
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
@@ -341,6 +343,14 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
+	messagePage, err := p.sessions.ListMessages(ctx, invoke.WorkspaceID, input.SessionID, agentservice.ListMessagesInput{
+		Limit: 1,
+		Order: agentactivitybiz.MessageOrderDesc,
+	})
+	if err != nil {
+		return nil, err
+	}
+	waitAfterVersion := messagePage.LatestVersion
 	result, err := p.sessions.SendInput(ctx, invoke.WorkspaceID, input.SessionID, agentservice.SendInput{
 		Content:  content,
 		Guidance: input.Guidance,
@@ -349,7 +359,7 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 		return nil, err
 	}
 	session := result.Session
-	return sessionActionResult{Session: session}, nil
+	return sessionActionResult{Session: session, WaitAfterVersion: &waitAfterVersion}, nil
 }
 
 func promptContentFromCLIInput(prompt string, imagePaths []string) ([]agentservice.PromptContentBlock, error) {
@@ -423,11 +433,16 @@ func (p Provider) runCancel(ctx context.Context, invoke framework.InvokeContext,
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	result, err := p.sessions.Cancel(ctx, invoke.WorkspaceID, input.SessionID)
+	session, err := p.sessions.Get(ctx, invoke.WorkspaceID, input.SessionID)
 	if err != nil {
 		return nil, err
 	}
-	return sessionActionResult{Session: result.Session}, nil
+	if turnID := strings.TrimSpace(session.ActiveTurnID); turnID != "" {
+		if _, err := p.sessions.CancelTurn(ctx, invoke.WorkspaceID, input.SessionID, turnID); err != nil {
+			return nil, err
+		}
+	}
+	return sessionActionResult{Session: session}, nil
 }
 
 func sessionActionOutputSpec() framework.OutputSpec {
@@ -442,7 +457,7 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				return []map[string]any{{
 					"id":              action.Session.ID,
 					"provider":        action.Session.Provider,
-					"status":          action.Session.Status,
+					"activeTurnId":    action.Session.ActiveTurnID,
 					"launchRequested": action.LaunchRequested,
 				}}
 			},
@@ -453,6 +468,9 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				value := map[string]any{
 					"launchRequested": action.LaunchRequested,
 					"session":         sessionActionValue(action.Session),
+				}
+				if action.WaitAfterVersion != nil {
+					value["waitAfterVersion"] = *action.WaitAfterVersion
 				}
 				return value
 			},

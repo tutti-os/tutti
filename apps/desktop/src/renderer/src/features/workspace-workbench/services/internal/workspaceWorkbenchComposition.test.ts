@@ -72,15 +72,15 @@ test("createWorkspaceFilesDockEntry configures the files dock entry", () => {
   );
 });
 
-test("workspace agent GUI identifiers keep codex as the legacy default entry", () => {
-  assert.equal(workspaceAgentGuiDockEntryId("codex"), "agent-gui");
+test("workspace agent GUI identifiers require explicit provider identities", () => {
+  assert.equal(workspaceAgentGuiDockEntryId("codex"), "agent-gui:codex");
   assert.equal(
     workspaceAgentGuiDockEntryId("claude-code"),
     "agent-gui:claude-code"
   );
   assert.equal(workspaceAgentGuiInstanceId("codex"), "agent-gui:codex");
   assert.equal(workspaceAgentGuiInstanceId("hermes"), "agent-gui:hermes");
-  assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), "codex");
+  assert.equal(workspaceAgentGuiProviderFromIdentifier("agent-gui"), null);
   assert.equal(
     workspaceAgentGuiProviderFromIdentifier("agent-gui:codex:panel:1"),
     "codex"
@@ -153,12 +153,13 @@ test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before 
     }),
     "hermes"
   );
-  assert.equal(
-    workspaceAgentGuiProviderFromLaunchRequest({
-      payload: null,
-      typeId: "agent-gui"
-    }),
-    "codex"
+  assert.throws(
+    () =>
+      workspaceAgentGuiProviderFromLaunchRequest({
+        payload: null,
+        typeId: "agent-gui"
+      }),
+    /agent_gui_workbench\.launch_provider_required/
   );
 });
 
@@ -174,7 +175,7 @@ test("workspace agent GUI session launches use container instances", () => {
 
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, "session-2");
-  assert.equal(descriptor.dockEntryId, "agent-gui");
+  assert.equal(descriptor.dockEntryId, "agent-gui:unified");
   assert.match(descriptor.instanceId, /^agent-gui:codex:panel:/);
   assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
@@ -196,7 +197,7 @@ test("workspace agent GUI draft launches prefill prompts without binding session
 
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, null);
-  assert.equal(descriptor.dockEntryId, "agent-gui");
+  assert.equal(descriptor.dockEntryId, "agent-gui:codex");
   assert.equal(descriptor.reuseDockEntryNode, true);
   assert.deepEqual(descriptor.activation, {
     payload: {

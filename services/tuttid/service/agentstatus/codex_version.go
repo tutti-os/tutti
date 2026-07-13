@@ -3,6 +3,8 @@ package agentstatus
 import (
 	"strconv"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 // MinSupportedCodexVersion is the lowest Codex CLI version Tutti supports.
@@ -16,9 +18,9 @@ import (
 //
 // Single tunable hard gate: a detected codex below this floor is flagged as
 // too old (surfaced as CODEX_VERSION_TOO_OLD) and the server-side 400 is the
-// backstop. Bump this constant when raising the floor; nothing else needs to
-// change.
-const MinSupportedCodexVersion = "0.126.0"
+// backstop. Bump providerregistry.CodexMinVersion when raising the floor;
+// nothing else needs to change.
+const MinSupportedCodexVersion = providerregistry.CodexMinVersion
 
 // compareCodexVersions compares two semver-ish version strings.
 //
@@ -56,7 +58,15 @@ func compareCodexVersions(a, b string) (int, bool) {
 // "unknown" and is NOT flagged as too old here — binary/CLI presence checks
 // cover the missing case, and the server-side error is the backstop.
 func codexVersionMeetsMinimum(version string) bool {
-	cmp, ok := compareCodexVersions(version, MinSupportedCodexVersion)
+	return cliVersionMeetsMinimum(version, MinSupportedCodexVersion)
+}
+
+func cliVersionMeetsMinimum(version string, minimum string) bool {
+	minimum = strings.TrimSpace(minimum)
+	if minimum == "" {
+		return true
+	}
+	cmp, ok := compareCodexVersions(version, minimum)
 	if !ok {
 		return true
 	}

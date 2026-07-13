@@ -348,16 +348,13 @@ function createTransportClient(
     async resizeWorkspaceTerminal() {
       throw new Error("not used");
     },
-    async cancelWorkspaceAgentSession() {
-      throw new Error("not used");
-    },
-    async cancelWorkspaceAgentSessionWithResult() {
-      throw new Error("not used");
-    },
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },
     async sendWorkspaceAgentSessionInput() {
+      throw new Error("not used");
+    },
+    async submitWorkspaceAgentPlanDecision() {
       throw new Error("not used");
     },
     async readWorkspaceAgentSessionAttachment() {

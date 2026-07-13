@@ -4,30 +4,60 @@ import type {
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { AgentHostManagedAgentsState } from "@shared/contracts/dto";
+import { migratedAgentGUIProviderIdentityCatalog } from "@tutti-os/agent-gui/provider-catalog";
 import type {
   AgentProviderStatusSnapshot,
   IAgentProviderStatusService
 } from "../agentProviderStatusService.interface";
 
-export const desktopManagedAgentProviders = [
-  "claude-code",
-  "codex",
-  "cursor",
-  "tutti-agent",
-  "opencode",
-  "hermes",
-  "openclaw"
-] as const satisfies readonly WorkspaceAgentProvider[];
+const desktopManagedAgentCatalog =
+  migratedAgentGUIProviderIdentityCatalog.filter(
+    (entry) => entry.desktop.managed
+  );
+
+export const desktopManagedAgentProviders: readonly WorkspaceAgentProvider[] = [
+  ...desktopManagedAgentCatalog
+]
+  .sort((left, right) => left.desktop.managedOrder - right.desktop.managedOrder)
+  .map((entry) => entry.providerId as WorkspaceAgentProvider);
 
 const desktopManagedAgentStartupProviderPriority = [
-  "codex",
-  "claude-code",
-  "cursor",
-  "tutti-agent",
-  "opencode",
-  "hermes",
-  "openclaw"
-] as const satisfies readonly WorkspaceAgentProvider[];
+  ...desktopManagedAgentCatalog
+]
+  .sort(
+    (left, right) =>
+      left.desktop.statusProbePriority - right.desktop.statusProbePriority
+  )
+  .map((entry) => entry.providerId as WorkspaceAgentProvider);
+
+export const desktopManagedAgentDefaultProvider: WorkspaceAgentProvider =
+  (desktopManagedAgentCatalog
+    .filter((entry) => entry.desktop.defaultProviderEligible)
+    .sort(
+      (left, right) =>
+        left.desktop.defaultProviderPriority -
+        right.desktop.defaultProviderPriority
+    )[0]?.providerId as WorkspaceAgentProvider | undefined) ??
+  desktopManagedAgentProviders[0]!;
+
+export const desktopInstallBootstrapProviders: readonly WorkspaceAgentProvider[] =
+  desktopManagedAgentCatalog
+    .filter((entry) => entry.desktop.installBootstrap)
+    .map((entry) => entry.providerId as WorkspaceAgentProvider);
+
+export const desktopAccountRefreshProviders: readonly WorkspaceAgentProvider[] =
+  desktopManagedAgentCatalog
+    .filter((entry) => entry.desktop.refreshOnAccountChange)
+    .map((entry) => entry.providerId as WorkspaceAgentProvider);
+
+export function desktopManagedAgentVisibilityGate(
+  provider: WorkspaceAgentProvider
+): string {
+  return (
+    desktopManagedAgentCatalog.find((entry) => entry.providerId === provider)
+      ?.desktop.visibilityGate ?? ""
+  );
+}
 
 export function ensureDesktopManagedAgentProviderStatuses(
   service: IAgentProviderStatusService

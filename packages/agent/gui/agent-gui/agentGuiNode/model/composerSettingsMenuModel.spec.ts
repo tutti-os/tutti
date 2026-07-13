@@ -197,7 +197,7 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
-  it("preserves Claude ACP model descriptions", () => {
+  it("preserves Claude Code model descriptions", () => {
     const menu = buildComposerModelMenuModel(
       vm({
         draftSettings: {
@@ -295,7 +295,7 @@ describe("buildComposerModelMenuModel", () => {
   it("collapses the model list to the latest version per family when enabled", () => {
     const menu = buildComposerModelMenuModel(
       vm({
-        modelListCollapsedToLatest: true,
+        collapseModelOptionsToLatest: true,
         selectedModelValue: "claude-sonnet-5[thinking=true]",
         draftSettings: {
           model: "claude-sonnet-5[thinking=true]",
@@ -332,7 +332,7 @@ describe("buildComposerModelMenuModel", () => {
   it("keeps a selected older version visible after the family collapses", () => {
     const menu = buildComposerModelMenuModel(
       vm({
-        modelListCollapsedToLatest: true,
+        collapseModelOptionsToLatest: true,
         selectedModelValue: "claude-sonnet-4.6[thinking=true]",
         draftSettings: {
           model: "claude-sonnet-4.6[thinking=true]",

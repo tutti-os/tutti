@@ -49,6 +49,11 @@ It owns:
 - selectors for reusable derived state
 - `selectNeedsAttentionCount`
 - `selectNeedsAttentionItems`
+- the workspace session engine (`createAgentSessionEngine` under
+  `src/engine/`): intent dispatch loop, domain-composed pure reducers,
+  command-description effect executor, expiry-intent clock, and intent frame
+  batching, with scheduler/clock/command ports injected by the host (see
+  `docs/architecture/agent-gui-refactor-plan.md` section 3.3)
 
 It does not own:
 
@@ -106,6 +111,34 @@ snapshot, but section first-page reloads should be tied to workspace, rail
 filter, user project, or session membership changes.
 
 `AgentActivity*` types are the canonical frontend agent activity data model.
+Agent GUI must import `AgentActivitySession`, `AgentActivitySnapshot`, and
+`AgentActivityPresence` from `agent-activity-core`; it must not recreate those
+entities in a handwritten aggregate. GUI-only projections stay in focused
+timeline, synchronization, summary, and message-overlay modules. Working and
+completion decisions derive from canonical `activeTurn` and `latestTurn`
+state, not from legacy session-level lifecycle mirrors.
+Canonical sessions also carry typed `settings`, `permissionConfig`,
+`capabilities`, `usage`, `backgroundAgents`, `goal`, and `imported` fields from
+the daemon. Desktop adapters preserve those fields and must not recreate them
+from `runtimeContext`, `lastError`, or module-global per-session defaults.
+Before a session exists, composer options carry the same typed capability
+descriptor. The active session descriptor takes precedence once available.
+An omitted pre-session descriptor means the connected daemon predates the
+typed composer capability contract and must remain an unknown/loading state.
+Core capability booleans must not be reconstructed from private
+`runtimeContext` fields or represented as plugin/tool entries in the composer
+capability catalog.
+The activity snapshot also exposes the composer-options request lifecycle per
+opaque target key. Consumers use `loading` only for the initial request when no
+cached options exist; background refreshes keep rendering the last successful
+catalog, and failures transition to `error` instead of leaving indefinite
+loading UI.
+Provider context-window and quota updates enter the daemon at the runtime
+adapter boundary, are split into typed durable session metadata, and reach
+Agent GUI through the protocol-v2 `usage` field. GUI projections must not read
+provider-private runtime context to render usage. Existing
+session control state is read from the daemon; pre-session edits remain in the
+engine-owned activation/draft record until the daemon confirms the session.
 `AgentHostWorkspaceAgent*` types may only appear in compatibility or projection
 layers while the legacy Agent GUI internals are being migrated. Production read
 paths must not call `workspaceAgents.list`,
@@ -116,6 +149,55 @@ paths must not call `workspaceAgents.list`,
 `AgentActivityRuntime` instead. Legacy host DTOs are allowlisted only in the
 host API contract, explicit projection helpers, and message merge/page-loading
 helpers that accept runtime-shaped adapters.
+
+The desktop activity diagnostics module is the only narrow consumer allowed to
+serialize legacy lifecycle fields while comparing old host events with the
+canonical model. Those values are diagnostic evidence only and must never feed
+session, turn, submit, or rendering decisions.
+
+Slash command behavior is descriptor-authoritative. The provider catalog's
+typed slash policy owns fallback commands and command effects; a missing policy
+produces no provider slash commands or local command effects. Agent GUI must not
+infer Cursor, Codex, Claude, or universal command behavior from provider names.
+
+The synthesized `plan-implementation` / `implement` decision crosses the
+desktop boundary as one semantic, turn-and-request-scoped daemon command with
+a caller-stable idempotency key. Desktop transport must not expand that command
+into local settings or send operations. `tuttid` prepares a leased
+`plan_decision` operation, checkpoints the idempotent plan-mode target write,
+persists `send_dispatched` before provider execution, and confirms the result
+only from a different durable turn/message carrying the operation's stable
+`clientSubmitId`; an unknown send result is never blindly replayed. Completion
+and its outbox event commit atomically. The `send_dispatched` checkpoint also
+persists a session-level `agent_system_notice` with notice kind
+`plan_implementation_pending_confirmation` and its message-update outbox event
+in the same transaction, so an open client can observe the unknown window even
+if the provider call hangs or the process exits. Completion upgrades the same
+message to `plan_implementation_completed`, and its outbox publishes both the
+confirmed turn and notice update. These payloads contain semantic IDs only;
+user-visible copy belongs to consumer i18n. Provider-originated exit-plan
+prompts remain ordinary durable interaction responses and use the existing
+`interactive_response` operation rather than this synthetic-plan endpoint.
+
+Protocol-v2 session responses expose `activeTurnId` (required and nullable),
+`pendingInteractions` (required and never null), independent `activeTurn` /
+`latestTurn` projections, typed capabilities/usage/background-agent/goal/import
+fields, and Unix-millisecond timestamps. They do not expose legacy session
+status, turn lifecycle, submit availability, last error, ISO timestamps, or
+the raw runtime context. SQLite migrations split typed session metadata from
+provider-private recovery context, remove the legacy status/current-phase/
+last-error/runtime-context columns, and enforce nullable exact
+`active_turn_id` ownership plus Turn/Interaction/message foreign keys. Public
+activity events are version 2: full Turn and Interaction entities use
+`turn_update`/`interaction_update`; a session invalidation that requires an
+authoritative read is explicitly named `session_reconcile_required` and must
+never be applied as a partial Session entity. The old public `state_patch` and
+storage message row id are removed.
+
+Message `turnId` is explicitly nullable. Runtime execution messages should use
+the exact durable Turn id, while historical imports without trustworthy
+provider turn boundaries stay session-scoped (`turnId = null`); import must not
+manufacture one live synthetic Turn per transcript message.
 
 It should not know how a host connects to `tuttid`, opens SSE streams, resolves
 workspace paths, or talks to Electron.
@@ -191,15 +273,12 @@ export interface AgentActivityAdapter {
   sendInput(
     input: AgentActivitySendInput
   ): Promise<AgentActivitySendInputResult>;
-  cancelSession(
-    input: AgentActivityCancelSessionInput
-  ): Promise<AgentActivityCancelSessionResult>;
   goalControl(
     input: AgentActivityGoalControlInput
   ): Promise<AgentActivityGoalControlResult>;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput
-  ): Promise<unknown>;
+  ): Promise<AgentActivitySubmitInteractiveResult>;
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
@@ -208,6 +287,11 @@ export interface AgentActivityAdapter {
   ): Promise<AgentActivitySession>;
 }
 ```
+
+`AgentActivitySendInputResult` contains the authoritative canonical `turn` in
+addition to its session and turn id. Desktop adapters must reject a successful
+transport response that omits that turn; they must not reconstruct it from the
+deprecated session-level lifecycle or submit-availability fields.
 
 `AgentActivityRuntime.activateSession` requires `agentTargetId` for
 `mode: "new"`. Shared UI passes it through unchanged; trusted host or daemon code
@@ -226,9 +310,32 @@ Composer options use one cache key space: the resolved `agentTargetId` is passed
 to activity-core as an opaque `targetKey`, round-tripped verbatim, and forwarded
 to the daemon as `agentTargetId`. Activity-core must not parse or rewrite the
 key. There is no provider-keyed fallback cache: two targets under the same
-provider must remain isolated. Provider-based invalidation filters on the
-`provider` stored in each cached value rather than deriving provider identity
-from the key.
+provider remain isolated. Provider-based invalidation filters on the `provider`
+stored in each cached value rather than deriving provider identity from the key.
+While a live session refreshes its catalog, UI may continue presenting an
+already loaded target snapshot, but a genuinely missing target snapshot remains
+loading until target-scoped options arrive.
+
+Each composer-options snapshot also carries its effective pre-session settings;
+AgentGUI resolves displayed settings field by field in this order:
+authoritative session settings, optimistic first-create settings, preloaded
+effective settings, then home defaults. A partial session projection must not
+erase a usable preloaded model or reasoning selection while live metadata is
+still arriving. Because the effective settings are request-dependent,
+composer-options cache freshness and in-flight reuse include normalized `cwd`
+and normalized requested settings in addition to the target key.
+
+Composer-options loading may be suppressed while a new-session activation is
+pending, but that guard follows the current engine state rather than a
+mount-time snapshot. The transition from creating to settled must trigger a
+fresh target-scoped load so model, reasoning, skill, and slash-command metadata
+cannot remain absent for the lifetime of the node. Before the first
+target-scoped composer-options snapshot arrives, configurable-setting support is
+unknown rather than unsupported: the composer footer renders disabled loading
+controls for permission and model/reasoning selection, then replaces or removes
+them according to the authoritative snapshot. Slash command fallback and effect
+policy remain provider-descriptor-owned; every supported provider that exposes
+local fallback commands declares them in its registry descriptor.
 
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
 host-owned legacy reference for selecting which target under the real provider

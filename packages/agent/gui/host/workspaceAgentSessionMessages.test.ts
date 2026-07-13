@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import {
   loadWorkspaceAgentSessionMessagePages,
   mergeWorkspaceAgentMessages
 } from "./workspaceAgentSessionMessages";
-import type { WorkspaceAgentActivityMessage } from "../shared/workspaceAgentActivityTypes";
 
 describe("loadWorkspaceAgentSessionMessagePages", () => {
   it("keeps following hasMore past the old five-page default", async () => {
@@ -73,10 +73,10 @@ describe("loadWorkspaceAgentSessionMessagePages", () => {
     );
   });
 
-  it("orders merged messages by activity version before host id", () => {
+  it("orders merged messages by canonical activity version", () => {
     const result = mergeWorkspaceAgentMessages(
-      [messageWithVersion(2, { id: 1, messageId: "message-2" })],
-      [messageWithVersion(1, { id: 2, messageId: "message-1" })]
+      [messageWithVersion(2, { messageId: "message-2" })],
+      [messageWithVersion(1, { messageId: "message-1" })]
     );
 
     expect(result.map((message) => message.version)).toEqual([1, 2]);
@@ -158,11 +158,10 @@ describe("loadWorkspaceAgentSessionMessagePages", () => {
 
 function messageWithVersion(
   version: number,
-  overrides: Partial<WorkspaceAgentActivityMessage> = {}
-): WorkspaceAgentActivityMessage {
+  overrides: Partial<AgentActivityMessage> = {}
+): AgentActivityMessage {
   return {
     agentSessionId: "session-1",
-    id: version,
     kind: "text",
     messageId: `message-${version}`,
     occurredAtUnixMs: version,
@@ -178,8 +177,8 @@ function messageWithVersion(
 
 function userPromptMessage(
   version: number,
-  overrides: Partial<WorkspaceAgentActivityMessage> = {}
-): WorkspaceAgentActivityMessage {
+  overrides: Partial<AgentActivityMessage> = {}
+): AgentActivityMessage {
   return messageWithVersion(version, {
     role: "user",
     turnId: `turn-user-${version}`,
@@ -192,9 +191,8 @@ function optimisticUserPromptMessage(input: {
   messageId: string;
   prompt: string;
   version: number;
-}): WorkspaceAgentActivityMessage {
+}): AgentActivityMessage {
   return userPromptMessage(input.version, {
-    id: input.version,
     messageId: input.messageId,
     occurredAtUnixMs: input.version,
     payload: {

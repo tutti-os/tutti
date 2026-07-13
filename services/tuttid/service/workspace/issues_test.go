@@ -22,31 +22,6 @@ func (r *issueEventPublisherRecorder) PublishWorkspaceIssueUpdated(_ context.Con
 	return nil
 }
 
-type issueReconcileSessionReader struct {
-	listCalls int
-	sessions  []agentservice.PersistedSession
-}
-
-func (r *issueReconcileSessionReader) GetSession(workspaceID string, agentSessionID string) (agentservice.PersistedSession, bool) {
-	for _, session := range r.sessions {
-		if session.WorkspaceID == workspaceID && session.ID == agentSessionID {
-			return session, true
-		}
-	}
-	return agentservice.PersistedSession{}, false
-}
-
-func (r *issueReconcileSessionReader) ListSessions(workspaceID string) ([]agentservice.PersistedSession, bool) {
-	r.listCalls++
-	out := make([]agentservice.PersistedSession, 0)
-	for _, session := range r.sessions {
-		if session.WorkspaceID == workspaceID {
-			out = append(out, session)
-		}
-	}
-	return out, true
-}
-
 func TestIssueManagerServicePublishesIssueStatusUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -140,82 +115,6 @@ func TestIssueManagerServicePublishesTaskStatusUpdate(t *testing.T) {
 	}
 	if update.ChangeKind != eventstreamservice.WorkspaceIssueChangeTaskUpdated {
 		t.Fatalf("published change kind = %q, want %q", update.ChangeKind, eventstreamservice.WorkspaceIssueChangeTaskUpdated)
-	}
-}
-
-func TestIssueManagerServiceReconcilesRunningRunsFromBatchAgentSessions(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	store := openIssueServiceStore(t)
-	if err := store.Create(ctx, workspacebiz.Summary{ID: "workspace-1", Name: "Workspace One"}); err != nil {
-		t.Fatalf("Create() workspace error = %v", err)
-	}
-
-	reader := &issueReconcileSessionReader{
-		sessions: []agentservice.PersistedSession{
-			{ID: "session-failed", WorkspaceID: "workspace-1", Status: "failed", LastError: "agent failed"},
-			{ID: "session-canceled", WorkspaceID: "workspace-1", Status: "canceled"},
-		},
-	}
-	publisher := &issueEventPublisherRecorder{}
-	service := IssueManagerService{
-		AgentSessionReader: reader,
-		Publisher:          publisher,
-		Store:              store,
-	}
-	if _, err := service.CreateIssue(ctx, "workspace-1", CreateIssueManagerIssueInput{
-		IssueID: "issue-1",
-		TopicID: workspaceissues.DefaultTopicID,
-		Title:   "Issue One",
-	}); err != nil {
-		t.Fatalf("CreateIssue() error = %v", err)
-	}
-	if _, err := service.CreateTask(ctx, "workspace-1", "issue-1", CreateIssueManagerTaskInput{TaskID: "task-1", Title: "Task 1"}); err != nil {
-		t.Fatalf("CreateTask() task-1 error = %v", err)
-	}
-	if _, err := service.CreateTask(ctx, "workspace-1", "issue-1", CreateIssueManagerTaskInput{TaskID: "task-2", Title: "Task 2"}); err != nil {
-		t.Fatalf("CreateTask() task-2 error = %v", err)
-	}
-	if _, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-1", CreateIssueManagerRunInput{
-		AgentProvider:  "codex",
-		AgentSessionID: "session-failed",
-		RunID:          "run-failed",
-	}); err != nil {
-		t.Fatalf("CreateRun() failed error = %v", err)
-	}
-	if _, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-2", CreateIssueManagerRunInput{
-		AgentProvider:  "codex",
-		AgentSessionID: "session-canceled",
-		RunID:          "run-canceled",
-	}); err != nil {
-		t.Fatalf("CreateRun() canceled error = %v", err)
-	}
-	publisher.updates = nil
-
-	result, err := service.ReconcileRunningRuns(ctx, "workspace-1")
-	if err != nil {
-		t.Fatalf("ReconcileRunningRuns() error = %v", err)
-	}
-	if reader.listCalls != 1 {
-		t.Fatalf("ListSessions calls = %d, want 1", reader.listCalls)
-	}
-	if result.RunningCount != 2 || result.CompletedCount != 2 {
-		t.Fatalf("reconcile result = %+v", result)
-	}
-	failed, err := service.GetRunDetail(ctx, "workspace-1", "issue-1", "task-1", "run-failed")
-	if err != nil {
-		t.Fatalf("GetRunDetail() failed error = %v", err)
-	}
-	if failed.Run.Status != workspaceissues.StatusFailed || failed.Run.ErrorMessage != "agent failed" {
-		t.Fatalf("failed run = %+v", failed.Run)
-	}
-	canceled, err := service.GetRunDetail(ctx, "workspace-1", "issue-1", "task-2", "run-canceled")
-	if err != nil {
-		t.Fatalf("GetRunDetail() canceled error = %v", err)
-	}
-	if canceled.Run.Status != workspaceissues.StatusCanceled {
-		t.Fatalf("canceled run = %+v", canceled.Run)
 	}
 }
 
@@ -351,7 +250,7 @@ func TestIssueRunReconcileCompletionWaitsGraceBeforeFailedSessionCompletion(t *t
 		StartedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
 	}
-	session := agentservice.PersistedSession{ID: "session-1", Status: "completed"}
+	session := agentservice.PersistedSession{ID: "session-1"}
 	if _, _, ok := issueRunReconcileCompletion(run, session, now+defaultIssueRunReconcileGrace.Milliseconds()-1); ok {
 		t.Fatal("completion before grace = true, want false")
 	}

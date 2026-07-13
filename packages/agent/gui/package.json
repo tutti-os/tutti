@@ -6,16 +6,22 @@
   "types": "./index.ts",
   "exports": {
     ".": "./index.ts",
+    "./agent-gui": "./AgentGUI.tsx",
+    "./agents": "./agents.ts",
+    "./custom-mention": "./custom-mention.ts",
+    "./dock-icons": "./dockIcons.ts",
+    "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
     "./agent-env": "./shared/agentEnv/index.ts",
     "./workspace-settings-panel": "./shared/workspaceSettingsPanel/workspaceSettingsPanelStore.ts",
     "./context-mention-palette": "./context-mention-palette/index.ts",
-    "./plan-decision-ops": "./shared/agentConversation/planImplementation.ts",
     "./context-mention-provider": "./agent-gui/agentGuiNode/agentContextMentionProvider.ts",
     "./mention-file-presentation": "./agent-gui/shared/mentionFilePresentation.ts",
-    "./queued-prompt-runtime": "./agentQueuedPromptRuntimeCore.ts",
     "./agent-title-text": "./shared/utils/agentTitleText.ts",
+    "./provider-identity": "./provider-identity.ts",
+    "./provider-catalog": "./provider-catalog.ts",
+    "./provider-icons": "./provider-icons.ts",
     "./agentGuiSessionProviderIconUrls": "./agentGuiSessionProviderIconUrls.ts",
     "./workspace-agent-generated-files": "./shared/workspaceAgentActivityListViewModel.ts",
     "./i18n": "./i18n/index.ts",
@@ -70,6 +76,7 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0",
     "three": "^0.185.1",
+    "use-sync-external-store": "^1.6.0",
     "valtio": "^2.3.2",
     "zustand": "^5.0.14"
   },
@@ -83,6 +90,7 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/three": "^0.185.1",
+    "@types/use-sync-external-store": "^0.0.6",
     "jsdom": "^27.2.0",
     "tsup": "8.5.1",
     "typescript": "^5.8.3",
@@ -103,6 +111,26 @@
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
       },
+      "./agent-gui": {
+        "types": "./dist/agent-gui.d.ts",
+        "import": "./dist/agent-gui.js"
+      },
+      "./agents": {
+        "types": "./dist/agents.d.ts",
+        "import": "./dist/agents.js"
+      },
+      "./custom-mention": {
+        "types": "./dist/custom-mention.d.ts",
+        "import": "./dist/custom-mention.js"
+      },
+      "./dock-icons": {
+        "types": "./dist/dock-icons.d.ts",
+        "import": "./dist/dock-icons.js"
+      },
+      "./mention-search": {
+        "types": "./dist/mention-search.d.ts",
+        "import": "./dist/mention-search.js"
+      },
       "./agent-message-center": {
         "types": "./dist/agent-message-center/index.d.ts",
         "import": "./dist/agent-message-center/index.js"
@@ -119,10 +147,6 @@
         "types": "./dist/context-mention-palette/index.d.ts",
         "import": "./dist/context-mention-palette/index.js"
       },
-      "./plan-decision-ops": {
-        "types": "./dist/plan-decision-ops.d.ts",
-        "import": "./dist/plan-decision-ops.js"
-      },
       "./context-mention-provider": {
         "types": "./dist/context-mention-provider.d.ts",
         "import": "./dist/context-mention-provider.js"
@@ -131,13 +155,17 @@
         "types": "./dist/mention-file-presentation.d.ts",
         "import": "./dist/mention-file-presentation.js"
       },
-      "./queued-prompt-runtime": {
-        "types": "./dist/queued-prompt-runtime.d.ts",
-        "import": "./dist/queued-prompt-runtime.js"
-      },
       "./agent-title-text": {
         "types": "./dist/agent-title-text.d.ts",
         "import": "./dist/agent-title-text.js"
+      },
+      "./provider-icons": {
+        "types": "./dist/provider-icons.d.ts",
+        "import": "./dist/provider-icons.js"
+      },
+      "./provider-identity": {
+        "types": "./dist/provider-identity.d.ts",
+        "import": "./dist/provider-identity.js"
       },
       "./workspace-agent-generated-files": {
         "types": "./dist/workspace-agent-generated-files.d.ts",
@@ -180,8 +208,23 @@
     "types": "./dist/index.d.ts",
     "typesVersions": {
       "*": {
+        "agent-gui": [
+          "./dist/agent-gui.d.ts"
+        ],
+        "agents": [
+          "./dist/agents.d.ts"
+        ],
         "agent-message-center": [
           "./dist/agent-message-center/index.d.ts"
+        ],
+        "custom-mention": [
+          "./dist/custom-mention.d.ts"
+        ],
+        "dock-icons": [
+          "./dist/dock-icons.d.ts"
+        ],
+        "mention-search": [
+          "./dist/mention-search.d.ts"
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"
@@ -192,20 +235,20 @@
         "context-mention-palette": [
           "./dist/context-mention-palette/index.d.ts"
         ],
-        "plan-decision-ops": [
-          "./dist/plan-decision-ops.d.ts"
-        ],
         "context-mention-provider": [
           "./dist/context-mention-provider.d.ts"
         ],
         "mention-file-presentation": [
           "./dist/mention-file-presentation.d.ts"
         ],
-        "queued-prompt-runtime": [
-          "./dist/queued-prompt-runtime.d.ts"
-        ],
         "agent-title-text": [
           "./dist/agent-title-text.d.ts"
+        ],
+        "provider-icons": [
+          "./dist/provider-icons.d.ts"
+        ],
+        "provider-identity": [
+          "./dist/provider-identity.d.ts"
         ],
         "workspace-agent-generated-files": [
           "./dist/workspace-agent-generated-files.d.ts"

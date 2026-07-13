@@ -1,72 +1,19 @@
-import { memo, type ReactNode, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
-import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
-import { useTranslation, type TranslateFn } from "../../i18n/index";
-import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
-import type {
-  WorkspaceFileReferenceAdapter,
-  WorkspaceFileReference,
-  WorkspaceFileReferenceCopy
-} from "@tutti-os/workspace-file-reference/contracts";
-import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
-import type {
-  AgentHostManagedAgentsState,
-  AgentUsageQuota
-} from "../../shared/contracts/dto";
-import type {
-  AgentProvider,
-  AgentSettings
-} from "../../contexts/settings/domain/agentSettings";
+import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+import { useTranslation } from "../../i18n/index";
+import type { AgentProvider } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
-import type {
-  AgentGUIAgent,
-  AgentGUIAgentAvailabilityAction,
-  AgentGUIAllAgentsPresentation,
-  AgentGUINodeData,
-  AgentGUIProvider,
-  AgentGUIProviderReadinessGate,
-  AgentGUIAgentTarget,
-  NodeFrame,
-  Point
-} from "../../types";
-import type {
-  DesktopSize,
-  WorkspaceDesktopAgentProbeDemandChange,
-  WorkspaceDesktopAgentProbeRefreshRequest,
-  WorkspaceDesktopAgentProbesState
-} from "../workspaceDesktop/types";
+import type { AgentGUINodeData } from "../../types";
 import { resolveCanonicalNodeMinSize } from "../../utils/workspaceNodeSizing";
 import { WorkspaceNodeWindow } from "../shared/WorkspaceNodeWindow";
 import { CanvasNodeGhostIconButton } from "../shared/CanvasNodeGhostIconButton";
 import { CanvasNodePanelLinedIcon } from "../shared/canvasNodeChromeIcons";
 import { useAgentGUINodeController } from "./controller/useAgentGUINodeController";
-import type {
-  AgentGUIOpenSessionRequest,
-  AgentGUIPrefillPromptRequest,
-  AgentGUIRememberComposerDefaultsInput
-} from "./controller/useAgentGUINodeController";
-import {
-  AgentGUINodeView,
-  type AgentGUIAgentReadinessStateRenderer,
-  type AgentGUIAgentsEmptyRenderer,
-  type AgentGUIAgentUnavailableStateRenderer,
-  type AgentGUIViewLabels,
-  type AgentGUISidebarFooterContext,
-  type AgentGUIProviderReadinessGateStateRenderer,
-  type AgentGUIProviderUnavailableStateRenderer,
-  type AgentMentionReferenceTargetResolver,
-  type AgentWorkspaceReferenceInitialTargetResolver
-} from "./AgentGUINodeView";
-import {
-  normalizeAgentGUIAgents,
-  projectAgentGUIAgentsToInternalTargets,
-  resolveAgentGUISelectedDirectoryAgent
-} from "../../agents";
-import type { AgentGUIAccountMenuState } from "./accountMenuState";
+import { AgentGUINodeView } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
-  resolveAgentGUIDockConversationTitle,
   resolveAgentGUIProviderDisplayLabel
 } from "./model/agentGuiProviderIdentity";
 import {
@@ -74,7 +21,6 @@ import {
   findWorkspaceAgentProbeForDockProvider
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
-import type { AgentComposerProps } from "./AgentComposer";
 import {
   getAgentHostManagedToolchainAgentByName,
   resolveAgentHostManagedToolchainAgentAction
@@ -90,680 +36,99 @@ import {
   resolveAgentGUIConversationRailMaxWidthPx,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./model/agentGuiRailLayout";
-import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
-import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
-import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
-import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
-import type {
-  AgentComposerCapabilityMenuState,
-  AgentComposerCapabilitySettingsTarget,
-  AgentComposerGitBranchLoader,
-  AgentComposerSlashStatusLimit
-} from "./AgentComposer";
+import type { AgentGUINodeProps } from "./AgentGUINode.types";
+import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
+import {
+  useAgentGUIViewLabels,
+  useAgentGUIWorkspaceFileReferenceCopy
+} from "./AgentGUINode.labels";
+import {
+  resolveAgentGUIRailStatusProvider,
+  slashStatusLimitsFromQuotas
+} from "./AgentGUINode.usage";
 
-// The Task Center is the workspace issue/task app; mentioning it seeds the
-// composer with a real app-mention chip the agent can resolve.
-const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
-
-function buildAgentHomeSuggestions(
-  t: TranslateFn,
-  workspaceId: string,
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
-): AgentHomeSuggestionCategory[] {
-  const key = (suffix: string): string =>
-    `agentHost.agentGui.homeSuggestions.${suffix}`;
-  const taskCenterLabel = t(key("breakdown.taskCenterLabel"));
-  // Resolve the Task Center app icon so the seeded mention renders as a proper
-  // workspace-app chip (same as a picker-inserted one), not a bare fallback.
-  const taskCenterIconUrl =
-    workspaceAppIcons
-      .find((entry) => entry.appId === TASK_CENTER_WORKSPACE_APP_ID)
-      ?.iconUrl?.trim() || undefined;
-  // A workspace-app mention only rehydrates into a chip when it carries a
-  // workspaceId; without one (e.g. preview), fall back to plain "@label" text.
-  const taskCenterMention = workspaceId
-    ? `[@${taskCenterLabel}](${createRichTextMentionHref({
-        providerId: "workspace-app",
-        entityId: TASK_CENTER_WORKSPACE_APP_ID,
-        label: taskCenterLabel,
-        scope: {
-          workspaceId,
-          ...(taskCenterIconUrl ? { icon: taskCenterIconUrl } : {})
-        }
-      })})`
-    : `@${taskCenterLabel}`;
-  return [
-    {
-      id: "about-tutti",
-      icon: "about",
-      label: t(key("about.title")),
-      prompt: t(key("about.prompt"))
-    },
-    {
-      id: "task-breakdown",
-      icon: "breakdown",
-      label: t(key("breakdown.title")),
-      prompt: t(key("breakdown.prompt"), { taskCenterMention })
-    },
-    {
-      id: "quality-review",
-      icon: "review",
-      // Fills the composer with the review prompt; the user types "@" where they
-      // want to pick the session whose output to review.
-      label: t(key("review.title")),
-      prompt: t(key("review.prompt"))
-    },
-    {
-      id: "agent-interaction",
-      icon: "interaction",
-      // Fills the composer with the interaction prompt; the user types "@" where
-      // they want to pick the agents to have interact.
-      label: t(key("interaction.title")),
-      prompt: t(key("interaction.prompt"))
-    },
-    {
-      id: "import-session",
-      icon: "import",
-      label: t(key("import.title")),
-      action: "import-session"
-    }
-  ];
-}
-
-const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
-  "actions.cancel": "common.cancel",
-  "referencePicker.confirm": "agentHost.agentGui.referencePicker.confirm",
-  "referencePicker.clearFilter":
-    "agentHost.agentGui.referencePicker.clearFilter",
-  "referencePicker.emptyDirectory":
-    "agentHost.agentGui.referencePicker.emptyDirectory",
-  "referencePicker.emptyPreview":
-    "agentHost.agentGui.referencePicker.emptyPreview",
-  "referencePicker.emptySearch":
-    "agentHost.agentGui.referencePicker.emptySearch",
-  "referencePicker.fileTypeAll":
-    "agentHost.agentGui.referencePicker.fileTypeAll",
-  "referencePicker.fileTypeDocument":
-    "agentHost.agentGui.referencePicker.fileTypeDocument",
-  "referencePicker.fileTypeImage":
-    "agentHost.agentGui.referencePicker.fileTypeImage",
-  "referencePicker.fileTypeOther":
-    "agentHost.agentGui.referencePicker.fileTypeOther",
-  "referencePicker.fileTypeSeparator":
-    "agentHost.agentGui.referencePicker.fileTypeSeparator",
-  "referencePicker.fileTypeVideo":
-    "agentHost.agentGui.referencePicker.fileTypeVideo",
-  "referencePicker.fileTypeWebpage":
-    "agentHost.agentGui.referencePicker.fileTypeWebpage",
-  "referencePicker.loadMore": "agentHost.agentGui.referencePicker.loadMore",
-  "referencePicker.loadMoreGroups":
-    "agentHost.agentGui.referencePicker.loadMoreGroups",
-  "referencePicker.loading": "agentHost.agentGui.referencePicker.loading",
-  "referencePicker.previewBinary":
-    "agentHost.agentGui.referencePicker.previewBinary",
-  "referencePicker.previewDecodeFailed":
-    "agentHost.agentGui.referencePicker.previewDecodeFailed",
-  "referencePicker.previewError":
-    "agentHost.agentGui.referencePicker.previewError",
-  "referencePicker.previewFileTooLarge":
-    "agentHost.agentGui.referencePicker.previewFileTooLarge",
-  "referencePicker.previewFolder":
-    "agentHost.agentGui.referencePicker.previewFolder",
-  "referencePicker.previewHierarchy":
-    "agentHost.agentGui.referencePicker.previewHierarchy",
-  "referencePicker.previewLoading":
-    "agentHost.agentGui.referencePicker.previewLoading",
-  "referencePicker.previewModified":
-    "agentHost.agentGui.referencePicker.previewModified",
-  "referencePicker.previewSize":
-    "agentHost.agentGui.referencePicker.previewSize",
-  "referencePicker.previewSource":
-    "agentHost.agentGui.referencePicker.previewSource",
-  "referencePicker.previewTextTooLarge":
-    "agentHost.agentGui.referencePicker.previewTextTooLarge",
-  "referencePicker.previewTooLarge":
-    "agentHost.agentGui.referencePicker.previewTooLarge",
-  "referencePicker.previewUnavailable":
-    "agentHost.agentGui.referencePicker.previewUnavailable",
-  "referencePicker.previewUnsupported":
-    "agentHost.agentGui.referencePicker.previewUnsupported",
-  "referencePicker.searchPlaceholder":
-    "agentHost.agentGui.referencePicker.searchPlaceholder",
-  "referencePicker.selectGroupHint":
-    "agentHost.agentGui.referencePicker.selectGroupHint",
-  "referencePicker.selectedCount":
-    "agentHost.agentGui.referencePicker.selectedCount",
-  "referencePicker.workspaceRootGroup":
-    "agentHost.agentGui.referencePicker.workspaceRootGroup",
-  "referencePicker.sourceColumn":
-    "agentHost.agentGui.referencePicker.sourceColumn",
-  "referencePicker.title": "agentHost.agentGui.referencePicker.title"
-};
-
-export interface AgentGUINodeProps {
-  nodeId: string;
-  workspaceId: string;
-  currentUserId?: string | null;
-  workspacePath: string;
-  workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
-  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
-  selectProjectDirectory?: () => Promise<{ path: string } | null>;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
-  referenceSourceAggregator?: ReferenceSourceAggregator | null;
-  resolveWorkspaceReferenceEntryIconUrl?: (
-    entry: WorkspaceFileEntry
-  ) => Promise<string | null | undefined>;
-  resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
-  resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
-  agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
-  title: string;
-  state: AgentGUINodeData;
-  position: Point;
-  width: number;
-  height: number;
-  desktopSize: DesktopSize;
-  onLinkAction?: (action: WorkspaceLinkAction) => void;
-  onHandoffConversation?: (input: {
-    agentTargetId?: string | null;
-    draftPrompt: string;
-    provider: AgentProvider;
-    userProjectPath?: string | null;
-  }) => void | Promise<void>;
-  capabilityMenuState?: AgentComposerCapabilityMenuState;
-  onCapabilitySettingsRequest?: (
-    capability: AgentComposerCapabilitySettingsTarget
-  ) => void;
-  onAgentProviderLogin?: (provider: AgentProvider) => void;
-  accountMenuState?: AgentGUIAccountMenuState | null;
-  agents?: readonly AgentGUIAgent[];
-  agentsLoading?: boolean;
-  allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
-  /**
-   * Controls whether AgentGUI adds local provider-default slash commands when
-   * the runtime advertises none. Defaults to "provider-default".
-   */
-  slashCommandFallbackMode?: AgentComposerProps["slashCommandFallbackMode"];
-  renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
-  renderAgentUnavailableState?: AgentGUIAgentUnavailableStateRenderer;
-  renderAgentReadinessState?: AgentGUIAgentReadinessStateRenderer;
-  onAgentAvailabilityAction?: (input: {
-    action: AgentGUIAgentAvailabilityAction;
-    agentTargetId: string;
-  }) => void;
-  renderSidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
-  defaultAgentTargetId?: string | null;
-  onWorkspaceFileReferencesAdded?: (input: {
-    provider: AgentProvider;
-    references: readonly WorkspaceFileReference[];
-  }) => void | Promise<void>;
-  onOpenConversationWindow?: (agentSessionId: string) => void;
-  onClose: () => void;
-  onResize: (frame: NodeFrame) => void;
-  onUpdateNode: (
-    updater: (current: AgentGUINodeData) => AgentGUINodeData
-  ) => void;
-  onRememberComposerDefaults?: (
-    input: AgentGUIRememberComposerDefaultsInput
-  ) => void | Promise<void>;
-  isMaximized?: boolean;
-  isActive: boolean;
-  composerFocusRequestSequence?: number | null;
-  openSessionRequest?: AgentGUIOpenSessionRequest | null;
-  prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
-  isMuted?: boolean;
-  newConversationRequestSequence?: number | null;
-  onMinimize?: () => void;
-  onToggleMaximize?: () => void;
-  onShowMessage?: (
-    message: string,
-    tone?: "info" | "warning" | "error"
-  ) => void;
-  workspaceAgentProbes?: WorkspaceDesktopAgentProbesState | null;
-  onAgentProbeDemandChange?: WorkspaceDesktopAgentProbeDemandChange;
-  onAgentProbeRefreshRequest?: WorkspaceDesktopAgentProbeRefreshRequest;
-  providerAuthAccountLabels?: Partial<Record<string, string>>;
-  managedAgentsState?: AgentHostManagedAgentsState | null;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
-  workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  embedded?: boolean;
-  previewMode?: boolean;
-}
-
-function slashStatusQuotaLabel(quota: AgentUsageQuota, t: TranslateFn): string {
-  const modelName = quota.modelName?.trim();
-  if (modelName) {
-    return modelName;
-  }
-  switch (quota.quotaType) {
-    case "session":
-      return t("agentHost.agentGui.slashStatusFiveHourLimit");
-    case "weekly":
-      return t("agentHost.agentGui.slashStatusWeeklyLimit");
-    case "daily":
-      return t("agentHost.workspaceAgentProbeQuotaDaily");
-    case "monthly":
-      return t("agentHost.workspaceAgentProbeQuotaMonthly");
-    case "cost":
-      return t("agentHost.workspaceAgentProbeQuotaCost");
-    case "model":
-      return t("agentHost.workspaceAgentProbeAgentUsage");
-    default:
-      return quota.quotaType;
-  }
-}
-
-function slashStatusQuotaValue(quota: AgentUsageQuota, t: TranslateFn): string {
-  if (
-    typeof quota.percentRemaining === "number" &&
-    Number.isFinite(quota.percentRemaining)
-  ) {
-    return t("agentHost.agentGui.slashStatusLimitPercentLeft", {
-      percent: Math.round(quota.percentRemaining)
-    });
-  }
-  if (
-    typeof quota.dollarRemaining === "number" &&
-    Number.isFinite(quota.dollarRemaining)
-  ) {
-    return t("agentHost.workspaceAgentProbeQuotaDollarRemaining", {
-      amount: quota.dollarRemaining.toFixed(2)
-    });
-  }
-  return "";
-}
-
-function slashStatusQuotaReset(quota: AgentUsageQuota, t: TranslateFn): string {
-  const reset =
-    typeof quota.resetsAtUnixMs === "number" &&
-    Number.isFinite(quota.resetsAtUnixMs)
-      ? toLocalShortDateTime(quota.resetsAtUnixMs)
-      : quota.resetText?.trim();
-  return reset ? t("agentHost.agentGui.slashStatusLimitReset", { reset }) : "";
-}
-
-function slashStatusLimitsFromQuotas(
-  quotas: readonly AgentUsageQuota[] | undefined,
-  selectedModel: string | null | undefined,
-  t: TranslateFn
-): AgentComposerSlashStatusLimit[] {
-  const filteredQuotas = filterSlashStatusQuotasForModel(quotas, selectedModel);
-  return filteredQuotas
-    .map((quota, index): AgentComposerSlashStatusLimit | null => {
-      const value = slashStatusQuotaValue(quota, t);
-      if (!value) {
-        return null;
-      }
-      const label = slashStatusQuotaLabel(quota, t).trim();
-      if (!label) {
-        return null;
-      }
-      return {
-        id: `${quota.quotaType}:${quota.modelName ?? ""}:${index}`,
-        label,
-        percentRemaining:
-          typeof quota.percentRemaining === "number" &&
-          Number.isFinite(quota.percentRemaining)
-            ? Math.max(0, Math.min(100, Math.round(quota.percentRemaining)))
-            : null,
-        value,
-        reset: slashStatusQuotaReset(quota, t) || null
-      };
-    })
-    .filter((limit): limit is AgentComposerSlashStatusLimit => limit !== null);
-}
-
-function slashStatusQuotasFromRuntimeUsage(value: unknown): AgentUsageQuota[] {
-  const usage = objectRecord(value);
-  const quotas = usage?.quotas;
-  if (!Array.isArray(quotas)) {
-    return [];
-  }
-  return quotas
-    .map((quota): AgentUsageQuota | null => {
-      const record = objectRecord(quota);
-      const quotaType = agentUsageQuotaTypeValue(record?.quotaType);
-      if (!record || !quotaType) {
-        return null;
-      }
-      const normalized: AgentUsageQuota = { quotaType };
-      const percentRemaining = numberValue(record.percentRemaining);
-      if (percentRemaining !== null) {
-        normalized.percentRemaining = percentRemaining;
-      }
-      const resetsAtUnixMs = numberValue(record.resetsAtUnixMs);
-      if (resetsAtUnixMs !== null) {
-        normalized.resetsAtUnixMs = resetsAtUnixMs;
-      }
-      const resetText = stringValue(record.resetText);
-      if (resetText) {
-        normalized.resetText = resetText;
-      }
-      const dollarRemaining = numberValue(record.dollarRemaining);
-      if (dollarRemaining !== null) {
-        normalized.dollarRemaining = dollarRemaining;
-      }
-      const modelName = stringValue(record.modelName);
-      if (modelName) {
-        normalized.modelName = modelName;
-      }
-      return normalized;
-    })
-    .filter((quota): quota is AgentUsageQuota => quota !== null);
-}
-
-function agentUsageQuotaTypeValue(
-  value: unknown
-): AgentUsageQuota["quotaType"] | null {
-  switch (stringValue(value)) {
-    case "session":
-    case "weekly":
-    case "monthly":
-    case "daily":
-    case "model":
-    case "cost":
-      return stringValue(value) as AgentUsageQuota["quotaType"];
-    default:
-      return null;
-  }
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function filterSlashStatusQuotasForModel(
-  quotas: readonly AgentUsageQuota[] | undefined,
-  selectedModel: string | null | undefined
-): readonly AgentUsageQuota[] {
-  const normalizedSelectedModel = normalizeSlashStatusModelName(selectedModel);
-  const baseQuotas = (quotas ?? []).filter(
-    (quota) => quota.quotaType !== "model"
-  );
-  const matchingModelQuotas = (quotas ?? []).filter((quota) => {
-    const quotaModelName = normalizeSlashStatusModelName(quota.modelName);
-    return (
-      quota.quotaType === "model" &&
-      quotaModelName !== "" &&
-      normalizedSelectedModel !== "" &&
-      quotaModelName === normalizedSelectedModel
-    );
-  });
-  return [...baseQuotas, ...matchingModelQuotas];
-}
-
-function normalizeSlashStatusModelName(
-  value: string | null | undefined
-): string {
-  return (
-    value
-      ?.trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, "-")
-      .replace(/^-+|-+$/gu, "") ?? ""
-  );
-}
-
-function resolveAgentGUIRailStatusProvider(input: {
-  conversationFilter: ReturnType<
-    typeof useAgentGUINodeController
-  >["viewModel"]["conversationFilter"];
-  agentTargets: readonly AgentGUIAgentTarget[];
-}): AgentProvider | null {
-  const filter = input.conversationFilter;
-  if (filter.kind !== "agentTarget") {
-    return null;
-  }
-  const target = input.agentTargets.find(
-    (candidate) =>
-      candidate.disabled !== true &&
-      (candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId
-  );
-  return target ? (target.provider as AgentProvider) : null;
-}
-
-function agentGuiStateEquals(
-  left: AgentGUINodeData,
-  right: AgentGUINodeData
-): boolean {
-  return (
-    left === right ||
-    (left.provider === right.provider &&
-      (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
-      left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-      (left.lastActiveConversationTitle ?? null) ===
-        (right.lastActiveConversationTitle ?? null) &&
-      left.conversationRailWidthPx === right.conversationRailWidthPx &&
-      left.conversationRailCollapsed === right.conversationRailCollapsed &&
-      (left.composerOverrides?.model ?? null) ===
-        (right.composerOverrides?.model ?? null) &&
-      (left.composerOverrides?.reasoningEffort ?? null) ===
-        (right.composerOverrides?.reasoningEffort ?? null) &&
-      (left.composerOverrides?.planMode ?? null) ===
-        (right.composerOverrides?.planMode ?? null) &&
-      (left.composerOverrides?.permissionModeId ?? null) ===
-        (right.composerOverrides?.permissionModeId ?? null) &&
-      composerOverridesByProviderEqual(
-        left.composerOverridesByProvider,
-        right.composerOverridesByProvider
-      ) &&
-      composerOverridesByAgentTargetIdEqual(
-        left.composerOverridesByAgentTargetId,
-        right.composerOverridesByAgentTargetId
-      ))
-  );
-}
-
-function composerOverridesByProviderEqual(
-  left: AgentGUINodeData["composerOverridesByProvider"],
-  right: AgentGUINodeData["composerOverridesByProvider"]
-): boolean {
-  const providers = new Set([
-    ...Object.keys(left ?? {}),
-    ...Object.keys(right ?? {})
-  ]);
-  for (const provider of providers) {
-    const key = provider as keyof NonNullable<
-      AgentGUINodeData["composerOverridesByProvider"]
-    >;
-    const leftSettings = left?.[key] ?? null;
-    const rightSettings = right?.[key] ?? null;
-    if (
-      (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
-      (leftSettings?.reasoningEffort ?? null) !==
-        (rightSettings?.reasoningEffort ?? null) ||
-      (leftSettings?.planMode ?? null) !== (rightSettings?.planMode ?? null) ||
-      (leftSettings?.permissionModeId ?? null) !==
-        (rightSettings?.permissionModeId ?? null)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function composerOverridesByAgentTargetIdEqual(
-  left: AgentGUINodeData["composerOverridesByAgentTargetId"],
-  right: AgentGUINodeData["composerOverridesByAgentTargetId"]
-): boolean {
-  const keys = new Set([
-    ...Object.keys(left ?? {}),
-    ...Object.keys(right ?? {})
-  ]);
-  for (const key of keys) {
-    const leftSettings = left?.[key] ?? null;
-    const rightSettings = right?.[key] ?? null;
-    if (
-      (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
-      (leftSettings?.reasoningEffort ?? null) !==
-        (rightSettings?.reasoningEffort ?? null) ||
-      (leftSettings?.planMode ?? null) !== (rightSettings?.planMode ?? null) ||
-      (leftSettings?.permissionModeId ?? null) !==
-        (rightSettings?.permissionModeId ?? null)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function areAgentGUINodePropsEqual(
-  previous: AgentGUINodeProps,
-  next: AgentGUINodeProps
-): boolean {
-  return (
-    previous.nodeId === next.nodeId &&
-    previous.workspaceId === next.workspaceId &&
-    previous.currentUserId === next.currentUserId &&
-    previous.workspacePath === next.workspacePath &&
-    previous.workspaceFileReferenceAdapter ===
-      next.workspaceFileReferenceAdapter &&
-    previous.resolveDroppedFileReferences ===
-      next.resolveDroppedFileReferences &&
-    previous.selectProjectDirectory === next.selectProjectDirectory &&
-    previous.referenceSourceAggregator === next.referenceSourceAggregator &&
-    previous.resolveWorkspaceReferenceEntryIconUrl ===
-      next.resolveWorkspaceReferenceEntryIconUrl &&
-    previous.resolveMentionReferenceTarget ===
-      next.resolveMentionReferenceTarget &&
-    previous.resolveWorkspaceReferenceInitialTarget ===
-      next.resolveWorkspaceReferenceInitialTarget &&
-    previous.onWorkspaceFileReferencesAdded ===
-      next.onWorkspaceFileReferencesAdded &&
-    previous.agentSettings.avoidGroupingEdits ===
-      next.agentSettings.avoidGroupingEdits &&
-    previous.title === next.title &&
-    agentGuiStateEquals(previous.state, next.state) &&
-    previous.position.x === next.position.x &&
-    previous.position.y === next.position.y &&
-    previous.width === next.width &&
-    previous.height === next.height &&
-    previous.desktopSize.width === next.desktopSize.width &&
-    previous.desktopSize.height === next.desktopSize.height &&
-    previous.onLinkAction === next.onLinkAction &&
-    previous.onHandoffConversation === next.onHandoffConversation &&
-    previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
-    previous.onAgentProviderLogin === next.onAgentProviderLogin &&
-    previous.accountMenuState === next.accountMenuState &&
-    previous.agents === next.agents &&
-    previous.agentsLoading === next.agentsLoading &&
-    previous.allAgentsPresentation?.iconUrl ===
-      next.allAgentsPresentation?.iconUrl &&
-    previous.slashCommandFallbackMode === next.slashCommandFallbackMode &&
-    previous.renderSidebarFooter === next.renderSidebarFooter &&
-    previous.renderAgentsEmpty === next.renderAgentsEmpty &&
-    previous.renderAgentUnavailableState === next.renderAgentUnavailableState &&
-    previous.renderAgentReadinessState === next.renderAgentReadinessState &&
-    previous.onAgentAvailabilityAction === next.onAgentAvailabilityAction &&
-    previous.defaultAgentTargetId === next.defaultAgentTargetId &&
-    previous.onClose === next.onClose &&
-    previous.onResize === next.onResize &&
-    previous.onUpdateNode === next.onUpdateNode &&
-    previous.onRememberComposerDefaults === next.onRememberComposerDefaults &&
-    previous.onOpenConversationWindow === next.onOpenConversationWindow &&
-    previous.isMaximized === next.isMaximized &&
-    previous.isMuted === next.isMuted &&
-    previous.onMinimize === next.onMinimize &&
-    previous.onToggleMaximize === next.onToggleMaximize &&
-    previous.onShowMessage === next.onShowMessage &&
-    previous.workspaceAgentProbes === next.workspaceAgentProbes &&
-    previous.onAgentProbeDemandChange === next.onAgentProbeDemandChange &&
-    previous.onAgentProbeRefreshRequest === next.onAgentProbeRefreshRequest &&
-    previous.providerAuthAccountLabels === next.providerAuthAccountLabels &&
-    previous.managedAgentsState === next.managedAgentsState &&
-    previous.contextMentionProviders === next.contextMentionProviders &&
-    previous.workspaceAppIcons === next.workspaceAppIcons &&
-    previous.embedded === next.embedded &&
-    previous.previewMode === next.previewMode &&
-    previous.isActive === next.isActive &&
-    previous.composerFocusRequestSequence ===
-      next.composerFocusRequestSequence &&
-    previous.newConversationRequestSequence ===
-      next.newConversationRequestSequence &&
-    previous.openSessionRequest === next.openSessionRequest &&
-    previous.prefillPromptRequest === next.prefillPromptRequest
-  );
-}
+export type { AgentGUINodeProps } from "./AgentGUINode.types";
 
 export const AgentGUINode = memo(function AgentGUINode({
-  nodeId,
-  workspaceId,
-  currentUserId,
-  workspacePath,
-  workspaceFileReferenceAdapter = null,
-  onRequestGitBranches = null,
-  selectProjectDirectory,
-  resolveDroppedFileReferences = null,
-  referenceSourceAggregator = null,
-  resolveWorkspaceReferenceEntryIconUrl,
-  resolveMentionReferenceTarget = null,
-  resolveWorkspaceReferenceInitialTarget = null,
-  agentSettings,
-  title,
+  identity,
+  workspace,
+  frame,
   state,
-  position,
-  width,
-  height,
-  desktopSize,
-  onLinkAction,
-  onHandoffConversation,
-  capabilityMenuState,
-  onCapabilitySettingsRequest,
-  onAgentProviderLogin,
-  accountMenuState = null,
-  agents = [],
-  agentsLoading = false,
-  allAgentsPresentation = null,
-  slashCommandFallbackMode = "provider-default",
-  renderAgentsEmpty,
-  renderAgentUnavailableState,
-  renderAgentReadinessState,
-  onAgentAvailabilityAction,
-  renderSidebarFooter,
-  defaultAgentTargetId = null,
-  onWorkspaceFileReferencesAdded,
-  onOpenConversationWindow,
-  onClose,
-  onResize,
-  onUpdateNode,
-  onRememberComposerDefaults,
-  isMaximized = false,
-  isActive,
-  composerFocusRequestSequence = null,
-  newConversationRequestSequence = null,
-  openSessionRequest = null,
-  prefillPromptRequest = null,
-  isMuted = false,
-  onMinimize,
-  onToggleMaximize,
-  onShowMessage,
-  workspaceAgentProbes,
-  onAgentProbeDemandChange,
-  onAgentProbeRefreshRequest,
-  providerAuthAccountLabels,
-  managedAgentsState,
-  contextMentionProviders,
-  workspaceAppIcons,
-  embedded = false,
-  previewMode = false
+  runtimeRequests,
+  hostCapabilities,
+  hostActions,
+  renderSlots
 }: AgentGUINodeProps): React.JSX.Element {
   "use memo";
+  const { nodeId, workspaceId, currentUserId, title } = identity;
+  const {
+    path: workspacePath,
+    fileReferenceAdapter: workspaceFileReferenceAdapter = null,
+    onRequestGitBranches = null,
+    selectProjectDirectory,
+    resolveDroppedFileReferences = null,
+    referenceSourceAggregator = null,
+    resolveReferenceEntryIconUrl: resolveWorkspaceReferenceEntryIconUrl,
+    resolveMentionReferenceTarget = null,
+    resolveReferenceInitialTarget:
+      resolveWorkspaceReferenceInitialTarget = null,
+    onFileReferencesAdded: onWorkspaceFileReferencesAdded,
+    agentSettings
+  } = workspace;
+  const {
+    position,
+    width,
+    height,
+    desktopSize,
+    isMaximized = false,
+    isActive,
+    embedded = false,
+    previewMode = false
+  } = frame;
+  const {
+    composerFocusSequence: composerFocusRequestSequence = null,
+    newConversationSequence: newConversationRequestSequence = null,
+    openSession: openSessionRequest = null,
+    prefillPrompt: prefillPromptRequest = null,
+    agentProbes: workspaceAgentProbes,
+    onProbeDemandChange: onAgentProbeDemandChange,
+    onProbeRefreshRequest: onAgentProbeRefreshRequest
+  } = runtimeRequests;
+  const {
+    capabilityMenuState,
+    accountMenuState = null,
+    agentTargets,
+    agentTargetsLoading = false,
+    providerRailAllPresentation = null,
+    providerRailMode = "catalog",
+    comingSoonProviders,
+    providerReadinessGates = null,
+    defaultAgentTargetId = null,
+    providerAuthAccountLabels,
+    managedAgentsState,
+    contextMentionProviders,
+    workspaceAppIcons
+  } = hostCapabilities;
+  const {
+    onLinkAction,
+    onHandoffConversation,
+    onCapabilitySettingsRequest,
+    onAgentProviderLogin,
+    onOpenConversationWindow,
+    onClose,
+    onResize,
+    onUpdateNode,
+    onRememberComposerDefaults,
+    isMuted = false,
+    onMinimize,
+    onToggleMaximize,
+    onShowMessage
+  } = hostActions;
+  const {
+    providerRailEmpty: renderProviderRailEmpty,
+    providerUnavailableState: renderProviderUnavailableState,
+    sidebarFooter: renderSidebarFooter
+  } = renderSlots;
   const { i18n, locale, t } = useTranslation();
   const workspaceUserProjectI18n = useMemo(
     () => createWorkspaceUserProjectI18nRuntime(i18n),
@@ -776,85 +141,6 @@ export const AgentGUINode = memo(function AgentGUINode({
         : null,
     [i18n]
   );
-  const normalizedAgents = useMemo(
-    () => normalizeAgentGUIAgents(agents),
-    [agents]
-  );
-  const internalAgentTargets = useMemo(
-    () => projectAgentGUIAgentsToInternalTargets(normalizedAgents),
-    [normalizedAgents]
-  );
-  const agentByTargetId = useMemo(
-    () =>
-      new Map(
-        normalizedAgents.map((agent) => [agent.agentTargetId, agent] as const)
-      ),
-    [normalizedAgents]
-  );
-  const selectedDirectoryAgent = useMemo(
-    () =>
-      resolveAgentGUISelectedDirectoryAgent({
-        agents: normalizedAgents,
-        agentTargetId: state.agentTargetId,
-        defaultAgentTargetId
-      }),
-    [defaultAgentTargetId, normalizedAgents, state.agentTargetId]
-  );
-  const internalProviderReadinessGates = useMemo<
-    Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>>
-  >(() => {
-    if (
-      !selectedDirectoryAgent ||
-      selectedDirectoryAgent.availability.status === "ready"
-    ) {
-      return {};
-    }
-    const agentTargetId = selectedDirectoryAgent.agentTargetId;
-    return {
-      [selectedDirectoryAgent.provider]: {
-        status: selectedDirectoryAgent.availability.status,
-        pendingAction:
-          selectedDirectoryAgent.availability.pendingAction ?? null,
-        onAction: (
-          _provider: AgentGUIProvider,
-          action: AgentGUIAgentAvailabilityAction
-        ) => {
-          onAgentAvailabilityAction?.({ agentTargetId, action });
-        }
-      }
-    };
-  }, [onAgentAvailabilityAction, selectedDirectoryAgent]);
-  const renderInternalAgentUnavailableState = useMemo<
-    AgentGUIProviderUnavailableStateRenderer | undefined
-  >(() => {
-    if (!renderAgentUnavailableState) {
-      return undefined;
-    }
-    return ({ target }) => {
-      const agentTargetId = target.agentTargetId?.trim() || target.targetId;
-      const agent = agentByTargetId.get(agentTargetId);
-      return agent ? renderAgentUnavailableState({ agent }) : null;
-    };
-  }, [agentByTargetId, renderAgentUnavailableState]);
-  const renderInternalAgentReadinessState = useMemo<
-    AgentGUIProviderReadinessGateStateRenderer | undefined
-  >(() => {
-    if (!renderAgentReadinessState || !selectedDirectoryAgent) {
-      return undefined;
-    }
-    return ({ target, showAllProviders }) => {
-      const agentTargetId = target?.agentTargetId?.trim() || target?.targetId;
-      const agent = agentTargetId
-        ? agentByTargetId.get(agentTargetId)
-        : selectedDirectoryAgent;
-      return agent
-        ? renderAgentReadinessState({
-            agent,
-            showAllAgents: showAllProviders
-          })
-        : null;
-    };
-  }, [agentByTargetId, renderAgentReadinessState, selectedDirectoryAgent]);
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
       const agentTargetId = state.agentTargetId?.trim() || null;
@@ -988,10 +274,12 @@ export const AgentGUINode = memo(function AgentGUINode({
     data: state,
     openSessionRequest,
     prefillPromptRequest,
-    agentTargets: internalAgentTargets,
-    agentTargetsLoading: agentsLoading,
-    providerReadinessGates: internalProviderReadinessGates,
-    defaultAgentTargetId: defaultAgentTargetId,
+    agentTargets,
+    agentTargetsLoading,
+    providerRailMode,
+    comingSoonProviders,
+    providerReadinessGates,
+    defaultAgentTargetId,
     previewMode,
     onDataChange: handleDataChange,
     onRememberComposerDefaults,
@@ -1001,13 +289,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     (...args: Parameters<typeof actions.createConversation>) => {
       if (!previewMode) {
         onUpdateNode((current) =>
-          current.lastActiveAgentSessionId === null &&
-          (current.lastActiveConversationTitle ?? null) === null
+          current.lastActiveAgentSessionId === null
             ? current
             : {
                 ...current,
-                lastActiveAgentSessionId: null,
-                lastActiveConversationTitle: null
+                lastActiveAgentSessionId: null
               }
         );
       }
@@ -1025,698 +311,34 @@ export const AgentGUINode = memo(function AgentGUINode({
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
-    viewModel.activeConversation?.provider ?? state.provider;
+    viewModel.rail.activeConversation?.provider ?? state.provider;
   const activeReadinessProvider =
-    viewModel.activeConversationId !== null
+    viewModel.rail.activeConversationId !== null
       ? activeProvider
-      : viewModel.selectedAgentTarget.provider;
+      : viewModel.rail.selectedAgentTarget.provider;
   const selectedAgentTargetLabel =
-    viewModel.selectedAgentTarget?.label ??
+    viewModel.rail.selectedAgentTarget?.label ??
     resolveAgentGUIProviderDisplayLabel(state.provider, fallbackAgentTitle);
-  const displayProviderLabel = viewModel.activeConversation
+  const displayProviderLabel = viewModel.rail.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
-  const activeConversationDockTitle = viewModel.activeConversation
-    ? resolveAgentGUIDockConversationTitle(viewModel.activeConversation)
-    : null;
-  useEffect(() => {
-    if (previewMode || !viewModel.activeConversation) {
-      return;
-    }
-    const conversationTitle = activeConversationDockTitle?.trim() ?? "";
-    if (!conversationTitle) {
-      return;
-    }
-    const conversationId = viewModel.activeConversation.id;
-    if (
-      state.lastActiveAgentSessionId === conversationId &&
-      state.lastActiveConversationTitle === conversationTitle
-    ) {
-      return;
-    }
-    onUpdateNode((current) => {
-      if (
-        current.lastActiveAgentSessionId === conversationId &&
-        current.lastActiveConversationTitle === conversationTitle
-      ) {
-        return current;
-      }
-      return {
-        ...current,
-        lastActiveAgentSessionId: conversationId,
-        lastActiveConversationTitle: conversationTitle
-      };
-    });
-  }, [
-    activeConversationDockTitle,
-    onUpdateNode,
-    previewMode,
-    state.lastActiveAgentSessionId,
-    state.lastActiveConversationTitle,
-    viewModel.activeConversation
-  ]);
-  const labels = useMemo<AgentGUIViewLabels>(
-    () => ({
-      initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
-        provider: displayProviderLabel
-      }),
-      followupPlaceholder: t("agentHost.agentGui.followupPlaceholder", {
-        provider: displayProviderLabel
-      }),
-      installRequiredPlaceholder: t(
-        "agentHost.agentGui.installRequiredPlaceholder",
-        {
-          provider: displayProviderLabel
-        }
-      ),
-      installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
-      providerGateCheckingTitle: t(
-        "agentHost.agentGui.providerGateCheckingTitle"
-      ),
-      providerGateCheckingDescription: t(
-        "agentHost.agentGui.providerGateCheckingDescription",
-        { provider: displayProviderLabel }
-      ),
-      providerGateCheckingAgentsDescription: t(
-        "agentHost.agentGui.providerGateCheckingAgentsDescription"
-      ),
-      providerGateInstallTitle: t(
-        "agentHost.agentGui.providerGateInstallTitle",
-        { provider: displayProviderLabel }
-      ),
-      providerGateInstallDescription: t(
-        "agentHost.agentGui.providerGateInstallDescription",
-        { provider: displayProviderLabel }
-      ),
-      providerGateInstallAction: t(
-        "agentHost.agentGui.providerGateInstallAction"
-      ),
-      providerGateLoginTitle: t("agentHost.agentGui.providerGateLoginTitle", {
-        provider: displayProviderLabel
-      }),
-      providerGateLoginDescription: t(
-        "agentHost.agentGui.providerGateLoginDescription",
-        { provider: displayProviderLabel }
-      ),
-      providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
-      providerGateComingSoonTitle: t(
-        "agentHost.agentGui.providerGateComingSoonTitle",
-        { provider: displayProviderLabel }
-      ),
-      providerGateComingSoonDescription: t(
-        "agentHost.agentGui.providerGateComingSoonDescription",
-        { provider: displayProviderLabel }
-      ),
-      providerGateComingSoonAction: t(
-        "agentHost.agentGui.providerGateComingSoonAction"
-      ),
-      providerGateUnavailableTitle: t(
-        "agentHost.agentGui.providerGateUnavailableTitle",
-        { provider: displayProviderLabel }
-      ),
-      providerGateUnavailableDescription: t(
-        "agentHost.agentGui.providerGateUnavailableDescription",
-        { provider: displayProviderLabel }
-      ),
-      providerGateRetryAction: t("agentHost.agentGui.providerGateRetryAction"),
-      providerGatePendingInstall: t(
-        "agentHost.agentGui.providerGatePendingInstall"
-      ),
-      providerGatePendingLogin: t(
-        "agentHost.agentGui.providerGatePendingLogin"
-      ),
-      providerGatePendingRefresh: t(
-        "agentHost.agentGui.providerGatePendingRefresh"
-      ),
-      collaboratorSessionReadOnlyPlaceholder: t(
-        "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder"
-      ),
-      send: t("agentHost.agentGui.send"),
-      modelLabel: t("agentHost.agentGui.modelLabel"),
-      modelSelectionLabel: t("agentHost.agentGui.modelSelectionLabel"),
-      modelContextWindowSuffix: t(
-        "agentHost.agentGui.modelContextWindowSuffix"
-      ),
-      modelTooltipVersionLabel: t(
-        "agentHost.agentGui.modelTooltipVersionLabel"
-      ),
-      defaultModel: t("agentHost.agentGui.defaultModel"),
-      loadingOptions: t("agentHost.agentGui.loadingOptions"),
-      inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
-      reasoningLabel: t("agentHost.agentGui.reasoningLabel"),
-      reasoningDegreeLabel: t("agentHost.agentGui.reasoningDegreeLabel"),
-      reasoningOptionDefault: t("agentHost.agentGui.reasoningOptionDefault"),
-      reasoningOptionMinimal: t("agentHost.agentGui.reasoningOptionMinimal"),
-      reasoningOptionLow: t("agentHost.agentGui.reasoningOptionLow"),
-      reasoningOptionMedium: t("agentHost.agentGui.reasoningOptionMedium"),
-      reasoningOptionHigh: t("agentHost.agentGui.reasoningOptionHigh"),
-      reasoningOptionXHigh: t("agentHost.agentGui.reasoningOptionXHigh"),
-      reasoningOptionMax: t("agentHost.agentGui.reasoningOptionMax"),
-      reasoningOptionUltra: t("agentHost.agentGui.reasoningOptionUltra"),
-      speedLabel: t("agentHost.agentGui.speedLabel"),
-      speedSelectionLabel: t("agentHost.agentGui.speedSelectionLabel"),
-      speedOptionStandard: t("agentHost.agentGui.speedOptionStandard"),
-      speedOptionStandardDescription: t(
-        "agentHost.agentGui.speedOptionStandardDescription"
-      ),
-      speedOptionFast: t("agentHost.agentGui.speedOptionFast"),
-      speedOptionFastDescription: t(
-        "agentHost.agentGui.speedOptionFastDescription"
-      ),
-      permissionLabel: t("agentHost.agentGui.permissionLabel"),
-      permissionModeReadOnly: t("agentHost.agentGui.permissionModeReadOnly"),
-      permissionModeAuto: t("agentHost.agentGui.permissionModeAuto"),
-      permissionModeFullAccess: t(
-        "agentHost.agentGui.permissionModeFullAccess"
-      ),
-      modelDescriptions: {
-        frontierComplexCoding: t(
-          "agentHost.agentGui.modelDescriptions.frontierComplexCoding"
-        ),
-        everydayCoding: t(
-          "agentHost.agentGui.modelDescriptions.everydayCoding"
-        ),
-        smallFastCostEfficient: t(
-          "agentHost.agentGui.modelDescriptions.smallFastCostEfficient"
-        ),
-        codingOptimized: t(
-          "agentHost.agentGui.modelDescriptions.codingOptimized"
-        ),
-        ultraFastCoding: t(
-          "agentHost.agentGui.modelDescriptions.ultraFastCoding"
-        ),
-        professionalLongRunning: t(
-          "agentHost.agentGui.modelDescriptions.professionalLongRunning"
-        )
-      },
-      planModeLabel: t("agentHost.agentGui.planModeLabel"),
-      planModeOnLabel: t("agentHost.agentGui.planModeOnLabel"),
-      planModeOffLabel: t("agentHost.agentGui.planModeOffLabel"),
-      planUnavailable: t("agentHost.agentGui.planUnavailable"),
-      queuedLabel: t("agentHost.agentGui.queuedLabel"),
-      sendQueuedPromptNext: t("agentHost.agentGui.sendQueuedPromptNext"),
-      editQueuedPrompt: t("agentHost.agentGui.editQueuedPrompt"),
-      deleteQueuedPrompt: t("agentHost.agentGui.deleteQueuedPrompt"),
-      queuedPromptMoreActions: t("agentHost.agentGui.queuedPromptMoreActions"),
-      stop: t("agentHost.agentGui.stop"),
-      stopping: t("agentHost.agentGui.stopping"),
-      slashStatusTitle: t("agentHost.agentGui.slashStatusTitle"),
-      slashStatusSession: t("agentHost.agentGui.slashStatusSession"),
-      slashStatusBaseUrl: t("agentHost.agentGui.slashStatusBaseUrl"),
-      slashStatusContext: t("agentHost.agentGui.slashStatusContext"),
-      slashStatusLimits: t("agentHost.agentGui.slashStatusLimits"),
-      slashStatusAccount: t("agentHost.agentGui.slashStatusAccount"),
-      slashStatusClose: t("agentHost.agentGui.slashStatusClose"),
-      slashStatusContextValue: (input: {
-        percentLeft: number;
-        usedTokens: string;
-        totalTokens: string;
-      }) =>
-        t("agentHost.agentGui.slashStatusContextValue", {
-          percentLeft: input.percentLeft,
-          usedTokens: input.usedTokens,
-          totalTokens: input.totalTokens
-        }),
-      slashStatusContextUnavailable: t(
-        "agentHost.agentGui.slashStatusContextUnavailable"
-      ),
-      slashStatusLimitsUnavailable: t(
-        "agentHost.agentGui.slashStatusLimitsUnavailable"
-      ),
-      slashStatusUsageJustUpdated: t(
-        "agentHost.agentGui.slashStatusUsageJustUpdated"
-      ),
-      slashStatusUsageMinutesAgo: (count: number) =>
-        t("agentHost.agentGui.slashStatusUsageMinutesAgo", { count }),
-      slashStatusUsageHoursAgo: (count: number) =>
-        t("agentHost.agentGui.slashStatusUsageHoursAgo", { count }),
-      slashStatusUsageUpdating: t(
-        "agentHost.agentGui.slashStatusUsageUpdating"
-      ),
-      slashStatusUsageRefreshFailed: t(
-        "agentHost.agentGui.slashStatusUsageRefreshFailed"
-      ),
-      slashStatusUsageRefreshAria: t(
-        "agentHost.agentGui.slashStatusUsageRefreshAria"
-      ),
-      usageChipLabel: (input: { percent: number }) =>
-        t("agentHost.agentGui.usageChipLabel", { percent: input.percent }),
-      usageTooltipLabel: t("agentHost.agentGui.usageTooltipLabel"),
-      usagePopoverTitle: t("agentHost.agentGui.usagePopoverTitle"),
-      usageContextWindowLabel: t("agentHost.agentGui.usageContextWindowLabel"),
-      usageTokensLabel: t("agentHost.agentGui.usageTokensLabel"),
-      usageLimitsLabel: t("agentHost.agentGui.usageLimitsLabel"),
-      usageCompactAction: t("agentHost.agentGui.usageCompactAction"),
-      planImplementationLead: t("agentHost.agentGui.planImplementationLead"),
-      planImplementationConfirm: t(
-        "agentHost.agentGui.planImplementationConfirm"
-      ),
-      planImplementationFeedbackPlaceholder: t(
-        "agentHost.agentGui.planImplementationFeedbackPlaceholder"
-      ),
-      planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
-      planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
-      noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
-      agentsEmpty: t("agentHost.agentGui.agentsEmpty"),
-      empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
-      homeSuggestions: buildAgentHomeSuggestions(
-        t,
-        workspaceId,
-        workspaceAppIcons ?? []
-      ),
-      homeSuggestionsClose: t("agentHost.agentGui.homeSuggestionsClose"),
-      emptyForProvider: (provider: string) =>
-        t("agentHost.agentGui.empty", {
-          provider: resolveAgentGUIProviderDisplayLabel(
-            provider,
-            fallbackAgentTitle
-          )
-        }),
-      emptyProvider: displayProviderLabel,
-      emptyProviderForProvider: (provider: string) =>
-        resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
-      conversations: t("agentHost.agentGui.conversations"),
-      newConversation: t("agentHost.agentGui.newConversation"),
-      accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
-      accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
-      accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),
-      accountMenuCreditsBalance: t(
-        "agentHost.agentGui.accountMenuCreditsBalance"
-      ),
-      accountMenuAccountCenter: t(
-        "agentHost.agentGui.accountMenuAccountCenter"
-      ),
-      accountMenuSettings: t("agentHost.agentGui.accountMenuSettings"),
-      accountMenuFree: t("agentHost.agentGui.accountMenuFree"),
-      accountMenuSignIn: t("agentHost.agentGui.accountMenuSignIn"),
-      accountMenuSignOut: t("agentHost.agentGui.accountMenuSignOut"),
-      accountMenuLoading: t("agentHost.agentGui.accountMenuLoading"),
-      accountMenuUnavailable: t("agentHost.agentGui.accountMenuUnavailable"),
-      accountMenuDataUnavailable: t(
-        "agentHost.agentGui.accountMenuDataUnavailable"
-      ),
-      accountRewardToastTitle: t("agentHost.agentGui.accountRewardToastTitle"),
-      accountRewardToastCreditsUnit: t(
-        "agentHost.agentGui.accountRewardToastCreditsUnit"
-      ),
-      accountRewardToastDescription: t(
-        "agentHost.agentGui.accountRewardToastDescription"
-      ),
-      accountRewardToastClose: t("agentHost.agentGui.accountRewardToastClose"),
-      agentConfig: t("agentHost.agentGui.agentConfig"),
-      agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
-      agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
-      noConversations: t("agentHost.agentGui.noConversations"),
-      emptyProjectConversations: t(
-        "agentHost.agentGui.emptyProjectConversations"
-      ),
-      conversationFilterAll: t("agentHost.agentGui.conversationFilterAll"),
-      conversationFilterCodex: t("agentHost.agentGui.conversationFilterCodex"),
-      conversationFilterClaudeCode: t(
-        "agentHost.agentGui.conversationFilterClaudeCode"
-      ),
-      conversationFilterTutti: t("agentHost.agentGui.conversationFilterTutti"),
-      providerSwitchLabel: t("agentHost.agentGui.providerSwitchLabel"),
-      startConversation: t("agentHost.agentGui.startConversation"),
-      selectConversation: t("agentHost.agentGui.selectConversation"),
-      loadingConversations: t("agentHost.agentGui.loadingConversations"),
-      loadingConversation: t("agentHost.agentGui.loadingConversation"),
-      scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
-      searchNoConversations: t("agentHost.agentGui.searchNoConversations"),
-      conversationUnavailable: t("agentHost.agentGui.conversationUnavailable"),
-      fallbackAgentTitle,
-      searchPlaceholder: t("agentHost.agentGui.searchPlaceholder"),
-      sectionPinned: t("agentHost.agentGui.sectionPinned"),
-      sectionConversations: t("agentHost.agentGui.sectionConversations"),
-      sectionToday: t("agentHost.agentGui.sectionToday"),
-      sectionYesterday: t("agentHost.agentGui.sectionYesterday"),
-      sectionEarlier: t("agentHost.agentGui.sectionEarlier"),
-      projectSectionEdit: t("agentHost.agentGui.projectSectionEdit"),
-      projectSectionMoreActions: t(
-        "agentHost.agentGui.projectSectionMoreActions"
-      ),
-      projectSectionViewFiles: t("agentHost.agentGui.projectSectionViewFiles"),
-      projectRailCreateProject: t(
-        "agentHost.agentGui.projectRailCreateProject"
-      ),
-      projectRailLinkExistingProject: t(
-        "agentHost.agentGui.projectRailLinkExistingProject"
-      ),
-      removeProject: t("agentHost.agentGui.removeProject"),
-      removeProjectConfirmDescription: (projectLabel: string) =>
-        t("agentHost.agentGui.removeProjectConfirmDescription", {
-          project: projectLabel
-        }),
-      removeProjectConfirmTitle: t(
-        "agentHost.agentGui.removeProjectConfirmTitle"
-      ),
-      batchDeleteProjectSessions: t(
-        "agentHost.agentGui.batchDeleteProjectSessions"
-      ),
-      batchDeleteProjectSessionsTitle: t(
-        "agentHost.agentGui.batchDeleteProjectSessionsTitle"
-      ),
-      batchDeleteProjectSessionsBody: (count: number, project: string) =>
-        t("agentHost.agentGui.batchDeleteProjectSessionsBody", {
-          count,
-          project
-        }),
-      batchDeleteProjectSessionsConfirm: t(
-        "agentHost.agentGui.batchDeleteProjectSessionsConfirm"
-      ),
-      conversationsSectionMoreActions: t(
-        "agentHost.agentGui.conversationsSectionMoreActions"
-      ),
-      batchDeleteConversations: t(
-        "agentHost.agentGui.batchDeleteConversations"
-      ),
-      batchDeleteConversationsTitle: t(
-        "agentHost.agentGui.batchDeleteConversationsTitle"
-      ),
-      batchDeleteConversationsBody: (count: number) =>
-        t("agentHost.agentGui.batchDeleteConversationsBody", {
-          count
-        }),
-      batchDeleteConversationsConfirm: t(
-        "agentHost.agentGui.batchDeleteConversationsConfirm"
-      ),
-      approvalRequired: t("agentHost.agentGui.approvalRequired", {
-        provider: displayProviderLabel
-      }),
-      approvalUnavailable: t("agentHost.agentGui.approvalUnavailable"),
-      authRequired: t("agentHost.agentGui.authRequired"),
-      authLogin: t("agentHost.agentGui.authLogin"),
-      activatingSession: t("agentHost.agentGui.activatingSession"),
-      cancellingSession: t("agentHost.agentGui.cancellingSession"),
-      retryActivation: t("agentHost.agentGui.retryActivation"),
-      continueInNewConversation: t(
-        "agentHost.agentGui.continueInNewConversation"
-      ),
-      goalLabel: t("agentHost.agentGui.goalLabel"),
-      goalTitleActive: t("agentHost.agentGui.goalTitleActive"),
-      goalTitlePaused: t("agentHost.agentGui.goalTitlePaused"),
-      goalTitleBlocked: t("agentHost.agentGui.goalTitleBlocked"),
-      goalTitleUsageLimited: t("agentHost.agentGui.goalTitleUsageLimited"),
-      goalTitleBudgetLimited: t("agentHost.agentGui.goalTitleBudgetLimited"),
-      goalTitleComplete: t("agentHost.agentGui.goalTitleComplete"),
-      goalBudgetUsage: (used: number, budget: number) =>
-        t("agentHost.agentGui.goalBudgetUsage", { used, budget }),
-      goalClearHint: t("agentHost.agentGui.goalClearHint"),
-      goalEditAction: t("agentHost.agentGui.goalEditAction"),
-      goalPauseAction: t("agentHost.agentGui.goalPauseAction"),
-      goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
-      goalClearAction: t("agentHost.agentGui.goalClearAction"),
-      processing: t("agentHost.agentGui.processing"),
-      turnSummary: t("agentHost.agentGui.turnSummary"),
-      userMessageLocator: t("agentHost.agentGui.userMessageLocator"),
-      planLead: t("agentHost.agentGui.planLead"),
-      planModes: [
-        {
-          id: "acceptEdits",
-          label: t("agentHost.agentGui.planModes.acceptEdits.label"),
-          description: t("agentHost.agentGui.planModes.acceptEdits.description")
-        },
-        {
-          id: "default",
-          label: t("agentHost.agentGui.planModes.askFirst.label"),
-          description: t("agentHost.agentGui.planModes.askFirst.description")
-        },
-        {
-          id: "bypassPermissions",
-          label: t("agentHost.agentGui.planModes.allowAll.label"),
-          description: t("agentHost.agentGui.planModes.allowAll.description")
-        },
-        {
-          id: "auto",
-          label: t("agentHost.agentGui.planModes.auto.label"),
-          description: t("agentHost.agentGui.planModes.auto.description")
-        }
-      ],
-      stayInPlan: t("agentHost.agentGui.stayInPlan"),
-      sendFeedback: t("agentHost.agentGui.sendFeedback"),
-      feedbackPlaceholder: t("agentHost.agentGui.feedbackPlaceholder"),
-      previousQuestion: t("agentHost.agentGui.previousQuestion"),
-      nextQuestion: t("agentHost.agentGui.nextQuestion"),
-      submitAnswers: t("agentHost.agentGui.submitAnswers"),
-      answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
-      waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
-      waitingForBackgroundAgent: (count: number) => {
-        const pluralKey =
-          count === 1
-            ? "agentHost.agentGui.waitingForBackgroundAgent_one"
-            : "agentHost.agentGui.waitingForBackgroundAgent_other";
-        return t(pluralKey, { count });
-      },
-      thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
-      toolCallsLabel: (count: number) =>
-        t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),
-      openConversationWindow: t("agentHost.agentGui.openConversationWindow"),
-      showMoreConversations: t("agentHost.agentGui.showMoreConversations"),
-      showLessConversations: t("agentHost.agentGui.showLessConversations"),
-      deleteSession: t("agentHost.agentGui.deleteSession"),
-      pinSession: t("agentHost.agentGui.pinSession"),
-      copySessionLink: t("agentHost.agentGui.copySessionLink"),
-      renameSession: t("agentHost.agentGui.renameSession"),
-      renameSessionTitle: t("agentHost.agentGui.renameSessionTitle"),
-      renameSessionDescription: t(
-        "agentHost.agentGui.renameSessionDescription"
-      ),
-      renameSessionPlaceholder: t(
-        "agentHost.agentGui.renameSessionPlaceholder"
-      ),
-      renameSessionSave: t("agentHost.agentGui.renameSessionSave"),
-      unpinSession: t("agentHost.agentGui.unpinSession"),
-      markSessionUnread: t("agentHost.agentGui.markSessionUnread"),
-      deleteSessionTitle: t("agentHost.agentGui.deleteSessionTitle"),
-      deleteSessionBody: t("agentHost.agentGui.deleteSessionBody"),
-      deleteSessionConfirm: t("agentHost.agentGui.deleteSessionConfirm"),
-      conversationRailResizeAria: t(
-        "agentHost.agentGui.conversationRailResizeAria"
-      ),
-      relativeTimeJustNow: t("agentHost.agentGui.relativeTimeJustNow"),
-      relativeTimeMinutes: (count: number) =>
-        t("agentHost.agentGui.relativeTimeMinutes", { count }),
-      relativeTimeHours: (count: number) =>
-        t("agentHost.agentGui.relativeTimeHours", { count }),
-      relativeTimeDays: (count: number) =>
-        t("agentHost.agentGui.relativeTimeDays", { count }),
-      relativeTimeMonths: (count: number) =>
-        t("agentHost.agentGui.relativeTimeMonths", { count }),
-      relativeTimeYears: (count: number) =>
-        t("agentHost.agentGui.relativeTimeYears", { count }),
-      syncPending: t("agentHost.agentGui.syncPending"),
-      syncSynced: t("agentHost.agentGui.syncSynced"),
-      syncFailed: t("agentHost.agentGui.syncFailed"),
-      projectLocked: t("agentHost.agentGui.projectLocked"),
-      projectMissingDescription: t(
-        "agentHost.agentGui.projectMissingDescription"
-      ),
-      openclawGatewayStarting: t("agentHost.agentGui.openclawGatewayStarting"),
-      openclawGatewayFailed: t("agentHost.agentGui.openclawGatewayFailed"),
-      openclawGatewayRetry: t("agentHost.agentGui.openclawGatewayRetry"),
-      promptTipsPrefix: t("agentHost.agentGui.promptTipsPrefix"),
-      reviewPicker: {
-        title: t("agentHost.agentGui.reviewPicker.title"),
-        targetLabel: t("agentHost.agentGui.reviewPicker.targetLabel"),
-        searchPlaceholder: t(
-          "agentHost.agentGui.reviewPicker.searchPlaceholder"
-        ),
-        noResults: t("agentHost.agentGui.reviewPicker.noResults"),
-        uncommitted: t("agentHost.agentGui.reviewPicker.uncommitted"),
-        baseBranch: t("agentHost.agentGui.reviewPicker.baseBranch"),
-        commit: t("agentHost.agentGui.reviewPicker.commit"),
-        custom: t("agentHost.agentGui.reviewPicker.custom"),
-        branchLabel: t("agentHost.agentGui.reviewPicker.branchLabel"),
-        branchPlaceholder: t(
-          "agentHost.agentGui.reviewPicker.branchPlaceholder"
-        ),
-        branchLoading: t("agentHost.agentGui.reviewPicker.branchLoading"),
-        branchEmpty: t("agentHost.agentGui.reviewPicker.branchEmpty"),
-        commitPlaceholder: t(
-          "agentHost.agentGui.reviewPicker.commitPlaceholder"
-        ),
-        customPlaceholder: t(
-          "agentHost.agentGui.reviewPicker.customPlaceholder"
-        ),
-        submit: t("agentHost.agentGui.reviewPicker.submit"),
-        cancel: t("agentHost.agentGui.reviewPicker.cancel")
-      },
-      promptTips: [
-        {
-          id: "set-workspace",
-          label: t("agentHost.agentGui.promptTips.setWorkspace.label"),
-          prompt: t("agentHost.agentGui.promptTips.setWorkspace.prompt")
-        },
-        {
-          id: "use-issue",
-          label: t("agentHost.agentGui.promptTips.useIssue.label"),
-          prompt: t("agentHost.agentGui.promptTips.useIssue.prompt")
-        },
-        {
-          id: "map-current-state",
-          label: t("agentHost.agentGui.promptTips.mapCurrentState.label"),
-          prompt: t("agentHost.agentGui.promptTips.mapCurrentState.prompt")
-        },
-        {
-          id: "continue-recent-session",
-          label: t("agentHost.agentGui.promptTips.continueRecentSession.label"),
-          prompt: t(
-            "agentHost.agentGui.promptTips.continueRecentSession.prompt"
-          )
-        },
-        {
-          id: "reference-other-agents",
-          label: t("agentHost.agentGui.promptTips.referenceOtherAgents.label"),
-          prompt: t("agentHost.agentGui.promptTips.referenceOtherAgents.prompt")
-        },
-        {
-          id: "control-permissions",
-          label: t("agentHost.agentGui.promptTips.controlPermissions.label"),
-          prompt: t("agentHost.agentGui.promptTips.controlPermissions.prompt")
-        }
-      ],
-      cancel: t("common.cancel"),
-      slashCommandPalette: t("agentHost.agentGui.slashCommandPalette"),
-      skillPickerPalette: t("agentHost.agentGui.skillPickerPalette"),
-      slashPaletteCommandsGroup: t(
-        "agentHost.agentGui.slashPaletteCommandsGroup"
-      ),
-      slashPaletteCapabilitiesGroup: t(
-        "agentHost.agentGui.slashPaletteCapabilitiesGroup"
-      ),
-      slashPaletteSkillsGroup: t("agentHost.agentGui.slashPaletteSkillsGroup"),
-      slashPalettePluginsGroup: t(
-        "agentHost.agentGui.slashPalettePluginsGroup"
-      ),
-      slashPaletteConnectorsGroup: t(
-        "agentHost.agentGui.slashPaletteConnectorsGroup"
-      ),
-      slashPaletteMcpGroup: t("agentHost.agentGui.slashPaletteMcpGroup"),
-      slashCommandCompactLabel: t(
-        "agentHost.agentGui.slashCommandCompactLabel"
-      ),
-      slashCommandContextLabel: t(
-        "agentHost.agentGui.slashCommandContextLabel"
-      ),
-      slashCommandFastLabel: t("agentHost.agentGui.slashCommandFastLabel"),
-      slashCommandGoalLabel: t("agentHost.agentGui.slashCommandGoalLabel"),
-      slashCommandInitLabel: t("agentHost.agentGui.slashCommandInitLabel"),
-      slashCommandPlanLabel: t("agentHost.agentGui.slashCommandPlanLabel"),
-      slashCommandReviewLabel: t("agentHost.agentGui.slashCommandReviewLabel"),
-      slashCommandStatusLabel: t("agentHost.agentGui.slashCommandStatusLabel"),
-      slashCommandUsageLabel: t("agentHost.agentGui.slashCommandUsageLabel"),
-      slashCommandCompactDescription: t(
-        "agentHost.agentGui.slashCommandCompactDescription"
-      ),
-      slashCommandContextDescription: t(
-        "agentHost.agentGui.slashCommandContextDescription"
-      ),
-      slashCommandFastDescription: t(
-        "agentHost.agentGui.slashCommandFastDescription"
-      ),
-      slashCommandGoalDescription: t(
-        "agentHost.agentGui.slashCommandGoalDescription"
-      ),
-      slashCommandInitDescription: t(
-        "agentHost.agentGui.slashCommandInitDescription"
-      ),
-      slashCommandPlanDescription: t(
-        "agentHost.agentGui.slashCommandPlanDescription"
-      ),
-      slashCommandReviewDescription: t(
-        "agentHost.agentGui.slashCommandReviewDescription"
-      ),
-      slashCommandStatusDescription: t(
-        "agentHost.agentGui.slashCommandStatusDescription"
-      ),
-      slashCommandUsageDescription: t(
-        "agentHost.agentGui.slashCommandUsageDescription"
-      ),
-      browserUseCapabilityLabel: t(
-        "agentHost.agentGui.browserUseCapabilityLabel"
-      ),
-      browserUseCapabilityDescription: t(
-        "agentHost.agentGui.browserUseCapabilityDescription"
-      ),
-      browserUseCapabilityDescriptionAutoConnect: t(
-        "agentHost.agentGui.browserUseCapabilityDescriptionAutoConnect"
-      ),
-      browserUseCapabilityDescriptionIsolated: t(
-        "agentHost.agentGui.browserUseCapabilityDescriptionIsolated"
-      ),
-      browserUseCapabilitySettingsLabel: t(
-        "agentHost.agentGui.browserUseCapabilitySettingsLabel"
-      ),
-      browserUseCapabilitySettingsDescription: t(
-        "agentHost.agentGui.browserUseCapabilitySettingsDescription"
-      ),
-      capabilityInlineSettingsLabel: t(
-        "agentHost.agentGui.capabilityInlineSettingsLabel"
-      ),
-      computerUseCapabilityLabel: t(
-        "agentHost.agentGui.computerUseCapabilityLabel"
-      ),
-      computerUseCapabilityDescription: t(
-        "agentHost.agentGui.computerUseCapabilityDescription"
-      ),
-      computerUseCapabilitySetupRequiredDescription: t(
-        "agentHost.agentGui.computerUseCapabilitySetupRequiredDescription"
-      ),
-      computerUseCapabilityAuthorizationRequiredDescription: t(
-        "agentHost.agentGui.computerUseCapabilityAuthorizationRequiredDescription"
-      ),
-      computerUseCapabilityAuthorizationUnknownDescription: t(
-        "agentHost.agentGui.computerUseCapabilityAuthorizationUnknownDescription"
-      ),
-      computerUseCapabilitySettingsLabel: t(
-        "agentHost.agentGui.computerUseCapabilitySettingsLabel"
-      ),
-      computerUseCapabilitySettingsDescription: t(
-        "agentHost.agentGui.computerUseCapabilitySettingsDescription"
-      ),
-      fileMentionPalette: t("agentHost.agentGui.fileMentionPalette"),
-      fileMentionLoading: t("agentHost.agentGui.fileMentionLoading"),
-      fileMentionEmpty: t("agentHost.agentGui.fileMentionEmpty"),
-      fileMentionError: t("agentHost.agentGui.fileMentionError"),
-      fileMentionTabHint: t("agentHost.agentGui.fileMentionTabHint"),
-      fileDropHint: t("agentHost.agentGui.fileDropHint"),
-      mentionPalette: t("agentHost.agentGui.mentionPalette"),
-      removeMention: t("common.remove"),
-      addReference: t("agentHost.agentGui.addReference"),
-      addContent: t("agentHost.agentGui.addContent"),
-      referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
-      handoffConversation: t("agentHost.agentGui.handoffConversation"),
-      handoffConversationTooltip: t(
-        "agentHost.agentGui.handoffConversationTooltip"
-      ),
-      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
-    }),
-    [
-      displayProviderLabel,
-      fallbackAgentTitle,
-      t,
-      workspaceId,
-      workspaceAppIcons
-    ]
-  );
-  const workspaceFileReferenceCopy = useMemo<WorkspaceFileReferenceCopy>(
-    () => ({
-      t(key, values) {
-        const localeKey = workspaceFileReferenceLocaleKeyByPickerKey[key];
-        return localeKey ? t(localeKey, values) : key;
-      }
-    }),
-    [t]
-  );
+  const labels = useAgentGUIViewLabels({
+    displayProviderLabel,
+    fallbackAgentTitle,
+    t,
+    workspaceAppIcons: workspaceAppIcons ?? [],
+    workspaceId
+  });
+  const workspaceFileReferenceCopy = useAgentGUIWorkspaceFileReferenceCopy(t);
   const windowTitle = title;
   const activeProbeProvider = activeProvider as AgentProvider;
   const railStatusProvider = useMemo(
     () =>
       resolveAgentGUIRailStatusProvider({
-        conversationFilter: viewModel.conversationFilter,
-        agentTargets: viewModel.agentTargets
+        conversationFilter: viewModel.rail.conversationFilter,
+        agentTargets: viewModel.rail.agentTargets
       }),
-    [viewModel.conversationFilter, viewModel.agentTargets]
+    [viewModel.rail.conversationFilter, viewModel.rail.agentTargets]
   );
   const activeAgentProbe = useMemo(
     () =>
@@ -1753,30 +375,23 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
-  const runtimeSlashStatusQuotas = useMemo(
-    () =>
-      slashStatusQuotasFromRuntimeUsage(
-        viewModel.sessionChrome.rawState?.runtimeContext?.usage
-      ),
-    [viewModel.sessionChrome.rawState?.runtimeContext?.usage]
-  );
   const slashStatusQuotaSource =
     activeAgentProbe?.usage?.quotas && activeAgentProbe.usage.quotas.length > 0
       ? activeAgentProbe.usage.quotas
-      : runtimeSlashStatusQuotas;
+      : [];
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
         slashStatusQuotaSource,
-        viewModel.composerSettings.selectedModelValue ??
-          viewModel.composerSettings.draftSettings.model,
+        viewModel.composer.composerSettings.selectedModelValue ??
+          viewModel.composer.composerSettings.draftSettings.model,
         t
       ),
     [
       slashStatusQuotaSource,
       t,
-      viewModel.composerSettings.draftSettings.model,
-      viewModel.composerSettings.selectedModelValue
+      viewModel.composer.composerSettings.draftSettings.model,
+      viewModel.composer.composerSettings.selectedModelValue
     ]
   );
   const railSlashStatusQuotaSource =
@@ -1977,11 +592,9 @@ export const AgentGUINode = memo(function AgentGUINode({
           <AgentGUINodeView
             viewModel={viewModel}
             renderSidebarFooter={renderSidebarFooter}
-            renderProviderRailEmpty={renderAgentsEmpty}
-            renderProviderUnavailableState={renderInternalAgentUnavailableState}
-            renderProviderReadinessGateState={renderInternalAgentReadinessState}
-            providerRailAllPresentation={allAgentsPresentation}
-            slashCommandFallbackMode={slashCommandFallbackMode}
+            renderProviderRailEmpty={renderProviderRailEmpty}
+            renderProviderUnavailableState={renderProviderUnavailableState}
+            providerRailAllPresentation={providerRailAllPresentation}
             actions={viewActions}
             isActive={isActive}
             composerFocusRequestSequence={composerFocusRequestSequence}

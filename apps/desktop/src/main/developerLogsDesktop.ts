@@ -1,5 +1,6 @@
 import { app } from "electron";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type { ExportDeveloperLogsResult } from "../shared/contracts/ipc.ts";
 import {
   createDeveloperLogsService,
@@ -92,9 +93,8 @@ async function listDeveloperLogsAgentSessions(
   const sessions = sessionPages.flatMap((page) =>
     page.sessions.flatMap((session) => {
       if (
-        session.provider !== "codex" &&
-        session.provider !== "claude-code" &&
-        session.provider !== "cursor"
+        resolveAgentGUIProviderCatalogIdentity(session.provider)?.desktop
+          .developerLogs !== true
       ) {
         return [];
       }
@@ -105,12 +105,11 @@ async function listDeveloperLogsAgentSessions(
       return [
         {
           agentSessionID: session.id,
-          provider: session.provider,
+          provider:
+            session.provider as DeveloperLogsAgentSessionRecord["provider"],
           providerSessionID,
           session,
-          updatedAtUnixMS: unixMSFromDateTime(
-            session.updatedAt ?? session.createdAt
-          ),
+          updatedAtUnixMS: session.updatedAtUnixMs,
           workspaceID: page.workspaceId
         }
       ];
@@ -217,9 +216,4 @@ function selectRecentAgentSessionsByProvider(
       )
       .slice(0, 10)
   );
-}
-
-function unixMSFromDateTime(value: string): number {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
 }

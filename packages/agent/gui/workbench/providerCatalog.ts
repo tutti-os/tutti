@@ -1,4 +1,5 @@
 import type { AgentGuiWorkbenchProvider } from "./types.ts";
+import { resolveAgentGUIProviderCatalogIdentity } from "../providerIdentityCatalog.ts";
 
 export const agentGuiWorkbenchProviders = [
   "claude-code",
@@ -35,20 +36,20 @@ const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
 );
 const enabledWorkbenchProviderSet = new Set<string>(agentGuiWorkbenchProviders);
 
-// i18n-check-ignore: provider brand names.
-export const agentGuiWorkbenchProviderLabels: Record<
-  AgentGuiWorkbenchProvider,
-  string
-> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-  hermes: "Hermes Agent",
-  nexight: "Nexight",
-  openclaw: "OpenClaw",
-  opencode: "Open Code",
-  "tutti-agent": "Tutti Agent"
-};
+const agentGuiWorkbenchLabelProviders = [
+  ...agentGuiWorkbenchProviders,
+  "nexight"
+] as const satisfies readonly AgentGuiWorkbenchProvider[];
+
+export const agentGuiWorkbenchProviderLabels = Object.fromEntries(
+  agentGuiWorkbenchLabelProviders.map((provider) => {
+    const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+    if (!identity) {
+      throw new Error(`Missing workbench provider identity for ${provider}`);
+    }
+    return [provider, identity.displayName];
+  })
+) as Record<AgentGuiWorkbenchProvider, string>;
 
 export function resolveAgentGuiWorkbenchProviderLabel(
   provider: AgentGuiWorkbenchProvider

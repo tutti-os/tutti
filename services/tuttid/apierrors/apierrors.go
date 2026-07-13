@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -28,6 +29,7 @@ const (
 const (
 	ReasonEmptyBody                                      = "empty_body"
 	ReasonEntryAlreadyExists                             = "entry_already_exists"
+	ReasonAgentSubmitDeliveryUnknown                     = "agent_submit_delivery_unknown"
 	ReasonEventStreamServiceUnavailable                  = "event_stream_service_unavailable"
 	ReasonInvalidEntryKind                               = "invalid_entry_kind"
 	ReasonInvalidPath                                    = "invalid_path"
@@ -73,6 +75,8 @@ const (
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
+	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
+	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
 	ReasonWorkspaceAppNotFound                           = "workspace_app_not_found"
 	ReasonWorkspaceAppDeleteForbidden                    = "workspace_app_delete_forbidden"
 	ReasonWorkspaceAppIconInvalid                        = "workspace_app_icon_invalid"
@@ -295,6 +299,14 @@ func Classify(err error) *ProtocolError {
 	if errors.As(err, &protocolErr) {
 		return protocolErr
 	}
+	var runtimeAppErr *agentruntime.AppError
+	if errors.As(err, &runtimeAppErr) {
+		reason := strings.TrimSpace(runtimeAppErr.Code)
+		if reason == "" {
+			reason = ReasonWorkspaceOperationFailed
+		}
+		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, reason, WithCause(err))
+	}
 	var providerUnavailableErr *agentservice.ProviderUnavailableError
 	if errors.As(err, &providerUnavailableErr) {
 		return AgentProviderUnavailable(providerUnavailableErr)
@@ -311,6 +323,8 @@ func Classify(err error) *ProtocolError {
 		return InvalidRequest("agent.invalid_model", WithCause(err), WithParams(params))
 	}
 	switch {
+	case errors.Is(err, agentservice.ErrSubmitDeliveryUnknown):
+		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonAgentSubmitDeliveryUnknown, WithCause(err))
 	case errors.Is(err, workspacedata.ErrWorkspaceNotFound):
 		return WorkspaceNotFound(ReasonWorkspaceNotFound, WithCause(err))
 	case errors.Is(err, workspacedata.ErrWorkspaceAppNotFound):
@@ -405,6 +419,15 @@ func Classify(err error) *ProtocolError {
 		return WorkspaceNotFound(ReasonWorkspaceAgentSessionNotFound, WithCause(err))
 	case errors.Is(err, agentservice.ErrSessionSettingsRequireNewSession):
 		return InvalidRequest("agent.settings_require_new_session", WithCause(err))
+	case errors.Is(err, agentservice.ErrRuntimeOperationInProgress):
+		result := WorkspaceOperationFailed(WithCause(err))
+		result.Reason = ReasonAgentRuntimeOperationReconciling
+		result.Retryable = true
+		return result
+	case errors.Is(err, agentservice.ErrRuntimeOperationFailed):
+		result := WorkspaceOperationFailed(WithCause(err))
+		result.Reason = ReasonAgentRuntimeOperationFailed
+		return result
 	default:
 		return WorkspaceOperationFailed(WithCause(err))
 	}

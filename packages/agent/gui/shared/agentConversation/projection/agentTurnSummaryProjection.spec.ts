@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type {
-  WorkspaceAgentActivitySession,
-  WorkspaceAgentActivityTimelineItem
-} from "../../workspaceAgentActivityTypes";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityListViewModel";
 import type {
   WorkspaceAgentSessionDetailTurn,
@@ -735,7 +733,7 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
     ]);
   });
 
-  it("extracts Claude Code write-file changes from ACP-style input locations and content", () => {
+  it("extracts Claude Code write-file changes from legacy input locations and content", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       {
         id: "turn-4",
@@ -936,21 +934,19 @@ describe("projectAgentTurnSummaryRows", () => {
         agentProvider: "codex",
         agentName: "Codex",
         title: "Write a file",
-        status: "failed",
         latestActivitySummary: "Failed",
+        status: "failed",
         changedFiles: [],
         sortTimeUnixMs: 1_000
       } satisfies WorkspaceAgentActivityCard,
-      session: {
-        id: 1,
+      session: normalizeAgentActivitySession({
+        workspaceId: "workspace-1",
         agentSessionId: "session-errored-call",
-        presenceId: 1,
         provider: "codex",
         providerSessionId: "provider-1",
         cwd: "/repo",
-        status: "failed",
         title: "Write a file"
-      } satisfies WorkspaceAgentActivitySession,
+      }),
       workspaceRoot: "/repo",
       timelineItems: [
         {
@@ -1005,8 +1001,8 @@ describe("projectAgentTurnSummaryRows", () => {
         agentProvider: "openclaw",
         agentName: "OpenClaw",
         title: "Completed session",
-        status: "completed",
         latestActivitySummary: "Completed",
+        status: "completed",
         changedFiles: [
           {
             path: '{"oldStart":1,"lines":["+not a path"]}',
@@ -1016,16 +1012,15 @@ describe("projectAgentTurnSummaryRows", () => {
         ],
         sortTimeUnixMs: 1_000
       },
-      session: {
-        id: 1,
+      session: normalizeAgentActivitySession({
+        workspaceId: "workspace-1",
         agentSessionId: "session-1",
-        presenceId: 1,
         provider: "openclaw",
         providerSessionId: "provider-1",
         cwd: "/repo",
-        status: "completed",
+        title: "OpenClaw",
         updatedAtUnixMs: 1_000
-      },
+      }),
       cwd: "/repo",
       workspaceRoot: "/repo",
       turns: []

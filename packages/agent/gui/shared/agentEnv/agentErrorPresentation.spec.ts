@@ -82,6 +82,16 @@ describe("resolveAgentErrorPresentation", () => {
     }
   });
 
+  it("routes insufficient Tutti credits to the subscription plans page", () => {
+    const presentation = resolveAgentErrorPresentation("insufficient_credits");
+    expect(presentation).toMatchObject({
+      messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
+      focus: null,
+      actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
+      externalUrl: "https://tutti.sh/profile/plan"
+    });
+  });
+
   it("offers a self-detect escape hatch for ambiguous hard failures", () => {
     for (const code of ["process_exited", "provider_error", "unknown"]) {
       const presentation = resolveAgentErrorPresentation(code);

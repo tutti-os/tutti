@@ -3,11 +3,10 @@ package agent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 // claudeAuthScopeEnvKeys are the environment inputs that select which Claude
@@ -17,11 +16,9 @@ import (
 // to another (e.g. OAuth subscription -> ANTHROPIC_API_KEY billing) when no
 // running session is present to correct it via the reuse path.
 //
-// Keychain OAuth accounts are intentionally NOT read here: doing so is
-// credential-touching (the exact operation the hidden-discovery serialization
-// exists to minimize). Two OAuth subscriptions therefore share one scope; that
-// residual case is reconciled the moment a real session runs (running-session
-// first ordering in mergeLiveComposerModelsForComposerOptions).
+// Keychain secrets are intentionally not read here. Non-secret account identity
+// from ~/.claude.json is included below, so OAuth account switches still move
+// to a fresh scope without touching credential storage.
 var claudeAuthScopeEnvKeys = []string{
 	"ANTHROPIC_API_KEY",
 	"ANTHROPIC_AUTH_TOKEN",
@@ -35,7 +32,7 @@ var claudeAuthScopeEnvKeys = []string{
 // auth-sensitive (every non-Claude provider today). The fingerprint is a hash,
 // so raw credentials never enter the cache key.
 func liveModelAuthScope(provider string) string {
-	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+	if !isClaudeSDKLiveModelProvider(provider) {
 		return ""
 	}
 	settingsEnv := claudeSettingsEnvBlock()
@@ -50,8 +47,28 @@ func liveModelAuthScope(provider string) string {
 		b.WriteString(value)
 		b.WriteByte('\n')
 	}
+	if identity, err := json.Marshal(claudeAuthIdentity()); err == nil {
+		b.WriteString("CLAUDE_AUTH_IDENTITY=")
+		b.Write(identity)
+		b.WriteByte('\n')
+	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:8])
+}
+
+func claudeAuthIdentity() map[string]any {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	state := readJSONRecord(filepath.Join(home, ".claude.json"))
+	identity := make(map[string]any, 2)
+	for _, key := range []string{"oauthAccount", "userID"} {
+		if value, ok := state[key]; ok {
+			identity[key] = value
+		}
+	}
+	return identity
 }
 
 // claudeSettingsEnvBlock reads the `env` block of ~/.claude/settings.json (or

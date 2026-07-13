@@ -175,7 +175,7 @@ func TestRuntimeTimelineItemsForSummaryDisplayReturnsMinimalSettledMessageTail(t
 
 func TestRuntimeSnapshotForDisplayKeepsLocalCompletedTurnAgainstStaleWorkingSync(t *testing.T) {
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
@@ -189,7 +189,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalCompletedTurnAgainstStaleWorkingSync
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -219,7 +219,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalCompletedTurnAgainstStaleWorkingSync
 
 func TestRuntimeSnapshotForDisplayKeepsLocalFailedTurnAgainstStaleWorkingSync(t *testing.T) {
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-1",
 			Provider:          "claude-code",
@@ -233,7 +233,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalFailedTurnAgainstStaleWorkingSync(t 
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "claude-code",
 			ProviderSessionID: "provider-1",
@@ -263,7 +263,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalFailedTurnAgainstStaleWorkingSync(t 
 
 func TestRuntimeSnapshotForDisplayAllowsNewWorkingTurnAfterLocalCompletedTurn(t *testing.T) {
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -276,7 +276,7 @@ func TestRuntimeSnapshotForDisplayAllowsNewWorkingTurnAfterLocalCompletedTurn(t 
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-1",
@@ -305,7 +305,7 @@ func TestRuntimeSnapshotForDisplayNormalizesUpstreamActiveIdleStatus(t *testing.
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
@@ -336,7 +336,7 @@ func TestRuntimeSnapshotForDisplayNormalizesNewerUpstreamActiveIdleOverLocalIdle
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
@@ -349,7 +349,7 @@ func TestRuntimeSnapshotForDisplayNormalizesNewerUpstreamActiveIdleOverLocalIdle
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-1",
 			Provider:          "nexight",
 			ProviderSessionID: "provider-1",
@@ -379,7 +379,7 @@ func TestRuntimeSnapshotForDisplayMergesRuntimeFallbackSessionByProviderSessionI
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-session-1",
 			Provider:          "codex",
@@ -393,7 +393,7 @@ func TestRuntimeSnapshotForDisplayMergesRuntimeFallbackSessionByProviderSessionI
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "provider-session-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-session-1",
@@ -430,7 +430,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalBusyStateAgainstNewerUpstreamIdle(t 
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			ID:                42,
 			AgentSessionID:    "agent-session-1",
 			Provider:          "codex",
@@ -444,7 +444,7 @@ func TestRuntimeSnapshotForDisplayKeepsLocalBusyStateAgainstNewerUpstreamIdle(t 
 		}},
 	}
 	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-session-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-session-1",
@@ -479,7 +479,7 @@ func TestRuntimeSnapshotForDisplayKeepsIdleRuntimePlaceholderForHandlerLevelFilt
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:    "agent-session-placeholder",
 			Provider:          "codex",
 			ProviderSessionID: "provider-session-placeholder",

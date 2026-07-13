@@ -8,7 +8,10 @@ import type {
 
 export interface DesktopAgentsServiceDependencies {
   now?: () => number;
-  resolveAgentIconUrl?: (provider: string) => string;
+  resolveAgentTargetIconUrl?: (identity: {
+    iconKey: string | null;
+    provider: string;
+  }) => string;
   /** Feature gate: gated providers keep their targets but are forced disabled (coming soon). */
   isAgentTargetProviderGated?: (provider: string) => boolean;
   tuttidClient: Pick<TuttidClient, "listAgentTargets">;
@@ -84,13 +87,14 @@ export class DesktopAgentsService implements IAgentsService {
     const daemonAgentTargets = mapAgentTargetsToPresentations(
       response.targets,
       {
-        resolveAgentIconUrl: this.dependencies.resolveAgentIconUrl
+        resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
       }
     );
-    const agentTargets = mapAgentTargetsToPresentations(response.targets, {
-      isAgentTargetProviderGated: this.dependencies.isAgentTargetProviderGated,
-      resolveAgentIconUrl: this.dependencies.resolveAgentIconUrl
-    });
+    const agentTargets = daemonAgentTargets.map((target) =>
+      this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
+        ? { ...target, enabled: false }
+        : target
+    );
     const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets).map(
       (agent) =>
         this.dependencies.isAgentTargetProviderGated?.(agent.provider) === true
@@ -117,18 +121,22 @@ export class DesktopAgentsService implements IAgentsService {
 export function mapAgentTargetsToPresentations(
   targets: readonly AgentTarget[],
   options: {
-    isAgentTargetProviderGated?: (provider: string) => boolean;
-    resolveAgentIconUrl?: (provider: string) => string;
+    resolveAgentTargetIconUrl?: (identity: {
+      iconKey: string | null;
+      provider: string;
+    }) => string;
   } = {}
 ): readonly AgentTargetPresentation[] {
   return [...targets].sort(compareAgentTargetsForDisplay).map((target) => ({
     agentTargetId: target.id,
     createdAtUnixMs: target.createdAtUnixMs,
-    enabled:
-      target.enabled === true &&
-      options.isAgentTargetProviderGated?.(target.provider) !== true,
+    enabled: target.enabled === true,
     iconKey: target.iconKey ?? null,
-    iconUrl: resolveAgentTargetIconUrl(target, options.resolveAgentIconUrl),
+    iconUrl:
+      options.resolveAgentTargetIconUrl?.({
+        iconKey: target.iconKey?.trim() || null,
+        provider: target.provider
+      }) ?? "",
     launchRefType: target.launchRef.type,
     name: target.name,
     provider: target.provider,
@@ -150,18 +158,6 @@ export function mapAgentTargetPresentationsToAgents(
       availability: { status: "ready" },
       provider: target.provider as AgentGUIProvider
     }));
-}
-
-function resolveAgentTargetIconUrl(
-  target: AgentTarget,
-  resolveAgentIconUrl?: (provider: string) => string
-): string {
-  const iconKey = target.iconKey?.trim();
-  return (
-    (iconKey ? resolveAgentIconUrl?.(iconKey) : null) ||
-    resolveAgentIconUrl?.(target.provider) ||
-    ""
-  );
 }
 
 function compareAgentTargetsForDisplay(

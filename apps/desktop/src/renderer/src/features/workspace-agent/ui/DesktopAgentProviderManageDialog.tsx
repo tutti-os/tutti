@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import {
   Button,
@@ -37,6 +37,8 @@ import {
   type DesktopAgentProviderManageRowAction,
   type DesktopAgentProviderManageRowStatus
 } from "./desktopAgentProviderManageDialogModel.ts";
+import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
+import { desktopManagedAgentVisibilityGate } from "../services/internal/desktopManagedAgentProviders.ts";
 
 interface DesktopAgentProviderManageDialogProps {
   agentProviderStatusService: IAgentProviderStatusService;
@@ -96,10 +98,18 @@ export function DesktopAgentProviderManageDialog({
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
     () =>
-      new Set<WorkspaceAgentProvider>([
-        ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
-        ...(desktopPreferencesState.enableOpenCodeAgent ? [] : ["opencode"])
-      ] as WorkspaceAgentProvider[]),
+      new Set<WorkspaceAgentProvider>(
+        desktopAgentProviderManageDialogProviders.filter((provider) => {
+          switch (desktopManagedAgentVisibilityGate(provider)) {
+            case "cursor_preview":
+              return !desktopPreferencesState.enableCursorAgent;
+            case "opencode_preview":
+              return !desktopPreferencesState.enableOpenCodeAgent;
+            default:
+              return false;
+          }
+        })
+      ),
     [
       desktopPreferencesState.enableCursorAgent,
       desktopPreferencesState.enableOpenCodeAgent
@@ -205,7 +215,12 @@ export function DesktopAgentProviderManageDialog({
       }
 
       try {
-        if (row.provider === "tutti-agent" && row.primaryActionId === "login") {
+        if (
+          row.primaryActionId === "login" &&
+          isDesktopAgentAccountLoginAction(
+            agentProviderStatusService.getStatus(row.provider)
+          )
+        ) {
           await accountService.startLogin();
         } else {
           await agentProviderStatusService.runAction(

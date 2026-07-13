@@ -2,7 +2,7 @@ import type { AgentSessionEvent } from "../../agentSessionTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { projectWorkspaceAgentTimelineToConversationVM } from "./workspaceAgentTimelineProjection";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 
 export function projectAgentSessionEventsToTimelineItems(
   events: readonly AgentSessionEvent[]

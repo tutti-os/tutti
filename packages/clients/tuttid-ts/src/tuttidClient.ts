@@ -1,14 +1,9 @@
 import {
   addWorkspaceIssueContextRefs,
   addWorkspaceIssueTaskContextRefs,
-  applyWorkspaceGitPatch,
-  cancelWorkspaceAgentSession,
-  goalControlWorkspaceAgentSession,
   checkUserProjectPath,
-  clearWorkspaceAgentSessions,
   completeWorkspaceIssueRun,
   completeWorkspaceIssueTaskRun,
-  createWorkspaceAgentSession,
   createWorkspaceIssue,
   createWorkspaceIssueRun,
   createWorkspaceIssueTask,
@@ -19,10 +14,7 @@ import {
   createWorkspaceFile,
   createWorkspaceFileDirectory,
   createWorkspaceTerminal,
-  countWorkspaceAgentSessionSection,
   deleteUserProject,
-  deleteWorkspaceAgentSession,
-  deleteWorkspaceAgentSessionSection,
   deleteWorkspaceIssue,
   deleteWorkspaceIssueTask,
   deleteWorkspaceIssueTopic,
@@ -38,7 +30,6 @@ import {
   listAgentTargets,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
-  getWorkspaceAgentSession,
   getWorkspaceIssueDetail,
   getWorkspaceIssueRun,
   getWorkspaceIssueTaskDetail,
@@ -46,21 +37,14 @@ import {
   getWorkspaceTerminal,
   getWorkspaceTerminalSnapshot,
   getWorkspaceWorkbench,
-  importWorkspaceExternalAgentSessions,
   listCliCapabilities,
   listWorkspaceAppMentionCandidates,
-  listWorkspaceAgentGeneratedFiles,
-  listWorkspaceAgentPinnedSessionPage,
   listUserProjects,
-  listWorkspaceAgentSessionSectionPage,
-  listWorkspaceAgentSessionSections,
-  listWorkspaceAgentSessionMessages,
   listWorkspaceIssues,
   listWorkspaceIssueTopics,
   listWorkspaceIssueRuns,
   listWorkspaceIssueTaskRuns,
   listWorkspaceIssueTasks,
-  listWorkspaceAgentSessions,
   listWorkspaceTerminals,
   listWorkspaceFileDirectory,
   listWorkspaceRecentFiles,
@@ -75,26 +59,15 @@ import {
   putWorkspaceWorkbench,
   checkWorkspaceTerminalCloseGuard,
   readWorkspaceFilePreview,
-  readWorkspaceAgentSessionAttachment,
-  listWorkspaceAgentSessionGitBranches,
-  listWorkspaceGitBranches,
-  resolveWorkspaceGitPatchSupport,
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
-  scanWorkspaceExternalAgentSessionImports,
   searchWorkspaceFiles,
   searchWorkspaceIssueReferences,
-  sendWorkspaceAgentSessionInput,
   setSystemAgentTargetEnabled,
   startAccountLogin,
-  submitWorkspaceAgentInteractive,
   terminateWorkspaceTerminal,
   trackEvents,
-  updateWorkspaceAgentSessionPin,
-  updateWorkspaceAgentSessionSettings,
-  updateWorkspaceAgentSessionTitle,
-  updateWorkspaceAgentSessionVisibility,
   updateWorkspaceIssue,
   updateWorkspaceIssueTask,
   updateWorkspaceIssueTopic,
@@ -107,6 +80,7 @@ import { createClient } from "./generated/client/index.ts";
 import { createAgentProvidersClient } from "./agentProvidersClient.ts";
 import { unwrapAccepted, unwrapData } from "./tuttidClientResponse.ts";
 import { createWorkspaceAppsClient } from "./workspaceAppsClient.ts";
+import { createWorkspaceAgentClient } from "./workspaceAgentClient.ts";
 import type {
   CreateTuttidClientInput,
   TuttidClient
@@ -359,18 +333,6 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Create workspace request failed.").workspace;
     },
-    async createWorkspaceAgentSession(workspaceID, request, requestOptions) {
-      const response = await createWorkspaceAgentSession({
-        client,
-        body: request,
-        path: { workspaceID },
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Create workspace agent session request failed."
-      ).session;
-    },
     async createWorkspaceTerminal(workspaceID, request = {}) {
       const response = await createWorkspaceTerminal({
         client,
@@ -425,43 +387,6 @@ export function createTuttidClient(
         "Delete workspace file entry request failed."
       );
     },
-    async deleteWorkspaceAgentSession(workspaceID, agentSessionID) {
-      const response = await deleteWorkspaceAgentSession({
-        client,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Delete workspace agent session request failed."
-      );
-    },
-    async deleteWorkspaceAgentSessionSection(
-      workspaceID,
-      request,
-      requestOptions
-    ) {
-      const response = await deleteWorkspaceAgentSessionSection({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Delete workspace agent session section request failed."
-      );
-    },
-    async clearWorkspaceAgentSessions(workspaceID) {
-      const response = await clearWorkspaceAgentSessions({
-        client,
-        path: { workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Clear workspace agent sessions request failed."
-      );
-    },
-    ...createAgentProvidersClient(client),
     async moveWorkspaceFileEntry(workspaceID, request) {
       const response = await moveWorkspaceFileEntry({
         client,
@@ -513,14 +438,6 @@ export function createTuttidClient(
         path: { workspaceID }
       });
       return unwrapData(response, "Workspace request failed.").workspace;
-    },
-    async getWorkspaceAgentSession(workspaceID, agentSessionID) {
-      const response = await getWorkspaceAgentSession({
-        client,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Workspace agent session request failed.")
-        .session;
     },
     async getWorkspaceIssueDetail(workspaceID, issueID) {
       const response = await getWorkspaceIssueDetail({
@@ -631,127 +548,6 @@ export function createTuttidClient(
         path: { workspaceID }
       });
       return unwrapData(response, "Workspace terminals request failed.");
-    },
-    async listWorkspaceAgentSessions(workspaceID, request, requestOptions) {
-      const response = await listWorkspaceAgentSessions({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(response, "Workspace agent sessions request failed.");
-    },
-    async listWorkspaceAgentSessionSections(
-      workspaceID,
-      request,
-      requestOptions
-    ) {
-      const response = await listWorkspaceAgentSessionSections({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Workspace agent session sections request failed."
-      );
-    },
-    async listWorkspaceAgentSessionSectionPage(
-      workspaceID,
-      request,
-      requestOptions
-    ) {
-      const response = await listWorkspaceAgentSessionSectionPage({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Workspace agent session section page request failed."
-      );
-    },
-    async countWorkspaceAgentSessionSection(
-      workspaceID,
-      request,
-      requestOptions
-    ) {
-      const response = await countWorkspaceAgentSessionSection({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Workspace agent session section count request failed."
-      );
-    },
-    async listWorkspaceAgentPinnedSessionPage(
-      workspaceID,
-      request,
-      requestOptions
-    ) {
-      const response = await listWorkspaceAgentPinnedSessionPage({
-        client,
-        path: { workspaceID },
-        query: request,
-        ...requestOptions
-      });
-      return unwrapData(
-        response,
-        "Workspace pinned agent session page request failed."
-      );
-    },
-    async listWorkspaceAgentGeneratedFiles(workspaceID, request) {
-      const response = await listWorkspaceAgentGeneratedFiles({
-        client,
-        path: { workspaceID },
-        query: request
-      });
-      return unwrapData(
-        response,
-        "Workspace agent generated files request failed."
-      );
-    },
-    async scanWorkspaceExternalAgentSessionImports(workspaceID, request) {
-      const response = await scanWorkspaceExternalAgentSessionImports({
-        client,
-        body: request,
-        path: { workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Workspace external agent import scan request failed."
-      );
-    },
-    async importWorkspaceExternalAgentSessions(workspaceID, request) {
-      const response = await importWorkspaceExternalAgentSessions({
-        client,
-        body: request,
-        path: { workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Workspace external agent import request failed."
-      );
-    },
-    async listWorkspaceAgentSessionMessages(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      const response = await listWorkspaceAgentSessionMessages({
-        client,
-        path: { workspaceID, agentSessionID },
-        query: request
-      });
-      return unwrapData(
-        response,
-        "Workspace agent session messages request failed."
-      );
     },
     async listWorkspaceFileDirectory(workspaceID, request) {
       const response = await listWorkspaceFileDirectory({
@@ -902,162 +698,6 @@ export function createTuttidClient(
       return unwrapData(response, "Resize workspace terminal request failed.")
         .terminal;
     },
-    async cancelWorkspaceAgentSession(workspaceID, agentSessionID) {
-      const response = await cancelWorkspaceAgentSession({
-        client,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Cancel workspace agent session failed.")
-        .session;
-    },
-    async cancelWorkspaceAgentSessionWithResult(workspaceID, agentSessionID) {
-      const response = await cancelWorkspaceAgentSession({
-        client,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Cancel workspace agent session failed.");
-    },
-    async goalControlWorkspaceAgentSession(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      const response = await goalControlWorkspaceAgentSession({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Goal control failed.");
-    },
-    async sendWorkspaceAgentSessionInput(workspaceID, agentSessionID, request) {
-      const response = await sendWorkspaceAgentSessionInput({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Send workspace agent session input failed.");
-    },
-    async readWorkspaceAgentSessionAttachment(
-      workspaceID,
-      agentSessionID,
-      attachmentID
-    ) {
-      const response = await readWorkspaceAgentSessionAttachment({
-        client,
-        path: { agentSessionID, attachmentID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Read workspace agent session attachment failed."
-      );
-    },
-    async listWorkspaceAgentSessionGitBranches(workspaceID, agentSessionID) {
-      const response = await listWorkspaceAgentSessionGitBranches({
-        client,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "List workspace agent session git branches failed."
-      );
-    },
-    async listWorkspaceGitBranches(workspaceID, workingDirectory) {
-      const response = await listWorkspaceGitBranches({
-        client,
-        path: { workspaceID },
-        query: { workingDirectory }
-      });
-      return unwrapData(response, "List workspace git branches failed.");
-    },
-    async resolveWorkspaceGitPatchSupport(workspaceID, cwd) {
-      const response = await resolveWorkspaceGitPatchSupport({
-        client,
-        path: { workspaceID },
-        query: { cwd }
-      });
-      return unwrapData(
-        response,
-        "Resolve workspace git patch support failed."
-      );
-    },
-    async applyWorkspaceGitPatch(workspaceID, request) {
-      const response = await applyWorkspaceGitPatch({
-        client,
-        body: request,
-        path: { workspaceID }
-      });
-      return unwrapData(response, "Apply workspace git patch failed.");
-    },
-    async updateWorkspaceAgentSessionSettings(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      const response = await updateWorkspaceAgentSessionSettings({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Update workspace agent session settings failed."
-      ).session;
-    },
-    async updateWorkspaceAgentSessionPin(workspaceID, agentSessionID, request) {
-      const response = await updateWorkspaceAgentSessionPin({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(response, "Update workspace agent session pin failed.")
-        .session;
-    },
-    async updateWorkspaceAgentSessionTitle(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      const response = await updateWorkspaceAgentSessionTitle({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Update workspace agent session title failed."
-      ).session;
-    },
-    async updateWorkspaceAgentSessionVisibility(
-      workspaceID,
-      agentSessionID,
-      request
-    ) {
-      const response = await updateWorkspaceAgentSessionVisibility({
-        client,
-        body: request,
-        path: { agentSessionID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Update workspace agent session visibility failed."
-      ).session;
-    },
-    async submitWorkspaceAgentInteractive(
-      workspaceID,
-      agentSessionID,
-      requestID,
-      request
-    ) {
-      const response = await submitWorkspaceAgentInteractive({
-        client,
-        body: request,
-        path: { agentSessionID, requestID, workspaceID }
-      });
-      return unwrapData(
-        response,
-        "Submit workspace agent interactive response failed."
-      ).session;
-    },
     async searchWorkspaceFiles(workspaceID, request, requestOptions) {
       const response = await searchWorkspaceFiles({
         client,
@@ -1119,6 +759,8 @@ export function createTuttidClient(
       });
       return unwrapData(response, "Record user project usage failed.").project;
     },
+    ...createAgentProvidersClient(client),
+    ...createWorkspaceAgentClient(client),
     ...createWorkspaceAppsClient(client)
   };
 }

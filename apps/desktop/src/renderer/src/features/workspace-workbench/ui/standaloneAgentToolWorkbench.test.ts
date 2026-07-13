@@ -28,8 +28,8 @@ const workspaceAgentStatusPetIconSource = readFileSync(
   new URL("./WorkspaceAgentStatusPetIcon.tsx", import.meta.url),
   "utf8"
 );
-const workspaceChromeSource = readFileSync(
-  new URL("./WorkspaceChrome.tsx", import.meta.url),
+const workspaceAgentMessageCenterActionSource = readFileSync(
+  new URL("./WorkspaceAgentMessageCenterAction.tsx", import.meta.url),
   "utf8"
 );
 
@@ -122,7 +122,7 @@ test("standalone Agent browser and terminal share one dropdown trigger", () => {
 
 test("standalone Agent messages reuse the OS running animation and badge only running sessions", () => {
   assert.match(
-    workspaceChromeSource,
+    workspaceAgentMessageCenterActionSource,
     /<WorkspaceAgentStatusPetIcon mood=\{triggerPetMood\}/
   );
   assert.match(
@@ -145,13 +145,9 @@ test("standalone Agent messages reuse the OS running animation and badge only ru
     standaloneAgentToolSidebarToolbarSource,
     /reminderCount=\{reminders\.messages\}/
   );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /useEffect\(\(\) => \{\s*void activityService\.load\(workspaceId\);\s*\}, \[activityService, workspaceId\]\);/
-  );
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
-    /if \(open\) \{\s*void activityService\.load\(workspaceId\)/
+    /activityService\.load\(workspaceId\)/
   );
 });
 

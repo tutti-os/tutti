@@ -19,15 +19,13 @@ import type {
   AppCenterHostActions
 } from "@tutti-os/workspace-app-center/ui";
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import { agentGuiDockIconUrls } from "@tutti-os/agent-gui/dock-icons";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import { useService } from "@tutti-os/infra/di";
-import {
-  IAgentProviderStatusService,
-  IAgentsService,
-  requestWorkspaceAgentGuiLaunch
-} from "@renderer/features/workspace-agent";
-import type { AgentTargetPresentation } from "@renderer/features/workspace-agent";
+import { IAgentProviderStatusService } from "@renderer/features/workspace-agent/services/agentProviderStatusService.interface.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
+import type { AgentTargetPresentation } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useTranslation } from "@renderer/i18n";

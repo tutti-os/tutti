@@ -14,6 +14,7 @@ export {
   type TuttidEventStreamSubscribeOptions
 } from "./eventStreamClient.ts";
 export type {
+  AgentActivityUpdatedPayloadV1,
   AgentActivityUpdatedEventV1,
   WorkspaceWorkbenchNodeLaunchRequestedEventV1,
   WorkspaceIssueUpdatedEventV1
@@ -23,6 +24,12 @@ export {
   type CreateTuttidClientInput,
   type TuttidClient
 } from "./tuttidClient.ts";
+export {
+  WORKSPACE_AGENT_INTERACTION_KINDS,
+  WORKSPACE_AGENT_INTERACTION_STATUSES,
+  WORKSPACE_AGENT_TURN_OUTCOMES,
+  WORKSPACE_AGENT_TURN_PHASES
+} from "./agentProtocolGuards.ts";
 export {
   getTuttidErrorI18nCandidates,
   getTuttidProtocolErrorCode,

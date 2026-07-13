@@ -1,9 +1,66 @@
 package agentruntime
 
 import (
-	"errors"
+	"fmt"
+	"os"
 	"strings"
 )
+
+const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
+const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
+
+const claudePlanModeInstructions = "You are in plan mode. Inspect files and gather context as needed, but do not edit files, run mutation commands, or make external changes. Produce a concrete implementation plan first. If the user gives feedback, refine the plan. Only after the user approves leaving plan mode may you implement changes."
+
+const (
+	sessionSpeedStandard = "standard"
+	sessionSpeedFast     = "fast"
+	claudeSDKFastModeOff = "off"
+	claudeSDKFastModeOn  = "on"
+)
+
+var claudeCodeBuiltInModelAliases = map[string]bool{
+	"default":    true,
+	"sonnet":     true,
+	"opus":       true,
+	"haiku":      true,
+	"sonnet[1m]": true,
+	"opusplan":   true,
+}
+
+func claudeSystemPromptAppend(env []string) (string, error) {
+	path := sessionEnvValue(env, claudeSystemPromptFileEnv)
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read claude system prompt: %w", err)
+	}
+	return string(content), nil
+}
+
+func claudePluginDir(env []string) (string, error) {
+	path := sessionEnvValue(env, claudePluginDirEnv)
+	if strings.TrimSpace(path) == "" {
+		return "", nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("stat claude plugin dir: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("claude plugin dir is not a directory: %s", path)
+	}
+	return path, nil
+}
+
+func claudeCodeCustomModel(session Session) string {
+	model := strings.TrimSpace(session.SettingsValue().Model)
+	if model == "" || claudeCodeBuiltInModelAliases[model] {
+		return ""
+	}
+	return model
+}
 
 type claudeProviderMetaError struct {
 	phase string
@@ -72,32 +129,6 @@ func buildClaudeCodeSessionMeta(session Session) (claudeCodeSessionMeta, error) 
 	return meta, nil
 }
 
-func (m claudeCodeSessionMeta) acpMeta() map[string]any {
-	meta := map[string]any{}
-	if strings.TrimSpace(m.systemPromptAppend) != "" {
-		meta["systemPrompt"] = map[string]any{
-			"type":   "preset",
-			"preset": "claude_code",
-			"append": m.systemPromptAppend,
-		}
-	}
-	claudeCodeMeta := map[string]any{
-		"options": m.options,
-		"emitRawSDKMessages": []map[string]string{
-			{"type": "system", "subtype": "init"},
-			{"type": "system", "subtype": "task_started"},
-			{"type": "system", "subtype": "task_progress"},
-			{"type": "system", "subtype": "task_notification"},
-			{"type": "system", "subtype": "task_updated"},
-			{"type": "result"},
-		},
-	}
-	if len(m.options) > 0 {
-		meta["claudeCode"] = claudeCodeMeta
-	}
-	return meta
-}
-
 func (m claudeCodeSessionMeta) sdkPayload() map[string]any {
 	payload := map[string]any{}
 	if strings.TrimSpace(m.systemPromptAppend) != "" {
@@ -109,12 +140,4 @@ func (m claudeCodeSessionMeta) sdkPayload() map[string]any {
 		}
 	}
 	return payload
-}
-
-func claudeProviderMetaLogPhase(err error) string {
-	var metaErr claudeProviderMetaError
-	if !errors.As(err, &metaErr) {
-		return ""
-	}
-	return metaErr.phase
 }

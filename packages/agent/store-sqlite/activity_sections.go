@@ -31,16 +31,16 @@ func (s *Store) ListSessionSection(
 	}
 	query := `
 SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
-       user_id, settings_json, runtime_context_json, cwd,
-       title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
+       user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
+	       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND rail_section_key = ?
   AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
-  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+  AND json_extract(session_metadata_json, '$.visible') IS NOT 0
   AND (? = '' OR updated_at_unix_ms < ? OR (updated_at_unix_ms = ? AND agent_session_id > ?))
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	args := []any{
@@ -104,16 +104,16 @@ func (s *Store) listPinnedSessionPage(
 ) (SessionSectionPage, bool, error) {
 	query := `
 SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
-       user_id, settings_json, runtime_context_json, cwd,
-       title, status, current_phase, last_error, message_version, last_event_at_unix_ms,
+       user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
+	       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, pinned_at_unix_ms,
-       created_at_unix_ms, updated_at_unix_ms
+       created_at_unix_ms, updated_at_unix_ms, active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND pinned_at_unix_ms > 0
   AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
-  AND json_extract(runtime_context_json, '$.visible') IS NOT 0
+  AND json_extract(session_metadata_json, '$.visible') IS NOT 0
   AND (? = '' OR pinned_at_unix_ms < ? OR (pinned_at_unix_ms = ? AND agent_session_id > ?))
 ORDER BY pinned_at_unix_ms DESC, agent_session_id ASC`
 	args := []any{

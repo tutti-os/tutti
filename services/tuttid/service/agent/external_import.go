@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
 func (*Service) ScanExternalImports(ctx context.Context, input ExternalImportScanInput) (ExternalImportScanResult, error) {
@@ -103,15 +102,20 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 
 func normalizeExternalImportProviders(input []string) []string {
 	if len(input) == 0 {
-		return []string{agentproviderbiz.Codex, agentproviderbiz.ClaudeCode}
+		out := make([]string, 0)
+		for _, descriptor := range providerregistry.Migrated() {
+			if descriptor.ExternalImport.Enabled {
+				out = append(out, descriptor.Identity.ID)
+			}
+		}
+		return out
 	}
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(input))
 	for _, provider := range input {
 		normalized := agentproviderbiz.Normalize(provider)
-		switch normalized {
-		case agentproviderbiz.Codex, agentproviderbiz.ClaudeCode:
-		default:
+		descriptor, ok := providerregistry.Find(normalized)
+		if !ok || !descriptor.ExternalImport.Enabled {
 			continue
 		}
 		if _, ok := seen[normalized]; ok {
@@ -187,14 +191,11 @@ func externalImportedSessionSettings(session externalImportedSession) map[string
 }
 
 func externalImportAgentTargetID(provider string) string {
-	switch agentproviderbiz.Normalize(provider) {
-	case agentproviderbiz.Codex:
-		return agenttargetbiz.IDLocalCodex
-	case agentproviderbiz.ClaudeCode:
-		return agenttargetbiz.IDLocalClaudeCode
-	default:
-		return ""
+	normalized := agentproviderbiz.Normalize(provider)
+	if descriptor, ok := providerregistry.Find(normalized); ok {
+		return descriptor.Target.ID
 	}
+	return ""
 }
 
 func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string) (externalScanData, error) {
@@ -284,7 +285,11 @@ func externalScanCutoffUnixMS(days int) int64 {
 }
 
 func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]externalImportedSession, ExternalImportProvider, []ExternalImportError) {
-	root := externalProviderRoot(provider)
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok || !descriptor.ExternalImport.Enabled {
+		return nil, ExternalImportProvider{Provider: provider}, nil
+	}
+	root := externalProviderRoot(descriptor.ExternalImport)
 	summary := ExternalImportProvider{Provider: provider, Root: root}
 	if root == "" {
 		return nil, summary, nil
@@ -293,7 +298,7 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 		return nil, summary, nil
 	}
 	summary.Available = true
-	files, err := externalProviderJSONLFiles(provider, root)
+	files, err := externalProviderJSONLFiles(descriptor.ExternalImport, root)
 	if err != nil {
 		summary.Error = err.Error()
 		return nil, summary, []ExternalImportError{{Provider: provider, Message: err.Error()}}
@@ -301,14 +306,14 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 	// Codex stores the generated conversation title in its app-server SQLite
 	// state DB rather than in the rollout transcript, so resolve it up front and
 	// let it override the message-derived title.
-	var codexTitles map[string]string
-	if provider == agentproviderbiz.Codex {
-		codexTitles = codexThreadTitles(root)
+	var importedTitles map[string]string
+	if descriptor.ExternalImport.TitleCatalogKind == providerregistry.ExternalImportTitleCatalogKindCodexSQLite {
+		importedTitles = codexThreadTitles(root)
 	}
 	sessions := make([]externalImportedSession, 0, len(files))
 	errors := make([]ExternalImportError, 0)
 	for _, file := range files {
-		session, ok, err := parseExternalProviderJSONL(provider, file)
+		session, ok, err := parseExternalProviderJSONL(descriptor, file)
 		if err != nil {
 			errors = append(errors, ExternalImportError{Provider: provider, SourcePath: file, Message: err.Error()})
 			continue
@@ -319,7 +324,7 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 		if session.UpdatedAtUnixMS < cutoffUnixMS {
 			continue
 		}
-		if title := strings.TrimSpace(codexTitles[session.ProviderSessionID]); title != "" {
+		if title := strings.TrimSpace(importedTitles[session.ProviderSessionID]); title != "" {
 			session.Title = truncateExternalTitle(title)
 		}
 		sessions = append(sessions, session)
@@ -329,36 +334,23 @@ func scanExternalProviderSessions(provider string, cutoffUnixMS int64) ([]extern
 	return sessions, summary, errors
 }
 
-func externalProviderRoot(provider string) string {
+func externalProviderRoot(descriptor providerregistry.ExternalImportDescriptor) string {
 	home, _ := os.UserHomeDir()
-	switch provider {
-	case agentproviderbiz.Codex:
-		if root := strings.TrimSpace(os.Getenv("CODEX_HOME")); root != "" {
+	if descriptor.RootEnvVar != "" {
+		if root := strings.TrimSpace(os.Getenv(descriptor.RootEnvVar)); root != "" {
 			return root
-		}
-		if home != "" {
-			return filepath.Join(home, ".codex")
-		}
-	case agentproviderbiz.ClaudeCode:
-		if root := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); root != "" {
-			return root
-		}
-		if home != "" {
-			return filepath.Join(home, ".claude")
 		}
 	}
-	return ""
+	if home != "" && strings.HasPrefix(descriptor.DefaultRoot, "~/") {
+		return filepath.Join(home, strings.TrimPrefix(descriptor.DefaultRoot, "~/"))
+	}
+	return strings.TrimSpace(descriptor.DefaultRoot)
 }
 
-func externalProviderJSONLFiles(provider string, root string) ([]string, error) {
-	var roots []string
-	switch provider {
-	case agentproviderbiz.Codex:
-		roots = []string{filepath.Join(root, "sessions"), filepath.Join(root, "archived_sessions")}
-	case agentproviderbiz.ClaudeCode:
-		roots = []string{filepath.Join(root, "projects")}
-	default:
-		return nil, nil
+func externalProviderJSONLFiles(descriptor providerregistry.ExternalImportDescriptor, root string) ([]string, error) {
+	roots := make([]string, 0, len(descriptor.ScanDirectories))
+	for _, directory := range descriptor.ScanDirectories {
+		roots = append(roots, filepath.Join(root, directory))
 	}
 	files := make([]string, 0)
 	for _, scanRoot := range roots {
@@ -370,8 +362,10 @@ func externalProviderJSONLFiles(provider string, root string) ([]string, error) 
 				return err
 			}
 			if entry.IsDir() {
-				if provider == agentproviderbiz.ClaudeCode && strings.HasPrefix(entry.Name(), "agent-") {
-					return filepath.SkipDir
+				for _, prefix := range descriptor.SkipDirectoryPrefixes {
+					if strings.HasPrefix(entry.Name(), prefix) {
+						return filepath.SkipDir
+					}
 				}
 				return nil
 			}
@@ -388,20 +382,26 @@ func externalProviderJSONLFiles(provider string, root string) ([]string, error) 
 	return files, nil
 }
 
-func parseExternalProviderJSONL(provider string, path string) (externalImportedSession, bool, error) {
+func parseExternalProviderJSONL(descriptor providerregistry.ProviderDescriptor, path string) (externalImportedSession, bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return externalImportedSession{}, false, err
 	}
 	defer file.Close()
-	switch provider {
-	case agentproviderbiz.Codex:
-		return parseCodexJSONL(path, file)
-	case agentproviderbiz.ClaudeCode:
-		return parseClaudeCodeJSONL(path, file)
+	var session externalImportedSession
+	var ok bool
+	switch descriptor.ExternalImport.ParserKind {
+	case providerregistry.ExternalImportParserKindCodexJSONL:
+		session, ok, err = parseCodexJSONL(path, file)
+	case providerregistry.ExternalImportParserKindClaudeJSONL:
+		session, ok, err = parseClaudeCodeJSONL(path, file)
 	default:
-		return externalImportedSession{}, false, nil
+		return externalImportedSession{}, false, fmt.Errorf("external import parser %q is unsupported", descriptor.ExternalImport.ParserKind)
 	}
+	if ok {
+		session.Provider = descriptor.Identity.ID
+	}
+	return session, ok, err
 }
 
 func (s *Service) importExternalSession(ctx context.Context, workspaceID string, session externalImportedSession) (int, bool, error) {
@@ -418,7 +418,6 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		}
 		updates = append(updates, agentactivitybiz.MessageUpdate{
 			MessageID:         messageID,
-			TurnID:            externalImportedTurnID(session.Provider, session.ProviderSessionID, messageID),
 			Role:              message.Role,
 			Kind:              message.Kind,
 			Status:            message.Status,
@@ -531,10 +530,6 @@ func externalImportedMessageIDForMessage(provider string, providerSessionID stri
 	return externalImportedMessageID(provider, providerSessionID, message.RawID, index)
 }
 
-func externalImportedTurnID(provider string, providerSessionID string, messageID string) string {
-	return "imported-turn-" + externalStableHash(provider + "\x00" + providerSessionID + "\x00" + messageID)[:24]
-}
-
 func externalImportedMessagePayload(message externalImportedMessage) map[string]any {
 	payload := clonePayload(message.Payload)
 	if payload == nil {
@@ -615,133 +610,4 @@ func normalizeExternalMessageStatus(status string) string {
 	default:
 		return "completed"
 	}
-}
-
-func externalToolText(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	return "[Tool: " + name + "]"
-}
-
-func externalContentText(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case []any:
-		parts := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if text := externalContentText(item); text != "" {
-				parts = append(parts, text)
-			}
-		}
-		return strings.TrimSpace(strings.Join(parts, "\n"))
-	case map[string]any:
-		blockType := stringField(typed, "type")
-		switch blockType {
-		case "text", "input_text", "output_text":
-			return strings.TrimSpace(stringField(typed, "text"))
-		case "tool_use", "function_call":
-			return externalToolText(firstNonEmptyString(stringField(typed, "name"), stringField(typed, "id")))
-		case "tool_result":
-			return firstNonEmptyString(externalContentText(typed["content"]), stringField(typed, "text"))
-		default:
-			return firstNonEmptyString(
-				stringField(typed, "text"),
-				externalContentText(typed["content"]),
-				externalContentText(typed["message"]),
-			)
-		}
-	default:
-		return ""
-	}
-}
-
-func isPureExternalToolResult(value any) bool {
-	items, ok := value.([]any)
-	if !ok || len(items) == 0 {
-		return false
-	}
-	for _, item := range items {
-		block, ok := item.(map[string]any)
-		if !ok || stringField(block, "type") != "tool_result" {
-			return false
-		}
-	}
-	return true
-}
-
-func unixMSFromAny(value any) int64 {
-	switch typed := value.(type) {
-	case string:
-		typed = strings.TrimSpace(typed)
-		if typed == "" {
-			return 0
-		}
-		if parsed, err := time.Parse(time.RFC3339Nano, typed); err == nil {
-			return parsed.UnixMilli()
-		}
-	case float64:
-		if typed > 1_000_000_000_000 {
-			return int64(typed)
-		}
-		return int64(typed * 1000)
-	case int64:
-		if typed > 1_000_000_000_000 {
-			return typed
-		}
-		return typed * 1000
-	case json.Number:
-		if parsed, err := parsedJSONNumberUnixMS(typed); err == nil {
-			return parsed
-		}
-	}
-	return 0
-}
-
-func parsedJSONNumberUnixMS(number json.Number) (int64, error) {
-	if value, err := number.Int64(); err == nil {
-		if value > 1_000_000_000_000 {
-			return value, nil
-		}
-		return value * 1000, nil
-	}
-	value, err := number.Float64()
-	if err != nil {
-		return 0, err
-	}
-	if value > 1_000_000_000_000 {
-		return int64(value), nil
-	}
-	return int64(value * 1000), nil
-}
-
-func stringField(values map[string]any, key string) string {
-	if values == nil {
-		return ""
-	}
-	value, ok := values[key]
-	if !ok {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case fmt.Stringer:
-		return strings.TrimSpace(typed.String())
-	default:
-		return ""
-	}
-}
-
-func mapField(values map[string]any, key string) map[string]any {
-	if values == nil {
-		return nil
-	}
-	value, ok := values[key].(map[string]any)
-	if !ok {
-		return nil
-	}
-	return value
 }

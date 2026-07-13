@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mergeAgentActivityMessages } from "@tutti-os/agent-activity-core";
-import type { WorkspaceAgentActivityMessage } from "../../../shared/workspaceAgentActivityTypes";
+import {
+  mergeAgentActivityMessages,
+  type AgentActivityMessage
+} from "@tutti-os/agent-activity-core";
 import { createOptimisticPromptMessage } from "./agentGuiController.promptHelpers";
 
 // Step 9 (ADR 0004 desktop-half): optimistic echoes must not carry
@@ -23,14 +25,12 @@ describe("createOptimisticPromptMessage", () => {
   it("mints the echo outside the durable version domain", () => {
     const echo = createOptimisticPromptMessage(echoInput);
     expect(echo.version).toBe(0);
-    expect(echo.id).toBe(0);
   });
 
   it("lets the durable twin replace the echo in an id-keyed merge", () => {
     const echo = createOptimisticPromptMessage(echoInput);
-    const durableTwin: WorkspaceAgentActivityMessage = {
+    const durableTwin: AgentActivityMessage = {
       ...echo,
-      id: 3,
       version: 3,
       turnId: "turn-2",
       payload: {

@@ -39,6 +39,9 @@ type WorkbenchStore interface {
 
 type AgentActivityStore interface {
 	agentactivitybiz.Repository
+	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
+	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
+	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
 type AgentTargetStore interface {

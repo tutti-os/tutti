@@ -12,7 +12,7 @@ import (
 func TestAgentActivitySyncerSyncsSessionMessages(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-session-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
@@ -75,7 +75,7 @@ func TestAgentActivitySyncerSyncsSessionMessages(t *testing.T) {
 func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "agent-session-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
@@ -131,7 +131,7 @@ func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 func TestAgentActivitySyncerUsesRuntimeSessionOriginForMessageSync(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
+		Sessions: []ProviderActivitySessionProjection{
 			{
 				AgentSessionID:  "runtime-1",
 				SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
@@ -166,7 +166,7 @@ func TestAgentActivitySyncerUsesRuntimeSessionOriginForMessageSync(t *testing.T)
 func TestAgentActivitySyncerReplacesRuntimeSessionsWhenSyncingDefaultSnapshot(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "remote-runtime-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
@@ -177,7 +177,7 @@ func TestAgentActivitySyncerReplacesRuntimeSessionsWhenSyncingDefaultSnapshot(t 
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
+		Sessions: []ProviderActivitySessionProjection{{
 			AgentSessionID:  "runtime-1",
 			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			UserID:          "user-1",
@@ -381,7 +381,7 @@ func (f *fakeSyncerRepository) waitForListCalls(roomID string, count int, timeou
 	}
 }
 
-func sessionIDs(sessions []WorkspaceAgentSession) []string {
+func sessionIDs(sessions []ProviderActivitySessionProjection) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
 		if id := session.AgentSessionID; id != "" {

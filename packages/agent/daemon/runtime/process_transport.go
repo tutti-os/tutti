@@ -255,6 +255,21 @@ func (c *localProcessConnection) Recv() (ProcessFrame, error) {
 	return frame, nil
 }
 
+func (c *localProcessConnection) RecvContext(ctx context.Context) (ProcessFrame, error) {
+	if c == nil {
+		return ProcessFrame{}, io.EOF
+	}
+	select {
+	case <-ctx.Done():
+		return ProcessFrame{}, ctx.Err()
+	case frame, ok := <-c.frames:
+		if !ok {
+			return ProcessFrame{}, io.EOF
+		}
+		return frame, nil
+	}
+}
+
 func (c *localProcessConnection) Close() error {
 	if c == nil {
 		return nil

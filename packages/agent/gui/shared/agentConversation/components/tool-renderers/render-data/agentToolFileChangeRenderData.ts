@@ -34,7 +34,9 @@ export function getFileChangeRenderData(
   const fromStructuredPatch = structuredPatchFiles(
     call.output?.structuredPatch ??
       payloadOutput?.structuredPatch ??
-      call.payload?.structuredPatch
+      call.payload?.structuredPatch ??
+      call.output?.files ??
+      payloadOutput?.files
   );
   if (fromStructuredPatch.length > 0) {
     return fromStructuredPatch;

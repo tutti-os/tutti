@@ -1,5 +1,9 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import {
+  selectCanonicalAgentActivitySessions,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
+import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
@@ -115,7 +119,9 @@ async function hydrateRecentSessionMessages(input: {
   snapshot: ReturnType<AgentActivityRuntime["getSnapshot"]>;
   workspaceId: string;
 }): Promise<void> {
-  const sessionsNeedingMessages = input.snapshot.sessions.filter((session) => {
+  const sessionsNeedingMessages = selectCanonicalAgentActivitySessions(
+    input.snapshot
+  ).filter((session) => {
     const sessionId = session.agentSessionId.trim();
     if (!sessionId) {
       return false;
@@ -148,7 +154,7 @@ async function hydrateRecentSessionMessages(input: {
 }
 
 function shouldRefreshSessionMessages(
-  session: ReturnType<AgentActivityRuntime["getSnapshot"]>["sessions"][number],
+  session: AgentActivitySession,
   messages: ReturnType<
     AgentActivityRuntime["getSnapshot"]
   >["sessionMessagesById"][string]

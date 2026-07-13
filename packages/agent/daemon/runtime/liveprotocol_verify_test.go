@@ -325,8 +325,13 @@ func (s *liveAppServer) notify(t *testing.T, method string, params map[string]an
 
 func (s *liveAppServer) initialize(t *testing.T) {
 	t.Helper()
+	descriptor := codexProviderDescriptorForTest(t)
 	result := s.call(t, "initialize", map[string]any{
-		"clientInfo": codexClientInfoParamsForVersion(HostMetadata{}, "0.142.5"),
+		"clientInfo": clientInfoParamsForVersion(
+			HostMetadata{},
+			descriptor.Runtime.ClientInfoName,
+			"0.142.5",
+		),
 	})
 	if _, hasError := result["error"]; hasError {
 		t.Fatalf("initialize failed: %s", compactJSON(result))

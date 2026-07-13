@@ -139,99 +139,29 @@ func TestDefaultRegistryUsesTuttiAgentManagedNPMInstaller(t *testing.T) {
 	if install.ManagedNPM.PackageName != "@tutti-os/tutti-agent" {
 		t.Fatalf("PackageName = %q, want @tutti-os/tutti-agent", install.ManagedNPM.PackageName)
 	}
-	if install.ManagedNPM.PackageVersion != minTuttiAgentVersion {
-		t.Fatalf("PackageVersion = %q, want %q", install.ManagedNPM.PackageVersion, minTuttiAgentVersion)
-	}
 	if install.ManagedNPM.BinaryName != "tutti-agent" {
 		t.Fatalf("BinaryName = %q, want tutti-agent", install.ManagedNPM.BinaryName)
 	}
 	if !install.ManagedNPM.IncludeOptional {
 		t.Fatalf("IncludeOptional = false, want true")
 	}
-	if specs[0].AdapterPackage.Name != "@tutti-os/tutti-agent" || specs[0].AdapterPackage.Version != minTuttiAgentVersion {
-		t.Fatalf("AdapterPackage = %+v, want @tutti-os/tutti-agent >= %s", specs[0].AdapterPackage, minTuttiAgentVersion)
+	if specs[0].LoginActionKind != ActionKindDaemonAction {
+		t.Fatalf("LoginActionKind = %q, want %q", specs[0].LoginActionKind, ActionKindDaemonAction)
 	}
 }
 
-func TestTuttiAgentAdapterVersionMismatchRequiresInstall(t *testing.T) {
-	home := t.TempDir()
-	packageDir := filepath.Join(home, "lib", "node_modules", "@tutti-os", "tutti-agent")
-	binPath := filepath.Join(packageDir, "bin", "tutti-agent")
-	writePackageManifest(t, packageDir, "@tutti-os/tutti-agent", "0.0.1")
-	writeExecutable(t, binPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.1'; exit 0; fi\nexit 0\n")
-
-	service := probeTestService(home)
-	service.LookPath = func(name string) (string, error) {
-		if name == "tutti-agent" {
-			return binPath, nil
-		}
-		return "", errors.New("not found")
-	}
-	service.FileExists = func(path string) bool {
-		return path == filepath.Join(home, ".tutti-agent", "auth.json")
-	}
+func TestServiceListUsesDescriptorOwnedDaemonLoginAction(t *testing.T) {
+	service := testService(func(name string) (string, error) {
+		return "/usr/local/bin/" + name, nil
+	}, map[string]bool{})
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityNotInstalled {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
-	}
-	if status.Availability.ReasonCode != "acp_adapter_version_mismatch" {
-		t.Fatalf("ReasonCode = %q, want acp_adapter_version_mismatch", status.Availability.ReasonCode)
-	}
-	if status.Adapter.Version != "0.0.1" {
-		t.Fatalf("Adapter.Version = %q, want 0.0.1", status.Adapter.Version)
-	}
-	if status.Adapter.RequiredVersion != minTuttiAgentVersion {
-		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, minTuttiAgentVersion)
-	}
-	action := firstAction(t, status.Actions)
-	if action.ID != ActionInstall {
-		t.Fatalf("first action ID = %q, want %q", action.ID, ActionInstall)
-	}
-}
-
-func TestTuttiAgentAdapterAboveMinimumVersionDoesNotRequireInstall(t *testing.T) {
-	home := t.TempDir()
-	packageDir := filepath.Join(home, "lib", "node_modules", "@tutti-os", "tutti-agent")
-	binPath := filepath.Join(packageDir, "bin", "tutti-agent")
-	writePackageManifest(t, packageDir, "@tutti-os/tutti-agent", "0.0.3")
-	writeExecutable(t, binPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'tutti-agent 0.0.3'; exit 0; fi\nexit 0\n")
-
-	service := probeTestService(home)
-	service.LookPath = func(name string) (string, error) {
-		if name == "tutti-agent" {
-			return binPath, nil
-		}
-		return "", errors.New("not found")
-	}
-	service.FileExists = func(path string) bool {
-		return path == filepath.Join(home, ".tutti-agent", "auth.json")
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"tutti-agent"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityAuthRequired {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityAuthRequired)
-	}
-	if status.Availability.ReasonCode != "auth_required" {
-		t.Fatalf("ReasonCode = %q, want auth_required", status.Availability.ReasonCode)
-	}
-	if status.Adapter.Version != "0.0.3" {
-		t.Fatalf("Adapter.Version = %q, want 0.0.3", status.Adapter.Version)
-	}
-	if status.Adapter.RequiredVersion != minTuttiAgentVersion {
-		t.Fatalf("Adapter.RequiredVersion = %q, want %q", status.Adapter.RequiredVersion, minTuttiAgentVersion)
-	}
-	action := firstAction(t, status.Actions)
-	if action.ID != ActionLogin {
-		t.Fatalf("first action ID = %q, want %q", action.ID, ActionLogin)
+	action := firstAction(t, onlyStatus(t, snapshot).Actions)
+	if action.ID != ActionLogin || action.Kind != ActionKindDaemonAction || action.Command != nil {
+		t.Fatalf("login action = %#v, want descriptor-owned daemon action", action)
 	}
 }
 
@@ -602,7 +532,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
 	writePackageManifest(t, pkgDir, "@openai/codex", "0.100.0")
 	codexPath := filepath.Join(pkgDir, "bin", "codex")
-	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nsleep 5\n")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nexit 0\n")
 	visiblePath := filepath.Join(binDir, "codex")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
@@ -905,262 +835,6 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 	action := firstAction(t, status.Actions)
 	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
 		t.Fatalf("first action = %#v, want daemon install", action)
-	}
-}
-
-func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	claudePath := filepath.Join(binDir, "claude")
-	adapterPath := filepath.Join(binDir, "claude-agent-acp")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, adapterPath, "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.42.0")
-
-	registryStore, _ := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(_ string) (string, error) {
-			return "", errors.New("not found")
-		},
-		IsExecutableFile: isTestExecutableUnderHome(home),
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		ProbeTimeout: 10 * time.Second,
-		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityNotInstalled {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
-	}
-	if status.Availability.ReasonCode != "acp_adapter_not_found" {
-		t.Fatalf("ReasonCode = %q, want acp_adapter_not_found", status.Availability.ReasonCode)
-	}
-	if status.Adapter.Installed {
-		t.Fatal("Adapter.Installed = true, want false when registry-managed prefix is empty")
-	}
-	if status.Adapter.BinaryPath == adapterPath {
-		t.Fatalf("Adapter.BinaryPath = %q, want global adapter path ignored", status.Adapter.BinaryPath)
-	}
-	if len(status.Adapter.Command) == 0 || status.Adapter.Command[0] != filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()) {
-		t.Fatalf("Adapter.Command = %#v, want managed npm command", status.Adapter.Command)
-	}
-	action := firstAction(t, status.Actions)
-	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
-		t.Fatalf("first action = %#v, want daemon install action", action)
-	}
-}
-
-func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".local", "bin")
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	writeExecutable(
-		t,
-		filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()),
-		"#!/bin/sh\necho 'sh: claude-agent-acp: command not found' >&2\nexit 127\n",
-	)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(name string) (string, error) {
-			if name == "claude" {
-				return claudePath, nil
-			}
-			return "", errors.New("not found")
-		},
-		IsExecutableFile: isTestExecutableUnderHome(home),
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityNotInstalled {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
-	}
-	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
-		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
-	}
-	if !status.CLI.Installed {
-		t.Fatal("CLI.Installed = false, want true")
-	}
-	if status.Adapter.Installed {
-		t.Fatal("Adapter.Installed = true, want false")
-	}
-	action := firstAction(t, status.Actions)
-	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
-		t.Fatalf("first action = %#v, want daemon install action", action)
-	}
-}
-
-func TestServiceListExternalAdapterCommandUsesRankedRegistry(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".local", "bin")
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	registryCapturePath := filepath.Join(home, "npm-registry.txt")
-	writeExecutable(
-		t,
-		filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()),
-		"#!/bin/sh\nprintf '%s' \"$npm_config_registry\" > "+shellQuote(registryCapturePath)+"\necho 'sh: claude-agent-acp: command not found' >&2\nexit 127\n",
-	)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(name string) (string, error) {
-			if name == "claude" {
-				return claudePath, nil
-			}
-			return "", errors.New("not found")
-		},
-		IsExecutableFile: isTestExecutableUnderHome(home),
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-		HTTPClient: agentNPMRegistryProbeHTTPClient(map[string]bool{
-			"registry.npmjs.org": true,
-		}),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	status := onlyStatus(t, snapshot)
-	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
-		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
-	}
-	registryBytes, err := os.ReadFile(registryCapturePath)
-	if err != nil {
-		t.Fatalf("read captured npm registry: %v", err)
-	}
-	if got := string(registryBytes); got != "https://repo.huaweicloud.com/repository/npm/" {
-		t.Fatalf("npm_config_registry = %q, want ranked mirror registry", got)
-	}
-}
-
-func TestServiceListReportsInstallActionWhenExternalAdapterCommandFailsAfterReadyWindow(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".local", "bin")
-	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	writeExecutable(
-		t,
-		filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()),
-		"#!/bin/sh\nsleep 0.2\necho 'sh: claude-agent-acp: command not found' >&2\nexit 127\n",
-	)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-
-	service := Service{
-		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
-		},
-		HomeDir: func() (string, error) {
-			return home, nil
-		},
-		LookPath: func(name string) (string, error) {
-			if name == "claude" {
-				return claudePath, nil
-			}
-			return "", errors.New("not found")
-		},
-		IsExecutableFile: isTestExecutableUnderHome(home),
-		Now: func() time.Time {
-			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
-		},
-		ProbeReadyAfter: 10 * time.Millisecond,
-		ProbeTimeout:    10 * time.Second,
-		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-			return AuthInfo{Status: AuthAuthenticated}, true
-		},
-		ExternalAgentRegistry: registryStore,
-		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityNotInstalled {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
-	}
-	if status.Availability.ReasonCode != "acp_adapter_launch_failed" {
-		t.Fatalf("ReasonCode = %q, want acp_adapter_launch_failed", status.Availability.ReasonCode)
-	}
-	action := firstAction(t, status.Actions)
-	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
-		t.Fatalf("first action = %#v, want daemon install action", action)
 	}
 }
 
@@ -1494,9 +1168,9 @@ func TestServiceRunCodexCLILatestInstallerPrefersManagedNPM(t *testing.T) {
 		input.OnStdout("installed")
 		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
-	result, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
+	result, err := service.runCodexCLILatestInstaller(context.Background(), "codex", InstallerSpec{
 		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		CodexCLI: codexCLIInstallerSpec().CodexCLI,
 	}, "")
 	if err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
@@ -1518,6 +1192,7 @@ func TestServiceRunCodexCLILatestInstallerPrefersManagedNPM(t *testing.T) {
 }
 
 func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
+	const provider = "codex"
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
 	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
@@ -1535,7 +1210,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
 	service.Registry = Registry{Specs: []ProviderSpec{{
-		Provider:           "codex",
+		Provider:           provider,
 		BinaryNames:        []string{"codex-test"},
 		AdapterBinaryNames: []string{"codex-test"},
 		AdapterCommand:     []string{"codex-test", "app-server"},
@@ -1590,7 +1265,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 	_ = requireTestCodexPlatformBinaryPath(t, pkgDir)
 	go func() {
 		result, err := service.RunAction(context.Background(), RunActionInput{
-			Provider: "codex",
+			Provider: provider,
 			ActionID: ActionInstall,
 		})
 		if err != nil {
@@ -1605,7 +1280,7 @@ func TestServiceRunCodexInstallerReportsManagedNPMActiveAction(t *testing.T) {
 		t.Fatalf("RunAction completed before install started: %#v", result)
 	}
 	defer releaseInstallOnce.Do(func() { close(releaseInstall) })
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{provider}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -1792,6 +1467,37 @@ func TestServiceRunActionReportsInstallCommandFailures(t *testing.T) {
 	}
 }
 
+func TestServiceRunActionClassifiesInstallFailureFromDescriptorMarkers(t *testing.T) {
+	home := t.TempDir()
+	service := probeTestService(home)
+	service.Registry = Registry{Specs: []ProviderSpec{{
+		Provider:    "opencode",
+		BinaryNames: []string{"opencode"},
+		Install: InstallerSpec{
+			Kind:           InstallerKindShellCommand,
+			DisplayCommand: "install opencode test",
+			ShellCommand:   "install opencode test",
+			FailureReasonMarkers: map[string][]string{
+				"install_unavailable_in_region": {"unavailable-in-test-region"},
+			},
+		},
+	}}}
+	service.InstallCommand = func(context.Context, InstallCommandInput) (InstallCommandResult, error) {
+		return InstallCommandResult{ExitCode: 42, Stderr: "Unavailable-In-Test-Region"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{
+		Provider: "opencode",
+		ActionID: ActionInstall,
+	})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.ReasonCode != "install_unavailable_in_region" {
+		t.Fatalf("ReasonCode = %q, want install_unavailable_in_region", result.ReasonCode)
+	}
+}
+
 func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 	home := t.TempDir()
 	service := probeTestService(home)
@@ -1835,243 +1541,6 @@ func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 	}
 	if result.Probe != nil {
 		t.Fatalf("Probe = %#v, want nil when install command times out", result.Probe)
-	}
-}
-
-func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	writeExecutable(t, filepath.Join(binDir, "claude"), "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nsleep 5\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.42.0")
-
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	commands := []string{}
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
-		commands = append(commands, input.Command)
-		if strings.Contains(input.Command, "@agentclientprotocol/claude-agent-acp") {
-			if err := os.MkdirAll(packageDir, 0o755); err != nil {
-				t.Fatalf("mkdir package dir: %v", err)
-			}
-			writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-		}
-		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
-	}
-
-	result, err := service.RunAction(context.Background(), RunActionInput{
-		Provider: "claude-code",
-		ActionID: ActionInstall,
-	})
-	if err != nil {
-		t.Fatalf("RunAction() error = %v", err)
-	}
-	if result.Status != RunActionCompleted {
-		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
-	}
-	if len(commands) == 0 ||
-		!strings.Contains(commands[0], filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())) ||
-		!strings.Contains(commands[0], "--prefix") ||
-		!strings.Contains(commands[0], prefixDir) ||
-		!strings.Contains(commands[0], "install") ||
-		!strings.Contains(commands[0], "@agentclientprotocol/claude-agent-acp") {
-		t.Fatalf("commands = %#v, want managed npm prefix install", commands)
-	}
-	if len(commands) < 2 ||
-		!strings.Contains(commands[1], filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())) ||
-		!strings.Contains(commands[1], "--dist") ||
-		!strings.Contains(commands[1], filepath.Join(packageDir, "dist", "acp-agent.js")) {
-		t.Fatalf("commands = %#v, want managed node patch against registry package dir", commands)
-	}
-	if result.Probe == nil || result.Probe.Status != ProbeReady {
-		t.Fatalf("Probe = %#v, want ready probe after upgrade", result.Probe)
-	}
-}
-
-func TestServiceRunActionSerializesConcurrentExternalRegistryNPMInstalls(t *testing.T) {
-	forceClaudeACPRuntime(t)
-	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
-
-	home := t.TempDir()
-	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin dir: %v", err)
-	}
-	writeExecutable(t, filepath.Join(binDir, "claude"), "#!/bin/sh\nexit 0\n")
-
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-		return AuthInfo{Status: AuthAuthenticated}, true
-	}
-
-	firstInstallStarted := make(chan struct{})
-	releaseFirstInstall := make(chan struct{})
-	var npmInstallCalls atomic.Int32
-	var activeNPMInstalls atomic.Int32
-	var sawConcurrentInstall atomic.Bool
-	service.InstallCommand = func(ctx context.Context, input InstallCommandInput) (InstallCommandResult, error) {
-		isClaudeACPInstall := strings.Contains(input.Command, " install ") &&
-			strings.Contains(input.Command, "@agentclientprotocol/claude-agent-acp")
-		if !isClaudeACPInstall {
-			return InstallCommandResult{ExitCode: 0, Stdout: "patched"}, nil
-		}
-
-		if active := activeNPMInstalls.Add(1); active != 1 {
-			activeNPMInstalls.Add(-1)
-			sawConcurrentInstall.Store(true)
-			return InstallCommandResult{ExitCode: 90, Stderr: "concurrent npm install"}, nil
-		}
-		defer activeNPMInstalls.Add(-1)
-
-		callIndex := npmInstallCalls.Add(1)
-		if callIndex == 1 {
-			close(firstInstallStarted)
-			select {
-			case <-releaseFirstInstall:
-			case <-ctx.Done():
-				return InstallCommandResult{ExitCode: 1, Stderr: ctx.Err().Error()}, ctx.Err()
-			}
-		}
-
-		writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
-	}
-
-	type runResult struct {
-		result RunActionResult
-		err    error
-	}
-	firstDone := make(chan runResult, 1)
-	go func() {
-		result, err := service.RunAction(context.Background(), RunActionInput{
-			Provider: "claude-code",
-			ActionID: ActionInstall,
-		})
-		firstDone <- runResult{result: result, err: err}
-	}()
-
-	<-firstInstallStarted
-	secondDone := make(chan runResult, 1)
-	go func() {
-		result, err := service.RunAction(context.Background(), RunActionInput{
-			Provider: "claude-code",
-			ActionID: ActionInstall,
-		})
-		secondDone <- runResult{result: result, err: err}
-	}()
-
-	// Give the second install attempt enough time to reach the install lock. The
-	// lock polls, so a short sleep can let the second goroutine start only after
-	// the first install has completed.
-	time.Sleep(2 * npmGlobalInstallLockPollInterval)
-	if got := npmInstallCalls.Load(); got != 1 {
-		t.Fatalf("npm install calls before releasing first install = %d, want 1", got)
-	}
-	close(releaseFirstInstall)
-
-	first := <-firstDone
-	if first.err != nil {
-		t.Fatalf("first RunAction() error = %v", first.err)
-	}
-	if first.result.Status != RunActionCompleted {
-		t.Fatalf("first status = %q, want %q; result=%#v", first.result.Status, RunActionCompleted, first.result)
-	}
-	second := <-secondDone
-	if second.err != nil {
-		t.Fatalf("second RunAction() error = %v", second.err)
-	}
-	if second.result.Status != RunActionCompleted {
-		t.Fatalf("second status = %q, want %q; result=%#v", second.result.Status, RunActionCompleted, second.result)
-	}
-	if got := npmInstallCalls.Load(); got != 2 {
-		t.Fatalf("npm install calls = %d, want serialized duplicate installs", got)
-	}
-	if sawConcurrentInstall.Load() {
-		t.Fatal("external registry npm installs overlapped")
-	}
-}
-
-func TestServiceResolveProviderCommandCreatesExternalRegistryNPMPrefix(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-
-	if _, err := os.Stat(prefixDir); !os.IsNotExist(err) {
-		t.Fatalf("prefix dir exists before resolve: err=%v", err)
-	}
-
-	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
-	if err != nil {
-		t.Fatalf("ResolveProviderCommand() error = %v", err)
-	}
-	if _, err := os.Stat(prefixDir); err != nil {
-		t.Fatalf("prefix dir was not created before npm exec: %v", err)
-	}
-	if len(result.Command) == 0 ||
-		!slices.Contains(result.Command, "--prefix") ||
-		!slices.Contains(result.Command, prefixDir) ||
-		!slices.Contains(result.Command, "exec") {
-		t.Fatalf("Command = %#v, want managed npm exec with prefix", result.Command)
-	}
-}
-
-func TestServiceResolveProviderCommandUsesInstalledExternalRegistryNPMBin(t *testing.T) {
-	forceClaudeACPRuntime(t)
-
-	home := t.TempDir()
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
-	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
-	binPath := filepath.Join(prefixDir, "node_modules", ".bin", "claude-agent-acp")
-	writePackageManifestWithBin(
-		t,
-		packageDir,
-		"@agentclientprotocol/claude-agent-acp",
-		"0.46.0",
-		"claude-agent-acp",
-		"dist/index.js",
-	)
-	writeExecutable(t, binPath, "#!/bin/sh\nexit 0\n")
-
-	service := probeTestService(home)
-	service.ExternalAgentRegistry = registryStore
-	service.IsExecutableFile = func(path string) bool {
-		stat, err := os.Stat(path)
-		return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
-	}
-	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
-
-	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
-	if err != nil {
-		t.Fatalf("ResolveProviderCommand() error = %v", err)
-	}
-	if len(result.Command) == 0 || result.Command[0] != binPath {
-		t.Fatalf("Command = %#v, want installed npm bin %q", result.Command, binPath)
-	}
-	if slices.Contains(result.Command, "exec") {
-		t.Fatalf("Command = %#v, want installed bin without npm exec", result.Command)
 	}
 }
 
@@ -2127,8 +1596,6 @@ func TestServiceResolveProviderCommandFallsBackToManagedNodeForCodex(t *testing.
 }
 
 func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.T) {
-	t.Setenv(claudeCodeRuntimeEnv, "")
-
 	home := t.TempDir()
 	entry := filepath.Join(home, "claude-sdk-sidecar", "src", "main.ts")
 	if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
@@ -2156,14 +1623,9 @@ func TestServiceResolveProviderCommandDefaultsClaudeCodeToSDKSidecar(t *testing.
 	if !slices.Equal(result.Command, []string{managedNode, claudeSDKSidecarDefaultNodeArg, entry}) {
 		t.Fatalf("Command = %#v, want SDK sidecar command", result.Command)
 	}
-	if slices.Contains(result.Command, "exec") || slices.Contains(result.Command, "@agentclientprotocol/claude-agent-acp") {
-		t.Fatalf("Command = %#v, must not use ACP registry package in SDK mode", result.Command)
-	}
 }
 
-func TestServiceListClaudeCodeSDKDoesNotRequireACPAdapter(t *testing.T) {
-	t.Setenv(claudeCodeRuntimeEnv, "")
-
+func TestServiceListClaudeCodeSDKAvailability(t *testing.T) {
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -2204,20 +1666,12 @@ func TestServiceListClaudeCodeSDKDoesNotRequireACPAdapter(t *testing.T) {
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf("Availability.Status = %q, want ready; reason=%q", status.Availability.Status, status.Availability.ReasonCode)
 	}
-	if strings.HasPrefix(status.Availability.ReasonCode, "acp_adapter") {
-		t.Fatalf("ReasonCode = %q, must not report ACP adapter in SDK mode", status.Availability.ReasonCode)
-	}
 	if !status.Adapter.Installed {
 		t.Fatalf("Adapter.Installed = false, want SDK sidecar runtime installed; status=%#v", status)
-	}
-	if strings.Contains(strings.Join(status.Adapter.Command, " "), "claude-agent-acp") {
-		t.Fatalf("Adapter.Command = %#v, must not use ACP adapter", status.Adapter.Command)
 	}
 }
 
 func TestServiceListClaudeCodeSDKReportsMissingSidecarEntry(t *testing.T) {
-	t.Setenv(claudeCodeRuntimeEnv, "")
-
 	home := t.TempDir()
 	binDir := filepath.Join(home, "bin")
 	claudePath := filepath.Join(binDir, "claude")
@@ -2335,7 +1789,7 @@ func TestInstallCommandLockSerializesConcurrentNPMGlobalInstalls(t *testing.T) {
 func TestInstallCommandLockSerializesConcurrentExternalRegistryNPMInstalls(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "run", "locks", "agent-provider-install.lock")
 	lock := installCommandLock{
-		command:      "external_agent_registry_npm:claude-acp:@agentclientprotocol/claude-agent-acp@0.46.0:/tmp/claude-acp",
+		command:      "external_agent_registry_npm:sample-agent:@agentclientprotocol/sample-agent-acp@0.46.0:/tmp/sample-agent",
 		lockPath:     lockPath,
 		now:          time.Now,
 		pollInterval: 10 * time.Millisecond,
@@ -2408,7 +1862,7 @@ func TestInstallCommandLockSkipsNonNPMCommands(t *testing.T) {
 }
 
 func TestInstallCommandLockUsesPackageSpecificPathForExternalRegistryNPM(t *testing.T) {
-	first := installCommandLockPath("external_agent_registry_npm:claude-acp:@agentclientprotocol/claude-agent-acp@0.46.0:/tmp/claude-acp")
+	first := installCommandLockPath("external_agent_registry_npm:sample-agent:@agentclientprotocol/sample-agent-acp@0.46.0:/tmp/sample-agent")
 	second := installCommandLockPath("external_agent_registry_npm:other-agent:other-package@1.0.0:/tmp/other-agent")
 	if filepath.Base(first) == "npm-global-install.lock" {
 		t.Fatalf("external registry npm lock path = %q, want package-specific lock", first)
@@ -2662,15 +2116,15 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -2723,15 +2177,15 @@ func TestServiceListReportsReadyForClaudeAPIBillingWithEnvKey(t *testing.T) {
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -2784,21 +2238,21 @@ func TestServiceListReportsReadyForClaudeAPIBillingWithSettingsKey(t *testing.T)
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatalf("mkdir .claude dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`), 0o600); err != nil {
 		t.Fatalf("write settings.json: %v", err)
 	}
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -2851,21 +2305,21 @@ func TestServiceListReportsReadyForClaudeAPIBillingDespiteOauthTokenStatus(t *te
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatalf("mkdir .claude dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`), 0o600); err != nil {
 		t.Fatalf("write settings.json: %v", err)
 	}
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -2915,125 +2369,6 @@ func TestServiceListReportsReadyForClaudeAPIBillingDespiteOauthTokenStatus(t *te
 	}
 }
 
-// Codex can run with OPENAI_API_KEY (or config.toml api_key) without a ChatGPT
-// login. `codex login status` only reflects the OAuth session, so an API-key
-// user is reported as "Not logged in" even though the CLI can already run.
-// Detect the credential and treat the provider as ready instead of blocking.
-func TestServiceListReportsReadyForCodexAPIKeyWithoutLogin(t *testing.T) {
-	service := testService(func(name string) (string, error) {
-		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{})
-	service.Environ = func() []string {
-		return []string{"OPENAI_API_KEY=sk-test"}
-	}
-	service.RunAuthStatusCommand = func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
-		if spec.Provider != "codex" {
-			t.Fatalf("Provider = %q, want codex", spec.Provider)
-		}
-		if binaryPath != "/usr/local/bin/codex" {
-			t.Fatalf("binaryPath = %q, want /usr/local/bin/codex", binaryPath)
-		}
-		return parseCodexAuthStatusOutput([]byte("Not logged in"))
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AuthMethod != "apiKey" {
-		t.Fatalf("Auth.AuthMethod = %q, want %q", status.Auth.AuthMethod, "apiKey")
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-func TestServiceListReportsReadyForCodexConfigTomlAPIKeyWithoutLogin(t *testing.T) {
-	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
-		t.Fatalf("mkdir .codex: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("api_key = \"sk-inline\"\n"), 0o600); err != nil {
-		t.Fatalf("write config.toml: %v", err)
-	}
-	service := testService(func(name string) (string, error) {
-		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{})
-	service.HomeDir = func() (string, error) { return home, nil }
-	service.Environ = func() []string { return []string{} }
-	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-		return parseCodexAuthStatusOutput([]byte("Not logged in"))
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AuthMethod != "apiKey" {
-		t.Fatalf("Auth.AuthMethod = %q, want apiKey", status.Auth.AuthMethod)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
-// Tools such as cc-switch store OpenRouter/custom-provider keys in
-// ~/.codex/auth.json as OPENAI_API_KEY (not config.toml api_key). Codex can
-// run with that file alone while `codex login status` still prints
-// "Not logged in".
-func TestServiceListReportsReadyForCodexAuthJSONAPIKeyWithoutLogin(t *testing.T) {
-	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
-		t.Fatalf("mkdir .codex: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{"OPENAI_API_KEY":"sk-test"}`), 0o600); err != nil {
-		t.Fatalf("write auth.json: %v", err)
-	}
-	service := testService(func(name string) (string, error) {
-		return "/usr/local/bin/" + name, nil
-	}, map[string]bool{})
-	service.HomeDir = func() (string, error) { return home, nil }
-	service.Environ = func() []string { return []string{} }
-	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
-		return parseCodexAuthStatusOutput([]byte("Not logged in"))
-	}
-
-	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-
-	status := onlyStatus(t, snapshot)
-	if status.Availability.Status != AvailabilityReady {
-		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityReady)
-	}
-	if status.Auth.Status != AuthAuthenticated {
-		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthAuthenticated)
-	}
-	if status.Auth.AuthMethod != "apiKey" {
-		t.Fatalf("Auth.AuthMethod = %q, want apiKey", status.Auth.AuthMethod)
-	}
-	if status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("Auth.AccountLabel = %q, want %q", status.Auth.AccountLabel, "API Usage Billing")
-	}
-}
-
 // A bare custom endpoint (no API credential) must NOT be mislabeled as API
 // Usage Billing. The user may be on an OAuth/subscription session against that
 // endpoint, so the CLI-reported auth status and label must be preserved.
@@ -3045,21 +2380,21 @@ func TestServiceListDoesNotMislabelCustomEndpointOnlyAsAPIBilling(t *testing.T) 
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatalf("mkdir .claude dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`), 0o600); err != nil {
 		t.Fatalf("write settings.json: %v", err)
 	}
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -3106,15 +2441,15 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 	authStatusCommandCalls := 0
 
 	service := Service{
@@ -3176,18 +2511,18 @@ func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecogniz
 	}
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
-	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
-	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writeExecutable(t, filepath.Join(binDir, "sample-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"userID":"user_123"}`), 0o600); err != nil {
 		t.Fatalf("write claude marker: %v", err)
 	}
-	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	registryStore, prefixDir := fakeExternalAgentRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
-	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/sample-agent-acp")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("mkdir package dir: %v", err)
 	}
-	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	writePackageManifest(t, packageDir, "@agentclientprotocol/sample-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -3432,11 +2767,6 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
-func forceClaudeACPRuntime(t *testing.T) {
-	t.Helper()
-	t.Setenv(claudeCodeRuntimeEnv, claudeCodeRuntimeACP)
-}
-
 func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
 	t.Helper()
 	for _, check := range checks {
@@ -3500,33 +2830,20 @@ func writePackageManifest(t *testing.T, dir string, name string, version string)
 	}
 }
 
-func writePackageManifestWithBin(t *testing.T, dir string, name string, version string, binName string, binTarget string) {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("create package manifest dir: %v", err)
-	}
-	content := `{"name":` + quoteJSONString(name) +
-		`,"version":` + quoteJSONString(version) +
-		`,"bin":{` + quoteJSONString(binName) + `:` + quoteJSONString(binTarget) + `}}`
-	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write package manifest: %v", err)
-	}
-}
-
-func fakeClaudeExternalRegistry(t *testing.T) (externalagentregistry.Store, string) {
+func fakeExternalAgentRegistry(t *testing.T) (externalagentregistry.Store, string) {
 	t.Helper()
 	root := t.TempDir()
 	sourcePath := filepath.Join(root, "registry.json")
 	content := `{
   "version": "test",
   "agents": [{
-    "id": "claude-acp",
-    "name": "Claude Agent",
+    "id": "sample-agent",
+    "name": "Sample Agent",
     "version": "0.46.0",
-    "description": "ACP wrapper for Anthropic's Claude",
+    "description": "ACP wrapper for sample agent",
     "distribution": {
       "npx": {
-        "package": "@agentclientprotocol/claude-agent-acp@0.46.0"
+        "package": "@agentclientprotocol/sample-agent-acp@0.46.0"
       }
     }
   }]
@@ -3541,7 +2858,7 @@ func fakeClaudeExternalRegistry(t *testing.T) (externalagentregistry.Store, stri
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 	}
-	return store, store.PackagePrefix("claude-acp")
+	return store, store.PackagePrefix("sample-agent")
 }
 
 func fakeManagedRuntimeRoot(t *testing.T) string {

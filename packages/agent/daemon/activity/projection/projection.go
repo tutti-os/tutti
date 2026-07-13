@@ -250,9 +250,6 @@ func ProjectMessageUpdate(
 			message.CompletedAtUnixMS = existing.CompletedAtUnixMS
 		}
 	}
-	if message.TurnID == "" {
-		return MessageSnapshot{}, false
-	}
 	if message.OccurredAtUnixMS <= 0 {
 		message.OccurredAtUnixMS = firstNonZeroInt64(message.StartedAtUnixMS, message.CompletedAtUnixMS, nowUnixMS)
 	}

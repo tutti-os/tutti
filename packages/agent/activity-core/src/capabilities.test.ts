@@ -2,21 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   AGENT_CAPABILITY_KEYS,
+  hasAgentCapability,
   resolveAgentActivityCapability
 } from "./capabilities.ts";
-import type { AgentActivityComposerOptions } from "./types.ts";
+import type {
+  AgentActivityComposerOptions,
+  AgentActivitySessionCapabilities
+} from "./types.ts";
 
 test("runtime capabilities take precedence over composer options", () => {
   assert.equal(
     resolveAgentActivityCapability("compact", {
-      sessionRuntimeContext: { capabilities: ["interrupt"] },
+      sessionCapabilities: { compact: false, interrupt: true },
       composerOptions: composerOptions({ capabilities: ["compact"] })
     }),
     false
   );
   assert.equal(
     resolveAgentActivityCapability("compact", {
-      sessionRuntimeContext: { capabilities: ["compact"] }
+      sessionCapabilities: { compact: true }
     }),
     true
   );
@@ -25,7 +29,6 @@ test("runtime capabilities take precedence over composer options", () => {
 test("falls back to composer options when session has no capability list", () => {
   assert.equal(
     resolveAgentActivityCapability("skills", {
-      sessionRuntimeContext: {},
       composerOptions: composerOptions({ capabilities: ["skills"] })
     }),
     true
@@ -36,20 +39,19 @@ test("returns null when no capability data exists", () => {
   assert.equal(resolveAgentActivityCapability("compact", {}), null);
 });
 
+test("checks one runtime capability without provider inference", () => {
+  assert.equal(hasAgentCapability({ planMode: true }, "planMode"), true);
+  assert.equal(hasAgentCapability({}, "planMode"), false);
+});
+
 test("imageInput resolves from the capabilities list only", () => {
   assert.equal(
     resolveAgentActivityCapability("imageInput", {
-      sessionRuntimeContext: { capabilities: ["imageInput"] }
+      sessionCapabilities: { imageInput: true }
     }),
     true
   );
-  // The legacy promptCapabilities signal is retired and no longer read.
-  assert.equal(
-    resolveAgentActivityCapability("imageInput", {
-      sessionRuntimeContext: { promptCapabilities: { image: true } }
-    }),
-    null
-  );
+  assert.equal(resolveAgentActivityCapability("imageInput", {}), null);
 });
 
 test("vocabulary matches the Go side", () => {
@@ -60,24 +62,41 @@ test("vocabulary matches the Go side", () => {
     "goalPause",
     "imageInput",
     "interrupt",
+    "modelImageInputRequired",
+    "permissionModeChangeDeferred",
+    "permissionModeChangeDuringTurn",
+    "planImplementation",
     "planMode",
     "rateLimits",
+    "resumeRunningTurn",
+    "review",
     "skills",
     "tokenUsage"
   ]);
 });
 
-function composerOptions(
-  runtimeContext: Record<string, unknown>
-): AgentActivityComposerOptions {
+function composerOptions(input: {
+  capabilities?: readonly string[];
+}): AgentActivityComposerOptions {
+  const capabilities = input.capabilities ?? [];
   return {
     provider: "codex",
+    capabilities: Object.fromEntries(
+      AGENT_CAPABILITY_KEYS.map((key) => [key, capabilities.includes(key)])
+    ) as unknown as AgentActivitySessionCapabilities,
     models: [],
     reasoningEfforts: [],
     speeds: [],
     permissionConfig: null,
-    runtimeContext,
+    capabilityCatalog: [],
     skills: [],
+    behavior: {
+      collapseModelOptionsToLatest: false,
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     loadedAtUnixMs: 1
   };
 }

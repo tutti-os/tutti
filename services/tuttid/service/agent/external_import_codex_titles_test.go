@@ -36,7 +36,7 @@ func TestScanExternalImportsAppliesCodexSQLiteTitle(t *testing.T) {
 		"codex-x": "Generated summary title",
 	})
 
-	service := NewService(newFakeRuntime())
+	service := newIsolatedAgentService(newFakeRuntime())
 	scan, err := service.ScanExternalImports(context.Background(), ExternalImportScanInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("ScanExternalImports error = %v", err)

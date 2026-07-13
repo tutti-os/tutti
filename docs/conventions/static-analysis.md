@@ -27,6 +27,8 @@ Repository entrypoints:
 - `pnpm lint:go`
 - `pnpm typecheck`
 - `pnpm check:codexproto-generated`
+- `pnpm check:agent-gui-provider-catalog-generated`
+- `pnpm check:agent-provider-strategy-boundaries`
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
 
@@ -60,6 +62,34 @@ The codexproto generator runs during `pnpm check:full` alongside full-repository
 boundary scanners. Generator scratch files must stay outside the repository
 tree, even when they are removed before the generator exits, so parallel checks
 cannot observe transient files and fail nondeterministically.
+
+The Agent GUI provider identity catalog under
+`packages/agent/gui/generated/providerIdentityCatalog.ts` is generated from the
+daemon provider registry. `pnpm check:agent-gui-provider-catalog-generated`
+fails when the checked-in TypeScript catalog drifts from the descriptor source
+of truth, when a generated locale key is absent from any AgentGUI locale, or
+when a generated icon key has no complete asset set. The same check also keeps
+the descriptor set equal to the OpenAPI provider, target, and provider-keyed
+preference schemas. It runs as part of
+`pnpm check:full`. Change provider identity, locale keys, icons, and target metadata in the registry, then run
+`pnpm generate:agent-gui-provider-catalog`; do not hand-edit the generated
+catalog.
+
+The provider catalog check also runs
+`pnpm check:agent-provider-strategy-boundaries`. Cross-provider daemon,
+service, and desktop production code must dispatch behavior through
+`providerregistry` strategy, capability, and integration descriptors instead
+of branching on Codex, Claude, Cursor, Hermes, Nexight, OpenClaw, OpenCode, or
+Tutti Agent identity. The checker reads the complete provider ID set from the
+daemon registry and rejects identity constants, literal equality comparisons,
+literal switch cases, and provider-specific Set or array membership dispatch in
+Go, TypeScript, and TSX production sources. Plain provider catalogs and enum
+validation remain allowed when they do not select behavior.
+It keeps an explicit exemption list for registry declarations, generated API
+enums, and exact provider-owned adapter/parser implementations; additions to
+that list require an ownership reason and must not hide cross-provider policy.
+Its fixture suite must exercise every registered provider so a newly migrated
+provider cannot silently remain outside the boundary rule.
 
 Historical or ported-source snapshots that are intentionally kept outside a
 package's active `tsconfig.json` during migration should also stay out of the
@@ -102,6 +132,66 @@ before being shared elsewhere. Remove or replace the package-wide exception
 once the carried renderer no longer duplicates its original UI asset tree.
 
 Desktop user-visible copy and locale resources are checked by `pnpm check:i18n`.
+
+`pnpm check:agent-activity-runtime-boundaries` scans Agent GUI and desktop
+renderer production code. Agent activity commands must go through
+`AgentActivityRuntime`; session-engine consumers must use exported selectors
+instead of reading `sessionsById`, `turnsById`, `interactionsById`, pending
+intent maps, or prompt-queue records directly. Entity storage keys and reducer
+layout are engine implementation details, not consumer contracts. The check
+also rejects the deleted `workspaceAgentActivityTypes` aggregate, handwritten
+session/snapshot/presence mirrors, module-global runtime resolver access, and
+deprecated session lifecycle reads. The desktop reconcile diagnostics module
+has a narrow serialization-only exception for legacy lifecycle evidence.
+
+## Agent GUI Degradation Ratchet
+
+The agent GUI refactor
+([docs/architecture/agent-gui-refactor-plan.md](../architecture/agent-gui-refactor-plan.md))
+is protected by a degradation ratchet:
+
+- `pnpm check:agent-gui-degradation` measures entropy metrics over
+  `packages/agent/gui` and `packages/agent/activity-core` (per-file line counts
+  over the business limit, package-wide effect and memoization totals, provider behavior
+  branches, timers, swallowed catch blocks, view-embedded stores, direct
+  `useSyncExternalStore` calls, module-level mutable globals, and daemon Go
+  file-length exemptions) and compares them against the committed baseline in
+  `tools/degradation-baseline/agent-gui.json`.
+- Effect and memoization counts are package-wide totals because hooks move with
+  their vertical module during decomposition. Counting them per path would
+  falsely reject moving an existing hook out of a monolith. The per-file line
+  limit and render-budget tests continue to enforce module and render shape.
+- Any metric increase fails. Any decrease also fails until the same change
+  updates the baseline with
+  `node tools/scripts/check-agent-gui-degradation.mjs --update-baseline`, so
+  refactor wins stay locked in.
+- The metric counting rules live in the script; numbers quoted in architecture
+  documents are illustrative only.
+- `identityExemptFiles` in the baseline lists identity-display files (provider
+  icons, labels, title projections) whose provider branches are tracked in a
+  separate bucket. The list may only shrink.
+- `pnpm check:agent-gui-degradation:staged` runs in `pre-commit` and blocks
+  new degradation patterns on staged added lines: uncommented timers (a
+  `// timing: <reason>` comment is required outside engine/reducer/selector
+  code, where timers are forbidden entirely), silently swallowed catch blocks,
+  store creation in component files, new provider behavior branches, direct
+  `useSyncExternalStore` calls outside the single engine binding file, and new
+  module-level mutable globals.
+
+The business file size limit below also applies to TypeScript under
+`packages/agent/gui` and `packages/agent/activity-core` through this ratchet:
+files over the limit that are not in the baseline fail the check, and
+baselined files may not grow.
+
+Render budget tests are the companion mechanism for performance work: the
+probe utility in `packages/agent/gui/shared/testing/renderBudget.tsx` asserts
+React commit counts for typical interactions, and budget test cases are
+delivered with each feature-module slice.
+
+Fix-scope is soft-gated in pull-request CI by
+`tools/scripts/check-fix-scope.mjs`: a fix-titled PR changing more than 300
+lines must answer "what is the root cause" and "why can this not be fixed at
+a lower layer" in the PR description.
 
 Electron `main` and `preload` runtime import graphs are checked by `pnpm check:electron-runtime-boundaries`.
 That script is intentionally narrow: it ignores type-only imports and test files, then follows reachable runtime imports to catch React/TSX leaks and Electron-externalized workspace packages that still resolve to raw source files.

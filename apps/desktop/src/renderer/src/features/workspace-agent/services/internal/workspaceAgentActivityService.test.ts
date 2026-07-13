@@ -4,16 +4,65 @@ import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import { WorkspaceAgentActivityService } from "./workspaceAgentActivityService.ts";
 
-function createService(): WorkspaceAgentActivityService {
-  return new WorkspaceAgentActivityService({
-    tuttidClient: {} as TuttidClient,
-    runtimeApi: {
-      logTerminalDiagnostic: async () => {}
-    }
+test("WorkspaceAgentActivityService starts one canonical workspace load when the shared engine is created", async () => {
+  let listCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => {
+        listCalls += 1;
+        return { hasMore: false, sessions: [], workspaceId: "ws-1" };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
-}
 
-test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working when send response is still ready", async () => {
+  const first = service.getSessionEngine("ws-1");
+  const second = service.getSessionEngine("ws-1");
+  assert.equal(first, second);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(listCalls, 1);
+  assert.equal(
+    first.getSnapshot().engineRuntime.workspaceReconcile.status,
+    "ready"
+  );
+});
+
+test("WorkspaceAgentActivityService coalesces concurrent workspace loads", async () => {
+  let listCalls = 0;
+  let resolveList!: (value: {
+    hasMore: false;
+    sessions: [];
+    workspaceId: string;
+  }) => void;
+  const listResult = new Promise<{
+    hasMore: false;
+    sessions: [];
+    workspaceId: string;
+  }>((resolve) => {
+    resolveList = resolve;
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => {
+        listCalls += 1;
+        return listResult;
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const first = service.load("ws-1");
+  const second = service.load("ws-1");
+  assert.equal(first, second);
+  assert.equal(listCalls, 1);
+
+  resolveList({ hasMore: false, sessions: [], workspaceId: "ws-1" });
+  await Promise.all([first, second]);
+  assert.equal(listCalls, 1);
+});
+
+test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready response", async () => {
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -22,7 +71,11 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
         sessions: [readySession],
         workspaceId: "ws-1"
       }),
-      sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
+      sendWorkspaceAgentSessionInput: async () => ({
+        session: readySession,
+        turnId: "turn-1",
+        turn: workspaceAgentTurn({ phase: "submitted" })
+      })
     } as unknown as TuttidClient,
     runtimeApi: {
       logTerminalDiagnostic: async () => {}
@@ -32,6 +85,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   await service.load("ws-1");
 
   const result = await service.sendInput({
+    clientSubmitId: "submit-1",
     workspaceId: "ws-1",
     agentSessionId: "session-1",
     content: [{ type: "text", text: "continue" }]
@@ -40,10 +94,64 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
     .getSnapshot("ws-1")
     .sessions.find((session) => session.agentSessionId === "session-1");
 
-  assert.equal(result.session.status, "working");
-  assert.equal(result.session.currentPhase, "working");
-  assert.equal(snapshotSession?.status, "working");
-  assert.equal(snapshotSession?.currentPhase, "working");
+  assert.equal(result.session.activeTurn, null);
+  assert.equal(result.turn.phase, "submitted");
+  assert.equal(snapshotSession?.activeTurn, null);
+});
+
+test("WorkspaceAgentActivityService drains an engine queue with every GUI panel closed", async () => {
+  const sendCalls: unknown[] = [];
+  const readySession = workspaceAgentSession({ status: "ready" });
+  let phase: "running" | "settled" = "running";
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [wireEngineSession(phase)],
+        workspaceId: "ws-1"
+      }),
+      sendWorkspaceAgentSessionInput: async (
+        workspaceId: string,
+        agentSessionId: string,
+        request: unknown
+      ) => {
+        sendCalls.push({ agentSessionId, request, workspaceId });
+        return { session: readySession };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  await service.load("ws-1");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const engine = service.getSessionEngine("ws-1");
+  engine.dispatch({
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "continue" }],
+      createdAtUnixMs: 1,
+      id: "prompt-1"
+    },
+    workspaceId: "ws-1"
+  });
+  assert.equal(sendCalls.length, 0);
+
+  // No React/controller subscription exists here. The workspace-owned engine
+  // must still observe the settled turn and execute the queued command.
+  phase = "settled";
+  await service.load("ws-1");
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  assert.equal(sendCalls.length, 1);
+  assert.deepEqual(sendCalls[0], {
+    agentSessionId: "session-1",
+    request: {
+      clientSubmitId: "prompt-1",
+      content: [{ type: "text", text: "continue" }],
+      displayPrompt: null
+    },
+    workspaceId: "ws-1"
+  });
 });
 
 test("WorkspaceAgentActivityService.activateSession creates target-backed sessions without provider input", async () => {
@@ -66,6 +174,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   await service.activateSession({
     agentSessionId: "11111111-1111-4111-8111-111111111111",
     agentTargetId: "local:codex",
+    clientSubmitId: "submit-activate-codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     mode: "new",
@@ -80,10 +189,12 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
     request: {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
       agentTargetId: "local:codex",
+      clientSubmitId: "submit-activate-codex",
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "hello" }],
       initialDisplayPrompt: null,
       model: null,
+      noProject: null,
       permissionModeId: null,
       planMode: null,
       reasoningEffort: null,
@@ -94,7 +205,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 });
 
-test("WorkspaceAgentActivityService keeps explicit Claude model display over default alias state", async () => {
+test("WorkspaceAgentActivityService reads existing session settings from the daemon", async () => {
   const createdSession = workspaceAgentSession({
     provider: "claude-code",
     settings: { model: "opus" },
@@ -120,6 +231,7 @@ test("WorkspaceAgentActivityService keeps explicit Claude model display over def
   const activation = await service.activateSession({
     agentSessionId: "session-1",
     agentTargetId: "local:claude-code",
+    clientSubmitId: "submit-activate-claude",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hi" }],
     mode: "new",
@@ -128,13 +240,71 @@ test("WorkspaceAgentActivityService keeps explicit Claude model display over def
     visible: true,
     workspaceId: "ws-1"
   });
-  const controlState = await service.getSessionControlState({
+  const canonicalSession = await service.getSession("ws-1", "session-1");
+
+  assert.equal(activation.session.provider, "claude-code");
+  assert.equal(canonicalSession.settings?.model, "default");
+});
+
+test("WorkspaceAgentActivityService returns the authoritative canonical session after settings update", async () => {
+  const updatedSession = workspaceAgentSession({
+    provider: "claude-code",
+    settings: { model: "opus", planMode: true },
+    status: "waiting"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      updateWorkspaceAgentSessionSettings: async () => updatedSession
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const result = await service.updateSessionSettings({
     agentSessionId: "session-1",
+    settings: { model: "opus", planMode: true },
     workspaceId: "ws-1"
   });
 
-  assert.equal(activation.session.status, "working");
-  assert.equal(controlState.settings?.model, "opus");
+  assert.equal(result.agentSessionId, "session-1");
+  assert.deepEqual(result.settings, {
+    model: "opus",
+    permissionModeId: null,
+    planMode: true,
+    reasoningEffort: null,
+    speed: null
+  });
+  assert.equal(result.session.workspaceId, "ws-1");
+  assert.equal(result.session.agentSessionId, "session-1");
+  assert.equal(result.session.provider, "claude-code");
+  assert.deepEqual(result.session.settings, {
+    model: "opus",
+    planMode: true
+  });
+});
+
+test("WorkspaceAgentActivityService returns the authoritative canonical session after interactive submit", async () => {
+  const submittedSession = workspaceAgentSession({
+    provider: "codex",
+    status: "working"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      submitWorkspaceAgentInteractive: async () => submittedSession
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const result = await service.submitInteractive({
+    agentSessionId: "session-1",
+    action: "submit",
+    requestId: "request-1",
+    turnId: "turn-active",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(result.session.workspaceId, "ws-1");
+  assert.equal(result.session.agentSessionId, "session-1");
+  assert.equal(result.session.activeTurn?.phase, "running");
 });
 
 test("WorkspaceAgentActivityService composer options cache is agent target keyed", async () => {
@@ -512,22 +682,18 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   const staleSession = workspaceAgentSession({
     status: "running",
     updatedAt: "2026-07-06T03:48:10.600Z",
-    turnLifecycle: {
-      activeTurnId: "turn-1",
-      phase: "running"
-    },
-    submitAvailability: { state: "blocked", reason: "active_turn" }
+    activeTurnId: "turn-1",
+    activeTurn: workspaceAgentTurn({ phase: "running" })
   });
   const finalSession = workspaceAgentSession({
     status: "ready",
     updatedAt: "2026-07-06T03:48:30.878Z",
-    currentPhase: "idle",
-    turnLifecycle: {
-      activeTurnId: null,
+    activeTurnId: null,
+    activeTurn: null,
+    latestTurn: workspaceAgentTurn({
       outcome: "completed",
       phase: "settled"
-    },
-    submitAvailability: { state: "available" }
+    })
   });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -558,25 +724,16 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   });
 
   await service.load("ws-1");
-  await (
-    service as unknown as {
-      reconcileAgentActivityUpdate(input: {
-        agentSessionId: string;
-        eventType: string;
-        workspaceId: string;
-      }): Promise<void>;
-    }
-  ).reconcileAgentActivityUpdate({
+  service.ensureSessionSynchronized({
     agentSessionId: "session-1",
-    eventType: "message_update",
     workspaceId: "ws-1"
   });
+  await new Promise((resolve) => setImmediate(resolve));
 
   const session = service.getSnapshot("ws-1").sessions[0];
   assert.deepEqual(calls, ["listMessages", "getSession"]);
-  assert.equal(session?.status, "ready");
-  assert.equal(session?.turnLifecycle?.phase, "settled");
-  assert.equal(session?.submitAvailability?.state, "available");
+  assert.equal(session?.activeTurn, null);
+  assert.equal(session?.latestTurn?.phase, "settled");
   assert.deepEqual(
     diagnostics
       .filter(
@@ -881,6 +1038,7 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
     eventType: "session_update",
     workspaceId: "ws-1"
   });
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(diagnostics.at(-1), {
     details: {
@@ -893,115 +1051,173 @@ test("WorkspaceAgentActivityService treats missing reconcile sessions as tombsto
   });
 });
 
-test("WorkspaceAgentActivityService.submitPlanDecision runs planMode-off then sendInput for a codex implement decision", async () => {
-  const service = createService();
+test("WorkspaceAgentActivityService.submitPlanDecision uses one semantic daemon transport", async () => {
+  const calls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      submitWorkspaceAgentPlanDecision: async (...args: unknown[]) => {
+        calls.push(args);
+        return planDecisionResponse("completed");
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
 
-  const updateSettingsCalls: unknown[] = [];
-  const sendInputCalls: unknown[] = [];
-  const submitInteractiveCalls: unknown[] = [];
-
-  service.updateSessionSettings = async (input) => {
-    updateSettingsCalls.push(input);
-    return { agentSessionId: input.agentSessionId, settings: {} };
-  };
-  service.sendInput = async (input) => {
-    sendInputCalls.push(input);
-    return {} as never;
-  };
-  service.submitInteractive = async (input) => {
-    submitInteractiveCalls.push(input);
-    return undefined;
-  };
-
-  await service.submitPlanDecision({
+  const result = await service.submitPlanDecision({
     workspaceId: "ws-1",
     agentSessionId: "session-1",
+    turnId: "turn-1",
     promptKind: "plan-implementation",
     action: "implement",
-    requestId: "turn-1"
+    idempotencyKey: "decision-1",
+    requestId: "request-1"
   });
 
-  assert.equal(updateSettingsCalls.length, 1);
-  assert.deepEqual(updateSettingsCalls[0], {
-    workspaceId: "ws-1",
-    agentSessionId: "session-1",
-    settings: { planMode: false }
-  });
-
-  assert.equal(sendInputCalls.length, 1);
-  assert.deepEqual(sendInputCalls[0], {
-    workspaceId: "ws-1",
-    agentSessionId: "session-1",
-    content: [{ type: "text", text: "Implement the plan." }]
-  });
-
-  assert.equal(submitInteractiveCalls.length, 0);
-});
-
-test("WorkspaceAgentActivityService.submitPlanDecision routes a claude exit-plan decision through submitInteractive", async () => {
-  const service = createService();
-
-  const submitInteractiveCalls: unknown[] = [];
-
-  service.updateSessionSettings = async () => {
-    throw new Error("updateSessionSettings should not be called");
-  };
-  service.sendInput = async () => {
-    throw new Error("sendInput should not be called");
-  };
-  service.submitInteractive = async (input) => {
-    submitInteractiveCalls.push(input);
-    return undefined;
-  };
-
-  await service.submitPlanDecision({
-    workspaceId: "ws-1",
-    agentSessionId: "session-1",
-    promptKind: "exit-plan",
-    action: "allow",
-    optionId: "acceptEdits",
-    requestId: "req-1"
-  });
-
-  assert.equal(submitInteractiveCalls.length, 1);
-  assert.deepEqual(submitInteractiveCalls[0], {
-    workspaceId: "ws-1",
-    agentSessionId: "session-1",
-    requestId: "req-1",
-    action: "allow",
-    optionId: "acceptEdits"
-  });
+  assert.deepEqual(calls, [
+    [
+      "ws-1",
+      "session-1",
+      "turn-1",
+      "request-1",
+      {
+        action: "implement",
+        idempotencyKey: "decision-1",
+        promptKind: "plan-implementation"
+      }
+    ]
+  ]);
+  assert.equal(result.operation.status, "completed");
 });
 
 function workspaceAgentSession(overrides: {
+  activeTurn?: Record<string, unknown> | null;
+  activeTurnId?: string | null;
   currentPhase?: string;
   provider?: string;
   runtimeContext?: Record<string, unknown>;
   settings?: Record<string, unknown>;
+  latestTurn?: Record<string, unknown> | null;
   status: string;
   submitAvailability?: Record<string, unknown>;
   turnLifecycle?: Record<string, unknown>;
   updatedAt?: string;
 }): Record<string, unknown> {
+  const updatedAtUnixMs = overrides.updatedAt
+    ? Date.parse(overrides.updatedAt)
+    : Date.parse("2026-06-16T00:00:00.000Z");
+  const activeTurn =
+    overrides.activeTurn !== undefined
+      ? overrides.activeTurn
+      : overrides.status === "working" || overrides.status === "waiting"
+        ? workspaceAgentTurn({
+            phase: overrides.status === "waiting" ? "waiting" : "running"
+          })
+        : null;
+  const latestTurn =
+    overrides.latestTurn !== undefined
+      ? overrides.latestTurn
+      : overrides.status === "completed" ||
+          overrides.status === "failed" ||
+          overrides.status === "canceled"
+        ? workspaceAgentTurn({
+            outcome: overrides.status,
+            phase: "settled"
+          })
+        : null;
   return {
+    activeTurn,
+    activeTurnId:
+      overrides.activeTurnId !== undefined
+        ? overrides.activeTurnId
+        : activeTurn
+          ? "turn-1"
+          : null,
+    agentTargetId: null,
+    backgroundAgents: null,
+    capabilities: null,
+    createdAtUnixMs: Date.parse("2026-06-16T00:00:00.000Z"),
+    endedAtUnixMs: null,
+    goal: null,
     id: "session-1",
+    imported: false,
     provider: overrides.provider ?? "codex",
+    providerSessionId: null,
     cwd: "/workspace",
+    latestTurn,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    permissionConfig: { configurable: false, modes: [] },
+    pinnedAtUnixMs: null,
+    resumable: true,
+    settings: overrides.settings ?? {},
     title: "Session 1",
-    status: overrides.status,
-    ...(overrides.runtimeContext
-      ? { runtimeContext: overrides.runtimeContext }
-      : {}),
-    ...(overrides.settings ? { settings: overrides.settings } : {}),
-    ...(overrides.currentPhase ? { currentPhase: overrides.currentPhase } : {}),
-    ...(overrides.submitAvailability
-      ? { submitAvailability: overrides.submitAvailability }
-      : {}),
-    ...(overrides.turnLifecycle
-      ? { turnLifecycle: overrides.turnLifecycle }
-      : {}),
-    visible: true,
-    createdAt: "2026-06-16T00:00:00.000Z",
-    updatedAt: overrides.updatedAt ?? "2026-06-16T00:00:00.000Z"
+    updatedAtUnixMs,
+    visible: true
+  };
+}
+
+function workspaceAgentTurn(
+  overrides: Partial<{
+    outcome: "completed" | "failed" | "canceled";
+    phase: "submitted" | "running" | "waiting" | "settling" | "settled";
+  }> = {}
+) {
+  return {
+    agentSessionId: "session-1",
+    completedCommand: null,
+    error: null,
+    fileChanges: null,
+    phase: "running" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1,
+    ...overrides,
+    outcome: overrides.outcome ?? null,
+    settledAtUnixMs: overrides.phase === "settled" ? 1 : null
+  };
+}
+
+function planDecisionResponse(
+  status: "prepared" | "leased" | "completed" | "failed"
+) {
+  return {
+    operation: {
+      agentSessionId: "session-1",
+      idempotencyKey: "decision-1",
+      operationId: "operation-1",
+      requestId: "request-1",
+      status,
+      turnId: "turn-1",
+      workspaceId: "ws-1"
+    }
+  };
+}
+
+function wireEngineSession(phase: "running" | "settled") {
+  return {
+    ...workspaceAgentSession({
+      status: phase === "running" ? "working" : "completed",
+      updatedAt:
+        phase === "running"
+          ? "2026-07-11T00:00:01.000Z"
+          : "2026-07-11T00:00:02.000Z"
+    }),
+    activeTurnId: phase === "running" ? "turn-1" : null,
+    activeTurn:
+      phase === "running"
+        ? {
+            agentSessionId: "session-1",
+            completedCommand: null,
+            error: null,
+            fileChanges: null,
+            outcome: null,
+            phase: "running",
+            settledAtUnixMs: null,
+            startedAtUnixMs: 1,
+            turnId: "turn-1",
+            updatedAtUnixMs: 1
+          }
+        : null,
+    pendingInteractions: []
   };
 }

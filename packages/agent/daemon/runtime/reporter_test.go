@@ -1321,3 +1321,14 @@ func mixedMessageUpdateReportInput() agentsessionstore.ReportActivityInput {
 func ptrReportActivityReply(reply agentsessionstore.ReportActivityReply) *agentsessionstore.ReportActivityReply {
 	return &reply
 }
+
+func TestExplicitTurnLifecycleProjectionUsesDescriptorCatalog(t *testing.T) {
+	for _, provider := range []string{" CODEX ", ProviderClaudeCode, ProviderOpenCode, ProviderTuttiAgent} {
+		if !providerUsesExplicitTurnLifecyclePatch(provider) {
+			t.Fatalf("provider %q did not enable explicit turn lifecycle projection", provider)
+		}
+	}
+	if providerUsesExplicitTurnLifecyclePatch("unmigrated-provider") {
+		t.Fatal("unknown unmigrated provider unexpectedly enabled explicit turn lifecycle projection")
+	}
+}

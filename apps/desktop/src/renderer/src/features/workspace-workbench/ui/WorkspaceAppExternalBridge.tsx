@@ -23,7 +23,7 @@ import type { TuttiExternalFileOpenInput } from "@tutti-os/workspace-external-co
 import { resolveWorkspaceMentionLinkAction } from "@contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator.ts";
-import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent";
+import { requestWorkspaceAgentGuiLaunch } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
 import { useWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";

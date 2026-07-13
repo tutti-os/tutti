@@ -161,19 +161,11 @@ func issueRunReconcileCompletion(run workspaceissues.Run, session agentservice.P
 		}
 		return "", "", false
 	}
-	switch strings.ToLower(strings.TrimSpace(session.Status)) {
-	case "failed", "error", "errored":
-		message := strings.TrimSpace(session.LastError)
-		if message == "" {
-			message = "Agent session failed."
-		}
-		return workspaceissues.StatusFailed, message, true
-	case "canceled", "cancelled":
-		return workspaceissues.StatusCanceled, "", true
-	case "completed", "ready", "idle":
-		if runIdleMS(run, nowUnixMS) >= defaultIssueRunReconcileGrace.Milliseconds() {
-			return workspaceissues.StatusFailed, "Agent session ended without reporting run completion.", true
-		}
+	if strings.TrimSpace(session.ActiveTurnID) != "" {
+		return "", "", false
+	}
+	if runIdleMS(run, nowUnixMS) >= defaultIssueRunReconcileGrace.Milliseconds() {
+		return workspaceissues.StatusFailed, "Agent session ended without reporting run completion.", true
 	}
 	return "", "", false
 }

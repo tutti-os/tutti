@@ -29,6 +29,10 @@ const phases = [
     title: "Preflight checks",
     tasks: [
       { label: "defaults", script: "check:defaults-generated" },
+      {
+        label: "agent-gui-provider-catalog",
+        script: "check:agent-gui-provider-catalog-generated"
+      },
       { label: "api", script: "check:api-generated" },
       { label: "event-protocol", script: "check:event-protocol-generated" },
       { label: "codexproto", script: "check:codexproto-generated" },
@@ -43,6 +47,10 @@ const phases = [
       {
         label: "agent-activity-runtime-boundaries",
         script: "check:agent-activity-runtime-boundaries"
+      },
+      {
+        label: "agent-gui-degradation",
+        script: "check:agent-gui-degradation"
       }
     ]
   },

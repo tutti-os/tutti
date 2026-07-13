@@ -154,6 +154,20 @@ function buildChangedLanes() {
     });
   }
 
+  if (
+    changedFiles.some(
+      (file) =>
+        file.startsWith("packages/agent/") ||
+        file.startsWith("tools/degradation-baseline/")
+    )
+  ) {
+    addLane({
+      key: "degradation:agent-gui",
+      label: "degradation:agent-gui",
+      command: [...pnpmCommand, "run", "check:agent-gui-degradation"]
+    });
+  }
+
   const goValidationTargets = resolveGoValidationTargets(changedFiles);
   const forceBuiltinGenerate = isBuiltinGenerateRequired(changedFiles);
   if (goValidationTargets) {

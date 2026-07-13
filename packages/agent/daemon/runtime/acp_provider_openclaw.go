@@ -7,6 +7,8 @@ package agentruntime
 import (
 	"fmt"
 	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func NewOpenClawAdapter(transport ProcessTransport) *standardACPAdapter {
@@ -14,26 +16,20 @@ func NewOpenClawAdapter(transport ProcessTransport) *standardACPAdapter {
 }
 
 func NewOpenClawAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderOpenClaw,
-			adapterName:         "openclaw-acp",
-			command:             []string{"openclaw", "acp", "-v"},
-			defaultTitle:        "OpenClaw",
-			authRequiredMessage: "OpenClaw ACP requires authentication in the runtime VM; ensure OpenClaw host credentials are synced before starting Agent GUI",
-			permissionModeID: func(string) string {
-				// OpenClaw ACP maps session/set_mode modeId -> gateway thinkingLevel.
-				// It is not a permission-mode channel, so sending approve-all /
-				// approve-reads here is a protocol error.
-				return ""
-			},
-			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
-			env:              func(session Session) []string { return openclawACPEnv(session, host) },
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
+	descriptor, ok := providerregistry.Find(ProviderOpenClaw)
+	if !ok {
+		panic("openclaw provider descriptor is missing")
 	}
+	return newOpenClawAdapterFromProviderDescriptor(descriptor, transport, host, nil)
+}
+
+func newOpenClawAdapterFromProviderDescriptor(descriptor providerregistry.ProviderDescriptor, transport ProcessTransport, host HostMetadata, commandResolver ProviderCommandResolver) *standardACPAdapter {
+	adapter := newStandardACPAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
+	adapter.config.env = func(session Session) []string { return openclawACPEnv(session, host) }
+	adapter.config.applySessionMeta = func(params map[string]any, session Session, host HostMetadata) {
+		mergeACPParamsMeta(params, map[string]any{"sessionKey": openclawGatewayChatSessionKey(session, host)})
+	}
+	return adapter
 }
 
 // openclawGatewayChatSessionKey selects the gateway sessionKey hint for OpenClaw GUI ACP.

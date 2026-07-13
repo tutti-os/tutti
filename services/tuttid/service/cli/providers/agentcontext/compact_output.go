@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -12,25 +13,32 @@ type imageLocalPathResolver func(agentSessionID string, attachmentID string, mim
 
 func sessionSummaryValue(session agentservice.Session) map[string]any {
 	value := map[string]any{
-		"agentSessionId": strings.TrimSpace(session.ID),
-		"provider":       strings.TrimSpace(session.Provider),
-		"cwd":            strings.TrimSpace(session.Cwd),
-		"status":         strings.TrimSpace(session.Status),
-		"visible":        session.Visible,
-		"resumable":      session.Resumable,
-		"createdAt":      session.CreatedAt,
-		"updatedAt":      session.UpdatedAt,
-		"endedAt":        session.EndedAt,
-		"lastError":      session.LastError,
+		"agentSessionId":  strings.TrimSpace(session.ID),
+		"provider":        strings.TrimSpace(session.Provider),
+		"cwd":             strings.TrimSpace(session.Cwd),
+		"visible":         session.Visible,
+		"resumable":       session.Resumable,
+		"createdAtUnixMs": session.CreatedAt.UnixMilli(),
+		"activeTurnId":    nil,
 	}
+	if session.UpdatedAt != nil {
+		value["updatedAtUnixMs"] = session.UpdatedAt.UnixMilli()
+	}
+	if session.EndedAt != nil {
+		value["endedAtUnixMs"] = session.EndedAt.UnixMilli()
+	}
+	if turnID := strings.TrimSpace(session.ActiveTurnID); turnID != "" {
+		value["activeTurnId"] = turnID
+	}
+	if session.ActiveTurn != nil {
+		value["activeTurn"] = turnCompactValue(*session.ActiveTurn)
+	}
+	if session.LatestTurn != nil {
+		value["latestTurn"] = turnCompactValue(*session.LatestTurn)
+	}
+	value["pendingInteractions"] = interactionCompactValues(session.PendingInteractions)
 	if session.Title != nil {
 		value["title"] = strings.TrimSpace(*session.Title)
-	}
-	if turnLifecycle := turnLifecycleCompactValue(session.TurnLifecycle); turnLifecycle != nil {
-		value["turnLifecycle"] = turnLifecycle
-	}
-	if submitAvailability := submitAvailabilityCompactValue(session.SubmitAvailability); submitAvailability != nil {
-		value["submitAvailability"] = submitAvailability
 	}
 	return value
 }
@@ -47,7 +55,7 @@ func sessionActionValue(session agentservice.Session) map[string]any {
 	value := map[string]any{
 		"agentSessionId": strings.TrimSpace(session.ID),
 		"provider":       strings.TrimSpace(session.Provider),
-		"status":         strings.TrimSpace(session.Status),
+		"activeTurnId":   strings.TrimSpace(session.ActiveTurnID),
 	}
 	if session.Title != nil {
 		title := strings.TrimSpace(*session.Title)
@@ -66,41 +74,24 @@ func sessionSummaryValues(sessions []agentservice.Session) []any {
 	return values
 }
 
-func turnLifecycleCompactValue(value *agentservice.TurnLifecycle) map[string]any {
-	if value == nil {
-		return nil
-	}
+func turnCompactValue(value agentactivitybiz.Turn) map[string]any {
 	result := map[string]any{
-		"activeTurnId": nil,
-		"phase":        strings.TrimSpace(value.Phase),
+		"turnId": strings.TrimSpace(value.TurnID),
+		"phase":  strings.TrimSpace(value.Phase),
 	}
-	if value.ActiveTurnID != nil {
-		result["activeTurnId"] = strings.TrimSpace(*value.ActiveTurnID)
-	}
-	if value.Settling {
-		result["settling"] = true
-	}
-	if value.Outcome != nil {
-		result["outcome"] = strings.TrimSpace(*value.Outcome)
-	}
-	if value.CompletedCommand != nil {
-		result["completedCommand"] = map[string]any{
-			"kind":   strings.TrimSpace(value.CompletedCommand.Kind),
-			"status": strings.TrimSpace(value.CompletedCommand.Status),
-		}
+	if outcome := strings.TrimSpace(value.Outcome); outcome != "" {
+		result["outcome"] = outcome
 	}
 	return result
 }
 
-func submitAvailabilityCompactValue(value *agentservice.SubmitAvailability) map[string]any {
-	if value == nil {
-		return nil
-	}
-	result := map[string]any{
-		"state": strings.TrimSpace(value.State),
-	}
-	if reason := strings.TrimSpace(value.Reason); reason != "" {
-		result["reason"] = reason
+func interactionCompactValues(values []agentactivitybiz.Interaction) []any {
+	result := make([]any, 0, len(values))
+	for _, value := range values {
+		result = append(result, map[string]any{
+			"requestId": strings.TrimSpace(value.RequestID), "turnId": strings.TrimSpace(value.TurnID),
+			"kind": strings.TrimSpace(value.Kind), "status": strings.TrimSpace(value.Status),
+		})
 	}
 	return result
 }

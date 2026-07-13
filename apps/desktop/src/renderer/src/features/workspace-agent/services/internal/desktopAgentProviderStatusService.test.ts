@@ -874,7 +874,7 @@ test("runAction reports install failures and clears pending state", async () => 
   ]);
 });
 
-test("runAction summarizes Claude regional availability install failures", async () => {
+test("runAction maps descriptor-classified regional install failures", async () => {
   const notifications = createNotificationRecorder();
   const service = new DesktopAgentProviderStatusService(
     {
@@ -886,7 +886,7 @@ test("runAction summarizes Claude regional availability install failures", async
             message:
               '<!DOCTYPE html><html><head><title>App unavailable in region | Claude</title><meta content="Unfortunately, Claude isn&#x27;t available here." name="description"></head></html>',
             provider: "claude-code",
-            reasonCode: "install_command_failed",
+            reasonCode: "install_unavailable_in_region",
             status: "failed"
           }
         ],
@@ -1037,7 +1037,7 @@ test("runAction refreshes when the action is a refresh action", async () => {
   assert.deepEqual(statusCalls, [undefined, ["codex"]]);
 });
 
-test("refresh verifies Cursor unknown status with the runtime probe", async () => {
+test("refresh uses the descriptor runtime-probe fallback for unknown status", async () => {
   const probeCalls: WorkspaceAgentProvider[] = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({
@@ -1080,7 +1080,7 @@ test("refresh verifies Cursor unknown status with the runtime probe", async () =
   assert.deepEqual(probeCalls, ["cursor"]);
 });
 
-test("refresh does not runtime-probe non-Cursor unknown statuses", async () => {
+test("refresh skips unknown statuses without a descriptor runtime-probe fallback", async () => {
   const probeCalls: WorkspaceAgentProvider[] = [];
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: createTuttidClient({

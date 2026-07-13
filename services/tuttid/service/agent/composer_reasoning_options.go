@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -76,14 +77,14 @@ func reasoningEffortOptions(provider string, selected string) []map[string]strin
 }
 
 func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex || provider == agentprovider.TuttiAgent {
+	if !composerProfileKnown(provider) {
 		return nil
 	}
-	if provider == agentprovider.ClaudeCode ||
-		provider == agentprovider.OpenCode {
-		return []string{"low", "medium", "high", "xhigh"}
+	profile := composerProfileFor(provider)
+	if profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStatic {
+		return nil
 	}
-	return []string{"minimal", "low", "medium", "high", "xhigh"}
+	return append([]string(nil), profile.ReasoningEffortValues...)
 }
 
 func composerReasoningOptionValues(provider string, selected string, locale string) []ComposerConfigOptionValue {
@@ -188,16 +189,29 @@ func composerReasoningOptionValuesToRuntimeOptions(
 
 func normalizeReasoningEffortForProvider(provider string, value string) string {
 	provider = agentprovider.Normalize(provider)
-	if !composerProfileFor(provider).ReasoningEffort {
+	profile := composerProfileFor(provider)
+	if !profile.ReasoningEffort {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.TuttiAgent || provider == agentprovider.ClaudeCode) &&
-		(normalized == "minimal" || normalized == "none") {
-		return "high"
+	// Model-catalog values are model-specific and authoritative. A generic
+	// provider-level normalizer must not rewrite values such as "minimal" or
+	// "none" that the selected model explicitly advertises.
+	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsModelCatalog {
+		return normalized
 	}
-	if provider == agentprovider.OpenCode && (normalized == "minimal" || normalized == "none") {
-		return "high"
+	if (normalized == "minimal" || normalized == "none") &&
+		!reasoningEffortValueDeclared(profile, normalized) {
+		return profile.DefaultReasoningEffort
 	}
 	return normalized
+}
+
+func reasoningEffortValueDeclared(profile composerProfile, value string) bool {
+	for _, candidate := range profile.ReasoningEffortValues {
+		if strings.TrimSpace(candidate) == value {
+			return true
+		}
+	}
+	return false
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	"golang.org/x/sync/singleflight"
 )
@@ -271,7 +272,7 @@ func parseModelsDevCatalog(data []byte) (*modelsDevCatalog, error) {
 }
 
 func providerRuleModelImageCapability(provider string, modelID string, label string) modelCapabilityDecision {
-	if agentprovider.Normalize(provider) != agentprovider.Cursor {
+	if composerProfileFor(provider).ModelCapabilityRuleKind != providerregistry.ModelCapabilityRuleKindCursorComposerImage {
 		return modelCapabilityUnknown
 	}
 	baseModelID := normalizeModelCapabilityID(modelID)
@@ -290,12 +291,10 @@ func providerRuleModelImageCapability(provider string, modelID string, label str
 }
 
 func providerUsesModelImageCapabilities(provider string) bool {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.OpenCode, agentprovider.Cursor:
-		return true
-	default:
-		return false
-	}
+	return composerProfileHasCapability(
+		agentprovider.Normalize(provider),
+		providerregistry.CapabilityModelImageInputRequired,
+	)
 }
 
 func enrichAgentModelOptions(ctx context.Context, provider string, models []AgentModelOption, resolver ModelCapabilitiesResolver) []AgentModelOption {

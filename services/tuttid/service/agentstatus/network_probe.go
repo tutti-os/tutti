@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 // logNetworkProbe records each provider's network probe outcome so a confusing
@@ -137,17 +136,10 @@ func (s Service) probeRegistry(ctx context.Context, packageName string) NetworkE
 // "unreachable" for ChatGPT-login users where that host is blocked but
 // chatgpt.com — what codex actually uses — is reachable.
 func providerAPIEndpoints(provider string) []string {
-	switch provider {
-	case agentprovider.Codex:
-		return []string{
-			"https://chatgpt.com/backend-api/codex",
-			"https://api.openai.com/v1",
-		}
-	case agentprovider.ClaudeCode:
-		return []string{"https://api.anthropic.com/v1/messages"}
-	default:
-		return nil
+	if status, ok := migratedProviderStatus(provider); ok {
+		return append([]string(nil), status.APIEndpoints...)
 	}
+	return nil
 }
 
 // probeProviderAPI checks the provider's API endpoint(s) — reachable if any one

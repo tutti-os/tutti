@@ -5,6 +5,7 @@ import type {
   TuttidEventStreamClient,
   WorkspaceAgentSession
 } from "@tutti-os/client-tuttid-ts";
+import { workspaceAgentSessionStatus } from "@tutti-os/agent-activity-core";
 import type { DesktopSleepPreventionMode } from "../shared/preferences/index.ts";
 import type { DesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
@@ -63,7 +64,7 @@ export function connectAgentPowerSaveBlocker(
       if (deps.preferences.getSleepPreventionMode() !== "whileAgentRunning") {
         return;
       }
-      if (event.payload.eventType !== "session_update") {
+      if (event.payload.eventType !== "session_reconcile_required") {
         return;
       }
       void syncSession(event);
@@ -145,7 +146,7 @@ export function connectAgentPowerSaveBlocker(
           workspace.id
         );
         for (const session of sessions.sessions) {
-          if (isAgentSessionRunningTask(session.status)) {
+          if (isAgentSessionRunningTask(workspaceAgentSessionStatus(session))) {
             nextActiveSessionKeys.add(
               createSessionKey(workspace.id, session.id)
             );
@@ -172,7 +173,7 @@ export function connectAgentPowerSaveBlocker(
     session: WorkspaceAgentSession
   ): void {
     const key = createSessionKey(workspaceID, session.id);
-    if (isAgentSessionRunningTask(session.status)) {
+    if (isAgentSessionRunningTask(workspaceAgentSessionStatus(session))) {
       activeSessionKeys.add(key);
     } else {
       activeSessionKeys.delete(key);

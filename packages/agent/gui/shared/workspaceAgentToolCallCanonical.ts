@@ -1,4 +1,4 @@
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import { looksLikeOpaqueToolCallIdentifier } from "./workspaceAgentToolCallIdentifiers";
 import {
   legacyKindToToolName,

@@ -215,12 +215,12 @@
   only when its render-storm diagnostics are needed by launching with
   `VITE_TUTTI_REACT_PROFILER=1`; leave it off for Chrome Performance captures
   on large workspaces because React dev component tracks can make trace
-  initialization stall. For prop identity churn, why-did-you-render is enabled
-  by default when launching with `make dev-gui`. Disable that default with
-  `VITE_TUTTI_WHY_DID_YOU_RENDER=0 make dev-gui`, or set
-  `localStorage.tuttiWhyDidYouRender = "0"` in DevTools and reload the renderer.
-  For other development entrypoints, enable it by setting
-  `localStorage.tuttiWhyDidYouRender = "1"` and reloading the renderer.
+  initialization stall. For prop identity churn, opt in to why-did-you-render
+  with `VITE_TUTTI_WHY_DID_YOU_RENDER=1 make dev-gui`, or set
+  `localStorage.tuttiWhyDidYouRender = "1"` in DevTools and reload the renderer.
+  Do not leave it enabled during normal development: it tracks every component
+  and hook, and restoring a large AgentGUI session directory can then block the
+  renderer long enough to keep Workbench hydration and the Dock non-interactive.
 - Root cause:
   React StrictMode can intentionally replay setup/cleanup in development, but a
   continuously increasing render count usually means a parent is passing a new

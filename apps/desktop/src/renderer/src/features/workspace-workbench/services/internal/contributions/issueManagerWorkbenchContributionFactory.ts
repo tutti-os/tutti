@@ -7,7 +7,7 @@ import { createWorkspaceIssueManagerContribution } from "../workspaceIssueManage
 type IssueManagerWorkbenchContributionContext = Pick<
   DesktopWorkbenchContributionContext,
   | "agentProviderStatusService"
-  | "agents"
+  | "agentsService"
   | "appCenterService"
   | "appI18n"
   | "appLocale"
@@ -42,7 +42,7 @@ export const issueManagerWorkbenchContributionFactory: DesktopWorkbenchContribut
         eventStreamClient: context.eventStreamClient,
         tuttidClient: context.tuttidClient,
         platformApi: context.platformApi,
-        agents: context.agents,
+        agentsService: context.agentsService,
         reporterService: context.reporterService,
         richTextAtService: context.richTextAtService,
         runtimeApi: context.runtimeApi,

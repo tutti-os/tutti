@@ -1,3 +1,6 @@
+import { enAgentGuiProviderIdentity } from "./en.agentGuiProviderIdentity.ts";
+import { enAgentGuiRuntimeNotices } from "./en.agentGuiRuntimeNotices.ts";
+import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enMessages } from "./en.messages.ts";
 import { enSettingsPanel } from "./en.settingsPanel.ts";
 import { enWebsiteNode } from "./en.websiteNode.ts";
@@ -701,9 +704,7 @@ export const en = {
       emptyProjectConversations: "No chats yet",
       agentsEmpty: "No agents are available",
       conversationFilterAll: "All",
-      conversationFilterCodex: "Codex",
-      conversationFilterClaudeCode: "Claude Code",
-      conversationFilterTutti: "Tutti",
+      ...enAgentGuiProviderIdentity,
       providerSwitchLabel: "Switch provider",
       handoffConversation: "Handoff",
       handoffConversationTooltip: "Hand off to another agent",
@@ -802,43 +803,10 @@ export const en = {
       processing: "Planning next moves",
       agentTargetRequired:
         "Select an available agent target before starting a session.",
+      sessionActivationFailed: "The agent session could not be started.",
       promptImagesUnsupported:
         "This agent does not support image input with the current model.",
-      visibleErrorStartFailed: "{{provider}} failed to start",
-      visibleErrorRequestFailed: "{{provider}} request failed",
-      visibleErrorAuthRequired:
-        "{{provider}} needs authentication or configuration",
-      visibleErrorAuthRequiredLocalAgentHint:
-        "Please sign in to local {{provider}}, then retry.",
-      visibleErrorRequestTimedOut: "{{provider}} request timed out",
-      visibleErrorRuntimeUnavailable:
-        "{{provider}} could not start because the runtime is unavailable",
-      visibleErrorQuotaOrRateLimit:
-        "{{provider}} request failed because a quota or rate limit was reached",
-      visibleErrorDetails: "View details",
-      visibleErrorRawDetails: "Raw error",
-      visibleErrorCliNotFound:
-        "{{provider}} CLI wasn't found, so it couldn't run. Set it up to continue.",
-      visibleErrorVersionUnsupported:
-        "{{provider}}'s installed version is unsupported for this request. Upgrade to continue.",
-      visibleErrorNetwork:
-        "{{provider}} couldn't reach the network to complete this request.",
-      visibleErrorConfigTimeout:
-        "{{provider}} couldn't apply session settings before the request timed out. Try again in a moment.",
-      visibleErrorStreamDisconnected:
-        "{{provider}}'s response was interrupted before it completed. Try again in a moment.",
-      visibleErrorConcurrencyLimit:
-        "{{provider}} is handling too many requests right now. Try again after another task finishes.",
-      visibleErrorActionInstall: "Connect",
-      visibleErrorActionUpgrade: "Upgrade",
-      visibleErrorActionRelogin: "Sign in",
-      visibleErrorActionCheckNetwork: "Check network",
-      visibleErrorActionDetect: "Open setup",
-      systemNoticeTransportRetry:
-        "Codex connection interrupted. Reconnecting...",
-      systemNoticeTransportFallback: "Codex switched to HTTPS transport",
-      systemNoticeWarning: "Codex warning",
-      systemNoticeDefault: "Agent notice",
+      ...enAgentGuiRuntimeNotices,
       contextCompactionInProgress: "Compacting context",
       contextCompactionCompleted: "Context compacted.",
       contextCompactionInterrupted: "Context compaction interrupted.",
@@ -925,14 +893,7 @@ export const en = {
       relativeTimeDays: "{{count}} d",
       relativeTimeMonths: "{{count}} mo",
       relativeTimeYears: "{{count}} y",
-      slashCommandPalette: "Slash commands",
-      skillPickerPalette: "Skills",
-      slashPaletteCommandsGroup: "Commands",
-      slashPaletteCapabilitiesGroup: "Capabilities",
-      slashPaletteSkillsGroup: "Skills",
-      slashPalettePluginsGroup: "Plugins",
-      slashPaletteConnectorsGroup: "Connectors",
-      slashPaletteMcpGroup: "MCP",
+      ...enAgentGuiSlashPalette,
       slashCommandCompactLabel: "compact",
       slashCommandContextLabel: "context",
       slashCommandFastLabel: "fast",
@@ -1083,10 +1044,7 @@ export const en = {
       mentionCollaboratorFallback: "Collaborator",
       syncPending: "Saved locally, syncing to cloud",
       syncSynced: "Synced to cloud",
-      syncFailed: "Cloud sync failed",
-      openclawGatewayStarting: "Starting OpenClaw gateway...",
-      openclawGatewayFailed: "OpenClaw gateway failed to start.",
-      openclawGatewayRetry: "Retry gateway"
+      syncFailed: "Cloud sync failed"
     },
     workspaceInsights: {
       runtimeTitle: "Runtime",

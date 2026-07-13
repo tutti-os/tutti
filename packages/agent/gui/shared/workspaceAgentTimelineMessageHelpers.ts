@@ -1,6 +1,6 @@
 import type { ToolCallStatusKind } from "./workspaceAgentToolCallDisplay";
 import { isWorkspaceAgentSyntheticControlMessage } from "./workspaceAgentSyntheticMessages";
-import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 
 export function messageRole(
   item: WorkspaceAgentActivityTimelineItem

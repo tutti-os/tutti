@@ -1,4 +1,9 @@
-import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
+import {
+  selectWorkspaceAgentConsumerSessions,
+  type AgentActivityTurn,
+  type CanonicalAgentSession,
+  type AgentSessionEngineState
+} from "@tutti-os/agent-activity-core";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { CompositeNotificationMessage } from "@renderer/lib/compositeNotificationService";
 import type { DesktopI18nKey, I18nParams } from "@shared/i18n";
@@ -39,7 +44,7 @@ export interface WorkspaceAgentOutcomeNotificationControllerInput {
   translate(key: DesktopI18nKey, params?: I18nParams): string;
   workspaceAgentActivityService: Pick<
     IWorkspaceAgentActivityService,
-    "getSnapshot" | "onSessionEvent"
+    "getSessionEngine" | "onSessionEvent"
   >;
   workspaceId: string;
 }
@@ -53,35 +58,45 @@ export function createWorkspaceAgentOutcomeNotificationController(
   input: WorkspaceAgentOutcomeNotificationControllerInput
 ): WorkspaceAgentOutcomeNotificationController {
   const workspaceId = input.workspaceId.trim();
-  if (!workspaceId) {
-    return { dispose() {} };
-  }
+  if (!workspaceId) return { dispose() {} };
 
   const userTitleCache: WorkspaceAgentOutcomeUserTitleCache = {
     bySessionId: new Map(),
     bySessionTurnId: new Map()
   };
-  const unsubscribe = input.workspaceAgentActivityService.onSessionEvent(
-    workspaceId,
-    (event) => {
-      rememberWorkspaceAgentOutcomeUserTitle(event, userTitleCache);
-      const conversationTitle = workspaceAgentOutcomeUserTitleFromSessionEvent(
-        event,
-        userTitleCache
-      );
-      const resolvedConversationTitle =
-        conversationTitle ||
-        resolveWorkspaceAgentOutcomeConversationTitle(event, {
-          workspaceAgentActivityService: input.workspaceAgentActivityService
-        });
+  const unsubscribeSessionEvents =
+    input.workspaceAgentActivityService.onSessionEvent(workspaceId, (event) =>
+      rememberWorkspaceAgentOutcomeUserTitle(event, userTitleCache)
+    );
+  const engine =
+    input.workspaceAgentActivityService.getSessionEngine(workspaceId);
+  const settledTurns = new Set<string>();
+  let hasAuthoritativeBaseline =
+    engine.getSnapshot().engineRuntime.workspaceReconcile.status === "ready";
+
+  const inspectEngineState = (
+    state: AgentSessionEngineState,
+    notifyTransitions: boolean
+  ) => {
+    for (const item of selectWorkspaceAgentConsumerSessions(state)) {
+      const turn = item.latestTurn;
+      if (!turn) continue;
+      const turnKey = sessionTurnKey(item.session.agentSessionId, turn.turnId);
+      if (turn.phase !== "settled") continue;
+      if (settledTurns.has(turnKey)) continue;
+      settledTurns.add(turnKey);
+      if (!notifyTransitions) continue;
       const notification =
-        buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-          event,
-          resolvedConversationTitle
-        );
-      if (!notification) {
-        return;
-      }
+        buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
+          conversationTitle: resolveWorkspaceAgentOutcomeConversationTitle({
+            cache: userTitleCache,
+            session: item.session,
+            turn
+          }),
+          session: item.session,
+          turn
+        });
+      if (!notification) continue;
       input.foreground?.show(
         workspaceAgentOutcomeForegroundNotification(
           notification,
@@ -92,74 +107,59 @@ export function createWorkspaceAgentOutcomeNotificationController(
         workspaceAgentOutcomeNotificationMessage(notification, input.translate)
       );
     }
-  );
+  };
 
+  // A newly-created workspace engine starts empty and hydrates asynchronously.
+  // Do not treat that empty pre-reconcile state as the history boundary: the
+  // first authoritative snapshot can contain many previously settled turns.
+  // Seed them into the baseline only after the initial reconcile completes.
+  inspectEngineState(engine.getSnapshot(), false);
+  const unsubscribeEngine = engine.subscribe((state) => {
+    if (!hasAuthoritativeBaseline) {
+      if (state.engineRuntime.workspaceReconcile.status !== "ready") return;
+      inspectEngineState(state, false);
+      hasAuthoritativeBaseline = true;
+      return;
+    }
+    inspectEngineState(state, true);
+  });
   return {
     dispose() {
-      unsubscribe();
+      unsubscribeEngine();
+      unsubscribeSessionEvents();
     }
   };
 }
 
-function resolveWorkspaceAgentOutcomeConversationTitle(
-  event: unknown,
-  input: {
-    workspaceAgentActivityService: Pick<
-      IWorkspaceAgentActivityService,
-      "getSnapshot"
-    >;
-  }
-): string {
-  const source = recordValue(event);
-  if (stringValue(source?.eventType) !== "state_patch") {
-    return "";
-  }
-  const data = recordValue(source?.data);
-  if (!data) {
-    return "";
-  }
-  const workspaceId = stringValue(data.workspaceId);
-  const agentSessionId = stringValue(data.agentSessionId);
-  const provider = stringValue(data.provider);
-  if (!workspaceId || !agentSessionId || !provider) {
-    return "";
-  }
-  const snapshot = input.workspaceAgentActivityService.getSnapshot(workspaceId);
-  return (
-    resolveAgentGuiWorkbenchSessionTitle({
-      agentSessionId,
-      fallbackTitle: stringValue(data.title),
-      provider,
-      snapshot
-    }).title ?? ""
-  );
+function resolveWorkspaceAgentOutcomeConversationTitle(input: {
+  cache: WorkspaceAgentOutcomeUserTitleCache;
+  session: CanonicalAgentSession;
+  turn: AgentActivityTurn;
+}): string {
+  const agentSessionId = input.session.agentSessionId;
+  const cachedTitle =
+    input.cache.bySessionTurnId.get(
+      sessionTurnKey(agentSessionId, input.turn.turnId)
+    ) ?? input.cache.bySessionId.get(agentSessionId);
+  if (cachedTitle) return cachedTitle;
+  return input.session.title;
 }
 
-export function buildWorkspaceAgentOutcomeNotificationFromSessionEvent(
-  event: unknown,
-  conversationTitle?: string
-): WorkspaceAgentOutcomeNotification | null {
-  const source = recordValue(event);
-  if (stringValue(source?.eventType) !== "state_patch") {
-    return null;
-  }
-  const data = recordValue(source?.data);
-  const turn = recordValue(data?.turn);
-  const status = outcomeStatusFromTurnOutcome(stringValue(turn?.outcome));
-  const turnId = stringValue(turn?.turnId);
-  if (!data || !turn || !status || !turnId) {
-    return null;
-  }
-  const workspaceId = stringValue(data.workspaceId);
-  const agentSessionId = stringValue(data.agentSessionId);
-  const provider = stringValue(data.provider);
-  if (!workspaceId || !agentSessionId || !provider) {
-    return null;
-  }
+export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
+  conversationTitle?: string;
+  session: CanonicalAgentSession;
+  turn: AgentActivityTurn;
+}): WorkspaceAgentOutcomeNotification | null {
+  if (input.turn.phase !== "settled" || !input.turn.turnId.trim()) return null;
+  const status = outcomeStatusFromTurnOutcome(input.turn.outcome ?? "");
+  const workspaceId = input.session.workspaceId.trim();
+  const agentSessionId = input.session.agentSessionId.trim();
+  const provider = input.session.provider.trim();
+  if (!status || !workspaceId || !agentSessionId || !provider) return null;
   return {
     agentSessionId,
     conversationTitle:
-      stringValue(conversationTitle) || stringValue(data.title),
+      stringValue(input.conversationTitle) || input.session.title,
     level: status === "completed" ? "success" : "error",
     provider,
     status,
@@ -172,55 +172,21 @@ function rememberWorkspaceAgentOutcomeUserTitle(
   cache: WorkspaceAgentOutcomeUserTitleCache
 ): void {
   const source = recordValue(event);
-  if (stringValue(source?.eventType) !== "message_update") {
-    return;
-  }
+  if (stringValue(source?.eventType) !== "message_update") return;
   const data = recordValue(source?.data);
-  if (!data) {
-    return;
-  }
+  if (!data) return;
   for (const message of messageUpdateRecords(data)) {
-    if (stringValue(message.role).toLowerCase() !== "user") {
-      continue;
-    }
+    if (stringValue(message.role).toLowerCase() !== "user") continue;
     const agentSessionId =
       stringValue(message.agentSessionId) || stringValue(data.agentSessionId);
     const title = messageTitle(message);
-    if (!agentSessionId || !title) {
-      continue;
-    }
+    if (!agentSessionId || !title) continue;
     cache.bySessionId.set(agentSessionId, title);
     const turnId = stringValue(message.turnId);
     if (turnId) {
       cache.bySessionTurnId.set(sessionTurnKey(agentSessionId, turnId), title);
     }
   }
-}
-
-function workspaceAgentOutcomeUserTitleFromSessionEvent(
-  event: unknown,
-  cache: WorkspaceAgentOutcomeUserTitleCache
-): string {
-  const source = recordValue(event);
-  if (stringValue(source?.eventType) !== "state_patch") {
-    return "";
-  }
-  const data = recordValue(source?.data);
-  const turn = recordValue(data?.turn);
-  const agentSessionId = stringValue(data?.agentSessionId);
-  const turnId = stringValue(turn?.turnId);
-  if (!agentSessionId) {
-    return "";
-  }
-  if (turnId) {
-    const turnTitle = cache.bySessionTurnId.get(
-      sessionTurnKey(agentSessionId, turnId)
-    );
-    if (turnTitle) {
-      return turnTitle;
-    }
-  }
-  return cache.bySessionId.get(agentSessionId) ?? "";
 }
 
 function workspaceAgentOutcomeNotificationMessage(

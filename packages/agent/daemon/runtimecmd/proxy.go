@@ -17,9 +17,9 @@ import (
 
 // System proxy injection.
 //
-// The standalone ACP agents we spawn (e.g. `claude`) only honor the
+// Some standalone agent processes only honor the
 // HTTP(S)_PROXY environment variables — they do NOT read the macOS system proxy.
-// The Claude desktop app works around this by resolving the OS proxy via
+// Desktop runtimes commonly work around this by resolving the OS proxy via
 // Electron's session.resolveProxy() (Chromium/SystemConfiguration) and injecting
 // HTTPS_PROXY/HTTP_PROXY into the spawned process. Without it, a child agent
 // connects directly and, from a restricted region, gets `403 Request not

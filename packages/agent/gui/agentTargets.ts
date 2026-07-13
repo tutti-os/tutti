@@ -4,36 +4,31 @@ import type {
   AgentGUIAgentTargetBadge,
   AgentGUIAgentTargetRef
 } from "./types.ts";
+import {
+  migratedAgentGUIProviderIdentityCatalog,
+  resolveAgentGUIProviderCatalogIdentity,
+  resolveMigratedAgentGUIProviderIdentity
+} from "./providerIdentityCatalog.ts";
 
-const agentGUIAgentTargetStaticLabels: Record<AgentGUIProvider, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-  hermes: "Hermes",
-  nexight: "Tutti Agent",
-  openclaw: "OpenClaw",
-  opencode: "Open Code",
-  "tutti-agent": "Tutti Agent"
-};
+export const agentGUIDefaultTargetProviders: readonly AgentGUIProvider[] =
+  migratedAgentGUIProviderIdentityCatalog
+    .map((identity) => ({
+      provider: identity.providerId as AgentGUIProvider,
+      sortOrder: identity.target.sortOrder
+    }))
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((entry) => entry.provider);
 
-export const agentGUIDefaultTargetProviders = [
-  "codex",
-  "claude-code",
-  "cursor",
-  "tutti-agent",
-  "opencode",
-  "hermes",
-  "openclaw"
-] as const satisfies readonly AgentGUIProvider[];
-
-const agentGUIDisabledPlaceholderProviders = [
-  "hermes",
-  "openclaw"
-] as const satisfies readonly AgentGUIProvider[];
+const agentGUIDisabledPlaceholderProviders =
+  migratedAgentGUIProviderIdentityCatalog
+    .filter((identity) => !identity.target.enabled)
+    .map((identity) => identity.providerId as AgentGUIProvider);
 
 export function createLocalAgentGUIAgentTarget(
   provider: AgentGUIProvider
 ): AgentGUIAgentTarget {
+  const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+  const migratedIdentity = resolveMigratedAgentGUIProviderIdentity(provider);
   const targetId = localAgentGUIAgentTargetId(provider);
   const agentTargetId = localAgentGUIAgentTargetId(provider);
   return {
@@ -44,7 +39,8 @@ export function createLocalAgentGUIAgentTarget(
       kind: "local",
       provider
     },
-    label: agentGUIAgentTargetStaticLabels[provider] ?? provider
+    label: identity?.displayName ?? provider,
+    ...(migratedIdentity?.target.enabled === false ? { disabled: true } : {})
   };
 }
 
@@ -120,7 +116,10 @@ function createStaticAgentGUIAgentTargets(
 }
 
 export function localAgentGUIAgentTargetId(provider: AgentGUIProvider): string {
-  return `local:${provider}`;
+  return (
+    resolveAgentGUIProviderCatalogIdentity(provider)?.target.id ??
+    `local:${provider}`
+  );
 }
 
 export function normalizeAgentGUIAgentTargets(

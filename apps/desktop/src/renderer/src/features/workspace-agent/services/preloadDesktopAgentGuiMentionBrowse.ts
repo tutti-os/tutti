@@ -1,7 +1,5 @@
-import {
-  preloadAgentMentionBrowse,
-  type AgentActivityRuntime
-} from "@tutti-os/agent-gui";
+import { preloadAgentMentionBrowse } from "@tutti-os/agent-gui/mention-search";
+import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProvider

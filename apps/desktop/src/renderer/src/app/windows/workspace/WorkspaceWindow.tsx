@@ -1,12 +1,22 @@
-import { useEffect, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo } from "react";
 import { InstantiationContext } from "@tutti-os/infra/di";
 import { AnalyticsDebugFloatingEntryGate } from "@renderer/features/analytics-debug";
 import { AppUpdateStatus } from "@renderer/features/app-update";
-import { WorkspaceWorkbench } from "@renderer/features/workspace-workbench";
 import { useTranslation } from "../../../i18n";
 import { Toast } from "../../../lib/toast";
 import { createWorkspaceWindowContainer } from "./createWorkspaceWindowContainer";
 import { createDeferredWorkspaceContainerDispose } from "./deferredWorkspaceContainerDispose";
+
+const LazyWorkspaceWorkbench = lazy(() =>
+  import("@renderer/features/workspace-workbench/ui/WorkspaceWorkbench.tsx").then(
+    (module) => ({ default: module.WorkspaceWorkbench })
+  )
+);
+const LazyStandaloneAgentWorkbench = lazy(() =>
+  import("@renderer/features/workspace-workbench/ui/StandaloneAgentWorkbench.tsx").then(
+    (module) => ({ default: module.StandaloneAgentWorkbench })
+  )
+);
 
 export function WorkspaceWindow() {
   const {
@@ -50,24 +60,30 @@ export function WorkspaceWindow() {
 
   return (
     <InstantiationContext instantiationService={container}>
-      <WorkspaceWorkbench
-        agentWindowInput={{
-          agentProviderStatusService,
-          desktopApi,
-          hostWindowApi,
-          reporterService,
-          richTextAtService,
-          tuttidClient,
-          workspaceAgentActivityService,
-          workspaceAppCenterService,
-          workspaceUserProjectService
-        }}
-        enableWindowCloseGuard={environmentMode === "desktop"}
-        headerSlot={<AppUpdateStatus />}
-        routeView={routeView}
-        workspaceAppExternalApi={workspaceAppExternalApi}
-        workspaceID={workspaceID}
-      />
+      <Suspense fallback={<main className="h-screen min-h-0 bg-background" />}>
+        {routeView === "agent" ? (
+          <LazyStandaloneAgentWorkbench
+            agentProviderStatusService={agentProviderStatusService}
+            desktopApi={desktopApi}
+            enableWindowCloseGuard={environmentMode === "desktop"}
+            hostWindowApi={hostWindowApi}
+            reporterService={reporterService}
+            richTextAtService={richTextAtService}
+            tuttidClient={tuttidClient}
+            workspaceAgentActivityService={workspaceAgentActivityService}
+            workspaceAppCenterService={workspaceAppCenterService}
+            workspaceID={workspaceID}
+            workspaceUserProjectService={workspaceUserProjectService}
+          />
+        ) : (
+          <LazyWorkspaceWorkbench
+            enableWindowCloseGuard={environmentMode === "desktop"}
+            headerSlot={<AppUpdateStatus />}
+            workspaceAppExternalApi={workspaceAppExternalApi}
+            workspaceID={workspaceID}
+          />
+        )}
+      </Suspense>
       <AnalyticsDebugFloatingEntryGate />
     </InstantiationContext>
   );

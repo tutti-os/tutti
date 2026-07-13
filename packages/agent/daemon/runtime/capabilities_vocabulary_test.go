@@ -7,13 +7,15 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
-// Locks the Go capability vocabulary to the TypeScript mirror
-// (packages/agent/activity-core/src/capabilities.ts) so drift fails CI.
+// Locks the generated TypeScript vocabulary to the provider registry so drift
+// fails even when capabilities.ts only re-exports the generated catalog.
 func TestCapabilityVocabularyMatchesTypeScript(t *testing.T) {
 	t.Parallel()
-	tsPath := filepath.Join("..", "..", "activity-core", "src", "capabilities.ts")
+	tsPath := filepath.Join("..", "..", "activity-core", "src", "generated", "agentCapabilityKeys.ts")
 	raw, err := os.ReadFile(tsPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", tsPath, err)
@@ -27,18 +29,7 @@ func TestCapabilityVocabularyMatchesTypeScript(t *testing.T) {
 	for _, match := range matches {
 		got = append(got, match[1])
 	}
-	want := []string{
-		CapabilityImageInput,
-		CapabilitySkills,
-		CapabilityCompact,
-		CapabilityTokenUsage,
-		CapabilityRateLimits,
-		CapabilityPlanMode,
-		CapabilityInterrupt,
-		CapabilityBrowserUse,
-		CapabilityComputerUse,
-		CapabilityGoalPause,
-	}
+	want := providerregistry.KnownCapabilities()
 	sort.Strings(got)
 	sort.Strings(want)
 	if strings.Join(got, ",") != strings.Join(want, ",") {

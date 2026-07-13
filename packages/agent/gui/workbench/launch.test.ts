@@ -13,13 +13,13 @@ import {
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {
-  it("keeps codex as the legacy default dock entry", () => {
-    expect(agentGuiWorkbenchDockEntryId("codex")).toBe("agent-gui");
+  it("uses explicit provider dock identities", () => {
+    expect(agentGuiWorkbenchDockEntryId("codex")).toBe("agent-gui:codex");
     expect(agentGuiWorkbenchDockEntryId("claude-code")).toBe(
       "agent-gui:claude-code"
     );
     expect(agentGuiWorkbenchInstanceId("codex")).toBe("agent-gui:codex");
-    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBe("codex");
+    expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui")).toBeNull();
     expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:codex")).toBe(
       "codex"
     );
@@ -55,12 +55,12 @@ describe("agent gui workbench launch contract", () => {
         typeId: "agent-gui"
       })
     ).toBe("hermes");
-    expect(
+    expect(() =>
       agentGuiWorkbenchProviderFromLaunchRequest({
         payload: null,
         typeId: "agent-gui"
       })
-    ).toBe("codex");
+    ).toThrow("agent_gui_workbench.launch_provider_required");
   });
 
   it("uses payload providers before legacy dock identifiers in launch descriptors", () => {
@@ -70,7 +70,7 @@ describe("agent gui workbench launch contract", () => {
       typeId: "agent-gui"
     });
 
-    expect(descriptor.dockEntryId).toBe("agent-gui");
+    expect(descriptor.dockEntryId).toBe("agent-gui:codex");
     expect(descriptor.instanceId).toContain("agent-gui:codex:panel:");
     expect(descriptor.provider).toBe("codex");
   });
@@ -82,12 +82,12 @@ describe("agent gui workbench launch contract", () => {
     ).toEqual({ kind: "unifiedAggregate" });
     expect(
       agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:claude-code")
-    ).toEqual({ kind: "legacyProvider", provider: "claude-code" });
+    ).toBeNull();
   });
 
   it("launches sessions into provider panels until current session state can reuse a node", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       payload: {
         agentSessionId: "session-2",
         provider: "codex"
@@ -102,7 +102,7 @@ describe("agent gui workbench launch contract", () => {
         },
         type: "agent-gui:open-session"
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:unified",
       openInNewWindow: false,
       provider: "codex",
       reuseDockEntryNode: false,
@@ -133,7 +133,7 @@ describe("agent gui workbench launch contract", () => {
 
   it("can launch an existing session into a new internal window", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:codex",
       payload: {
         agentSessionId: "session-2",
         openInNewWindow: true,
@@ -235,7 +235,7 @@ describe("agent gui workbench launch contract", () => {
         userProjectPath: "/Users/example/project"
       })
     ).toEqual({
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:codex",
       payload: {
         agentTargetId: "local:codex",
         draftPrompt: "Review this issue",
@@ -265,7 +265,7 @@ describe("agent gui workbench launch contract", () => {
         },
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:codex",
       provider: "codex",
       reuseDockEntryNode: true,
       reuseExistingSessionNode: true,
@@ -292,7 +292,7 @@ describe("agent gui workbench launch contract", () => {
         },
         type: agentGuiWorkbenchPrefillPromptActivationType
       },
-      dockEntryId: "agent-gui",
+      dockEntryId: "agent-gui:codex",
       openInNewWindow: true,
       provider: "codex",
       reuseDockEntryNode: false,

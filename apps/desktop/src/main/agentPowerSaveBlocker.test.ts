@@ -185,19 +185,45 @@ function createFakeTuttidClient(input: {
   };
 }
 
-function createSession(
-  id: string,
-  status: WorkspaceAgentSession["status"]
-): WorkspaceAgentSession {
+function createSession(id: string, status: string): WorkspaceAgentSession {
+  const active = status === "working" || status === "running";
   return {
-    createdAt: "2026-06-08T00:00:00Z",
+    agentTargetId: null,
+    backgroundAgents: null,
+    capabilities: null,
+    createdAtUnixMs: 1,
     cwd: "/tmp/ws-1",
+    endedAtUnixMs: null,
+    goal: null,
     id,
+    imported: false,
+    activeTurn: active
+      ? {
+          agentSessionId: id,
+          completedCommand: null,
+          error: null,
+          fileChanges: null,
+          outcome: null,
+          phase: "running",
+          settledAtUnixMs: null,
+          startedAtUnixMs: 1,
+          turnId: "turn-1",
+          updatedAtUnixMs: 2
+        }
+      : null,
+    activeTurnId: active ? "turn-1" : null,
+    latestTurn: null,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    permissionConfig: { configurable: false, modes: [] },
+    pinnedAtUnixMs: null,
     provider: "codex",
+    providerSessionId: null,
     resumable: true,
-    status,
+    settings: {},
     title: "Session",
-    updatedAt: "2026-06-08T00:00:00Z",
+    updatedAtUnixMs: 2,
+    usage: null,
     visible: true
   };
 }
@@ -225,15 +251,15 @@ function createFakeEventStreamClient(): TuttidEventStreamClient & {
           agentSessionId: agentSessionID,
           data: {
             agentSessionId: agentSessionID,
-            eventType: "session_update",
+            eventType: "session_reconcile_required",
             lastEventUnixMs: 1,
             workspaceId: workspaceID
           },
-          eventType: "session_update",
+          eventType: "session_reconcile_required",
           workspaceId: workspaceID
         },
         topic: "agent.activity.updated",
-        version: 1
+        version: 2
       };
       for (const listener of activityListeners) {
         listener(event);

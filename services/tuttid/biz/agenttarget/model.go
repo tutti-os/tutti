@@ -6,17 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 const (
-	IDLocalCodex      = "local:codex"
-	IDLocalClaudeCode = "local:claude-code"
-	IDLocalTuttiAgent = "local:tutti-agent"
-	IDLocalCursor     = "local:cursor"
-	IDLocalOpenCode   = "local:opencode"
+	IDLocalCodex      = providerregistry.CodexTargetID
+	IDLocalClaudeCode = providerregistry.ClaudeCodeTargetID
+	IDLocalTuttiAgent = providerregistry.TuttiAgentTargetID
+	IDLocalCursor     = providerregistry.CursorTargetID
+	IDLocalOpenCode   = providerregistry.OpenCodeTargetID
 
 	LaunchRefTypeLocalCLI = "local_cli"
 
@@ -48,67 +50,37 @@ type LaunchRef struct {
 }
 
 func DefaultSystemTargets(nowUnixMS int64) []Target {
-	return []Target{
-		{
-			ID:              IDLocalCodex,
-			Provider:        agentproviderbiz.Codex,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Codex),
-			Name:            "Codex",
-			IconKey:         "codex",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       10,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
-		{
-			ID:              IDLocalClaudeCode,
-			Provider:        agentproviderbiz.ClaudeCode,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.ClaudeCode),
-			Name:            "Claude Code",
-			IconKey:         "claude-code",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       20,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
-		{
-			ID:              IDLocalTuttiAgent,
-			Provider:        agentproviderbiz.TuttiAgent,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.TuttiAgent),
-			Name:            "Tutti Agent",
-			IconKey:         "tutti-agent",
-			Enabled:         false,
-			Source:          SourceSystem,
-			SortOrder:       30,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
-		{
-			ID:              IDLocalCursor,
-			Provider:        agentproviderbiz.Cursor,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Cursor),
-			Name:            "Cursor",
-			IconKey:         "cursor",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       40,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
-		{
-			ID:              IDLocalOpenCode,
-			Provider:        agentproviderbiz.OpenCode,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.OpenCode),
-			Name:            "OpenCode",
-			IconKey:         "opencode",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       40,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
+	targets := make([]Target, 0, len(providerregistry.Migrated()))
+	for _, descriptor := range providerregistry.Migrated() {
+		targets = append(targets, systemTargetFromProviderDescriptor(descriptor, nowUnixMS))
+	}
+	sort.SliceStable(targets, func(left int, right int) bool {
+		if targets[left].SortOrder == targets[right].SortOrder {
+			return targets[left].ID < targets[right].ID
+		}
+		return targets[left].SortOrder < targets[right].SortOrder
+	})
+	return targets
+}
+
+func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDescriptor, nowUnixMS int64) Target {
+	if err := providerregistry.Validate(descriptor); err != nil {
+		panic(fmt.Sprintf("invalid migrated provider target descriptor: %v", err))
+	}
+	if descriptor.Target.LaunchRefType != LaunchRefTypeLocalCLI {
+		panic(fmt.Sprintf("provider %q has unsupported target launch ref type %q", descriptor.Identity.ID, descriptor.Target.LaunchRefType))
+	}
+	return Target{
+		ID:              descriptor.Target.ID,
+		Provider:        descriptor.Identity.ID,
+		LaunchRefJSON:   MustLocalCLILaunchRefJSON(descriptor.Identity.ID),
+		Name:            descriptor.Identity.DisplayName,
+		IconKey:         descriptor.Identity.IconKey,
+		Enabled:         descriptor.Target.Enabled,
+		Source:          SourceSystem,
+		SortOrder:       descriptor.Target.SortOrder,
+		CreatedAtUnixMS: nowUnixMS,
+		UpdatedAtUnixMS: nowUnixMS,
 	}
 }
 
@@ -264,18 +236,9 @@ func normalizeSource(value string) string {
 }
 
 func normalizeFirstIterationProvider(value string) string {
-	switch agentproviderbiz.Normalize(value) {
-	case agentproviderbiz.Codex:
-		return agentproviderbiz.Codex
-	case agentproviderbiz.ClaudeCode:
-		return agentproviderbiz.ClaudeCode
-	case agentproviderbiz.TuttiAgent:
-		return agentproviderbiz.TuttiAgent
-	case agentproviderbiz.Cursor:
-		return agentproviderbiz.Cursor
-	case agentproviderbiz.OpenCode:
-		return agentproviderbiz.OpenCode
-	default:
-		return ""
+	normalized := agentproviderbiz.Normalize(value)
+	if _, ok := providerregistry.Find(normalized); ok {
+		return normalized
 	}
+	return ""
 }

@@ -35,12 +35,12 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:1b69c706c4d5eca2" as const;
+export const businessEventCatalogRevision = "sha256:f4b16255b2e3b578" as const;
 
 export const businessEventDefinitions = [
   {
     topic: "agent.activity.updated",
-    version: 1,
+    version: 2,
     direction: "server->client",
     owner: "agent",
     scope: "workspace"
@@ -106,7 +106,7 @@ export const businessEventDefinitions = [
 export const businessEventDefinitionByTopic = {
   "agent.activity.updated": {
     topic: "agent.activity.updated",
-    version: 1,
+    version: 2,
     direction: "server->client",
     owner: "agent",
     scope: "workspace"

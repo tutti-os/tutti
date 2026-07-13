@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { smokeClaudeSDKSidecar } from "./smoke-claude-sdk-sidecar.mjs";
 import {
   DARWIN_CLAUDE_NATIVE_PACKAGES,
   resolveDarwinClaudeNativePackageSpecs,
@@ -129,3 +130,5 @@ if (!existsSync(entry)) {
   process.exit(1);
 }
 log(`OK: vendored entry at ${entry}`);
+await smokeClaudeSDKSidecar({ bundleDir: outDir });
+log("OK: vendored sidecar completed protocol smoke test");

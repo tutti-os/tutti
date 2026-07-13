@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -46,82 +47,92 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 	if err != nil {
 		home = ""
 	}
-	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-	if codexHome == "" && home != "" {
-		codexHome = filepath.Join(home, ".codex")
-	}
-	claudeConfigDir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
-	if claudeConfigDir == "" && home != "" {
-		claudeConfigDir = filepath.Join(home, ".claude")
-	}
-	opencodePaths := defaultOpenCodeAuthWatchPaths(home)
-	entries := make([]ProviderAuthWatchEntry, 0, 3)
-	if codexHome != "" {
-		entries = append(entries, ProviderAuthWatchEntry{
-			Provider: agentprovider.Codex,
-			Paths: []string{
-				filepath.Join(codexHome, "auth.json"),
-				filepath.Join(codexHome, codexConfigFileName),
-			},
-		})
-	}
-	if claudeConfigDir != "" {
-		claudePaths := []string{
-			filepath.Join(claudeConfigDir, "settings.json"),
-			filepath.Join(claudeConfigDir, "auth.json"),
+	entries := make([]ProviderAuthWatchEntry, 0, len(providerregistry.Migrated()))
+	for _, descriptor := range providerregistry.Migrated() {
+		if entry, ok := providerAuthWatchEntryFromDescriptor(descriptor, home); ok {
+			entries = append(entries, entry)
 		}
-		claudeStatePath := ""
-		if home != "" {
-			claudeStatePath = filepath.Join(home, ".claude.json")
-			claudePaths = append(claudePaths, claudeStatePath)
-		}
-		entries = append(entries, ProviderAuthWatchEntry{
-			Provider:           agentprovider.ClaudeCode,
-			Paths:              claudePaths,
-			ContentFingerprint: claudeProviderAuthContentFingerprint(claudeStatePath),
-		})
-	}
-	if len(opencodePaths) > 0 {
-		entries = append(entries, ProviderAuthWatchEntry{
-			Provider:           agentprovider.OpenCode,
-			Paths:              opencodePaths,
-			ContentFingerprint: hashProviderAuthFileContent,
-		})
 	}
 	return entries
 }
 
-func defaultOpenCodeAuthWatchPaths(home string) []string {
-	paths := []string{}
-	if configPath := strings.TrimSpace(os.Getenv("OPENCODE_CONFIG")); configPath != "" {
-		paths = append(paths, configPath)
+func providerAuthWatchEntryFromDescriptor(
+	descriptor providerregistry.ProviderDescriptor,
+	home string,
+) (ProviderAuthWatchEntry, bool) {
+	watch := descriptor.Status.AuthWatch
+	if len(watch.Sources) == 0 {
+		return ProviderAuthWatchEntry{}, false
 	}
-	configDir := strings.TrimSpace(os.Getenv("OPENCODE_CONFIG_DIR"))
-	if configDir == "" {
-		configDir = strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME"))
-		if configDir != "" {
-			configDir = filepath.Join(configDir, "opencode")
+	paths := []string{}
+	for _, source := range watch.Sources {
+		for _, envVar := range source.PathEnvVars {
+			if path := strings.TrimSpace(os.Getenv(strings.TrimSpace(envVar))); path != "" {
+				paths = append(paths, expandProviderAuthWatchHome(path, home))
+			}
+		}
+		root := ""
+		for _, candidate := range source.RootCandidates {
+			root = strings.TrimSpace(os.Getenv(strings.TrimSpace(candidate.EnvVar)))
+			if root == "" {
+				continue
+			}
+			if suffix := strings.TrimSpace(candidate.Suffix); suffix != "" {
+				root = filepath.Join(root, suffix)
+			}
+			break
+		}
+		if root == "" {
+			root = strings.TrimSpace(source.DefaultRoot)
+		}
+		root = expandProviderAuthWatchHome(root, home)
+		if root == "" {
+			continue
+		}
+		for _, path := range source.Paths {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(root, path)
+			}
+			paths = append(paths, path)
 		}
 	}
-	if configDir == "" && home != "" {
-		configDir = filepath.Join(home, ".config", "opencode")
+	paths = uniqueNonEmptyPaths(paths)
+	if len(paths) == 0 {
+		return ProviderAuthWatchEntry{}, false
 	}
-	if configDir != "" {
-		paths = append(paths,
-			filepath.Join(configDir, "opencode.json"),
-			filepath.Join(configDir, "config.json"),
-		)
+	entry := ProviderAuthWatchEntry{
+		Provider: descriptor.Identity.ID,
+		Paths:    paths,
 	}
-	dataDir := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
-	if dataDir != "" {
-		dataDir = filepath.Join(dataDir, "opencode")
-	} else if home != "" {
-		dataDir = filepath.Join(home, ".local", "share", "opencode")
+	if watch.ContentFingerprint == providerregistry.AuthWatchContentFingerprintFullFile {
+		entry.ContentFingerprint = hashProviderAuthFileContent
 	}
-	if dataDir != "" {
-		paths = append(paths, filepath.Join(dataDir, "auth.json"))
+	if watch.ContentFingerprint == providerregistry.AuthWatchContentFingerprintClaudeState {
+		claudeStatePath := ""
+		if strings.TrimSpace(home) != "" {
+			claudeStatePath = filepath.Join(home, ".claude.json")
+		}
+		entry.ContentFingerprint = claudeProviderAuthContentFingerprint(claudeStatePath)
 	}
-	return uniqueNonEmptyPaths(paths)
+	return entry, true
+}
+
+func expandProviderAuthWatchHome(path string, home string) string {
+	path = strings.TrimSpace(path)
+	if path == "~" {
+		return strings.TrimSpace(home)
+	}
+	if strings.HasPrefix(path, "~/") {
+		if strings.TrimSpace(home) == "" {
+			return ""
+		}
+		return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+	}
+	return path
 }
 
 func uniqueNonEmptyPaths(paths []string) []string {

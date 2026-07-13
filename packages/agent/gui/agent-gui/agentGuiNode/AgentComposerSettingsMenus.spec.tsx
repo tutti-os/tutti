@@ -1245,6 +1245,19 @@ describe("AgentPermissionModeDropdown", () => {
     ).toBeNull();
   });
 
+  it("keeps the selected permission visible while live model options refresh", () => {
+    renderPermissionModeDropdown("full-access", {
+      isModelOptionsLoading: true
+    });
+
+    const combobox = screen.getByRole("combobox", {
+      name: "Run permissions"
+    });
+    expect(combobox).toHaveTextContent("Full access");
+    expect(combobox).not.toHaveTextContent("Loading…");
+    expect(combobox.closest("span[tabindex]")).toBeNull();
+  });
+
   it("colors the ask for approval trigger when the selected value is display text", () => {
     renderPermissionModeDropdown("Ask for approval");
 

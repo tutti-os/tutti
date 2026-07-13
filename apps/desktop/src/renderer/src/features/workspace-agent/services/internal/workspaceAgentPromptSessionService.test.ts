@@ -1,8 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
-import type { IWorkspaceAgentActivityService } from "../workspaceAgentActivityService.interface.ts";
 import { WorkspaceAgentPromptSessionService } from "./workspaceAgentPromptSessionService.ts";
+
+function activatedSession(input: {
+  agentSessionId: string;
+  cwd?: string;
+  workspaceId?: string | null;
+}) {
+  return normalizeAgentActivitySession({
+    workspaceId: input.workspaceId ?? "workspace-1",
+    agentSessionId: input.agentSessionId,
+    provider: "codex" as const,
+    providerSessionId: input.agentSessionId,
+    cwd: input.cwd ?? "",
+    title: "Codex",
+    createdAtUnixMs: 1,
+    updatedAtUnixMs: 1
+  });
+}
 
 function createLegacyAgentReporterService(
   reporterCalls: ReporterEventInput[][]
@@ -41,20 +58,14 @@ test("workspace agent prompt session service creates a new session with initial 
     reporterNow: () => 1749124800000,
     reporterService: createLegacyAgentReporterService(reporterCalls),
     workspaceAgentActivityService: {
-      _serviceBrand: undefined,
       async activateSession(input) {
         capturedActivation = input;
         return {
           activation: { mode: "new", status: "attached" },
-          session: {
-            agentSessionId: input.agentSessionId,
-            cwd: input.cwd,
-            provider: "codex",
-            status: "running"
-          }
+          session: activatedSession(input)
         };
       }
-    } as IWorkspaceAgentActivityService
+    }
   });
 
   const result = await service.createSession({
@@ -67,20 +78,25 @@ test("workspace agent prompt session service creates a new session with initial 
     workspaceId: "workspace-1"
   });
 
-  assert.deepEqual(capturedActivation, {
-    agentSessionId: "session-1",
-    agentTargetId: "local:codex",
-    cwd: "/workspace/project",
-    initialContent: [{ type: "text", text: "Build the feature" }],
-    mode: "new",
-    title: "Build feature",
-    visible: true,
-    workspaceId: "workspace-1"
-  });
+  const activation = capturedActivation as Record<string, unknown>;
+  assert.match(String(activation.clientSubmitId), /^prompt-session:/);
+  assert.deepEqual(
+    { ...activation, clientSubmitId: "generated" },
+    {
+      agentSessionId: "session-1",
+      agentTargetId: "local:codex",
+      clientSubmitId: "generated",
+      cwd: "/workspace/project",
+      initialContent: [{ type: "text", text: "Build the feature" }],
+      mode: "new",
+      title: "Build feature",
+      visible: true,
+      workspaceId: "workspace-1"
+    }
+  );
   assert.deepEqual(result, {
     agentSessionId: "session-1",
-    provider: "codex",
-    status: "running"
+    provider: "codex"
   });
   assert.deepEqual(reporterCalls, [
     [
@@ -124,19 +140,13 @@ test("workspace agent prompt session service reports successful node results", a
       }
     },
     workspaceAgentActivityService: {
-      _serviceBrand: undefined,
       async activateSession(input) {
         return {
           activation: { mode: "new", status: "attached" },
-          session: {
-            agentSessionId: input.agentSessionId,
-            cwd: input.cwd,
-            provider: "codex",
-            status: "running"
-          }
+          session: activatedSession(input)
         };
       }
-    } as IWorkspaceAgentActivityService
+    }
   });
 
   await service.createSession({
@@ -201,19 +211,17 @@ test("workspace agent prompt session service reports successful node results", a
 test("workspace agent prompt session service rejects failed activation", async () => {
   const service = new WorkspaceAgentPromptSessionService({
     workspaceAgentActivityService: {
-      _serviceBrand: undefined,
       async activateSession(input) {
         return {
           activation: { mode: "new", status: "failed" },
-          error: { message: "provider unavailable" },
-          session: {
-            agentSessionId: input.agentSessionId,
-            provider: "codex",
-            status: "failed"
-          }
+          error: {
+            code: "provider_unavailable",
+            message: "provider unavailable"
+          },
+          session: activatedSession(input)
         };
       }
-    } as IWorkspaceAgentActivityService
+    }
   });
 
   await assert.rejects(
@@ -231,20 +239,14 @@ test("workspace agent prompt session service maps user project selection to cwd"
   let capturedActivation: unknown;
   const service = new WorkspaceAgentPromptSessionService({
     workspaceAgentActivityService: {
-      _serviceBrand: undefined,
       async activateSession(input) {
         capturedActivation = input;
         return {
           activation: { mode: "new", status: "attached" },
-          session: {
-            agentSessionId: input.agentSessionId,
-            cwd: input.cwd,
-            provider: "codex",
-            status: "running"
-          }
+          session: activatedSession(input)
         };
       }
-    } as IWorkspaceAgentActivityService,
+    },
     workspaceUserProjectService: {
       isNoProjectPath(path) {
         return path === "/workspace/no-project";

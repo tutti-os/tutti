@@ -29,6 +29,17 @@ const schemaMigrationWorkspaceAgentActivityV6 = "workspace_agent_activity_v6"
 const schemaMigrationWorkspaceAgentActivityV7 = "workspace_agent_activity_v7"
 const schemaMigrationWorkspaceAgentActivityV8 = "workspace_agent_activity_v8"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
+const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
+const schemaMigrationWorkspaceAgentActivityInteractionsV2 = "workspace_agent_activity_interactions_v2"
+const schemaMigrationWorkspaceAgentActivityMessagesV2 = "workspace_agent_activity_messages_v2"
+const schemaMigrationWorkspaceAgentSessionMetadataV1 = "workspace_agent_session_metadata_v1"
+const schemaMigrationWorkspaceAgentSessionMetadataV2 = "workspace_agent_session_metadata_v2"
+const schemaMigrationWorkspaceAgentSessionEntitiesV3 = "workspace_agent_session_entities_v3"
+const schemaMigrationWorkspaceAgentEntityInvariantsV1 = "workspace_agent_entity_invariants_v1"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV1 = "workspace_agent_runtime_operations_v1"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtime_operations_v2"
+const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
+const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
@@ -92,7 +103,40 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyAgentTargetsV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentActivityRailV1(ctx)
+	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityTurnsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityInteractionsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityMessagesV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionMetadataV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionMetadataV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentSessionEntitiesV3(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentEntityInvariantsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentRuntimeOperationsV3(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentSubmitClaimsV1(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were
@@ -148,6 +192,15 @@ func (s *Store) recordMigration(ctx context.Context, migrationID string) error {
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO `+schemaMigrationsTable+` (id, applied_at_unix_ms)
   VALUES (?, ?);
+`, migrationID, unixMs(time.Now().UTC())); err != nil {
+		return fmt.Errorf("record agent store migration %s: %w", migrationID, err)
+	}
+	return nil
+}
+
+func recordMigrationTx(ctx context.Context, tx *sql.Tx, migrationID string) error {
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO `+schemaMigrationsTable+` (id, applied_at_unix_ms) VALUES (?, ?)
 `, migrationID, unixMs(time.Now().UTC())); err != nil {
 		return fmt.Errorf("record agent store migration %s: %w", migrationID, err)
 	}

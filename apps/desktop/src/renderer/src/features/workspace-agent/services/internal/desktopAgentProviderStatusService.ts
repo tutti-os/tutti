@@ -1,14 +1,10 @@
 import type {
-  AgentProviderActionRunResponse,
   AgentProviderStatus,
   AgentProviderStatusListResponse,
   TuttidClient,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
-import { AgentProviderLoginInitiatedReporter } from "../../../analytics/reporters/agent-provider-login-initiated/agentProviderLoginInitiatedReporter.ts";
-import { AgentProviderLoginResultReporter } from "../../../analytics/reporters/agent-provider-login-result/agentProviderLoginResultReporter.ts";
-import { AgentProviderReadyReporter } from "../../../analytics/reporters/agent-provider-ready/agentProviderReadyReporter.ts";
 import { AgentEnvDetectedReporter } from "../../../analytics/reporters/agent-env-detected/agentEnvDetectedReporter.ts";
 import { AgentEnvIssueReportedReporter } from "../../../analytics/reporters/agent-env-issue-reported/agentEnvIssueReportedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
@@ -20,7 +16,6 @@ import {
 import type {
   AgentProviderStatusActionContext,
   AgentProviderStatusSnapshot,
-  AgentProviderTerminalCommandHandle,
   AgentProviderTerminalCommandRunner,
   IAgentProviderStatusService
 } from "../agentProviderStatusService.interface";
@@ -35,11 +30,7 @@ import {
   getAgentDiagnosticsConsent,
   setAgentDiagnosticsConsent
 } from "../../../../lib/agentDiagnosticsConsent.ts";
-import {
-  AgentAnalyticsErrorCode,
-  agentAnalyticsErrorFields,
-  agentAnalyticsSuccessFields
-} from "../../../analytics/reporters/agent-error-fields.ts";
+import { AgentAnalyticsErrorCode } from "../../../analytics/reporters/agent-error-fields.ts";
 import {
   createAgentNodeResultTracker,
   safeTrackAgentNodeResult,
@@ -47,6 +38,17 @@ import {
   type AgentAnalyticsNode
 } from "./agentNodeResultAnalytics.ts";
 import { applyDesktopAgentProviderRuntimeProbeFallbacks } from "./desktopAgentProviderRuntimeProbeFallback.ts";
+import {
+  DesktopAgentProviderAccountLifecycle,
+  type AgentProviderStatusPollScheduler
+} from "./desktopAgentProviderAccountLifecycle.ts";
+import {
+  resolveAgentProviderInstallErrorMessage,
+  runInstalledProviderAction,
+  shouldTrackPendingAction
+} from "./desktopAgentProviderInstall.ts";
+import { reconcileProviderStatuses } from "./desktopAgentProviderStatusCatalog.ts";
+import { latestProviderStatusLogLine } from "./desktopAgentProviderStatusLog.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
   loginStatusPollDurationMs?: number;
@@ -67,20 +69,9 @@ export interface DiagnosticsConsentStore {
   set(value: boolean): void;
 }
 
-interface AgentProviderStatusPollScheduler {
-  clearTimeout(timer: AgentProviderStatusPollTimer): void;
-  now(): number;
-  setTimeout(
-    callback: () => void,
-    delayMs: number
-  ): AgentProviderStatusPollTimer;
-}
-
 type AgentProviderStatusPollTimer = number | { unref?: () => void };
 
 const defaultRequestTimeoutMs = 15_000;
-const defaultLoginStatusPollDurationMs = 3 * 60 * 1000;
-const defaultLoginStatusPollIntervalMs = 5_000;
 const pendingInstallStatusPollIntervalMs = 1_000;
 
 const defaultLoginStatusPollScheduler: AgentProviderStatusPollScheduler = {
@@ -105,23 +96,13 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private readonly notifications: NotificationService;
   private inflightRequest: Promise<AgentProviderStatusListResponse | null> | null =
     null;
-  private readonly loginStatusPolls = new Map<
-    WorkspaceAgentProvider,
-    { deadlineMs: number; timer: AgentProviderStatusPollTimer | null }
-  >();
+  private readonly accountLifecycle: DesktopAgentProviderAccountLifecycle;
   private readonly pendingActionStatusPolls = new Map<
     string,
     AgentProviderStatusPollTimer
   >();
   private requestSequence = 0;
   private readonly listeners = new Set<() => void>();
-  private readonly pendingLoginResults = new Set<WorkspaceAgentProvider>();
-  // The login terminal we opened per provider, so we can auto-close it once login
-  // succeeds. Kept open on failure/timeout so the user can read the error.
-  private readonly pendingLoginTerminals = new Map<
-    WorkspaceAgentProvider,
-    AgentProviderTerminalCommandHandle
-  >();
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
   private readonly transientDowngradeCounts = new Map<string, number>();
@@ -141,6 +122,15 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.notifications = notifications;
     this.consentStore =
       dependencies.diagnosticsConsentStore ?? createSharedConsentStore();
+    this.accountLifecycle = new DesktopAgentProviderAccountLifecycle({
+      loginStatusPollDurationMs: dependencies.loginStatusPollDurationMs,
+      loginStatusPollIntervalMs: dependencies.loginStatusPollIntervalMs,
+      loginStatusPollScheduler: dependencies.loginStatusPollScheduler,
+      refresh: async (provider) => this.refresh([provider]),
+      reportNodeResult: (input) => this.reportNodeResult(input),
+      reporterNow: dependencies.reporterNow,
+      reporterService: dependencies.reporterService
+    });
   }
 
   getRevision(): number {
@@ -242,12 +232,14 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
           // Report provider_ready before reportCompletedLoginResults so the
           // pendingLoginResults set is still populated when we classify how a
           // provider became ready (login vs. already-ready vs. external).
-          this.reportProviderReadyTransitions(
+          this.accountLifecycle.reportProviderReadyTransitions(
             previousStatuses,
             reconciledStatuses
           );
           this.reportEnvDetectedChanges(reconciledStatuses);
-          void this.reportCompletedLoginResults(response.providers);
+          void this.accountLifecycle.reportCompletedLoginResults(
+            response.providers
+          );
         }
         await this.reportNodeResult({
           flow: "provider_setup",
@@ -295,7 +287,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   ): Promise<void> {
     const isLoginAction = actionId === "login";
     if (isLoginAction) {
-      await this.reportLoginInitiated(provider);
+      await this.accountLifecycle.reportLoginInitiated(provider);
     }
 
     let action = this.findAction(provider, actionId);
@@ -305,7 +297,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       if (!action) {
         this.notifyMissingAction(actionId);
         if (isLoginAction) {
-          await this.reportLoginResult(
+          await this.accountLifecycle.reportLoginResult(
             provider,
             false,
             "action_unavailable",
@@ -319,7 +311,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (action.kind === "refresh") {
       await this.refresh([provider]);
       if (isLoginAction) {
-        await this.reportLoginResult(
+        await this.accountLifecycle.reportLoginResult(
           provider,
           false,
           "unsupported_action",
@@ -352,7 +344,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
       if (!action.command) {
         if (isLoginAction) {
-          await this.reportLoginResult(
+          await this.accountLifecycle.reportLoginResult(
             provider,
             false,
             "command_missing",
@@ -363,7 +355,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return;
       }
 
-      const terminalLaunchStartedAt = this.loginStatusPollScheduler.now();
+      const terminalLaunchStartedAt = this.accountLifecycle.now();
       const terminal =
         await this.dependencies.terminalCommandRunner.runTerminalCommand(
           action.command,
@@ -371,24 +363,19 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         );
       if (isLoginAction) {
         await this.reportNodeResult({
-          durationMs:
-            this.loginStatusPollScheduler.now() - terminalLaunchStartedAt,
+          durationMs: this.accountLifecycle.now() - terminalLaunchStartedAt,
           flow: "provider_setup",
           node: "login_terminal_launch",
           provider,
           success: true
         });
-        if (terminal) {
-          this.pendingLoginTerminals.set(provider, terminal);
-        }
-        this.pendingLoginResults.add(provider);
-        this.startLoginStatusPolling(provider);
+        this.accountLifecycle.registerLoginTerminal(provider, terminal);
       }
       void this.refresh([provider]);
     } catch (error) {
       if (action.id === "install") {
         this.notifications.error({
-          description: resolveAgentProviderInstallErrorMessage(error, provider),
+          description: resolveAgentProviderInstallErrorMessage(error),
           title: translate(
             "workspace.workbenchDesktop.agentProviders.installFailed"
           )
@@ -403,14 +390,14 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         });
       }
       if (action.id === "login") {
-        this.pendingLoginTerminals.delete(provider);
+        this.accountLifecycle.clearLoginTerminal(provider);
         this.notifications.error({
           description: resolveDesktopErrorMessage(error, getActiveLocale()),
           title: translate(
             "workspace.workbenchDesktop.agentProviders.loginFailed"
           )
         });
-        await this.reportLoginResult(
+        await this.accountLifecycle.reportLoginResult(
           provider,
           false,
           "launch_failed",
@@ -475,7 +462,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   private hasLoadedProviderSnapshot(
     providers: readonly WorkspaceAgentProvider[] | undefined
   ): boolean {
-    if (!this.snapshot.capturedAt) {
+    if (!this.snapshot.capturedAt || !this.snapshot.defaultProvider) {
       return false;
     }
     if (!providers || providers.length === 0) {
@@ -488,9 +475,12 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 
   private snapshotResponse(): AgentProviderStatusListResponse {
+    if (!this.snapshot.defaultProvider) {
+      throw new Error("agent_provider_status.default_provider_required");
+    }
     return {
       capturedAt: this.snapshot.capturedAt ?? "",
-      defaultProvider: this.snapshot.defaultProvider ?? "codex",
+      defaultProvider: this.snapshot.defaultProvider,
       providers: [...this.snapshot.statuses]
     };
   }
@@ -504,91 +494,23 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     });
   }
 
-  private reconcileProviderStatuses(
-    previousStatuses: readonly AgentProviderStatus[],
-    responseStatuses: readonly AgentProviderStatus[],
-    requestedProviders: readonly WorkspaceAgentProvider[] | undefined
-  ): readonly AgentProviderStatus[] {
-    const previousByProvider = new Map(
-      previousStatuses.map((status) => [status.provider, status])
-    );
-    const nextByProvider = new Map<string, AgentProviderStatus>();
-    for (const status of responseStatuses) {
-      const previous = previousByProvider.get(status.provider);
-      nextByProvider.set(
-        status.provider,
-        this.preserveNetwork(
-          previous,
-          this.stabilizeProviderStatus(previous, status)
-        )
-      );
-    }
-
-    if (!requestedProviders || requestedProviders.length === 0) {
-      return responseStatuses.map(
-        (status) => nextByProvider.get(status.provider) ?? status
-      );
-    }
-
-    const merged = previousStatuses.map(
-      (status) => nextByProvider.get(status.provider) ?? status
-    );
-    const existingProviders = new Set(merged.map((status) => status.provider));
-    for (const status of responseStatuses) {
-      if (!existingProviders.has(status.provider)) {
-        merged.push(nextByProvider.get(status.provider) ?? status);
-      }
-    }
-    return merged;
-  }
-
   private reconcileProviderStatusesWithProbe(
     previousStatuses: readonly AgentProviderStatus[],
     responseStatuses: readonly AgentProviderStatus[],
     requestedProviders: readonly WorkspaceAgentProvider[] | undefined
   ): readonly AgentProviderStatus[] | Promise<readonly AgentProviderStatus[]> {
-    const reconciledStatuses = this.reconcileProviderStatuses(
+    const reconciledStatuses = reconcileProviderStatuses({
       previousStatuses,
+      requestedProviders,
       responseStatuses,
-      requestedProviders
-    );
+      transientDowngradeCounts: this.transientDowngradeCounts
+    });
     return applyDesktopAgentProviderRuntimeProbeFallbacks({
       probeProvider: (provider) =>
         this.dependencies.tuttidClient.probeAgentProvider(provider),
       requestedProviders,
       statuses: reconciledStatuses
     });
-  }
-
-  /**
-   * Network reachability is now fetched on-demand (only the wizard requests it),
-   * so a local-only poll (dock / visibility / install / login) returns a status
-   * with no `network`. Carry the last-known network forward so those polls don't
-   * wipe the diagnostic the wizard fetched; a later with-network response replaces
-   * it.
-   */
-  private preserveNetwork(
-    previous: AgentProviderStatus | undefined,
-    next: AgentProviderStatus
-  ): AgentProviderStatus {
-    if (next.network || !previous?.network) {
-      return next;
-    }
-    return { ...next, network: previous.network };
-  }
-
-  private stabilizeProviderStatus(
-    previous: AgentProviderStatus | undefined,
-    next: AgentProviderStatus
-  ): AgentProviderStatus {
-    if (!previous || !isTransientProviderStatusDowngrade(previous, next)) {
-      this.transientDowngradeCounts.delete(next.provider);
-      return next;
-    }
-
-    const count = this.transientDowngradeCounts.get(next.provider) ?? 0;
-    this.transientDowngradeCounts.set(next.provider, count + 1);
-    return count === 0 ? previous : next;
   }
 
   private addPendingAction(
@@ -628,99 +550,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       ...this.snapshot,
       pendingActions
     });
-  }
-
-  private startLoginStatusPolling(provider: WorkspaceAgentProvider): void {
-    const deadlineMs =
-      this.loginStatusPollScheduler.now() + this.loginStatusPollDurationMs();
-    const existing = this.loginStatusPolls.get(provider);
-    if (existing) {
-      existing.deadlineMs = deadlineMs;
-      return;
-    }
-
-    const state = {
-      deadlineMs,
-      timer: null
-    };
-    this.loginStatusPolls.set(provider, state);
-    this.scheduleLoginStatusPoll(provider, state);
-  }
-
-  private scheduleLoginStatusPoll(
-    provider: WorkspaceAgentProvider,
-    state: { deadlineMs: number; timer: AgentProviderStatusPollTimer | null }
-  ): void {
-    if (state.timer !== null) {
-      return;
-    }
-    if (this.loginStatusPollScheduler.now() >= state.deadlineMs) {
-      this.reportLoginTimeout(provider);
-      return;
-    }
-
-    state.timer = this.loginStatusPollScheduler.setTimeout(() => {
-      state.timer = null;
-      void this.runLoginStatusPoll(provider);
-    }, this.loginStatusPollIntervalMs());
-    unrefPollTimer(state.timer);
-  }
-
-  private async runLoginStatusPoll(
-    provider: WorkspaceAgentProvider
-  ): Promise<void> {
-    const state = this.loginStatusPolls.get(provider);
-    if (!state || this.loginStatusPollScheduler.now() >= state.deadlineMs) {
-      this.reportLoginTimeout(provider);
-      return;
-    }
-
-    const pollStartedAt = this.loginStatusPollScheduler.now();
-    await this.refresh([provider]);
-    await this.reportNodeResult({
-      durationMs: this.loginStatusPollScheduler.now() - pollStartedAt,
-      flow: "provider_setup",
-      node: "login_auth_poll",
-      provider,
-      success: true
-    });
-
-    const current = this.loginStatusPolls.get(provider);
-    if (!current || !this.pendingLoginResults.has(provider)) {
-      return;
-    }
-    if (this.loginStatusPollScheduler.now() >= current.deadlineMs) {
-      this.reportLoginTimeout(provider);
-      return;
-    }
-    this.scheduleLoginStatusPoll(provider, current);
-  }
-
-  private stopLoginStatusPolling(provider: WorkspaceAgentProvider): void {
-    const state = this.loginStatusPolls.get(provider);
-    if (!state) {
-      return;
-    }
-    if (state.timer !== null) {
-      this.loginStatusPollScheduler.clearTimeout(state.timer);
-    }
-    this.loginStatusPolls.delete(provider);
-  }
-
-  private loginStatusPollDurationMs(): number {
-    return Math.max(
-      0,
-      this.dependencies.loginStatusPollDurationMs ??
-        defaultLoginStatusPollDurationMs
-    );
-  }
-
-  private loginStatusPollIntervalMs(): number {
-    return Math.max(
-      0,
-      this.dependencies.loginStatusPollIntervalMs ??
-        defaultLoginStatusPollIntervalMs
-    );
   }
 
   private get loginStatusPollScheduler(): AgentProviderStatusPollScheduler {
@@ -783,106 +612,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     this.pendingActionStatusPolls.delete(key);
   }
 
-  private async reportCompletedLoginResults(
-    statuses: readonly AgentProviderStatus[]
-  ): Promise<void> {
-    for (const status of statuses) {
-      if (
-        !this.pendingLoginResults.has(status.provider) ||
-        status.availability.status !== "ready"
-      ) {
-        continue;
-      }
-      this.pendingLoginResults.delete(status.provider);
-      this.stopLoginStatusPolling(status.provider);
-      // Login succeeded — dismiss the terminal we opened for it.
-      this.closePendingLoginTerminal(status.provider);
-      await this.reportNodeResult({
-        flow: "provider_setup",
-        node: "login_ready_detected",
-        provider: status.provider,
-        success: true
-      });
-      await this.reportLoginResult(status.provider, true, null);
-    }
-  }
-
-  private reportLoginTimeout(provider: WorkspaceAgentProvider): void {
-    const hadPendingResult = this.pendingLoginResults.delete(provider);
-    this.pendingLoginTerminals.delete(provider);
-    this.stopLoginStatusPolling(provider);
-    if (!hadPendingResult) {
-      return;
-    }
-    void this.reportLoginResult(
-      provider,
-      false,
-      "timeout",
-      "Agent provider login timed out.",
-      AgentAnalyticsErrorCode.LoginTimeout
-    );
-  }
-
-  private closePendingLoginTerminal(provider: WorkspaceAgentProvider): void {
-    const terminal = this.pendingLoginTerminals.get(provider);
-    if (!terminal) {
-      return;
-    }
-    this.pendingLoginTerminals.delete(provider);
-    terminal.close();
-  }
-
-  private reportProviderReadyTransitions(
-    previousStatuses: readonly AgentProviderStatus[],
-    nextStatuses: readonly AgentProviderStatus[]
-  ): void {
-    const previousByProvider = new Map(
-      previousStatuses.map((status) => [status.provider, status])
-    );
-    for (const status of nextStatuses) {
-      if (status.availability.status !== "ready") {
-        continue;
-      }
-      const previous = previousByProvider.get(status.provider);
-      // Only a transition into "ready" is an activation signal. A provider that
-      // was already ready in the prior snapshot re-reports nothing, so the event
-      // naturally de-dupes within a session without extra bookkeeping.
-      if (previous?.availability.status === "ready") {
-        continue;
-      }
-      const becameReadyVia = this.pendingLoginResults.has(status.provider)
-        ? "login"
-        : previous
-          ? "external"
-          : "already_ready";
-      void this.reportProviderReady(
-        status.provider,
-        becameReadyVia,
-        previous?.availability.status ?? "absent"
-      );
-    }
-  }
-
-  private async reportProviderReady(
-    provider: WorkspaceAgentProvider,
-    becameReadyVia: string,
-    previousStatus: string
-  ): Promise<void> {
-    try {
-      await new AgentProviderReadyReporter(
-        { becameReadyVia, previousStatus, provider },
-        {
-          now: this.dependencies.reporterNow,
-          reporterService: createOptionalReporterService(
-            this.dependencies.reporterService
-          )
-        }
-      ).report();
-    } catch {
-      // Analytics must not block agent provider actions.
-    }
-  }
-
   // Always-on, privacy-safe: fire `agent.env_detected` once per provider per
   // distinct detection outcome, so we can see how users' environments resolve
   // without spamming on routine polls.
@@ -940,57 +669,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     } catch {
       // Analytics must not block agent provider actions.
     }
-  }
-
-  private async reportLoginInitiated(
-    provider: WorkspaceAgentProvider
-  ): Promise<void> {
-    try {
-      await new AgentProviderLoginInitiatedReporter(
-        { provider },
-        {
-          now: this.dependencies.reporterNow,
-          reporterService: createOptionalReporterService(
-            this.dependencies.reporterService
-          )
-        }
-      ).report();
-    } catch {
-      // Analytics must not block agent provider actions.
-    }
-  }
-
-  private async reportLoginResult(
-    provider: WorkspaceAgentProvider,
-    success: boolean,
-    errorReason: string | null,
-    error?: unknown,
-    fallbackErrorCode: AgentAnalyticsErrorCode = AgentAnalyticsErrorCode.LoginLaunchFailed
-  ): Promise<void> {
-    const errorFields = success
-      ? agentAnalyticsSuccessFields
-      : agentAnalyticsErrorFields(error ?? errorReason, fallbackErrorCode);
-    try {
-      await new AgentProviderLoginResultReporter(
-        { ...errorFields, errorReason, provider, success },
-        {
-          now: this.dependencies.reporterNow,
-          reporterService: createOptionalReporterService(
-            this.dependencies.reporterService
-          )
-        }
-      ).report();
-    } catch {
-      // Analytics must not block agent provider actions.
-    }
-    await this.reportNodeResult({
-      error: success ? undefined : (error ?? errorReason),
-      fallbackErrorCode,
-      flow: "provider_setup",
-      node: "login_action_requested",
-      provider,
-      success
-    });
   }
 
   private async reportNodeResult(input: {
@@ -1054,16 +732,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
   }
 }
 
-function latestProviderStatusLogLine(log: readonly string[]): string | null {
-  for (let index = log.length - 1; index >= 0; index -= 1) {
-    const line = log[index]?.trim();
-    if (line) {
-      return line;
-    }
-  }
-  return null;
-}
-
 function pendingActionKey(
   provider: WorkspaceAgentProvider,
   actionId: string
@@ -1082,8 +750,6 @@ function createOptionalReporterService(
 }
 
 function createSharedConsentStore(): DiagnosticsConsentStore {
-  // Backed by the shared device-local store so the Settings → General toggle and
-  // the wizard's prompt always agree on the value.
   return {
     get: getAgentDiagnosticsConsent,
     set: setAgentDiagnosticsConsent
@@ -1094,166 +760,6 @@ function unrefPollTimer(timer: AgentProviderStatusPollTimer): void {
   if (typeof timer === "object" && typeof timer.unref === "function") {
     timer.unref();
   }
-}
-
-class AgentProviderInstallActionFailedError extends Error {
-  readonly reason: string;
-
-  constructor(reason: string) {
-    super(reason);
-    this.reason = reason;
-    this.name = "AgentProviderInstallActionFailedError";
-  }
-}
-
-async function runInstalledProviderAction(
-  tuttidClient: TuttidClient,
-  provider: WorkspaceAgentProvider
-): Promise<void> {
-  const result = await tuttidClient.runAgentProviderAction(provider, "install");
-  if (result.status !== "failed") {
-    return;
-  }
-  throw new AgentProviderInstallActionFailedError(
-    resolveAgentProviderActionFailureReason(result)
-  );
-}
-
-function resolveAgentProviderActionFailureReason(
-  result: AgentProviderActionRunResponse
-): string {
-  return (
-    result.message?.trim() ||
-    result.reasonCode?.trim() ||
-    result.stderr?.trim() ||
-    result.stdout?.trim() ||
-    result.probe?.message?.trim() ||
-    result.probe?.reasonCode?.trim() ||
-    "Agent provider install action failed."
-  );
-}
-
-function resolveAgentProviderInstallErrorMessage(
-  error: unknown,
-  provider: WorkspaceAgentProvider
-): string {
-  if (error instanceof AgentProviderInstallActionFailedError) {
-    if (isClaudeUnavailableInRegionInstallError(provider, error.reason)) {
-      return translate(
-        "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
-      );
-    }
-    return summarizeAgentProviderInstallFailureReason(error.reason);
-  }
-  const message = resolveDesktopErrorMessage(error, getActiveLocale());
-  if (isClaudeUnavailableInRegionInstallError(provider, message)) {
-    return translate(
-      "workspace.workbenchDesktop.agentProviders.installUnavailableInRegion"
-    );
-  }
-  if (isTechnicalInstallFailureMessage(message)) {
-    return summarizeAgentProviderInstallFailureReason(message);
-  }
-  return message;
-}
-
-function summarizeAgentProviderInstallFailureReason(reason: string): string {
-  const trimmed = reason.trim();
-  if (!trimmed) {
-    return translate(
-      "workspace.workbenchDesktop.agentProviders.installFailedDescription"
-    );
-  }
-
-  const normalized = trimmed.toLowerCase();
-  if (
-    normalized.includes("timed out") ||
-    normalized.includes("install_timed_out")
-  ) {
-    return translate(
-      "workspace.workbenchDesktop.agentProviders.installFailedTimedOut"
-    );
-  }
-
-  if (
-    normalized.includes("eexist") &&
-    (normalized.includes("file exists") ||
-      normalized.includes("npm error path")) &&
-    normalized.includes("tutti-agent")
-  ) {
-    return translate(
-      "workspace.workbenchDesktop.agentProviders.installFailedOutdatedLocalAgent"
-    );
-  }
-
-  if (
-    normalized.includes("enoent") ||
-    normalized.includes("error: spawn") ||
-    normalized.includes("spawn ") ||
-    normalized.includes("post_install_probe_failed") ||
-    isTechnicalInstallFailureMessage(trimmed)
-  ) {
-    return translate(
-      "workspace.workbenchDesktop.agentProviders.installFailedMissingRuntime"
-    );
-  }
-
-  if (trimmed.length <= 120 && !trimmed.includes("\n")) {
-    return trimmed;
-  }
-
-  return translate(
-    "workspace.workbenchDesktop.agentProviders.installFailedDescription"
-  );
-}
-
-function isTechnicalInstallFailureMessage(message: string): boolean {
-  return (
-    message.includes("\n") ||
-    message.includes(" at ") ||
-    message.includes("errno:") ||
-    message.includes("syscall:") ||
-    message.includes("spawnargs:") ||
-    message.includes("ChildProcess")
-  );
-}
-
-function isClaudeUnavailableInRegionInstallError(
-  provider: WorkspaceAgentProvider,
-  message: string
-): boolean {
-  if (provider !== "claude-code") {
-    return false;
-  }
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("app-unavailable-in-region") ||
-    normalized.includes("app unavailable in region") ||
-    normalized.includes("claude isn't available here") ||
-    normalized.includes("claude isn&#x27;t available here") ||
-    normalized.includes("claude isn&apos;t available here")
-  );
-}
-
-function isTransientProviderStatusDowngrade(
-  previous: AgentProviderStatus,
-  next: AgentProviderStatus
-): boolean {
-  if (previous.provider !== next.provider) {
-    return false;
-  }
-  const reasonCode = next.availability.reasonCode ?? "";
-  return (
-    previous.availability.status === "ready" &&
-    next.cli.installed &&
-    next.adapter.installed &&
-    next.availability.status === "auth_required" &&
-    (reasonCode === "auth_required" || reasonCode === "auth_unknown")
-  );
-}
-
-function shouldTrackPendingAction(actionId: string): boolean {
-  return actionId === "install";
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

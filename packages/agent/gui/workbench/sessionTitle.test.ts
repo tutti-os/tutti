@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
+import {
+  normalizeAgentActivitySession,
+  type AgentActivityMessage,
+  type AgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import {
   formatAgentGuiSessionPlainTitle,
   resolveAgentGuiWorkbenchSessionTitle
@@ -11,7 +15,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title:
           "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进"
@@ -30,7 +34,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title:
           "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=workspace-1)"
@@ -49,7 +53,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
       })
@@ -67,7 +71,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title: "Current task"
       })
@@ -85,7 +89,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: null,
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         messages: [
           message({ role: "assistant", text: "Working on it", version: 1 }),
@@ -107,13 +111,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle:
         "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进",
-      provider: "codex",
-      snapshot: {
-        workspaceId: "workspace-1",
-        presences: [],
-        sessions: [],
-        sessionMessagesById: {}
-      }
+      provider: "codex"
     });
 
     expect(title).toEqual({
@@ -128,7 +126,7 @@ describe("agent GUI workbench session titles", () => {
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
       provider: "codex",
-      snapshot: snapshotWithSession({
+      ...sessionState({
         agentSessionId: "session-1",
         title: "Codex"
       })
@@ -150,30 +148,23 @@ describe("agent GUI workbench session titles", () => {
   });
 });
 
-function snapshotWithSession(input: {
+function sessionState(input: {
   agentSessionId: string;
-  messages?: AgentActivitySnapshot["sessionMessagesById"][string];
+  messages?: AgentActivityMessage[];
   title: string;
-}): AgentActivitySnapshot {
+}): { messages: AgentActivityMessage[]; session: AgentActivitySession } {
   return {
-    workspaceId: "workspace-1",
-    presences: [],
-    sessions: [
-      {
-        workspaceId: "workspace-1",
-        agentSessionId: input.agentSessionId,
-        provider: "codex",
-        providerSessionId: input.agentSessionId,
-        cwd: "/workspace",
-        title: input.title,
-        status: "ready",
-        createdAtUnixMs: 1,
-        updatedAtUnixMs: 2
-      }
-    ],
-    sessionMessagesById: {
-      [input.agentSessionId]: input.messages ?? []
-    }
+    messages: input.messages ?? [],
+    session: normalizeAgentActivitySession({
+      workspaceId: "workspace-1",
+      agentSessionId: input.agentSessionId,
+      provider: "codex",
+      providerSessionId: input.agentSessionId,
+      cwd: "/workspace",
+      title: input.title,
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 2
+    })
   };
 }
 
@@ -181,7 +172,7 @@ function message(input: {
   role: "assistant" | "user";
   text: string;
   version: number;
-}): AgentActivitySnapshot["sessionMessagesById"][string][number] {
+}): AgentActivityMessage {
   return {
     workspaceId: "workspace-1",
     agentSessionId: "session-1",

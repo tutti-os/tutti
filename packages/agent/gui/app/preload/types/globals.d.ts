@@ -2,14 +2,6 @@ import type {
   TerminalTransportAttachInput,
   CopyWorkspacePathInput,
   ListSystemFontsResult,
-  AgentHostDeleteWorkspaceAgentSessionInput,
-  AgentHostDeleteWorkspaceAgentSessionResult,
-  AgentHostWorkspaceAgentListInput,
-  AgentHostWorkspaceAgentSnapshot,
-  AgentHostWorkspaceAgentSessionMessages,
-  AgentHostWorkspaceAgentSessionMessagesInput,
-  AgentHostWorkspaceAgentSessionSummary,
-  AgentHostWorkspaceAgentSessionSummaryInput,
   TerminalTransportDetachInput,
   EnsureDirectoryInput,
   ListAgentModelsInput,
@@ -84,21 +76,6 @@ import type {
 } from "../../../shared/contracts/dto";
 
 type UnsubscribeFn = () => void;
-
-type AgentHostWorkspaceAgentsPreloadApi = {
-  list: (
-    input: string | AgentHostWorkspaceAgentListInput
-  ) => Promise<AgentHostWorkspaceAgentSnapshot>;
-  deleteSession: (
-    payload: AgentHostDeleteWorkspaceAgentSessionInput
-  ) => Promise<AgentHostDeleteWorkspaceAgentSessionResult>;
-  listSessionMessages: (
-    payload: AgentHostWorkspaceAgentSessionMessagesInput
-  ) => Promise<AgentHostWorkspaceAgentSessionMessages>;
-  getSessionSummary: (
-    payload: AgentHostWorkspaceAgentSessionSummaryInput
-  ) => Promise<AgentHostWorkspaceAgentSessionSummary>;
-};
 
 export interface AgentHostPreloadApi {
   meta: {

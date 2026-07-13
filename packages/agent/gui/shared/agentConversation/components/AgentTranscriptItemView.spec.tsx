@@ -504,6 +504,43 @@ describe("AgentTranscriptItemView render stability", () => {
     ).toBeNull();
   });
 
+  it.each([
+    [
+      "plan_implementation_pending_confirmation",
+      "agentHost.agentGui.systemNoticePlanImplementationPendingConfirmation"
+    ],
+    [
+      "plan_implementation_completed",
+      "agentHost.agentGui.systemNoticePlanImplementationCompleted"
+    ]
+  ])(
+    "renders semantic plan notice %s without transport text",
+    (noticeKind, key) => {
+      const { getByText } = render(
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={assistantMessageRow({
+            kind: "message-content",
+            id: `assistant-${noticeKind}`,
+            turnId: "turn-1",
+            body: "",
+            occurredAtUnixMs: 1,
+            systemNotice: {
+              noticeKind,
+              severity: "info",
+              title: null,
+              detail: null,
+              retryable: false
+            }
+          })}
+          thinkingLabel="Thought process"
+        />
+      );
+      expect(getByText(key)).toBeTruthy();
+    }
+  );
+
   it("renders transport fallback notices with the localized label", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock

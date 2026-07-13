@@ -1,17 +1,21 @@
 package events
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
 
 type Provider string
 
 const (
-	ProviderCodex      Provider = "codex"
+	ProviderCodex      Provider = providerregistry.CodexProviderID
 	ProviderTuttiAgent Provider = "tutti-agent"
 	ProviderCursor     Provider = "cursor"
 	ProviderNexight    Provider = "nexight"
-	ProviderClaudeCode Provider = "claude-code"
+	ProviderClaudeCode Provider = providerregistry.ClaudeCodeProviderID
 	ProviderOpenClaw   Provider = "openclaw"
-	ProviderOpenCode   Provider = "opencode"
+	ProviderOpenCode   Provider = providerregistry.OpenCodeProviderID
 	ProviderHermes     Provider = "hermes"
 )
 
@@ -154,26 +158,10 @@ type EventContext struct {
 }
 
 func NormalizeProvider(value string) (Provider, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(ProviderCodex):
-		return ProviderCodex, true
-	case string(ProviderTuttiAgent), "tutti_agent":
-		return ProviderTuttiAgent, true
-	case string(ProviderCursor), "cursor-agent", "cursor_agent":
-		return ProviderCursor, true
-	case string(ProviderNexight):
-		return ProviderNexight, true
-	case "claude", string(ProviderClaudeCode), "claude_code":
-		return ProviderClaudeCode, true
-	case string(ProviderOpenClaw), "open_claw":
-		return ProviderOpenClaw, true
-	case string(ProviderOpenCode), "open-code", "opencode-ai", "opencode_ai":
-		return ProviderOpenCode, true
-	case string(ProviderHermes), "hermes-agent", "hermes_agent":
-		return ProviderHermes, true
-	default:
-		return "", false
+	if resolved, ok := providerregistry.ResolveEventProvider(value); ok {
+		return Provider(resolved.ProviderID), true
 	}
+	return "", false
 }
 
 func NewPresenceHeartbeat(ctx EventContext, status PresenceStatus, leaseTTLSeconds int) Event {

@@ -2,20 +2,17 @@ import {
   Fragment,
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type JSX,
   type ReactNode
 } from "react";
-import { ChevronRight, LoaderCircle } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { formatAgentMessageTimestamp } from "../../../app/renderer/shell/utils/format";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { translate } from "../../../i18n/index";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
-import { getOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
-import { ZoomableImage } from "../../../app/renderer/components/ZoomableImage";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import {
   AgentMessageMarkdown,
@@ -32,7 +29,6 @@ import {
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
-  AgentMessageImageVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import { CollapsibleReveal } from "./CollapsibleReveal";
@@ -40,6 +36,7 @@ import { AgentThinkingDisclosure } from "./AgentThinkingDisclosure";
 import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
+import { AgentUserImageGrid } from "./AgentMessageImages";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
@@ -178,11 +175,13 @@ export function AgentMessageBlock({
             <AgentVisibleErrorMessage
               message={message}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : recoveredError ? (
             <AgentVisibleErrorMessage
               message={recoveredError}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
@@ -326,175 +325,6 @@ function AgentMessageCopyButton({
       )}
     </CanvasNodeGhostIconButton>
   );
-}
-
-function AgentUserImageGrid({
-  message
-}: {
-  message: AgentMessageContentVM;
-}): JSX.Element {
-  "use memo";
-  const images = message.images ?? [];
-  const { loadingIds, sources: loadedImages } =
-    useAgentMessageImageSources(images);
-  const columnCount = Math.min(Math.max(images.length, 1), 4);
-  const thumbnailWidth = images.length === 1 ? "160px" : "80px";
-  return (
-    <div
-      className={styles.userImageGrid}
-      style={{
-        gridTemplateColumns: `repeat(${columnCount}, ${thumbnailWidth})`
-      }}
-    >
-      {images.map((image) => {
-        const src = loadedImages.get(image.id) ?? imageSource(image);
-        const loading = !src && loadingIds.has(image.id);
-        return (
-          <div key={image.id} className={styles.userImageThumbnail}>
-            {src ? (
-              <ZoomableImage
-                src={src}
-                alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[7px] object-contain"
-                draggable={false}
-                downloadName={image.name?.trim() || "image.png"}
-              />
-            ) : loading ? (
-              <div
-                className="flex h-20 w-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
-                data-testid="agent-gui-message-image-loading"
-              >
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
-                  strokeWidth={2}
-                />
-              </div>
-            ) : (
-              <div className="h-20 w-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
-  loadingIds: ReadonlySet<string>;
-  sources: ReadonlyMap<string, string>;
-} {
-  const runtime = getOptionalAgentActivityRuntime();
-  const [sources, setSources] = useState<Map<string, string>>(() => new Map());
-  const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
-  const missingImages = useMemo(
-    () =>
-      images.filter(
-        (image) =>
-          !imageSource(image) &&
-          !sources.has(image.id) &&
-          image.workspaceId &&
-          image.agentSessionId &&
-          (image.attachmentId || image.path)
-      ),
-    [images, sources]
-  );
-
-  useEffect(() => {
-    if (
-      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
-      missingImages.length === 0
-    ) {
-      return;
-    }
-    let canceled = false;
-    for (const image of missingImages) {
-      const readImage = image.attachmentId
-        ? runtime.readSessionAttachment?.({
-            workspaceId: image.workspaceId ?? "",
-            agentSessionId: image.agentSessionId,
-            attachmentId: image.attachmentId ?? ""
-          })
-        : runtime.readPromptAsset?.({
-            workspaceId: image.workspaceId ?? "",
-            agentSessionId: image.agentSessionId,
-            mimeType: image.mimeType,
-            name: image.name,
-            path: image.path
-          });
-      if (!readImage) {
-        continue;
-      }
-      setLoadingIds((current) => {
-        if (current.has(image.id)) {
-          return current;
-        }
-        const next = new Set(current);
-        next.add(image.id);
-        return next;
-      });
-      void readImage
-        .then((attachment) => {
-          if (canceled) {
-            return;
-          }
-          setSources((current) => {
-            if (current.has(image.id)) {
-              return current;
-            }
-            const next = new Map(current);
-            next.set(
-              image.id,
-              `data:${attachment.mimeType};base64,${attachment.data}`
-            );
-            return next;
-          });
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (canceled) {
-            return;
-          }
-          setLoadingIds((current) => {
-            if (!current.has(image.id)) {
-              return current;
-            }
-            const next = new Set(current);
-            next.delete(image.id);
-            return next;
-          });
-        });
-    }
-    return () => {
-      canceled = true;
-    };
-  }, [missingImages, runtime]);
-
-  return { loadingIds, sources };
-}
-
-function imageSource(image: AgentMessageImageVM): string | null {
-  const remoteUrl = image.url?.trim() ?? "";
-  if (remoteUrl) {
-    try {
-      const parsed = new URL(remoteUrl);
-      if (
-        parsed.protocol === "https:" &&
-        !parsed.username &&
-        !parsed.password
-      ) {
-        return parsed.toString();
-      }
-    } catch {
-      return null;
-    }
-  }
-  const data = image.data?.trim() ?? "";
-  const mimeType = image.mimeType.trim();
-  if (!data || !mimeType) {
-    return null;
-  }
-  return data.startsWith("data:") ? data : `data:${mimeType};base64,${data}`;
 }
 
 function AgentSystemNoticeMessage({
@@ -755,6 +585,14 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
       return translate("agentHost.agentGui.systemNoticeTransportRetry");
     case "transport_fallback":
       return translate("agentHost.agentGui.systemNoticeTransportFallback");
+    case "plan_implementation_pending_confirmation":
+      return translate(
+        "agentHost.agentGui.systemNoticePlanImplementationPendingConfirmation"
+      );
+    case "plan_implementation_completed":
+      return translate(
+        "agentHost.agentGui.systemNoticePlanImplementationCompleted"
+      );
     case "warning":
       return (
         notice.title || translate("agentHost.agentGui.systemNoticeWarning")
@@ -791,10 +629,12 @@ function recoverVisibleErrorFromFailedMessage(
 }
 
 function AgentVisibleErrorMessage({
-  message
+  message,
+  onExternalLink
 }: {
   message: AgentMessageContentVM;
   onAuthLogin?: (provider?: string | null) => void;
+  onExternalLink?: (href: string) => void;
 }): JSX.Element {
   "use memo";
   const error = message.visibleError;
@@ -814,6 +654,7 @@ function AgentVisibleErrorMessage({
     : visibleErrorTitle(message);
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
+  const externalUrl = presentation?.externalUrl ?? null;
   const hint = visibleErrorHint(message);
   return (
     <section
@@ -838,18 +679,24 @@ function AgentVisibleErrorMessage({
             />
           ) : null}
         </div>
-        {focus && actionKey ? (
+        {actionKey && (focus || (externalUrl && onExternalLink)) ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="mt-0.5 shrink-0"
-            onClick={() =>
-              openAgentEnvPanel({
-                provider: error?.provider ?? "codex",
-                focus
-              })
-            }
+            onClick={() => {
+              if (externalUrl) {
+                onExternalLink?.(externalUrl);
+                return;
+              }
+              if (focus) {
+                openAgentEnvPanel({
+                  provider: error?.provider ?? null,
+                  focus
+                });
+              }
+            }}
           >
             {translate(actionKey)}
           </Button>

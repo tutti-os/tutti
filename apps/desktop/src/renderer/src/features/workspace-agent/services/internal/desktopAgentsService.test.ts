@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentTarget } from "@tutti-os/client-tuttid-ts";
 import {
-  DesktopAgentsService,
   mapAgentTargetsToPresentations,
   mapAgentTargetPresentationsToAgents
 } from "./desktopAgentsService.ts";
 
-test("desktop agents service maps agent targets into renderer presentations and AgentGUI agents", () => {
+test("desktop agents service maps enabled daemon targets into the AgentGUI agents directory", () => {
   const presentations = mapAgentTargetsToPresentations(
     [
       createAgentTarget({
@@ -19,13 +18,15 @@ test("desktop agents service maps agent targets into renderer presentations and 
       }),
       createAgentTarget({
         id: "local:codex",
+        iconKey: "codex-descriptor",
         name: "Codex",
         provider: "codex",
         sortOrder: 10
       })
     ],
     {
-      resolveAgentIconUrl: (provider) => `tutti-asset://agent/${provider}.png`
+      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+        `tutti-asset://agent/${iconKey ?? provider}.png`
     }
   );
 
@@ -39,7 +40,7 @@ test("desktop agents service maps agent targets into renderer presentations and 
     [
       {
         agentTargetId: "local:codex",
-        iconUrl: "tutti-asset://agent/codex.png",
+        iconUrl: "tutti-asset://agent/codex-descriptor.png",
         launchRefType: "local_cli",
         provider: "codex"
       },
@@ -56,111 +57,17 @@ test("desktop agents service maps agent targets into renderer presentations and 
     {
       agentTargetId: "local:codex",
       availability: { status: "ready" },
-      iconUrl: "tutti-asset://agent/codex.png",
+      iconUrl: "tutti-asset://agent/codex-descriptor.png",
       name: "Codex",
       provider: "codex"
     }
   ]);
-});
-
-test("desktop agents service resolves target iconKey before provider artwork", () => {
-  const [presentation] = mapAgentTargetsToPresentations(
-    [
-      {
-        ...createAgentTarget({
-          id: "shared:alice",
-          name: "Alice's Codex",
-          provider: "codex",
-          sortOrder: 10
-        }),
-        iconKey: "alice-custom"
-      }
-    ],
-    { resolveAgentIconUrl: (key) => `tutti-asset://agent/${key}.png` }
-  );
-
-  assert.equal(presentation?.iconUrl, "tutti-asset://agent/alice-custom.png");
-});
-
-test("desktop agents service projects provider gates to targets and AgentGUI agents", async () => {
-  const service = new DesktopAgentsService({
-    isAgentTargetProviderGated: (provider) => provider === "codex",
-    tuttidClient: {
-      listAgentTargets: async () => ({
-        targets: [
-          createAgentTarget({
-            id: "local:codex",
-            name: "Codex",
-            provider: "codex",
-            sortOrder: 10
-          })
-        ]
-      })
-    }
-  });
-
-  const snapshot = await service.load();
-
-  assert.equal(snapshot.agentTargets[0]?.enabled, false);
-  assert.deepEqual(snapshot.agents, [
-    {
-      agentTargetId: "local:codex",
-      availability: { status: "coming_soon" },
-      iconUrl: "",
-      name: "Codex",
-      provider: "codex"
-    }
-  ]);
-});
-
-test("desktop agents service discards results from stale requests", async () => {
-  const requests: Array<(targets: AgentTarget[]) => void> = [];
-  const service = new DesktopAgentsService({
-    tuttidClient: {
-      listAgentTargets: () =>
-        new Promise((resolve) => {
-          requests.push((targets) => resolve({ targets }));
-        })
-    }
-  });
-  const emittedProviders: string[][] = [];
-  service.subscribe(() => {
-    emittedProviders.push(
-      service.getSnapshot().agentTargets.map((target) => target.provider)
-    );
-  });
-
-  const staleLoad = service.load();
-  const latestRefresh = service.refresh();
-  requests[1]?.([
-    createAgentTarget({
-      id: "local:codex",
-      name: "Codex",
-      provider: "codex",
-      sortOrder: 10
-    })
-  ]);
-  await latestRefresh;
-  requests[0]?.([
-    createAgentTarget({
-      id: "local:claude-code",
-      name: "Claude Code",
-      provider: "claude-code",
-      sortOrder: 20
-    })
-  ]);
-  await staleLoad;
-
-  assert.deepEqual(emittedProviders, [["codex"]]);
-  assert.deepEqual(
-    service.getSnapshot().agentTargets.map((target) => target.provider),
-    ["codex"]
-  );
 });
 
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
+  iconKey?: string | null;
   name: string;
   provider: "claude-code" | "codex";
   sortOrder: number;
@@ -168,7 +75,7 @@ function createAgentTarget(input: {
   return {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
-    iconKey: null,
+    iconKey: input.iconKey ?? null,
     id: input.id,
     launchRef: {
       provider: input.provider,

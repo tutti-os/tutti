@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const localProcessTestTimeout = 10 * time.Second
-
 func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {
 	catPath, err := exec.LookPath("cat")
 	if err != nil {
@@ -52,7 +50,7 @@ func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {
 		}
 	case err := <-errs:
 		t.Fatalf("recv after start context cancel: %v", err)
-	case <-time.After(localProcessTestTimeout):
+	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for process stdout")
 	}
 }
@@ -108,7 +106,7 @@ func TestLocalProcessTransportCloseKillsProcessAfterGracefulShutdownFails(t *tes
 		if err != nil {
 			t.Fatalf("Close: %v", err)
 		}
-	case <-time.After(localProcessTestTimeout):
+	case <-time.After(4 * time.Second):
 		t.Fatal("Close did not force-kill process after graceful shutdown failed")
 	}
 	if elapsed := time.Since(startedAt); elapsed < 900*time.Millisecond {
@@ -153,7 +151,7 @@ func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
 
 func receiveRuntimeStdoutFrame(t *testing.T, conn ProcessConnection) ProcessFrame {
 	t.Helper()
-	deadline := time.After(localProcessTestTimeout)
+	deadline := time.After(5 * time.Second)
 	for {
 		done := make(chan ProcessFrame, 1)
 		errs := make(chan error, 1)

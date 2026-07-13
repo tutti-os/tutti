@@ -799,3 +799,98 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   `credentials.effectiveSource` only tracks OAuth material (keychain or
   `.credentials.json`). For API-key/proxy users it stays `"none"` even
   after the fix; a connected session is the success signal, not that field.
+
+### Tutti Agent retries a 402 and shows generic provider setup
+
+- Symptom:
+  A request with insufficient Tutti credits displays `Reconnecting... 5/5`,
+  then falls back to a generic provider error card whose action opens local
+  setup instead of account plans.
+- Root cause:
+  The billing boundary collapsed every commerce pre-deduct error into HTTP 402,
+  the agent protocol treated every unexpected HTTP status as retryable, and the
+  daemon classifier did not distinguish the resulting payment failure from a
+  generic provider failure.
+- Invariants:
+  Preserve machine-readable billing codes across commerce, token usage, the LLM
+  gateway, and the agent runtime. Commerce exposes depleted credits as
+  `ResourceExhausted/CREDITS_INSUFFICIENT`; token usage translates only that
+  decision to the OpenAI-compatible `429 usage_limit_reached` envelope with code
+  `insufficient_credits`, which legacy Tutti Agent releases already treat as
+  terminal. The gateway adds the Tutti plans promo header so the parsed terminal
+  error retains actionable account context. Dependency failures remain 5xx.
+  Classify actionable account failures before generic quota/provider buckets,
+  and route account actions through the host link-action boundary rather than
+  opening URLs directly from transcript UI.
+- Validation:
+  Cover the commerce RPC error mapping, token-usage envelope, gateway promo
+  header, daemon visible-error classification, and rendered plans-page action as
+  separate boundary tests.
+
+### Agent slash palette only shows Browser
+
+- Symptom:
+  Typing `/` in a Claude Code, Codex, or OpenCode composer shows only the
+  Browser capability. Provider commands such as `compact`, `status`, `goal`,
+  `review`, or `plan` are missing.
+- Quick checks:
+  Call the provider composer-options endpoint and inspect
+  `slashCommandPolicy`. If Codex or Claude returns a policy but the UI still
+  shows only Browser, trace the new-session creation guard and the
+  target-scoped composer-options cache. If one provider returns no policy,
+  inspect its provider registry descriptor.
+- Root cause:
+  Composer-options loading can be intentionally skipped while a new session is
+  being created. A mount-time creation ref that never follows current engine
+  state leaves loading permanently disabled after creation settles. Browser
+  still appears because it is independently projected from session
+  capabilities. A provider descriptor missing its slash policy produces the
+  same symptom for that provider even when loading succeeds.
+- Fix:
+  Keep the creation guard synchronized with current engine state and reload
+  composer options on the creating-to-settled transition. Keep fallback
+  commands and local effects in the provider registry descriptor; do not add
+  provider-name branches in Agent GUI.
+- Validation:
+  Cover creation settling followed by a composer-options request, provider
+  descriptor policy projection, and slash palette composition alongside the
+  Browser capability. Run Agent GUI, provider registry, and agent service
+  tests.
+- References:
+  [agent-activity-packages.md](../architecture/agent-activity-packages.md)
+  [useAgentGUIComposerOptionsSync.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerOptionsSync.ts)
+  [opencode.go](../../packages/agent/daemon/providerregistry/opencode.go)
+
+### Standard ACP tools show generic cards and no-project file links do nothing
+
+- Symptom:
+  OpenCode or another standard ACP provider completes tool calls, but Agent GUI
+  renders generic raw-payload cards instead of terminal, edit, read, search, or
+  todo UI. In a session without a selected project, clicking an absolute HTML
+  or source-file path in an assistant message has no effect.
+- Quick checks:
+  Inspect persisted tool payloads. If `toolName` contains a command, absolute
+  path, or result sentence while `input.kind`, `input.title`, or `rawInput`
+  identifies the actual operation, canonicalization happened too late. For file
+  links, compare the selected project root with the durable session cwd.
+- Root cause:
+  Standard ACP terminal updates may replace the display title with dynamic
+  output. Persisting that title as tool identity prevents shared specialized
+  renderers from matching the call. Older events may also retain protocol
+  envelopes under `rawInput`, `rawOutput`, and output metadata. Separately,
+  requiring a selected project root discards valid link actions for no-project
+  sessions even though their cwd is authoritative.
+- Fix:
+  Canonicalize standard ACP tools before persistence, retain the started call's
+  identity through terminal updates, and promote protocol envelopes into the
+  shared tool payload. Keep a provider-neutral historical projection for rows
+  already stored in the old shape. Resolve conversation files against the
+  selected project root or, when absent, the session cwd.
+- Validation:
+  Cover dynamic ACP start/terminal titles, historical payload projection,
+  specialized renderer data, direct link resolution, and a transcript click
+  from a no-project session. Run the Agent GUI tests and daemon runtime tests.
+- References:
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
+  [acp_tool_normalizer.go](../../packages/agent/daemon/runtime/acp_tool_normalizer.go)
+  [workspaceLinkActions.ts](../../packages/agent/gui/actions/workspaceLinkActions.ts)

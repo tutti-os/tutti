@@ -350,6 +350,7 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	if eventID == "" {
 		return activityshared.Event{}, false
 	}
+	update = n.standardToolUpdateWithStableIdentity(eventID, update)
 	event, ok := standardACPToolCallEventWithID(session, eventID, turnID, updateType, update)
 	if !ok {
 		return activityshared.Event{}, false
@@ -360,6 +361,23 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	n.mergePendingToolCallSnapshot(&event)
 	n.trackToolCallEvent(event)
 	return event, true
+}
+
+func (n *acpTurnNormalizer) standardToolUpdateWithStableIdentity(eventID string, update map[string]any) map[string]any {
+	if n == nil || strings.TrimSpace(eventID) == "" {
+		return update
+	}
+	pending, ok := n.pendingToolCalls[eventID]
+	if !ok {
+		return update
+	}
+	toolName := strings.TrimSpace(asString(pending.payload["toolName"]))
+	if toolName == "" {
+		return update
+	}
+	result := clonePayload(update)
+	result["toolName"] = toolName
+	return result
 }
 
 func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID string, updateType string, update map[string]any) ([]activityshared.Event, bool) {

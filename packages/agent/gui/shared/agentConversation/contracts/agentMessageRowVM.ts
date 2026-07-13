@@ -1,5 +1,5 @@
 import type { ToolCallStatusKind } from "../../workspaceAgentToolCallDisplay";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentActivityTypes";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 
 export interface AgentMessageContentVM {
   kind: "message-content";

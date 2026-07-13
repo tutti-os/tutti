@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"strings"
 )
 
 type ActivePeer struct {
@@ -24,7 +23,7 @@ func (s *Service) ListActivePeers(ctx context.Context, workspaceID string) (Acti
 	}
 	peers := make([]ActivePeer, 0)
 	for _, session := range sessions {
-		if !isActivePeerStatus(session.Status) {
+		if session.ActiveTurnID == "" && session.ActiveTurn == nil {
 			continue
 		}
 		peers = append(peers, ActivePeer{
@@ -38,13 +37,4 @@ func (s *Service) ListActivePeers(ctx context.Context, workspaceID string) (Acti
 		MayIncludeSelf: true,
 		Warning:        "SELF_IDENTITY_UNAVAILABLE",
 	}, nil
-}
-
-func isActivePeerStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "working", "waiting", "running", "streaming", "active":
-		return true
-	default:
-		return false
-	}
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentHostWorkspaceAgentTimelineItem } from "../../../shared/contracts/dto";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
   formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
@@ -220,8 +220,8 @@ describe("agentGuiProviderIdentity", () => {
 });
 
 function timelineItem(
-  overrides: Partial<AgentHostWorkspaceAgentTimelineItem>
-): AgentHostWorkspaceAgentTimelineItem {
+  overrides: Partial<WorkspaceAgentActivityTimelineItem>
+): WorkspaceAgentActivityTimelineItem {
   return {
     id: 1,
     workspaceId: "room-1",

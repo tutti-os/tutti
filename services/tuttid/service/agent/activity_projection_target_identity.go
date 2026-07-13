@@ -58,7 +58,7 @@ func (p *ActivityProjection) projectPersistedSession(ctx context.Context, sessio
 	if p == nil || p.agentTargetResolver == nil {
 		return session
 	}
-	canonical, _ := p.canonicalizeAgentTargetID(ctx, session.AgentTargetID, session.RuntimeContext)
+	canonical, _ := p.canonicalizeAgentTargetID(ctx, session.AgentTargetID, session.InternalRuntimeContext)
 	session.AgentTargetID = canonical
 	return session
 }

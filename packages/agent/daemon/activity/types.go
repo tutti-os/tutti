@@ -501,7 +501,7 @@ type ListAgentsInput struct {
 
 type WorkspaceAgentSnapshot struct {
 	Presences           []WorkspaceAgentPresence                  `json:"presences"`
-	Sessions            []WorkspaceAgentSession                   `json:"sessions"`
+	Sessions            []ProviderActivitySessionProjection       `json:"sessions"`
 	SessionTimelineByID map[string][]WorkspaceAgentTimelineItem   `json:"sessionTimelineById,omitempty"`
 	SessionMessagesByID map[string][]WorkspaceAgentSessionMessage `json:"sessionMessagesById,omitempty"`
 }
@@ -518,7 +518,10 @@ type WorkspaceAgentPresence struct {
 	UpdatedAtUnixMS     int64  `json:"updatedAtUnixMs"`
 }
 
-type WorkspaceAgentSession struct {
+// ProviderActivitySessionProjection is the legacy provider-event projection
+// used inside the runtime/activity bridge. It is not the durable protocol-v2
+// Session entity; its lifecycle fields must not escape this boundary.
+type ProviderActivitySessionProjection struct {
 	ID                 uint64                            `json:"id"`
 	AgentSessionID     string                            `json:"agentSessionId"`
 	AgentTargetID      string                            `json:"agentTargetId,omitempty"`
@@ -543,7 +546,7 @@ type WorkspaceAgentSession struct {
 	SyncState          *WorkspaceAgentSyncState          `json:"syncState,omitempty"`
 }
 
-func (s WorkspaceAgentSession) MarshalJSON() ([]byte, error) {
+func (s ProviderActivitySessionProjection) MarshalJSON() ([]byte, error) {
 	type output struct {
 		ID                 uint64                            `json:"id"`
 		AgentSessionID     string                            `json:"agentSessionId"`
@@ -658,7 +661,7 @@ func (p *WorkspaceAgentPresence) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
+func (s *ProviderActivitySessionProjection) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ID                     flexibleUint64           `json:"id"`
 		AgentSessionID         string                   `json:"agentSessionId"`
@@ -700,7 +703,7 @@ func (s *WorkspaceAgentSession) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	*s = WorkspaceAgentSession{
+	*s = ProviderActivitySessionProjection{
 		ID: uint64(raw.ID),
 		AgentSessionID: firstNonEmptyString(
 			raw.AgentSessionID,

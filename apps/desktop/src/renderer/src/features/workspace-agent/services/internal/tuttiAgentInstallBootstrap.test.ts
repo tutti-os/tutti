@@ -6,10 +6,10 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import {
-  resetTuttiAgentInstallBootstrapForTests,
-  runTuttiAgentInstallBootstrap,
-  startTuttiAgentInstallBootstrap,
-  type TuttiAgentInstallBootstrapStorage
+  resetManagedAgentInstallBootstrapForTests,
+  runManagedAgentInstallBootstrap,
+  startManagedAgentInstallBootstraps,
+  type ManagedAgentInstallBootstrapStorage
 } from "./tuttiAgentInstallBootstrap.ts";
 
 test("runTuttiAgentInstallBootstrap installs tutti-agent when missing", async () => {
@@ -23,7 +23,7 @@ test("runTuttiAgentInstallBootstrap installs tutti-agent when missing", async ()
     runAction: () => calls.push("runAction")
   });
 
-  await runTuttiAgentInstallBootstrap(service, {
+  await runManagedAgentInstallBootstrap(service, "tutti-agent", {
     now: () => 1_000,
     storage: createMemoryStorage()
   });
@@ -38,7 +38,7 @@ test("runTuttiAgentInstallBootstrap skips ready tutti-agent", async () => {
     runAction: () => calls.push("runAction")
   });
 
-  await runTuttiAgentInstallBootstrap(service, {
+  await runManagedAgentInstallBootstrap(service, "tutti-agent", {
     now: () => 1_000,
     storage: createMemoryStorage()
   });
@@ -65,7 +65,7 @@ test("runTuttiAgentInstallBootstrap backs off after recent install failure", asy
     }
   );
 
-  await runTuttiAgentInstallBootstrap(service, {
+  await runManagedAgentInstallBootstrap(service, "tutti-agent", {
     backoffMs: 10_000,
     now: () => 5_000,
     storage
@@ -75,7 +75,7 @@ test("runTuttiAgentInstallBootstrap backs off after recent install failure", asy
 });
 
 test("startTuttiAgentInstallBootstrap coalesces concurrent session starts", async () => {
-  resetTuttiAgentInstallBootstrapForTests();
+  resetManagedAgentInstallBootstrapForTests();
   const calls: string[] = [];
   const releaseEnsureLoaded = deferred<void>();
   const service = createService(
@@ -90,11 +90,11 @@ test("startTuttiAgentInstallBootstrap coalesces concurrent session starts", asyn
     }
   );
 
-  startTuttiAgentInstallBootstrap(service, {
+  startManagedAgentInstallBootstraps(service, {
     now: () => 1_000,
     storage: createMemoryStorage()
   });
-  startTuttiAgentInstallBootstrap(service, {
+  startManagedAgentInstallBootstraps(service, {
     now: () => 1_000,
     storage: createMemoryStorage()
   });
@@ -105,7 +105,7 @@ test("startTuttiAgentInstallBootstrap coalesces concurrent session starts", asyn
   await nextTick();
 
   assert.deepEqual(calls, ["ensureLoaded", "runAction", "refresh"]);
-  resetTuttiAgentInstallBootstrapForTests();
+  resetManagedAgentInstallBootstrapForTests();
 });
 
 function createService(
@@ -196,7 +196,7 @@ function createStatus(
   };
 }
 
-function createMemoryStorage(): TuttiAgentInstallBootstrapStorage {
+function createMemoryStorage(): ManagedAgentInstallBootstrapStorage {
   const values = new Map<string, string>();
   return {
     getItem: (key) => values.get(key) ?? null,

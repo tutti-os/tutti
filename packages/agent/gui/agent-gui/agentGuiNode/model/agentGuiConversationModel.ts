@@ -1,8 +1,5 @@
-import type {
-  AgentSessionEvent,
-  AgentSession
-} from "../../../shared/agentSessionTypes";
-import type { AgentGUIProvider } from "../../../types";
+import type { AgentSessionEvent } from "../../../shared/agentSessionTypes";
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import {
   buildWorkspaceAgentActivityListViewModel,
   type WorkspaceAgentActivityCard,
@@ -10,8 +7,7 @@ import {
 } from "../../../shared/workspaceAgentActivityListViewModel";
 import {
   buildWorkspaceAgentSessionDetailViewModel,
-  type WorkspaceAgentSessionDetailViewModel,
-  type WorkspaceAgentSessionDetailToolCall
+  type WorkspaceAgentSessionDetailViewModel
 } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
@@ -21,36 +17,23 @@ import {
   partitionSubAgentTimelineItems
 } from "../../../shared/agentConversation/projection/subAgentTimelinePartition";
 import {
-  extractExitPlanKeepPlanningOptionId,
-  extractExitPlanModeOptions,
-  isExitPlanSwitchModeInput
-} from "../../../shared/agentConversation/exitPlanOptions";
-import {
   filterAgentGUIConversationSummaries,
-  normalizeAgentGUIConversationFilter,
-  type AgentGUIConversationFilter
+  normalizeAgentGUIConversationFilter
 } from "./agentGuiConversationFilter";
-import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
-import type { AgentAskUserQuestionVM } from "../../../shared/agentConversation/contracts/agentAskUserQuestionItemVM";
 import {
-  firstAgentGUIUserMessageTitle,
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
   resolveAgentGUIProviderIdentity,
-  type AgentGUIConversationTitleFallback,
-  type AgentGUIResolvedProvider
+  type AgentGUIConversationTitleFallback
 } from "../../../shared/agentConversationTitleProjection.ts";
-import {
-  WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN,
-  isWorkspaceAgentActivityRuntimeSessionOrigin,
-  type WorkspaceAgentActivityMessage,
-  type WorkspaceAgentActivitySession,
-  type WorkspaceAgentActivitySnapshot,
-  type WorkspaceAgentActivitySyncState,
-  type WorkspaceAgentActivityTimelineItem
-} from "../../../shared/workspaceAgentActivityTypes";
+import type {
+  AgentActivitySession,
+  AgentActivitySnapshot,
+  CanonicalAgentSession
+} from "@tutti-os/agent-activity-core";
+import { selectCanonicalAgentActivitySessions } from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/workspaceAgentSessionSortTime";
 import {
   createAgentGUIConversationProjectResolver,
@@ -60,129 +43,52 @@ import {
   type AgentGUIConversationProjectSummary,
   type AgentGUIConversationUserProject
 } from "./agentGuiConversationProjectResolver";
-
-export const AGENT_GUI_RUNTIME_SESSION_ORIGIN =
-  WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
-export {
-  resolveAgentGUIConversationProject,
-  type AgentGUIConversationNoProjectPathResolver,
-  type AgentGUIConversationProjectResolutionOptions,
-  type AgentGUIConversationProjectSummary,
-  type AgentGUIConversationUserProject
-} from "./agentGuiConversationProjectResolver";
-
-export interface AgentGUIConversationSummary {
-  id: string;
-  userId?: string;
-  agentTargetId?: string | null;
-  provider: AgentGUIResolvedProvider;
-  resumable?: boolean;
-  title: string;
-  titleFallback?: AgentGUIConversationTitleFallback;
-  status: AgentGUIConversationStatus;
-  cwd: string;
-  project?: AgentGUIConversationProjectSummary | null;
-  projectMode?: "none";
-  pinnedAtUnixMs?: number | null;
-  sortTimeUnixMs?: number;
-  updatedAtUnixMs: number;
-  hasUnreadCompletion?: boolean;
-  unreadCompletionKey?: string | null;
-  isImported?: boolean;
-  syncState?: WorkspaceAgentActivitySyncState;
-}
-
-export type AgentGUIConversationProjectionSource = Pick<
+import type {
+  AgentGUIConversationProjectResolutionContext,
+  AgentGUIConversationProjectionSource,
+  AgentGUIConversationStatus,
   AgentGUIConversationSummary,
-  | "id"
-  | "userId"
-  | "agentTargetId"
-  | "provider"
-  | "title"
-  | "titleFallback"
-  | "status"
-  | "cwd"
-  | "project"
-  | "projectMode"
-  | "pinnedAtUnixMs"
-  | "sortTimeUnixMs"
-  | "updatedAtUnixMs"
-  | "syncState"
-> & {
-  turnLifecycle?: WorkspaceAgentActivitySession["turnLifecycle"];
-};
+  AgentGUITimelineRow,
+  BuildAgentGUIConversationsInput
+} from "./agentGuiConversationTypes";
+import {
+  firstUserMessageTitleFromMessages,
+  firstUserMessageTitleFromTimelineItems,
+  timelineRowsFromActivityTimelineItems,
+  timelineSessionFromItems,
+  workspaceAgentMessagesFromTimelineItems
+} from "./agentGuiTimelineProjection";
+import { sortTimelineRows } from "./agentGuiInteractiveProjection";
+import { mergeTimelineItems } from "./agentGuiTimelineMerge";
 
-interface AgentGUIConversationProjectResolutionContext {
-  projectResolver: AgentGUIConversationProjectResolver;
-}
-
-export type AgentGUIConversationStatus =
-  | "working"
-  | "waiting"
-  | "ready"
-  | "completed"
-  | "failed"
-  | "canceled";
-
-export function resolveAgentGUIConversationSortTimeUnixMs(
-  conversation: Pick<
-    AgentGUIConversationSummary,
-    "sortTimeUnixMs" | "updatedAtUnixMs"
-  >
-): number {
-  return conversation.sortTimeUnixMs ?? conversation.updatedAtUnixMs;
-}
-
-export interface AgentGUITimelineRow {
-  id: string;
-  turnId: string;
-  role: string;
-  content: string;
-  eventType: string;
-  status: string | null;
-  callType?: string;
-  approval?: AgentGUIApprovalRequest | null;
-  occurredAtUnixMs: number;
-}
-
-export type AgentGUIApprovalRequest = AgentApprovalItemVM;
-
-export interface AgentGUIApprovalOption {
-  id: string;
-  label: string;
-  kind: string;
-  description?: string;
-}
-
-export interface AgentGUIInteractiveQuestionOption {
-  label: string;
-  description: string;
-}
-
-export interface AgentGUIInteractiveQuestion extends AgentAskUserQuestionVM {
-  isOther?: boolean;
-}
-
-export type AgentGUIInteractivePrompt =
-  | AgentGUIApprovalRequest
-  | {
-      kind: "ask-user";
-      requestId: string;
-      title: string;
-      questions: AgentGUIInteractiveQuestion[];
-    }
-  | Extract<AgentConversationPromptVM, { kind: "exit-plan" }>
-  | Extract<AgentConversationPromptVM, { kind: "plan-implementation" }>;
-
-export interface BuildAgentGUIConversationsInput {
-  conversationFilter?: AgentGUIConversationFilter;
-  isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
-  snapshot: WorkspaceAgentActivitySnapshot;
-  provider: AgentGUIProvider;
-  sessionMessagesById?: Record<string, WorkspaceAgentActivityMessage[]>;
-  userProjects?: readonly AgentGUIConversationUserProject[];
-}
-
+export {
+  AGENT_GUI_RUNTIME_SESSION_ORIGIN,
+  resolveAgentGUIConversationSortTimeUnixMs
+} from "./agentGuiConversationTypes";
+export {
+  selectPendingApproval,
+  selectPendingApprovalFromTimelineItems,
+  selectPendingInteractivePromptFromTimelineItems
+} from "./agentGuiInteractiveProjection";
+export { resolveAgentGUIConversationProject } from "./agentGuiConversationProjectResolver";
+export type {
+  AgentGUIConversationNoProjectPathResolver,
+  AgentGUIConversationProjectResolutionOptions,
+  AgentGUIConversationProjectSummary,
+  AgentGUIConversationUserProject
+} from "./agentGuiConversationProjectResolver";
+export type {
+  AgentGUIApprovalOption,
+  AgentGUIApprovalRequest,
+  AgentGUIConversationProjectionSource,
+  AgentGUIConversationStatus,
+  AgentGUIConversationSummary,
+  AgentGUIInteractivePrompt,
+  AgentGUIInteractiveQuestion,
+  AgentGUIInteractiveQuestionOption,
+  AgentGUITimelineRow,
+  BuildAgentGUIConversationsInput
+} from "./agentGuiConversationTypes";
 export function buildAgentGUIConversationSummaries({
   conversationFilter,
   isNoProjectPath,
@@ -193,7 +99,10 @@ export function buildAgentGUIConversationSummaries({
 }: BuildAgentGUIConversationsInput): AgentGUIConversationSummary[] {
   const runtimeSnapshot = filterAgentGUIRuntimeSnapshot(snapshot);
   const sessionsById = new Map(
-    runtimeSnapshot.sessions.map((session) => [session.agentSessionId, session])
+    selectCanonicalAgentActivitySessions(runtimeSnapshot).map((session) => [
+      session.agentSessionId,
+      session
+    ])
   );
   const projectResolver = createAgentGUIConversationProjectResolver(
     userProjects,
@@ -298,12 +207,14 @@ export function buildAgentGUIConversationDetail({
         presences: [],
         sessions: [session]
       },
-      {
-        sessionMessagesById: {
-          [session.agentSessionId]:
-            workspaceAgentMessagesFromTimelineItems(timelineItems)
-        }
-      }
+      timelineItems.length > 0
+        ? {
+            sessionMessagesById: {
+              [session.agentSessionId]:
+                workspaceAgentMessagesFromTimelineItems(timelineItems)
+            }
+          }
+        : {}
     ).activities[0] ?? null;
   if (!activity) {
     return null;
@@ -385,27 +296,16 @@ export function mergeTimelineItemsByEventID(
 }
 
 export function conversationSummaryFromAgentSession(
-  session: AgentSession,
+  session: CanonicalAgentSession,
   options: {
     isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
     userProjects?: readonly AgentGUIConversationUserProject[];
   } = {}
 ): AgentGUIConversationSummary {
-  const workspaceAgentSession = agentSessionToWorkspaceAgentSession(session);
   const projectResolver = createAgentGUIConversationProjectResolver(
     options.userProjects ?? [],
     { isNoProjectPath: options.isNoProjectPath }
   );
-  const activity =
-    buildWorkspaceAgentActivityListViewModel({
-      presences: [],
-      sessions: [workspaceAgentSession]
-    }).activities[0] ?? null;
-  if (activity) {
-    return conversationSummaryFromActivity(activity, workspaceAgentSession, {
-      projectResolver
-    });
-  }
   const provider = resolveAgentGUIProviderIdentity({
     sessionProvider: session.provider
   });
@@ -421,19 +321,18 @@ export function conversationSummaryFromAgentSession(
     resumable: session.resumable,
     title,
     titleFallback,
-    status: conversationStatusFromActivity("idle"),
+    status: conversationStatusFromActivity(
+      session.activeTurnId ? "working" : "idle"
+    ),
     cwd: session.cwd?.trim() ?? "",
     project: resolveConversationProject(session, projectResolver),
     ...(isExternalImportNoProjectSession(session)
       ? { projectMode: "none" }
       : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
-    sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(
-      workspaceAgentSession
-    ),
+    sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(session),
     updatedAtUnixMs:
-      session.updatedAtUnixMs || session.createdAtUnixMs || Date.now(),
-    syncState: undefined
+      session.updatedAtUnixMs || session.createdAtUnixMs || Date.now()
   };
 }
 
@@ -492,7 +391,7 @@ export function resolveAgentGUIConversationTitleFromMessages({
   messages,
   conversation
 }: {
-  messages: readonly WorkspaceAgentActivityMessage[];
+  messages: readonly AgentActivityMessage[];
   conversation: AgentGUIConversationSummary;
 }): {
   title: string;
@@ -512,28 +411,23 @@ export function resolveAgentGUIConversationTitleFromMessages({
 }
 
 function filterAgentGUIRuntimeSnapshot(
-  snapshot: WorkspaceAgentActivitySnapshot
-): WorkspaceAgentActivitySnapshot {
+  snapshot: AgentActivitySnapshot
+): AgentActivitySnapshot {
   return {
-    presences: snapshot.presences,
-    sessions: snapshot.sessions.filter((session) =>
+    ...snapshot,
+    sessions: selectCanonicalAgentActivitySessions(snapshot).filter((session) =>
       isAgentGUIRuntimeSession(session)
     )
   };
 }
 
-function isAgentGUIRuntimeSession(
-  session: WorkspaceAgentActivitySession
-): boolean {
-  return (
-    session.agentSessionId.trim().length > 0 &&
-    isWorkspaceAgentActivityRuntimeSessionOrigin(session.sessionOrigin)
-  );
+function isAgentGUIRuntimeSession(session: AgentActivitySession): boolean {
+  return session.agentSessionId.trim().length > 0;
 }
 
 function conversationSummaryFromActivity(
   activity: WorkspaceAgentActivityCard,
-  session: WorkspaceAgentActivitySession | undefined,
+  session: AgentActivitySession | undefined,
   options: AgentGUIConversationProjectResolutionContext
 ): AgentGUIConversationSummary {
   const status = conversationStatusFromActivity(activity.status);
@@ -569,13 +463,13 @@ function conversationSummaryFromActivity(
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     sortTimeUnixMs: activity.sortTimeUnixMs,
     updatedAtUnixMs: session?.updatedAtUnixMs || activity.sortTimeUnixMs || 0,
-    ...(isImportedWorkspaceAgentSession(session) ? { isImported: true } : {}),
-    syncState: session?.syncState
+    activeTurn: session?.activeTurn ?? null,
+    ...(isImportedWorkspaceAgentSession(session) ? { isImported: true } : {})
   };
 }
 
 function resolveConversationProject(
-  session: WorkspaceAgentActivitySession | AgentSession | undefined,
+  session: AgentActivitySession | CanonicalAgentSession | undefined,
   projectResolver: AgentGUIConversationProjectResolver
 ): AgentGUIConversationProjectSummary | null {
   if (isExternalImportNoProjectSession(session)) {
@@ -585,27 +479,26 @@ function resolveConversationProject(
 }
 
 function isExternalImportNoProjectSession(
-  session: WorkspaceAgentActivitySession | AgentSession | undefined
+  session: AgentActivitySession | CanonicalAgentSession | undefined
 ): boolean {
-  const runtimeContext =
-    session && "runtimeContext" in session ? session.runtimeContext : undefined;
-  return (
-    runtimeContext?.noProject === true ||
-    runtimeContext?.externalImportNoProject === true
+  return Boolean(
+    session &&
+    "imported" in session &&
+    (session.noProject === true || session.imported === true)
   );
 }
 
 function isImportedWorkspaceAgentSession(
-  session: WorkspaceAgentActivitySession | undefined
+  session: AgentActivitySession | undefined
 ): boolean {
-  return session?.runtimeContext?.imported === true;
+  return session?.imported === true;
 }
 
 function isSameAgentGUIConversationProject(
   left: AgentGUIConversationProjectSummary | null | undefined,
   right: AgentGUIConversationProjectSummary | null
 ): boolean {
-  if (!left && !right) {
+  if (left === null && right === null) {
     return true;
   }
   if (!left || !right) {
@@ -626,12 +519,17 @@ function activityWithExplicitConversationTitle(
   conversation: AgentGUIConversationProjectionSource
 ): WorkspaceAgentActivityCard {
   const explicitTitle = resolveAgentGUIExplicitConversationTitle(conversation);
-  if (!explicitTitle || activity.title === explicitTitle) {
+  const status = conversation.status === "ready" ? "idle" : conversation.status;
+  if (
+    (!explicitTitle || activity.title === explicitTitle) &&
+    activity.status === status
+  ) {
     return activity;
   }
   return {
     ...activity,
-    title: explicitTitle
+    status,
+    ...(explicitTitle ? { title: explicitTitle } : {})
   };
 }
 
@@ -653,933 +551,4 @@ function conversationStatusFromActivity(
     default:
       return "ready";
   }
-}
-
-function timelineRowsFromActivityTimelineItems(
-  timelineItems: WorkspaceAgentActivityTimelineItem[]
-): AgentGUITimelineRow[] {
-  if (timelineItems.length === 0) {
-    return [];
-  }
-  const session = timelineSessionFromItems(timelineItems);
-  const activity =
-    buildWorkspaceAgentActivityListViewModel(
-      {
-        presences: [],
-        sessions: [session]
-      },
-      {
-        sessionMessagesById: {
-          [session.agentSessionId]:
-            workspaceAgentMessagesFromTimelineItems(timelineItems)
-        }
-      }
-    ).activities[0] ?? null;
-  if (!activity) {
-    return [];
-  }
-  const detail = buildWorkspaceAgentSessionDetailViewModel({
-    activity,
-    session,
-    timelineItems
-  });
-  const rows: AgentGUITimelineRow[] = [];
-  for (const turn of detail.turns) {
-    for (const message of turn.userMessages) {
-      const rowID = stableTimelineRowID(timelineItems, message.id);
-      rows.push({
-        id: rowID,
-        turnId: turn.id,
-        role: "user",
-        content: message.body,
-        eventType: "message.user",
-        status: timelineRowStatus(timelineItems, message.id),
-        occurredAtUnixMs: timelineRowTime(timelineItems, message.id)
-      });
-    }
-    for (const item of turn.agentItems) {
-      if (item.kind === "message") {
-        const rowID = stableTimelineRowID(timelineItems, item.message.id);
-        rows.push({
-          id: rowID,
-          turnId: turn.id,
-          role: "assistant",
-          content: item.message.body,
-          eventType: "message.assistant",
-          status: timelineRowStatus(timelineItems, item.message.id),
-          occurredAtUnixMs: timelineRowTime(timelineItems, item.message.id)
-        });
-      } else if (item.kind === "thinking") {
-        const rowID = stableTimelineRowID(timelineItems, item.thinking.id);
-        rows.push({
-          id: rowID,
-          turnId: turn.id,
-          role: "assistant_thinking",
-          content: item.thinking.body,
-          eventType: "message.assistant_thinking",
-          status: timelineRowStatus(timelineItems, item.thinking.id),
-          occurredAtUnixMs: timelineRowTime(timelineItems, item.thinking.id)
-        });
-      } else {
-        for (const call of item.toolCalls) {
-          const callID = normalizeToolCallID(call.id);
-          const latestCallItem = latestTimelineItemByCallId(
-            timelineItems,
-            callID
-          );
-          const approval = latestCallItem
-            ? approvalRequestFromTimelineItem(latestCallItem)
-            : null;
-          rows.push({
-            id: `call:${turn.id}:${callID}`,
-            turnId: turn.id,
-            role: "tool",
-            content: toolRowContent(call, approval?.title || null),
-            eventType: "call",
-            status:
-              timelineRowStatusByCallId(timelineItems, callID) ?? call.status,
-            callType: latestCallItem?.callType?.trim() || undefined,
-            approval,
-            occurredAtUnixMs: timelineRowTimeByCallId(timelineItems, callID)
-          });
-        }
-      }
-    }
-  }
-  return dedupeTimelineRowsByID(rows);
-}
-
-function toolRowContent(
-  call: WorkspaceAgentSessionDetailToolCall,
-  approvalTitle: string | null
-): string {
-  if (approvalTitle?.trim()) {
-    return approvalTitle.trim();
-  }
-  const summary = call.summary.trim();
-  if (summary && !looksLikeOpaqueFunctionCallSummary(summary)) {
-    return summary;
-  }
-  return call.name;
-}
-
-function looksLikeOpaqueFunctionCallSummary(value: string): boolean {
-  return /^call function [a-z0-9]+(?: \d+)?$/i.test(value.trim());
-}
-
-function timelineSessionFromItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  conversation?: AgentGUIConversationProjectionSource
-): WorkspaceAgentActivitySession {
-  const first = timelineItems[0];
-  const fallbackAgentSessionId =
-    first?.agentSessionId?.trim() ||
-    conversation?.syncState?.agentSessionId?.trim() ||
-    conversation?.id?.trim() ||
-    "agent-gui-session";
-  const provider = resolveAgentGUIProviderIdentity({
-    conversationProvider: conversation?.provider,
-    timelineItems
-  });
-  const workspaceId =
-    first?.workspaceId?.trim() ||
-    conversation?.syncState?.workspaceId?.trim() ||
-    "";
-  return {
-    id: 0,
-    workspaceId,
-    agentSessionId: fallbackAgentSessionId,
-    presenceId: 0,
-    userId: conversation?.userId?.trim() ?? "",
-    provider,
-    providerSessionId: fallbackAgentSessionId,
-    sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-    cwd: conversation?.cwd?.trim() ?? "",
-    lifecycleStatus: sessionLifecycleStatus(conversation?.status ?? "ready"),
-    turnPhase: conversation?.status === "working" ? "working" : "idle",
-    turnLifecycle: conversation?.turnLifecycle ?? null,
-    effectiveStatus: conversation?.status ?? "ready",
-    status: conversation?.status ?? "ready",
-    title: conversation?.title,
-    createdAtUnixMs: first?.createdAtUnixMs ?? first?.occurredAtUnixMs ?? 0,
-    updatedAtUnixMs:
-      latestTimelineTime(timelineItems) || conversation?.updatedAtUnixMs || 0,
-    pinnedAtUnixMs: conversation?.pinnedAtUnixMs
-  };
-}
-
-function agentSessionToWorkspaceAgentSession(
-  session: AgentSession
-): WorkspaceAgentActivitySession {
-  const workspaceId = session.workspaceId.trim();
-  return {
-    id: hashStringToPositiveInt(session.agentSessionId),
-    workspaceId,
-    agentSessionId: session.agentSessionId.trim(),
-    presenceId: 0,
-    userId: "",
-    provider: session.provider,
-    providerSessionId: session.providerSessionId,
-    resumable: session.resumable,
-    sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
-    cwd: session.cwd?.trim() ?? "",
-    lifecycleStatus: sessionLifecycleStatus(session.status),
-    turnPhase: session.status === "working" ? "working" : "idle",
-    effectiveStatus: session.status,
-    status: session.status,
-    title: session.title,
-    pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
-    createdAtUnixMs: session.createdAtUnixMs,
-    updatedAtUnixMs: session.updatedAtUnixMs
-  };
-}
-
-function firstUserMessageTitleFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): string {
-  const userMessage = [...timelineItems]
-    .filter(
-      (item) =>
-        timelineItemRole(item) === "user" && timelineItemText(item).length > 0
-    )
-    .sort(compareTimelineItemsAscending)[0];
-  return userMessage ? timelineItemText(userMessage) : "";
-}
-
-function firstUserMessageTitleFromMessages(
-  messages: readonly WorkspaceAgentActivityMessage[]
-): string {
-  return firstAgentGUIUserMessageTitle(messages);
-}
-
-function workspaceAgentMessagesFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): WorkspaceAgentActivityMessage[] {
-  return timelineItems.map((item, index) => {
-    const messageId =
-      item.eventId || `${item.agentSessionId}:${item.id}:${index}`;
-    const version = item.seq ?? item.id;
-    return {
-      id: item.id,
-      workspaceId: item.workspaceId,
-      agentSessionId: item.agentSessionId,
-      messageId,
-      version,
-      turnId: item.turnId || `timeline:${messageId}`,
-      role: item.role ?? timelineItemRole(item) ?? item.actorType,
-      kind: item.itemType === "call" ? "tool_call" : item.itemType,
-      ...(item.status ? { status: item.status } : {}),
-      payload: {
-        ...item.payload,
-        __agentGuiTimelineProjection: true,
-        content: item.payload?.content ?? item.content,
-        text: item.payload?.text ?? item.content,
-        callType: item.callType,
-        callId: item.callId,
-        name: item.name
-      },
-      occurredAtUnixMs:
-        item.occurredAtUnixMs ?? item.createdAtUnixMs ?? version,
-      startedAtUnixMs: item.createdAtUnixMs,
-      completedAtUnixMs: item.occurredAtUnixMs
-    };
-  });
-}
-
-function timelineItemRole(
-  item: WorkspaceAgentActivityTimelineItem
-): "user" | "agent" | null {
-  const role = item.role?.trim().toLowerCase();
-  if (role === "user") {
-    return "user";
-  }
-  if (role === "assistant" || role === "agent") {
-    return "agent";
-  }
-  const itemType = item.itemType.trim().toLowerCase();
-  if (itemType === "message.user") {
-    return "user";
-  }
-  if (itemType === "message.assistant" || itemType === "message.agent") {
-    return "agent";
-  }
-  return null;
-}
-
-function timelineItemText(item: WorkspaceAgentActivityTimelineItem): string {
-  const payloadDisplayPrompt =
-    typeof item.payload?.displayPrompt === "string"
-      ? item.payload.displayPrompt
-      : "";
-  const payloadContent =
-    typeof item.payload?.content === "string" ? item.payload.content : "";
-  const payloadText =
-    typeof item.payload?.text === "string" ? item.payload.text : "";
-  return (payloadDisplayPrompt || payloadText || item.content || payloadContent)
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function compareTimelineItemsAscending(
-  left: WorkspaceAgentActivityTimelineItem,
-  right: WorkspaceAgentActivityTimelineItem
-): number {
-  const leftTime = left.occurredAtUnixMs ?? left.createdAtUnixMs ?? 0;
-  const rightTime = right.occurredAtUnixMs ?? right.createdAtUnixMs ?? 0;
-  const timeDiff = leftTime - rightTime;
-  if (timeDiff !== 0) {
-    return timeDiff;
-  }
-  return left.id - right.id || left.eventId.localeCompare(right.eventId);
-}
-
-function sessionLifecycleStatus(status: string): string {
-  switch (status.trim().toLowerCase()) {
-    case "completed":
-    case "canceled":
-      return "ended";
-    case "failed":
-      return "failed";
-    default:
-      return "active";
-  }
-}
-
-export function selectPendingApproval(
-  rows: readonly AgentGUITimelineRow[]
-): AgentGUIApprovalRequest | null {
-  return (
-    [...rows]
-      .filter(
-        (row) =>
-          row.approval && normalizeStatus(row.status) === "waiting_approval"
-      )
-      .sort((left, right) => right.occurredAtUnixMs - left.occurredAtUnixMs)[0]
-      ?.approval ?? null
-  );
-}
-
-export function selectPendingApprovalFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): AgentGUIApprovalRequest | null {
-  return (
-    [...timelineItems]
-      .sort((left, right) => compareTimelineItemsForMerge(right, left))
-      .map(approvalRequestFromTimelineItem)
-      .filter((value): value is AgentGUIApprovalRequest => value !== null)[0] ??
-    null
-  );
-}
-
-export function selectPendingInteractivePromptFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): AgentGUIInteractivePrompt | null {
-  return (
-    [...timelineItems]
-      .sort((left, right) => compareTimelineItemsForMerge(right, left))
-      .map(interactivePromptFromTimelineItem)
-      .filter(
-        (value): value is AgentGUIInteractivePrompt => value !== null
-      )[0] ?? null
-  );
-}
-
-function approvalRequestFromTimelineItem(
-  item: WorkspaceAgentActivityTimelineItem
-): AgentGUIApprovalRequest | null {
-  const payload = item.payload ?? {};
-  const callType =
-    normalizeCallType(item.callType) ||
-    normalizeCallType(stringPayload(payload.callType));
-  if (callType !== "approval") {
-    return null;
-  }
-  if (
-    normalizeStatus(item.status) !== "waiting_approval" &&
-    normalizeStatus(stringPayload(payload.status)) !== "waiting_approval"
-  ) {
-    return null;
-  }
-  const input = objectPayload(payload.input);
-  const requestId =
-    stringPayload(input?.requestId) || stringPayload(payload.requestId);
-  const callId = item.callId?.trim() || stringPayload(payload.callId);
-  if (!requestId || !callId) {
-    return null;
-  }
-  const options = normalizeApprovalOptions(
-    arrayPayload(input?.options) ?? arrayPayload(payload.options) ?? []
-  );
-  if (isExitPlanSwitchModeInput(input)) {
-    return null;
-  }
-  return {
-    kind: "approval",
-    id: String(item.id),
-    turnId: item.turnId?.trim() || "turn:unknown",
-    requestId,
-    callId,
-    title:
-      item.name?.trim() ||
-      stringPayload(payload.name) ||
-      item.content?.trim() ||
-      callId,
-    status: item.status?.trim() || stringPayload(payload.status) || null,
-    toolName: item.name?.trim() || stringPayload(payload.name) || null,
-    input,
-    options,
-    output: objectPayload(payload.output),
-    occurredAtUnixMs: item.occurredAtUnixMs ?? null
-  };
-}
-
-function interactivePromptFromTimelineItem(
-  item: WorkspaceAgentActivityTimelineItem
-): AgentGUIInteractivePrompt | null {
-  const payload = item.payload ?? {};
-  const callType =
-    normalizeCallType(item.callType) ||
-    normalizeCallType(stringPayload(payload.callType));
-  const input = objectPayload(payload.input);
-  if (callType === "approval") {
-    if (!isExitPlanSwitchModeInput(input)) {
-      return null;
-    }
-    const status =
-      normalizeStatus(item.status) ||
-      normalizeStatus(stringPayload(payload.status));
-    if (
-      status !== "waiting" &&
-      status !== "pending" &&
-      status !== "waiting_approval"
-    ) {
-      return null;
-    }
-    const requestId =
-      stringPayload(input?.requestId) ||
-      stringPayload(payload.requestId) ||
-      stringPayload(objectPayload(payload.metadata)?.requestId);
-    if (!requestId) {
-      return null;
-    }
-    return {
-      kind: "exit-plan",
-      requestId,
-      title:
-        stringPayload(objectPayload(input?.toolCall)?.title) ||
-        item.name?.trim() ||
-        stringPayload(payload.name) ||
-        "Exit plan mode",
-      options: extractExitPlanModeOptions(input, payload),
-      ...(extractExitPlanKeepPlanningOptionId(input, payload)
-        ? {
-            keepPlanningOptionId: extractExitPlanKeepPlanningOptionId(
-              input,
-              payload
-            ) as string
-          }
-        : {})
-    };
-  }
-  if (callType !== "interactive") {
-    return null;
-  }
-  const status =
-    normalizeStatus(item.status) ||
-    normalizeStatus(stringPayload(payload.status));
-  if (!isPendingInteractiveStatus(status)) {
-    return null;
-  }
-  const toolName = normalizeInteractiveToolName(
-    item.name?.trim() ||
-      stringPayload(payload.name) ||
-      stringPayload(payload.toolName)
-  );
-  const requestId =
-    stringPayload(input?.requestId) ||
-    stringPayload(payload.requestId) ||
-    stringPayload(objectPayload(payload.metadata)?.requestId);
-  if (!requestId) {
-    return null;
-  }
-  if (toolName === "exitplanmode") {
-    return {
-      kind: "exit-plan",
-      requestId,
-      title:
-        item.name?.trim() || stringPayload(payload.name) || "Exit plan mode",
-      // Legacy exitplanmode tool carries no runtime mode options; the surface
-      // falls back to the curated default list.
-      options: []
-    };
-  }
-  if (toolName !== "askuserquestion") {
-    return null;
-  }
-  const questions = normalizeInteractiveQuestions(
-    arrayPayload(input?.questions) ?? []
-  );
-  if (questions.length === 0) {
-    return null;
-  }
-  return {
-    kind: "ask-user",
-    requestId,
-    title:
-      item.name?.trim() || stringPayload(payload.name) || "Questions for you",
-    questions
-  };
-}
-
-function timelineRowTime(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  rowID: string
-): number {
-  const item = timelineItems.find((candidate) => itemID(candidate) === rowID);
-  return item?.occurredAtUnixMs ?? item?.createdAtUnixMs ?? 0;
-}
-
-function timelineRowStatus(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  rowID: string
-): string | null {
-  const item = timelineItems.find((candidate) => itemID(candidate) === rowID);
-  return itemStatus(item);
-}
-
-function timelineRowTimeByCallId(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  callID: string
-): number {
-  const item = [...timelineItems]
-    .filter((candidate) => candidate.callId?.trim() === callID)
-    .sort(
-      (left, right) =>
-        (right.occurredAtUnixMs ?? 0) - (left.occurredAtUnixMs ?? 0)
-    )[0];
-  return item?.occurredAtUnixMs ?? item?.createdAtUnixMs ?? 0;
-}
-
-function timelineRowStatusByCallId(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  callID: string
-): string | null {
-  const item = latestTimelineItemByCallId(timelineItems, callID);
-  return itemStatus(item);
-}
-
-function latestTimelineItemByCallId(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  callID: string
-): WorkspaceAgentActivityTimelineItem | undefined {
-  return [...timelineItems]
-    .filter((candidate) => candidate.callId?.trim() === callID)
-    .sort(
-      (left, right) =>
-        (right.occurredAtUnixMs ?? 0) - (left.occurredAtUnixMs ?? 0)
-    )[0];
-}
-
-function itemStatus(
-  item: WorkspaceAgentActivityTimelineItem | undefined
-): string | null {
-  if (!item) {
-    return null;
-  }
-  return item.status?.trim() || stringPayload(item.payload?.status) || null;
-}
-
-function itemID(item: WorkspaceAgentActivityTimelineItem): string {
-  const eventID = item.eventId?.trim();
-  if (eventID) {
-    return eventID;
-  }
-  if (Number.isFinite(item.id) && item.id > 0) {
-    return `server:${item.id}`;
-  }
-  return `local:${item.occurredAtUnixMs ?? 0}:${item.itemType}:${item.role ?? ""}`;
-}
-
-function stableTimelineRowID(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
-  detailItemID: string
-): string {
-  const item = timelineItems.find(
-    (candidate) => itemID(candidate) === detailItemID
-  );
-  const eventID = item?.eventId?.trim();
-  return eventID ? `event:${eventID}` : detailItemID;
-}
-
-function normalizeToolCallID(callID: string): string {
-  return callID.startsWith("call:") ? callID.slice("call:".length) : callID;
-}
-
-function dedupeTimelineRowsByID(
-  rows: AgentGUITimelineRow[]
-): AgentGUITimelineRow[] {
-  const byID = new Map<string, AgentGUITimelineRow>();
-  for (const row of rows) {
-    byID.set(row.id, row);
-  }
-  return sortTimelineRows([...byID.values()]);
-}
-
-function sortTimelineRows(rows: AgentGUITimelineRow[]): AgentGUITimelineRow[] {
-  return rows.sort(
-    (a, b) =>
-      a.occurredAtUnixMs - b.occurredAtUnixMs || a.id.localeCompare(b.id)
-  );
-}
-
-function latestTimelineTime(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): number {
-  return Math.max(
-    0,
-    ...timelineItems.map(
-      (item) => item.occurredAtUnixMs ?? item.createdAtUnixMs ?? 0
-    )
-  );
-}
-
-function normalizeCallType(callType: string | undefined): string {
-  return callType?.trim().toLowerCase() ?? "";
-}
-
-function normalizeInteractiveToolName(toolName: string | undefined): string {
-  return (toolName?.trim() ?? "").replace(/[_\s-]+/g, "").toLowerCase();
-}
-
-function normalizeStatus(status: string | null | undefined): string {
-  const normalized = status?.trim().toLowerCase() ?? "";
-  if (normalized === "awaiting_approval") {
-    return "waiting_approval";
-  }
-  if (normalized === "waiting_input") {
-    return "waiting";
-  }
-  return normalized;
-}
-
-function isPendingInteractiveStatus(status: string): boolean {
-  return (
-    status === "waiting" ||
-    status === "pending" ||
-    status === "running" ||
-    status === "streaming" ||
-    status === "working"
-  );
-}
-
-function stringPayload(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function objectPayload(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function arrayPayload(value: unknown): unknown[] | null {
-  return Array.isArray(value) ? value : null;
-}
-
-function normalizeApprovalOptions(
-  values: readonly unknown[]
-): AgentGUIApprovalOption[] {
-  return values.flatMap((value) => {
-    const option = objectPayload(value);
-    if (!option) {
-      return [];
-    }
-    const id = stringPayload(option.optionId) || stringPayload(option.id);
-    if (!id) {
-      return [];
-    }
-    const label =
-      stringPayload(option.name) ||
-      stringPayload(option.label) ||
-      stringPayload(option.title) ||
-      stringPayload(option.kind) ||
-      id;
-    return [
-      {
-        id,
-        label,
-        kind: stringPayload(option.kind) ?? "",
-        ...(stringPayload(option.description)
-          ? { description: stringPayload(option.description) }
-          : {})
-      }
-    ];
-  });
-}
-
-function normalizeInteractiveQuestions(
-  values: readonly unknown[]
-): AgentGUIInteractiveQuestion[] {
-  return values.flatMap((value, index) => {
-    const question = objectPayload(value);
-    if (!question) {
-      return [];
-    }
-    const id = stringPayload(question.id) || `question-${index + 1}`;
-    const options = (arrayPayload(question.options) ?? []).flatMap(
-      (optionValue) => {
-        const option = objectPayload(optionValue);
-        if (!option) {
-          return [];
-        }
-        const label = stringPayload(option.label) || stringPayload(option.name);
-        if (!label) {
-          return [];
-        }
-        return [
-          {
-            label,
-            description: stringPayload(option.description)
-          }
-        ];
-      }
-    );
-    return [
-      {
-        id,
-        header: stringPayload(question.header) || id,
-        question:
-          stringPayload(question.question) ||
-          stringPayload(question.header) ||
-          `Question ${index + 1}`,
-        options,
-        multiSelect: Boolean(question.multiSelect),
-        isOther: Boolean(question.isOther)
-      }
-    ];
-  });
-}
-
-function hashStringToPositiveInt(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-  return Math.max(1, Math.abs(hash));
-}
-
-function mergeTimelineItems(
-  left: readonly WorkspaceAgentActivityTimelineItem[],
-  right: readonly WorkspaceAgentActivityTimelineItem[]
-): WorkspaceAgentActivityTimelineItem[] {
-  const byKey = new Map<string, WorkspaceAgentActivityTimelineItem>();
-  for (const item of [...left, ...right].sort(compareTimelineItemsForMerge)) {
-    if (shouldOmitAgentGUITimelineItem(item)) {
-      continue;
-    }
-    const key = timelineItemMergeKey(item);
-    const previous = byKey.get(key);
-    byKey.set(key, previous ? mergeTimelineItem(previous, item) : item);
-  }
-  return pruneOptimisticUserPrompts([...byKey.values()]).sort(
-    compareTimelineItemsForMerge
-  );
-}
-
-function shouldOmitAgentGUITimelineItem(
-  item: WorkspaceAgentActivityTimelineItem
-): boolean {
-  const itemType = item.itemType?.trim().toLowerCase() ?? "";
-  const payload = objectPayload(item.payload);
-  const metadata = objectPayload(payload?.metadata);
-  const activityKey =
-    stringPayload(payload?.activityKey) || stringPayload(metadata?.activityKey);
-  if (activityKey.toLowerCase() === "agent.responding") {
-    return true;
-  }
-  const activityKind =
-    stringPayload(payload?.activityKind) ||
-    stringPayload(metadata?.activityKind);
-  return (
-    activityKind.toLowerCase() === "responding" &&
-    (itemType === "event" || itemType.startsWith("activity."))
-  );
-}
-
-function pruneOptimisticUserPrompts(
-  items: readonly WorkspaceAgentActivityTimelineItem[]
-): WorkspaceAgentActivityTimelineItem[] {
-  return items.filter((item) => {
-    if (!isOptimisticUserPromptItem(item)) {
-      return true;
-    }
-    const turnId = item.turnId?.trim();
-    const body = normalizedTimelineItemBody(item);
-    return !items.some((candidate) => {
-      return (
-        candidate !== item &&
-        candidate.role === "user" &&
-        !isOptimisticUserPromptItem(candidate) &&
-        candidate.turnId?.trim() === turnId &&
-        normalizedTimelineItemBody(candidate) === body
-      );
-    });
-  });
-}
-
-function isOptimisticUserPromptItem(
-  item: WorkspaceAgentActivityTimelineItem
-): boolean {
-  return item.payload?.__agentGuiOptimisticPrompt === true;
-}
-
-function normalizedTimelineItemBody(
-  item: WorkspaceAgentActivityTimelineItem
-): string {
-  const content =
-    typeof item.payload?.displayPrompt === "string" &&
-    item.payload.displayPrompt.trim()
-      ? item.payload.displayPrompt
-      : typeof item.payload?.text === "string" && item.payload.text.trim()
-        ? item.payload.text
-        : typeof item.payload?.content === "string" &&
-            item.payload.content.trim()
-          ? item.payload.content
-          : typeof item.content === "string"
-            ? item.content
-            : "";
-  return content.trim();
-}
-
-function timelineItemMergeKey(
-  item: WorkspaceAgentActivityTimelineItem
-): string {
-  const callId = item.callId?.trim();
-  if (callId) {
-    return `call:${item.turnId?.trim() ?? ""}:${callId}`;
-  }
-  const eventId = item.eventId?.trim();
-  if (eventId) {
-    return `event:${eventId}`;
-  }
-  const seq = item.seq ?? 0;
-  if (seq > 0) {
-    const turnId = item.turnId?.trim();
-    if (turnId) {
-      return `seq:${turnId}:${seq}`;
-    }
-    return `seq:${seq}`;
-  }
-  return `id:${item.id}`;
-}
-
-function mergeTimelineItem(
-  previous: WorkspaceAgentActivityTimelineItem,
-  next: WorkspaceAgentActivityTimelineItem
-): WorkspaceAgentActivityTimelineItem {
-  const preserveLatestMessageTimestamp =
-    isMessageTimelineItem(previous) || isMessageTimelineItem(next);
-  return {
-    ...previous,
-    ...next,
-    id: durableTimelineItemId(previous.id, next.id),
-    payload: mergeTimelinePayload(previous.payload, next.payload),
-    content: next.content || previous.content,
-    status: next.status || previous.status,
-    role: next.role || previous.role,
-    callId: next.callId || previous.callId,
-    callType: next.callType || previous.callType,
-    name: next.name || previous.name,
-    seq: Math.max(previous.seq ?? 0, next.seq ?? 0),
-    occurredAtUnixMs: preserveLatestMessageTimestamp
-      ? latestPositiveTimestamp(
-          previous.occurredAtUnixMs,
-          next.occurredAtUnixMs
-        )
-      : earliestPositiveTimestamp(
-          previous.occurredAtUnixMs,
-          next.occurredAtUnixMs
-        ),
-    createdAtUnixMs: preserveLatestMessageTimestamp
-      ? latestPositiveTimestamp(previous.createdAtUnixMs, next.createdAtUnixMs)
-      : earliestPositiveTimestamp(
-          previous.createdAtUnixMs,
-          next.createdAtUnixMs
-        )
-  };
-}
-
-function mergeTimelinePayload(
-  previous: WorkspaceAgentActivityTimelineItem["payload"],
-  next: WorkspaceAgentActivityTimelineItem["payload"]
-): WorkspaceAgentActivityTimelineItem["payload"] {
-  const previousRecord = objectPayload(previous);
-  const nextRecord = objectPayload(next);
-  if (!previousRecord && !nextRecord) {
-    return undefined;
-  }
-  return mergeRecords(previousRecord ?? {}, nextRecord ?? {});
-}
-
-function mergeRecords(
-  previous: Record<string, unknown>,
-  next: Record<string, unknown>
-): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...previous };
-  for (const [key, value] of Object.entries(next)) {
-    const previousValue = objectPayload(merged[key]);
-    const nextValue = objectPayload(value);
-    merged[key] =
-      previousValue && nextValue
-        ? mergeRecords(previousValue, nextValue)
-        : value;
-  }
-  return merged;
-}
-
-function durableTimelineItemId(previousId: number, nextId: number): number {
-  if (nextId > 0) {
-    return nextId;
-  }
-  return previousId > 0 ? previousId : nextId;
-}
-
-function earliestPositiveTimestamp(
-  previous: number | undefined,
-  next: number | undefined
-): number | undefined {
-  const positiveValues = [previous, next].filter(
-    (value): value is number => typeof value === "number" && value > 0
-  );
-  return positiveValues.length > 0 ? Math.min(...positiveValues) : undefined;
-}
-
-function latestPositiveTimestamp(
-  previous: number | undefined,
-  next: number | undefined
-): number | undefined {
-  const positiveValues = [previous, next].filter(
-    (value): value is number => typeof value === "number" && value > 0
-  );
-  return positiveValues.length > 0 ? Math.max(...positiveValues) : undefined;
-}
-
-function isMessageTimelineItem(
-  item: WorkspaceAgentActivityTimelineItem
-): boolean {
-  return item.itemType?.trim().toLowerCase().startsWith("message.") ?? false;
-}
-
-function compareTimelineItemsForMerge(
-  left: WorkspaceAgentActivityTimelineItem,
-  right: WorkspaceAgentActivityTimelineItem
-): number {
-  const leftSeq = left.seq ?? 0;
-  const rightSeq = right.seq ?? 0;
-  return (
-    (left.occurredAtUnixMs ?? left.createdAtUnixMs ?? 0) -
-      (right.occurredAtUnixMs ?? right.createdAtUnixMs ?? 0) ||
-    leftSeq - rightSeq ||
-    left.id - right.id
-  );
 }
