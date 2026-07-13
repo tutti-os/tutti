@@ -19,6 +19,13 @@ export {
 } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
+export type {
+  AgentGUIComposerContentType,
+  AgentGUIComposerFocusMethod,
+  AgentGUIEngagementAnalytics,
+  AgentGUIEngagementContext,
+  AgentGUIEngagementEventContext
+} from "./agent-gui/agentGuiNode/agentGuiEngagementAnalytics";
 export type { AgentGUIAccountMenuState } from "./agent-gui/agentGuiNode/accountMenuState";
 export { normalizeAgentGUIAgents } from "./agents";
 export type {
