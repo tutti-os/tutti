@@ -24,6 +24,10 @@ const standaloneAgentToolSidebarToolbarSource = readFileSync(
   new URL("./StandaloneAgentToolSidebarToolbar.tsx", import.meta.url),
   "utf8"
 );
+const standaloneAgentMessageCenterToolPanelSource = readFileSync(
+  new URL("./StandaloneAgentMessageCenterToolPanel.tsx", import.meta.url),
+  "utf8"
+);
 const workspaceAgentStatusPetIconSource = readFileSync(
   new URL("./WorkspaceAgentStatusPetIcon.tsx", import.meta.url),
   "utf8"
@@ -33,14 +37,14 @@ const workspaceAgentMessageCenterActionSource = readFileSync(
   "utf8"
 );
 
-test("standalone Agent browser and terminal mount their OS node UI directly", () => {
-  assert.match(standaloneAgentToolSidebarSource, /<BrowserNode/);
+test("standalone Agent tools load their OS node UI on demand", () => {
+  assert.match(standaloneAgentToolSidebarSource, /<LazyBrowserNode/);
   assert.match(standaloneAgentToolSidebarSource, /hidden=\{hidden\}/);
   assert.match(
     standaloneAgentToolSidebarSource,
     /<StandaloneAgentBrowserToolPanel[\s\S]*?hidden=\{!active\}/
   );
-  assert.match(standaloneAgentToolSidebarSource, /<TerminalNode/);
+  assert.match(standaloneAgentToolSidebarSource, /<LazyTerminalNode/);
   assert.doesNotMatch(standaloneAgentToolSidebarSource, /<WorkbenchHost/);
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -48,7 +52,7 @@ test("standalone Agent browser and terminal mount their OS node UI directly", ()
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /<StandaloneAgentAppCenterToolPanel/
+    /<LazyStandaloneAgentAppCenterToolPanel/
   );
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
@@ -59,7 +63,7 @@ test("standalone Agent browser and terminal mount their OS node UI directly", ()
     /workspace\.appCenter\.backToApps/
   );
   assert.match(
-    standaloneAgentToolSidebarSource,
+    standaloneAgentMessageCenterToolPanelSource,
     /<WorkspaceAgentMessageCenterPanel[\s\S]*?presentation="embedded"/
   );
 });
@@ -82,7 +86,7 @@ test("standalone Agent right sidebar reserves layout space and reveals requested
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /<WorkspaceFileManagerPane[\s\S]*?revealIntent=\{fileOpenRequest\}/
+    /<LazyWorkspaceFileManagerPane[\s\S]*?revealIntent=\{fileOpenRequest\}/
   );
 });
 
@@ -131,11 +135,15 @@ test("standalone Agent messages reuse the OS running animation and badge only ru
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /messages: messageCenterModel\.counts\.working/
+    /selectWorkspaceAgentConsumerCounts\(sessionEngine\.getSnapshot\(\)\)\.working/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /messages: messageCenterWorkingCount/
   );
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
-    /messages:\s*messageCenterModel\.waitingCount/
+    /messages:\s*\w+\.waitingCount/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,

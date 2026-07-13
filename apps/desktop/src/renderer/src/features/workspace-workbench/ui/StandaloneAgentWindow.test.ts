@@ -20,11 +20,11 @@ const workbenchBodySource = readFileSync(
 test("standalone Agent reuses the OS account menu in the sidebar footer", () => {
   assert.match(
     standaloneWindowSource,
-    /import \{ WorkspaceAccountMenu \} from "\.\/WorkspaceAccountMenu";/
+    /import\("\.\/WorkspaceAccountMenu"\)[\s\S]*?default: WorkspaceAccountMenu/
   );
   assert.match(
     standaloneWindowSource,
-    /function renderStandaloneAgentSidebarFooter\(\): ReactNode \{[\s\S]*<WorkspaceAccountMenu \/>/
+    /function renderStandaloneAgentSidebarFooter\(\): ReactNode \{[\s\S]*<LazyWorkspaceAccountMenu \/>/
   );
   assert.match(
     standaloneWindowSource,
@@ -36,10 +36,29 @@ test("standalone Agent reuses the OS account menu in the sidebar footer", () => 
   );
 });
 
-test("standalone Agent keeps the app runtime lifecycle active for inline apps", () => {
+test("standalone Agent defers non-critical panel hosts until after the first frame", () => {
   assert.match(
     standaloneWindowSource,
-    /useEffect\(\s*\(\) => workspaceAppCenterService\.startWorkspacePolling\(workspaceId\),\s*\[workspaceAppCenterService, workspaceId\]\s*\)/
+    /window\.requestAnimationFrame\(\(\) => \{\s*setPanelHostsReady\(true\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /panelHostsReady \? \([\s\S]*?<LazyStandaloneAgentWindowPanelHosts/
+  );
+});
+
+test("standalone Agent starts the app runtime lifecycle only when apps open", () => {
+  assert.match(
+    standaloneWindowSource,
+    /const ensureWorkspaceAppPolling = useCallback\([\s\S]*?startWorkspacePolling\(workspaceId\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /onAppsOpen=\{ensureWorkspaceAppPolling\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /setWorkspaceAppLauncher\([\s\S]*?ensureWorkspaceAppPolling\(\);[\s\S]*?state: \{ openAppId: appId \}/
   );
 });
 

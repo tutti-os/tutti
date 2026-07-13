@@ -10,17 +10,12 @@ import {
   type ReactNode
 } from "react";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
-import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import { normalizeAgentGUIAgents } from "@tutti-os/agent-gui/agents";
 import type { AgentGUIAgent } from "@tutti-os/agent-gui";
-import type {
-  WorkspaceAgentProvider,
-  WorkspaceSummary
-} from "@tutti-os/client-tuttid-ts";
+import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   AGENT_GUI_WORKBENCH_NEW_CONVERSATION_EVENT,
-  AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
   agentGuiWorkbenchProviderRailWidthPx,
   type AgentGuiWorkbenchConversationRailToggleDetail,
   type AgentGuiWorkbenchNewConversationDetail
@@ -35,9 +30,7 @@ import type {
   WorkbenchSize
 } from "@tutti-os/workbench-surface";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { AgentEnvPanel } from "@renderer/features/workspace-agent/ui/AgentEnvPanel.tsx";
 import { createDesktopAgentGUIWorkbenchHostInput } from "@renderer/features/workspace-agent/services/createDesktopAgentGUIWorkbenchHostInput.ts";
-import { ensureAllDesktopManagedAgentProviderStatuses } from "@renderer/features/workspace-agent/services/desktopManagedAgentProviders.ts";
 import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import type {
   AgentProviderStatusSnapshot,
@@ -55,7 +48,7 @@ import {
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager/services/workspaceFileManagerService.interface.ts";
 import type { DesktopApi, DesktopHostWindowApi } from "@preload/types";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { IReporterService } from "@renderer/features/analytics";
@@ -63,21 +56,24 @@ import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at"
 import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
 import { useTranslation } from "@renderer/i18n";
 import { AppUpdateStatus } from "@renderer/features/app-update";
-import { ExternalAgentSessionImportPrompt } from "./ExternalAgentSessionImportPrompt";
-import { ExternalAgentSessionImportWizard } from "./ExternalAgentSessionImportWizard";
-import { WorkspaceAccountMenu } from "./WorkspaceAccountMenu";
-import { WorkspaceSettingsPanel } from "./WorkspaceSettingsPanel";
 import { StandaloneAgentToolSidebar } from "./StandaloneAgentToolSidebar";
 import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebar";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
-import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
-import type { WorkspaceSettingsSectionID } from "../services/workspaceSettingsService.interface";
 
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
-import type {
-  WorkspaceWallpaperDisplayMode,
-  WorkspaceWallpaperId
-} from "../services/workspaceWallpaper";
+
+const LazyWorkspaceAccountMenu = lazy(() =>
+  import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
+    default: WorkspaceAccountMenu
+  }))
+);
+const LazyStandaloneAgentWindowPanelHosts = lazy(() =>
+  import("./StandaloneAgentWindowPanelHosts.tsx").then(
+    ({ StandaloneAgentWindowPanelHosts }) => ({
+      default: StandaloneAgentWindowPanelHosts
+    })
+  )
+);
 
 const standaloneAgentNodeId = "standalone-agent-window-node";
 const standaloneAgentInstanceKey = "standalone-agent-window";
@@ -91,7 +87,11 @@ const LazyDesktopAgentGUIWorkbenchBody = lazy(() =>
 );
 
 function renderStandaloneAgentSidebarFooter(): ReactNode {
-  return <WorkspaceAccountMenu />;
+  return (
+    <Suspense fallback={null}>
+      <LazyWorkspaceAccountMenu />
+    </Suspense>
+  );
 }
 
 export interface StandaloneAgentWindowProps {
@@ -138,8 +138,26 @@ export function StandaloneAgentWindow({
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceId = workspace.id;
+  const [panelHostsReady, setPanelHostsReady] = useState(false);
+  useEffect(() => {
+    const animationFrame = window.requestAnimationFrame(() => {
+      setPanelHostsReady(true);
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, []);
+  const workspaceAppPollingDisposerRef = useRef<(() => void) | null>(null);
+  const ensureWorkspaceAppPolling = useCallback(() => {
+    if (workspaceAppPollingDisposerRef.current) {
+      return;
+    }
+    workspaceAppPollingDisposerRef.current =
+      workspaceAppCenterService.startWorkspacePolling(workspaceId);
+  }, [workspaceAppCenterService, workspaceId]);
   useEffect(
-    () => workspaceAppCenterService.startWorkspacePolling(workspaceId),
+    () => () => {
+      workspaceAppPollingDisposerRef.current?.();
+      workspaceAppPollingDisposerRef.current = null;
+    },
     [workspaceAppCenterService, workspaceId]
   );
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -231,6 +249,7 @@ export function StandaloneAgentWindow({
         if (targetWorkspaceId !== workspaceId) {
           return false;
         }
+        ensureWorkspaceAppPolling();
         workspaceAppCenterService.setViewState({
           state: { openAppId: appId },
           workspaceId
@@ -258,7 +277,7 @@ export function StandaloneAgentWindow({
       workspaceAppCenterService.setWorkspaceAppViewCloser(null);
       workspaceAppCenterService.setWorkspaceAppViewOpenChecker(null);
     };
-  }, [workspaceAppCenterService, workspaceId]);
+  }, [ensureWorkspaceAppPolling, workspaceAppCenterService, workspaceId]);
   const subscribeAppCenter = useCallback(
     (listener: () => void) => workspaceAppCenterService.subscribe(listener),
     [workspaceAppCenterService]
@@ -427,17 +446,6 @@ export function StandaloneAgentWindow({
       window.removeEventListener("focus", loadAgents);
     };
   }, [agentsService]);
-  useEffect(() => {
-    // The main workspace window loads every managed provider's status via its
-    // dock rail (which subscribes on mount and probes all providers). This
-    // standalone window has no dock, so nothing else ever asks for the full
-    // set — without this, only the single provider the window was launched
-    // for gets checked, and every other provider (e.g. switching the "全部"
-    // filter to one that was never probed) stays stuck on "checking".
-    void ensureAllDesktopManagedAgentProviderStatuses(
-      agentProviderStatusService
-    );
-  }, [agentProviderStatusService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
       setNodeState((current) => ({
@@ -613,6 +621,7 @@ export function StandaloneAgentWindow({
           />
         )}
         onOpenMessageCenterChat={handleOpenMessageCenterChat}
+        onAppsOpen={ensureWorkspaceAppPolling}
         onToolHostReady={toolWorkbench.onHostReady}
         resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
         workspaceId={workspaceId}
@@ -677,127 +686,16 @@ export function StandaloneAgentWindow({
           />
         </Suspense>
       </StandaloneAgentToolSidebar>
-      <StandaloneAgentWindowPanelHosts
-        agentProviderStatusService={agentProviderStatusService}
-        host={host}
-        workspace={workspace}
-      />
+      {panelHostsReady ? (
+        <Suspense fallback={null}>
+          <LazyStandaloneAgentWindowPanelHosts
+            agentProviderStatusService={agentProviderStatusService}
+            host={host}
+            workspace={workspace}
+          />
+        </Suspense>
+      ) : null}
     </main>
-  );
-}
-
-function StandaloneAgentWindowPanelHosts({
-  agentProviderStatusService,
-  host,
-  workspace
-}: {
-  agentProviderStatusService: AgentProviderStatusService;
-  host: WorkbenchHostHandle;
-  workspace: WorkspaceSummary;
-}): ReactNode {
-  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const settingsPanelRequest = useWorkspaceSettingsPanelRequest();
-  const lastHandledSettingsRequestRef = useRef(
-    settingsPanelRequest.requestSequence
-  );
-  const [externalImportWizardProviders, setExternalImportWizardProviders] =
-    useState<WorkspaceAgentProvider[] | undefined>(undefined);
-  const [externalImportWizardOpen, setExternalImportWizardOpen] =
-    useState(false);
-  const wallpaperRevision = useSyncExternalStore(
-    (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
-    () => workbenchHostService.getWallpaperRevision(),
-    () => workbenchHostService.getWallpaperRevision()
-  );
-  const selectedWallpaperID = useMemo(
-    () => workbenchHostService.readWallpaperId(workspace.id),
-    [wallpaperRevision, workbenchHostService, workspace.id]
-  );
-  const selectedWallpaperDisplayMode = useMemo(
-    () => workbenchHostService.readWallpaperDisplayMode(workspace.id),
-    [wallpaperRevision, workbenchHostService, workspace.id]
-  );
-  const openExternalAgentImport = useCallback(
-    (providers?: WorkspaceAgentProvider[]) => {
-      setExternalImportWizardProviders(providers);
-      setExternalImportWizardOpen(true);
-    },
-    []
-  );
-  useEffect(() => {
-    const openImportWizard = (): void => {
-      openExternalAgentImport();
-    };
-    window.addEventListener(
-      AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
-      openImportWizard
-    );
-    return () => {
-      window.removeEventListener(
-        AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT,
-        openImportWizard
-      );
-    };
-  }, [openExternalAgentImport]);
-  const selectWallpaper = useCallback(
-    (wallpaperId: WorkspaceWallpaperId) => {
-      workbenchHostService.writeWallpaperId(workspace.id, wallpaperId);
-    },
-    [workbenchHostService, workspace.id]
-  );
-  const selectWallpaperDisplayMode = useCallback(
-    (displayMode: WorkspaceWallpaperDisplayMode) => {
-      workbenchHostService.writeWallpaperDisplayMode(workspace.id, displayMode);
-    },
-    [workbenchHostService, workspace.id]
-  );
-
-  useEffect(() => {
-    if (
-      settingsPanelRequest.requestSequence ===
-      lastHandledSettingsRequestRef.current
-    ) {
-      return;
-    }
-    lastHandledSettingsRequestRef.current =
-      settingsPanelRequest.requestSequence;
-    workspaceSettingsService.openPanel(
-      { id: workspace.id },
-      settingsPanelRequest.section
-        ? {
-            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
-          }
-        : undefined
-    );
-  }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);
-
-  return (
-    <>
-      <WorkspaceSettingsPanel
-        onOpenExternalAgentImport={() => openExternalAgentImport()}
-        onSelectWallpaper={selectWallpaper}
-        onSelectWallpaperDisplayMode={selectWallpaperDisplayMode}
-        selectedWallpaperDisplayMode={selectedWallpaperDisplayMode}
-        selectedWallpaperID={selectedWallpaperID}
-        workspace={workspace}
-      />
-      <ExternalAgentSessionImportPrompt
-        workspaceId={workspace.id}
-        onOpenImport={openExternalAgentImport}
-      />
-      <ExternalAgentSessionImportWizard
-        initialProviders={externalImportWizardProviders}
-        open={externalImportWizardOpen}
-        workspace={workspace}
-        onOpenChange={setExternalImportWizardOpen}
-      />
-      <AgentEnvPanel
-        agentProviderStatusService={agentProviderStatusService}
-        workspaceId={workspace.id}
-        workbenchHost={host}
-      />
-    </>
   );
 }
 

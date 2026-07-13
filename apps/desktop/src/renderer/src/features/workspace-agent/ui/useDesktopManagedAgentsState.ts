@@ -44,8 +44,11 @@ export function useDesktopManagedAgentsState(
       return;
     }
 
-    void ensureDesktopManagedAgentProviderStatuses(agentProviderStatusService);
-  }, [agentProviderStatusService, shouldEnsureLoaded]);
+    void ensureDesktopManagedAgentProviderStatuses(
+      agentProviderStatusService,
+      requiredProviders
+    );
+  }, [agentProviderStatusService, requiredProviders, shouldEnsureLoaded]);
 
   return useMemo(
     () =>

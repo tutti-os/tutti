@@ -37,6 +37,7 @@ Electron startup, daemon supervision, macOS packaging, updates, and performance 
 React rendering, Workbench state, external stores, input composition, and UI performance.
 
 - [Renderer tile memory warnings from hidden autoplay animation](./workbench-renderer.md#renderer-tile-memory-warnings-from-hidden-autoplay-animation)
+- [Standalone Agent dev window stays black during cold startup](./workbench-renderer.md#standalone-agent-dev-window-stays-black-during-cold-startup)
 - [IME composition breaks fuzzy search or controlled search inputs](./workbench-renderer.md#ime-composition-breaks-fuzzy-search-or-controlled-search-inputs)
 - [External-store snapshots churn because derived reads lose reference stability](./workbench-renderer.md#external-store-snapshots-churn-because-derived-reads-lose-reference-stability)
 - [Workbench host rebuilds when dock business status changes](./workbench-renderer.md#workbench-host-rebuilds-when-dock-business-status-changes)

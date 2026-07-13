@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,21 +11,8 @@ import {
   type ReactNode
 } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import {
-  buildWorkspaceAgentMessageCenterModelFromEngine,
-  selectWorkspaceAgentMessageCenterPresentation,
-  stabilizeWorkspaceAgentMessageCenterModel,
-  workspaceAgentMessageCenterPromptStatus,
-  WorkspaceAgentMessageCenterPanel,
-  dispatchAgentPlanPromptAction,
-  useEngineSelector,
-  type WorkspaceAgentMessageCenterModel,
-  type WorkspaceAgentMessageCenterPresentation
-} from "@tutti-os/agent-gui/agent-message-center";
-import { selectEnginePendingInteractions } from "@tutti-os/agent-activity-core";
-import { BrowserNode } from "@tutti-os/browser-node/react";
+import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
 import type { BrowserNodeI18nKey } from "@tutti-os/browser-node/i18n";
-import { TerminalNode } from "@tutti-os/workspace-terminal/react";
 import type { TerminalNodeI18nKey } from "@tutti-os/workspace-terminal/i18n";
 import type {
   WorkbenchContribution,
@@ -36,7 +25,6 @@ import {
   RestoreIcon,
   cn
 } from "@tutti-os/ui-system";
-import { WorkspaceFileManagerPane } from "@renderer/features/workspace-file-manager";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
 import { useTranslation } from "@renderer/i18n";
@@ -60,8 +48,39 @@ import {
   createStandaloneAgentBrowserToolFeature
 } from "./standaloneAgentToolWorkbench.ts";
 import { standaloneAgentBrowserDefaultUrl } from "./standaloneAgentToolWorkbench.ts";
-import { StandaloneAgentAppCenterToolPanel } from "./StandaloneAgentAppCenterToolPanel.tsx";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
+
+const LazyBrowserNode = lazy(() =>
+  import("@tutti-os/browser-node/react").then(({ BrowserNode }) => ({
+    default: BrowserNode
+  }))
+);
+const LazyTerminalNode = lazy(() =>
+  import("@tutti-os/workspace-terminal/react").then(({ TerminalNode }) => ({
+    default: TerminalNode
+  }))
+);
+const LazyWorkspaceFileManagerPane = lazy(() =>
+  import("@renderer/features/workspace-file-manager/ui/WorkspaceFileManagerPane.tsx").then(
+    ({ WorkspaceFileManagerPane }) => ({
+      default: WorkspaceFileManagerPane
+    })
+  )
+);
+const LazyStandaloneAgentAppCenterToolPanel = lazy(() =>
+  import("./StandaloneAgentAppCenterToolPanel.tsx").then(
+    ({ StandaloneAgentAppCenterToolPanel }) => ({
+      default: StandaloneAgentAppCenterToolPanel
+    })
+  )
+);
+const LazyStandaloneAgentMessageCenterToolPanel = lazy(() =>
+  import("./StandaloneAgentMessageCenterToolPanel.tsx").then(
+    ({ StandaloneAgentMessageCenterToolPanel }) => ({
+      default: StandaloneAgentMessageCenterToolPanel
+    })
+  )
+);
 
 const browserNodeLoadFailedI18nKey: BrowserNodeI18nKey = "loadFailed";
 const terminalCloseGuardDescriptionI18nKey: TerminalNodeI18nKey =
@@ -82,6 +101,7 @@ interface StandaloneAgentToolSidebarProps {
     agentSessionId: string;
     provider: string;
   }) => void;
+  onAppsOpen: () => void;
   onToolHostReady: (host: WorkbenchHostHandle | null) => void;
   resizeWindowContentWidth: (width: number) => Promise<{ width: number }>;
   workspaceId: string;
@@ -103,6 +123,7 @@ export function StandaloneAgentToolSidebar({
   mainContentMinWidthPx,
   renderHeader,
   onOpenMessageCenterChat,
+  onAppsOpen,
   onToolHostReady,
   resizeWindowContentWidth,
   workspaceId
@@ -113,55 +134,17 @@ export function StandaloneAgentToolSidebar({
     undefined,
     createStandaloneAgentToolSidebarState
   );
-  const activitySnapshot = useExternalStoreValue(
-    (listener) => activityService.subscribe(workspaceId, listener),
-    () => activityService.getSnapshot(workspaceId),
-    () => activityService.getSnapshot(workspaceId)
-  );
   const sessionEngine = useMemo(
     () => activityService.getSessionEngine(workspaceId),
     [activityService, workspaceId]
   );
-  const messageCenterPresentation = useEngineSelector(
-    sessionEngine,
-    selectWorkspaceAgentMessageCenterPresentation
+  const messageCenterWorkingCount = useExternalStoreValue(
+    sessionEngine.subscribe,
+    () =>
+      selectWorkspaceAgentConsumerCounts(sessionEngine.getSnapshot()).working,
+    () =>
+      selectWorkspaceAgentConsumerCounts(sessionEngine.getSnapshot()).working
   );
-  const messageCenterModelRef = useRef<WorkspaceAgentMessageCenterModel | null>(
-    null
-  );
-  const messageCenterItemCutoffUnixMs = useMemo(
-    () => Date.now() - 7 * 24 * 60 * 60 * 1000,
-    [workspaceId]
-  );
-  const messageCenterModel = useMemo(() => {
-    const nextModel = buildWorkspaceAgentMessageCenterModelFromEngine(
-      messageCenterPresentation,
-      activitySnapshot,
-      {
-        itemCutoffUnixMs: messageCenterItemCutoffUnixMs,
-        promptFallbackLabels: {
-          constraintHeader: i18n.t(
-            "workspace.agentMessageCenter.promptConstraintHeader"
-          ),
-          inputHeader: i18n.t("workspace.agentMessageCenter.promptInputHeader"),
-          question: i18n.t("workspace.agentMessageCenter.promptQuestion"),
-          title: i18n.t("workspace.agentMessageCenter.promptTitle")
-        },
-        workspaceRoot: null
-      }
-    );
-    const stableModel = stabilizeWorkspaceAgentMessageCenterModel(
-      messageCenterModelRef.current,
-      nextModel
-    );
-    messageCenterModelRef.current = stableModel;
-    return stableModel;
-  }, [
-    activitySnapshot,
-    i18n,
-    messageCenterItemCutoffUnixMs,
-    messageCenterPresentation
-  ]);
   const copy = useMemo<ToolSidebarCopy>(
     () => ({
       apps: i18n.t("workspace.agentGui.toolSidebar.apps"),
@@ -179,9 +162,9 @@ export function StandaloneAgentToolSidebar({
   );
   const reminders = useMemo<ToolSidebarReminderCounts>(
     () => ({
-      messages: messageCenterModel.counts.working
+      messages: messageCenterWorkingCount
     }),
-    [messageCenterModel.counts.working]
+    [messageCenterWorkingCount]
   );
   const toolHostGroup = useMemo(createStandaloneAgentToolHostGroup, []);
   useEffect(() => {
@@ -259,9 +242,10 @@ export function StandaloneAgentToolSidebar({
       return;
     }
     lastHandledAppOpenIdRef.current = normalizedAppOpenId;
+    onAppsOpen();
     dispatch({ panel: "apps", type: "open-panel" });
     scheduleResizeForPanel("apps");
-  }, [appOpenId, scheduleResizeForPanel]);
+  }, [appOpenId, onAppsOpen, scheduleResizeForPanel]);
   useEffect(() => {
     if (
       !fileOpenRequest ||
@@ -291,10 +275,13 @@ export function StandaloneAgentToolSidebar({
   const togglePanel = useCallback(
     (panel: Exclude<StandaloneAgentToolPanelId, "browser">) => {
       const nextPanel = activePanel === panel ? null : panel;
+      if (nextPanel === "apps") {
+        onAppsOpen();
+      }
       dispatch({ panel, type: "toggle-panel" });
       scheduleResizeForPanel(nextPanel);
     },
-    [activePanel, scheduleResizeForPanel]
+    [activePanel, onAppsOpen, scheduleResizeForPanel]
   );
 
   return (
@@ -406,14 +393,11 @@ export function StandaloneAgentToolSidebar({
                           active={activePanel === panel}
                           appI18n={appI18n}
                           activityService={activityService}
-                          activitySnapshot={activitySnapshot}
                           browserApi={browserApi}
                           contributions={contributions}
                           fileOpenRequest={fileOpenRequest}
                           i18n={i18n}
                           locale={locale}
-                          messageCenterModel={messageCenterModel}
-                          messageCenterPresentation={messageCenterPresentation}
                           messageCenterOpen={activePanel === "messages"}
                           onCloseMessageCenter={closePanel}
                           onOpenMessageCenterChat={onOpenMessageCenterChat}
@@ -447,14 +431,11 @@ function ToolSidebarPanel({
   active,
   appI18n,
   activityService,
-  activitySnapshot,
   browserApi,
   contributions,
   fileOpenRequest,
   i18n,
   locale,
-  messageCenterModel,
-  messageCenterPresentation,
   messageCenterOpen,
   onCloseMessageCenter,
   onOpenMessageCenterChat,
@@ -464,14 +445,11 @@ function ToolSidebarPanel({
   active: boolean;
   appI18n: I18nRuntime<string>;
   activityService: WorkspaceAgentActivityService;
-  activitySnapshot: ReturnType<WorkspaceAgentActivityService["getSnapshot"]>;
   browserApi?: DesktopBrowserApi;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest: StandaloneAgentFileOpenRequest | null;
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
-  messageCenterModel: WorkspaceAgentMessageCenterModel;
-  messageCenterPresentation: WorkspaceAgentMessageCenterPresentation;
   messageCenterOpen: boolean;
   onCloseMessageCenter: () => void;
   onOpenMessageCenterChat: (input: {
@@ -483,38 +461,43 @@ function ToolSidebarPanel({
 }): ReactNode {
   if (panel === "files") {
     return (
-      <WorkspaceFileManagerPane
-        className="h-full"
-        revealIntent={fileOpenRequest}
-        workspaceID={workspaceId}
-      />
+      <Suspense fallback={null}>
+        <LazyWorkspaceFileManagerPane
+          className="h-full"
+          revealIntent={fileOpenRequest}
+          workspaceID={workspaceId}
+        />
+      </Suspense>
     );
   }
   if (panel === "apps") {
     return (
-      <StandaloneAgentAppCenterToolPanel
-        active={active}
-        backLabel={i18n.t("workspace.appCenter.backToApps")}
-        contributions={contributions}
-        unavailableLabel={i18n.t("workspace.agentGui.toolSidebar.unavailable")}
-        workspaceId={workspaceId}
-      />
+      <Suspense fallback={null}>
+        <LazyStandaloneAgentAppCenterToolPanel
+          active={active}
+          backLabel={i18n.t("workspace.appCenter.backToApps")}
+          contributions={contributions}
+          unavailableLabel={i18n.t(
+            "workspace.agentGui.toolSidebar.unavailable"
+          )}
+          workspaceId={workspaceId}
+        />
+      </Suspense>
     );
   }
   if (panel === "messages") {
     return (
-      <StandaloneAgentMessageCenterPanel
-        activityService={activityService}
-        activitySnapshot={activitySnapshot}
-        i18n={i18n}
-        locale={locale}
-        model={messageCenterModel}
-        presentationState={messageCenterPresentation}
-        open={messageCenterOpen}
-        workspaceId={workspaceId}
-        onClose={onCloseMessageCenter}
-        onOpenChat={onOpenMessageCenterChat}
-      />
+      <Suspense fallback={null}>
+        <LazyStandaloneAgentMessageCenterToolPanel
+          activityService={activityService}
+          i18n={i18n}
+          locale={locale}
+          open={messageCenterOpen}
+          workspaceId={workspaceId}
+          onClose={onCloseMessageCenter}
+          onOpenChat={onOpenMessageCenterChat}
+        />
+      </Suspense>
     );
   }
   if (panel === "browser") {
@@ -527,151 +510,6 @@ function ToolSidebarPanel({
     ) : null;
   }
   return null;
-}
-
-function StandaloneAgentMessageCenterPanel({
-  activityService,
-  activitySnapshot,
-  i18n,
-  locale,
-  model,
-  presentationState,
-  open,
-  workspaceId,
-  onClose,
-  onOpenChat
-}: {
-  activityService: WorkspaceAgentActivityService;
-  activitySnapshot: ReturnType<WorkspaceAgentActivityService["getSnapshot"]>;
-  i18n: I18nRuntime<string>;
-  locale: ReturnType<typeof useTranslation>["locale"];
-  model: WorkspaceAgentMessageCenterModel;
-  presentationState: WorkspaceAgentMessageCenterPresentation;
-  open: boolean;
-  workspaceId: string;
-  onClose: () => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
-}): ReactNode {
-  const requestedSessionSummaryIdsRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    for (const session of activitySnapshot.sessions.slice(0, 12)) {
-      const agentSessionId = session.agentSessionId.trim();
-      if (
-        !agentSessionId ||
-        requestedSessionSummaryIdsRef.current.has(agentSessionId) ||
-        hasCachedSessionMessages(activitySnapshot, session)
-      ) {
-        continue;
-      }
-      requestedSessionSummaryIdsRef.current.add(agentSessionId);
-      void activityService
-        .listSessionMessages({
-          agentSessionId,
-          limit: 20,
-          order: "desc",
-          workspaceId
-        })
-        .catch(() => {
-          requestedSessionSummaryIdsRef.current.delete(agentSessionId);
-        });
-    }
-  }, [activityService, activitySnapshot, open, workspaceId]);
-
-  const handleSubmitPrompt = useCallback(
-    async (input: {
-      action?: string;
-      agentSessionId: string;
-      optionId?: string;
-      payload?: Record<string, unknown>;
-      promptKind?: string;
-      requestId: string;
-    }) => {
-      const engine = activityService.getSessionEngine(workspaceId);
-      if (input.promptKind === "plan-implementation") {
-        if (
-          input.action === "implement" ||
-          input.action === "feedback" ||
-          input.action === "skip"
-        ) {
-          dispatchAgentPlanPromptAction({
-            action: input.action,
-            agentSessionId: input.agentSessionId,
-            engine,
-            feedbackText:
-              typeof input.payload?.text === "string"
-                ? input.payload.text
-                : undefined,
-            requestId: input.requestId,
-            workspaceId
-          });
-        }
-        return;
-      }
-      const interaction = selectEnginePendingInteractions(
-        engine.getSnapshot(),
-        input.agentSessionId
-      ).find((candidate) => candidate.requestId === input.requestId);
-      if (!interaction) return;
-      engine.dispatch({
-        type: "interaction/responseRequested",
-        agentSessionId: input.agentSessionId,
-        commandId: [
-          workspaceId,
-          input.agentSessionId,
-          interaction.turnId,
-          input.requestId
-        ].join(":"),
-        requestId: input.requestId,
-        turnId: interaction.turnId,
-        workspaceId,
-        ...(input.action ? { action: input.action } : {}),
-        ...(input.optionId ? { optionId: input.optionId } : {}),
-        ...(input.payload ? { payload: input.payload } : {})
-      });
-    },
-    [activityService, workspaceId]
-  );
-
-  const handleOpenChat = useCallback(
-    (input: { agentSessionId: string; provider: string }) => {
-      onOpenChat(input);
-      onClose();
-    },
-    [onClose, onOpenChat]
-  );
-
-  return (
-    <WorkspaceAgentMessageCenterPanel
-      i18n={i18n}
-      locale={locale}
-      model={model}
-      open={open}
-      presentation="embedded"
-      onClose={onClose}
-      onOpenChat={handleOpenChat}
-      promptStatus={(item) =>
-        workspaceAgentMessageCenterPromptStatus(presentationState, item)
-      }
-      onSubmitPrompt={handleSubmitPrompt}
-    />
-  );
-}
-
-function hasCachedSessionMessages(
-  snapshot: ReturnType<WorkspaceAgentActivityService["getSnapshot"]>,
-  session: ReturnType<
-    WorkspaceAgentActivityService["getSnapshot"]
-  >["sessions"][number]
-): boolean {
-  return [session.agentSessionId, session.providerSessionId]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .some(
-      (sessionId) => (snapshot.sessionMessagesById[sessionId]?.length ?? 0) > 0
-    );
 }
 
 function StandaloneAgentBrowserToolPanel({
@@ -723,13 +561,15 @@ function StandaloneAgentBrowserToolPanel({
       className="relative h-full min-h-0 overflow-hidden"
       data-standalone-agent-browser-surface="true"
     >
-      <BrowserNode
-        defaultUrl={standaloneAgentBrowserDefaultUrl}
-        feature={feature}
-        hidden={hidden}
-        nodeId={nodeId}
-        syncDefaultUrl
-      />
+      <Suspense fallback={null}>
+        <LazyBrowserNode
+          defaultUrl={standaloneAgentBrowserDefaultUrl}
+          feature={feature}
+          hidden={hidden}
+          nodeId={nodeId}
+          syncDefaultUrl
+        />
+      </Suspense>
       {activationFailed && runtimeState.lifecycle === "cold" ? (
         <div
           className="absolute inset-0 flex items-center justify-center text-sm text-[var(--text-secondary)]"
@@ -888,13 +728,15 @@ function StandaloneAgentTerminalPanel({
         data-standalone-agent-terminal-surface="true"
       >
         {runtime && sessionId ? (
-          <TerminalNode
-            externalState={externalState}
-            feature={runtime.feature}
-            nodeId={nodeId}
-            sessionId={sessionId}
-            showHeader={false}
-          />
+          <Suspense fallback={null}>
+            <LazyTerminalNode
+              externalState={externalState}
+              feature={runtime.feature}
+              nodeId={nodeId}
+              sessionId={sessionId}
+              showHeader={false}
+            />
+          </Suspense>
         ) : launchError || !runtime ? (
           <div
             className="flex h-full items-center justify-center text-sm text-[var(--text-secondary)]"

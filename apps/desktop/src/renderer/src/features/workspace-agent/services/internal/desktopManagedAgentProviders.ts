@@ -60,8 +60,18 @@ export function desktopManagedAgentVisibilityGate(
 }
 
 export function ensureDesktopManagedAgentProviderStatuses(
-  service: IAgentProviderStatusService
+  service: IAgentProviderStatusService,
+  requiredProviders?: readonly WorkspaceAgentProvider[]
 ): Promise<AgentProviderStatusListResponse | null> {
+  const requiredManagedProviders = (requiredProviders ?? []).filter(
+    isDesktopManagedAgentProvider
+  );
+  if (requiredManagedProviders.length > 0) {
+    return ensureRequiredDesktopManagedAgentProviderStatuses(
+      service,
+      requiredManagedProviders
+    );
+  }
   const snapshot = service.getSnapshot();
   const readyProvider = firstReadyDesktopManagedAgentProvider(
     snapshot.statuses
@@ -76,6 +86,17 @@ export function ensureDesktopManagedAgentProviderStatuses(
   }
 
   return ensureFirstReadyDesktopManagedAgentProviderStatus(service);
+}
+
+async function ensureRequiredDesktopManagedAgentProviderStatuses(
+  service: IAgentProviderStatusService,
+  requiredProviders: readonly WorkspaceAgentProvider[]
+): Promise<AgentProviderStatusListResponse | null> {
+  const response = await service.ensureLoaded({
+    providers: [...new Set(requiredProviders)]
+  });
+  void ensureAllDesktopManagedAgentProviderStatuses(service);
+  return response;
 }
 
 async function ensureFirstReadyDesktopManagedAgentProviderStatus(

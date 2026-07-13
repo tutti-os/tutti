@@ -110,6 +110,33 @@ test("ensureDesktopManagedAgentProviderStatuses returns immediately when a ready
   assert.deepEqual(calls, [[...desktopManagedAgentProviders]]);
 });
 
+test("ensureDesktopManagedAgentProviderStatuses loads the required provider before the background catalog", async () => {
+  const calls: WorkspaceAgentProvider[][] = [];
+  let snapshot = createProviderStatusSnapshot([]);
+  const service = {
+    ensureLoaded: async (input) => {
+      calls.push([...(input?.providers ?? [])]);
+      if (input?.providers?.[0] === "claude-code") {
+        snapshot = createProviderStatusSnapshot([
+          createProviderStatus({
+            adapterInstalled: true,
+            availability: "auth_required",
+            cliInstalled: true,
+            provider: "claude-code"
+          })
+        ]);
+      }
+      return null;
+    },
+    getSnapshot: () => snapshot
+  } as Partial<IAgentProviderStatusService> as IAgentProviderStatusService;
+
+  await ensureDesktopManagedAgentProviderStatuses(service, ["claude-code"]);
+  await Promise.resolve();
+
+  assert.deepEqual(calls, [["claude-code"], [...desktopManagedAgentProviders]]);
+});
+
 test("projectDesktopManagedAgentsStateForAgentGUI derives AgentGUI managed state from provider status", () => {
   const state = projectDesktopManagedAgentsStateForAgentGUI({
     capturedAt: "2026-06-02T08:00:00.000Z",

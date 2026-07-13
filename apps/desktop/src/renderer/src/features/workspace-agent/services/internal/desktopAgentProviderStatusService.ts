@@ -94,14 +94,21 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
   private readonly dependencies: DesktopAgentProviderStatusServiceDependencies;
   private readonly notifications: NotificationService;
-  private inflightRequest: Promise<AgentProviderStatusListResponse | null> | null =
-    null;
+  private readonly inflightRequests = new Map<
+    string,
+    Promise<AgentProviderStatusListResponse | null>
+  >();
   private readonly accountLifecycle: DesktopAgentProviderAccountLifecycle;
   private readonly pendingActionStatusPolls = new Map<
     string,
     AgentProviderStatusPollTimer
   >();
   private requestSequence = 0;
+  private latestWildcardRequestId = 0;
+  private readonly latestRequestIdByProvider = new Map<
+    WorkspaceAgentProvider,
+    number
+  >();
   private readonly listeners = new Set<() => void>();
   private revision = 0;
   private snapshot: AgentProviderStatusSnapshot = emptySnapshot;
@@ -174,8 +181,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       return this.snapshotResponse();
     }
 
-    if (this.inflightRequest) {
-      await this.inflightRequest;
+    const requestKey = providerStatusRequestKey(input);
+    const inflightRequest = this.inflightRequests.get(requestKey);
+    if (inflightRequest) {
+      await inflightRequest;
       if (this.hasLoadedProviderSnapshot(input.providers)) {
         return this.snapshotResponse();
       }
@@ -190,8 +199,10 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
       includeNetwork?: boolean;
     } = {}
   ): Promise<AgentProviderStatusListResponse | null> {
-    if (this.inflightRequest) {
-      return this.inflightRequest;
+    const requestKey = providerStatusRequestKey(input);
+    const inflightRequest = this.inflightRequests.get(requestKey);
+    if (inflightRequest) {
+      return inflightRequest;
     }
 
     this.setSnapshot({
@@ -202,29 +213,43 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
     const requestId = this.requestSequence + 1;
     this.requestSequence = requestId;
+    this.markLatestStatusRequest(input.providers, requestId);
     const request = withTimeout(
       this.dependencies.tuttidClient.getAgentProviderStatuses(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then(async (response) => {
-        let responseProviders = response.providers;
-        if (this.requestSequence === requestId) {
+        const maybeProbedStatuses =
+          applyDesktopAgentProviderRuntimeProbeFallbacks({
+            probeProvider: (provider) =>
+              this.dependencies.tuttidClient.probeAgentProvider(provider),
+            requestedProviders: input.providers,
+            statuses: response.providers
+          });
+        const probedStatuses = Array.isArray(maybeProbedStatuses)
+          ? maybeProbedStatuses
+          : await maybeProbedStatuses;
+        const currentResponseStatuses = probedStatuses.filter((status) =>
+          this.isLatestStatusRequest(status.provider, requestId)
+        );
+        let responseProviders = [...this.snapshot.statuses];
+        if (currentResponseStatuses.length > 0) {
           const previousStatuses = this.snapshot.statuses;
-          const maybeReconciledStatuses =
-            this.reconcileProviderStatusesWithProbe(
-              previousStatuses,
-              response.providers,
-              input.providers
-            );
-          const reconciledStatuses = Array.isArray(maybeReconciledStatuses)
-            ? maybeReconciledStatuses
-            : await maybeReconciledStatuses;
+          const appliedProviders = currentResponseStatuses.map(
+            (status) => status.provider
+          );
+          const reconciledStatuses = reconcileProviderStatuses({
+            previousStatuses,
+            requestedProviders: appliedProviders,
+            responseStatuses: currentResponseStatuses,
+            transientDowngradeCounts: this.transientDowngradeCounts
+          });
           responseProviders = [...reconciledStatuses];
           this.setSnapshot({
             capturedAt: response.capturedAt,
             defaultProvider: response.defaultProvider,
             error: null,
-            isLoading: false,
+            isLoading: this.inflightRequests.size > 1,
             pendingActions: this.snapshot.pendingActions,
             statuses: reconciledStatuses
           });
@@ -253,11 +278,11 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         };
       })
       .catch(async (error: unknown) => {
-        if (this.requestSequence === requestId) {
+        if (this.isCurrentStatusRequest(input.providers, requestId)) {
           this.setSnapshot({
             ...this.snapshot,
             error: resolveDesktopErrorMessage(error, getActiveLocale()),
-            isLoading: false
+            isLoading: this.inflightRequests.size > 1
           });
         }
         await this.reportNodeResult({
@@ -271,12 +296,15 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
         return null;
       })
       .finally(() => {
-        if (this.inflightRequest === request) {
-          this.inflightRequest = null;
+        if (this.inflightRequests.get(requestKey) === request) {
+          this.inflightRequests.delete(requestKey);
+        }
+        if (this.inflightRequests.size === 0 && this.snapshot.isLoading) {
+          this.setSnapshot({ ...this.snapshot, isLoading: false });
         }
       });
 
-    this.inflightRequest = request;
+    this.inflightRequests.set(requestKey, request);
     return request;
   }
 
@@ -425,13 +453,17 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     providers?: WorkspaceAgentProvider[],
     options?: { includeNetwork?: boolean }
   ): Promise<void> {
-    if (this.inflightRequest) {
-      await this.inflightRequest;
-    }
-    await this.requestStatuses({
+    const input = {
       providers,
       includeNetwork: options?.includeNetwork
-    });
+    };
+    const inflightRequest = this.inflightRequests.get(
+      providerStatusRequestKey(input)
+    );
+    if (inflightRequest) {
+      await inflightRequest;
+    }
+    await this.requestStatuses(input);
   }
 
   subscribe(listener: () => void): () => void {
@@ -494,23 +526,39 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     });
   }
 
-  private reconcileProviderStatusesWithProbe(
-    previousStatuses: readonly AgentProviderStatus[],
-    responseStatuses: readonly AgentProviderStatus[],
-    requestedProviders: readonly WorkspaceAgentProvider[] | undefined
-  ): readonly AgentProviderStatus[] | Promise<readonly AgentProviderStatus[]> {
-    const reconciledStatuses = reconcileProviderStatuses({
-      previousStatuses,
-      requestedProviders,
-      responseStatuses,
-      transientDowngradeCounts: this.transientDowngradeCounts
-    });
-    return applyDesktopAgentProviderRuntimeProbeFallbacks({
-      probeProvider: (provider) =>
-        this.dependencies.tuttidClient.probeAgentProvider(provider),
-      requestedProviders,
-      statuses: reconciledStatuses
-    });
+  private markLatestStatusRequest(
+    providers: readonly WorkspaceAgentProvider[] | undefined,
+    requestId: number
+  ): void {
+    if (!providers || providers.length === 0) {
+      this.latestWildcardRequestId = requestId;
+      return;
+    }
+    for (const provider of providers) {
+      this.latestRequestIdByProvider.set(provider, requestId);
+    }
+  }
+
+  private isLatestStatusRequest(
+    provider: WorkspaceAgentProvider,
+    requestId: number
+  ): boolean {
+    return (
+      requestId >= this.latestWildcardRequestId &&
+      requestId >= (this.latestRequestIdByProvider.get(provider) ?? 0)
+    );
+  }
+
+  private isCurrentStatusRequest(
+    providers: readonly WorkspaceAgentProvider[] | undefined,
+    requestId: number
+  ): boolean {
+    if (!providers || providers.length === 0) {
+      return requestId >= this.latestWildcardRequestId;
+    }
+    return providers.some((provider) =>
+      this.isLatestStatusRequest(provider, requestId)
+    );
   }
 
   private addPendingAction(
@@ -737,6 +785,17 @@ function pendingActionKey(
   actionId: string
 ): string {
   return `${provider}:${actionId}`;
+}
+
+function providerStatusRequestKey(input: {
+  providers?: readonly WorkspaceAgentProvider[];
+  includeNetwork?: boolean;
+}): string {
+  const providers = [...new Set(input.providers ?? [])].sort();
+  return JSON.stringify({
+    includeNetwork: input.includeNetwork === true,
+    providers: providers.length > 0 ? providers : null
+  });
 }
 
 function createOptionalReporterService(

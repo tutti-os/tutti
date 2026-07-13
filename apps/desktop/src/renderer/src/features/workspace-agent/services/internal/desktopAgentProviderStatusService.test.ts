@@ -1300,7 +1300,7 @@ test("a later provider-scoped response merges into a hydrated snapshot instead o
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
 });
 
-test("ensureLoaded waits for unrelated in-flight loads before loading missing providers", async () => {
+test("ensureLoaded starts missing providers without waiting for unrelated in-flight loads", async () => {
   const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const firstStatusRequest = createDeferred<AgentProviderStatusListResponse>();
   const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
@@ -1321,19 +1321,6 @@ test("ensureLoaded waits for unrelated in-flight loads before loading missing pr
   const codexLoad = service.refresh(["codex"]);
   const claudeEnsure = service.ensureLoaded({ providers: ["claude-code"] });
 
-  assert.deepEqual(calls, [["codex"]]);
-
-  firstStatusRequest.resolve(
-    createStatusResponse([
-      createProviderStatus({
-        actions: [],
-        availability: "ready",
-        provider: "codex"
-      })
-    ])
-  );
-  await codexLoad;
-
   assert.deepEqual(calls, [["codex"], ["claude-code"]]);
 
   secondStatusRequest.resolve(
@@ -1347,8 +1334,78 @@ test("ensureLoaded waits for unrelated in-flight loads before loading missing pr
   );
   await claudeEnsure;
 
+  assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+  assert.equal(service.getStatus("codex"), null);
+
+  firstStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await codexLoad;
+
   assert.equal(service.getStatus("codex")?.availability.status, "ready");
   assert.equal(service.getStatus("claude-code")?.availability.status, "ready");
+});
+
+test("a targeted ensure resolves before an older full scan and keeps its newer status", async () => {
+  const calls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const fullStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const codexStatusRequest = createDeferred<AgentProviderStatusListResponse>();
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: {
+      async getAgentProviderStatuses(request) {
+        calls.push(request?.providers);
+        return calls.length === 1
+          ? fullStatusRequest.promise
+          : codexStatusRequest.promise;
+      }
+    } as Partial<TuttidClient> as TuttidClient,
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  const fullLoad = service.ensureLoaded({ providers: ["codex", "cursor"] });
+  const codexLoad = service.ensureLoaded({ providers: ["codex"] });
+
+  assert.deepEqual(calls, [["codex", "cursor"], ["codex"]]);
+
+  codexStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "codex"
+      })
+    ])
+  );
+  await codexLoad;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+
+  fullStatusRequest.resolve(
+    createStatusResponse([
+      createProviderStatus({
+        actions: [{ id: "login", kind: "terminal_command" }],
+        availability: "auth_required",
+        provider: "codex"
+      }),
+      createProviderStatus({
+        actions: [],
+        availability: "ready",
+        provider: "cursor"
+      })
+    ])
+  );
+  await fullLoad;
+
+  assert.equal(service.getStatus("codex")?.availability.status, "ready");
+  assert.equal(service.getStatus("cursor")?.availability.status, "ready");
 });
 
 test("refresh waits for an in-flight load and then requests a fresh status", async () => {

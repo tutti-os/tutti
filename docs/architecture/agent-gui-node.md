@@ -230,6 +230,13 @@ remaining providers in the background. When the empty-home rail is still on
 is still gated, AgentGUI may move the home composer to that first ready target
 so the user can start typing without waiting for every provider to finish
 detection.
+If the standalone route already identifies a required provider or target, its
+provider-scoped status request is the foreground request. It must not wait for
+an unrelated all-provider scan, and a later targeted request may run alongside
+an older catalog scan. Merge concurrent responses by provider and reject stale
+per-provider results so an older full response cannot regress newer readiness.
+The remaining provider catalog continues as background work after the required
+provider resolves.
 Progressive detection snapshots are partial by design. A provider missing from
 the current snapshot means "not checked yet", not "install or login required".
 Desktop AgentGUI hosts that project managed-agent readiness for an already-open
@@ -332,6 +339,12 @@ switches. macOS may use Electron's native bounds animation in parallel; other
 platforms apply the same resolved bounds without requesting unsupported native
 animation. Respect `prefers-reduced-motion` by removing the CSS transition and
 the content-mount delay.
+Lazy mounting also applies to module loading. The standalone shell may derive a
+small reminder count from the activity engine, but it must not statically import
+BrowserNode, TerminalNode, File Manager, App Center, or the full Message Center
+presentation graph. Import each tool body when that tool first opens. Workspace
+App polling and runtime preparation begin when Apps first opens or an explicit
+app launch targets the window, not when the standalone Agent window mounts.
 Header tool actions must use the workbench header's secondary accessory slot so
 the session title and controls share one layout row. Do not absolutely position
 those actions over the title; narrow windows must truncate the title before any
@@ -367,6 +380,11 @@ search controller, and AgentGUI presentation graph load when an Agent surface
 is required. Entering standalone Agent mode starts a dynamic preload of that
 body while allowing the lightweight standalone shell to render independently;
 the body fetch must not block the shell, and OS mode must not trigger it.
+Standalone-only settings, environment, import, and account surfaces are also
+non-critical to the conversation first frame. Load their presentation modules
+behind local Suspense boundaries; panel-host listeners may mount immediately
+after the shell's first animation frame so they remain available before a user
+can invoke them without extending the initial black-screen interval.
 Startup optimizations such as mention browse warming must begin from the
 mounted AgentGUI lifecycle, never from workspace contribution registration.
 File activation in the standalone Agent window must use the host-owned right
