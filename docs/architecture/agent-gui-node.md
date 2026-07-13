@@ -211,8 +211,11 @@ prop and give it only existing neutral context such as `currentUserId` and
 availability, quota, or authorization live entirely inside the React node
 supplied by the host.
 Standalone Agent windows keep right-side tools as UI-local panel tabs. The
-window chrome exposes one right-panel toggle; the panel header owns the active
-tab strip and its add menu for files, terminal, browser, apps, and messages.
+window chrome exposes one right-panel toggle plus quick actions for apps and
+messages while the panel is closed; those quick actions open the right panel
+and mount/select the corresponding tab. Once open, the panel header owns the
+active tab strip and its add menu for files, terminal, browser, apps, and
+messages.
 Opening a tool mounts it as a tab and selecting another tab only changes the
 visible projection; this state is not durable AgentGUI session data.
 Unified empty-home readiness is a host-projected, agent-scoped gate,

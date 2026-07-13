@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode
 } from "react";
+import { AGENT_GUI_DETAIL_MIN_WIDTH_PX } from "@tutti-os/agent-gui";
 import { AgentGuiWorkbenchHeader } from "@tutti-os/agent-gui/workbench";
 import { useWorkspaceSettingsPanelRequest } from "@tutti-os/agent-gui/workspace-settings-panel";
 import { normalizeAgentGUIAgents } from "@tutti-os/agent-gui/agents";
@@ -589,7 +590,10 @@ export function StandaloneAgentWindow({
         contributions={toolWorkbench.contributions}
         fileOpenRequest={fileOpenRequest}
         mainContentMinWidthPx={
-          headerConversationRailWidthPx + agentGuiWorkbenchProviderRailWidthPx
+          nodeState.conversationRailCollapsed
+            ? AGENT_GUI_DETAIL_MIN_WIDTH_PX
+            : headerConversationRailWidthPx +
+              agentGuiWorkbenchProviderRailWidthPx
         }
         renderHeader={(toolActions) => (
           <AgentGuiWorkbenchHeader

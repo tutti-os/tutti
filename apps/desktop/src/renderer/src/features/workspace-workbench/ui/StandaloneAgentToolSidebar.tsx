@@ -304,12 +304,17 @@ export function StandaloneAgentToolSidebar({
         {renderHeader(
           <div
             className={cn(
-              "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
+              "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
               activePanel && "border-b border-[var(--border-1)]"
             )}
             data-standalone-agent-tool-sidebar-header="true"
             style={
-              activePanel ? { width: `${activePanelLayoutWidth}px` } : undefined
+              activePanel
+                ? {
+                    width: `${activePanelWidth}px`,
+                    maxWidth: "100%"
+                  }
+                : undefined
             }
           >
             {activePanel ? (

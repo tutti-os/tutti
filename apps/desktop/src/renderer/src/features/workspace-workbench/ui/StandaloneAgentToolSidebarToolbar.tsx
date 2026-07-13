@@ -145,6 +145,43 @@ export function StandaloneAgentToolSidebarToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
+        {activePanel === null ? (
+          <>
+            <Button
+              aria-label={copy.apps}
+              aria-pressed={activePanel === "apps"}
+              className="relative text-[var(--text-secondary)]"
+              data-standalone-agent-tool-sidebar-quick-action="apps"
+              size="icon-sm"
+              type="button"
+              variant="chrome"
+              onClick={() => onOpenPanel("apps")}
+            >
+              <ToolSidebarPanelIcon
+                aria-hidden
+                className="size-4"
+                panel="apps"
+              />
+            </Button>
+            <Button
+              aria-label={copy.messages}
+              aria-pressed={activePanel === "messages"}
+              className="relative text-[var(--text-secondary)]"
+              data-standalone-agent-tool-sidebar-quick-action="messages"
+              size="icon-sm"
+              type="button"
+              variant="chrome"
+              onClick={() => onOpenPanel("messages")}
+            >
+              <ToolSidebarPanelIcon
+                aria-hidden
+                className="size-4"
+                panel="messages"
+              />
+              <ReminderBadge count={reminders.messages} />
+            </Button>
+          </>
+        ) : null}
         {activePanel ? (
           <Button
             aria-label={`${isExpanded ? copy.shrink : copy.expand} ${copy[activePanel]}`}

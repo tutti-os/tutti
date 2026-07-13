@@ -130,6 +130,25 @@ test("standalone Agent unified panel button uses chrome and active variants", ()
   );
 });
 
+test("standalone Agent quick actions open the apps and messages panel tabs", () => {
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /activePanel === null \? \([\s\S]*?data-standalone-agent-tool-sidebar-quick-action="apps"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("apps"\)\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /data-standalone-agent-tool-sidebar-quick-action="messages"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("messages"\)\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /quick-action="messages"[\s\S]*?ReminderBadge count=\{reminders\.messages\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /\{activePanel === null \? \([\s\S]*?\) : null\}/
+  );
+});
+
 test("standalone Agent panel tabs keep the add menu in the panel header", () => {
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -242,6 +261,17 @@ test("standalone Agent constrains the session title to the conversation flow", (
   assert.match(
     standaloneAgentToolSidebarSource,
     /--agent-gui-tool-sidebar-layout-width[\s\S]*?activePanelLayoutWidth/
+  );
+});
+
+test("standalone Agent panel header stays within the available header width", () => {
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /max-w-full shrink-0 items-center pr-\[var\(--agent-gui-workbench-header-padding-x\)\]/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /width: `\$\{activePanelWidth\}px`,\s*maxWidth: "100%"/
   );
 });
 
