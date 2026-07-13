@@ -15,6 +15,13 @@ export {
 } from "./shared/agentCustomMentionKinds";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
+export type {
+  AgentGUIComposerContentType,
+  AgentGUIComposerFocusMethod,
+  AgentGUIEngagementAnalytics,
+  AgentGUIEngagementContext,
+  AgentGUIEngagementEventContext
+} from "./agent-gui/agentGuiNode/agentGuiEngagementAnalytics";
 export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,

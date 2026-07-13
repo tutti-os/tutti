@@ -35,6 +35,7 @@ import {
   plainTextToAgentRichTextDoc
 } from "./agentRichTextDocument";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
+import type { AgentGUIComposerFocusMethod } from "../agentGuiEngagementAnalytics";
 import {
   createAgentFileMentionContent,
   createAgentMentionContent
@@ -62,6 +63,8 @@ export interface AgentRichTextEditorProps {
   removeMentionLabel?: string;
   className?: string;
   onChange: (value: string) => void;
+  onFocus?: (method: AgentGUIComposerFocusMethod) => void;
+  onUserContentChange?: (value: string) => void;
   onSubmit: () => void;
   onSubmitGuidance?: () => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
@@ -462,6 +465,8 @@ export const AgentRichTextEditor = forwardRef<
     removeMentionLabel,
     className,
     onChange,
+    onFocus,
+    onUserContentChange,
     onSubmit,
     onSubmitGuidance,
     availableCapabilities = [],
@@ -485,6 +490,10 @@ export const AgentRichTextEditor = forwardRef<
   const lastEmittedPromptRef = useRef<string | null>(value);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
+  const onFocusRef = useRef(onFocus);
+  const onUserContentChangeRef = useRef(onUserContentChange);
+  const pendingFocusMethodRef =
+    useRef<AgentGUIComposerFocusMethod>("programmatic");
   const onSubmitRef = useRef(onSubmit);
   const onSubmitGuidanceRef = useRef(onSubmitGuidance);
   const onKeyDownForPaletteRef = useRef(onKeyDownForPalette);
@@ -641,6 +650,8 @@ export const AgentRichTextEditor = forwardRef<
   );
 
   onChangeRef.current = onChange;
+  onFocusRef.current = onFocus;
+  onUserContentChangeRef.current = onUserContentChange;
   onSubmitRef.current = onSubmit;
   onSubmitGuidanceRef.current = onSubmitGuidance;
   onKeyDownForPaletteRef.current = onKeyDownForPalette;
@@ -1029,7 +1040,12 @@ export const AgentRichTextEditor = forwardRef<
         return;
       }
       lastEmittedPromptRef.current = nextPrompt;
+      onUserContentChangeRef.current?.(nextPrompt);
       onChangeRef.current(nextPrompt);
+    },
+    onFocus: () => {
+      onFocusRef.current?.(pendingFocusMethodRef.current);
+      pendingFocusMethodRef.current = "programmatic";
     },
     onCreate: ({ editor: nextEditor }) => {
       editorRef.current = nextEditor;
@@ -1108,6 +1124,31 @@ export const AgentRichTextEditor = forwardRef<
     editorRef.current = editor;
   }, [editor]);
 
+  useEffect(() => {
+    const captureKeyboardFocusIntent = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        pendingFocusMethodRef.current = "keyboard";
+      }
+    };
+    const capturePointerFocusIntent = (event: PointerEvent) => {
+      const editorElement = editorRef.current?.view.dom;
+      pendingFocusMethodRef.current =
+        event.target instanceof Node && editorElement?.contains(event.target)
+          ? "pointer"
+          : "programmatic";
+    };
+    document.addEventListener("keydown", captureKeyboardFocusIntent, true);
+    document.addEventListener("pointerdown", capturePointerFocusIntent, true);
+    return () => {
+      document.removeEventListener("keydown", captureKeyboardFocusIntent, true);
+      document.removeEventListener(
+        "pointerdown",
+        capturePointerFocusIntent,
+        true
+      );
+    };
+  }, []);
+
   useEffect(
     () => () => {
       if (
@@ -1149,6 +1190,7 @@ export const AgentRichTextEditor = forwardRef<
         if (!currentEditor || currentEditor.isDestroyed) {
           return;
         }
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor
           .chain()
           .focus()
@@ -1162,6 +1204,7 @@ export const AgentRichTextEditor = forwardRef<
           return;
         }
         const end = currentEditor.state.doc.content.size;
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor.chain().focus().setTextSelection(end).run();
       },
       getPromptTextBeforeSelection() {
@@ -1190,6 +1233,7 @@ export const AgentRichTextEditor = forwardRef<
         )
           ? "@"
           : " @";
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor.chain().focus().insertContent(triggerText).run();
       },
       insertWorkspaceReferences(items) {
@@ -1197,6 +1241,7 @@ export const AgentRichTextEditor = forwardRef<
         if (!currentEditor || currentEditor.isDestroyed || items.length === 0) {
           return;
         }
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor
           .chain()
           .focus()
@@ -1215,6 +1260,7 @@ export const AgentRichTextEditor = forwardRef<
         if (!currentEditor || currentEditor.isDestroyed || items.length === 0) {
           return;
         }
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor
           .chain()
           .focus()
@@ -1235,6 +1281,7 @@ export const AgentRichTextEditor = forwardRef<
         }
         const to = currentEditor.state.selection.from;
         const from = Math.max(1, to - length);
+        pendingFocusMethodRef.current = "programmatic";
         currentEditor
           .chain()
           .focus()
@@ -1285,7 +1332,13 @@ export const AgentRichTextEditor = forwardRef<
   }, [availableCapabilities, availableSkills, editor, value]);
 
   return (
-    <div className="relative min-w-0" onKeyDownCapture={handleKeyDownCapture}>
+    <div
+      className="relative min-w-0"
+      onKeyDownCapture={handleKeyDownCapture}
+      onPointerDownCapture={() => {
+        pendingFocusMethodRef.current = "pointer";
+      }}
+    >
       {editor ? (
         <EditorContent editor={editor} />
       ) : (
