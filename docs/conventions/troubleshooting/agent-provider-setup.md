@@ -799,3 +799,26 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   `credentials.effectiveSource` only tracks OAuth material (keychain or
   `.credentials.json`). For API-key/proxy users it stays `"none"` even
   after the fix; a connected session is the success signal, not that field.
+
+### Tutti Agent retries a 402 and shows generic provider setup
+
+- Symptom:
+  A request with insufficient Tutti credits displays `Reconnecting... 5/5`,
+  then falls back to a generic provider error card whose action opens local
+  setup instead of account plans.
+- Root cause:
+  The billing boundary collapsed every commerce pre-deduct error into HTTP 402,
+  the agent protocol treated every unexpected HTTP status as retryable, and the
+  daemon classifier did not distinguish the resulting payment failure from a
+  generic provider failure.
+- Invariants:
+  Preserve machine-readable billing codes across commerce, token usage, the LLM
+  gateway, and the agent runtime. Only an actual `INSUFFICIENT_CREDITS` decision
+  may become HTTP 402 / `insufficient_credits`; dependency failures remain 5xx.
+  Unexpected 4xx business responses are non-retryable unless explicitly known
+  to be transient (408, 425, or 429). Classify actionable account failures before
+  generic quota/provider buckets, and route account actions through the host
+  link-action boundary rather than opening URLs directly from transcript UI.
+- Validation:
+  Cover the service error mapping, protocol retry predicate, daemon visible-error
+  classification, and the rendered plans-page action as separate boundary tests.

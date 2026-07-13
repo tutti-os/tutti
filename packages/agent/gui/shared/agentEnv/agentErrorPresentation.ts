@@ -18,6 +18,7 @@ export type AgentRunErrorCode =
   | "provider_config_timeout"
   | "provider_stream_disconnected"
   | "provider_concurrency_limit"
+  | "insufficient_credits"
   | "quota_or_rate_limit"
   | "process_exited"
   | "provider_error"
@@ -35,8 +36,10 @@ export interface AgentErrorPresentation {
    * case no call-to-action is shown (showing one would misrepresent reality).
    */
   focus: AgentEnvPanelFocus | null;
-  /** i18n key for the remediation button. Only meaningful when `focus` is set. */
+  /** i18n key for the remediation button. */
   actionKey: string | null;
+  /** External remediation destination, when the action is account-level. */
+  externalUrl?: string | null;
 }
 
 const NO_CTA = { focus: null, actionKey: null } as const;
@@ -94,6 +97,12 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
   provider_concurrency_limit: {
     messageKey: "agentHost.agentGui.visibleErrorConcurrencyLimit",
     ...NO_CTA
+  },
+  insufficient_credits: {
+    messageKey: "agentHost.agentGui.visibleErrorInsufficientCredits",
+    focus: null,
+    actionKey: "agentHost.agentGui.visibleErrorActionViewPlans",
+    externalUrl: "https://tutti.sh/profile/plan"
   },
   quota_or_rate_limit: {
     messageKey: "agentHost.agentGui.visibleErrorQuotaOrRateLimit",

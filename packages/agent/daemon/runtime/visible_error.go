@@ -185,6 +185,15 @@ func limitVisibleErrorDetail(value string) string {
 func visibleFailureCode(detail string) string {
 	normalized := strings.ToLower(detail)
 	switch {
+	// Tutti billing failures are actionable account state, not a generic provider
+	// crash. Prefer the structured code emitted by llm-token-usage, while also
+	// recognizing the legacy 402 text already present in persisted conversations.
+	case strings.Contains(normalized, "insufficient_credits") ||
+		strings.Contains(normalized, "insufficient credits") ||
+		(strings.Contains(normalized, "402 payment required") &&
+			(strings.Contains(normalized, "pre-deduct credits failed") ||
+				strings.Contains(normalized, "pre_deduct_failed"))):
+		return "insufficient_credits"
 	// A tool MCP server's OAuth failure (Notion/Figma/...) crashes codex's MCP
 	// client and bubbles up here mentioning "access token"/"AuthRequired", which
 	// trips the auth pattern. That is the MCP SERVER needing re-auth, not codex's
@@ -388,6 +397,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 	name := visibleProviderName(provider)
 	if phase == "start" {
 		switch code {
+		case "insufficient_credits":
+			return "Tutti Agent could not start because your Tutti credits are insufficient."
 		case "auth_required":
 			return fmt.Sprintf("%s needs authentication or configuration.", name)
 		case "cli_not_found":
@@ -413,6 +424,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 		}
 	}
 	switch code {
+	case "insufficient_credits":
+		return "Tutti Agent could not continue because your Tutti credits are insufficient."
 	case "auth_required":
 		return fmt.Sprintf("%s needs authentication or configuration.", name)
 	case "cli_not_found":

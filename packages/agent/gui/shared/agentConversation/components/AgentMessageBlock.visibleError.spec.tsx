@@ -1,4 +1,5 @@
 import { fireEvent, render } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import type {
@@ -34,13 +35,18 @@ function buildRow(
   };
 }
 
-function renderBlock(row: AgentMessageRowVM, provider?: string) {
+function renderBlock(
+  row: AgentMessageRowVM,
+  provider?: string,
+  onLinkAction?: ComponentProps<typeof AgentMessageBlock>["onLinkAction"]
+) {
   return render(
     <AgentMessageBlock
       workspaceRoot={null}
       basePath="/"
       row={row}
       provider={provider}
+      onLinkAction={onLinkAction}
       thinkingLabel="thinking"
     />
   );
@@ -160,6 +166,33 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Set up")).toBeNull();
     expect(queryByText("Open setup")).toBeNull();
     expect(queryByText("Sign in")).toBeNull();
+  });
+
+  it("shows an insufficient-credits card that opens Tutti subscription plans", () => {
+    const onLinkAction = vi.fn();
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "insufficient_credits",
+        phase: "turn",
+        provider: "tutti-agent",
+        detail:
+          "unexpected status 402 Payment Required: pre-deduct credits failed",
+        retryable: false
+      }),
+      "tutti-agent",
+      onLinkAction
+    );
+
+    expect(
+      getByText("Your Tutti credits are insufficient to continue this request.")
+    ).toBeTruthy();
+    expect(queryByText("Open setup")).toBeNull();
+    fireEvent.click(getByText("View plans"));
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-url",
+      url: "https://tutti.sh/profile/plan",
+      source: "agent-markdown"
+    });
   });
 
   it("recovers a failed plain auth message into the wizard card (Claude 401)", () => {

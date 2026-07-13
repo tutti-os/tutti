@@ -178,11 +178,13 @@ export function AgentMessageBlock({
             <AgentVisibleErrorMessage
               message={message}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : recoveredError ? (
             <AgentVisibleErrorMessage
               message={recoveredError}
               onAuthLogin={onAuthLogin}
+              onExternalLink={handleLinkClick}
             />
           ) : message.systemNotice ? (
             <AgentSystemNoticeMessage message={message} />
@@ -791,10 +793,12 @@ function recoverVisibleErrorFromFailedMessage(
 }
 
 function AgentVisibleErrorMessage({
-  message
+  message,
+  onExternalLink
 }: {
   message: AgentMessageContentVM;
   onAuthLogin?: (provider?: string | null) => void;
+  onExternalLink?: (href: string) => void;
 }): JSX.Element {
   "use memo";
   const error = message.visibleError;
@@ -802,9 +806,9 @@ function AgentVisibleErrorMessage({
 
   // One card for every run-failure code. The presentation (keyed on the codes
   // the daemon actually emits — see agentErrorPresentation) supplies a granular,
-  // provider-aware message and, when the failure is something the env wizard can
-  // detect or repair, a single deep-linking call-to-action. Transient/server-side
-  // failures resolve to no focus, so no (misleading) wizard button is shown.
+  // provider-aware message and, when the failure has a concrete remediation, a
+  // single env-panel or account-level call-to-action. Transient/server-side
+  // failures resolve to neither destination, so no misleading button is shown.
   const providerLabel = workspaceAgentProviderLabel(
     error?.provider ?? "unknown"
   );
@@ -814,6 +818,7 @@ function AgentVisibleErrorMessage({
     : visibleErrorTitle(message);
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
+  const externalUrl = presentation?.externalUrl ?? null;
   const hint = visibleErrorHint(message);
   return (
     <section
@@ -838,18 +843,24 @@ function AgentVisibleErrorMessage({
             />
           ) : null}
         </div>
-        {focus && actionKey ? (
+        {actionKey && (focus || (externalUrl && onExternalLink)) ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="mt-0.5 shrink-0"
-            onClick={() =>
-              openAgentEnvPanel({
-                provider: error?.provider ?? "codex",
-                focus
-              })
-            }
+            onClick={() => {
+              if (externalUrl) {
+                onExternalLink?.(externalUrl);
+                return;
+              }
+              if (focus) {
+                openAgentEnvPanel({
+                  provider: error?.provider ?? "codex",
+                  focus
+                });
+              }
+            }}
           >
             {translate(actionKey)}
           </Button>
