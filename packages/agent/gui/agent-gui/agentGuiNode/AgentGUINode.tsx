@@ -75,6 +75,7 @@ import {
 } from "../workspaceDesktop/view/desktopDockAgentProbeTooltipModel";
 import { AgentProbeInfoPopover } from "../workspaceDesktop/view/AgentProbeInfoPopover";
 import type { AgentComposerProps } from "./AgentComposer";
+import type { AgentGUIEngagementAnalytics } from "./agentGuiEngagementAnalytics";
 import {
   getAgentHostManagedToolchainAgentByName,
   resolveAgentHostManagedToolchainAgentAction
@@ -296,6 +297,7 @@ export interface AgentGUINodeProps {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
   }) => void | Promise<void>;
+  engagementAnalytics?: AgentGUIEngagementAnalytics;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
@@ -738,6 +740,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   renderSidebarFooter,
   defaultAgentTargetId = null,
   onWorkspaceFileReferencesAdded,
+  engagementAnalytics,
   onOpenConversationWindow,
   onClose,
   onResize,
@@ -2026,6 +2029,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                 ? handleWorkspaceFileReferencesAdded
                 : undefined
             }
+            engagementAnalytics={engagementAnalytics}
             resolveDroppedFileReferences={resolveDroppedFileReferences}
             onConversationRailWidthChanged={handleConversationRailWidthChanged}
             labels={labels}

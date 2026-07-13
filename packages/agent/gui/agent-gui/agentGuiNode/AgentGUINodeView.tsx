@@ -127,6 +127,11 @@ import type {
   AgentGUIAgentTarget
 } from "../../types";
 import { AgentGUIHeroAgentCarousel } from "./AgentGUIHeroAgentCarousel";
+import {
+  useAgentGUIEngagementAnalytics,
+  type AgentGUIComposerEngagementAnalytics,
+  type AgentGUIEngagementAnalytics
+} from "./agentGuiEngagementAnalytics";
 import { TaskSearchField } from "../RoomIssueNode/TaskSearchField";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -760,6 +765,7 @@ interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
+  engagementAnalytics?: AgentGUIEngagementAnalytics;
   resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
@@ -1221,6 +1227,7 @@ export function AgentGUINodeView({
   detailMinWidthPx,
   uiLanguage,
   onWorkspaceFileReferencesAdded,
+  engagementAnalytics,
   resolveDroppedFileReferences = null,
   onConversationRailWidthChanged,
   labels,
@@ -1240,6 +1247,37 @@ export function AgentGUINodeView({
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
   const layoutElementRef = useRef<HTMLDivElement | null>(null);
+  const engagementContext = useMemo(
+    () =>
+      ({
+        agentSessionId: viewModel.activeConversationId,
+        agentTargetId:
+          viewModel.activeConversation?.agentTargetId ??
+          viewModel.selectedAgentTarget.agentTargetId ??
+          viewModel.selectedAgentTarget.targetId ??
+          null,
+        composerReady: isAgentProviderReady,
+        conversationState: viewModel.activeConversationId ? "existing" : "new",
+        provider:
+          viewModel.activeConversation?.provider ??
+          viewModel.selectedAgentTarget.provider ??
+          viewModel.data.provider
+      }) as const,
+    [
+      isAgentProviderReady,
+      viewModel.activeConversation,
+      viewModel.activeConversationId,
+      viewModel.data.provider,
+      viewModel.selectedAgentTarget
+    ]
+  );
+  const composerEngagementAnalytics = useAgentGUIEngagementAnalytics({
+    analytics: engagementAnalytics,
+    context: engagementContext,
+    elementRef: layoutElementRef,
+    isActive,
+    previewMode
+  });
   const railResizeInteractionRef = useRef<{
     lastWidthPx: number;
     pointerId: number;
@@ -1985,6 +2023,7 @@ export function AgentGUINodeView({
             onLinkAction={onLinkAction}
             onHandoffConversation={onHandoffConversation}
             capabilityMenuState={capabilityMenuState}
+            composerEngagementAnalytics={composerEngagementAnalytics}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
@@ -2198,6 +2237,7 @@ interface AgentGUIDetailPaneProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
+  composerEngagementAnalytics?: AgentGUIComposerEngagementAnalytics;
   onCapabilitySettingsRequest?: AgentComposerProps["onCapabilitySettingsRequest"];
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
@@ -2300,6 +2340,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
+  composerEngagementAnalytics,
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
@@ -3108,6 +3149,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels: composerLabels,
       workspaceUserProjectI18n,
       capabilityMenuState,
+      engagementAnalytics: composerEngagementAnalytics,
       onDraftContentChange: updateDraftContent,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
@@ -3150,6 +3192,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       canQueueWhileBusy,
       backgroundAgentStatusText,
       capabilityMenuState,
+      composerEngagementAnalytics,
       canSwitchComposerProvider,
       composerDisabled,
       composerDisabledReason,

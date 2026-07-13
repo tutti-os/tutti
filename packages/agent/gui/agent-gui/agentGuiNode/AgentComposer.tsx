@@ -171,6 +171,10 @@ import {
 import { cursorColorfulUrl } from "../../managedAgentIconAssets";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../types";
+import type {
+  AgentGUIComposerContentType,
+  AgentGUIComposerEngagementAnalytics
+} from "./agentGuiEngagementAnalytics";
 
 export { formatSlashStatusTokenCount };
 
@@ -510,6 +514,7 @@ export interface AgentComposerProps {
     };
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
+  engagementAnalytics?: AgentGUIComposerEngagementAnalytics;
   onDraftContentChange: (draftContent: AgentComposerDraft) => void;
   onProjectPathChange?: (
     path: string | null,
@@ -1141,6 +1146,7 @@ export function AgentComposer({
   handoffMenuLabel,
   labels,
   workspaceUserProjectI18n,
+  engagementAnalytics,
   onDraftContentChange,
   onProjectPathChange = () => {},
   onSettingsChange,
@@ -1170,6 +1176,14 @@ export function AgentComposer({
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
   const draftLargeTexts = draftContent.largeTexts ?? [];
+  const reportContentEntered = useStableEventCallback(
+    (contentType: AgentGUIComposerContentType) => {
+      engagementAnalytics?.contentEntered({
+        contentType,
+        hadPrefill: agentComposerDraftHasContent(draftContent)
+      });
+    }
+  );
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
@@ -2316,6 +2330,16 @@ export function AgentComposer({
       onDraftContentChange({ ...draftContent, prompt: nextDraft });
     }
   );
+  const handleUserContentChange = useStableEventCallback(
+    (nextPrompt: string): void => {
+      if (
+        !agentComposerDraftHasContent({ ...draftContent, prompt: nextPrompt })
+      ) {
+        return;
+      }
+      reportContentEntered("text");
+    }
+  );
 
   const clearGoalModeBadge = useCallback((): void => {
     if (!isGoalModeActive) {
@@ -2380,12 +2404,14 @@ export function AgentComposer({
       }));
       const nextDraftImages = [...currentDraftImages, ...nextImages];
       draftImagesRef.current = nextDraftImages;
-      onDraftContentChange({
+      const nextDraftContent = {
         prompt: draftPromptRef.current,
         images: nextDraftImages,
         files: draftFilesRef.current,
         largeTexts: draftLargeTextsRef.current
-      });
+      };
+      reportContentEntered("image");
+      onDraftContentChange(nextDraftContent);
       if (!uploadPromptContent) {
         return;
       }
@@ -2497,6 +2523,7 @@ export function AgentComposer({
       onDraftContentChange,
       onPromptImagesUnsupported,
       promptImagesSupported,
+      reportContentEntered,
       workspaceId
     ]
   );
@@ -2588,6 +2615,7 @@ export function AgentComposer({
       if (!normalizedText.trim()) {
         return;
       }
+      reportContentEntered("large_text");
       // Capability is resolved at paste time (not render time): the editor
       // always routes large pastes here, so a runtime that becomes ready a tick
       // after mount still lands the very first paste as a chip.
@@ -2697,6 +2725,7 @@ export function AgentComposer({
       agentActivityRuntime,
       canUploadAttachment,
       onDraftContentChange,
+      reportContentEntered,
       workspaceId
     ]
   );
@@ -3971,6 +4000,8 @@ export function AgentComposer({
                     disabled={inputDisabled}
                     className={styles.composerTextarea}
                     onChange={handleDraftChange}
+                    onFocus={(method) => engagementAnalytics?.focused(method)}
+                    onUserContentChange={handleUserContentChange}
                     onSubmit={submitCurrentPrompt}
                     onSubmitGuidance={() =>
                       submitCurrentPrompt({ guidance: true })

@@ -934,12 +934,14 @@ describe("AgentRichTextEditor", () => {
 
   it("syncs external value changes without emitting another change", async () => {
     const onChange = vi.fn();
+    const onUserContentChange = vi.fn();
     const rendered = render(
       <AgentRichTextEditor
         value="alpha"
         disabled={false}
         placeholder="Prompt"
         onChange={onChange}
+        onUserContentChange={onUserContentChange}
         onSubmit={vi.fn()}
       />
     );
@@ -953,12 +955,65 @@ describe("AgentRichTextEditor", () => {
         disabled={false}
         placeholder="Prompt"
         onChange={onChange}
+        onUserContentChange={onUserContentChange}
         onSubmit={vi.fn()}
       />
     );
 
     await waitFor(() => expect(editor.textContent).toContain("beta"));
     expect(onChange).not.toHaveBeenCalled();
+    expect(onUserContentChange).not.toHaveBeenCalled();
+  });
+
+  it("classifies programmatic, pointer, and keyboard focus", async () => {
+    const onFocus = vi.fn();
+    const ref = createRef<AgentRichTextEditorHandle>();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onFocus={onFocus}
+        onSubmit={vi.fn()}
+      />
+    );
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+
+    act(() => ref.current?.focusAtEnd());
+    await waitFor(() =>
+      expect(onFocus).toHaveBeenLastCalledWith("programmatic")
+    );
+
+    fireEvent.blur(editor);
+    fireEvent.pointerDown(editor);
+    fireEvent.focus(editor);
+    await waitFor(() => expect(onFocus).toHaveBeenLastCalledWith("pointer"));
+
+    fireEvent.blur(editor);
+    fireEvent.keyDown(document, { key: "Tab" });
+    fireEvent.focus(editor);
+    await waitFor(() => expect(onFocus).toHaveBeenLastCalledWith("keyboard"));
+  });
+
+  it("reports user editor updates separately from controlled prefill", async () => {
+    const onUserContentChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onUserContentChange={onUserContentChange}
+        onSubmit={vi.fn()}
+      />
+    );
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    fireEvent.paste(editor, { clipboardData: clipboard("hello") });
+    await waitFor(() =>
+      expect(onUserContentChange).toHaveBeenLastCalledWith("hello")
+    );
   });
 
   it("hydrates controlled file mention markdown as mention chips", async () => {

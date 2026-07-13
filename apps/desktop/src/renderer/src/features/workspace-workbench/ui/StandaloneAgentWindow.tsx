@@ -294,6 +294,11 @@ export function StandaloneAgentWindow({
       workspaceUserProjectService
     ]
   );
+  const engagementAnalytics = useMemo(
+    () =>
+      agentGuiHostInput.createAgentGUIEngagementAnalytics("standalone_agent"),
+    [agentGuiHostInput]
+  );
   const dockPreviewCache = useMemo(
     () => createDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
@@ -618,6 +623,7 @@ export function StandaloneAgentWindow({
           agentsLoading={agents === null}
           contextMentionProviders={agentGuiHostInput.contextMentionProviders}
           runtimeApi={desktopApi.runtime}
+          engagementAnalytics={engagementAnalytics}
           trackAgentProviderChatReady={
             agentGuiHostInput.trackAgentProviderChatReady
           }

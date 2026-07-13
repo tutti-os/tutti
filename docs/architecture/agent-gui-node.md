@@ -1325,6 +1325,26 @@ composer draft + activeConversationId
 
 User-visible rules:
 
+- AgentGUI engagement analytics cross the package boundary through the optional
+  typed `engagementAnalytics` callbacks. The package owns DOM visibility,
+  focus modality, user-edit detection, per-visit deduplication, and buffering;
+  the desktop host owns reporter construction, product event names, analytics
+  fields, and transport. Do not import desktop analytics services into
+  `@tutti-os/agent-gui`.
+- A chat-panel exposure requires the AgentGUI node to be active, the document
+  to be visible and focused, and at least half of the AgentGUI layout to remain
+  in the viewport for one second. Preview surfaces never report engagement.
+  Focus or content interaction during that dwell window is buffered and emitted
+  only after exposure, using the same `panelVisitId`.
+- Composer focus analytics must preserve whether focus came from pointer,
+  keyboard, or programmatic focus. New-conversation activation and provider
+  switching intentionally focus the editor in code, so raw DOM focus counts
+  are not a proxy for deliberate user engagement.
+- Content-entry analytics report only the first user-created sendable content
+  in each visible visit. Controlled draft hydration and prefill must not emit a
+  user-edit event. Never send prompt text, file names, file paths, mention URIs,
+  or attachment payloads through engagement analytics.
+
 - Home composer submit with no active conversation starts activation. Detail
   composer submit with an active conversation sends input. First-message
   activation immediately enters an optimistic conversation so the submitted
