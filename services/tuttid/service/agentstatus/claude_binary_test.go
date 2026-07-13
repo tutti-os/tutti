@@ -240,7 +240,7 @@ func TestEnsureClaudeCodeBinaryFallsBackToNPM(t *testing.T) {
 }
 
 func TestEnsureClaudeCodeBinaryRejectsChecksumMismatch(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		payload := []byte("tampered payload of matching length!!!!!!")
 		_, _ = w.Write(zstdCompress(t, payload))
 	}))
@@ -252,7 +252,7 @@ func TestEnsureClaudeCodeBinaryRejectsChecksumMismatch(t *testing.T) {
 	// Match the manifest size so only the checksum gate can reject it.
 	tampered := make([]byte, len(fixture.payload))
 	copy(tampered, "tampered payload")
-	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(zstdCompress(t, tampered))
 	})
 
