@@ -115,6 +115,12 @@ function agentHostSessionFromCore(
     effectiveStatus: agentHostEffectiveStatusFromDisplay(displayStatus),
     id,
     lifecycleStatus: agentHostLifecycleStatusFromDisplay(displayStatus),
+    // Import-classification markers ride on runtimeContext; dropping them
+    // here would strip `imported`/no-project flags from every projected
+    // snapshot and leave summaries depending on the initial daemon list.
+    ...(session.runtimeContext
+      ? { runtimeContext: session.runtimeContext }
+      : {}),
     presenceId,
     pinnedAtUnixMs: session.pinnedAtUnixMs,
     provider: session.provider,

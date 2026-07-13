@@ -926,6 +926,9 @@ export interface AgentHostWorkspaceAgentSession {
   title?: string;
   status?: AgentHostWorkspaceAgentSessionStatus;
   syncState?: AgentHostWorkspaceAgentSyncState;
+  // Tutti-app-level annotations stamped at import time (imported,
+  // externalImportNoProject, ...); conversation summaries read them.
+  runtimeContext?: Record<string, unknown>;
 }
 
 export interface AgentHostWorkspaceAgentSyncState {

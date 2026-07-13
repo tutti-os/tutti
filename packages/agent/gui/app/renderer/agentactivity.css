@@ -2837,6 +2837,15 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-chrome__card--success {
+  /* --state-success alone reads ~2:1 against the light-theme card wash;
+     mixing toward --text-primary keeps the hue while adapting the contrast
+     in both themes. Borders/backgrounds stay on the raw token. */
+  --agent-gui-chrome-success-foreground: color-mix(
+    in srgb,
+    var(--state-success) 62%,
+    var(--text-primary)
+  );
+
   border-color: color-mix(in srgb, var(--state-success) 28%, transparent);
   border-bottom: 0;
   border-top-left-radius: 8px;
@@ -2857,12 +2866,12 @@ aside.workspace-agents-status-panel
 
 .agent-gui-chrome__card--success .agent-gui-chrome__icon,
 .agent-gui-chrome__card--success .agent-gui-chrome__message {
-  color: var(--state-success);
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
 }
 
 .agent-gui-chrome__success-ghost-button {
   background: transparent;
-  color: var(--state-success);
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
   font-size: 13px;
   font-weight: 400;
 }
@@ -2873,7 +2882,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-chrome__success-ghost-button:focus-visible {
   border-color: var(--state-success);
-  color: var(--state-success);
+  color: var(--agent-gui-chrome-success-foreground, var(--state-success));
   box-shadow: 0 0 0 2px
     color-mix(in srgb, var(--state-success) 25%, transparent);
 }

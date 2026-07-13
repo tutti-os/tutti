@@ -9932,6 +9932,48 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("uses the imported-conversation copy for non-resumable imported sessions", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            resumable: false,
+            runtimeContext: { imported: true }
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          resumable: false,
+          runtimeContext: { imported: true }
+        })
+      )
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.sessionChrome.recovery).toEqual(
+        expect.objectContaining({ kind: "resume-unavailable" })
+      );
+    });
+    expect(result.current.viewModel.sessionChrome.recovery?.message).toBe(
+      "This conversation was imported successfully. Start a new session and @this conversation to keep going."
+    );
+  });
+
   it("does not keep reloading durable session state after a non-local resume failure", async () => {
     vi.useFakeTimers();
     let activityListener:

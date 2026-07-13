@@ -150,11 +150,8 @@ export function AgentSessionChrome({
       ? labels.activatingSession
       : (visibleRecovery?.message ?? "");
   const recoveryHasInlineAction =
-    (visibleRecovery?.kind === "resume-unavailable" &&
-      visibleRecovery.followupAction === "continue-in-new-conversation") ||
-    (visibleRecovery?.kind === "failed" &&
-      (visibleRecovery.followupAction === "continue-in-new-conversation" ||
-        visibleRecovery.canRetry !== false));
+    visibleRecovery?.kind === "resume-unavailable" ||
+    (visibleRecovery?.kind === "failed" && visibleRecovery.canRetry !== false);
   const activatingMessage = splitTrailingEllipsis(recoveryMessage);
   const hasContent =
     visibleAuth !== null ||
@@ -290,9 +287,9 @@ export function AgentSessionChrome({
               </ChromeMessageTooltip>
             </div>
             <div className={styles.chromeInlineActions}>
-              {visibleRecovery.kind === "resume-unavailable" &&
-              visibleRecovery.followupAction ===
-                "continue-in-new-conversation" ? (
+              {/* followupAction is required on this variant, so the kind
+                  check alone guarantees the continue action. */}
+              {visibleRecovery.kind === "resume-unavailable" ? (
                 <Button
                   type="button"
                   variant="ghost"
