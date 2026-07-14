@@ -1593,6 +1593,13 @@ activeConversationId
 
 User-visible rules:
 
+- Transcript message bodies and copy payloads retain their rich-text
+  serialization. Compact presentation derived from those messages, including
+  the user-message locator, activity summaries, and tooltips, converts rich
+  links to human-readable labels in the frontend projection without mutating
+  the source message. This display formatter is separate from session-title
+  canonicalization: new and migrated `session.title` values remain daemon-owned
+  plain text and must not depend on renderer parsing.
 - A row can be selected while its transcript is still loading. Treat rail
   selection and detail message loading as separate states.
 - Transcript rows are projected data. Rendering components should not parse

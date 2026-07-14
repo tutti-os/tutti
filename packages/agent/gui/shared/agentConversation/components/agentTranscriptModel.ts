@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import { normalizeAgentTitleText } from "../../utils/agentTitleText.ts";
 
 export interface AgentTranscriptTurnGroup {
   key: string;
@@ -146,7 +147,7 @@ export function summarizeUserMessageRow(
 }
 
 export function normalizeLocatorSummary(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return normalizeAgentTitleText(value);
 }
 
 export function escapeCssString(value: string): string {

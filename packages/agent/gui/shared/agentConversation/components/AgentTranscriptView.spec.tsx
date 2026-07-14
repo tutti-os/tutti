@@ -303,6 +303,53 @@ describe("AgentTranscriptView", () => {
     }
   });
 
+  it("formats rich mention syntax as plain text in user message locator previews", () => {
+    const mentionPrompt =
+      "[@我打算去泰国旅游，你制定下旅游计划](mention://agent-session/session-source?workspaceId=workspace-1) 这个计划你锐评一下";
+    const displayPrompt =
+      "@我打算去泰国旅游，你制定下旅游计划 这个计划你锐评一下";
+    const base = detailViewModel();
+
+    render(
+      <AgentTranscriptView
+        conversation={projectAgentConversationVM(
+          detailViewModel({
+            turns: [
+              {
+                ...base.turns[0]!,
+                userMessage: { id: "user-1", body: mentionPrompt },
+                userMessages: [{ id: "user-1", body: mentionPrompt }]
+              },
+              {
+                id: "turn-2",
+                userMessage: { id: "user-2", body: "啊？" },
+                userMessages: [{ id: "user-2", body: "啊？" }],
+                agentMessages: [],
+                toolCalls: [],
+                toolCallCount: 0,
+                hasFailedToolCall: false,
+                agentItems: []
+              }
+            ]
+          })
+        )}
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files",
+          userMessageLocator: "User messages"
+        }}
+      />
+    );
+
+    fireEvent.mouseEnter(screen.getByTestId("agent-message-locator"));
+    const panel = screen.getByTestId("agent-message-locator-panel");
+    expect(within(panel).getByText(displayPrompt)).toBeTruthy();
+    expect(within(panel).getByText("啊？")).toBeTruthy();
+    expect(within(panel).queryByText(mentionPrompt)).toBeNull();
+  });
+
   it("locates the nearest user message when clicking the locator rail around a dot", () => {
     const scrollIntoView = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
