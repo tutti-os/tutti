@@ -290,6 +290,7 @@ export interface AgentGUIRailViewModel {
 }
 
 export interface AgentGUIDetailViewModel {
+  availability: "loading" | "ready" | "not_found" | "error";
   isLoadingMessages: boolean;
   isLoadingOlderMessages: boolean;
   hasOlderMessages: boolean;

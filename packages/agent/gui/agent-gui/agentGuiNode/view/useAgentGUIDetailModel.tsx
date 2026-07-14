@@ -152,12 +152,10 @@ export function useAgentGUIDetailModel(input: Input) {
       ? null
       : activePrompt;
   const showTimelineSkeleton =
-    viewModel.detail.isLoadingMessages &&
+    viewModel.detail.availability === "loading" &&
     (!conversation || conversation.rows.length === 0);
   const showUnavailableChatEmpty =
-    hasActiveConversation &&
-    !showTimelineSkeleton &&
-    (!conversation || conversation.rows.length === 0);
+    hasActiveConversation && viewModel.detail.availability === "not_found";
   const activeDetailStatus = resolveConversationDetailStatus(
     viewModel.detail.conversationDetail
   );
@@ -235,18 +233,21 @@ export function useAgentGUIDetailModel(input: Input) {
     ]
   );
   const conversationFlowEmpty = useMemo(
-    () => (
-      <div
-        className={styles.unavailableChatEmpty}
-        data-testid="agent-gui-unavailable-chat-empty"
-      >
-        <UnavailableChatIcon className={styles.unavailableChatEmptyIcon} />
-        <span className={styles.unavailableChatEmptyText}>
-          {labels.conversationUnavailable}
-        </span>
-      </div>
-    ),
-    [labels.conversationUnavailable]
+    () =>
+      showUnavailableChatEmpty ? (
+        <div
+          className={styles.unavailableChatEmpty}
+          data-testid="agent-gui-unavailable-chat-empty"
+        >
+          <UnavailableChatIcon className={styles.unavailableChatEmptyIcon} />
+          <span className={styles.unavailableChatEmptyText}>
+            {labels.conversationUnavailable}
+          </span>
+        </div>
+      ) : (
+        <></>
+      ),
+    [labels.conversationUnavailable, showUnavailableChatEmpty]
   );
   const chromeLabels = useMemo(
     () => ({

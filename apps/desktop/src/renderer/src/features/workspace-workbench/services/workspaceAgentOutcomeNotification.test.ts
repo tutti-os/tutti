@@ -62,6 +62,7 @@ test("controller notifies a new turn that first appears settled in one engine ba
   markWorkspaceReconcileReady(engine);
   const harness = createOutcomeNotificationHarness(engine);
 
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
   dispatchSession(engine);
   dispatchTurn(engine, "settled", "completed");
 
@@ -83,6 +84,7 @@ test("controller baselines settled turns received during initial hydration", () 
 
   dispatchTurn(engine, "running", undefined, "new-turn");
   dispatchTurn(engine, "settled", "completed", "new-turn");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed", "new-turn"));
   assert.equal(harness.notifications.length, 1);
   harness.controller.dispose();
 });
@@ -95,6 +97,7 @@ test("controller notifies once for a canonical running to settled transition", (
 
   dispatchTurn(engine, "running");
   dispatchTurn(engine, "settled", "completed");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
   dispatchTurn(engine, "settled", "completed");
 
   assert.deepEqual(harness.foregroundNotifications, [
@@ -134,8 +137,22 @@ test("controller uses the canonical engine session title", () => {
 
   dispatchTurn(engine, "running");
   dispatchTurn(engine, "settled", "completed");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
 
   assert.equal(harness.notifications[0]?.title, "Build feature completed");
+  harness.controller.dispose();
+});
+
+test("controller does not notify a historical settled turn hydrated after baseline", () => {
+  const engine = createTestEngine();
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
+
+  dispatchSession(engine);
+  dispatchTurn(engine, "settled", "completed", "historical-turn");
+
+  assert.deepEqual(harness.foregroundNotifications, []);
+  assert.deepEqual(harness.notifications, []);
   harness.controller.dispose();
 });
 
@@ -233,13 +250,30 @@ function activitySession(): AgentActivitySession {
   });
 }
 
+function turnUpdateEvent(
+  phase: AgentActivityTurn["phase"],
+  outcome?: AgentActivityTurn["outcome"],
+  turnId = "turn-1"
+): unknown {
+  return {
+    data: {
+      activeTurnId: phase === "settled" ? null : turnId,
+      agentSessionId: "session-1",
+      turn: canonicalTurn(phase, outcome, turnId),
+      workspaceId: "ws-1"
+    },
+    eventType: "turn_update"
+  };
+}
 function createOutcomeNotificationHarness(engine: AgentSessionEngine): {
   controller: ReturnType<
     typeof createWorkspaceAgentOutcomeNotificationController
   >;
+  events: Array<(event: unknown) => void>;
   foregroundNotifications: unknown[];
   notifications: NotificationMessage[];
 } {
+  const events: Array<(event: unknown) => void> = [];
   const foregroundNotifications: unknown[] = [];
   const notifications: NotificationMessage[] = [];
   const controller = createWorkspaceAgentOutcomeNotificationController({
@@ -264,9 +298,17 @@ function createOutcomeNotificationHarness(engine: AgentSessionEngine): {
     workspaceAgentActivityService: {
       getSessionEngine() {
         return engine;
+      },
+      onSessionEvent(workspaceId, listener) {
+        assert.equal(workspaceId, "ws-1");
+        events.push(listener);
+        return () => {
+          const index = events.indexOf(listener);
+          if (index >= 0) events.splice(index, 1);
+        };
       }
     },
     workspaceId: "ws-1"
   });
-  return { controller, foregroundNotifications, notifications };
+  return { controller, events, foregroundNotifications, notifications };
 }

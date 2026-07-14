@@ -76,12 +76,14 @@ export function useAgentConversationSelection(
       if (!normalized) return;
       const current = inputRef.current;
       const previous = current.selection.getActiveSessionId();
+      const hasRenderableMessages =
+        current.detail.hasRenderableMessages(normalized);
       current.selection.setComposerHome(false);
       const pendingSessionId = current.activation.getPendingSessionId();
       if (previous && previous !== normalized)
         current.activation.forget(previous);
       if (previous !== normalized) {
-        if (current.detail.hasRenderableMessages(normalized)) {
+        if (hasRenderableMessages) {
           current.detail.setLoading(false);
         } else {
           current.detail.markPending(normalized);
@@ -98,7 +100,7 @@ export function useAgentConversationSelection(
       current.selection.clearDetailError();
       current.detail.reload(normalized, {
         reloadConversations,
-        reloadDetail: previous === normalized
+        reloadDetail: previous === normalized || !hasRenderableMessages
       });
       persistActiveConversation(normalized);
     },

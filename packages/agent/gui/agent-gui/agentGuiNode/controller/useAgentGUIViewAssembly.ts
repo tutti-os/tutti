@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAgentGUIViewModel } from "../model/useAgentGUIViewModel";
 import type { AgentGUIProviderRailMode } from "../../../types";
+import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 import { useAgentGUIControllerActions } from "./useAgentGUIControllerActions";
 import { useAgentGUIConversationDetail } from "./useAgentGUIConversationDetail";
@@ -55,6 +56,7 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
   SessionDetailTransport &
   OperationActions & {
     operationActions: OperationActions;
+    detailAvailability: AgentGUIDetailViewModel["availability"];
     updateSelectedProjectPath: Parameters<
       typeof useAgentGUIControllerActions
     >[0]["updateSelectedProjectPath"];
@@ -132,6 +134,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       listError: input.listError
     },
     detail: {
+      availability: input.detailAvailability,
       isLoadingMessages: input.isLoadingMessages,
       isLoadingOlderMessages:
         input.activeSessionView?.isLoadingOlderMessages ?? false,

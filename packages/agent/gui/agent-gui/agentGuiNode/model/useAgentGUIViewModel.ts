@@ -33,6 +33,7 @@ export function useAgentGUIViewModel(
   const detail = useMemo(
     () => candidate.detail,
     [
+      candidate.detail.availability,
       candidate.detail.avoidGroupingEdits,
       candidate.detail.backgroundAgentCount,
       candidate.detail.conversation,

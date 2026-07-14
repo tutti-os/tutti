@@ -113,6 +113,17 @@ export function useAgentGUISessionDetailTransport(input: {
     },
     [sessionEngine, workspaceId]
   );
+  const reconcileSessionDetail = (agentSessionId: string) => {
+    const normalized = agentSessionId.trim();
+    if (!normalized) return;
+    sessionEngine.dispatch({
+      agentSessionId: normalized,
+      needsMessages: true,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId
+    });
+  };
   const paging = useAgentConversationMessagePaging({
     diagnostics: {
       error: ({ agentSessionId, context, error, phase }) =>
@@ -152,8 +163,7 @@ export function useAgentGUISessionDetailTransport(input: {
           sessionEngine.getSnapshot(),
           agentSessionId
         )?.status ?? null,
-      loadSessionState: (agentSessionId) => loadSessionState(agentSessionId),
-      refreshMessages: refreshMessagesFromSnapshot,
+      reconcileDetail: reconcileSessionDetail,
       syncConversationList: (agentSessionId) =>
         void syncConversationListProjectionRef.current(agentSessionId)
     },

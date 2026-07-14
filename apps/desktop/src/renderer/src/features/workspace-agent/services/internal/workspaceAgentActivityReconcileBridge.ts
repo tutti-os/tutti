@@ -421,6 +421,12 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       type: "session/activityObserved",
       workspaceId
     });
+    if (input.eventType === "turn_update") {
+      this.emitSessionEvent(workspaceId, {
+        data: input.data,
+        eventType: input.eventType
+      });
+    }
   }
 
   private scheduleAgentActivityUpdate(

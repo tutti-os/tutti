@@ -16,6 +16,7 @@ import type {
   AgentGUIProviderReadinessGate,
   AgentGUIAgentTarget
 } from "../../../types";
+import type { AgentGUIDetailViewModel } from "../model/agentGuiNodeTypes";
 import {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   conversationSummaryFromAgentSession,
@@ -657,6 +658,20 @@ export function useAgentGUINodeController({
     updateComposerSettingsRef,
     workspaceId
   });
+  const isLoadingMessages =
+    localState.isLoadingMessages ||
+    sessionEngineState.activeSessionReconcilePending;
+  const detailAvailability: AgentGUIDetailViewModel["availability"] =
+    activeConversationId === null
+      ? "ready"
+      : sessionEngineState.activeEngineSessionDeleted
+        ? "not_found"
+        : isLoadingMessages
+          ? "loading"
+          : sessionEngineState.activeSessionReconcileError ||
+              localState.detailError
+            ? "error"
+            : "ready";
   return useAgentGUIViewAssembly({
     ...providerCatalogSelection,
     ...localState,
@@ -690,8 +705,10 @@ export function useAgentGUINodeController({
     data,
     defaultAgentTargetId,
     errorFor: activation.errorFor,
+    detailAvailability,
     isCreatingConversation,
     isLoadingConversations,
+    isLoadingMessages,
     loadComposerOptionsForTarget,
     latestPendingNewActivation,
     normalizedComingSoonProviders,

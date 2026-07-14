@@ -229,8 +229,7 @@ export interface AgentConversationMessagePagingInput {
   projection: ConversationMessagePagingProjectionPort;
   reload: {
     getActivationStatus(agentSessionId: string): string | null;
-    loadSessionState(agentSessionId: string): void;
-    refreshMessages(agentSessionId: string): void;
+    reconcileDetail(agentSessionId: string): void;
     syncConversationList(agentSessionId: string): void;
   };
   runtime: AgentActivityRuntime;
@@ -251,8 +250,7 @@ export function useAgentConversationMessagePaging(
     const normalized = agentSessionId.trim();
     if (!normalized) return;
     const current = inputRef.current;
-    current.reload.refreshMessages(normalized);
-    current.reload.loadSessionState(normalized);
+    current.reload.reconcileDetail(normalized);
   }, []);
 
   const loadOlderMessages = useCallback(

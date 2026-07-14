@@ -45,6 +45,7 @@ export function groupAgentGUINodeViewModelFixture(
       listError: flat.listError
     },
     detail: {
+      availability: flat.availability,
       isLoadingMessages: flat.isLoadingMessages,
       isLoadingOlderMessages: flat.isLoadingOlderMessages,
       hasOlderMessages: flat.hasOlderMessages,

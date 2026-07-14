@@ -264,6 +264,7 @@ function createViewModel(
     isInterrupting: false,
     promptImagesSupported: true,
     backgroundAgentCount: 0,
+    availability: "ready",
     listError: null,
     isCreatingConversation: false,
     isLoadingConversations: false,

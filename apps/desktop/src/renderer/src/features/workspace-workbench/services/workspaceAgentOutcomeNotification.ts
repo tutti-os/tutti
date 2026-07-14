@@ -44,7 +44,7 @@ export interface WorkspaceAgentOutcomeNotificationControllerInput {
   translate(key: DesktopI18nKey, params?: I18nParams): string;
   workspaceAgentActivityService: Pick<
     IWorkspaceAgentActivityService,
-    "getSessionEngine"
+    "getSessionEngine" | "onSessionEvent"
   >;
   workspaceId: string;
 }
@@ -58,6 +58,7 @@ export function createWorkspaceAgentOutcomeNotificationController(
   const engine =
     input.workspaceAgentActivityService.getSessionEngine(workspaceId);
   const settledTurns = new Set<string>();
+  const liveSettledTurns = new Set<string>();
   let hasAuthoritativeBaseline =
     engine.getSnapshot().engineRuntime.workspaceReconcile.status === "ready";
 
@@ -71,8 +72,13 @@ export function createWorkspaceAgentOutcomeNotificationController(
       const turnKey = sessionTurnKey(item.session.agentSessionId, turn.turnId);
       if (turn.phase !== "settled") continue;
       if (settledTurns.has(turnKey)) continue;
+      if (!notifyTransitions) {
+        settledTurns.add(turnKey);
+        continue;
+      }
+      if (!liveSettledTurns.has(turnKey)) continue;
       settledTurns.add(turnKey);
-      if (!notifyTransitions) continue;
+      liveSettledTurns.delete(turnKey);
       const notification =
         buildWorkspaceAgentOutcomeNotificationFromSettledTurn({
           session: item.session,
@@ -105,13 +111,35 @@ export function createWorkspaceAgentOutcomeNotificationController(
     }
     inspectEngineState(state, true);
   });
+  const unsubscribeSessionEvents =
+    input.workspaceAgentActivityService.onSessionEvent(workspaceId, (event) => {
+      const turnKey = liveSettledTurnKeyFromEvent(event);
+      if (!turnKey || !hasAuthoritativeBaseline) return;
+      liveSettledTurns.add(turnKey);
+      inspectEngineState(engine.getSnapshot(), true);
+    });
   return {
     dispose() {
       unsubscribeEngine();
+      unsubscribeSessionEvents();
     }
   };
 }
 
+function liveSettledTurnKeyFromEvent(event: unknown): string | null {
+  const source = recordValue(event);
+  if (stringValue(source?.eventType) !== "turn_update") return null;
+  const data = recordValue(source?.data);
+  const turn = recordValue(data?.turn) ?? data;
+  if (!data || !turn || stringValue(turn.phase) !== "settled") return null;
+  if (!outcomeStatusFromTurnOutcome(stringValue(turn.outcome))) return null;
+  const agentSessionId =
+    stringValue(turn.agentSessionId) || stringValue(data.agentSessionId);
+  const turnId = stringValue(turn.turnId);
+  return agentSessionId && turnId
+    ? sessionTurnKey(agentSessionId, turnId)
+    : null;
+}
 export function buildWorkspaceAgentOutcomeNotificationFromSettledTurn(input: {
   conversationTitle?: string;
   session: CanonicalAgentSession;
@@ -222,6 +250,12 @@ function formatWorkspaceAgentProviderName(provider: string): string {
 
 function sessionTurnKey(agentSessionId: string, turnId: string): string {
   return `${agentSessionId}\n${turnId}`;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function stringValue(value: unknown): string {

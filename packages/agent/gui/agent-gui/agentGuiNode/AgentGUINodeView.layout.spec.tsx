@@ -6140,6 +6140,7 @@ function createViewModel(
     availableSkills: [],
     draftPrompt: "",
     draftContent: { prompt: "", images: [] },
+    availability: "ready",
     isLoadingConversations: false,
     isLoadingMessages: false,
     isLoadingOlderMessages: false,

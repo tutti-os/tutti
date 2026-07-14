@@ -558,6 +558,31 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
   });
 
   assert.deepEqual(await receivedEvent, sourceEvent);
+
+  const receivedTurnEvent = new Promise<unknown>((resolve) => {
+    service.onSessionEvent("ws-1", resolve);
+  });
+  const turnEvent = {
+    data: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      eventType: "turn_update",
+      occurredAtUnixMs: 2,
+      turn: workspaceAgentTurn({ outcome: "completed", phase: "settled" }),
+      workspaceId: "ws-1"
+    },
+    eventType: "turn_update"
+  };
+  activityUpdatedListener({
+    payload: {
+      agentSessionId: "session-1",
+      data: turnEvent.data,
+      eventType: turnEvent.eventType,
+      workspaceId: "ws-1"
+    }
+  });
+
+  assert.deepEqual(await receivedTurnEvent, turnEvent);
 });
 
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {

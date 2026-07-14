@@ -140,20 +140,11 @@ export function useAgentGUIConversationRouting(
           return;
         }
         if (resolveId(intent.id)) return;
+        // An active intent is produced by an explicit user/session selection.
+        // Rail pages are bounded and may not contain that selected session yet;
+        // list absence must not demote it into the requested/fallback flow.
+        if (activeConversationIdRef.current === intent.id) return;
         if (!hasLoadedConversations) return;
-        if (
-          inSnapshot(intent.id) &&
-          activeConversationIdRef.current === intent.id
-        ) {
-          ensureTransientOpenSessionConversation(intent.id);
-          return;
-        }
-        if (
-          explicitlyOpenedConversationIdsRef.current.has(intent.id) &&
-          activeConversationIdRef.current === intent.id
-        ) {
-          return;
-        }
         setIntent({ tag: "requested", id: intent.id });
         return;
       case "requested":
