@@ -1,6 +1,7 @@
 import type {
   AgentActivityRuntime,
   AgentQueuedPromptRuntime,
+  AgentGUIEngagementAnalytics,
   AgentGUIProps,
   AgentHostInputApi
 } from "@tutti-os/agent-gui";
@@ -38,6 +39,10 @@ import {
 } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentChatReadyTracker } from "./internal/agentChatReadyAnalytics.ts";
+import {
+  createAgentGUIEngagementAnalytics,
+  type AgentGUIAnalyticsSurface
+} from "./internal/agentGUIEngagementAnalytics.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
 import { getDesktopAgentActivityRuntimeServices } from "./internal/desktopAgentActivityRuntimeServices.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface";
@@ -52,6 +57,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
     AgentGUIProps["contextMentionProviders"]
   >;
   trackAgentProviderChatReady: (input: { provider: string }) => Promise<void>;
+  createAgentGUIEngagementAnalytics: (
+    surface: AgentGUIAnalyticsSurface
+  ) => AgentGUIEngagementAnalytics;
   trackWorkspaceFileReferences: (input: {
     provider?: string | null;
     references: readonly WorkspaceFileReference[];
@@ -242,6 +250,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       })
       .map(richTextTriggerProviderToContextMentionProvider),
     trackAgentProviderChatReady: (input) => chatReadyTracker.track(input),
+    createAgentGUIEngagementAnalytics: (surface) =>
+      createAgentGUIEngagementAnalytics({
+        reporterNow,
+        reporterService,
+        surface
+      }),
     trackWorkspaceFileReferences: (input) =>
       workspaceFileReferenceTracker.track(input),
     workspaceFileReferenceAdapter,

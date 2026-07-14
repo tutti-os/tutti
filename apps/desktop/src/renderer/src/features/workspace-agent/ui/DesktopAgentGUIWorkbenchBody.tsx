@@ -110,6 +110,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
     AgentGUIProps["contextMentionProviders"]
   >;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  engagementAnalytics?: AgentGUIProps["engagementAnalytics"];
   trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
@@ -186,6 +187,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
+    previous.engagementAnalytics === next.engagementAnalytics &&
     previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
     previous.trackWorkspaceFileReferences ===
       next.trackWorkspaceFileReferences &&
@@ -248,6 +250,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   defaultProviderTargetId = null,
   contextMentionProviders,
   runtimeApi,
+  engagementAnalytics,
   trackAgentProviderChatReady,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
@@ -1057,6 +1060,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         i18n={i18n}
         locale={locale}
         agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
+        engagementAnalytics={engagementAnalytics}
         capabilityMenuState={capabilityMenuState}
         currentUserId="local"
         desktopSize={desktopSize}

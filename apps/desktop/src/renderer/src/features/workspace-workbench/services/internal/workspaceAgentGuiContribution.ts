@@ -95,6 +95,8 @@ export function createWorkspaceAgentGuiContribution(input: {
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
+  const engagementAnalytics =
+    agentGUIWorkbenchHostInput.createAgentGUIEngagementAnalytics("workspace");
   // Warm the @-mention browse cache at workspace startup (this factory runs once
   // per workspace, before the agent GUI is opened) so the first palette open is
   // instant rather than waiting for a focus-driven preload.
@@ -155,6 +157,7 @@ export function createWorkspaceAgentGuiContribution(input: {
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
       runtimeApi: input.runtimeApi,
+      engagementAnalytics,
       trackAgentProviderChatReady:
         agentGUIWorkbenchHostInput.trackAgentProviderChatReady,
       trackWorkspaceFileReferences:
