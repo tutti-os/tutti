@@ -352,14 +352,17 @@ jobs:
             pnpm --filter @tutti-os/desktop build:mac:signed
           fi
 
-      - name: Materialize prerelease updater metadata
+      - name: Verify prerelease updater metadata
         if: ${{ needs.resolve.outputs.release_channel != 'stable' }}
         run: |
-          if [[ ! -f apps/desktop/dist/latest-mac.yml ]]; then
-            echo "latest-mac.yml is required before creating ${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml." >&2
+          # The generic updater provider derives the prerelease channel from
+          # the version, so electron-builder writes rc-mac.yml or beta-mac.yml
+          # directly instead of latest-mac.yml.
+          updater_metadata="apps/desktop/dist/${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml"
+          if [[ ! -f "${updater_metadata}" ]]; then
+            echo "${updater_metadata} is required for the ${TUTTI_DESKTOP_RELEASE_CHANNEL} updater channel." >&2
             exit 1
           fi
-          cp apps/desktop/dist/latest-mac.yml "apps/desktop/dist/${TUTTI_DESKTOP_RELEASE_CHANNEL}-mac.yml"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7

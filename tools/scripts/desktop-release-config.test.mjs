@@ -661,20 +661,21 @@ test("desktop package declares the workspace package manager for electron-builde
   assert.equal(packageJson.packageManager, "pnpm@10.11.0");
 });
 
-test("desktop package generates updater metadata for every release channel", async () => {
+test("desktop package verifies channel-specific prerelease updater metadata", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.equal(packageJson.build?.generateUpdatesFilesForAllChannels, true);
-  assert.match(workflow, /Materialize prerelease updater metadata/);
+  assert.match(workflow, /Verify prerelease updater metadata/);
   assert.match(
     workflow,
     /needs\.resolve\.outputs\.release_channel\s*!=\s*'stable'/
   );
   assert.match(
     workflow,
-    /cp apps\/desktop\/dist\/latest-mac\.yml "apps\/desktop\/dist\/\$\{TUTTI_DESKTOP_RELEASE_CHANNEL\}-mac\.yml"/
+    /updater_metadata="apps\/desktop\/dist\/\$\{TUTTI_DESKTOP_RELEASE_CHANNEL\}-mac\.yml"/
   );
+  assert.doesNotMatch(workflow, /cp apps\/desktop\/dist\/latest-mac\.yml/);
 });
 
 test("desktop package uses a distinct product identity from tsh desktop", async () => {
