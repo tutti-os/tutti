@@ -84,8 +84,8 @@ func (a LocalFilesAdapter) Search(
 
 	maxCandidates := a.maxSearchCandidates()
 	ignoredDirectories := a.ignoredDirectories()
-	allowHiddenFiles := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenFile(input.Query)
-	allowHiddenAndNoiseDirectories := input.IncludeHidden || workspacefiles.SearchQueryTargetsHiddenOrNoise(input.Query)
+	allowHiddenFiles := input.IncludeHidden
+	allowHiddenAndNoiseDirectories := input.IncludeHidden
 	candidates, stats, walkErr := walkSearchCandidates(ctx, rootPath, searchRootPath, input, searchWalkOptions{
 		allowHiddenAndNoiseDirectories: allowHiddenAndNoiseDirectories,
 		allowHiddenFiles:               allowHiddenFiles,

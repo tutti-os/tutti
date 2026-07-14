@@ -1009,7 +1009,7 @@ func TestLocalFilesAdapterSearchSkipsHiddenFilesForNormalQueries(t *testing.T) {
 	}
 }
 
-func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThem(t *testing.T) {
+func TestLocalFilesAdapterSearchSkipsHiddenFilesWhenQueryExplicitlyTargetsThemWithoutOptIn(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -1018,11 +1018,11 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThe
 		t.Fatal(err)
 	}
 
-	visibleEnvPath := filepath.Join(rootDir, "docs", "env.md")
+	visibleEnvPath := filepath.Join(rootDir, "docs", "runtime.env")
 	if err := os.MkdirAll(filepath.Dir(visibleEnvPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(visibleEnvPath, []byte("env docs"), 0o644); err != nil {
+	if err := os.WriteFile(visibleEnvPath, []byte("VISIBLE=1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1035,11 +1035,13 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenQueryExplicitlyTargetsThe
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if len(result.Entries) == 0 {
-		t.Fatal("expected explicit hidden file match")
+	for _, entry := range result.Entries {
+		if entry.Path == "/workspace/.env" {
+			t.Fatalf("unexpected hidden file result %#v", entry)
+		}
 	}
-	if result.Entries[0].Path != "/workspace/.env" {
-		t.Fatalf("first result = %#v, want /workspace/.env", result.Entries[0])
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/docs/runtime.env" {
+		t.Fatalf("entries = %#v, want visible runtime.env only", result.Entries)
 	}
 }
 
