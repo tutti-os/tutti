@@ -637,6 +637,34 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - References:
   [desktopAgentActivityAdapter.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
   [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+
+### AgentGUI @ Sessions tab is empty
+
+- Symptom:
+  Opening the composer `@` palette (default Sessions tab) shows no session
+  rows, even though the workspace has agent history.
+- Quick checks:
+  In `tuttid.log`, look for `event=workspace.agent_session.api.list_completed`
+  from `GET /v1/workspaces/{workspaceID}/agent-sessions` (the Sessions-tab
+  source). Check `session_count`. Do not confuse it with
+  `workspace.agent_session.messages.api.list_*` or
+  `workspace.agent_session.section.list_failed`.
+- Root cause:
+  The Sessions tab loads through `listWorkspaceAgentSessions`. Successful calls
+  previously left no durable log, so empty palettes could not be distinguished
+  from "API never ran" or "API returned zero sessions" in exported logs.
+- Fix:
+  Successful list responses now emit
+  `workspace.agent_session.api.list_completed` with `session_count`. If the
+  event is missing, the client never hit the endpoint; if `session_count=0`,
+  the daemon truly returned an empty list.
+- Validation:
+  Click the composer `@` button, confirm a
+  `workspace.agent_session.api.list_completed` line appears with a non-zero
+  `session_count` when sessions exist.
+- References:
+  [daemon_agent_session_list.go](../../../services/tuttid/api/daemon_agent_session_list.go)
+  [desktopRichTextAtAgentContributors.ts](../../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtAgentContributors.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### Agent diagnostics flood while a turn is streaming

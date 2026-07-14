@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -35,13 +36,19 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		}
 		input.Limit = int(*request.Params.Limit)
 	}
-	sessions, err := api.AgentSessionService.ListFiltered(ctx, string(request.WorkspaceID), input)
+	workspaceID := string(request.WorkspaceID)
+	sessions, err := api.AgentSessionService.ListFiltered(ctx, workspaceID, input)
 	if err != nil {
 		return writeListWorkspaceAgentSessionsError(err), nil
 	}
+	slog.Info("workspace agent sessions list completed",
+		"event", "workspace.agent_session.api.list_completed",
+		"workspace_id", workspaceID,
+		"session_count", len(sessions),
+	)
 	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
 		Sessions:    generatedAgentSessions(sessions),
-		WorkspaceId: string(request.WorkspaceID),
+		WorkspaceId: workspaceID,
 	}, nil
 }
 
