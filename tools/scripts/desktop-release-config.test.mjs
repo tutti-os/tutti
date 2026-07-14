@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
-import {
-  DARWIN_CLAUDE_NATIVE_PACKAGES,
-  resolveDarwinClaudeNativePackageSpecs,
-  resolveDarwinClaudeNativePackagesForPackContext
-} from "../../apps/desktop/scripts/claude-sdk-sidecar-packaging.mjs";
 
 const desktopPackagePath = new URL(
   "../../apps/desktop/package.json",
@@ -375,61 +370,17 @@ test("desktop macOS packaging builds architecture-specific and universal artifac
     /lipo\s+"\$\{output_path\}"\s+-verify_arch\s+arm64\s+x86_64\s+\|\|\s+\{/
   );
   assert.match(buildScript, /electron-builder --mac --x64 --arm64 --universal/);
-  assert.match(buildScript, /--include-darwin-native-packages/);
-  assert.match(claudeSidecarVendorScript, /"npm",\s*\n\s*\["pack"/);
-  assert.match(
-    claudeSidecarVendorScript,
-    /verifyDarwinClaudeNativePackages\(join\(outDir, "node_modules"\)\)/
-  );
-  assert.deepEqual(
-    DARWIN_CLAUDE_NATIVE_PACKAGES.map(({ name, lipoArch }) => [name, lipoArch]),
-    [
-      ["@anthropic-ai/claude-agent-sdk-darwin-arm64", "arm64"],
-      ["@anthropic-ai/claude-agent-sdk-darwin-x64", "x86_64"]
-    ]
-  );
-  assert.deepEqual(
-    resolveDarwinClaudeNativePackageSpecs({
-      optionalDependencies: {
-        "@anthropic-ai/claude-agent-sdk-darwin-arm64": "1.2.3",
-        "@anthropic-ai/claude-agent-sdk-darwin-x64": "1.2.3"
-      }
-    }),
-    [
-      "@anthropic-ai/claude-agent-sdk-darwin-arm64@1.2.3",
-      "@anthropic-ai/claude-agent-sdk-darwin-x64@1.2.3"
-    ]
-  );
-  assert.deepEqual(
-    resolveDarwinClaudeNativePackagesForPackContext({
-      appOutDir: "/tmp/dist/mac",
-      arch: 1
-    }).map(({ name }) => name),
-    ["@anthropic-ai/claude-agent-sdk-darwin-x64"]
-  );
-  assert.deepEqual(
-    resolveDarwinClaudeNativePackagesForPackContext({
-      appOutDir: "/tmp/dist/mac-arm64",
-      arch: 3
-    }).map(({ name }) => name),
-    ["@anthropic-ai/claude-agent-sdk-darwin-arm64"]
-  );
-  for (const context of [
-    { appOutDir: "/tmp/dist/mac-universal-x64-temp", arch: 1 },
-    { appOutDir: "/tmp/dist/mac-universal-arm64-temp", arch: 3 },
-    { appOutDir: "/tmp/dist/mac-universal", arch: 4 }
-  ]) {
-    assert.deepEqual(
-      resolveDarwinClaudeNativePackagesForPackContext(context).map(
-        ({ name }) => name
-      ),
-      DARWIN_CLAUDE_NATIVE_PACKAGES.map(({ name }) => name)
-    );
-  }
+  // The native claude binaries are provisioned at runtime by tuttid
+  // (services/tuttid/service/agentstatus/claude_binary.go); the vendored
+  // sidecar bundle must stay JS-only so every architecture ships identical
+  // resources and no Mach-O merging exemption is needed.
+  assert.doesNotMatch(buildScript, /--include-darwin-native-packages/);
+  assert.match(claudeSidecarVendorScript, /--omit=optional/);
+  assert.doesNotMatch(claudeSidecarVendorScript, /"pack"/);
   assert.equal(
     packageJson.build.mac.x64ArchFiles,
-    "Contents/Resources/bin/claude-sdk-sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude",
-    "Claude SDK sidecar native binaries must be covered for electron-builder universal merges"
+    undefined,
+    "the sidecar bundle carries no native binaries, so no x64ArchFiles exemption may exist"
   );
 });
 

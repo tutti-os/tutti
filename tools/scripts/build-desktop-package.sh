@@ -184,14 +184,9 @@ prepare_browser_mcp() {
 prepare_claude_sdk_sidecar() {
   # Vendors the Claude SDK sidecar into build/claude-sdk-sidecar so packaged
   # Claude SDK sessions do not depend on repository source paths at runtime.
-  local args=()
-  if is_macos_package_variant; then
-    # Release packaging cross-builds x64, arm64, and universal apps on one
-    # runner. Vendor both native Claude CLIs instead of inheriting the runner's
-    # architecture through npm optional dependency selection.
-    args+=(--include-darwin-native-packages)
-  fi
-  node "${ROOT_DIR}/apps/desktop/scripts/vendor-claude-sdk-sidecar.mjs" "${args[@]}"
+  # The native claude binaries are provisioned by tuttid at runtime and are
+  # deliberately absent from the bundle.
+  node "${ROOT_DIR}/apps/desktop/scripts/vendor-claude-sdk-sidecar.mjs"
 }
 
 run_pnpm_build() {
